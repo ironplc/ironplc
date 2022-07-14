@@ -1,0 +1,767 @@
+extern crate peg;
+mod ast;
+mod dsl;
+mod mapper;
+
+use peg::parser;
+
+use crate::ast::*;
+use crate::dsl::*;
+use crate::mapper::*;
+// Don't use std::time::Duration because it does not allow negative values.
+use time::{Date, Duration, Month, PrimitiveDateTime, Time};
+
+parser! {
+  grammar list_parser() for str {
+
+    // peg rules for making the grammar easier to work with
+    rule semicolon() -> () = ";" ()
+    rule _ = [' ' | '\n' | '\r' ]*
+    // A semi-colon separated list with required ending separator
+    rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) semicolon() {v}
+    rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
+
+    rule KEYWORD() = "END_VAR"
+    rule STANDARD_FUNCTION_BLOCK_NAME() = "END_VAR"
+
+    // B.1.1 Letters, digits and identifier
+    //rule digit() -> &'input str = $(['0'..='9'])
+    rule identifier() -> &'input str = !KEYWORD() i:$(['a'..='z' | '0'..='9' | 'A'..='Z' | '_']+) { i }
+
+    // B.1.2 Constants
+    rule constant() -> Constant = r:real_literal() { Constant::RealLiteral() } / i:integer_literal() { Constant::IntegerLiteral(i.try_from::<i128>()) } / c:character_string() { Constant::CharacterString() }  / d:duration() { Constant::Duration(d) } / t:time_of_day() { Constant::TimeOfDay() } / d:date() { Constant::Date() } / dt:date_and_time() { Constant::DateAndTime() }
+
+    // B.1.2.1 Numeric literals
+    // numeric_literal omitted and only in constant.
+    // TODO fill out the rest here
+    rule integer_literal() -> Integer = i:integer() { i }
+    rule signed_integer() -> &'input str = n:$(['+' | '-']?['0'..='9']("_"? ['0'..='9'])+) { n }
+    rule real_literal() -> &'input str = (t:real_type_name() "#")? i:signed_integer() "." e:exponent()? { i }
+    rule exponent() -> (bool, Integer) = ("E" / "e") s:("+" / "-")? i:integer() { (true, i) }
+    // TODO handle the sign
+    rule integer() -> Integer = n:$(['0'..='9']("_"? ['0'..='9'])*) { Integer::from(n) }
+
+    // B.1.2.2 Character strings
+    rule character_string() -> Vec<char> = s:single_byte_character_string() / d:double_byte_character_string()
+    rule single_byte_character_string() -> Vec<char>  = "'" s:single_byte_character_representation()+ "'" { s }
+    rule double_byte_character_string() -> Vec<char> = "\"" s:double_byte_character_representation()+ "\"" { s }
+    // TODO escape characters
+    rule single_byte_character_representation() -> char = c:common_character_representation() { c }
+    rule double_byte_character_representation() -> char = c:common_character_representation() { c }
+    // TODO other printable characters
+    rule common_character_representation() -> char = c:['a'..='z' | 'A'..='Z'] { c }
+
+    // B.1.2.3 Time literals
+    // Omitted and subsumed into constant.
+
+    // B.1.2.3.1 Duration
+    pub rule duration() -> Duration = ("TIME" / "T") "#" s:("-")? i:interval() {
+      if let Some(sign) = s {
+        return i * -1;
+      }
+      return i;
+    }
+    // milliseconds must come first because the "m" in "ms" would match the minutes rule
+    rule interval() -> Duration = ms:milliseconds() { ms } / d:days() { d } / h:hours() { h } / m:minutes() { m } / s:seconds() { s }
+    rule days() -> Duration = f:fixed_point() "d" { to_duration(f, 3600.0 * 24.0) } / i:integer() "d" "_"? h:hours() { h + to_duration(i.try_from::<f32>(), 3600.0 * 24.0) }
+
+    rule fixed_point() -> f32 = i:integer() ("." integer())? {
+      // TODO This drops the fraction, but I don't know how to keep it. May need one big regex in the worse case.
+      i.try_from::<f32>()
+    }
+    rule hours() -> Duration = f:fixed_point() "h" { to_duration(f, 3600.0) } / i:integer() "h" "_"? m:minutes() { m + to_duration(i.try_from::<f32>(), 3600.0) }
+    rule minutes() -> Duration = f:fixed_point() "m" { to_duration(f, 60.0) } / i:integer() "m" "_"? m:seconds() { m + to_duration(i.try_from::<f32>(), 60.0) }
+    rule seconds() -> Duration = f:fixed_point() "s" { to_duration(f, 1.0) } / i:integer() "s" "_"? m:milliseconds() { m + to_duration(i.try_from::<f32>(), 1.0) }
+    rule milliseconds() -> Duration = f:fixed_point() "ms" { to_duration(f, 0.001) }
+
+    // 1.2.3.2 Time of day and date
+    rule time_of_day() -> Time = ("TOD" / "TIME_OF_DAY") "#" d:daytime() { d }
+    rule daytime() -> Time = h:day_hour() ":" m:day_minute() ":" s:day_second() {
+      let h = h.try_from::<u8>();
+      let m = m.try_from::<u8>();
+      let s = s.try_from::<u8>();
+      // TODO error handling
+      Time::from_hms(h, m, s).unwrap()
+    }
+    rule day_hour() -> Integer = i:integer() { i }
+    rule day_minute() -> Integer = i:integer() { i }
+    rule day_second() -> Integer = i:integer() { i }
+    rule date() -> Date = ("DATE" / "D") "#" d:date_literal() { d }
+    rule date_literal() -> Date = y:year() "-" m:month() "-" d:day() {
+      let y = y.try_from::<i32>();
+      // TODO error handling
+      let m = Month::try_from(m.try_from::<u8>()).unwrap();
+      let d = d.try_from::<u8>();
+      // TODO error handling
+      Date::from_calendar_date(y, m, d).unwrap()
+    }
+    rule year() -> Integer = i:integer() { i }
+    rule month() -> Integer = i:integer() { i }
+    rule day() -> Integer = i:integer() { i }
+    rule date_and_time() -> PrimitiveDateTime = ("DATE_AND_TIME" / "DT") "#" d:date_literal() "-" t:daytime() { PrimitiveDateTime::new(d, t) }
+
+    // B.1.3.1 Elementary data types
+    rule elementary_type_name() -> &'input str = "INT" { "INT"} / "BOOL" { "BOOL" } / "STRING" { "STRING" }
+    // TODO regex for REAL
+    rule real_type_name() -> &'input str = t:$(("LREAL")) { t }
+
+    // B.1.3.3
+    rule enumerated_type_name() -> &'input str = i:identifier() { i }
+    pub rule data_type_declaration() -> Vec<EnumerationDeclaration> = "TYPE" _ declarations:semisep(<type_declaration()>) _ "END_TYPE" { declarations }
+    // TODO this is missing multiple types
+    rule type_declaration() -> EnumerationDeclaration = s:single_element_type_declaration() { s }
+    // TODO this is missing multiple types
+    rule single_element_type_declaration() -> EnumerationDeclaration = decl:enumerated_type_declaration() { decl }
+    rule enumerated_type_declaration() -> EnumerationDeclaration = name:enumerated_type_name() _ ":" _ def:enumerated_spec_init() {
+      EnumerationDeclaration {
+        name: String::from(name),
+        values: def.0.iter().map(|v| String::from(*v)).collect(),
+        default: def.1.map(|d| String::from(d)),
+      }
+    }
+    rule enumerated_spec_init() -> (Vec<& 'input str>, Option<& 'input str>) = values:enumerated_specification() _ default:(":=" _ d:enumerated_value() { d })? { (values, default) }
+    // TODO this doesn't support type name as a value
+    rule enumerated_specification() -> Vec<& 'input str>  = "(" _ values:enumerated_value() ++ (_ "," _) _ ")" { values }
+    rule enumerated_value() -> &'input str = (enumerated_type_name() "#")? i:identifier() { i }
+    rule simple_spec_init() -> TypeInitializer = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
+      TypeInitializer {
+        type_name: String::from(type_name),
+        initial_value: constant.map(|v| Initializer::Simple(v)),
+      }
+    }
+    rule simple_specification() -> &'input str = elementary_type_name()
+
+    // B.1.4 Variables
+    rule variable() -> Variable = d:direct_variable() { Variable::DirectVariable(d) } / s:symbolic_variable() { Variable::SymbolicVariable(String::from(s)) }
+    // TODO add multi-element variable
+    rule symbolic_variable() -> &'input str = name:variable_name() { name }
+    rule variable_name() -> &'input str = i:identifier() { i }
+
+    // B.1.4.1 Directly represented variables
+    pub rule direct_variable() -> DirectVariable = "%" l:location_prefix() s:size_prefix()? addr:integer() ++ "." {
+      let size = s.unwrap_or_else(|| SizePrefix::Nil);
+      let addr = addr.iter().map(|part|
+        part.try_from::<u32>()
+      ).collect();
+
+      DirectVariable {
+        location: l,
+        size: size,
+        address: addr,
+      }
+    }
+    rule location_prefix() -> LocationPrefix = l:['I' | 'Q' | 'M'] { LocationPrefix::from_char(l) }
+    rule size_prefix() -> SizePrefix = s:['X' | 'B' | 'W' | 'D' | 'L'] { SizePrefix::from_char(s) }
+
+    // B.1.4.2 Multi-element variables
+    //rule multi_element_variable() -> () = array_variable() / structured_variable()
+    //rule array_variable() -> () = subscripted_variable() _ subscript_list() {}
+    //rule subscripted_variable() -> () = symbolic_variable()
+    //rule subscript_list() -> () = "[" _ subscript()++ (_ "," _) _ "]" {}
+    //rule subscript() -> () = expression() {}
+    //rule structured_variable() -> () = record_variable() "." field_selector()
+    //rule record_variable() -> () = symbolic_variable() {}
+    //rule field_selector() -> () = identifier() {}
+
+    // B.1.4.3 Declarations and initialization
+    pub rule input_declarations() -> Vec<VarInit> = "VAR_INPUT" _ storage:("RETAIN" {StorageClass::Retain()} / "NON_RETAIN" {StorageClass::NonRetain()})? _ declarations:semisep(<input_declaration()>) _ "END_VAR" {
+      var_init_flat_map(declarations, storage)
+    }
+    // TODO add edge declaration (as a separate item - a tuple)
+    rule input_declaration() -> Vec<VarInit> = i:var_init_decl() { i }
+    rule edge_declaration() -> () = var1_list() _ ":" _ "BOOL" _ ("R_EDGE" / "F_EDGE")? {}
+    // TODO missing multiple here
+    rule var_init_decl() -> Vec<VarInit> = i:var1_init_decl() { i }
+    // TODO add in subrange_spec_init(), enumerated_spec_init()
+
+    rule var1_init_decl() -> Vec<VarInit> = names:var1_list() _ ":" _ init:simple_spec_init() {
+      // Each of the names variables has is initialized in the same way. Here we flatten initialization
+      names.iter().map(|name| {
+        VarInit {
+          name: String::from(*name),
+          storage_class: StorageClass::Unspecified(),
+          initializer: Option::Some(init.clone()),
+        }
+      }).collect()
+    }
+    rule var1_list() -> Vec<&'input str> = names:variable_name() ++ (_ "," _) { names }
+    rule fb_name() -> &'input str = i:identifier() { i }
+    pub rule output_declarations() -> Vec<VarInit> = "VAR_OUTPUT" _ storage:("RETAIN" {StorageClass::Retain()} / "NON_RETAIN" {StorageClass::NonRetain()})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+      var_init_flat_map(declarations, storage)
+    }
+    pub rule input_output_declarations() -> Vec<VarInit> = "VAR_IN_OUT" _ storage:("RETAIN" {StorageClass::Retain()} / "NON_RETAIN" {StorageClass::NonRetain()})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+      var_init_flat_map(declarations, storage)
+    }
+    rule var_declarations() -> Vec<VarInit> = "VAR" _ storage:"CONSTANT"? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+      let storage = storage.map(|()| StorageClass::Constant());
+      var_init_flat_map(declarations, storage)
+    }
+    rule retentive_var_declarations() -> Vec<VarInit> = "VAR" _ "RETAIN" _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+      var_init_flat_map(declarations, Option::Some(StorageClass::Retain()))
+    }
+    rule located_var_declarations() -> Vec<LocatedVarInit> = "VAR" _ storage:("CONSTANT" { StorageClass::Constant() }/ "RETAIN" {StorageClass::Retain()} / "NON_RETAIN" {StorageClass::NonRetain()})? _ declarations:semisep(<located_var_decl()>) _ "END_VAR" {
+      declarations
+          .into_iter()
+          .map(|declaration| {
+              let storage = storage
+                  .clone()
+                  .unwrap_or_else(|| StorageClass::Unspecified());
+              let mut declaration = declaration.clone();
+              declaration.storage_class = storage;
+              declaration
+          })
+          .collect()
+    }
+    rule located_var_decl() -> LocatedVarInit = name:variable_name()? _ loc:location() _ ":" _ init:located_var_spec_init() {
+      let name = name.map(|n| String::from(n));
+      LocatedVarInit {
+        name: name,
+        storage_class: StorageClass::Unspecified(),
+        at: loc,
+        initializer: init,
+      }
+    }
+    // TODO external_var_declarations, external_declaration
+    rule global_var_name() -> &'input str = i:identifier() { i }
+
+    rule storage_class() -> StorageClass = "CONSTANT" { StorageClass::Constant() } / "RETAIN" { StorageClass::Retain() }
+    pub rule global_var_declarations() -> Vec<Declaration> = "VAR_GLOBAL" _ storage:storage_class()? _ declarations:semisep(<global_var_decl()>) _ "END_VAR" {
+      // TODO set the options - this is pretty similar to VarInit - maybe it should be the same
+      let declarations = declarations.into_iter().flatten().collect::<Vec<Declaration>>();
+      declarations.into_iter().map(|declaration| {
+        let storage = storage.clone().unwrap_or_else(|| StorageClass::Unspecified());
+        let mut declaration = declaration.clone();
+        declaration.storage_class = storage;
+        declaration
+      }).collect()
+    }
+    // TODO this doesn't pass all information. I suspect the rule from the dpec is not right
+    rule global_var_decl() -> (Vec<Declaration>) = vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { TypeInitializer { type_name: String::from(f), initial_value: None } })? {
+      vs.0.iter().map(|name| {
+        Declaration {
+          name: String::from(*name),
+          storage_class: StorageClass::Unspecified(),
+          at: vs.1.clone(),
+          initializer: initializer.clone(),
+        }
+      }).collect()
+     }
+    rule global_var_spec() -> (Vec<& 'input str>, Option<At>) = names:global_var_list() {
+      (names, None)
+    } / global_var_name()? location() {
+      // TODO this is clearly wrong, but it feel like the spec is wrong here
+      (vec![""], None)
+    }
+    // TODO this is completely fabricated - it isn't correct.
+    rule located_var_spec_init() -> TypeInitializer = simple:simple_spec_init() { simple }
+    // TODO
+    pub rule location() -> DirectVariable = "AT" _ v:direct_variable() { v }
+    rule global_var_list() -> Vec<&'input str> = names:global_var_name() ++ (_ "," _) { names }
+    //rule string_var_declaration() -> stri
+
+    // B.1.5.2 Function blocks
+    // IEC 61131 defines separate standard and derived function block names,
+    // but we don't need that distinction here.
+    rule function_block_type_name() -> &'input str = i:identifier() { i }
+    rule derived_function_block_name() -> &'input str = !STANDARD_FUNCTION_BLOCK_NAME() i:identifier() { i }
+    // TODO add variable declarations
+    rule function_block_declaration() -> &'input str = "FUNCTION_BLOCK" _ name:derived_function_block_name() _ function_block_body() "END_FUNCTION_BLOCK" {
+      name
+    }
+    rule function_block_body() -> Vec<StmtKind> = statements:statement_list() { statements }
+
+    // B.1.5.3 Program declaration
+    rule program_type_name() -> &'input str = i:identifier() { i }
+    pub rule program_declaration() ->  &'input str = "PROGRAM" _ p:program_type_name() _ "END_PROGRAM" { p }
+
+    // B.1.7 Configuration elements
+    rule configuration_name() -> &'input str = i:identifier() { i }
+    rule resource_type_name() -> &'input str = i:identifier() { i }
+    pub rule configuration_declaration() -> ConfigurationDeclaration = "CONFIGURATION" _ n:configuration_name() _ g:global_var_declarations()? _ r:resource_declaration() _ "END_CONFIGURATION" {
+      let g = g.unwrap_or_else(|| vec![]);
+      // TODO this should really be multiple items
+      let r = vec![r];
+      ConfigurationDeclaration {
+        name: String::from(n),
+        global_var: g,
+        resource_decl: r,
+      }
+    }
+    rule resource_declaration() -> ResourceDeclaration = "RESOURCE" _ n:resource_name() _ "ON" _ t:resource_type_name() _ g:global_var_declarations()? _ resource:single_resource_declaration() _ "END_RESOURCE" {
+      ResourceDeclaration {
+        name: String::from(n),
+        tasks: resource.0,
+        programs: resource.1,
+      }
+    }
+    // TODO need to have more than one
+    rule single_resource_declaration() -> (Vec<TaskConfiguration>, Vec<ProgramConfiguration>) = t:semisep(<task_configuration()>) _ p:semisep_oneplus(<program_configuration()>) { (t, p) }
+    rule resource_name() -> &'input str = i:identifier() { i }
+    rule program_name() -> &'input str = i:identifier() { i }
+    pub rule task_configuration() -> TaskConfiguration = "TASK" _ name:task_name() _ init:task_initialization() {
+      TaskConfiguration {
+        name: String::from(name),
+        priority: init.0,
+        // TODO This needs to set the interval
+        interval: init.1,
+      }
+    }
+    rule task_name() -> &'input str = i:identifier() { i }
+    // TODO add single and interval
+    pub rule task_initialization() -> (u32, Option<Duration>) = "(" _ interval:task_initialization_interval()? _ priority:task_initialization_priority() _ ")" { (priority, interval) }
+    rule task_initialization_interval() -> Duration = "INTERVAL" _ ":=" _ source:data_source() _ "," {
+      // TODO The interval may not necessarily be a duration, but for now, only support Duration types
+      match source {
+        Constant::Duration(duration) => duration,
+        _ => panic!("Only supporting Duration types for now"),
+      }
+     }
+    rule task_initialization_priority() -> u32 = "PRIORITY" _ ":=" _ i:integer() { i.try_from::<u32>() }
+    // TODO there are more here, but only supporting Constant for now
+    pub rule data_source() -> Constant = constant:constant() { constant }
+    // TODO more options here
+    //pub rule data_source() -> &'input str =
+    pub rule program_configuration() -> ProgramConfiguration = "PROGRAM" _ name:program_name() task_name:( _ "WITH" _ t:task_name() { t })? _ ":" _ pt:program_type_name() (_ "(" _ c:prog_conf_element() ** (_ "," _) _ ")")? {
+      ProgramConfiguration {
+        name: String::from(name),
+        task_name: task_name.map(|n| String::from(n)),
+        type_name: String::from(pt),
+      }
+     }
+    rule prog_conf_element() -> &'input str = t:fb_task() { t.0 } /*/ p:prog_cnxn() { p }*/
+    rule fb_task() -> (&'input str, &'input str) = n:fb_name() _ "WITH" _ tn:task_name() { (n, tn) }
+
+    // B.3.1 Expressions
+    rule expression() -> ExprKind = exprs:xor_expression() ** (_ "OR" _) {
+      if exprs.len() > 1 {
+        return ExprKind::Compare {op: CompareOp::Or, terms: exprs}
+      }
+      exprs[0].clone()
+    }
+    rule xor_expression() -> ExprKind = exprs:and_expression() ** (_ "XOR" _) {
+      if exprs.len() > 1 {
+        return ExprKind::Compare {op: CompareOp::Xor, terms: exprs}
+      }
+      exprs[0].clone()
+    }
+    rule and_expression() -> ExprKind = exprs:comparison() ** (_ ("&" / "AND") _) {
+      if exprs.len() > 1 {
+        return ExprKind::Compare {op: CompareOp::And, terms: exprs}
+      }
+      exprs[0].clone()
+    }
+    rule comparison() -> ExprKind = exprs:equ_expression() ** (_ op:("=" {CompareOp::Eq} / "<>" {CompareOp::Ne}) _) {
+      // TODO capture the operator type to distinguish
+      if exprs.len() > 1 {
+        // TODO this is wrong op type
+        return ExprKind::Compare {op: CompareOp::Eq, terms: exprs}
+      }
+      exprs[0].clone()
+    }
+    rule equ_expression() -> ExprKind = exprs:add_expression() ** (_ comparison_operator() _) {// TODO capture the operator type to distinguish
+      if exprs.len() > 1 {
+        // TODO this is wrong op type
+        return ExprKind::Compare {op: CompareOp::Lt, terms: exprs}
+      }
+      exprs[0].clone()
+    }
+    rule comparison_operator() -> CompareOp = "<"  {CompareOp::Lt } / ">" {CompareOp::Gt} / "<=" {CompareOp::LtEq} / ">=" {CompareOp::GtEq}
+    rule add_expression() -> ExprKind = exprs:term() ** (_ add_operator() _ ) {
+      if exprs.len() > 1 {
+        // TODO this is wrong op type
+        return ExprKind::BinaryOp {ops: vec![Operator::Add], terms: exprs}
+      }
+      exprs[0].clone()
+    }
+    rule add_operator() -> Operator = "+" {Operator::Add} / "-" {Operator::Sub}
+    rule term() -> ExprKind = exprs:power_expression() ** (_ multiply_operator() _) {
+      if exprs.len() > 1 {
+        // TODO this is wrong op type
+        return ExprKind::BinaryOp {ops: vec![Operator::Mul], terms: exprs}
+      }
+      exprs[0].clone()
+    }
+    rule multiply_operator() -> Operator = "*" {Operator::Mul} / "/" {Operator::Div}/ "MOD" {Operator::Mod}
+    rule power_expression() -> ExprKind = exprs:unary_expression() ** (_ "**" _)  {
+      if exprs.len() > 1 {
+        return ExprKind::BinaryOp {ops: vec![Operator::Pow], terms: exprs}
+      }
+      exprs[0].clone()
+    }
+    rule unary_expression() -> ExprKind = unary:unary_operator()? expr:primary_expression() {
+      // TODO this ignores the unary op
+      expr
+    }
+    rule unary_operator() -> UnaryOp = "-" {UnaryOp::Neg} / "NOT" {UnaryOp::Not}
+    rule primary_expression() -> ExprKind = constant:constant() { ExprKind::Const { value: constant}} / variable:variable() { ExprKind::Variable { value: variable }}
+    
+
+    // B.3.2 Statements
+    pub rule statement_list() -> Vec<StmtKind> = statements:semisep(<statement()>) { statements }
+    // TODO add other statement types
+    rule statement() -> StmtKind = assignment:assignment_statement() { assignment }
+      / selection:selection_statement() { selection } / fb:fb_invocation() { fb }
+
+    // B.3.2.1 Assignment statements
+    rule assignment_statement() -> StmtKind = var:variable() _ ":=" _ expr:expression() { StmtKind::Assignment{target: var, value:expr } }
+
+    // B.3.2.2 Subprogram control statements
+    // TODO add RETURN
+    rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb }
+    rule fb_invocation() -> StmtKind = name:fb_name() _ "(" _ params:param_assignment() ** (_ "," _) _ ")" {
+      StmtKind::FbCall {
+        name: String::from(name),
+        params: params,
+      }
+    }
+    // TODO this needs much more
+    rule param_assignment() -> ParamAssignment = name:(n:variable_name() _ ":=" { n })? _ expr:expression() {
+      let name = name.map(|n| String::from(n));
+      ParamAssignment {
+        name: name,
+        expr: expr,
+      }
+    }
+    // B.3.2.3 Selection statement
+    // TODO add case statement 
+    rule selection_statement() -> StmtKind = ifstmt:if_statement() { ifstmt }
+    // TODO handle else if
+    rule if_statement() -> StmtKind = "IF" _ expr:expression() _ "THEN" _ body:statement_list() _ "ELSE" _ else_body:statement_list() _ "END_IF" {
+      StmtKind::If{
+        expr: expr,
+        body: body,
+        else_body: else_body,
+      }
+    }
+  }
+}
+
+pub fn main() {}
+
+mod test {
+    use super::*;
+
+    /*#[test]
+    fn resource() {
+      "RESOURCE resource1 ON PLC
+      TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1);
+      PROGRAM plc_task_instance WITH plc_task : plc_prg;
+      END_RESOURCE"
+    }*/
+
+    #[test]
+    fn type_declaration() {
+        let decl = "TYPE
+        LOGLEVEL : (CRITICAL, WARNING, INFO, DEBUG) := INFO;
+      END_TYPE";
+        let enum_decl = vec![EnumerationDeclaration {
+            name: String::from("LOGLEVEL"),
+            values: vec![
+                String::from("CRITICAL"),
+                String::from("WARNING"),
+                String::from("INFO"),
+                String::from("DEBUG"),
+            ],
+            default: Option::Some(String::from("INFO")),
+        }];
+        assert_eq!(list_parser::data_type_declaration(decl), Ok(enum_decl))
+    }
+
+    #[test]
+    fn input_declarations_simple() {
+        // TODO enumerations - I think we need to be lazy here and make simple less strict
+        let decl = "VAR_INPUT
+        TRIG : BOOL;
+        MSG : STRING;
+      END_VAR";
+        let vars = vec![
+            VarInit {
+                name: String::from("TRIG"),
+                storage_class: StorageClass::Unspecified(),
+                initializer: Option::Some(TypeInitializer {
+                    type_name: String::from("BOOL"),
+                    initial_value: None,
+                }),
+            },
+            VarInit {
+                name: String::from("MSG"),
+                storage_class: StorageClass::Unspecified(),
+                initializer: Option::Some(TypeInitializer {
+                    type_name: String::from("STRING"),
+                    initial_value: None,
+                }),
+            },
+        ];
+        assert_eq!(list_parser::input_declarations(decl), Ok(vars))
+    }
+
+    #[test]
+    fn output_declarations() {
+        let decl = "VAR_OUTPUT
+        TRIG : BOOL;
+        MSG : STRING;
+      END_VAR";
+        let vars = vec![
+            VarInit {
+                name: String::from("TRIG"),
+                storage_class: StorageClass::Unspecified(),
+                initializer: Option::Some(TypeInitializer {
+                    type_name: String::from("BOOL"),
+                    initial_value: None,
+                }),
+            },
+            VarInit {
+                name: String::from("MSG"),
+                storage_class: StorageClass::Unspecified(),
+                initializer: Option::Some(TypeInitializer {
+                    type_name: String::from("STRING"),
+                    initial_value: None,
+                }),
+            },
+        ];
+        assert_eq!(list_parser::output_declarations(decl), Ok(vars))
+    }
+
+    #[test]
+    fn data_source() {
+        assert_eq!(
+            list_parser::duration("T#100ms"),
+            Ok(Duration::new(0, 100_000_000))
+        )
+    }
+
+    #[test]
+    fn task_configuration() {
+        let config = Ok(TaskConfiguration {
+            name: String::from("abc"),
+            priority: 11,
+            interval: None,
+        });
+        assert_eq!(
+            list_parser::task_configuration("TASK abc (PRIORITY:=11)"),
+            config
+        );
+        assert_eq!(
+            list_parser::task_configuration("TASK abc (PRIORITY:=1_1)"),
+            config
+        );
+    }
+
+    #[test]
+    fn task_initialization() {
+        assert_eq!(
+            list_parser::task_initialization("(PRIORITY:=11)"),
+            Ok((11, None))
+        );
+        assert_eq!(
+            list_parser::task_initialization("(PRIORITY:=1_1)"),
+            Ok((11, None))
+        );
+    }
+
+    #[test]
+    fn program_configuration() {
+        // TODO there is more to extract here
+        let cfg = ProgramConfiguration {
+            name: String::from("plc_task_instance"),
+            task_name: Option::Some(String::from("plc_task")),
+            type_name: String::from("plc_prg"),
+        };
+        assert_eq!(
+            list_parser::program_configuration("PROGRAM plc_task_instance WITH plc_task : plc_prg"),
+            Ok(cfg)
+        );
+    }
+
+    #[test]
+    fn direct_variable() {
+        let address = vec![1];
+        let var = DirectVariable {
+            location: LocationPrefix::I,
+            size: SizePrefix::X,
+            address: address,
+        };
+        assert_eq!(list_parser::direct_variable("%IX1"), Ok(var))
+    }
+
+    #[test]
+    fn location() {
+        let address = vec![1];
+        let var = DirectVariable {
+            location: LocationPrefix::I,
+            size: SizePrefix::X,
+            address: address,
+        };
+        assert_eq!(list_parser::location("AT %IX1"), Ok(var))
+    }
+
+    #[test]
+    fn var_global() {
+        // TODO assign the right values
+        let reset = vec![Declaration {
+            name: String::from("ResetCounterValue"),
+            storage_class: StorageClass::Constant(),
+            at: None,
+            initializer: Option::Some(TypeInitializer {
+                type_name: String::from("INT"),
+                initial_value: Option::Some(Initializer::Simple(Constant::IntegerLiteral(17))),
+            }),
+        }];
+        assert_eq!(
+            list_parser::global_var_declarations(
+                "VAR_GLOBAL CONSTANT ResetCounterValue : INT := 17; END_VAR"
+            ),
+            Ok(reset)
+        );
+    }
+
+    #[test]
+    fn configuration_declaration() {
+        let config = "CONFIGURATION config
+  VAR_GLOBAL CONSTANT
+    ResetCounterValue : INT := 17;
+  END_VAR
+
+  RESOURCE resource1 ON PLC
+    TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1);
+    PROGRAM plc_task_instance WITH plc_task : plc_prg;
+  END_RESOURCE
+END_CONFIGURATION";
+        let decl = ConfigurationDeclaration {
+            name: String::from("config"),
+            global_var: vec![Declaration {
+                name: String::from("ResetCounterValue"),
+                storage_class: StorageClass::Constant(),
+                at: None,
+                initializer: Option::Some(TypeInitializer {
+                    type_name: String::from("INT"),
+                    initial_value: Option::Some(Initializer::Simple(Constant::IntegerLiteral(17))),
+                }),
+            }],
+            resource_decl: vec![ResourceDeclaration {
+                name: String::from("resource1"),
+                tasks: vec![TaskConfiguration {
+                    name: String::from("plc_task"),
+                    priority: 1,
+                    interval: Option::Some(Duration::new(0, 100_000_000)),
+                }],
+                programs: vec![ProgramConfiguration {
+                    name: String::from("plc_task_instance"),
+                    task_name: Option::Some(String::from("plc_task")),
+                    type_name: String::from("plc_prg"),
+                }],
+            }],
+        };
+        assert_eq!(list_parser::configuration_declaration(config), Ok(decl));
+    }
+
+    #[test]
+    fn statement_assign_constant() {
+      let expected = Ok(vec![
+        StmtKind::Assignment{
+          target: Variable::SymbolicVariable(String::from("Cnt")),
+          value: ExprKind::Const{value: Constant::IntegerLiteral(1)},
+        }
+      ]);
+      assert_eq!(list_parser::statement_list("Cnt := 1;"), expected)
+    }
+
+    #[test]
+    fn statement_assign_add_const_operator() {
+      let expected = Ok(vec![
+        StmtKind::Assignment{
+          target: Variable::SymbolicVariable(String::from("Cnt")),
+          value: ExprKind::BinaryOp{ops: vec![Operator::Add], terms: vec![
+            ExprKind::Const{ value: Constant::IntegerLiteral(1) },
+            ExprKind::Const{ value: Constant::IntegerLiteral(2) },
+            ]},
+        }
+      ]);
+      assert_eq!(list_parser::statement_list("Cnt := 1 + 2;"), expected)
+    }
+
+    #[test]
+    fn statement_assign_add_symbol_operator() {
+      let expected = Ok(vec![
+        StmtKind::Assignment{
+          target: Variable::SymbolicVariable(String::from("Cnt")),
+          value: ExprKind::BinaryOp{ops: vec![Operator::Add], terms: vec![
+            ExprKind::Variable{ value: Variable::SymbolicVariable(String::from("Cnt")) },
+            ExprKind::Const{ value: Constant::IntegerLiteral(1) },
+            ]},
+        }
+      ]);
+      assert_eq!(list_parser::statement_list("Cnt := Cnt + 1;"), expected)
+    }
+
+    #[test]
+    fn statement_if() {
+      let statement = "IF Reset THEN
+    Cnt := ResetCounterValue;
+  ELSE
+    Cnt := Cnt + 1;
+  END_IF;";
+      let expected = Ok(vec![
+        StmtKind::If {
+          expr: ExprKind::Variable{ value: Variable::SymbolicVariable(String::from("Reset"))},
+          body: vec![
+            StmtKind::Assignment {
+              target: Variable::SymbolicVariable(String::from("Cnt")),
+              value: ExprKind::Variable{ value: Variable::SymbolicVariable(String::from("ResetCounterValue"))}
+            }
+          ],
+          else_body: vec![
+            StmtKind::Assignment{
+              target: Variable::SymbolicVariable(String::from("Cnt")),
+              value: ExprKind::BinaryOp{ops: vec![Operator::Add], terms: vec![
+                ExprKind::Variable{ value: Variable::SymbolicVariable(String::from("Cnt")) },
+                ExprKind::Const{ value: Constant::IntegerLiteral(1) },
+                ]},
+            }
+          ]
+        }
+      ]);
+
+      assert_eq!(list_parser::statement_list(statement), expected)
+    }
+
+    #[test]
+    fn statement_fb_invocation_without_name() {
+      let statement = "CounterLD0(Reset);";
+      let expected = Ok(vec![
+        StmtKind::FbCall {
+          name: String::from("CounterLD0"),
+          params: vec![
+            ParamAssignment {
+              name: None,
+              expr: ExprKind::Variable {
+                value: Variable::SymbolicVariable(String::from("Reset"))
+              },
+            }
+          ],
+        }
+      ]);
+
+      assert_eq!(list_parser::statement_list(statement), expected)
+    }
+
+    #[test]
+    fn statement_fb_invocation_with_name() {
+      let statement = "CounterLD0(Cnt := Reset);";
+      let expected = Ok(vec![
+        StmtKind::FbCall {
+          name: String::from("CounterLD0"),
+          params: vec![
+            ParamAssignment {
+              name: Option::Some(String::from("Cnt")),
+              expr: ExprKind::Variable {
+                value: Variable::SymbolicVariable(String::from("Reset"))
+              },
+            }
+          ],
+        }
+      ]);
+
+      assert_eq!(list_parser::statement_list(statement), expected)
+    }
+}
