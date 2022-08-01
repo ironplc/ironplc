@@ -2,6 +2,9 @@ use core::str::FromStr;
 use std::fmt;
 use time::Duration;
 
+use crate::ast::*;
+use crate::sfc::Network;
+
 pub struct Integer {
     value: String,
 }
@@ -15,12 +18,68 @@ impl Integer {
         }
     }
 
+    pub fn as_type<T: FromStr>(&self) -> T {
+        self.try_from::<T>()
+    }
+
+    pub fn num_chars(&self) -> u8 {
+        let value: String = self.value.chars().filter(|c| c.is_digit(10)).collect();
+        // TODO This is most obviously wrong
+        let value: u8 = 1;
+        value
+    }
+
     pub fn from(a: &str) -> Integer {
         Integer {
             value: String::from(a),
         }
     }
 }
+
+pub struct SignedInteger {
+    value: Integer,
+    is_neg: bool,
+}
+
+impl SignedInteger {
+    pub fn as_type<T: FromStr>(&self) -> T {
+        let val = self.value.try_from::<T>();
+        // TODO
+        //if self.is_neg {
+        //    val *= -1;
+        //}
+        val
+    }
+    pub fn from(a: &str) -> SignedInteger {
+        match a.chars().nth(0) {
+            Some('+') => {
+                return SignedInteger {
+                    value: Integer::from(a.get(1..).unwrap()),
+                    is_neg: false,
+                }
+            },
+            Some('-') => {
+                return SignedInteger {
+                    value: Integer::from(a.get(1..).unwrap()),
+                    is_neg: true,
+                }
+            },
+            _ => {
+                return SignedInteger {
+                    value: Integer::from(a),
+                    is_neg: false,
+                }
+            },
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Float {
+    pub value: f64,
+    pub data_type: Option<String>,
+}
+
 
 // TODO I don't know if I need to support multiple storage classes for the
 // same value.
@@ -67,7 +126,7 @@ pub struct TaskConfiguration {
 pub enum Constant {
     // TODO these need values
     IntegerLiteral(i128),
-    RealLiteral(),
+    RealLiteral(Float),
     CharacterString(),
     Duration(Duration),
     TimeOfDay(),
@@ -93,10 +152,25 @@ impl fmt::Debug for Initializer {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct TypeInitializer {
-    pub type_name: String,
-    pub initial_value: Option<Initializer>,
+pub enum TypeInitializer {
+    Simple{
+        type_name: String,
+        initial_value: Option<Initializer>,
+    },
+    EnumeratedValues {
+        values: Vec<String>,
+        default: Option<String>,
+    },
+    EnumeratedType {
+        type_name: String,
+        initial_value: Option<String>,
+    },
+    FunctionBlock {
+        type_name: String,
+    }
 }
+
+
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum LocationPrefix {
@@ -145,10 +219,10 @@ impl SizePrefix {
 pub enum StorageClass {
     // TODO Some of these are not valid for some contexts - should there be multiple
     // storage classes, indicate some how, or fail?
-    Unspecified(),
-    Constant(),
-    Retain(),
-    NonRetain(),
+    Unspecified,
+    Constant,
+    Retain,
+    NonRetain,
 }
 
 #[derive(Debug, PartialEq)]
@@ -176,8 +250,7 @@ pub struct ConfigurationDeclaration {
 pub struct EnumerationDeclaration {
     pub name: String,
     // TODO need to understand when the context name matters in the definition
-    pub values: Vec<String>,
-    pub default: Option<String>,
+    pub initializer: TypeInitializer,
 }
 
 #[derive(PartialEq, Clone)]
@@ -194,4 +267,20 @@ impl fmt::Debug for DirectVariable {
             .field("size", &self.size)
             .finish()
     }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum FunctionBlockBody {
+    Sfc(Vec<Network>),
+    Statements(Vec<StmtKind>),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct FunctionDeclaration {
+    pub name: String,
+    pub return_type: String,
+    // TODO
+    pub var_decls: Vec<VarInit>,
+    // TODO other types
+    pub body: Vec<StmtKind>
 }

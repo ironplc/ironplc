@@ -1,1 +1,1 @@
- cargo test --features peg/trace
+cargo test --features peg/trace
