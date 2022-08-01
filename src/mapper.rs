@@ -19,10 +19,17 @@ pub fn var_init_flat_map(
         .map(|declaration| {
             let storage = storage_class
                 .clone()
-                .unwrap_or_else(|| StorageClass::Unspecified());
+                .unwrap_or_else(|| StorageClass::Unspecified);
             let mut declaration = declaration.clone();
             declaration.storage_class = storage;
             declaration
         })
+        .collect()
+}
+
+pub fn to_strings(input: Vec<&str>) -> Vec<String> {
+    input
+        .into_iter()
+        .map(|item| String::from(item))
         .collect()
 }

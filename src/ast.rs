@@ -4,11 +4,14 @@ use crate::dsl::{Constant, DirectVariable};
 pub enum Variable {
     DirectVariable(DirectVariable),
     SymbolicVariable(String),
+    // A structured variable that may be nested. This data type is definitely
+    // incorrect because it doesn't support array types
+    MultiElementVariable(Vec<String>)
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum StmtKind {
-    Assignment{
+    Assignment {
         target: Variable,
         value: ExprKind,
     },
@@ -20,8 +23,8 @@ pub enum StmtKind {
     },
     FbCall {
         name: String,
-        params: Vec<ParamAssignment>
-    }
+        params: Vec<ParamAssignment>,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -57,7 +60,7 @@ pub enum UnaryOp {
 pub enum ExprKind {
     Compare {
         op: CompareOp,
-        terms: Vec<ExprKind>
+        terms: Vec<ExprKind>,
     },
     BinaryOp {
         ops: Vec<Operator>,
@@ -65,18 +68,33 @@ pub enum ExprKind {
     },
     UnaryOp {
         op: UnaryOp,
-
+        term: Box<ExprKind>,
     },
     Const {
         value: Constant,
     },
     Variable {
         value: Variable,
+    },
+    Function {
+        name: String,
+        param_assignment: Vec<ParamAssignment>
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ParamAssignment {
+pub enum ParamAssignment {
+    Input {
+        name: Option<String>,
+        expr: ExprKind,
+    },
+    Output {
+        not: bool,
+        src: String,
+        tgt: Variable,
+    },
+}
+pub struct InputParamAssignment {
     pub name: Option<String>,
     pub expr: ExprKind,
 }
