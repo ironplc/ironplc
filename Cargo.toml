@@ -1,10 +1,8 @@
 [package]
-name = "plc2rust-peg"
+name = "iron-plc"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-peg = "0.8.0"
-time = "0.3.11"
+ironplc-parser = { path = "parser", version = "0.1.0" }
+ironplc-dsl = { path = "dsl", version = "0.1.0" }
