@@ -1,17 +1,20 @@
 extern crate peg;
-mod ast;
-mod dsl;
-mod mapper;
-mod sfc;
 
 use peg::parser;
 
-use crate::ast::*;
-use crate::dsl::*;
+use ironplc_dsl::ast::*;
+use ironplc_dsl::dsl::*;
+use ironplc_dsl::sfc::*;
 use crate::mapper::*;
-use crate::sfc::*;
+
+//use crate::mapper;
+//use crate::sfc;
 // Don't use std::time::Duration because it does not allow negative values.
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
+
+pub fn parse_library(source: &str) -> Result<(), String>{
+  list_parser::library(source).map_err(|e| String::from(""))
+}
 
 parser! {
   grammar list_parser() for str {
@@ -623,8 +626,6 @@ parser! {
     }
   }
 }
-
-pub fn main() {}
 
 mod test {
   use super::*;

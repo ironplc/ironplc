@@ -1,4 +1,4 @@
-use crate::dsl::*;
+use ironplc_dsl::dsl::*;
 use time::Duration;
 
 pub fn to_duration(val: f32, unit_per_sec: f32) -> Duration {
