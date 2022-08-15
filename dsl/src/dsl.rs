@@ -5,6 +5,16 @@ use time::Duration;
 use crate::ast::*;
 use crate::sfc::Network;
 
+#[derive(Debug, PartialEq)]
+pub enum LibraryElement {
+    DataTypeDeclaration(Vec<EnumerationDeclaration>),
+    FunctionDeclaration(FunctionDeclaration),
+    // TODO
+    FunctionBlockDeclaration(FunctionBlockDeclaration),
+    ProgramDeclaration(ProgramDeclaration),
+    ConfigurationDeclaration(ConfigurationDeclaration),
+}
+
 pub struct Integer {
     value: String,
 }
@@ -101,12 +111,75 @@ pub struct VarInit {
     // TODO this need much more
 }
 
+impl VarInit {
+    pub fn simple(name: &str, type_name: &str) -> VarInit {
+        VarInit {
+            name: String::from(name),
+            storage_class: StorageClass::Unspecified,
+            initializer: Some(TypeInitializer::Simple {
+                type_name: String::from(type_name),
+                initial_value: None,
+            })
+        }
+    }
+
+    pub fn enumerated(name: &str, type_name: &str, initial_value: &str) -> VarInit {
+        VarInit {
+            name: String::from(name),
+            storage_class: StorageClass::Unspecified,
+            initializer: Some(TypeInitializer::EnumeratedType {
+                type_name: String::from(type_name),
+                initial_value: Some(String::from(initial_value)),
+            }),
+        }
+    }
+
+    pub fn function_block(name: &str, type_name: &str) -> VarInit {
+        VarInit {
+            name: String::from(name),
+            storage_class: StorageClass::Unspecified,
+            initializer: Some(TypeInitializer::FunctionBlock {
+                type_name: String::from(type_name),
+            })
+        }
+    }
+
+    pub fn late_bound(name: &str, type_name: &str) -> VarInit {
+        VarInit {
+            name: String::from(name),
+            storage_class: StorageClass::Unspecified,
+            initializer: Some(TypeInitializer::LateResolvedType {
+                type_name: String::from(type_name),
+            })
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct LocatedVarInit {
     pub name: Option<String>,
     pub storage_class: StorageClass,
     pub at: DirectVariable,
     pub initializer: TypeInitializer,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum VarInitKind {
+    VarInit(VarInit),
+    LocatedVarInit(LocatedVarInit),
+}
+
+impl VarInitKind {
+    pub fn simple(name: &str, type_name: &str) -> VarInitKind {
+        VarInitKind::VarInit(VarInit::simple(name, type_name))
+    }
+    
+    pub fn enumerated(name: &str, type_name: &str, initial_value: &str) -> VarInitKind {
+        VarInitKind::VarInit(VarInit::enumerated(name, type_name, initial_value))
+    }
+    pub fn late_bound(name: &str, type_name: &str) -> VarInitKind {
+        VarInitKind::VarInit(VarInit::late_bound(name, type_name))
+    }
 }
 
 // 2.4.3.1 Type assignment
@@ -167,10 +240,11 @@ pub enum TypeInitializer {
     },
     FunctionBlock {
         type_name: String,
+    },
+    LateResolvedType {
+        type_name: String,
     }
 }
-
-
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum LocationPrefix {
@@ -283,4 +357,19 @@ pub struct FunctionDeclaration {
     pub var_decls: Vec<VarInit>,
     // TODO other types
     pub body: Vec<StmtKind>
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct FunctionBlockDeclaration {
+    pub name: String,
+    // TODO
+    pub var_decls: Vec<VarInitKind>,
+    pub body: FunctionBlockBody,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ProgramDeclaration {
+    pub type_name: String,
+    pub var_declarations: Vec<VarInitKind>,
+    pub body: FunctionBlockBody,
 }

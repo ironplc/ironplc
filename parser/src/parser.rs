@@ -7,17 +7,15 @@ use ironplc_dsl::dsl::*;
 use ironplc_dsl::sfc::*;
 use crate::mapper::*;
 
-//use crate::mapper;
-//use crate::sfc;
 // Don't use std::time::Duration because it does not allow negative values.
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
-pub fn parse_library(source: &str) -> Result<(), String>{
-  list_parser::library(source).map_err(|e| String::from(""))
+pub fn parse_library(source: &str) -> Result<Vec<LibraryElement>, String> {
+  plc_parser::library(source).map_err(|e| String::from(""))
 }
 
 parser! {
-  grammar list_parser() for str {
+  grammar plc_parser() for str {
 
     // peg rules for making the grammar easier to work with
     rule semicolon() -> () = ";" ()
@@ -31,8 +29,9 @@ parser! {
 
     // B.0
     // TODO add more declarations
-    pub rule library() -> () = _ library_element_declaration() ** _ _ {}
-    rule library_element_declaration() -> () = data_type_declaration() {} / function_declaration() {} / function_block_declaration() {} / program_declaration() {} / configuration_declaration() {}
+    pub rule library() -> Vec<LibraryElement> = _ libs:library_element_declaration() ** _ _ { libs }
+    // TODO they don't all return something meaningful
+    rule library_element_declaration() -> LibraryElement = dt:data_type_declaration() { LibraryElement::DataTypeDeclaration(dt) } / fd:function_declaration() { LibraryElement::FunctionDeclaration(fd) } / fbd:function_block_declaration() { LibraryElement::FunctionBlockDeclaration(fbd) } / pd:program_declaration() { LibraryElement::ProgramDeclaration(pd) } / cd:configuration_declaration() { LibraryElement::ConfigurationDeclaration(cd) }
 
     // B.1.1 Letters, digits and identifier
     //rule digit() -> &'input str = $(['0'..='9'])
@@ -141,7 +140,7 @@ parser! {
     rule single_element_type_name() -> &'input str = simple_type_name()
     rule simple_type_name() -> &'input str = identifier()
     rule enumerated_type_name() -> &'input str = identifier()
-    pub rule data_type_declaration() -> Vec<EnumerationDeclaration> = "TYPE" _ declarations:semisep(<type_declaration()>) _ "END_TYPE" { declarations }
+    rule data_type_declaration() -> Vec<EnumerationDeclaration> = "TYPE" _ declarations:semisep(<type_declaration()>) _ "END_TYPE" { declarations }
     // TODO this is missing multiple types
     rule type_declaration() -> EnumerationDeclaration = s:single_element_type_declaration() { s }
     // TODO this is missing multiple types
@@ -152,6 +151,23 @@ parser! {
         initializer: def,
       }
     }
+    rule enumerated_spec_init__unambiguous() -> TypeInitializer = init:enumerated_specification() _ ":=" _ def:enumerated_value() {
+      match init {
+        TypeInitializer::EnumeratedValues{values, default} => {
+          return TypeInitializer::EnumeratedValues {
+            values: values,
+            default: Some(String::from(def)),
+          };
+        },
+        TypeInitializer::EnumeratedType{type_name, initial_value} => {
+          return TypeInitializer::EnumeratedType {
+            type_name: type_name,
+            initial_value: Some(String::from(def)),
+          };
+        }
+        _ => panic!("Invalid type")
+      }
+     }
     rule enumerated_spec_init() -> TypeInitializer = init:enumerated_specification() _ def:(":=" _ d:enumerated_value() { d })? {
       match init {
         TypeInitializer::EnumeratedValues{values, default} => {
@@ -181,6 +197,8 @@ parser! {
       }
     }
     rule enumerated_value() -> &'input str = (enumerated_type_name() "#")? i:identifier() { i }
+    // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
+    rule simple_spec_init__unambiguous() -> TypeInitializer = simple_spec_init()
     rule simple_spec_init() -> TypeInitializer = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
       TypeInitializer::Simple {
         type_name: String::from(type_name),
@@ -213,7 +231,7 @@ parser! {
 
     // B.1.4.2 Multi-element variables
     rule multi_element_variable() -> Variable = sv:structured_variable() {
-      // TODO tihs is clearly wrong
+      // TODO this is clearly wrong
       Variable::MultiElementVariable(vec![
         String::from(sv.0),
         String::from(sv.1),
@@ -236,10 +254,38 @@ parser! {
     // TODO add edge declaration (as a separate item - a tuple)
     rule input_declaration() -> Vec<VarInit> = i:var_init_decl() { i }
     rule edge_declaration() -> () = var1_list() _ ":" _ "BOOL" _ ("R_EDGE" / "F_EDGE")? {}
+    // TODO the problem is we match first, then 
     // TODO missing multiple here
-    rule var_init_decl() -> Vec<VarInit> = i:var1_init_decl() { i }
+    // We have to first handle the special case of enumeration or fb_name without an initializer
+    // because these share the same syntax. We only know the type after trying to resolve the
+    // type name.
+    rule var_init_decl() -> Vec<VarInit> = i:var1_init_decl__unambiguous() { i } / i:late_bound_type_init() { i }
+
+    // The initialize for some types looks the same if there is not initialization component. We use this to
+    // late bind and later resolve the type.
+    rule late_bound_type_init() -> Vec<VarInit> = names:identifier() ** (_ "," _ ) _ ":" _ type_name:identifier() {
+      names.iter().map(|name| {
+        VarInit {
+          name: String::from(*name),
+          storage_class: StorageClass::Unspecified,
+          initializer: Option::Some(TypeInitializer::LateResolvedType {
+            type_name: String::from(type_name),
+          }),
+        }
+      }).collect()
+    }
     // TODO add in subrange_spec_init(), enumerated_spec_init()
 
+    rule var1_init_decl__unambiguous() -> Vec<VarInit> = names:var1_list() _ ":" _ init:(s:simple_spec_init__unambiguous() { s } / e:enumerated_spec_init__unambiguous() { e }) {
+      // Each of the names variables has is initialized in the same way. Here we flatten initialization
+      names.iter().map(|name| {
+        VarInit {
+          name: String::from(*name),
+          storage_class: StorageClass::Unspecified,
+          initializer: Option::Some(init.clone()),
+        }
+      }).collect()
+    }
     rule var1_init_decl() -> Vec<VarInit> = names:var1_list() _ ":" _ init:(s:simple_spec_init() { s } / e:enumerated_spec_init() { e }) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.iter().map(|name| {
@@ -287,10 +333,11 @@ parser! {
         initializer: init,
       }
     }
-    // TODO is this the right type to return?
+    // TODO is this NOT the right type to return?
     // We use the same type as in other places for VarInit, but the external always omits the initializer
     rule external_var_declarations() -> Vec<VarInit> = "VAR_EXTERNAL" _ constant:"CONSTANT"? _ declarations:semisep(<external_declaration()>) _ "END_VAR" {
-      vec![]
+      let storage = constant.map(|()| StorageClass::Constant);
+      var_init_map(declarations, storage)
     }
     // TODO subrange_specification, array_specification(), structure_type_name and others
     rule external_declaration_spec() -> TypeInitializer = type_name:simple_specification() {
@@ -348,7 +395,7 @@ parser! {
     // TODO this isn't correct
     rule standard_function_name() -> &'input str = identifier()
     rule derived_function_name() -> &'input str = identifier()
-    pub rule function_declaration() -> FunctionDeclaration = "FUNCTION" _  name:derived_function_name() _ ":" _ rt:(elementary_type_name() / derived_type_name()) _ var_decl:(io:io_var_declarations() / func:function_var_decls()) ** _ _ body:function_body() _ "END_FUNCTION" {
+    rule function_declaration() -> FunctionDeclaration = "FUNCTION" _  name:derived_function_name() _ ":" _ rt:(elementary_type_name() / derived_type_name()) _ var_decl:(io:io_var_declarations() / func:function_var_decls()) ** _ _ body:function_body() _ "END_FUNCTION" {
       let declarations = var_decl.into_iter().flatten().collect::<Vec<VarInit>>();
       FunctionDeclaration {
         name: String::from(name),
@@ -374,8 +421,13 @@ parser! {
     rule function_block_type_name() -> &'input str = i:identifier() { i }
     rule derived_function_block_name() -> &'input str = !STANDARD_FUNCTION_BLOCK_NAME() i:identifier() { i }
     // TODO add variable declarations
-    rule function_block_declaration() -> &'input str = "FUNCTION_BLOCK" _ name:derived_function_block_name() _ (io_var_declarations() / other_var_declarations()) ** _ _ function_block_body() _ "END_FUNCTION_BLOCK" {
-      name
+    rule function_block_declaration() -> FunctionBlockDeclaration = "FUNCTION_BLOCK" _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { var_init_kind_map(io) } / other:other_var_declarations() { var_init_kind_map(other) }) ** _ _ body:function_block_body() _ "END_FUNCTION_BLOCK" {
+      let declarations = decls.into_iter().flatten().collect::<Vec<VarInitKind>>();
+      FunctionBlockDeclaration {
+        name: String::from(name),
+        var_decls: declarations,
+        body: body,
+      }
     }
     // TODO there are far more here
     rule other_var_declarations() -> Vec<VarInit> = external_var_declarations() / var_declarations()
@@ -383,7 +435,14 @@ parser! {
 
     // B.1.5.3 Program declaration
     rule program_type_name() -> &'input str = i:identifier() { i }
-    pub rule program_declaration() ->  &'input str = "PROGRAM" _ p:program_type_name() _ (io_var_declarations() {} / other_var_declarations() {} / located_var_declarations() {}) ** _ _ function_block_body() _ "END_PROGRAM" { p }
+    pub rule program_declaration() ->  ProgramDeclaration = "PROGRAM" _ p:program_type_name() _ decls:(io:io_var_declarations() { var_init_kind_map(io) } / other:other_var_declarations() { var_init_kind_map(other) } / located:located_var_declarations() { located_var_init_kind_map(located) }) ** _ _ body:function_block_body() _ "END_PROGRAM" {
+      let declarations = decls.into_iter().flatten().collect::<Vec<VarInitKind>>();
+      ProgramDeclaration {
+        type_name: String::from(p),
+        var_declarations: declarations,
+        body: body,
+      }
+    }
 
     // B.1.6 Sequential function chart elements
     // TODO return something
@@ -567,11 +626,11 @@ parser! {
     }
     rule unary_operator() -> UnaryOp = "-" {UnaryOp::Neg} / "NOT" {UnaryOp::Not}
     rule primary_expression() -> ExprKind = constant:constant() {
-      ExprKind::Const { value: constant}
+      ExprKind::Const(constant)
     } / function:function_expression() {
       function
     } / variable:variable() {
-      ExprKind::Variable { value: variable }
+      ExprKind::Variable(variable)
     }
     rule function_expression() -> ExprKind = name:function_name() _ "(" params:param_assignment() ++ (_ "," _) _ ")" {
       ExprKind::Function {
@@ -629,36 +688,6 @@ parser! {
 
 mod test {
   use super::*;
-  use std::fs;
-  use std::path::PathBuf;
-
-  /*#[test]
-  fn resource() {
-    "RESOURCE resource1 ON PLC
-    TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1);
-    PROGRAM plc_task_instance WITH plc_task : plc_prg;
-    END_RESOURCE"
-  }*/
-
-  #[test]
-  fn data_type_declaration() {
-    let decl = "TYPE
-        LOGLEVEL : (CRITICAL, WARNING, INFO, DEBUG) := INFO;
-      END_TYPE";
-    let enum_decl = vec![EnumerationDeclaration {
-      name: String::from("LOGLEVEL"),
-      initializer: TypeInitializer::EnumeratedValues {
-        values: vec![
-          String::from("CRITICAL"),
-          String::from("WARNING"),
-          String::from("INFO"),
-          String::from("DEBUG"),
-        ],
-        default: Option::Some(String::from("INFO")),
-      },
-    }];
-    assert_eq!(list_parser::data_type_declaration(decl), Ok(enum_decl))
-  }
 
   #[test]
   fn input_declarations_simple() {
@@ -685,7 +714,7 @@ mod test {
         }),
       },
     ];
-    assert_eq!(list_parser::input_declarations(decl), Ok(vars))
+    assert_eq!(plc_parser::input_declarations(decl), Ok(vars))
   }
 
   #[test]
@@ -703,7 +732,7 @@ mod test {
         initial_value: Some(String::from("INFO")),
       }),
     }]);
-    assert_eq!(list_parser::input_declarations(decl), expected)
+    assert_eq!(plc_parser::input_declarations(decl), expected)
   }
 
   #[test]
@@ -730,13 +759,13 @@ mod test {
         }),
       },
     ];
-    assert_eq!(list_parser::output_declarations(decl), Ok(vars))
+    assert_eq!(plc_parser::output_declarations(decl), Ok(vars))
   }
 
   #[test]
   fn data_source() {
     assert_eq!(
-      list_parser::duration("T#100ms"),
+      plc_parser::duration("T#100ms"),
       Ok(Duration::new(0, 100_000_000))
     )
   }
@@ -749,11 +778,11 @@ mod test {
       interval: None,
     });
     assert_eq!(
-      list_parser::task_configuration("TASK abc (PRIORITY:=11)"),
+      plc_parser::task_configuration("TASK abc (PRIORITY:=11)"),
       config
     );
     assert_eq!(
-      list_parser::task_configuration("TASK abc (PRIORITY:=1_1)"),
+      plc_parser::task_configuration("TASK abc (PRIORITY:=1_1)"),
       config
     );
   }
@@ -761,11 +790,11 @@ mod test {
   #[test]
   fn task_initialization() {
     assert_eq!(
-      list_parser::task_initialization("(PRIORITY:=11)"),
+      plc_parser::task_initialization("(PRIORITY:=11)"),
       Ok((11, None))
     );
     assert_eq!(
-      list_parser::task_initialization("(PRIORITY:=1_1)"),
+      plc_parser::task_initialization("(PRIORITY:=1_1)"),
       Ok((11, None))
     );
   }
@@ -779,7 +808,7 @@ mod test {
       type_name: String::from("plc_prg"),
     };
     assert_eq!(
-      list_parser::program_configuration("PROGRAM plc_task_instance WITH plc_task : plc_prg"),
+      plc_parser::program_configuration("PROGRAM plc_task_instance WITH plc_task : plc_prg"),
       Ok(cfg)
     );
   }
@@ -792,7 +821,7 @@ mod test {
       size: SizePrefix::X,
       address: address,
     };
-    assert_eq!(list_parser::direct_variable("%IX1"), Ok(var))
+    assert_eq!(plc_parser::direct_variable("%IX1"), Ok(var))
   }
 
   #[test]
@@ -803,7 +832,7 @@ mod test {
       size: SizePrefix::X,
       address: address,
     };
-    assert_eq!(list_parser::location("AT %IX1"), Ok(var))
+    assert_eq!(plc_parser::location("AT %IX1"), Ok(var))
   }
 
   #[test]
@@ -819,7 +848,7 @@ mod test {
       }),
     }];
     assert_eq!(
-      list_parser::global_var_declarations(
+      plc_parser::global_var_declarations(
         "VAR_GLOBAL CONSTANT ResetCounterValue : INT := 17; END_VAR"
       ),
       Ok(reset)
@@ -922,47 +951,7 @@ mod test {
         ]
       }
     ]);
-    assert_eq!(list_parser::sequential_function_chart(sfc), expected);
-  }
-
-  #[test]
-  fn configuration_declaration() {
-    let config = "CONFIGURATION config
-  VAR_GLOBAL CONSTANT
-    ResetCounterValue : INT := 17;
-  END_VAR
-
-  RESOURCE resource1 ON PLC
-    TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1);
-    PROGRAM plc_task_instance WITH plc_task : plc_prg;
-  END_RESOURCE
-END_CONFIGURATION";
-    let decl = ConfigurationDeclaration {
-      name: String::from("config"),
-      global_var: vec![Declaration {
-        name: String::from("ResetCounterValue"),
-        storage_class: StorageClass::Constant,
-        at: None,
-        initializer: Option::Some(TypeInitializer::Simple {
-          type_name: String::from("INT"),
-          initial_value: Option::Some(Initializer::Simple(Constant::IntegerLiteral(17))),
-        }),
-      }],
-      resource_decl: vec![ResourceDeclaration {
-        name: String::from("resource1"),
-        tasks: vec![TaskConfiguration {
-          name: String::from("plc_task"),
-          priority: 1,
-          interval: Option::Some(Duration::new(0, 100_000_000)),
-        }],
-        programs: vec![ProgramConfiguration {
-          name: String::from("plc_task_instance"),
-          task_name: Option::Some(String::from("plc_task")),
-          type_name: String::from("plc_prg"),
-        }],
-      }],
-    };
-    assert_eq!(list_parser::configuration_declaration(config), Ok(decl));
+    assert_eq!(plc_parser::sequential_function_chart(sfc), expected);
   }
 
   #[test]
@@ -973,7 +962,7 @@ END_CONFIGURATION";
         value: Constant::IntegerLiteral(1),
       },
     }]);
-    assert_eq!(list_parser::statement_list("Cnt := 1;"), expected)
+    assert_eq!(plc_parser::statement_list("Cnt := 1;"), expected)
   }
 
   #[test]
@@ -992,7 +981,7 @@ END_CONFIGURATION";
         ],
       },
     }]);
-    assert_eq!(list_parser::statement_list("Cnt := 1 + 2;"), expected)
+    assert_eq!(plc_parser::statement_list("Cnt := 1 + 2;"), expected)
   }
 
   #[test]
@@ -1011,7 +1000,7 @@ END_CONFIGURATION";
         ],
       },
     }]);
-    assert_eq!(list_parser::statement_list("Cnt := Cnt + 1;"), expected)
+    assert_eq!(plc_parser::statement_list("Cnt := Cnt + 1;"), expected)
   }
 
   #[test]
@@ -1043,7 +1032,7 @@ END_CONFIGURATION";
       }],
       else_body: vec![],
     }]);
-    assert_eq!(list_parser::statement_list(statement), expected)
+    assert_eq!(plc_parser::statement_list(statement), expected)
   }
 
   #[test]
@@ -1079,7 +1068,7 @@ END_CONFIGURATION";
       }],
     }]);
 
-    assert_eq!(list_parser::statement_list(statement), expected)
+    assert_eq!(plc_parser::statement_list(statement), expected)
   }
 
   #[test]
@@ -1095,7 +1084,7 @@ END_CONFIGURATION";
       }],
     }]);
 
-    assert_eq!(list_parser::statement_list(statement), expected)
+    assert_eq!(plc_parser::statement_list(statement), expected)
   }
 
   #[test]
@@ -1111,132 +1100,8 @@ END_CONFIGURATION";
       }],
     }]);
 
-    assert_eq!(list_parser::statement_list(statement), expected)
+    assert_eq!(plc_parser::statement_list(statement), expected)
   }
-
-  #[test]
-  fn function_declaration() {
-    let function = "FUNCTION AverageVal : REAL
-    VAR_INPUT
-    Cnt1 : INT;
-    Cnt2 : INT;
-    Cnt3 : INT;
-    Cnt4 : INT;
-    Cnt5 : INT;
-  END_VAR
-    VAR
-    InputsNumber : REAL := 5.1;
-  END_VAR
-    AverageVal := INT_TO_REAL(Cnt1+Cnt2+Cnt3+Cnt4+Cnt5)/InputsNumber;
-    END_FUNCTION";
-    let expected = Ok(dsl::FunctionDeclaration {
-      name: String::from("AverageVal"),
-      return_type: String::from("REAL"),
-      var_decls: vec![
-        VarInit {
-          name: String::from("Cnt1"),
-          storage_class: StorageClass::Unspecified,
-          initializer: Some(TypeInitializer::Simple {
-            type_name: String::from("INT"),
-            initial_value: None,
-          })
-        },
-        VarInit {
-          name: String::from("Cnt2"),
-          storage_class: StorageClass::Unspecified,
-          initializer: Some(TypeInitializer::Simple {
-            type_name: String::from("INT"),
-            initial_value: None,
-          })
-        },
-        VarInit {
-          name: String::from("Cnt3"),
-          storage_class: StorageClass::Unspecified,
-          initializer: Some(TypeInitializer::Simple {
-            type_name: String::from("INT"),
-            initial_value: None,
-          })
-        },
-        VarInit {
-          name: String::from("Cnt4"),
-          storage_class: StorageClass::Unspecified,
-          initializer: Some(TypeInitializer::Simple {
-            type_name: String::from("INT"),
-            initial_value: None,
-          })
-        },
-        VarInit {
-          name: String::from("Cnt5"),
-          storage_class: StorageClass::Unspecified,
-          initializer: Some(TypeInitializer::Simple {
-            type_name: String::from("INT"),
-            initial_value: None,
-          })
-        },
-        VarInit {
-          name: String::from("InputsNumber"),
-          storage_class: StorageClass::Unspecified,
-          initializer: Some(TypeInitializer::Simple {
-            type_name: String::from("REAL"),
-            initial_value: Some(Initializer::Simple(Constant::RealLiteral(Float {
-              value: 5.1,
-              data_type: None,
-            }))),
-          })
-        }
-      ],
-      body: vec![
-        StmtKind::Assignment {
-          target: Variable::SymbolicVariable(String::from("AverageVal")),
-          value: ExprKind::BinaryOp {
-            // TODO This operator is incorrect
-            ops: vec![Operator::Mul],
-            terms: vec![ExprKind::Function {
-              name: String::from("INT_TO_REAL"),
-              param_assignment: vec![
-                ParamAssignment::Input {
-                  name: None,
-                  expr: ExprKind::BinaryOp {
-                    ops: vec![Operator::Add],
-                    terms: vec![
-                      ExprKind::Variable {
-                        value: Variable::SymbolicVariable(String::from("Cnt1")),
-                      },
-                      ExprKind::Variable {
-                        value: Variable::SymbolicVariable(String::from("Cnt2")),
-                      },
-                      ExprKind::Variable {
-                        value: Variable::SymbolicVariable(String::from("Cnt3")),
-                      },
-                      ExprKind::Variable {
-                        value: Variable::SymbolicVariable(String::from("Cnt4")),
-                      },
-                      ExprKind::Variable {
-                        value: Variable::SymbolicVariable(String::from("Cnt5")),
-                      }
-                    ]
-                  }
-                }
-              ]
-            },
-            ExprKind::Variable {
-              value: Variable::SymbolicVariable(String::from("InputsNumber"))
-            }],
-          }
-        }
-      ],
-    });
-    assert_eq!(list_parser::function_declaration(function), expected)
-  }
-
-  fn read_resource(name: &'static str) -> String {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("resources/test");
-    path.push(name);
-
-    fs::read_to_string(path).expect("Unable to read file")
-  }
-
 
   #[test]
   fn assignment() {
@@ -1247,12 +1112,6 @@ END_CONFIGURATION";
         value: Variable::MultiElementVariable(vec![String::from("CounterST0"), String::from("OUT")])
       }
     });
-    assert_eq!(list_parser::assignment_statement(assign), expected)
-  }
-
-  #[test]
-  fn first_steps() {
-    let src = read_resource("parts.st");
-    assert_eq!(list_parser::library(src.as_str()), Ok(()))
+    assert_eq!(plc_parser::assignment_statement(assign), expected)
   }
 }

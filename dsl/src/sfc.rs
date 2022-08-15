@@ -29,6 +29,16 @@ pub struct ActionAssociation {
     pub indicators: Vec<String>,
 }
 
+impl ActionAssociation {
+    pub fn new(name: &str, qualifier: Option<ActionQualifier>) -> ActionAssociation {
+        ActionAssociation {
+            name: String::from(name),
+            qualifier: qualifier,
+            indicators: vec![],
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Element {
     Action {
@@ -53,6 +63,25 @@ pub enum Element {
         name: String,
         action_associations: Vec<ActionAssociation>,
     },
+}
+
+impl Element {
+    pub fn action(name: &str, body: Vec<StmtKind>) -> Element {
+        Element::Action {
+            name: String::from(name),
+            body: FunctionBlockBody::Statements(body),
+        }
+    }
+
+    pub fn transition(from: &str, to: &str, condition: ExprKind) -> Element {
+        Element::Transition {
+            name: None,
+            priority: None,
+            from: vec![String::from(from)],
+            to: vec![String::from(to)],
+            condition: condition,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]

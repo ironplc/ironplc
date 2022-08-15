@@ -1,0 +1,60 @@
+FUNCTION_BLOCK CounterSFC
+  VAR_INPUT
+    Reset : BOOL;
+  END_VAR
+  VAR_OUTPUT
+    OUT : INT;
+  END_VAR
+  VAR
+    Cnt : INT;
+  END_VAR
+  VAR_EXTERNAL CONSTANT
+    ResetCounterValue : INT;
+  END_VAR
+
+  INITIAL_STEP Start:
+  END_STEP
+
+  TRANSITION FROM Start TO ResetCounter
+    := Reset;
+  END_TRANSITION
+
+  STEP ResetCounter:
+    RESETCOUNTER_INLINE1(N);
+    RESETCOUNTER_INLINE2(N);
+  END_STEP
+
+  ACTION RESETCOUNTER_INLINE1:
+    Cnt := ResetCounterValue;
+  END_ACTION
+
+  ACTION RESETCOUNTER_INLINE2:
+    OUT := Cnt;
+  END_ACTION
+
+  TRANSITION FROM ResetCounter TO Start
+    := NOT Reset;
+  END_TRANSITION
+
+  TRANSITION FROM Start TO Count
+    := NOT Reset;
+  END_TRANSITION
+
+  STEP Count:
+    COUNT_INLINE3(N);
+    COUNT_INLINE4(N);
+  END_STEP
+
+  ACTION COUNT_INLINE3:
+    Cnt := Cnt + 1;
+  END_ACTION
+
+  ACTION COUNT_INLINE4:
+    OUT := Cnt;
+  END_ACTION
+
+  TRANSITION FROM Count TO Start
+    := Reset;
+  END_TRANSITION
+
+END_FUNCTION_BLOCK
