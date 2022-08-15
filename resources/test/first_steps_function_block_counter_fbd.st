@@ -1,0 +1,21 @@
+FUNCTION_BLOCK CounterFBD
+  VAR_INPUT
+    Reset : BOOL;
+  END_VAR
+  VAR_OUTPUT
+    OUT : INT;
+  END_VAR
+  VAR
+    Cnt : INT;
+  END_VAR
+  VAR_EXTERNAL CONSTANT
+    ResetCounterValue : INT;
+  END_VAR
+  VAR
+    _TMP_ADD4_OUT : INT;
+    _TMP_SEL7_OUT : INT;
+  END_VAR
+
+  Cnt := _TMP_SEL7_OUT;
+  OUT := Cnt;
+END_FUNCTION_BLOCK

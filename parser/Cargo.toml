@@ -6,6 +6,9 @@ authors = [ "Garret Fick" ]
 edition = "2021"
 
 [dependencies]
-peg = "0.8.0"
 time = "0.3.11"
 ironplc-dsl = { path = "../dsl" }
+
+[dependencies.peg]
+version = "0.8.0"
+features = ["trace"]
