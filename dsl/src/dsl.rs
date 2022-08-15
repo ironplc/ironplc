@@ -67,19 +67,19 @@ impl SignedInteger {
                     value: Integer::from(a.get(1..).unwrap()),
                     is_neg: false,
                 }
-            },
+            }
             Some('-') => {
                 return SignedInteger {
                     value: Integer::from(a.get(1..).unwrap()),
                     is_neg: true,
                 }
-            },
+            }
             _ => {
                 return SignedInteger {
                     value: Integer::from(a),
                     is_neg: false,
                 }
-            },
+            }
         }
     }
 }
@@ -89,7 +89,6 @@ pub struct Float {
     pub value: f64,
     pub data_type: Option<String>,
 }
-
 
 // TODO I don't know if I need to support multiple storage classes for the
 // same value.
@@ -119,7 +118,7 @@ impl VarInit {
             initializer: Some(TypeInitializer::Simple {
                 type_name: String::from(type_name),
                 initial_value: None,
-            })
+            }),
         }
     }
 
@@ -140,7 +139,7 @@ impl VarInit {
             storage_class: StorageClass::Unspecified,
             initializer: Some(TypeInitializer::FunctionBlock {
                 type_name: String::from(type_name),
-            })
+            }),
         }
     }
 
@@ -150,7 +149,7 @@ impl VarInit {
             storage_class: StorageClass::Unspecified,
             initializer: Some(TypeInitializer::LateResolvedType {
                 type_name: String::from(type_name),
-            })
+            }),
         }
     }
 }
@@ -173,7 +172,7 @@ impl VarInitKind {
     pub fn simple(name: &str, type_name: &str) -> VarInitKind {
         VarInitKind::VarInit(VarInit::simple(name, type_name))
     }
-    
+
     pub fn enumerated(name: &str, type_name: &str, initial_value: &str) -> VarInitKind {
         VarInitKind::VarInit(VarInit::enumerated(name, type_name, initial_value))
     }
@@ -226,7 +225,7 @@ impl fmt::Debug for Initializer {
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum TypeInitializer {
-    Simple{
+    Simple {
         type_name: String,
         initial_value: Option<Initializer>,
     },
@@ -243,7 +242,7 @@ pub enum TypeInitializer {
     },
     LateResolvedType {
         type_name: String,
-    }
+    },
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -356,7 +355,7 @@ pub struct FunctionDeclaration {
     // TODO
     pub var_decls: Vec<VarInit>,
     // TODO other types
-    pub body: Vec<StmtKind>
+    pub body: Vec<StmtKind>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

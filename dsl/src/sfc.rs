@@ -7,7 +7,7 @@ pub enum ActionQualifier {
     R,
     S,
     P,
-} 
+}
 
 impl ActionQualifier {
     pub fn from_char(l: char) -> ActionQualifier {
@@ -87,5 +87,5 @@ impl Element {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Network {
     pub initial_step: Element,
-    pub elements: Vec<Element>
+    pub elements: Vec<Element>,
 }
