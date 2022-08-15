@@ -2,16 +2,16 @@ extern crate peg;
 
 use peg::parser;
 
+use crate::mapper::*;
 use ironplc_dsl::ast::*;
 use ironplc_dsl::dsl::*;
 use ironplc_dsl::sfc::*;
-use crate::mapper::*;
 
 // Don't use std::time::Duration because it does not allow negative values.
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
 pub fn parse_library(source: &str) -> Result<Vec<LibraryElement>, String> {
-  plc_parser::library(source).map_err(|e| String::from(""))
+    plc_parser::library(source).map_err(|e| String::from(""))
 }
 
 parser! {
@@ -254,7 +254,7 @@ parser! {
     // TODO add edge declaration (as a separate item - a tuple)
     rule input_declaration() -> Vec<VarInit> = i:var_init_decl() { i }
     rule edge_declaration() -> () = var1_list() _ ":" _ "BOOL" _ ("R_EDGE" / "F_EDGE")? {}
-    // TODO the problem is we match first, then 
+    // TODO the problem is we match first, then
     // TODO missing multiple here
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
@@ -687,177 +687,177 @@ parser! {
 }
 
 mod test {
-  use super::*;
+    use super::*;
 
-  #[test]
-  fn input_declarations_simple() {
-    // TODO enumerations - I think we need to be lazy here and make simple less strict
-    let decl = "VAR_INPUT
+    #[test]
+    fn input_declarations_simple() {
+        // TODO enumerations - I think we need to be lazy here and make simple less strict
+        let decl = "VAR_INPUT
         TRIG : BOOL;
         MSG : STRING;
       END_VAR";
-    let vars = vec![
-      VarInit {
-        name: String::from("TRIG"),
-        storage_class: StorageClass::Unspecified,
-        initializer: Option::Some(TypeInitializer::Simple {
-          type_name: String::from("BOOL"),
-          initial_value: None,
-        }),
-      },
-      VarInit {
-        name: String::from("MSG"),
-        storage_class: StorageClass::Unspecified,
-        initializer: Option::Some(TypeInitializer::Simple {
-          type_name: String::from("STRING"),
-          initial_value: None,
-        }),
-      },
-    ];
-    assert_eq!(plc_parser::input_declarations(decl), Ok(vars))
-  }
+        let vars = vec![
+            VarInit {
+                name: String::from("TRIG"),
+                storage_class: StorageClass::Unspecified,
+                initializer: Option::Some(TypeInitializer::Simple {
+                    type_name: String::from("BOOL"),
+                    initial_value: None,
+                }),
+            },
+            VarInit {
+                name: String::from("MSG"),
+                storage_class: StorageClass::Unspecified,
+                initializer: Option::Some(TypeInitializer::Simple {
+                    type_name: String::from("STRING"),
+                    initial_value: None,
+                }),
+            },
+        ];
+        assert_eq!(plc_parser::input_declarations(decl), Ok(vars))
+    }
 
-  #[test]
-  fn input_declarations_custom_type() {
-    // TODO add a test
-    // TODO enumerations - I think we need to be lazy here and make simple less strict
-    let decl = "VAR_INPUT
+    #[test]
+    fn input_declarations_custom_type() {
+        // TODO add a test
+        // TODO enumerations - I think we need to be lazy here and make simple less strict
+        let decl = "VAR_INPUT
         LEVEL : LOGLEVEL := INFO;
       END_VAR";
-    let expected = Ok(vec![VarInit {
-      name: String::from("LEVEL"),
-      storage_class: StorageClass::Unspecified,
-      initializer: Some(TypeInitializer::EnumeratedType {
-        type_name: String::from("LOGLEVEL"),
-        initial_value: Some(String::from("INFO")),
-      }),
-    }]);
-    assert_eq!(plc_parser::input_declarations(decl), expected)
-  }
+        let expected = Ok(vec![VarInit {
+            name: String::from("LEVEL"),
+            storage_class: StorageClass::Unspecified,
+            initializer: Some(TypeInitializer::EnumeratedType {
+                type_name: String::from("LOGLEVEL"),
+                initial_value: Some(String::from("INFO")),
+            }),
+        }]);
+        assert_eq!(plc_parser::input_declarations(decl), expected)
+    }
 
-  #[test]
-  fn output_declarations() {
-    let decl = "VAR_OUTPUT
+    #[test]
+    fn output_declarations() {
+        let decl = "VAR_OUTPUT
         TRIG : BOOL;
         MSG : STRING;
       END_VAR";
-    let vars = vec![
-      VarInit {
-        name: String::from("TRIG"),
-        storage_class: StorageClass::Unspecified,
-        initializer: Option::Some(TypeInitializer::Simple {
-          type_name: String::from("BOOL"),
-          initial_value: None,
-        }),
-      },
-      VarInit {
-        name: String::from("MSG"),
-        storage_class: StorageClass::Unspecified,
-        initializer: Option::Some(TypeInitializer::Simple {
-          type_name: String::from("STRING"),
-          initial_value: None,
-        }),
-      },
-    ];
-    assert_eq!(plc_parser::output_declarations(decl), Ok(vars))
-  }
+        let vars = vec![
+            VarInit {
+                name: String::from("TRIG"),
+                storage_class: StorageClass::Unspecified,
+                initializer: Option::Some(TypeInitializer::Simple {
+                    type_name: String::from("BOOL"),
+                    initial_value: None,
+                }),
+            },
+            VarInit {
+                name: String::from("MSG"),
+                storage_class: StorageClass::Unspecified,
+                initializer: Option::Some(TypeInitializer::Simple {
+                    type_name: String::from("STRING"),
+                    initial_value: None,
+                }),
+            },
+        ];
+        assert_eq!(plc_parser::output_declarations(decl), Ok(vars))
+    }
 
-  #[test]
-  fn data_source() {
-    assert_eq!(
-      plc_parser::duration("T#100ms"),
-      Ok(Duration::new(0, 100_000_000))
-    )
-  }
+    #[test]
+    fn data_source() {
+        assert_eq!(
+            plc_parser::duration("T#100ms"),
+            Ok(Duration::new(0, 100_000_000))
+        )
+    }
 
-  #[test]
-  fn task_configuration() {
-    let config = Ok(TaskConfiguration {
-      name: String::from("abc"),
-      priority: 11,
-      interval: None,
-    });
-    assert_eq!(
-      plc_parser::task_configuration("TASK abc (PRIORITY:=11)"),
-      config
-    );
-    assert_eq!(
-      plc_parser::task_configuration("TASK abc (PRIORITY:=1_1)"),
-      config
-    );
-  }
+    #[test]
+    fn task_configuration() {
+        let config = Ok(TaskConfiguration {
+            name: String::from("abc"),
+            priority: 11,
+            interval: None,
+        });
+        assert_eq!(
+            plc_parser::task_configuration("TASK abc (PRIORITY:=11)"),
+            config
+        );
+        assert_eq!(
+            plc_parser::task_configuration("TASK abc (PRIORITY:=1_1)"),
+            config
+        );
+    }
 
-  #[test]
-  fn task_initialization() {
-    assert_eq!(
-      plc_parser::task_initialization("(PRIORITY:=11)"),
-      Ok((11, None))
-    );
-    assert_eq!(
-      plc_parser::task_initialization("(PRIORITY:=1_1)"),
-      Ok((11, None))
-    );
-  }
+    #[test]
+    fn task_initialization() {
+        assert_eq!(
+            plc_parser::task_initialization("(PRIORITY:=11)"),
+            Ok((11, None))
+        );
+        assert_eq!(
+            plc_parser::task_initialization("(PRIORITY:=1_1)"),
+            Ok((11, None))
+        );
+    }
 
-  #[test]
-  fn program_configuration() {
-    // TODO there is more to extract here
-    let cfg = ProgramConfiguration {
-      name: String::from("plc_task_instance"),
-      task_name: Option::Some(String::from("plc_task")),
-      type_name: String::from("plc_prg"),
-    };
-    assert_eq!(
-      plc_parser::program_configuration("PROGRAM plc_task_instance WITH plc_task : plc_prg"),
-      Ok(cfg)
-    );
-  }
+    #[test]
+    fn program_configuration() {
+        // TODO there is more to extract here
+        let cfg = ProgramConfiguration {
+            name: String::from("plc_task_instance"),
+            task_name: Option::Some(String::from("plc_task")),
+            type_name: String::from("plc_prg"),
+        };
+        assert_eq!(
+            plc_parser::program_configuration("PROGRAM plc_task_instance WITH plc_task : plc_prg"),
+            Ok(cfg)
+        );
+    }
 
-  #[test]
-  fn direct_variable() {
-    let address = vec![1];
-    let var = DirectVariable {
-      location: LocationPrefix::I,
-      size: SizePrefix::X,
-      address: address,
-    };
-    assert_eq!(plc_parser::direct_variable("%IX1"), Ok(var))
-  }
+    #[test]
+    fn direct_variable() {
+        let address = vec![1];
+        let var = DirectVariable {
+            location: LocationPrefix::I,
+            size: SizePrefix::X,
+            address: address,
+        };
+        assert_eq!(plc_parser::direct_variable("%IX1"), Ok(var))
+    }
 
-  #[test]
-  fn location() {
-    let address = vec![1];
-    let var = DirectVariable {
-      location: LocationPrefix::I,
-      size: SizePrefix::X,
-      address: address,
-    };
-    assert_eq!(plc_parser::location("AT %IX1"), Ok(var))
-  }
+    #[test]
+    fn location() {
+        let address = vec![1];
+        let var = DirectVariable {
+            location: LocationPrefix::I,
+            size: SizePrefix::X,
+            address: address,
+        };
+        assert_eq!(plc_parser::location("AT %IX1"), Ok(var))
+    }
 
-  #[test]
-  fn var_global() {
-    // TODO assign the right values
-    let reset = vec![Declaration {
-      name: String::from("ResetCounterValue"),
-      storage_class: StorageClass::Constant,
-      at: None,
-      initializer: Option::Some(TypeInitializer::Simple {
-        type_name: String::from("INT"),
-        initial_value: Option::Some(Initializer::Simple(Constant::IntegerLiteral(17))),
-      }),
-    }];
-    assert_eq!(
-      plc_parser::global_var_declarations(
-        "VAR_GLOBAL CONSTANT ResetCounterValue : INT := 17; END_VAR"
-      ),
-      Ok(reset)
-    );
-  }
+    #[test]
+    fn var_global() {
+        // TODO assign the right values
+        let reset = vec![Declaration {
+            name: String::from("ResetCounterValue"),
+            storage_class: StorageClass::Constant,
+            at: None,
+            initializer: Option::Some(TypeInitializer::Simple {
+                type_name: String::from("INT"),
+                initial_value: Option::Some(Initializer::Simple(Constant::IntegerLiteral(17))),
+            }),
+        }];
+        assert_eq!(
+            plc_parser::global_var_declarations(
+                "VAR_GLOBAL CONSTANT ResetCounterValue : INT := 17; END_VAR"
+            ),
+            Ok(reset)
+        );
+    }
 
-  #[test]
-  fn sequential_function_chart() {
-    let sfc = "INITIAL_STEP Start:
+    #[test]
+    fn sequential_function_chart() {
+        let sfc = "INITIAL_STEP Start:
       END_STEP
       STEP ResetCounter:
         RESETCOUNTER_INLINE1(N);
@@ -876,242 +876,241 @@ mod test {
     COUNT_INLINE3(N);
     COUNT_INLINE4(N);
   END_STEP";
-    let expected = Ok(vec![
-      Network {
-        initial_step: Element::InitialStep {
-          name: String::from("Start"),
-          action_associations: vec![],
-        },
-        elements: vec![
-          Element::Step {
-            name: String::from("ResetCounter"),
-            action_associations: vec![
-              ActionAssociation {
-                name: String::from("RESETCOUNTER_INLINE1"),
-                qualifier: Some(ActionQualifier::N),
-                indicators: vec![],
-              },
-              ActionAssociation {
-                name: String::from("RESETCOUNTER_INLINE2"),
-                qualifier: Some(ActionQualifier::N),
-                indicators: vec![],
-              }
-            ]
-          },
-          Element::Action {
-            name: String::from("RESETCOUNTER_INLINE1"),
-            body: FunctionBlockBody::Statements(vec![
-              StmtKind::Assignment {
-                target: Variable::SymbolicVariable(String::from("Cnt")),
-                value: ExprKind::Variable {
-                  value: Variable::SymbolicVariable(String::from("ResetCounterValue"))
-                }
-              },
-            ]),
-          },
-          Element::Transition {
-            name: None,
-            priority: None,
-            from: vec![String::from("ResetCounter")],
-            to: vec![String::from("Start")],
-            condition: ExprKind::UnaryOp {
-              op: UnaryOp::Not,
-              term: Box::new(ExprKind::Variable {
-                value: Variable::SymbolicVariable(String::from("Reset"))
-              })
-            }
-          },
-          Element::Transition {
-            name: None,
-            priority: None,
-            from: vec![String::from("Start")],
-            to: vec![String::from("Count")],
-            condition: ExprKind::UnaryOp {
-              op: UnaryOp::Not,
-              term: Box::new(ExprKind::Variable {
-                value: Variable::SymbolicVariable(String::from("Reset"))
-              })
-            }
-          },
-          Element::Step {
-            name: String::from("Count"),
-            action_associations: vec![
-              ActionAssociation {
-                name: String::from("COUNT_INLINE3"),
-                qualifier: Some(ActionQualifier::N),
-                indicators: vec![]
-              },
-              ActionAssociation {
-                name: String::from("COUNT_INLINE4"),
-                qualifier: Some(ActionQualifier::N),
-                indicators: vec![]
-              }
+        let expected = Ok(vec![Network {
+            initial_step: Element::InitialStep {
+                name: String::from("Start"),
+                action_associations: vec![],
+            },
+            elements: vec![
+                Element::Step {
+                    name: String::from("ResetCounter"),
+                    action_associations: vec![
+                        ActionAssociation {
+                            name: String::from("RESETCOUNTER_INLINE1"),
+                            qualifier: Some(ActionQualifier::N),
+                            indicators: vec![],
+                        },
+                        ActionAssociation {
+                            name: String::from("RESETCOUNTER_INLINE2"),
+                            qualifier: Some(ActionQualifier::N),
+                            indicators: vec![],
+                        },
+                    ],
+                },
+                Element::Action {
+                    name: String::from("RESETCOUNTER_INLINE1"),
+                    body: FunctionBlockBody::Statements(vec![StmtKind::Assignment {
+                        target: Variable::SymbolicVariable(String::from("Cnt")),
+                        value: ExprKind::Variable {
+                            value: Variable::SymbolicVariable(String::from("ResetCounterValue")),
+                        },
+                    }]),
+                },
+                Element::Transition {
+                    name: None,
+                    priority: None,
+                    from: vec![String::from("ResetCounter")],
+                    to: vec![String::from("Start")],
+                    condition: ExprKind::UnaryOp {
+                        op: UnaryOp::Not,
+                        term: Box::new(ExprKind::Variable {
+                            value: Variable::SymbolicVariable(String::from("Reset")),
+                        }),
+                    },
+                },
+                Element::Transition {
+                    name: None,
+                    priority: None,
+                    from: vec![String::from("Start")],
+                    to: vec![String::from("Count")],
+                    condition: ExprKind::UnaryOp {
+                        op: UnaryOp::Not,
+                        term: Box::new(ExprKind::Variable {
+                            value: Variable::SymbolicVariable(String::from("Reset")),
+                        }),
+                    },
+                },
+                Element::Step {
+                    name: String::from("Count"),
+                    action_associations: vec![
+                        ActionAssociation {
+                            name: String::from("COUNT_INLINE3"),
+                            qualifier: Some(ActionQualifier::N),
+                            indicators: vec![],
+                        },
+                        ActionAssociation {
+                            name: String::from("COUNT_INLINE4"),
+                            qualifier: Some(ActionQualifier::N),
+                            indicators: vec![],
+                        },
+                    ],
+                },
             ],
-          },
-        ]
-      }
-    ]);
-    assert_eq!(plc_parser::sequential_function_chart(sfc), expected);
-  }
+        }]);
+        assert_eq!(plc_parser::sequential_function_chart(sfc), expected);
+    }
 
-  #[test]
-  fn statement_assign_constant() {
-    let expected = Ok(vec![StmtKind::Assignment {
-      target: Variable::SymbolicVariable(String::from("Cnt")),
-      value: ExprKind::Const {
-        value: Constant::IntegerLiteral(1),
-      },
-    }]);
-    assert_eq!(plc_parser::statement_list("Cnt := 1;"), expected)
-  }
+    #[test]
+    fn statement_assign_constant() {
+        let expected = Ok(vec![StmtKind::Assignment {
+            target: Variable::SymbolicVariable(String::from("Cnt")),
+            value: ExprKind::Const {
+                value: Constant::IntegerLiteral(1),
+            },
+        }]);
+        assert_eq!(plc_parser::statement_list("Cnt := 1;"), expected)
+    }
 
-  #[test]
-  fn statement_assign_add_const_operator() {
-    let expected = Ok(vec![StmtKind::Assignment {
-      target: Variable::SymbolicVariable(String::from("Cnt")),
-      value: ExprKind::BinaryOp {
-        ops: vec![Operator::Add],
-        terms: vec![
-          ExprKind::Const {
-            value: Constant::IntegerLiteral(1),
-          },
-          ExprKind::Const {
-            value: Constant::IntegerLiteral(2),
-          },
-        ],
-      },
-    }]);
-    assert_eq!(plc_parser::statement_list("Cnt := 1 + 2;"), expected)
-  }
+    #[test]
+    fn statement_assign_add_const_operator() {
+        let expected = Ok(vec![StmtKind::Assignment {
+            target: Variable::SymbolicVariable(String::from("Cnt")),
+            value: ExprKind::BinaryOp {
+                ops: vec![Operator::Add],
+                terms: vec![
+                    ExprKind::Const {
+                        value: Constant::IntegerLiteral(1),
+                    },
+                    ExprKind::Const {
+                        value: Constant::IntegerLiteral(2),
+                    },
+                ],
+            },
+        }]);
+        assert_eq!(plc_parser::statement_list("Cnt := 1 + 2;"), expected)
+    }
 
-  #[test]
-  fn statement_assign_add_symbol_operator() {
-    let expected = Ok(vec![StmtKind::Assignment {
-      target: Variable::SymbolicVariable(String::from("Cnt")),
-      value: ExprKind::BinaryOp {
-        ops: vec![Operator::Add],
-        terms: vec![
-          ExprKind::Variable {
-            value: Variable::SymbolicVariable(String::from("Cnt")),
-          },
-          ExprKind::Const {
-            value: Constant::IntegerLiteral(1),
-          },
-        ],
-      },
-    }]);
-    assert_eq!(plc_parser::statement_list("Cnt := Cnt + 1;"), expected)
-  }
+    #[test]
+    fn statement_assign_add_symbol_operator() {
+        let expected = Ok(vec![StmtKind::Assignment {
+            target: Variable::SymbolicVariable(String::from("Cnt")),
+            value: ExprKind::BinaryOp {
+                ops: vec![Operator::Add],
+                terms: vec![
+                    ExprKind::Variable {
+                        value: Variable::SymbolicVariable(String::from("Cnt")),
+                    },
+                    ExprKind::Const {
+                        value: Constant::IntegerLiteral(1),
+                    },
+                ],
+            },
+        }]);
+        assert_eq!(plc_parser::statement_list("Cnt := Cnt + 1;"), expected)
+    }
 
-  #[test]
-  fn statement_if_multi_term() {
-    let statement = "IF TRIG AND NOT TRIG THEN
+    #[test]
+    fn statement_if_multi_term() {
+        let statement = "IF TRIG AND NOT TRIG THEN
       TRIG0:=TRIG;
 
     END_IF;";
-    let expected = Ok(vec![StmtKind::If {
-      expr: ExprKind::Compare {
-        op: CompareOp::And,
-        terms: vec![
-          ExprKind::Variable {
-            value: Variable::SymbolicVariable(String::from("TRIG")),
-          },
-          ExprKind::UnaryOp {
-            op: UnaryOp::Not,
-            term: Box::new(ExprKind::Variable {
-              value: Variable::SymbolicVariable(String::from("TRIG")),
-            }),
-          },
-        ],
-      },
-      body: vec![StmtKind::Assignment {
-        target: Variable::SymbolicVariable(String::from("TRIG0")),
-        value: ExprKind::Variable {
-          value: Variable::SymbolicVariable(String::from("TRIG")),
-        },
-      }],
-      else_body: vec![],
-    }]);
-    assert_eq!(plc_parser::statement_list(statement), expected)
-  }
+        let expected = Ok(vec![StmtKind::If {
+            expr: ExprKind::Compare {
+                op: CompareOp::And,
+                terms: vec![
+                    ExprKind::Variable {
+                        value: Variable::SymbolicVariable(String::from("TRIG")),
+                    },
+                    ExprKind::UnaryOp {
+                        op: UnaryOp::Not,
+                        term: Box::new(ExprKind::Variable {
+                            value: Variable::SymbolicVariable(String::from("TRIG")),
+                        }),
+                    },
+                ],
+            },
+            body: vec![StmtKind::Assignment {
+                target: Variable::SymbolicVariable(String::from("TRIG0")),
+                value: ExprKind::Variable {
+                    value: Variable::SymbolicVariable(String::from("TRIG")),
+                },
+            }],
+            else_body: vec![],
+        }]);
+        assert_eq!(plc_parser::statement_list(statement), expected)
+    }
 
-  #[test]
-  fn statement_if() {
-    let statement = "IF Reset THEN
+    #[test]
+    fn statement_if() {
+        let statement = "IF Reset THEN
     Cnt := ResetCounterValue;
   ELSE
     Cnt := Cnt + 1;
   END_IF;";
-    let expected = Ok(vec![StmtKind::If {
-      expr: ExprKind::Variable {
-        value: Variable::SymbolicVariable(String::from("Reset")),
-      },
-      body: vec![StmtKind::Assignment {
-        target: Variable::SymbolicVariable(String::from("Cnt")),
-        value: ExprKind::Variable {
-          value: Variable::SymbolicVariable(String::from("ResetCounterValue")),
-        },
-      }],
-      else_body: vec![StmtKind::Assignment {
-        target: Variable::SymbolicVariable(String::from("Cnt")),
-        value: ExprKind::BinaryOp {
-          ops: vec![Operator::Add],
-          terms: vec![
-            ExprKind::Variable {
-              value: Variable::SymbolicVariable(String::from("Cnt")),
+        let expected = Ok(vec![StmtKind::If {
+            expr: ExprKind::Variable {
+                value: Variable::SymbolicVariable(String::from("Reset")),
             },
-            ExprKind::Const {
-              value: Constant::IntegerLiteral(1),
+            body: vec![StmtKind::Assignment {
+                target: Variable::SymbolicVariable(String::from("Cnt")),
+                value: ExprKind::Variable {
+                    value: Variable::SymbolicVariable(String::from("ResetCounterValue")),
+                },
+            }],
+            else_body: vec![StmtKind::Assignment {
+                target: Variable::SymbolicVariable(String::from("Cnt")),
+                value: ExprKind::BinaryOp {
+                    ops: vec![Operator::Add],
+                    terms: vec![
+                        ExprKind::Variable {
+                            value: Variable::SymbolicVariable(String::from("Cnt")),
+                        },
+                        ExprKind::Const {
+                            value: Constant::IntegerLiteral(1),
+                        },
+                    ],
+                },
+            }],
+        }]);
+
+        assert_eq!(plc_parser::statement_list(statement), expected)
+    }
+
+    #[test]
+    fn statement_fb_invocation_without_name() {
+        let statement = "CounterLD0(Reset);";
+        let expected = Ok(vec![StmtKind::FbCall {
+            name: String::from("CounterLD0"),
+            params: vec![ParamAssignment::Input {
+                name: None,
+                expr: ExprKind::Variable {
+                    value: Variable::SymbolicVariable(String::from("Reset")),
+                },
+            }],
+        }]);
+
+        assert_eq!(plc_parser::statement_list(statement), expected)
+    }
+
+    #[test]
+    fn statement_fb_invocation_with_name() {
+        let statement = "CounterLD0(Cnt := Reset);";
+        let expected = Ok(vec![StmtKind::FbCall {
+            name: String::from("CounterLD0"),
+            params: vec![ParamAssignment::Input {
+                name: Option::Some(String::from("Cnt")),
+                expr: ExprKind::Variable {
+                    value: Variable::SymbolicVariable(String::from("Reset")),
+                },
+            }],
+        }]);
+
+        assert_eq!(plc_parser::statement_list(statement), expected)
+    }
+
+    #[test]
+    fn assignment() {
+        let assign = "Cnt1 := CounterST0.OUT";
+        let expected = Ok(StmtKind::Assignment {
+            target: Variable::SymbolicVariable(String::from("Cnt1")),
+            value: ExprKind::Variable {
+                value: Variable::MultiElementVariable(vec![
+                    String::from("CounterST0"),
+                    String::from("OUT"),
+                ]),
             },
-          ],
-        },
-      }],
-    }]);
-
-    assert_eq!(plc_parser::statement_list(statement), expected)
-  }
-
-  #[test]
-  fn statement_fb_invocation_without_name() {
-    let statement = "CounterLD0(Reset);";
-    let expected = Ok(vec![StmtKind::FbCall {
-      name: String::from("CounterLD0"),
-      params: vec![ParamAssignment::Input {
-        name: None,
-        expr: ExprKind::Variable {
-          value: Variable::SymbolicVariable(String::from("Reset")),
-        },
-      }],
-    }]);
-
-    assert_eq!(plc_parser::statement_list(statement), expected)
-  }
-
-  #[test]
-  fn statement_fb_invocation_with_name() {
-    let statement = "CounterLD0(Cnt := Reset);";
-    let expected = Ok(vec![StmtKind::FbCall {
-      name: String::from("CounterLD0"),
-      params: vec![ParamAssignment::Input {
-        name: Option::Some(String::from("Cnt")),
-        expr: ExprKind::Variable {
-          value: Variable::SymbolicVariable(String::from("Reset")),
-        },
-      }],
-    }]);
-
-    assert_eq!(plc_parser::statement_list(statement), expected)
-  }
-
-  #[test]
-  fn assignment() {
-    let assign = "Cnt1 := CounterST0.OUT";
-    let expected = Ok(StmtKind::Assignment {
-      target: Variable::SymbolicVariable(String::from("Cnt1")),
-      value: ExprKind::Variable {
-        value: Variable::MultiElementVariable(vec![String::from("CounterST0"), String::from("OUT")])
-      }
-    });
-    assert_eq!(plc_parser::assignment_statement(assign), expected)
-  }
+        });
+        assert_eq!(plc_parser::assignment_statement(assign), expected)
+    }
 }

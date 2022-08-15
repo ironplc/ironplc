@@ -10,11 +10,17 @@ pub fn to_duration(val: f32, unit_per_sec: f32) -> Duration {
 }
 
 pub fn var_init_kind_map(declarations: Vec<VarInit>) -> Vec<VarInitKind> {
-    declarations.into_iter().map(|d| VarInitKind::VarInit(d)).collect::<Vec<VarInitKind>>()
+    declarations
+        .into_iter()
+        .map(|d| VarInitKind::VarInit(d))
+        .collect::<Vec<VarInitKind>>()
 }
 
 pub fn located_var_init_kind_map(declarations: Vec<LocatedVarInit>) -> Vec<VarInitKind> {
-    declarations.into_iter().map(|d| VarInitKind::LocatedVarInit(d)).collect::<Vec<VarInitKind>>()
+    declarations
+        .into_iter()
+        .map(|d| VarInitKind::LocatedVarInit(d))
+        .collect::<Vec<VarInitKind>>()
 }
 
 pub fn var_init_map(
@@ -53,8 +59,5 @@ pub fn var_init_flat_map(
 }
 
 pub fn to_strings(input: Vec<&str>) -> Vec<String> {
-    input
-        .into_iter()
-        .map(|item| String::from(item))
-        .collect()
+    input.into_iter().map(|item| String::from(item)).collect()
 }
