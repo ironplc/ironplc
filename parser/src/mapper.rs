@@ -9,7 +9,7 @@ pub fn to_duration(val: f32, unit_per_sec: f32) -> Duration {
     )
 }
 
-pub fn var_init_kind_map(declarations: Vec<VarInit>) -> Vec<VarInitKind> {
+pub fn var_init_kind_map(declarations: Vec<VarInitDecl>) -> Vec<VarInitKind> {
     declarations
         .into_iter()
         .map(|d| VarInitKind::VarInit(d))
@@ -24,9 +24,9 @@ pub fn located_var_init_kind_map(declarations: Vec<LocatedVarInit>) -> Vec<VarIn
 }
 
 pub fn var_init_map(
-    declarations: Vec<VarInit>,
+    declarations: Vec<VarInitDecl>,
     storage_class: Option<StorageClass>,
-) -> Vec<VarInit> {
+) -> Vec<VarInitDecl> {
     declarations
         .into_iter()
         .map(|declaration| {
@@ -41,10 +41,10 @@ pub fn var_init_map(
 }
 
 pub fn var_init_flat_map(
-    declarations: Vec<Vec<VarInit>>,
+    declarations: Vec<Vec<VarInitDecl>>,
     storage_class: Option<StorageClass>,
-) -> Vec<VarInit> {
-    let declarations = declarations.into_iter().flatten().collect::<Vec<VarInit>>();
+) -> Vec<VarInitDecl> {
+    let declarations = declarations.into_iter().flatten().collect::<Vec<VarInitDecl>>();
     declarations
         .into_iter()
         .map(|declaration| {

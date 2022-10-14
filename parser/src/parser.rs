@@ -28,9 +28,8 @@ parser! {
     rule STANDARD_FUNCTION_BLOCK_NAME() = "END_VAR"
 
     // B.0
-    // TODO add more declarations
     pub rule library() -> Vec<LibraryElement> = _ libs:library_element_declaration() ** _ _ { libs }
-    // TODO they don't all return something meaningful
+    // TODO This misses some types such as ladder diagrams
     rule library_element_declaration() -> LibraryElement = dt:data_type_declaration() { LibraryElement::DataTypeDeclaration(dt) } / fd:function_declaration() { LibraryElement::FunctionDeclaration(fd) } / fbd:function_block_declaration() { LibraryElement::FunctionBlockDeclaration(fbd) } / pd:program_declaration() { LibraryElement::ProgramDeclaration(pd) } / cd:configuration_declaration() { LibraryElement::ConfigurationDeclaration(cd) }
 
     // B.1.1 Letters, digits and identifier
@@ -248,48 +247,46 @@ parser! {
     rule field_selector() -> &'input str = identifier()
 
     // B.1.4.3 Declarations and initialization
-    pub rule input_declarations() -> Vec<VarInit> = "VAR_INPUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<input_declaration()>) _ "END_VAR" {
+    pub rule input_declarations() -> Vec<VarInitDecl> = "VAR_INPUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<input_declaration()>) _ "END_VAR" {
       var_init_flat_map(declarations, storage)
     }
     // TODO add edge declaration (as a separate item - a tuple)
-    rule input_declaration() -> Vec<VarInit> = i:var_init_decl() { i }
+    rule input_declaration() -> Vec<VarInitDecl> = i:var_init_decl() { i }
     rule edge_declaration() -> () = var1_list() _ ":" _ "BOOL" _ ("R_EDGE" / "F_EDGE")? {}
     // TODO the problem is we match first, then
     // TODO missing multiple here
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    rule var_init_decl() -> Vec<VarInit> = i:var1_init_decl__unambiguous() { i } / i:late_bound_type_init() { i }
+    rule var_init_decl() -> Vec<VarInitDecl> = i:var1_init_decl__unambiguous() { i } / i:late_bound_type_init() { i }
 
     // The initialize for some types looks the same if there is not initialization component. We use this to
     // late bind and later resolve the type.
-    rule late_bound_type_init() -> Vec<VarInit> = names:identifier() ** (_ "," _ ) _ ":" _ type_name:identifier() {
+    rule late_bound_type_init() -> Vec<VarInitDecl> = names:identifier() ** (_ "," _ ) _ ":" _ type_name:identifier() {
       names.iter().map(|name| {
-        VarInit {
+        VarInitDecl {
           name: String::from(*name),
           storage_class: StorageClass::Unspecified,
-          initializer: Option::Some(TypeInitializer::LateResolvedType {
-            type_name: String::from(type_name),
-          }),
+          initializer: Option::Some(TypeInitializer::LateResolvedType(String::from(type_name))),
         }
       }).collect()
     }
     // TODO add in subrange_spec_init(), enumerated_spec_init()
 
-    rule var1_init_decl__unambiguous() -> Vec<VarInit> = names:var1_list() _ ":" _ init:(s:simple_spec_init__unambiguous() { s } / e:enumerated_spec_init__unambiguous() { e }) {
+    rule var1_init_decl__unambiguous() -> Vec<VarInitDecl> = names:var1_list() _ ":" _ init:(s:simple_spec_init__unambiguous() { s } / e:enumerated_spec_init__unambiguous() { e }) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.iter().map(|name| {
-        VarInit {
+        VarInitDecl {
           name: String::from(*name),
           storage_class: StorageClass::Unspecified,
           initializer: Option::Some(init.clone()),
         }
       }).collect()
     }
-    rule var1_init_decl() -> Vec<VarInit> = names:var1_list() _ ":" _ init:(s:simple_spec_init() { s } / e:enumerated_spec_init() { e }) {
+    rule var1_init_decl() -> Vec<VarInitDecl> = names:var1_list() _ ":" _ init:(s:simple_spec_init() { s } / e:enumerated_spec_init() { e }) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.iter().map(|name| {
-        VarInit {
+        VarInitDecl {
           name: String::from(*name),
           storage_class: StorageClass::Unspecified,
           initializer: Option::Some(init.clone()),
@@ -298,17 +295,17 @@ parser! {
     }
     rule var1_list() -> Vec<&'input str> = names:variable_name() ++ (_ "," _) { names }
     rule fb_name() -> &'input str = i:identifier() { i }
-    pub rule output_declarations() -> Vec<VarInit> = "VAR_OUTPUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+    pub rule output_declarations() -> Vec<VarInitDecl> = "VAR_OUTPUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
       var_init_flat_map(declarations, storage)
     }
-    pub rule input_output_declarations() -> Vec<VarInit> = "VAR_IN_OUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+    pub rule input_output_declarations() -> Vec<VarInitDecl> = "VAR_IN_OUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
       var_init_flat_map(declarations, storage)
     }
-    rule var_declarations() -> Vec<VarInit> = "VAR" _ storage:"CONSTANT"? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+    rule var_declarations() -> Vec<VarInitDecl> = "VAR" _ storage:"CONSTANT"? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
       let storage = storage.map(|()| StorageClass::Constant);
       var_init_flat_map(declarations, storage)
     }
-    rule retentive_var_declarations() -> Vec<VarInit> = "VAR" _ "RETAIN" _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+    rule retentive_var_declarations() -> Vec<VarInitDecl> = "VAR" _ "RETAIN" _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
       var_init_flat_map(declarations, Option::Some(StorageClass::Retain))
     }
     rule located_var_declarations() -> Vec<LocatedVarInit> = "VAR" _ storage:("CONSTANT" { StorageClass::Constant }/ "RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<located_var_decl()>) _ "END_VAR" {
@@ -335,7 +332,7 @@ parser! {
     }
     // TODO is this NOT the right type to return?
     // We use the same type as in other places for VarInit, but the external always omits the initializer
-    rule external_var_declarations() -> Vec<VarInit> = "VAR_EXTERNAL" _ constant:"CONSTANT"? _ declarations:semisep(<external_declaration()>) _ "END_VAR" {
+    rule external_var_declarations() -> Vec<VarInitDecl> = "VAR_EXTERNAL" _ constant:"CONSTANT"? _ declarations:semisep(<external_declaration()>) _ "END_VAR" {
       let storage = constant.map(|()| StorageClass::Constant);
       var_init_map(declarations, storage)
     }
@@ -346,8 +343,8 @@ parser! {
         initial_value: None,
       }
     }
-    rule external_declaration() -> VarInit = name:global_var_name() _ ":" _ spec:external_declaration_spec() {
-      VarInit {
+    rule external_declaration() -> VarInitDecl = name:global_var_name() _ ":" _ spec:external_declaration_spec() {
+      VarInitDecl {
         name: String::from(name),
         storage_class: StorageClass::Unspecified,
         initializer: Option::Some(spec),
@@ -396,7 +393,7 @@ parser! {
     rule standard_function_name() -> &'input str = identifier()
     rule derived_function_name() -> &'input str = identifier()
     rule function_declaration() -> FunctionDeclaration = "FUNCTION" _  name:derived_function_name() _ ":" _ rt:(elementary_type_name() / derived_type_name()) _ var_decl:(io:io_var_declarations() / func:function_var_decls()) ** _ _ body:function_body() _ "END_FUNCTION" {
-      let declarations = var_decl.into_iter().flatten().collect::<Vec<VarInit>>();
+      let declarations = var_decl.into_iter().flatten().collect::<Vec<VarInitDecl>>();
       FunctionDeclaration {
         name: String::from(name),
         return_type: String::from(rt),
@@ -405,15 +402,15 @@ parser! {
         body: body,
       }
     }
-    rule io_var_declarations() -> Vec<VarInit> = input_declarations() / output_declarations() / input_output_declarations()
-    rule function_var_decls() -> Vec<VarInit> = "VAR" _ storage:"CONSTANT"? _ vars:semisep_oneplus(<var2_init_decl()>) _ "END_VAR" {
+    rule io_var_declarations() -> Vec<VarInitDecl> = input_declarations() / output_declarations() / input_output_declarations()
+    rule function_var_decls() -> Vec<VarInitDecl> = "VAR" _ storage:"CONSTANT"? _ vars:semisep_oneplus(<var2_init_decl()>) _ "END_VAR" {
       let storage = storage.map(|()| StorageClass::Constant);
       var_init_flat_map(vars, storage)
     }
     // TODO a bunch are missing here
     rule function_body() -> Vec<StmtKind> = statement_list()
     // TODO return types
-    rule var2_init_decl() -> Vec<VarInit> = var1_init_decl()
+    rule var2_init_decl() -> Vec<VarInitDecl> = var1_init_decl()
 
     // B.1.5.2 Function blocks
     // IEC 61131 defines separate standard and derived function block names,
@@ -430,7 +427,7 @@ parser! {
       }
     }
     // TODO there are far more here
-    rule other_var_declarations() -> Vec<VarInit> = external_var_declarations() / var_declarations()
+    rule other_var_declarations() -> Vec<VarInitDecl> = external_var_declarations() / var_declarations()
     rule function_block_body() -> FunctionBlockBody = networks:sequential_function_chart() { FunctionBlockBody::Sfc(networks) } / statements:statement_list() { FunctionBlockBody::Statements(statements) }
 
     // B.1.5.3 Program declaration
@@ -901,9 +898,9 @@ mod test {
                     name: String::from("RESETCOUNTER_INLINE1"),
                     body: FunctionBlockBody::Statements(vec![StmtKind::Assignment {
                         target: Variable::SymbolicVariable(String::from("Cnt")),
-                        value: ExprKind::Variable {
-                            value: Variable::SymbolicVariable(String::from("ResetCounterValue")),
-                        },
+                        value: ExprKind::Variable(Variable::SymbolicVariable(String::from(
+                            "ResetCounterValue",
+                        ))),
                     }]),
                 },
                 Element::Transition {
@@ -913,9 +910,7 @@ mod test {
                     to: vec![String::from("Start")],
                     condition: ExprKind::UnaryOp {
                         op: UnaryOp::Not,
-                        term: Box::new(ExprKind::Variable {
-                            value: Variable::SymbolicVariable(String::from("Reset")),
-                        }),
+                        term: ExprKind::boxed_symbolic_variable("Reset"),
                     },
                 },
                 Element::Transition {
@@ -925,9 +920,9 @@ mod test {
                     to: vec![String::from("Count")],
                     condition: ExprKind::UnaryOp {
                         op: UnaryOp::Not,
-                        term: Box::new(ExprKind::Variable {
-                            value: Variable::SymbolicVariable(String::from("Reset")),
-                        }),
+                        term: Box::new(ExprKind::Variable(Variable::SymbolicVariable(
+                            String::from("Reset"),
+                        ))),
                     },
                 },
                 Element::Step {
@@ -954,9 +949,7 @@ mod test {
     fn statement_assign_constant() {
         let expected = Ok(vec![StmtKind::Assignment {
             target: Variable::SymbolicVariable(String::from("Cnt")),
-            value: ExprKind::Const {
-                value: Constant::IntegerLiteral(1),
-            },
+            value: ExprKind::Const(Constant::IntegerLiteral(1)),
         }]);
         assert_eq!(plc_parser::statement_list("Cnt := 1;"), expected)
     }
@@ -968,12 +961,8 @@ mod test {
             value: ExprKind::BinaryOp {
                 ops: vec![Operator::Add],
                 terms: vec![
-                    ExprKind::Const {
-                        value: Constant::IntegerLiteral(1),
-                    },
-                    ExprKind::Const {
-                        value: Constant::IntegerLiteral(2),
-                    },
+                    ExprKind::Const(Constant::IntegerLiteral(1)),
+                    ExprKind::Const(Constant::IntegerLiteral(2)),
                 ],
             },
         }]);
@@ -987,12 +976,12 @@ mod test {
             value: ExprKind::BinaryOp {
                 ops: vec![Operator::Add],
                 terms: vec![
-                    ExprKind::Variable {
+                    ExprKind::Variable (
                         value: Variable::SymbolicVariable(String::from("Cnt")),
-                    },
-                    ExprKind::Const {
-                        value: Constant::IntegerLiteral(1),
-                    },
+                    ),
+                    ExprKind::Const (
+                        Constant::IntegerLiteral(1),
+                    ),
                 ],
             },
         }]);
@@ -1009,22 +998,18 @@ mod test {
             expr: ExprKind::Compare {
                 op: CompareOp::And,
                 terms: vec![
-                    ExprKind::Variable {
-                        value: Variable::SymbolicVariable(String::from("TRIG")),
-                    },
+                    ExprKind::Variable(Variable::SymbolicVariable(String::from("TRIG"))),
                     ExprKind::UnaryOp {
                         op: UnaryOp::Not,
-                        term: Box::new(ExprKind::Variable {
-                            value: Variable::SymbolicVariable(String::from("TRIG")),
-                        }),
+                        term: Box::new(ExprKind::Variable(Variable::SymbolicVariable(
+                            String::from("TRIG"),
+                        ))),
                     },
                 ],
             },
             body: vec![StmtKind::Assignment {
                 target: Variable::SymbolicVariable(String::from("TRIG0")),
-                value: ExprKind::Variable {
-                    value: Variable::SymbolicVariable(String::from("TRIG")),
-                },
+                value: ExprKind::Variable(Variable::SymbolicVariable(String::from("TRIG"))),
             }],
             else_body: vec![],
         }]);
@@ -1039,26 +1024,20 @@ mod test {
     Cnt := Cnt + 1;
   END_IF;";
         let expected = Ok(vec![StmtKind::If {
-            expr: ExprKind::Variable {
-                value: Variable::SymbolicVariable(String::from("Reset")),
-            },
+            expr: ExprKind::Variable(Variable::SymbolicVariable(String::from("Reset"))),
             body: vec![StmtKind::Assignment {
                 target: Variable::SymbolicVariable(String::from("Cnt")),
-                value: ExprKind::Variable {
-                    value: Variable::SymbolicVariable(String::from("ResetCounterValue")),
-                },
+                value: ExprKind::Variable(Variable::SymbolicVariable(String::from(
+                    "ResetCounterValue",
+                ))),
             }],
             else_body: vec![StmtKind::Assignment {
                 target: Variable::SymbolicVariable(String::from("Cnt")),
                 value: ExprKind::BinaryOp {
                     ops: vec![Operator::Add],
                     terms: vec![
-                        ExprKind::Variable {
-                            value: Variable::SymbolicVariable(String::from("Cnt")),
-                        },
-                        ExprKind::Const {
-                            value: Constant::IntegerLiteral(1),
-                        },
+                        ExprKind::Variable(Variable::SymbolicVariable(String::from("Cnt"))),
+                        ExprKind::Const(Constant::IntegerLiteral(1)),
                     ],
                 },
             }],
@@ -1074,9 +1053,7 @@ mod test {
             name: String::from("CounterLD0"),
             params: vec![ParamAssignment::Input {
                 name: None,
-                expr: ExprKind::Variable {
-                    value: Variable::SymbolicVariable(String::from("Reset")),
-                },
+                expr: ExprKind::Variable(Variable::SymbolicVariable(String::from("Reset"))),
             }],
         }]);
 
@@ -1090,9 +1067,7 @@ mod test {
             name: String::from("CounterLD0"),
             params: vec![ParamAssignment::Input {
                 name: Option::Some(String::from("Cnt")),
-                expr: ExprKind::Variable {
-                    value: Variable::SymbolicVariable(String::from("Reset")),
-                },
+                expr: ExprKind::Variable(Variable::SymbolicVariable(String::from("Reset"))),
             }],
         }]);
 
@@ -1104,12 +1079,10 @@ mod test {
         let assign = "Cnt1 := CounterST0.OUT";
         let expected = Ok(StmtKind::Assignment {
             target: Variable::SymbolicVariable(String::from("Cnt1")),
-            value: ExprKind::Variable {
-                value: Variable::MultiElementVariable(vec![
-                    String::from("CounterST0"),
-                    String::from("OUT"),
-                ]),
-            },
+            value: ExprKind::Variable(Variable::MultiElementVariable(vec![
+                String::from("CounterST0"),
+                String::from("OUT"),
+            ])),
         });
         assert_eq!(plc_parser::assignment_statement(assign), expected)
     }

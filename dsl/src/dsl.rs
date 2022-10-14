@@ -5,7 +5,17 @@ use time::Duration;
 use crate::ast::*;
 use crate::sfc::Network;
 
-#[derive(Debug, PartialEq)]
+use derive::EnumKind;
+
+pub enum TypeDefinitionKind {
+    Enumeration,
+    FunctionBlock,
+    Function,
+    Structure,
+}
+
+#[derive(Debug, PartialEq, EnumKind)]
+#[enum_kind(SomeEnumKind)]
 pub enum LibraryElement {
     DataTypeDeclaration(Vec<EnumerationDeclaration>),
     FunctionDeclaration(FunctionDeclaration),
@@ -101,18 +111,17 @@ pub struct Declaration {
     pub initializer: Option<TypeInitializer>,
 }
 
-// TODO rename this to VarDecl
 #[derive(Debug, PartialEq, Clone)]
-pub struct VarInit {
+pub struct VarInitDecl {
     pub name: String,
     pub storage_class: StorageClass,
     pub initializer: Option<TypeInitializer>,
     // TODO this need much more
 }
 
-impl VarInit {
-    pub fn simple(name: &str, type_name: &str) -> VarInit {
-        VarInit {
+impl VarInitDecl {
+    pub fn simple(name: &str, type_name: &str) -> VarInitDecl {
+        VarInitDecl {
             name: String::from(name),
             storage_class: StorageClass::Unspecified,
             initializer: Some(TypeInitializer::Simple {
@@ -122,8 +131,8 @@ impl VarInit {
         }
     }
 
-    pub fn enumerated(name: &str, type_name: &str, initial_value: &str) -> VarInit {
-        VarInit {
+    pub fn enumerated(name: &str, type_name: &str, initial_value: &str) -> VarInitDecl {
+        VarInitDecl {
             name: String::from(name),
             storage_class: StorageClass::Unspecified,
             initializer: Some(TypeInitializer::EnumeratedType {
@@ -133,8 +142,8 @@ impl VarInit {
         }
     }
 
-    pub fn function_block(name: &str, type_name: &str) -> VarInit {
-        VarInit {
+    pub fn function_block(name: &str, type_name: &str) -> VarInitDecl {
+        VarInitDecl {
             name: String::from(name),
             storage_class: StorageClass::Unspecified,
             initializer: Some(TypeInitializer::FunctionBlock {
@@ -143,13 +152,11 @@ impl VarInit {
         }
     }
 
-    pub fn late_bound(name: &str, type_name: &str) -> VarInit {
-        VarInit {
+    pub fn late_bound(name: &str, type_name: &str) -> VarInitDecl {
+        VarInitDecl {
             name: String::from(name),
             storage_class: StorageClass::Unspecified,
-            initializer: Some(TypeInitializer::LateResolvedType {
-                type_name: String::from(type_name),
-            }),
+            initializer: Some(TypeInitializer::LateResolvedType(String::from(type_name))),
         }
     }
 }
@@ -164,20 +171,20 @@ pub struct LocatedVarInit {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum VarInitKind {
-    VarInit(VarInit),
+    VarInit(VarInitDecl),
     LocatedVarInit(LocatedVarInit),
 }
 
 impl VarInitKind {
     pub fn simple(name: &str, type_name: &str) -> VarInitKind {
-        VarInitKind::VarInit(VarInit::simple(name, type_name))
+        VarInitKind::VarInit(VarInitDecl::simple(name, type_name))
     }
 
     pub fn enumerated(name: &str, type_name: &str, initial_value: &str) -> VarInitKind {
-        VarInitKind::VarInit(VarInit::enumerated(name, type_name, initial_value))
+        VarInitKind::VarInit(VarInitDecl::enumerated(name, type_name, initial_value))
     }
     pub fn late_bound(name: &str, type_name: &str) -> VarInitKind {
-        VarInitKind::VarInit(VarInit::late_bound(name, type_name))
+        VarInitKind::VarInit(VarInitDecl::late_bound(name, type_name))
     }
 }
 
@@ -240,9 +247,13 @@ pub enum TypeInitializer {
     FunctionBlock {
         type_name: String,
     },
-    LateResolvedType {
+    Structure {
+        // TODO
         type_name: String,
     },
+    // A type that is ambiguous until we have discovered type
+    // definitions. Value is the name of the type.
+    LateResolvedType(String),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -353,7 +364,7 @@ pub struct FunctionDeclaration {
     pub name: String,
     pub return_type: String,
     // TODO
-    pub var_decls: Vec<VarInit>,
+    pub var_decls: Vec<VarInitDecl>,
     // TODO other types
     pub body: Vec<StmtKind>,
 }
@@ -371,4 +382,15 @@ pub struct ProgramDeclaration {
     pub type_name: String,
     pub var_declarations: Vec<VarInitKind>,
     pub body: FunctionBlockBody,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Library {
+    pub elems: Vec<LibraryElement>,
+}
+
+impl Library {
+    pub fn new(elems: Vec<LibraryElement>) -> Self {
+        Library { elems: elems }
+    }
 }
