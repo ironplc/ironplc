@@ -24,6 +24,27 @@ pub fn main() {
     let library = TypeResolver::apply(library, symbol_table);
 
     // Static analysis (binding) and building symbol table
+    //
+    // Need something that does recursive descent
+    // a. before: process node
+    // b. process children of node
+    // d. after: finish process node
+    //
+    // basic idea is we start with empty, then start processing
+    // so add symbols, then when done, remove the symbols
+    // can use a simple stack for each name:
+    // add
+    // find
+    // remove
+    // enter scope
+    // exit scope
+    // stack of scopes
+    //
+    // 1. Check all identifiers defined (need scope)
+    // 2. Type checking
+    // 3. Check types only defined once
+    // 4. Check reserved identifiers
+    // 5. Check assignment types compatible
     // Code generation
 }
 
