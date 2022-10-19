@@ -11,7 +11,7 @@ mod type_resolver;
 
 pub fn main() {
     let library = ironplc_parser::parse_program("").unwrap_or(Library::new(vec![]));
-
+    
     // Walk the entire library to find symbol definitions.
     // We will use these to resolve late bound types because
     // we now know the specific type of each name.
