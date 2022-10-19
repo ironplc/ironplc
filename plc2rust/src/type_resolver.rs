@@ -8,8 +8,10 @@ pub struct TypeResolver {
     types: HashMap<String, TypeDefinitionKind>,
 }
 impl TypeResolver {
-    pub fn apply(library: Library ,symbol_table: HashMap<String, TypeDefinitionKind>) -> Library {
-        let mut type_resolver = TypeResolver { types: symbol_table };
+    pub fn apply(library: Library, symbol_table: HashMap<String, TypeDefinitionKind>) -> Library {
+        let mut type_resolver = TypeResolver {
+            types: symbol_table,
+        };
         type_resolver.fold(library)
     }
 }

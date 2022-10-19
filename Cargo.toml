@@ -1,10 +1,8 @@
-[package]
-name = "iron-plc"
-version = "0.1.0"
-edition = "2021"
+[workspace]
 
-[dependencies]
-ironplc-parser = { path = "parser", version = "0.1.0" }
-ironplc-dsl = { path = "dsl", version = "0.1.0" }
-ironplc-derive = { path = "derive", version = "0.1.0" }
-time = "0.3.11"
+members = [
+    "plc2rust",
+    "derive",
+    "dsl",
+    "parser"
+]
