@@ -44,7 +44,10 @@ pub fn var_init_flat_map(
     declarations: Vec<Vec<VarInitDecl>>,
     storage_class: Option<StorageClass>,
 ) -> Vec<VarInitDecl> {
-    let declarations = declarations.into_iter().flatten().collect::<Vec<VarInitDecl>>();
+    let declarations = declarations
+        .into_iter()
+        .flatten()
+        .collect::<Vec<VarInitDecl>>();
     declarations
         .into_iter()
         .map(|declaration| {

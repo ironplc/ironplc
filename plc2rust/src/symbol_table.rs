@@ -1,17 +1,20 @@
+use ironplc_dsl::visitor::Visit;
+
 use crate::ironplc_dsl::dsl::*;
-use crate::ironplc_dsl::visitor::{walk_library, LibraryVisitor};
 use std::collections::HashMap;
 use std::collections::LinkedList;
 
 pub trait NodeData: Clone {}
 
 struct Scope<T: NodeData> {
-    table: HashMap<String, T>
+    table: HashMap<String, T>,
 }
 
 impl<T: NodeData> Scope<T> {
     fn new() -> Self {
-        Scope { table: HashMap::new() }
+        Scope {
+            table: HashMap::new(),
+        }
     }
 
     fn add(&mut self, name: &str, value: T) {
@@ -28,14 +31,14 @@ impl<T: NodeData> Scope<T> {
 }
 
 struct SymbolTable<T: NodeData> {
-    stack: LinkedList<Scope<T>>
+    stack: LinkedList<Scope<T>>,
 }
 
 impl<T: NodeData> SymbolTable<T> {
     /// Creates an empty `SymbolTable`.
     ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// let table: SymbolTable<bool> = SymbolTable::new();
     /// ```
@@ -46,7 +49,7 @@ impl<T: NodeData> SymbolTable<T> {
     }
 
     /// Enters a new scope.
-    /// 
+    ///
     /// This creates a new context that can hide declarations
     /// from outer scopes.
     fn enter(&mut self) {
@@ -54,7 +57,7 @@ impl<T: NodeData> SymbolTable<T> {
     }
 
     /// Exits the current scope.
-    /// 
+    ///
     /// This removes the current scope.
     fn exit(&mut self) {
         self.stack.pop_front();
@@ -63,8 +66,10 @@ impl<T: NodeData> SymbolTable<T> {
     /// Adds the given name to the scope with the specified value.
     fn add(&mut self, name: &str, value: T) {
         match self.stack.front_mut() {
-            None => {},
-            Some(scope) => { scope.add(name, value); }
+            None => {}
+            Some(scope) => {
+                scope.add(name, value);
+            }
         }
     }
 
@@ -75,52 +80,41 @@ impl<T: NodeData> SymbolTable<T> {
 
     /// Removes the name from the inner-most scope if
     /// the name is in the scope.
-    /// 
+    ///
     /// Returns the value or `None` if value is not in
     /// the inner-most scope.
     fn remove(&mut self, name: &str) -> Option<T> {
         match self.stack.front_mut() {
             None => None,
-            Some(scope) => scope.remove(name)
+            Some(scope) => scope.remove(name),
         }
     }
 }
 
-
-pub fn from(lib: &Library) -> HashMap<String, TypeDefinitionKind>{
-    let type_map = HashMap::new();
-    let mut visitor = TypeDefinitionFinder { types: type_map };
-    walk_library(&mut visitor, lib);
+pub fn from(lib: &Library) -> HashMap<String, TypeDefinitionKind> {
+    let mut type_map = HashMap::new();
+    let mut visitor = TypeDefinitionFinder { types: &mut type_map };
+    visitor.walk(lib);
     return type_map;
 }
 
-
-
 // Finds types that are valid as variable types. These include enumerations,
 // function blocks, functions, structures.
-struct TypeDefinitionFinder {
-    types: HashMap<String, TypeDefinitionKind>,
+struct TypeDefinitionFinder<'a> {
+    types: &'a mut HashMap<String, TypeDefinitionKind>,
 }
-impl ironplc_dsl::visitor::LibraryVisitor<()> for TypeDefinitionFinder {
-    fn visit_configuration_declaration(&mut self, l: &ConfigurationDeclaration) {}
-    fn visit_data_type_declaration(&mut self, dts: &Vec<EnumerationDeclaration>) {
-        for dt in dts {
-            self.types
-                .insert(dt.name.clone(), TypeDefinitionKind::Enumeration);
-        }
+impl<'a> Visit for TypeDefinitionFinder<'a> {
+    fn visit_enum_declaration(&mut self, enum_decl: &EnumerationDeclaration) {
+        self.types
+            .insert(enum_decl.name.clone(), TypeDefinitionKind::Enumeration);
+        
     }
-    fn visit_function_declaration(&mut self, l: &FunctionDeclaration) {}
-    fn visit_function_block_declaration(&mut self, l: &FunctionBlockDeclaration) {}
-    fn visit_program_declaration(&mut self, l: &ProgramDeclaration) {}
 }
 
 struct LateBoundTypeResolver {
     types: HashMap<String, String>,
 }
-impl ironplc_dsl::visitor::LibraryVisitor<()> for LateBoundTypeResolver {
-    fn visit_configuration_declaration(&mut self, l: &ConfigurationDeclaration) {}
-    fn visit_data_type_declaration(&mut self, dts: &Vec<EnumerationDeclaration>) {}
-    fn visit_function_declaration(&mut self, l: &FunctionDeclaration) {}
+impl Visit for LateBoundTypeResolver {
     fn visit_function_block_declaration(&mut self, fb: &FunctionBlockDeclaration) {
         for var_decl in &fb.var_decls {
             match var_decl {
@@ -138,5 +132,4 @@ impl ironplc_dsl::visitor::LibraryVisitor<()> for LateBoundTypeResolver {
             }
         }
     }
-    fn visit_program_declaration(&mut self, l: &ProgramDeclaration) {}
 }

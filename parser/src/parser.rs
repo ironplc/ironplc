@@ -694,7 +694,7 @@ mod test {
         MSG : STRING;
       END_VAR";
         let vars = vec![
-            VarInit {
+          VarInitDecl {
                 name: String::from("TRIG"),
                 storage_class: StorageClass::Unspecified,
                 initializer: Option::Some(TypeInitializer::Simple {
@@ -702,7 +702,7 @@ mod test {
                     initial_value: None,
                 }),
             },
-            VarInit {
+            VarInitDecl {
                 name: String::from("MSG"),
                 storage_class: StorageClass::Unspecified,
                 initializer: Option::Some(TypeInitializer::Simple {
@@ -721,7 +721,7 @@ mod test {
         let decl = "VAR_INPUT
         LEVEL : LOGLEVEL := INFO;
       END_VAR";
-        let expected = Ok(vec![VarInit {
+        let expected = Ok(vec![VarInitDecl {
             name: String::from("LEVEL"),
             storage_class: StorageClass::Unspecified,
             initializer: Some(TypeInitializer::EnumeratedType {
@@ -739,7 +739,7 @@ mod test {
         MSG : STRING;
       END_VAR";
         let vars = vec![
-            VarInit {
+          VarInitDecl {
                 name: String::from("TRIG"),
                 storage_class: StorageClass::Unspecified,
                 initializer: Option::Some(TypeInitializer::Simple {
@@ -747,7 +747,7 @@ mod test {
                     initial_value: None,
                 }),
             },
-            VarInit {
+            VarInitDecl {
                 name: String::from("MSG"),
                 storage_class: StorageClass::Unspecified,
                 initializer: Option::Some(TypeInitializer::Simple {
@@ -977,7 +977,7 @@ mod test {
                 ops: vec![Operator::Add],
                 terms: vec![
                     ExprKind::Variable (
-                        value: Variable::SymbolicVariable(String::from("Cnt")),
+                        Variable::SymbolicVariable(String::from("Cnt"))
                     ),
                     ExprKind::Const (
                         Constant::IntegerLiteral(1),
