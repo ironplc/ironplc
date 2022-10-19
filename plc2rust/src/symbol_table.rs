@@ -36,12 +36,6 @@ struct SymbolTable<T: NodeData> {
 
 impl<T: NodeData> SymbolTable<T> {
     /// Creates an empty `SymbolTable`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let table: SymbolTable<bool> = SymbolTable::new();
-    /// ```
     fn new() -> Self {
         let mut stack = LinkedList::new();
         stack.push_back(Scope::new());
