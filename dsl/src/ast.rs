@@ -10,21 +10,27 @@ pub enum Variable {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct Assignment {
+    pub target: Variable,
+    pub value: ExprKind,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct FbCall {
+    pub name: String,
+    pub params: Vec<ParamAssignment>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum StmtKind {
-    Assignment {
-        target: Variable,
-        value: ExprKind,
-    },
+    Assignment(Assignment),
     If {
         // TODO how to handle else else if (that should probably be a nested if)
         expr: ExprKind,
         body: Vec<StmtKind>,
         else_body: Vec<StmtKind>,
     },
-    FbCall {
-        name: String,
-        params: Vec<ParamAssignment>,
-    },
+    FbCall(FbCall),
 }
 
 impl StmtKind {
@@ -37,13 +43,13 @@ impl StmtKind {
             })
             .collect::<Vec<ParamAssignment>>();
 
-        StmtKind::Assignment {
-            target: Variable::SymbolicVariable(String::from(output)),
-            value: ExprKind::Function {
+        StmtKind::assignment (
+            Variable::SymbolicVariable(String::from(output)),
+            ExprKind::Function {
                 name: String::from(fb_name),
                 param_assignment: assignments,
-            },
-        }
+            }
+        )
     }
     pub fn fb_call_mapped(fb_name: &str, inputs: Vec<(&str, &str)>) -> StmtKind {
         let assignments = inputs
@@ -54,13 +60,22 @@ impl StmtKind {
             })
             .collect::<Vec<ParamAssignment>>();
 
-        StmtKind::FbCall {
-            name: String::from(fb_name),
-            params: assignments,
-        }
+        StmtKind::FbCall (
+            FbCall {
+                name: String::from(fb_name),
+                params: assignments,
+            }
+        )
     }
 
-    pub fn assignment(target: &str, src: Vec<&str>) -> StmtKind {
+    pub fn assignment(target: Variable, value: ExprKind) -> StmtKind {
+        StmtKind::Assignment(Assignment {
+            target: target,
+            value: value,
+        })
+    }
+
+    pub fn simple_assignment(target: &str, src: Vec<&str>) -> StmtKind {
         let variable = match src.len() {
             1 => Variable::SymbolicVariable(String::from(src[0])),
             _ => {
@@ -72,10 +87,10 @@ impl StmtKind {
             }
         };
 
-        StmtKind::Assignment {
+        StmtKind::Assignment(Assignment {
             target: Variable::SymbolicVariable(String::from(target)),
             value: ExprKind::Variable(variable),
-        }
+        })
     }
 }
 

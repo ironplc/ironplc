@@ -1,8 +1,37 @@
 use ironplc_dsl::dsl::*;
 use ironplc_dsl::fold::Fold;
+use ironplc_dsl::visitor::Visit;
 use std::collections::HashMap;
 
-use crate::symbol_table;
+pub fn apply(lib: Library) -> Library {
+    
+    let mut type_map = HashMap::new();
+
+    // Walk the entire library to find the types. We don't need
+    // to keep track of contexts because types are global scoped.
+    let mut visitor = TypeDefinitionFinder { types: &mut type_map };
+    visitor.walk(&lib);
+
+    // Set the types for each item.
+    let mut resolver = TypeResolver {
+        types: type_map
+    };
+    resolver.fold(lib)
+}
+
+// Finds types that are valid as variable types. These include enumerations,
+// function blocks, functions, structures.
+struct TypeDefinitionFinder<'a> {
+    types: &'a mut HashMap<String, TypeDefinitionKind>,
+}
+impl<'a> Visit for TypeDefinitionFinder<'a> {
+    fn visit_enum_declaration(&mut self, enum_decl: &EnumerationDeclaration) {
+        self.types
+            .insert(enum_decl.name.clone(), TypeDefinitionKind::Enumeration);
+        
+    }
+}
+
 
 pub struct TypeResolver {
     types: HashMap<String, TypeDefinitionKind>,
