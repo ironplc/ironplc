@@ -104,26 +104,3 @@ impl<'a> Visit for TypeDefinitionFinder<'a> {
         
     }
 }
-
-struct LateBoundTypeResolver {
-    types: HashMap<String, String>,
-}
-impl Visit for LateBoundTypeResolver {
-    fn visit_function_block_declaration(&mut self, fb: &FunctionBlockDeclaration) {
-        for var_decl in &fb.var_decls {
-            match var_decl {
-                VarInitKind::LocatedVarInit(located) => {
-                    if let TypeInitializer::LateResolvedType(type_name) = &located.initializer {
-                        let type_kind = self.types.get(type_name);
-                        /*located.initializer = TypeInitializer::FunctionBlock{
-                            type_name: type_name.to_string(),
-                        };*/
-                    }
-                }
-                VarInitKind::VarInit(var) => {
-                    if let Some(TypeInitializer::LateResolvedType(tn)) = &var.initializer {}
-                }
-            }
-        }
-    }
-}

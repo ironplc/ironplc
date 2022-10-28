@@ -11,17 +11,12 @@ mod type_resolver;
 
 pub fn main() {
     let library = ironplc_parser::parse_program("").unwrap_or(Library::new(vec![]));
-    
-    // Walk the entire library to find symbol definitions.
-    // We will use these to resolve late bound types because
-    // we now know the specific type of each name.
-    let symbol_table = symbol_table::from(&library);
 
     // Resolve the late bound type declarations, replacing with
     // the type-specific declarations. This just simplifies
     // code generation because we know the type of every declaration
     // exactly
-    let library = TypeResolver::apply(library, symbol_table);
+    let library = type_resolver::apply(library);
 
     // Static analysis (binding) and building symbol table
     //
@@ -113,10 +108,10 @@ mod tests {
                         body: vec![],
                         else_body: vec![],
                     },
-                    StmtKind::Assignment {
-                        target: Variable::SymbolicVariable(String::from("TRIG0")),
-                        value: ExprKind::symbolic_variable("TRIG"),
-                    },
+                    StmtKind::assignment(
+                        Variable::SymbolicVariable(String::from("TRIG0")),
+                        ExprKind::symbolic_variable("TRIG"),
+                    ),
                 ]),
             },
         ));
@@ -168,11 +163,11 @@ mod tests {
                         },
                         Element::action(
                             "RESETCOUNTER_INLINE1",
-                            vec![StmtKind::assignment("Cnt", vec!["ResetCounterValue"])],
+                            vec![StmtKind::simple_assignment("Cnt", vec!["ResetCounterValue"])],
                         ),
                         Element::action(
                             "RESETCOUNTER_INLINE2",
-                            vec![StmtKind::assignment("OUT", vec!["Cnt"])],
+                            vec![StmtKind::simple_assignment("OUT", vec!["Cnt"])],
                         ),
                         Element::transition(
                             "ResetCounter",
@@ -199,20 +194,20 @@ mod tests {
                         },
                         Element::action(
                             "COUNT_INLINE3",
-                            vec![StmtKind::Assignment {
-                                target: Variable::SymbolicVariable(String::from("Cnt")),
-                                value: ExprKind::BinaryOp {
+                            vec![StmtKind::assignment(
+                                Variable::SymbolicVariable(String::from("Cnt")),
+                                ExprKind::BinaryOp {
                                     ops: vec![Operator::Add],
                                     terms: vec![
                                         ExprKind::symbolic_variable("Cnt"),
                                         ExprKind::integer_literal(1),
                                     ],
                                 },
-                            }],
+                            )],
                         ),
                         Element::action(
                             "COUNT_INLINE4",
-                            vec![StmtKind::assignment("OUT", vec!["Cnt"])],
+                            vec![StmtKind::simple_assignment("OUT", vec!["Cnt"])],
                         ),
                         Element::transition("Count", "Start", ExprKind::symbolic_variable("Reset")),
                     ],
@@ -244,8 +239,8 @@ mod tests {
                     VarInitKind::simple("_TMP_SEL7_OUT", "INT"),
                 ],
                 body: FunctionBlockBody::Statements(vec![
-                    StmtKind::assignment("Cnt", vec!["_TMP_SEL7_OUT"]),
-                    StmtKind::assignment("OUT", vec!["Cnt"]),
+                    StmtKind::simple_assignment("Cnt", vec!["_TMP_SEL7_OUT"]),
+                    StmtKind::simple_assignment("OUT", vec!["Cnt"]),
                 ]),
             },
         ));
@@ -276,9 +271,9 @@ mod tests {
                     }),
                 },
             ],
-            body: vec![StmtKind::Assignment {
-                target: Variable::SymbolicVariable(String::from("AverageVal")),
-                value: ExprKind::BinaryOp {
+            body: vec![StmtKind::assignment(
+                Variable::SymbolicVariable(String::from("AverageVal")),
+                ExprKind::BinaryOp {
                     // TODO This operator is incorrect
                     ops: vec![Operator::Mul],
                     terms: vec![
@@ -301,7 +296,7 @@ mod tests {
                         ExprKind::symbolic_variable("InputsNumber"),
                     ],
                 },
-            }],
+            )],
         }));
         assert_eq!(ironplc_parser::parse_program(src.as_str()), expected)
     }
@@ -338,21 +333,21 @@ mod tests {
             ],
             body: FunctionBlockBody::Statements(vec![
                 StmtKind::fb_call_mapped("CounterST0", vec![("Reset", "Reset")]),
-                StmtKind::assignment("Cnt1", vec!["CounterST0", "OUT"]),
+                StmtKind::simple_assignment("Cnt1", vec!["CounterST0", "OUT"]),
                 StmtKind::fb_assign(
                     "AverageVal",
                     vec!["Cnt1", "Cnt2", "Cnt3", "Cnt4", "Cnt5"],
                     "_TMP_AverageVal17_OUT",
                 ),
-                StmtKind::assignment("AVCnt", vec!["_TMP_AverageVal17_OUT"]),
+                StmtKind::simple_assignment("AVCnt", vec!["_TMP_AverageVal17_OUT"]),
                 StmtKind::fb_call_mapped("CounterFBD0", vec![("Reset", "Reset")]),
-                StmtKind::assignment("Cnt2", vec!["CounterFBD0", "OUT"]),
+                StmtKind::simple_assignment("Cnt2", vec!["CounterFBD0", "OUT"]),
                 StmtKind::fb_call_mapped("CounterSFC0", vec![("Reset", "Reset")]),
-                StmtKind::assignment("Cnt3", vec!["CounterSFC0", "OUT"]),
+                StmtKind::simple_assignment("Cnt3", vec!["CounterSFC0", "OUT"]),
                 StmtKind::fb_call_mapped("CounterIL0", vec![("Reset", "Reset")]),
-                StmtKind::assignment("Cnt4", vec!["CounterIL0", "OUT"]),
+                StmtKind::simple_assignment("Cnt4", vec!["CounterIL0", "OUT"]),
                 StmtKind::fb_call_mapped("CounterLD0", vec![("Reset", "Reset")]),
-                StmtKind::assignment("Cnt5", vec!["CounterLD0", "Out"]),
+                StmtKind::simple_assignment("Cnt5", vec!["CounterLD0", "Out"]),
             ]),
         }));
         assert_eq!(ironplc_parser::parse_program(src.as_str()), expected)

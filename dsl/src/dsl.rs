@@ -353,6 +353,15 @@ impl fmt::Debug for DirectVariable {
     }
 }
 
+impl fmt::Display for DirectVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DirectVariable")
+            .field("location", &self.location)
+            .field("size", &self.size)
+            .finish()
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum FunctionBlockBody {
     Sfc(Vec<Network>),

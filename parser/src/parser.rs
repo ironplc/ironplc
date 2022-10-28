@@ -643,16 +643,16 @@ parser! {
       / selection:selection_statement() { selection } / fb:fb_invocation() { fb }
 
     // B.3.2.1 Assignment statements
-    pub rule assignment_statement() -> StmtKind = var:variable() _ ":=" _ expr:expression() { StmtKind::Assignment{target: var, value:expr } }
+    pub rule assignment_statement() -> StmtKind = var:variable() _ ":=" _ expr:expression() { StmtKind::assignment(var, expr) }
 
     // B.3.2.2 Subprogram control statements
     // TODO add RETURN
     rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb }
     rule fb_invocation() -> StmtKind = name:fb_name() _ "(" _ params:param_assignment() ** (_ "," _) _ ")" {
-      StmtKind::FbCall {
+      StmtKind::FbCall(FbCall {
         name: String::from(name),
         params: params,
-      }
+      })
     }
     // TODO this needs much more
     rule param_assignment() -> ParamAssignment = name:(n:variable_name() _ ":=" { n })? _ expr:expression() {
@@ -896,12 +896,12 @@ mod test {
                 },
                 Element::Action {
                     name: String::from("RESETCOUNTER_INLINE1"),
-                    body: FunctionBlockBody::Statements(vec![StmtKind::Assignment {
-                        target: Variable::SymbolicVariable(String::from("Cnt")),
-                        value: ExprKind::Variable(Variable::SymbolicVariable(String::from(
+                    body: FunctionBlockBody::Statements(vec![StmtKind::assignment(
+                        Variable::SymbolicVariable(String::from("Cnt")),
+                        ExprKind::Variable(Variable::SymbolicVariable(String::from(
                             "ResetCounterValue",
                         ))),
-                    }]),
+                      )]),
                 },
                 Element::Transition {
                     name: None,
@@ -947,33 +947,33 @@ mod test {
 
     #[test]
     fn statement_assign_constant() {
-        let expected = Ok(vec![StmtKind::Assignment {
-            target: Variable::SymbolicVariable(String::from("Cnt")),
-            value: ExprKind::Const(Constant::IntegerLiteral(1)),
-        }]);
+        let expected = Ok(vec![StmtKind::assignment(
+            Variable::SymbolicVariable(String::from("Cnt")),
+            ExprKind::Const(Constant::IntegerLiteral(1)),
+        )]);
         assert_eq!(plc_parser::statement_list("Cnt := 1;"), expected)
     }
 
     #[test]
     fn statement_assign_add_const_operator() {
-        let expected = Ok(vec![StmtKind::Assignment {
-            target: Variable::SymbolicVariable(String::from("Cnt")),
-            value: ExprKind::BinaryOp {
+        let expected = Ok(vec![StmtKind::assignment(
+            Variable::SymbolicVariable(String::from("Cnt")),
+            ExprKind::BinaryOp {
                 ops: vec![Operator::Add],
                 terms: vec![
                     ExprKind::Const(Constant::IntegerLiteral(1)),
                     ExprKind::Const(Constant::IntegerLiteral(2)),
                 ],
             },
-        }]);
+          )]);
         assert_eq!(plc_parser::statement_list("Cnt := 1 + 2;"), expected)
     }
 
     #[test]
     fn statement_assign_add_symbol_operator() {
-        let expected = Ok(vec![StmtKind::Assignment {
-            target: Variable::SymbolicVariable(String::from("Cnt")),
-            value: ExprKind::BinaryOp {
+        let expected = Ok(vec![StmtKind::assignment(
+            Variable::SymbolicVariable(String::from("Cnt")),
+            ExprKind::BinaryOp {
                 ops: vec![Operator::Add],
                 terms: vec![
                     ExprKind::Variable (
@@ -984,7 +984,7 @@ mod test {
                     ),
                 ],
             },
-        }]);
+          )]);
         assert_eq!(plc_parser::statement_list("Cnt := Cnt + 1;"), expected)
     }
 
@@ -1007,10 +1007,10 @@ mod test {
                     },
                 ],
             },
-            body: vec![StmtKind::Assignment {
-                target: Variable::SymbolicVariable(String::from("TRIG0")),
-                value: ExprKind::Variable(Variable::SymbolicVariable(String::from("TRIG"))),
-            }],
+            body: vec![StmtKind::assignment(
+                Variable::SymbolicVariable(String::from("TRIG0")),
+                ExprKind::Variable(Variable::SymbolicVariable(String::from("TRIG"))),
+            )],
             else_body: vec![],
         }]);
         assert_eq!(plc_parser::statement_list(statement), expected)
@@ -1025,22 +1025,22 @@ mod test {
   END_IF;";
         let expected = Ok(vec![StmtKind::If {
             expr: ExprKind::Variable(Variable::SymbolicVariable(String::from("Reset"))),
-            body: vec![StmtKind::Assignment {
-                target: Variable::SymbolicVariable(String::from("Cnt")),
-                value: ExprKind::Variable(Variable::SymbolicVariable(String::from(
+            body: vec![StmtKind::assignment(
+                Variable::SymbolicVariable(String::from("Cnt")),
+                ExprKind::Variable(Variable::SymbolicVariable(String::from(
                     "ResetCounterValue",
                 ))),
-            }],
-            else_body: vec![StmtKind::Assignment {
-                target: Variable::SymbolicVariable(String::from("Cnt")),
-                value: ExprKind::BinaryOp {
+              )],
+            else_body: vec![StmtKind::assignment(
+                Variable::SymbolicVariable(String::from("Cnt")),
+                ExprKind::BinaryOp {
                     ops: vec![Operator::Add],
                     terms: vec![
                         ExprKind::Variable(Variable::SymbolicVariable(String::from("Cnt"))),
                         ExprKind::Const(Constant::IntegerLiteral(1)),
                     ],
                 },
-            }],
+              )],
         }]);
 
         assert_eq!(plc_parser::statement_list(statement), expected)
@@ -1049,13 +1049,13 @@ mod test {
     #[test]
     fn statement_fb_invocation_without_name() {
         let statement = "CounterLD0(Reset);";
-        let expected = Ok(vec![StmtKind::FbCall {
+        let expected = Ok(vec![StmtKind::FbCall( FbCall {
             name: String::from("CounterLD0"),
             params: vec![ParamAssignment::Input {
                 name: None,
                 expr: ExprKind::Variable(Variable::SymbolicVariable(String::from("Reset"))),
             }],
-        }]);
+        })]);
 
         assert_eq!(plc_parser::statement_list(statement), expected)
     }
@@ -1063,13 +1063,13 @@ mod test {
     #[test]
     fn statement_fb_invocation_with_name() {
         let statement = "CounterLD0(Cnt := Reset);";
-        let expected = Ok(vec![StmtKind::FbCall {
+        let expected = Ok(vec![StmtKind::FbCall (FbCall {
             name: String::from("CounterLD0"),
             params: vec![ParamAssignment::Input {
                 name: Option::Some(String::from("Cnt")),
                 expr: ExprKind::Variable(Variable::SymbolicVariable(String::from("Reset"))),
             }],
-        }]);
+        })]);
 
         assert_eq!(plc_parser::statement_list(statement), expected)
     }
@@ -1077,13 +1077,13 @@ mod test {
     #[test]
     fn assignment() {
         let assign = "Cnt1 := CounterST0.OUT";
-        let expected = Ok(StmtKind::Assignment {
-            target: Variable::SymbolicVariable(String::from("Cnt1")),
-            value: ExprKind::Variable(Variable::MultiElementVariable(vec![
+        let expected = Ok(StmtKind::assignment(
+            Variable::SymbolicVariable(String::from("Cnt1")),
+            ExprKind::Variable(Variable::MultiElementVariable(vec![
                 String::from("CounterST0"),
                 String::from("OUT"),
             ])),
-        });
+        ));
         assert_eq!(plc_parser::assignment_statement(assign), expected)
     }
 }
