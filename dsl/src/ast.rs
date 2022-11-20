@@ -12,7 +12,7 @@ pub enum Variable {
 impl Variable {
     pub fn symbolic(name: &str) -> Variable {
         Variable::SymbolicVariable(SymbolicVariable {
-            name: String::from(name)
+            name: String::from(name),
         })
     }
 }

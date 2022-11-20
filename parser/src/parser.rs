@@ -898,9 +898,7 @@ mod test {
                     name: String::from("RESETCOUNTER_INLINE1"),
                     body: FunctionBlockBody::stmts(vec![StmtKind::assignment(
                         Variable::symbolic("Cnt"),
-                        ExprKind::symbolic_variable(
-                            "ResetCounterValue"
-                        ),
+                        ExprKind::symbolic_variable("ResetCounterValue"),
                     )]),
                 },
                 Element::Transition {
@@ -920,9 +918,7 @@ mod test {
                     to: vec![String::from("Count")],
                     condition: ExprKind::UnaryOp {
                         op: UnaryOp::Not,
-                        term: Box::new(ExprKind::symbolic_variable(
-                            "Reset"
-                        )),
+                        term: Box::new(ExprKind::symbolic_variable("Reset")),
                     },
                 },
                 Element::Step {
@@ -997,9 +993,7 @@ mod test {
                     ExprKind::symbolic_variable("TRIG"),
                     ExprKind::UnaryOp {
                         op: UnaryOp::Not,
-                        term: Box::new(ExprKind::symbolic_variable(
-                            "TRIG"
-                        )),
+                        term: Box::new(ExprKind::symbolic_variable("TRIG")),
                     },
                 ],
             },
@@ -1023,9 +1017,7 @@ mod test {
             expr: ExprKind::symbolic_variable("Reset"),
             body: vec![StmtKind::assignment(
                 Variable::symbolic("Cnt"),
-                ExprKind::symbolic_variable(
-                    "ResetCounterValue"
-                ),
+                ExprKind::symbolic_variable("ResetCounterValue"),
             )],
             else_body: vec![StmtKind::assignment(
                 Variable::symbolic("Cnt"),

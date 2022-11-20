@@ -1,16 +1,16 @@
 //! A set of traits and functions for visiting all nodes in a library.
 //! To use the visitor, define a struct and implement the Visitor train
 //! for the struct.
-//! 
+//!
 //! Visitor trait functions call functions that implement walking through
 //! the library. Selectively call this functions to selectively descend
 //! into the library.
-//! 
+//!
 //! # Example
-//! 
+//!
 //! ```
 //! struct Dummy {}
-//! 
+//!
 //! impl Visitor for Dummy {
 //!     fn visit_function_declaration(&mut self, func_decl: &FunctionDeclaration) {
 //!         // Do something custom before visiting the FunctionDeclaration node
@@ -22,8 +22,6 @@
 use crate::ast::*;
 use crate::dsl::*;
 use crate::sfc::Network;
-
-
 
 pub trait Acceptor {
     fn accept<V: Visitor + ?Sized>(&self, visitor: &mut V);
@@ -87,26 +85,21 @@ pub trait Visitor {
 
     fn visit_assignment(&mut self, assignment: &Assignment) {
         Acceptor::accept(&assignment.target, self);
-
     }
 
-    fn visit_direct_variable(&mut self, variable: &DirectVariable) {
+    fn visit_direct_variable(&mut self, variable: &DirectVariable) {}
 
-    }
-
-    fn visit_symbolic_variable(&mut self, variable: &SymbolicVariable) {
-
-    }
+    fn visit_symbolic_variable(&mut self, variable: &SymbolicVariable) {}
 
     fn visit_fb_call(&mut self, fb_call: &FbCall) {}
-
-
 }
 
-pub fn visit_enum_declaration<V: Visitor + ?Sized>(v: &mut V, node: &EnumerationDeclaration) {
-}
+pub fn visit_enum_declaration<V: Visitor + ?Sized>(v: &mut V, node: &EnumerationDeclaration) {}
 
-pub fn visit_function_block_declaration<V: Visitor + ?Sized>(v: &mut V, node: &FunctionBlockDeclaration) {
+pub fn visit_function_block_declaration<V: Visitor + ?Sized>(
+    v: &mut V,
+    node: &FunctionBlockDeclaration,
+) {
     Acceptor::accept(&node.var_decls, v);
     Acceptor::accept(&node.body, v);
 }
@@ -119,7 +112,6 @@ pub fn visit_function_declaration<V: Visitor + ?Sized>(v: &mut V, func_decl: &Fu
 pub fn visit_program_declaration<V: Visitor + ?Sized>(v: &mut V, prog_decl: &ProgramDeclaration) {
     Acceptor::accept(&prog_decl.var_declarations, v);
     Acceptor::accept(&prog_decl.body, v);
-
 }
 
 impl Acceptor for LibraryElement {
@@ -172,7 +164,7 @@ impl Acceptor for FunctionBlockBody {
         match self {
             FunctionBlockBody::Sfc(network) => {
                 visitor.visit_sfc(network);
-            },
+            }
             FunctionBlockBody::Statements(stmts) => {
                 visitor.visit_statements(stmts);
             }
@@ -209,13 +201,13 @@ impl Acceptor for Variable {
         match self {
             Variable::DirectVariable(var) => {
                 visitor.visit_direct_variable(var);
-            },
+            }
             Variable::SymbolicVariable(var) => {
                 visitor.visit_symbolic_variable(var);
-            },
+            }
             Variable::MultiElementVariable(_) => {
                 todo!()
-            },
+            }
         }
     }
 }

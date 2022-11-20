@@ -1,6 +1,12 @@
 use std::collections::HashMap;
 
-use ironplc_dsl::{dsl::*, visitor::{Visitor, visit_function_block_declaration, visit_function_declaration, visit_program_declaration}};
+use ironplc_dsl::{
+    dsl::*,
+    visitor::{
+        visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
+        Visitor,
+    },
+};
 
 use crate::symbol_table::{self, NodeData, SymbolTable};
 
@@ -25,15 +31,15 @@ impl Visitor for SymbolTable<DummyNode> {
 
     fn visit_program_declaration(&mut self, prog_decl: &ProgramDeclaration) {
         self.enter();
-        
+
         visit_program_declaration(self, prog_decl);
-    
+
         self.exit();
     }
 
     fn visit_function_block_declaration(&mut self, func_decl: &FunctionBlockDeclaration) {
         self.enter();
-    
+
         visit_function_block_declaration(self, func_decl);
 
         self.exit();
@@ -78,7 +84,7 @@ mod tests {
                     },
                     body: vec![],
                     else_body: vec![],
-                },]),
+                }]),
             },
         ))
         .unwrap();
