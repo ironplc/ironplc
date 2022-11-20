@@ -1,6 +1,3 @@
-use ironplc_dsl::visitor::Visit;
-
-use crate::ironplc_dsl::dsl::*;
 use std::collections::HashMap;
 use std::collections::LinkedList;
 
@@ -30,13 +27,13 @@ impl<T: NodeData> Scope<T> {
     }
 }
 
-struct SymbolTable<T: NodeData> {
+pub struct SymbolTable<T: NodeData> {
     stack: LinkedList<Scope<T>>,
 }
 
 impl<T: NodeData> SymbolTable<T> {
     /// Creates an empty `SymbolTable`.
-    fn new() -> Self {
+    pub fn new() -> Self {
         let mut stack = LinkedList::new();
         stack.push_back(Scope::new());
         return SymbolTable { stack: stack };
@@ -46,19 +43,19 @@ impl<T: NodeData> SymbolTable<T> {
     ///
     /// This creates a new context that can hide declarations
     /// from outer scopes.
-    fn enter(&mut self) {
+    pub fn enter(&mut self) {
         self.stack.push_front(Scope::new())
     }
 
     /// Exits the current scope.
     ///
     /// This removes the current scope.
-    fn exit(&mut self) {
+    pub fn exit(&mut self) {
         self.stack.pop_front();
     }
 
     /// Adds the given name to the scope with the specified value.
-    fn add(&mut self, name: &str, value: T) {
+    pub fn add(&mut self, name: &str, value: T) {
         match self.stack.front_mut() {
             None => {}
             Some(scope) => {
@@ -68,7 +65,7 @@ impl<T: NodeData> SymbolTable<T> {
     }
 
     /// Returns the value for the given name.
-    fn find(&mut self, name: &str) -> Option<&T> {
+    pub fn find(&mut self, name: &str) -> Option<&T> {
         self.stack.iter_mut().find_map(|scope| scope.find(name))
     }
 
@@ -77,30 +74,10 @@ impl<T: NodeData> SymbolTable<T> {
     ///
     /// Returns the value or `None` if value is not in
     /// the inner-most scope.
-    fn remove(&mut self, name: &str) -> Option<T> {
+    pub fn remove(&mut self, name: &str) -> Option<T> {
         match self.stack.front_mut() {
             None => None,
             Some(scope) => scope.remove(name),
         }
-    }
-}
-
-pub fn from(lib: &Library) -> HashMap<String, TypeDefinitionKind> {
-    let mut type_map = HashMap::new();
-    let mut visitor = TypeDefinitionFinder { types: &mut type_map };
-    visitor.walk(lib);
-    return type_map;
-}
-
-// Finds types that are valid as variable types. These include enumerations,
-// function blocks, functions, structures.
-struct TypeDefinitionFinder<'a> {
-    types: &'a mut HashMap<String, TypeDefinitionKind>,
-}
-impl<'a> Visit for TypeDefinitionFinder<'a> {
-    fn visit_enum_declaration(&mut self, enum_decl: &EnumerationDeclaration) {
-        self.types
-            .insert(enum_decl.name.clone(), TypeDefinitionKind::Enumeration);
-        
     }
 }

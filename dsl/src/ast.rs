@@ -3,10 +3,23 @@ use crate::dsl::{Constant, DirectVariable};
 #[derive(Debug, PartialEq, Clone)]
 pub enum Variable {
     DirectVariable(DirectVariable),
-    SymbolicVariable(String),
+    SymbolicVariable(SymbolicVariable),
     // A structured variable that may be nested. This data type is definitely
     // incorrect because it doesn't support array types
     MultiElementVariable(Vec<String>),
+}
+
+impl Variable {
+    pub fn symbolic(name: &str) -> Variable {
+        Variable::SymbolicVariable(SymbolicVariable {
+            name: String::from(name)
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct SymbolicVariable {
+    pub name: String,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -39,16 +52,16 @@ impl StmtKind {
             .into_iter()
             .map(|input| ParamAssignment::Input {
                 name: None,
-                expr: ExprKind::Variable(Variable::SymbolicVariable(String::from(input))),
+                expr: ExprKind::symbolic_variable(input),
             })
             .collect::<Vec<ParamAssignment>>();
 
-        StmtKind::assignment (
-            Variable::SymbolicVariable(String::from(output)),
+        StmtKind::assignment(
+            Variable::symbolic(output),
             ExprKind::Function {
                 name: String::from(fb_name),
                 param_assignment: assignments,
-            }
+            },
         )
     }
     pub fn fb_call_mapped(fb_name: &str, inputs: Vec<(&str, &str)>) -> StmtKind {
@@ -56,16 +69,14 @@ impl StmtKind {
             .into_iter()
             .map(|pair| ParamAssignment::Input {
                 name: Some(String::from(pair.0)),
-                expr: ExprKind::Variable(Variable::SymbolicVariable(String::from(pair.1))),
+                expr: ExprKind::Variable(Variable::symbolic(pair.1)),
             })
             .collect::<Vec<ParamAssignment>>();
 
-        StmtKind::FbCall (
-            FbCall {
-                name: String::from(fb_name),
-                params: assignments,
-            }
-        )
+        StmtKind::FbCall(FbCall {
+            name: String::from(fb_name),
+            params: assignments,
+        })
     }
 
     pub fn assignment(target: Variable, value: ExprKind) -> StmtKind {
@@ -77,7 +88,7 @@ impl StmtKind {
 
     pub fn simple_assignment(target: &str, src: Vec<&str>) -> StmtKind {
         let variable = match src.len() {
-            1 => Variable::SymbolicVariable(String::from(src[0])),
+            1 => Variable::symbolic(src[0]),
             _ => {
                 let src = src
                     .into_iter()
@@ -88,7 +99,7 @@ impl StmtKind {
         };
 
         StmtKind::Assignment(Assignment {
-            target: Variable::SymbolicVariable(String::from(target)),
+            target: Variable::symbolic(target),
             value: ExprKind::Variable(variable),
         })
     }
@@ -151,7 +162,7 @@ impl ExprKind {
     }
 
     pub fn symbolic_variable(name: &str) -> ExprKind {
-        ExprKind::Variable(Variable::SymbolicVariable(String::from(name)))
+        ExprKind::Variable(Variable::symbolic(name))
     }
 
     pub fn integer_literal(value: i128) -> ExprKind {

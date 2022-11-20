@@ -69,7 +69,9 @@ impl Element {
     pub fn action(name: &str, body: Vec<StmtKind>) -> Element {
         Element::Action {
             name: String::from(name),
-            body: FunctionBlockBody::Statements(body),
+            body: FunctionBlockBody::Statements(Statements {
+                body: body
+            }),
         }
     }
 
