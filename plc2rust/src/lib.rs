@@ -2,12 +2,12 @@ extern crate ironplc_dsl;
 extern crate ironplc_parser;
 
 use crate::ironplc_dsl::dsl::Library;
-use crate::type_resolver::TypeResolver;
 
 mod symbol_table;
 #[cfg(test)]
 mod test_helpers;
 mod type_resolver;
+mod use_declared_checker;
 
 pub fn main() {
     let library = ironplc_parser::parse_program("").unwrap_or(Library::new(vec![]));
@@ -17,6 +17,8 @@ pub fn main() {
     // code generation because we know the type of every declaration
     // exactly
     let library = type_resolver::apply(library);
+
+    use_declared_checker::apply(library);
 
     // Static analysis (binding) and building symbol table
     //
@@ -93,7 +95,7 @@ mod tests {
                     VarInitKind::enumerated("LEVEL", "LOGLEVEL", "INFO"),
                     VarInitKind::simple("TRIG0", "BOOL"),
                 ],
-                body: FunctionBlockBody::Statements(vec![
+                body: FunctionBlockBody::stmts(vec![
                     StmtKind::If {
                         expr: ExprKind::Compare {
                             op: CompareOp::And,
@@ -109,7 +111,7 @@ mod tests {
                         else_body: vec![],
                     },
                     StmtKind::assignment(
-                        Variable::SymbolicVariable(String::from("TRIG0")),
+                        Variable::symbolic("TRIG0"),
                         ExprKind::symbolic_variable("TRIG"),
                     ),
                 ]),
@@ -137,7 +139,7 @@ mod tests {
                         }),
                     }),
                 ],
-                body: FunctionBlockBody::Sfc(vec![Network {
+                body: FunctionBlockBody::sfc(vec![Network {
                     initial_step: Element::InitialStep {
                         name: String::from("Start"),
                         action_associations: vec![],
@@ -163,7 +165,10 @@ mod tests {
                         },
                         Element::action(
                             "RESETCOUNTER_INLINE1",
-                            vec![StmtKind::simple_assignment("Cnt", vec!["ResetCounterValue"])],
+                            vec![StmtKind::simple_assignment(
+                                "Cnt",
+                                vec!["ResetCounterValue"],
+                            )],
                         ),
                         Element::action(
                             "RESETCOUNTER_INLINE2",
@@ -195,7 +200,7 @@ mod tests {
                         Element::action(
                             "COUNT_INLINE3",
                             vec![StmtKind::assignment(
-                                Variable::SymbolicVariable(String::from("Cnt")),
+                                Variable::symbolic("Cnt"),
                                 ExprKind::BinaryOp {
                                     ops: vec![Operator::Add],
                                     terms: vec![
@@ -238,7 +243,7 @@ mod tests {
                     VarInitKind::simple("_TMP_ADD4_OUT", "INT"),
                     VarInitKind::simple("_TMP_SEL7_OUT", "INT"),
                 ],
-                body: FunctionBlockBody::Statements(vec![
+                body: FunctionBlockBody::stmts(vec![
                     StmtKind::simple_assignment("Cnt", vec!["_TMP_SEL7_OUT"]),
                     StmtKind::simple_assignment("OUT", vec!["Cnt"]),
                 ]),
@@ -272,7 +277,7 @@ mod tests {
                 },
             ],
             body: vec![StmtKind::assignment(
-                Variable::SymbolicVariable(String::from("AverageVal")),
+                Variable::symbolic("AverageVal"),
                 ExprKind::BinaryOp {
                     // TODO This operator is incorrect
                     ops: vec![Operator::Mul],
@@ -331,7 +336,7 @@ mod tests {
                 VarInitKind::VarInit(VarInitDecl::simple("AVCnt", "REAL")),
                 VarInitKind::VarInit(VarInitDecl::simple("_TMP_AverageVal17_OUT", "REAL")),
             ],
-            body: FunctionBlockBody::Statements(vec![
+            body: FunctionBlockBody::stmts(vec![
                 StmtKind::fb_call_mapped("CounterST0", vec![("Reset", "Reset")]),
                 StmtKind::simple_assignment("Cnt1", vec!["CounterST0", "OUT"]),
                 StmtKind::fb_assign(

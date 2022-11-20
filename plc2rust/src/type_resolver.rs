@@ -1,48 +1,37 @@
 use ironplc_dsl::dsl::*;
 use ironplc_dsl::fold::Fold;
-use ironplc_dsl::visitor::Visit;
+use ironplc_dsl::visitor::Visitor;
 use std::collections::HashMap;
 
 pub fn apply(lib: Library) -> Library {
-    
     let mut type_map = HashMap::new();
 
     // Walk the entire library to find the types. We don't need
     // to keep track of contexts because types are global scoped.
-    let mut visitor = TypeDefinitionFinder { types: &mut type_map };
+    let mut visitor = GlobalTypeDefinitionVisitor {
+        types: &mut type_map,
+    };
     visitor.walk(&lib);
 
     // Set the types for each item.
-    let mut resolver = TypeResolver {
-        types: type_map
-    };
+    let mut resolver = TypeResolver { types: type_map };
     resolver.fold(lib)
 }
 
 // Finds types that are valid as variable types. These include enumerations,
 // function blocks, functions, structures.
-struct TypeDefinitionFinder<'a> {
+struct GlobalTypeDefinitionVisitor<'a> {
     types: &'a mut HashMap<String, TypeDefinitionKind>,
 }
-impl<'a> Visit for TypeDefinitionFinder<'a> {
+impl<'a> Visitor for GlobalTypeDefinitionVisitor<'a> {
     fn visit_enum_declaration(&mut self, enum_decl: &EnumerationDeclaration) {
         self.types
             .insert(enum_decl.name.clone(), TypeDefinitionKind::Enumeration);
-        
     }
 }
 
-
-pub struct TypeResolver {
+struct TypeResolver {
     types: HashMap<String, TypeDefinitionKind>,
-}
-impl TypeResolver {
-    pub fn apply(library: Library, symbol_table: HashMap<String, TypeDefinitionKind>) -> Library {
-        let mut type_resolver = TypeResolver {
-            types: symbol_table,
-        };
-        type_resolver.fold(library)
-    }
 }
 
 impl Fold for TypeResolver {
@@ -86,7 +75,7 @@ mod tests {
             FunctionBlockDeclaration {
                 name: String::from("LOGGER"),
                 var_decls: vec![VarInitKind::late_bound("var_name", "var_type")],
-                body: FunctionBlockBody::Statements(vec![]),
+                body: FunctionBlockBody::stmts(vec![]),
             },
         ))
         .unwrap();
@@ -103,7 +92,7 @@ mod tests {
                 var_decls: vec![VarInitKind::VarInit(VarInitDecl::function_block(
                     "var_name", "var_type",
                 ))],
-                body: FunctionBlockBody::Statements(vec![]),
+                body: FunctionBlockBody::stmts(vec![]),
             },
         ))
         .unwrap();

@@ -11,7 +11,7 @@ use ironplc_dsl::sfc::*;
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
 pub fn parse_library(source: &str) -> Result<Vec<LibraryElement>, String> {
-    plc_parser::library(source).map_err(|e| String::from(""))
+    plc_parser::library(source).map_err(|e| String::from(e.to_string()))
 }
 
 parser! {
@@ -209,7 +209,7 @@ parser! {
     // B.1.4 Variables
     rule variable() -> Variable = d:direct_variable() { Variable::DirectVariable(d) } / symbolic_variable()
     // TODO add multi-element variable
-    rule symbolic_variable() -> Variable = multi_element_variable() / name:variable_name() { Variable::SymbolicVariable(String::from(name)) }
+    rule symbolic_variable() -> Variable = multi_element_variable() / name:variable_name() { Variable::symbolic(name) }
     rule variable_name() -> &'input str = i:identifier() { i }
 
     // B.1.4.1 Directly represented variables
@@ -428,7 +428,7 @@ parser! {
     }
     // TODO there are far more here
     rule other_var_declarations() -> Vec<VarInitDecl> = external_var_declarations() / var_declarations()
-    rule function_block_body() -> FunctionBlockBody = networks:sequential_function_chart() { FunctionBlockBody::Sfc(networks) } / statements:statement_list() { FunctionBlockBody::Statements(statements) }
+    rule function_block_body() -> FunctionBlockBody = networks:sequential_function_chart() { FunctionBlockBody::sfc(networks) } / statements:statement_list() { FunctionBlockBody::stmts(statements) }
 
     // B.1.5.3 Program declaration
     rule program_type_name() -> &'input str = i:identifier() { i }
@@ -694,7 +694,7 @@ mod test {
         MSG : STRING;
       END_VAR";
         let vars = vec![
-          VarInitDecl {
+            VarInitDecl {
                 name: String::from("TRIG"),
                 storage_class: StorageClass::Unspecified,
                 initializer: Option::Some(TypeInitializer::Simple {
@@ -739,7 +739,7 @@ mod test {
         MSG : STRING;
       END_VAR";
         let vars = vec![
-          VarInitDecl {
+            VarInitDecl {
                 name: String::from("TRIG"),
                 storage_class: StorageClass::Unspecified,
                 initializer: Option::Some(TypeInitializer::Simple {
@@ -896,12 +896,12 @@ mod test {
                 },
                 Element::Action {
                     name: String::from("RESETCOUNTER_INLINE1"),
-                    body: FunctionBlockBody::Statements(vec![StmtKind::assignment(
-                        Variable::SymbolicVariable(String::from("Cnt")),
-                        ExprKind::Variable(Variable::SymbolicVariable(String::from(
-                            "ResetCounterValue",
-                        ))),
-                      )]),
+                    body: FunctionBlockBody::stmts(vec![StmtKind::assignment(
+                        Variable::symbolic("Cnt"),
+                        ExprKind::symbolic_variable(
+                            "ResetCounterValue"
+                        ),
+                    )]),
                 },
                 Element::Transition {
                     name: None,
@@ -920,9 +920,9 @@ mod test {
                     to: vec![String::from("Count")],
                     condition: ExprKind::UnaryOp {
                         op: UnaryOp::Not,
-                        term: Box::new(ExprKind::Variable(Variable::SymbolicVariable(
-                            String::from("Reset"),
-                        ))),
+                        term: Box::new(ExprKind::symbolic_variable(
+                            "Reset"
+                        )),
                     },
                 },
                 Element::Step {
@@ -948,7 +948,7 @@ mod test {
     #[test]
     fn statement_assign_constant() {
         let expected = Ok(vec![StmtKind::assignment(
-            Variable::SymbolicVariable(String::from("Cnt")),
+            Variable::symbolic("Cnt"),
             ExprKind::Const(Constant::IntegerLiteral(1)),
         )]);
         assert_eq!(plc_parser::statement_list("Cnt := 1;"), expected)
@@ -957,7 +957,7 @@ mod test {
     #[test]
     fn statement_assign_add_const_operator() {
         let expected = Ok(vec![StmtKind::assignment(
-            Variable::SymbolicVariable(String::from("Cnt")),
+            Variable::symbolic("Cnt"),
             ExprKind::BinaryOp {
                 ops: vec![Operator::Add],
                 terms: vec![
@@ -965,26 +965,22 @@ mod test {
                     ExprKind::Const(Constant::IntegerLiteral(2)),
                 ],
             },
-          )]);
+        )]);
         assert_eq!(plc_parser::statement_list("Cnt := 1 + 2;"), expected)
     }
 
     #[test]
     fn statement_assign_add_symbol_operator() {
         let expected = Ok(vec![StmtKind::assignment(
-            Variable::SymbolicVariable(String::from("Cnt")),
+            Variable::symbolic("Cnt"),
             ExprKind::BinaryOp {
                 ops: vec![Operator::Add],
                 terms: vec![
-                    ExprKind::Variable (
-                        Variable::SymbolicVariable(String::from("Cnt"))
-                    ),
-                    ExprKind::Const (
-                        Constant::IntegerLiteral(1),
-                    ),
+                    ExprKind::symbolic_variable("Cnt"),
+                    ExprKind::Const(Constant::IntegerLiteral(1)),
                 ],
             },
-          )]);
+        )]);
         assert_eq!(plc_parser::statement_list("Cnt := Cnt + 1;"), expected)
     }
 
@@ -998,18 +994,18 @@ mod test {
             expr: ExprKind::Compare {
                 op: CompareOp::And,
                 terms: vec![
-                    ExprKind::Variable(Variable::SymbolicVariable(String::from("TRIG"))),
+                    ExprKind::symbolic_variable("TRIG"),
                     ExprKind::UnaryOp {
                         op: UnaryOp::Not,
-                        term: Box::new(ExprKind::Variable(Variable::SymbolicVariable(
-                            String::from("TRIG"),
-                        ))),
+                        term: Box::new(ExprKind::symbolic_variable(
+                            "TRIG"
+                        )),
                     },
                 ],
             },
             body: vec![StmtKind::assignment(
-                Variable::SymbolicVariable(String::from("TRIG0")),
-                ExprKind::Variable(Variable::SymbolicVariable(String::from("TRIG"))),
+                Variable::symbolic("TRIG0"),
+                ExprKind::symbolic_variable("TRIG"),
             )],
             else_body: vec![],
         }]);
@@ -1024,23 +1020,23 @@ mod test {
     Cnt := Cnt + 1;
   END_IF;";
         let expected = Ok(vec![StmtKind::If {
-            expr: ExprKind::Variable(Variable::SymbolicVariable(String::from("Reset"))),
+            expr: ExprKind::symbolic_variable("Reset"),
             body: vec![StmtKind::assignment(
-                Variable::SymbolicVariable(String::from("Cnt")),
-                ExprKind::Variable(Variable::SymbolicVariable(String::from(
-                    "ResetCounterValue",
-                ))),
-              )],
+                Variable::symbolic("Cnt"),
+                ExprKind::symbolic_variable(
+                    "ResetCounterValue"
+                ),
+            )],
             else_body: vec![StmtKind::assignment(
-                Variable::SymbolicVariable(String::from("Cnt")),
+                Variable::symbolic("Cnt"),
                 ExprKind::BinaryOp {
                     ops: vec![Operator::Add],
                     terms: vec![
-                        ExprKind::Variable(Variable::SymbolicVariable(String::from("Cnt"))),
+                        ExprKind::symbolic_variable("Cnt"),
                         ExprKind::Const(Constant::IntegerLiteral(1)),
                     ],
                 },
-              )],
+            )],
         }]);
 
         assert_eq!(plc_parser::statement_list(statement), expected)
@@ -1049,11 +1045,11 @@ mod test {
     #[test]
     fn statement_fb_invocation_without_name() {
         let statement = "CounterLD0(Reset);";
-        let expected = Ok(vec![StmtKind::FbCall( FbCall {
+        let expected = Ok(vec![StmtKind::FbCall(FbCall {
             name: String::from("CounterLD0"),
             params: vec![ParamAssignment::Input {
                 name: None,
-                expr: ExprKind::Variable(Variable::SymbolicVariable(String::from("Reset"))),
+                expr: ExprKind::symbolic_variable("Reset"),
             }],
         })]);
 
@@ -1063,11 +1059,11 @@ mod test {
     #[test]
     fn statement_fb_invocation_with_name() {
         let statement = "CounterLD0(Cnt := Reset);";
-        let expected = Ok(vec![StmtKind::FbCall (FbCall {
+        let expected = Ok(vec![StmtKind::FbCall(FbCall {
             name: String::from("CounterLD0"),
             params: vec![ParamAssignment::Input {
                 name: Option::Some(String::from("Cnt")),
-                expr: ExprKind::Variable(Variable::SymbolicVariable(String::from("Reset"))),
+                expr: ExprKind::symbolic_variable("Reset"),
             }],
         })]);
 
@@ -1078,7 +1074,7 @@ mod test {
     fn assignment() {
         let assign = "Cnt1 := CounterST0.OUT";
         let expected = Ok(StmtKind::assignment(
-            Variable::SymbolicVariable(String::from("Cnt1")),
+            Variable::symbolic("Cnt1"),
             ExprKind::Variable(Variable::MultiElementVariable(vec![
                 String::from("CounterST0"),
                 String::from("OUT"),
