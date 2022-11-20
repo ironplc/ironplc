@@ -364,12 +364,12 @@ impl fmt::Display for DirectVariable {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Sfc {
-    pub networks: Vec<Network>
+    pub networks: Vec<Network>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Statements {
-    pub body: Vec<StmtKind>
+    pub body: Vec<StmtKind>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -380,15 +380,11 @@ pub enum FunctionBlockBody {
 
 impl FunctionBlockBody {
     pub fn stmts(stmts: Vec<StmtKind>) -> FunctionBlockBody {
-        FunctionBlockBody::Statements(Statements{
-            body: stmts
-        })
+        FunctionBlockBody::Statements(Statements { body: stmts })
     }
 
     pub fn sfc(networks: Vec<Network>) -> FunctionBlockBody {
-        FunctionBlockBody::Sfc(Sfc{
-            networks: networks
-        })
+        FunctionBlockBody::Sfc(Sfc { networks: networks })
     }
 }
 
