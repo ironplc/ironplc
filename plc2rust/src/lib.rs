@@ -96,8 +96,8 @@ mod tests {
                     VarInitKind::simple("TRIG0", "BOOL"),
                 ],
                 body: FunctionBlockBody::stmts(vec![
-                    StmtKind::If {
-                        expr: ExprKind::Compare {
+                    StmtKind::if_then(
+                        ExprKind::Compare {
                             op: CompareOp::And,
                             terms: vec![
                                 ExprKind::symbolic_variable("TRIG"),
@@ -107,9 +107,8 @@ mod tests {
                                 },
                             ],
                         },
-                        body: vec![],
-                        else_body: vec![],
-                    },
+                        vec![],
+                    ),
                     StmtKind::assignment(
                         Variable::symbolic("TRIG0"),
                         ExprKind::symbolic_variable("TRIG"),

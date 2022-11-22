@@ -44,6 +44,15 @@ impl Visitor for SymbolTable<DummyNode> {
 
         self.exit();
     }
+
+    fn visit_symbolic_variable(&mut self, node: &ironplc_dsl::ast::SymbolicVariable) {
+        match self.find(&node.name.as_str()) {
+            Some(_) => {
+                // Ok - we found the variable being referred to
+            }
+            None => todo!(),
+        }
+    }
 }
 
 struct GlobalTypeDefinitionVisitor<'a> {
@@ -66,13 +75,12 @@ mod tests {
 
     #[test]
     fn test_identifies_undeclared_symbol() {
-        todo!("need to move to functions so that don't need to duplicate code when changing the implementation");
         let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: String::from("LOGGER"),
                 var_decls: vec![],
-                body: FunctionBlockBody::stmts(vec![StmtKind::If {
-                    expr: ExprKind::Compare {
+                body: FunctionBlockBody::stmts(vec![StmtKind::if_then(
+                    ExprKind::Compare {
                         op: CompareOp::And,
                         terms: vec![
                             ExprKind::symbolic_variable("TRIG"),
@@ -82,9 +90,8 @@ mod tests {
                             },
                         ],
                     },
-                    body: vec![],
-                    else_body: vec![],
-                }]),
+                    vec![],
+                )]),
             },
         ))
         .unwrap();
