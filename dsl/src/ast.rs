@@ -37,13 +37,38 @@ pub struct FbCall {
 #[derive(Debug, PartialEq, Clone)]
 pub enum StmtKind {
     Assignment(Assignment),
-    If {
-        // TODO how to handle else else if (that should probably be a nested if)
-        expr: ExprKind,
+    If(If),
+    FbCall(FbCall),
+}
+
+impl StmtKind {
+    pub fn if_then(condition: ExprKind, body: Vec<StmtKind>) -> StmtKind {
+        StmtKind::If(If {
+            expr: condition,
+            body: body,
+            else_body: vec![],
+        })
+    }
+
+    pub fn if_then_else(
+        condition: ExprKind,
         body: Vec<StmtKind>,
         else_body: Vec<StmtKind>,
-    },
-    FbCall(FbCall),
+    ) -> StmtKind {
+        StmtKind::If(If {
+            expr: condition,
+            body: body,
+            else_body: else_body,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct If {
+    // TODO how to handle else else if (that should probably be a nested if)
+    pub expr: ExprKind,
+    pub body: Vec<StmtKind>,
+    pub else_body: Vec<StmtKind>,
 }
 
 impl StmtKind {

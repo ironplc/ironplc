@@ -674,11 +674,11 @@ parser! {
     rule selection_statement() -> StmtKind = ifstmt:if_statement() { ifstmt }
     // TODO handle else if
     rule if_statement() -> StmtKind = "IF" _ expr:expression() _ "THEN" _ body:statement_list()? _ else_body:("ELSE" _ e:statement_list() { e })? _ "END_IF" {
-      StmtKind::If{
+      StmtKind::If(If {
         expr: expr,
         body: body.unwrap_or_else(|| vec![]),
-        else_body: else_body.unwrap_or_else(|| vec![]),
-      }
+        else_body: else_body.unwrap_or_else(|| vec![])
+      })
     }
   }
 }
@@ -986,8 +986,8 @@ mod test {
       TRIG0:=TRIG;
 
     END_IF;";
-        let expected = Ok(vec![StmtKind::If {
-            expr: ExprKind::Compare {
+        let expected = Ok(vec![StmtKind::if_then(
+            ExprKind::Compare {
                 op: CompareOp::And,
                 terms: vec![
                     ExprKind::symbolic_variable("TRIG"),
@@ -997,12 +997,11 @@ mod test {
                     },
                 ],
             },
-            body: vec![StmtKind::assignment(
+            vec![StmtKind::assignment(
                 Variable::symbolic("TRIG0"),
                 ExprKind::symbolic_variable("TRIG"),
             )],
-            else_body: vec![],
-        }]);
+        )]);
         assert_eq!(plc_parser::statement_list(statement), expected)
     }
 
@@ -1013,13 +1012,13 @@ mod test {
   ELSE
     Cnt := Cnt + 1;
   END_IF;";
-        let expected = Ok(vec![StmtKind::If {
-            expr: ExprKind::symbolic_variable("Reset"),
-            body: vec![StmtKind::assignment(
+        let expected = Ok(vec![StmtKind::if_then_else(
+            ExprKind::symbolic_variable("Reset"),
+            vec![StmtKind::assignment(
                 Variable::symbolic("Cnt"),
                 ExprKind::symbolic_variable("ResetCounterValue"),
             )],
-            else_body: vec![StmtKind::assignment(
+            vec![StmtKind::assignment(
                 Variable::symbolic("Cnt"),
                 ExprKind::BinaryOp {
                     ops: vec![Operator::Add],
@@ -1029,7 +1028,7 @@ mod test {
                     ],
                 },
             )],
-        }]);
+        )]);
 
         assert_eq!(plc_parser::statement_list(statement), expected)
     }
