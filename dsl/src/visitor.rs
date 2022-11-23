@@ -31,7 +31,7 @@ use crate::sfc::Network;
 
 /// Defines a way to recurse into an object in the AST or DSL.
 pub trait Acceptor {
-    fn accept<V: Visitor + ?Sized>(&self, visitor: &mut V);
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E>;
 }
 
 /// Recurses into a vec of objects.
@@ -39,8 +39,20 @@ impl<X> Acceptor for Vec<X>
 where
     X: Acceptor,
 {
-    fn accept<V: Visitor + ?Sized>(&self, visitor: &mut V) {
-        self.into_iter().for_each(|x| x.accept(visitor));
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        match self.into_iter()
+            .map(|x| x.accept(visitor))
+            .find(|r| r.is_err()) {
+                Some(err) => {
+                    // At least one of the items returned an error, so
+                    // return the first error.
+                    err
+                }
+                None => {
+                    // There were no errors, so return the default value
+                    Ok(V::Value::default())
+                }
+            }
     }
 }
 
@@ -49,158 +61,176 @@ impl<X> Acceptor for Option<X>
 where
     X: Acceptor,
 {
-    fn accept<V: Visitor + ?Sized>(&self, visitor: &mut V) {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self.as_ref() {
             Some(x) => x.accept(visitor),
-            None => {}
-        };
+            None => Ok(V::Value::default())
+        }
     }
 }
 
 /// Defines a visitor for the object tree. The default visitor recursively
 /// walks to visit items in the tree.
-pub trait Visitor {
-    fn walk(&mut self, node: &Library) {
+pub trait Visitor<E> {
+    /// Value produced by this visitor when the result is not an error.
+    /// 
+    /// The returned value is usually not meaningful because no guarantee
+    /// is provided when returning from vectors of objects.
+    type Value : Default;
+
+    fn walk(&mut self, node: &Library) -> Result<Self::Value, E> {
         Acceptor::accept(&node.elems, self)
     }
 
-    fn visit_enum_declaration(&mut self, node: &EnumerationDeclaration) {
-        visit_enum_declaration(self, node);
+    fn visit_enum_declaration(&mut self, node: &EnumerationDeclaration) -> Result<Self::Value, E> {
+        visit_enum_declaration(self, node)
     }
 
-    fn visit_function_block_declaration(&mut self, node: &FunctionBlockDeclaration) {
+    fn visit_function_block_declaration(&mut self, node: &FunctionBlockDeclaration) -> Result<Self::Value, E> {
         visit_function_block_declaration(self, node)
     }
 
-    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) {
-        visit_function_declaration(self, node);
+    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<Self::Value, E> {
+        visit_function_declaration(self, node)
     }
 
-    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) {
-        visit_program_declaration(self, node);
+    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<Self::Value, E> {
+        visit_program_declaration(self, node)
     }
 
-    fn visit_located_var_init(&mut self, node: &LocatedVarInit) {}
-
-    fn visit_var_init_decl(&mut self, node: &VarInitDecl) {}
-
-    fn visit_type_initializer(&mut self, node: &TypeInitializer) {}
-
-    fn visit_sfc(&mut self, node: &Sfc) {
-        Acceptor::accept(&node.networks, self);
+    fn visit_located_var_init(&mut self, node: &LocatedVarInit) -> Result<Self::Value, E> {
+        todo!()
     }
 
-    fn visit_statements(&mut self, node: &Statements) {
-        Acceptor::accept(&node.body, self);
+    fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<Self::Value, E> {
+        todo!()
     }
 
-    fn visit_assignment(&mut self, node: &Assignment) {
-        Acceptor::accept(&node.target, self);
+    fn visit_type_initializer(&mut self, node: &TypeInitializer) -> Result<Self::Value, E> {
+        todo!()
     }
 
-    fn visit_if(&mut self, node: &If) {
-        visit_if(self, &node);
+    fn visit_sfc(&mut self, node: &Sfc) -> Result<Self::Value, E> {
+        Acceptor::accept(&node.networks, self)
     }
 
-    fn visit_compare(&mut self, op: &CompareOp, terms: &Vec<ExprKind>) {
-        visit_compare(self, op, terms);
+    fn visit_statements(&mut self, node: &Statements) -> Result<Self::Value, E> {
+        Acceptor::accept(&node.body, self)
     }
 
-    fn visit_direct_variable(&mut self, node: &DirectVariable) {}
+    fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, E> {
+        Acceptor::accept(&node.target, self)
+    }
 
-    fn visit_symbolic_variable(&mut self, node: &SymbolicVariable) {}
+    fn visit_if(&mut self, node: &If) -> Result<Self::Value, E> {
+        visit_if(self, &node)
+    }
 
-    fn visit_fb_call(&mut self, fb_call: &FbCall) {}
+    fn visit_compare(&mut self, op: &CompareOp, terms: &Vec<ExprKind>) -> Result<Self::Value, E> {
+        visit_compare(self, op, terms)
+    }
+
+    fn visit_direct_variable(&mut self, node: &DirectVariable) -> Result<Self::Value, E> {
+        todo!()
+    }
+
+    fn visit_symbolic_variable(&mut self, node: &SymbolicVariable) -> Result<Self::Value, E> {
+        todo!()
+    }
+
+    fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, E> {
+        todo!()
+    }
 }
 
-pub fn visit_enum_declaration<V: Visitor + ?Sized>(v: &mut V, node: &EnumerationDeclaration) {
-    Acceptor::accept(&node.initializer, v);
+pub fn visit_enum_declaration<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &EnumerationDeclaration) -> Result<V::Value, E> {
+    Acceptor::accept(&node.initializer, v)
 }
 
-pub fn visit_function_block_declaration<V: Visitor + ?Sized>(
+pub fn visit_function_block_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &FunctionBlockDeclaration,
-) {
-    Acceptor::accept(&node.var_decls, v);
-    Acceptor::accept(&node.body, v);
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.var_decls, v)?;
+    Acceptor::accept(&node.body, v)
 }
 
-pub fn visit_program_declaration<V: Visitor + ?Sized>(v: &mut V, node: &ProgramDeclaration) {
-    Acceptor::accept(&node.var_declarations, v);
-    Acceptor::accept(&node.body, v);
+pub fn visit_program_declaration<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &ProgramDeclaration) -> Result<V::Value, E> {
+    Acceptor::accept(&node.var_declarations, v)?;
+    Acceptor::accept(&node.body, v)
 }
 
-pub fn visit_function_declaration<V: Visitor + ?Sized>(v: &mut V, node: &FunctionDeclaration) {
-    Acceptor::accept(&node.var_decls, v);
-    Acceptor::accept(&node.body, v);
+pub fn visit_function_declaration<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &FunctionDeclaration) -> Result<V::Value, E> {
+    Acceptor::accept(&node.var_decls, v)?;
+    Acceptor::accept(&node.body, v)
 }
 
-pub fn visit_if<V: Visitor + ?Sized>(v: &mut V, node: &If) {
-    Acceptor::accept(&node.expr, v);
-    Acceptor::accept(&node.body, v);
-    Acceptor::accept(&node.else_body, v);
+pub fn visit_if<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &If) -> Result<V::Value, E> {
+    Acceptor::accept(&node.expr, v)?;
+    Acceptor::accept(&node.body, v)?;
+    Acceptor::accept(&node.else_body, v)
 }
 
-pub fn visit_compare<V: Visitor + ?Sized>(v: &mut V, op: &CompareOp, terms: &Vec<ExprKind>) {
-    Acceptor::accept(terms, v);
+pub fn visit_compare<V: Visitor<E> + ?Sized, E>(v: &mut V, op: &CompareOp, terms: &Vec<ExprKind>) -> Result<V::Value, E>{
+    Acceptor::accept(terms, v)
 }
 
 impl Acceptor for LibraryElement {
-    fn accept<V: Visitor + ?Sized>(&self, visitor: &mut V) {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
-            LibraryElement::ConfigurationDeclaration(config) => {}
+            LibraryElement::ConfigurationDeclaration(config) => {todo!()}
             LibraryElement::DataTypeDeclaration(data_type_decl) => {
-                Acceptor::accept(data_type_decl, visitor);
+                Acceptor::accept(data_type_decl, visitor)
             }
             LibraryElement::FunctionBlockDeclaration(func_block_decl) => {
-                visitor.visit_function_block_declaration(func_block_decl);
+                visitor.visit_function_block_declaration(func_block_decl)
             }
             LibraryElement::FunctionDeclaration(func_decl) => {
-                visitor.visit_function_declaration(func_decl);
+                visitor.visit_function_declaration(func_decl)
             }
             LibraryElement::ProgramDeclaration(prog_decl) => {
-                visitor.visit_program_declaration(prog_decl);
+                visitor.visit_program_declaration(prog_decl)
             }
         }
     }
 }
 
 impl Acceptor for EnumerationDeclaration {
-    fn accept<V: Visitor + ?Sized>(&self, visitor: &mut V) {
-        visitor.visit_enum_declaration(self);
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        visitor.visit_enum_declaration(self)
     }
 }
 
 impl Acceptor for TypeInitializer {
-    fn accept<V: Visitor + ?Sized>(&self, visitor: &mut V) {
-        visitor.visit_type_initializer(self);
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        visitor.visit_type_initializer(self)
     }
 }
 
 impl Acceptor for VarInitKind {
-    fn accept<V: Visitor + ?Sized>(&self, visitor: &mut V) {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
             VarInitKind::VarInit(init) => {
-                visitor.visit_var_init_decl(init);
+                visitor.visit_var_init_decl(init)
             }
             VarInitKind::LocatedVarInit(located_var) => {
-                visitor.visit_located_var_init(located_var);
+                visitor.visit_located_var_init(located_var)
             }
         }
     }
 }
 
 impl Acceptor for ExprKind {
-    fn accept<V: Visitor + ?Sized>(&self, visitor: &mut V) {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
             ExprKind::Compare { op, terms } =>  {
-                visitor.visit_compare(op, terms);
+                visitor.visit_compare(op, terms)
             },
             ExprKind::BinaryOp { ops, terms } => {todo!()},
             ExprKind::UnaryOp { op, term } => {todo!()},
             ExprKind::Const(_) => {todo!()},
             ExprKind::Variable(variable) => {
-                Acceptor::accept(variable, visitor);
+                Acceptor::accept(variable, visitor)
             },
             ExprKind::Function { name, param_assignment } => {todo!()},
         }
@@ -208,54 +238,54 @@ impl Acceptor for ExprKind {
 }
 
 impl Acceptor for VarInitDecl {
-    fn accept<V: Visitor + ?Sized>(&self, visitor: &mut V) {
-        visitor.visit_var_init_decl(self);
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        visitor.visit_var_init_decl(self)
     }
 }
 
 impl Acceptor for FunctionBlockBody {
-    fn accept<V: Visitor + ?Sized>(&self, visitor: &mut V) {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
             FunctionBlockBody::Sfc(network) => {
-                visitor.visit_sfc(network);
+                visitor.visit_sfc(network)
             }
             FunctionBlockBody::Statements(stmts) => {
-                visitor.visit_statements(stmts);
+                visitor.visit_statements(stmts)
             }
         }
     }
 }
 
 impl Acceptor for StmtKind {
-    fn accept<V: Visitor + ?Sized>(&self, visitor: &mut V) {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V)  -> Result<V::Value, E>{
         match self {
             StmtKind::Assignment(node) => {
-                visitor.visit_assignment(node);
+                visitor.visit_assignment(node)
             }
             StmtKind::If(node) => {
-                visitor.visit_if(node);
+                visitor.visit_if(node)
             }
             StmtKind::FbCall(node) => {
-                visitor.visit_fb_call(node);
+                visitor.visit_fb_call(node)
             }
         }
     }
 }
 
 impl Acceptor for Network {
-    fn accept<V: Visitor + ?Sized>(&self, visitor: &mut V) {
-        // TODO
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        todo!()
     }
 }
 
 impl Acceptor for Variable {
-    fn accept<V: Visitor + ?Sized>(&self, visitor: &mut V) {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
             Variable::DirectVariable(var) => {
-                visitor.visit_direct_variable(var);
+                visitor.visit_direct_variable(var)
             }
             Variable::SymbolicVariable(var) => {
-                visitor.visit_symbolic_variable(var);
+                visitor.visit_symbolic_variable(var)
             }
             Variable::MultiElementVariable(_) => {
                 todo!()
@@ -269,6 +299,7 @@ mod test {
     use crate::ast::*;
     use crate::dsl::*;
     use std::collections::LinkedList;
+    use std::fmt::Error;
 
     struct Descender {
         names: LinkedList<String>,
@@ -281,20 +312,25 @@ mod test {
         }
     }
 
-    impl Visitor for Descender {
-        fn visit_direct_variable(&mut self, variable: &DirectVariable) {
+    impl Visitor<Error> for Descender {
+        type Value = ();
+
+        fn visit_direct_variable(&mut self, variable: &DirectVariable) -> Result<(), Error> {
             let mut dst = &mut self.names;
             dst.push_back(variable.to_string());
+            Ok(())
         }
 
-        fn visit_symbolic_variable(&mut self, var: &SymbolicVariable) {
+        fn visit_symbolic_variable(&mut self, var: &SymbolicVariable) -> Result<(), Error> {
             let mut dst = &mut self.names;
             dst.push_back(var.name.clone());
+            Ok(())
         }
 
-        fn visit_fb_call(&mut self, fb_call: &FbCall) {
+        fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<(), Error> {
             let mut dst = &mut self.names;
             dst.push_back(fb_call.name.clone());
+            Ok(())
         }
     }
 

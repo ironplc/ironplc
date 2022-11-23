@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Error};
 
 use ironplc_dsl::{
     dsl::*,
@@ -20,35 +20,35 @@ pub fn apply(lib: Library) {
 struct DummyNode {}
 impl NodeData for DummyNode {}
 
-impl Visitor for SymbolTable<DummyNode> {
-    fn visit_function_declaration(&mut self, func_decl: &FunctionDeclaration) {
+impl Visitor<Error> for SymbolTable<DummyNode> {
+    type Value = ();
+
+    fn visit_function_declaration(&mut self, func_decl: &FunctionDeclaration) -> Result<(), Error> {
         self.enter();
-
-        visit_function_declaration(self, func_decl);
-
+        let ret = visit_function_declaration(self, func_decl);
         self.exit();
+        ret
     }
 
-    fn visit_program_declaration(&mut self, prog_decl: &ProgramDeclaration) {
+    fn visit_program_declaration(&mut self, prog_decl: &ProgramDeclaration) -> Result<(), Error> {
         self.enter();
-
-        visit_program_declaration(self, prog_decl);
-
+        let ret = visit_program_declaration(self, prog_decl);
         self.exit();
+        ret
     }
 
-    fn visit_function_block_declaration(&mut self, func_decl: &FunctionBlockDeclaration) {
+    fn visit_function_block_declaration(&mut self, func_decl: &FunctionBlockDeclaration) -> Result<(), Error> {
         self.enter();
-
-        visit_function_block_declaration(self, func_decl);
-
+        let ret = visit_function_block_declaration(self, func_decl);
         self.exit();
+        ret
     }
 
-    fn visit_symbolic_variable(&mut self, node: &ironplc_dsl::ast::SymbolicVariable) {
+    fn visit_symbolic_variable(&mut self, node: &ironplc_dsl::ast::SymbolicVariable) -> Result<(), Error> {
         match self.find(&node.name.as_str()) {
             Some(_) => {
-                // Ok - we found the variable being referred to
+                // We found the variable being referred to
+                Ok(Self::Value::default())
             }
             None => todo!(),
         }

@@ -2,6 +2,7 @@ use ironplc_dsl::dsl::*;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
 use std::collections::HashMap;
+use std::fmt::Error;
 
 pub fn apply(lib: Library) -> Library {
     let mut type_map = HashMap::new();
@@ -23,10 +24,12 @@ pub fn apply(lib: Library) -> Library {
 struct GlobalTypeDefinitionVisitor<'a> {
     types: &'a mut HashMap<String, TypeDefinitionKind>,
 }
-impl<'a> Visitor for GlobalTypeDefinitionVisitor<'a> {
-    fn visit_enum_declaration(&mut self, enum_decl: &EnumerationDeclaration) {
+impl<'a> Visitor<Error> for GlobalTypeDefinitionVisitor<'a> {
+    type Value = ();
+    fn visit_enum_declaration(&mut self, enum_decl: &EnumerationDeclaration) -> Result<(), Error>{
         self.types
             .insert(enum_decl.name.clone(), TypeDefinitionKind::Enumeration);
+        Ok(())
     }
 }
 
