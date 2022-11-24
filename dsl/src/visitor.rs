@@ -9,18 +9,23 @@
 //! # Example
 //!
 //! ```
+//! use ironplc_dsl::dsl::FunctionDeclaration;
+//! use ironplc_dsl::visitor::{ Visitor, visit_function_declaration };
+//! 
 //! struct Dummy {}
 //! impl Dummy {
 //!   fn do_work() {}
 //! }
 //!
-//! impl Visitor for Dummy {
-//!     fn visit_function_declaration(&mut self, func_decl: &FunctionDeclaration) {
+//! impl Visitor<String> for Dummy {
+//!     type Value = ();
+//! 
+//!     fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<Self::Value, String> {
 //!         // Do something custom before visiting the FunctionDeclaration node
-//!         self.do_work();
+//!         Dummy::do_work();
 //!
 //!         // Continue the recursion
-//!         visit_function_declaration(self, node);
+//!         visit_function_declaration(self, node)
 //!     }
 //! }
 //! ```
@@ -103,7 +108,7 @@ pub trait Visitor<E> {
     }
 
     fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<Self::Value, E> {
-        todo!()
+        visit_var_int_decl(self, &node)
     }
 
     fn visit_type_initializer(&mut self, node: &TypeInitializer) -> Result<Self::Value, E> {
@@ -165,6 +170,10 @@ pub fn visit_function_declaration<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &F
     Acceptor::accept(&node.body, v)
 }
 
+pub fn visit_var_int_decl<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &VarInitDecl) -> Result<V::Value, E> {
+    Acceptor::accept(&node.initializer, v)
+}
+
 pub fn visit_if<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &If) -> Result<V::Value, E> {
     Acceptor::accept(&node.expr, v)?;
     Acceptor::accept(&node.body, v)?;
@@ -203,7 +212,8 @@ impl Acceptor for EnumerationDeclaration {
 
 impl Acceptor for TypeInitializer {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
-        visitor.visit_type_initializer(self)
+        // TODO don't yet know how to visit these
+        Ok(V::Value::default())
     }
 }
 

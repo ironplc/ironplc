@@ -10,47 +10,49 @@ use ironplc_dsl::{
 
 use crate::symbol_table::{self, NodeData, SymbolTable};
 
-pub fn apply(lib: Library) {
+pub fn apply(lib: Library) -> Result<(), String> {
     let mut visitor: SymbolTable<DummyNode> = symbol_table::SymbolTable::new();
 
-    visitor.walk(&lib);
+    visitor.walk(&lib)
 }
 
 #[derive(Clone)]
 struct DummyNode {}
 impl NodeData for DummyNode {}
 
-impl Visitor<Error> for SymbolTable<DummyNode> {
+impl Visitor<String> for SymbolTable<DummyNode> {
     type Value = ();
 
-    fn visit_function_declaration(&mut self, func_decl: &FunctionDeclaration) -> Result<(), Error> {
+    fn visit_function_declaration(&mut self, func_decl: &FunctionDeclaration) -> Result<(), String> {
         self.enter();
         let ret = visit_function_declaration(self, func_decl);
         self.exit();
         ret
     }
 
-    fn visit_program_declaration(&mut self, prog_decl: &ProgramDeclaration) -> Result<(), Error> {
+    fn visit_program_declaration(&mut self, prog_decl: &ProgramDeclaration) -> Result<(), String> {
         self.enter();
         let ret = visit_program_declaration(self, prog_decl);
         self.exit();
         ret
     }
 
-    fn visit_function_block_declaration(&mut self, func_decl: &FunctionBlockDeclaration) -> Result<(), Error> {
+    fn visit_function_block_declaration(&mut self, func_decl: &FunctionBlockDeclaration) -> Result<(), String> {
         self.enter();
         let ret = visit_function_block_declaration(self, func_decl);
         self.exit();
         ret
     }
 
-    fn visit_symbolic_variable(&mut self, node: &ironplc_dsl::ast::SymbolicVariable) -> Result<(), Error> {
+    fn visit_symbolic_variable(&mut self, node: &ironplc_dsl::ast::SymbolicVariable) -> Result<(), String> {
         match self.find(&node.name.as_str()) {
             Some(_) => {
                 // We found the variable being referred to
                 Ok(Self::Value::default())
             }
-            None => todo!(),
+            None => {
+                Err(format!("Variable {} not defined before used", node.name))
+            },
         }
     }
 }
@@ -96,8 +98,8 @@ mod tests {
         ))
         .unwrap();
 
-        apply(input);
-
-        assert_eq!(false, true)
+        let result = apply(input);
+        assert_eq!(true, result.is_err());
+        assert_eq!("Variable TRIG not defined before used", result.unwrap_err());
     }
 }
