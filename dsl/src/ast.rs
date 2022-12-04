@@ -75,10 +75,9 @@ impl StmtKind {
     pub fn fb_assign(fb_name: &str, inputs: Vec<&str>, output: &str) -> StmtKind {
         let assignments = inputs
             .into_iter()
-            .map(|input| ParamAssignment::Input {
-                name: None,
-                expr: ExprKind::symbolic_variable(input),
-            })
+            .map(|input| ParamAssignment::positional(
+                ExprKind::symbolic_variable(input)
+            ))
             .collect::<Vec<ParamAssignment>>();
 
         StmtKind::assignment(
@@ -92,10 +91,10 @@ impl StmtKind {
     pub fn fb_call_mapped(fb_name: &str, inputs: Vec<(&str, &str)>) -> StmtKind {
         let assignments = inputs
             .into_iter()
-            .map(|pair| ParamAssignment::Input {
-                name: Some(String::from(pair.0)),
-                expr: ExprKind::Variable(Variable::symbolic(pair.1)),
-            })
+            .map(|pair| ParamAssignment::named(
+                pair.0,
+                ExprKind::Variable(Variable::symbolic(pair.1))
+            ))
             .collect::<Vec<ParamAssignment>>();
 
         StmtKind::FbCall(FbCall {
@@ -194,19 +193,38 @@ impl ExprKind {
         ExprKind::Const(Constant::IntegerLiteral(1))
     }
 }
+#[derive(Debug, PartialEq, Clone)]
+pub struct PositionalInput {
+    pub expr: ExprKind
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct NamedInput {
+    pub name: String,
+    pub expr: ExprKind
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ParamAssignment {
-    Input {
-        name: Option<String>,
-        expr: ExprKind,
-    },
+    PositionalInput(PositionalInput),
+    NamedInput(NamedInput),
     Output {
         not: bool,
         src: String,
         tgt: Variable,
     },
 }
+
+impl ParamAssignment {
+    pub fn positional(expr: ExprKind) -> ParamAssignment {
+        ParamAssignment::PositionalInput(PositionalInput { expr: expr })
+    }
+
+    pub fn named(name: &str, expr: ExprKind) -> ParamAssignment {
+        ParamAssignment::NamedInput(NamedInput { name: String::from(name), expr: expr })
+    }
+}
+
 pub struct InputParamAssignment {
     pub name: Option<String>,
     pub expr: ExprKind,

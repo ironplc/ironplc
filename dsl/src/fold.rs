@@ -57,7 +57,11 @@ pub trait Fold {
     ) -> FunctionBlockDeclaration {
         FunctionBlockDeclaration {
             name: node.name.clone(),
-            var_decls: Foldable::fold(node.var_decls, self),
+            inputs: Foldable::fold(node.inputs, self),
+            outputs: Foldable::fold(node.outputs, self),
+            inouts: Foldable::fold(node.inouts, self),
+            vars:  Foldable::fold(node.vars, self),
+            externals:  Foldable::fold(node.externals, self),
             body: node.body.clone(),
         }
     }
@@ -66,7 +70,11 @@ pub trait Fold {
         FunctionDeclaration {
             name: node.name.clone(),
             return_type: node.return_type.clone(),
-            var_decls: Foldable::fold(node.var_decls, self),
+            inputs: Foldable::fold(node.inputs, self),
+            outputs: Foldable::fold(node.outputs, self),
+            inouts: Foldable::fold(node.inouts, self),
+            vars: Foldable::fold(node.vars, self),
+            externals: Foldable::fold(node.externals, self),
             body: node.body.clone(),
         }
     }
@@ -74,7 +82,10 @@ pub trait Fold {
     fn fold_program_declaration(&mut self, node: ProgramDeclaration) -> ProgramDeclaration {
         ProgramDeclaration {
             type_name: node.type_name.clone(),
-            var_declarations: Foldable::fold(node.var_declarations, self),
+            inputs: Foldable::fold(node.inputs, self),
+            outputs: Foldable::fold(node.outputs, self),
+            inouts: Foldable::fold(node.inouts, self),
+            vars: Foldable::fold(node.vars, self),
             body: node.body.clone(),
         }
     }

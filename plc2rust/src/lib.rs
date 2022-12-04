@@ -3,11 +3,12 @@ extern crate ironplc_parser;
 
 use crate::ironplc_dsl::dsl::Library;
 
+mod rule_use_declared_fb;
+mod rule_use_declared_symbolic_var;
 mod symbol_table;
 #[cfg(test)]
 mod test_helpers;
 mod type_resolver;
-mod use_declared_checker;
 
 pub fn main() {
     let library = ironplc_parser::parse_program("").unwrap_or(Library::new(vec![]));
@@ -18,7 +19,7 @@ pub fn main() {
     // exactly
     let library = type_resolver::apply(library);
 
-    use_declared_checker::apply(library);
+    rule_use_declared_symbolic_var::apply(library);
 
     // Static analysis (binding) and building symbol table
     //
@@ -89,12 +90,16 @@ mod tests {
         let expected = new_library(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: String::from("LOGGER"),
-                var_decls: vec![
-                    VarInitKind::simple("TRIG", "BOOL"),
-                    VarInitKind::simple("MSG", "STRING"),
-                    VarInitKind::enumerated("LEVEL", "LOGLEVEL", "INFO"),
-                    VarInitKind::simple("TRIG0", "BOOL"),
+                inputs: vec![
+                    VarInitDecl::simple("TRIG", "BOOL"),
+                    VarInitDecl::simple("MSG", "STRING"),
+                    VarInitDecl::enumerated("LEVEL", "LOGLEVEL", "INFO"),],
+                outputs: vec![],
+                inouts: vec![],
+                vars: vec![
+                    VarInitDecl::simple("TRIG0", "BOOL"),
                 ],
+                externals: vec![],
                 body: FunctionBlockBody::stmts(vec![
                     StmtKind::if_then(
                         ExprKind::Compare {
@@ -125,18 +130,22 @@ mod tests {
         let expected = new_library(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: String::from("CounterSFC"),
-                var_decls: vec![
-                    VarInitKind::simple("Reset", "BOOL"),
-                    VarInitKind::simple("OUT", "INT"),
-                    VarInitKind::simple("Cnt", "INT"),
-                    VarInitKind::VarInit(VarInitDecl {
+                inputs: vec![
+                    VarInitDecl::simple("Reset", "BOOL"),],
+                outputs: vec![
+                    VarInitDecl::simple("OUT", "INT"),],
+                inouts: vec![],
+                vars: vec![
+                    VarInitDecl::simple("Cnt", "INT"),],
+                externals: vec![
+                    VarInitDecl {
                         name: String::from("ResetCounterValue"),
                         storage_class: StorageClass::Constant,
                         initializer: Some(TypeInitializer::Simple {
                             type_name: String::from("INT"),
                             initial_value: None,
                         }),
-                    }),
+                    },
                 ],
                 body: FunctionBlockBody::sfc(vec![Network {
                     initial_step: Element::InitialStep {
@@ -227,21 +236,24 @@ mod tests {
         let expected = new_library(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: String::from("CounterFBD"),
-                var_decls: vec![
-                    VarInitKind::simple("Reset", "BOOL"),
-                    VarInitKind::simple("OUT", "INT"),
-                    VarInitKind::simple("Cnt", "INT"),
-                    VarInitKind::VarInit(VarInitDecl {
+                inputs: vec![
+                    VarInitDecl::simple("Reset", "BOOL"),],
+                outputs: vec![
+                    VarInitDecl::simple("OUT", "INT")],
+                inouts: vec![],
+                vars: vec![
+                    VarInitDecl::simple("Cnt", "INT"),
+                    VarInitDecl::simple("_TMP_ADD4_OUT", "INT"),
+                    VarInitDecl::simple("_TMP_SEL7_OUT", "INT")],
+                externals: vec![
+                    VarInitDecl {
                         name: String::from("ResetCounterValue"),
                         storage_class: StorageClass::Constant,
                         initializer: Some(TypeInitializer::Simple {
                             type_name: String::from("INT"),
                             initial_value: None,
                         }),
-                    }),
-                    VarInitKind::simple("_TMP_ADD4_OUT", "INT"),
-                    VarInitKind::simple("_TMP_SEL7_OUT", "INT"),
-                ],
+                    }],
                 body: FunctionBlockBody::stmts(vec![
                     StmtKind::simple_assignment("Cnt", vec!["_TMP_SEL7_OUT"]),
                     StmtKind::simple_assignment("OUT", vec!["Cnt"]),
@@ -252,17 +264,22 @@ mod tests {
     }
 
     #[test]
-    fn first_steps_function_declaration() {
+    fn first_steps_func_avg_val() {
         let src = read_resource("first_steps_func_avg_val.st");
         let expected = new_library(LibraryElement::FunctionDeclaration(FunctionDeclaration {
             name: String::from("AverageVal"),
             return_type: String::from("REAL"),
-            var_decls: vec![
+            inputs: vec![
                 VarInitDecl::simple("Cnt1", "INT"),
                 VarInitDecl::simple("Cnt2", "INT"),
                 VarInitDecl::simple("Cnt3", "INT"),
                 VarInitDecl::simple("Cnt4", "INT"),
                 VarInitDecl::simple("Cnt5", "INT"),
+                
+            ],
+            outputs: vec![],
+            inouts: vec![],
+            vars: vec![
                 VarInitDecl {
                     name: String::from("InputsNumber"),
                     storage_class: StorageClass::Unspecified,
@@ -275,6 +292,7 @@ mod tests {
                     }),
                 },
             ],
+            externals: vec![],
             body: vec![StmtKind::assignment(
                 Variable::symbolic("AverageVal"),
                 ExprKind::BinaryOp {
@@ -283,9 +301,8 @@ mod tests {
                     terms: vec![
                         ExprKind::Function {
                             name: String::from("INT_TO_REAL"),
-                            param_assignment: vec![ParamAssignment::Input {
-                                name: None,
-                                expr: ExprKind::BinaryOp {
+                            param_assignment: vec![ParamAssignment::positional(
+                                ExprKind::BinaryOp {
                                     ops: vec![Operator::Add],
                                     terms: vec![
                                         ExprKind::symbolic_variable("Cnt1"),
@@ -295,14 +312,15 @@ mod tests {
                                         ExprKind::symbolic_variable("Cnt5"),
                                     ],
                                 },
-                            }],
+            )],
                         },
                         ExprKind::symbolic_variable("InputsNumber"),
                     ],
                 },
             )],
         }));
-        assert_eq!(ironplc_parser::parse_program(src.as_str()), expected)
+        let program = ironplc_parser::parse_program(src.as_str());
+        assert_eq!(program, expected)
     }
 
     // TODO add this as a test
@@ -319,21 +337,24 @@ mod tests {
         let src = read_resource("first_steps_program.st");
         let expected = new_library(LibraryElement::ProgramDeclaration(ProgramDeclaration {
             type_name: String::from("plc_prg"),
-            var_declarations: vec![
-                VarInitKind::VarInit(VarInitDecl::simple("Reset", "BOOL")),
-                VarInitKind::VarInit(VarInitDecl::simple("Cnt1", "INT")),
-                VarInitKind::VarInit(VarInitDecl::simple("Cnt2", "INT")),
-                VarInitKind::VarInit(VarInitDecl::simple("Cnt3", "INT")),
-                VarInitKind::VarInit(VarInitDecl::simple("Cnt4", "INT")),
-                VarInitKind::VarInit(VarInitDecl::simple("Cnt5", "INT")),
+            inputs: vec![
+                VarInitDecl::simple("Reset", "BOOL"),],
+            outputs: vec![
+                VarInitDecl::simple("Cnt1", "INT"),
+                VarInitDecl::simple("Cnt2", "INT"),
+                VarInitDecl::simple("Cnt3", "INT"),
+                VarInitDecl::simple("Cnt4", "INT"),
+                VarInitDecl::simple("Cnt5", "INT"),],
+            inouts: vec![],
+            vars: vec![
                 // TODO this are being understood as enumerated types not function blocks
-                VarInitKind::VarInit(VarInitDecl::late_bound("CounterST0", "CounterST")),
-                VarInitKind::VarInit(VarInitDecl::late_bound("CounterFBD0", "CounterFBD")),
-                VarInitKind::VarInit(VarInitDecl::late_bound("CounterSFC0", "CounterSFC")),
-                VarInitKind::VarInit(VarInitDecl::late_bound("CounterIL0", "CounterIL")),
-                VarInitKind::VarInit(VarInitDecl::late_bound("CounterLD0", "CounterLD")),
-                VarInitKind::VarInit(VarInitDecl::simple("AVCnt", "REAL")),
-                VarInitKind::VarInit(VarInitDecl::simple("_TMP_AverageVal17_OUT", "REAL")),
+                VarInitDecl::late_bound("CounterST0", "CounterST"),
+                VarInitDecl::late_bound("CounterFBD0", "CounterFBD"),
+                VarInitDecl::late_bound("CounterSFC0", "CounterSFC"),
+                VarInitDecl::late_bound("CounterIL0", "CounterIL"),
+                VarInitDecl::late_bound("CounterLD0", "CounterLD"),
+                VarInitDecl::simple("AVCnt", "REAL"),
+                VarInitDecl::simple("_TMP_AverageVal17_OUT", "REAL"),
             ],
             body: FunctionBlockBody::stmts(vec![
                 StmtKind::fb_call_mapped("CounterST0", vec![("Reset", "Reset")]),

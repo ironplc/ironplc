@@ -26,7 +26,7 @@ struct GlobalTypeDefinitionVisitor<'a> {
 }
 impl<'a> Visitor<Error> for GlobalTypeDefinitionVisitor<'a> {
     type Value = ();
-    fn visit_enum_declaration(&mut self, enum_decl: &EnumerationDeclaration) -> Result<(), Error>{
+    fn visit_enum_declaration(&mut self, enum_decl: &EnumerationDeclaration) -> Result<(), Error> {
         self.types
             .insert(enum_decl.name.clone(), TypeDefinitionKind::Enumeration);
         Ok(())
@@ -77,7 +77,11 @@ mod tests {
         let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: String::from("LOGGER"),
-                var_decls: vec![VarInitKind::late_bound("var_name", "var_type")],
+                inputs: vec![VarInitDecl::late_bound("var_name", "var_type")],
+                outputs: vec![],
+                inouts: vec![],
+                vars: vec![],
+                externals: vec![],
                 body: FunctionBlockBody::stmts(vec![]),
             },
         ))
@@ -92,9 +96,13 @@ mod tests {
         let expected = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: String::from("LOGGER"),
-                var_decls: vec![VarInitKind::VarInit(VarInitDecl::function_block(
+                inputs: vec![VarInitDecl::function_block(
                     "var_name", "var_type",
-                ))],
+                )],
+                outputs: vec![],
+                inouts: vec![],
+                vars: vec![],
+                externals: vec![],
                 body: FunctionBlockBody::stmts(vec![]),
             },
         ))
