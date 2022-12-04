@@ -11,7 +11,7 @@
 //! ```
 //! use ironplc_dsl::dsl::FunctionDeclaration;
 //! use ironplc_dsl::visitor::{ Visitor, visit_function_declaration };
-//! 
+//!
 //! struct Dummy {}
 //! impl Dummy {
 //!   fn do_work() {}
@@ -19,7 +19,7 @@
 //!
 //! impl Visitor<String> for Dummy {
 //!     type Value = ();
-//! 
+//!
 //!     fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<Self::Value, String> {
 //!         // Do something custom before visiting the FunctionDeclaration node
 //!         Dummy::do_work();
@@ -45,19 +45,21 @@ where
     X: Acceptor,
 {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
-        match self.into_iter()
+        match self
+            .into_iter()
             .map(|x| x.accept(visitor))
-            .find(|r| r.is_err()) {
-                Some(err) => {
-                    // At least one of the items returned an error, so
-                    // return the first error.
-                    err
-                }
-                None => {
-                    // There were no errors, so return the default value
-                    Ok(V::Value::default())
-                }
+            .find(|r| r.is_err())
+        {
+            Some(err) => {
+                // At least one of the items returned an error, so
+                // return the first error.
+                err
             }
+            None => {
+                // There were no errors, so return the default value
+                Ok(V::Value::default())
+            }
+        }
     }
 }
 
@@ -69,7 +71,7 @@ where
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self.as_ref() {
             Some(x) => x.accept(visitor),
-            None => Ok(V::Value::default())
+            None => Ok(V::Value::default()),
         }
     }
 }
@@ -78,10 +80,10 @@ where
 /// walks to visit items in the tree.
 pub trait Visitor<E> {
     /// Value produced by this visitor when the result is not an error.
-    /// 
+    ///
     /// The returned value is usually not meaningful because no guarantee
     /// is provided when returning from vectors of objects.
-    type Value : Default;
+    type Value: Default;
 
     fn walk(&mut self, node: &Library) -> Result<Self::Value, E> {
         Acceptor::accept(&node.elems, self)
@@ -91,7 +93,10 @@ pub trait Visitor<E> {
         visit_enum_declaration(self, node)
     }
 
-    fn visit_function_block_declaration(&mut self, node: &FunctionBlockDeclaration) -> Result<Self::Value, E> {
+    fn visit_function_block_declaration(
+        &mut self,
+        node: &FunctionBlockDeclaration,
+    ) -> Result<Self::Value, E> {
         visit_function_block_declaration(self, node)
     }
 
@@ -148,7 +153,10 @@ pub trait Visitor<E> {
     }
 }
 
-pub fn visit_enum_declaration<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &EnumerationDeclaration) -> Result<V::Value, E> {
+pub fn visit_enum_declaration<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &EnumerationDeclaration,
+) -> Result<V::Value, E> {
     Acceptor::accept(&node.initializer, v)
 }
 
@@ -156,21 +164,41 @@ pub fn visit_function_block_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &FunctionBlockDeclaration,
 ) -> Result<V::Value, E> {
-    Acceptor::accept(&node.var_decls, v)?;
+    Acceptor::accept(&node.inouts, v)?;
+    Acceptor::accept(&node.outputs, v)?;
+    Acceptor::accept(&node.inouts, v)?;
+    Acceptor::accept(&node.vars, v)?;
+    Acceptor::accept(&node.externals, v)?;
     Acceptor::accept(&node.body, v)
 }
 
-pub fn visit_program_declaration<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &ProgramDeclaration) -> Result<V::Value, E> {
-    Acceptor::accept(&node.var_declarations, v)?;
+pub fn visit_program_declaration<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &ProgramDeclaration,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.inputs, v)?;
+    Acceptor::accept(&node.outputs, v)?;
+    Acceptor::accept(&node.inouts, v)?;
+    Acceptor::accept(&node.vars, v)?;
     Acceptor::accept(&node.body, v)
 }
 
-pub fn visit_function_declaration<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &FunctionDeclaration) -> Result<V::Value, E> {
-    Acceptor::accept(&node.var_decls, v)?;
+pub fn visit_function_declaration<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &FunctionDeclaration,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.inputs, v)?;
+    Acceptor::accept(&node.outputs, v)?;
+    Acceptor::accept(&node.inouts, v)?;
+    Acceptor::accept(&node.vars, v)?;
+    Acceptor::accept(&node.externals, v)?;
     Acceptor::accept(&node.body, v)
 }
 
-pub fn visit_var_int_decl<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &VarInitDecl) -> Result<V::Value, E> {
+pub fn visit_var_int_decl<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &VarInitDecl,
+) -> Result<V::Value, E> {
     Acceptor::accept(&node.initializer, v)
 }
 
@@ -180,14 +208,20 @@ pub fn visit_if<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &If) -> Result<V::Va
     Acceptor::accept(&node.else_body, v)
 }
 
-pub fn visit_compare<V: Visitor<E> + ?Sized, E>(v: &mut V, op: &CompareOp, terms: &Vec<ExprKind>) -> Result<V::Value, E>{
+pub fn visit_compare<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    op: &CompareOp,
+    terms: &Vec<ExprKind>,
+) -> Result<V::Value, E> {
     Acceptor::accept(terms, v)
 }
 
 impl Acceptor for LibraryElement {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
-            LibraryElement::ConfigurationDeclaration(config) => {todo!()}
+            LibraryElement::ConfigurationDeclaration(config) => {
+                todo!()
+            }
             LibraryElement::DataTypeDeclaration(data_type_decl) => {
                 Acceptor::accept(data_type_decl, visitor)
             }
@@ -220,12 +254,8 @@ impl Acceptor for TypeInitializer {
 impl Acceptor for VarInitKind {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
-            VarInitKind::VarInit(init) => {
-                visitor.visit_var_init_decl(init)
-            }
-            VarInitKind::LocatedVarInit(located_var) => {
-                visitor.visit_located_var_init(located_var)
-            }
+            VarInitKind::VarInit(init) => visitor.visit_var_init_decl(init),
+            VarInitKind::LocatedVarInit(located_var) => visitor.visit_located_var_init(located_var),
         }
     }
 }
@@ -233,16 +263,23 @@ impl Acceptor for VarInitKind {
 impl Acceptor for ExprKind {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
-            ExprKind::Compare { op, terms } =>  {
-                visitor.visit_compare(op, terms)
-            },
-            ExprKind::BinaryOp { ops, terms } => {todo!()},
-            ExprKind::UnaryOp { op, term } => {todo!()},
-            ExprKind::Const(_) => {todo!()},
-            ExprKind::Variable(variable) => {
-                Acceptor::accept(variable, visitor)
-            },
-            ExprKind::Function { name, param_assignment } => {todo!()},
+            ExprKind::Compare { op, terms } => visitor.visit_compare(op, terms),
+            ExprKind::BinaryOp { ops, terms } => {
+                todo!()
+            }
+            ExprKind::UnaryOp { op, term } => {
+                todo!()
+            }
+            ExprKind::Const(_) => {
+                todo!()
+            }
+            ExprKind::Variable(variable) => Acceptor::accept(variable, visitor),
+            ExprKind::Function {
+                name,
+                param_assignment,
+            } => {
+                todo!()
+            }
         }
     }
 }
@@ -256,28 +293,18 @@ impl Acceptor for VarInitDecl {
 impl Acceptor for FunctionBlockBody {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
-            FunctionBlockBody::Sfc(network) => {
-                visitor.visit_sfc(network)
-            }
-            FunctionBlockBody::Statements(stmts) => {
-                visitor.visit_statements(stmts)
-            }
+            FunctionBlockBody::Sfc(network) => visitor.visit_sfc(network),
+            FunctionBlockBody::Statements(stmts) => visitor.visit_statements(stmts),
         }
     }
 }
 
 impl Acceptor for StmtKind {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V)  -> Result<V::Value, E>{
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
-            StmtKind::Assignment(node) => {
-                visitor.visit_assignment(node)
-            }
-            StmtKind::If(node) => {
-                visitor.visit_if(node)
-            }
-            StmtKind::FbCall(node) => {
-                visitor.visit_fb_call(node)
-            }
+            StmtKind::Assignment(node) => visitor.visit_assignment(node),
+            StmtKind::If(node) => visitor.visit_if(node),
+            StmtKind::FbCall(node) => visitor.visit_fb_call(node),
         }
     }
 }
@@ -291,12 +318,8 @@ impl Acceptor for Network {
 impl Acceptor for Variable {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
-            Variable::DirectVariable(var) => {
-                visitor.visit_direct_variable(var)
-            }
-            Variable::SymbolicVariable(var) => {
-                visitor.visit_symbolic_variable(var)
-            }
+            Variable::DirectVariable(var) => visitor.visit_direct_variable(var),
+            Variable::SymbolicVariable(var) => visitor.visit_symbolic_variable(var),
             Variable::MultiElementVariable(_) => {
                 todo!()
             }
@@ -349,7 +372,10 @@ mod test {
         let library = Library {
             elems: vec![LibraryElement::ProgramDeclaration(ProgramDeclaration {
                 type_name: String::from("plc_prg"),
-                var_declarations: vec![VarInitKind::VarInit(VarInitDecl::simple("Reset", "BOOL"))],
+                inputs: vec![VarInitDecl::simple("Reset", "BOOL")],
+                outputs: vec![],
+                inouts: vec![],
+                vars: vec![],
                 body: FunctionBlockBody::stmts(vec![StmtKind::fb_assign(
                     "AverageVal",
                     vec!["Cnt1", "Cnt2"],

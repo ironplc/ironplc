@@ -392,8 +392,12 @@ impl FunctionBlockBody {
 pub struct FunctionDeclaration {
     pub name: String,
     pub return_type: String,
-    // TODO
-    pub var_decls: Vec<VarInitDecl>,
+    // TODO rename these to be descriptive
+    pub inputs: Vec<VarInitDecl>,
+    pub outputs: Vec<VarInitDecl>,
+    pub inouts: Vec<VarInitDecl>,
+    pub vars: Vec<VarInitDecl>,
+    pub externals: Vec<VarInitDecl>,
     // TODO other types
     pub body: Vec<StmtKind>,
 }
@@ -401,15 +405,25 @@ pub struct FunctionDeclaration {
 #[derive(Debug, PartialEq, Clone)]
 pub struct FunctionBlockDeclaration {
     pub name: String,
-    // TODO
-    pub var_decls: Vec<VarInitKind>,
+    pub inputs: Vec<VarInitDecl>,
+    pub outputs: Vec<VarInitDecl>,
+    pub inouts: Vec<VarInitDecl>,
+    pub vars: Vec<VarInitDecl>,
+    pub externals: Vec<VarInitDecl>,
+    // TODO other var declarations
     pub body: FunctionBlockBody,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct ProgramDeclaration {
     pub type_name: String,
-    pub var_declarations: Vec<VarInitKind>,
+    pub inputs: Vec<VarInitDecl>,
+    pub outputs: Vec<VarInitDecl>,
+    pub inouts: Vec<VarInitDecl>,
+    pub vars: Vec<VarInitDecl>,
+    // TODO other var declarations
+    // TODO located var declarations
+    // TODO other stuff here
     pub body: FunctionBlockBody,
 }
 

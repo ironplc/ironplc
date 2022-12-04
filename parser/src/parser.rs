@@ -14,6 +14,174 @@ pub fn parse_library(source: &str) -> Result<Vec<LibraryElement>, String> {
     plc_parser::library(source).map_err(|e| String::from(e.to_string()))
 }
 
+// Container for IO variable declarations.
+//
+// This is internal for the parser to help with retaining context (input,
+// output, etc). In effect, the parser needs a container because we don't
+// know where to put the items until much later. It is even more problematic
+// because we need to return a common type but that type is not needed
+// outside of the parser.
+enum VarDeclarations {
+  // input_declarations
+  Inputs(Vec<VarInitDecl>),
+  // output_declarations
+  Outputs(Vec<VarInitDecl>),
+  // input_output_declarations
+  Inouts(Vec<VarInitDecl>),
+  // located_var_declarations
+  Located(Vec<LocatedVarInit>),
+  // var_declarations
+  Var(Vec<VarInitDecl>),
+  // external_declarations
+  External(Vec<VarInitDecl>),
+  Retentive(Vec<VarInitDecl>),
+  NonRetentive(Vec<VarInitDecl>),
+  Temp(Vec<VarInitDecl>)
+}
+
+struct InputOutputDeclarations {
+  inputs: Vec<VarInitDecl>,
+  outputs: Vec<VarInitDecl>,
+  inouts: Vec<VarInitDecl>,
+}
+
+impl InputOutputDeclarations {
+  fn new() -> Self {
+    InputOutputDeclarations {
+      inputs: vec![],
+      outputs: vec![],
+      inouts: vec![],
+    }
+  }
+}
+struct OtherDeclarations {
+  externals: Vec<VarInitDecl>,
+  vars: Vec<VarInitDecl>,
+  retentives: Vec<VarInitDecl>,
+  non_retentives: Vec<VarInitDecl>,
+  temps: Vec<VarInitDecl>,
+  // TODO incompl_located_var_declarations
+}
+
+impl OtherDeclarations {
+  fn new() -> Self {
+    OtherDeclarations {
+      externals: vec![],
+      vars: vec![],
+      retentives: vec![],
+      non_retentives: vec![],
+      temps: vec![],
+    }
+  }
+}
+struct LocatedDeclarations {
+  decl: Vec<LocatedVarInit>
+}
+
+impl LocatedDeclarations {
+  fn new() -> Self {
+    LocatedDeclarations {
+      decl: vec![],
+    }
+  }
+}
+
+impl VarDeclarations {
+  // Given multiple sets of declarations, unzip them into types of
+  // declarations.
+  fn unzip(mut decls: Vec<VarDeclarations>) -> (InputOutputDeclarations, OtherDeclarations, LocatedDeclarations) {
+    let mut io = InputOutputDeclarations::new();
+    let mut other = OtherDeclarations::new();
+    let mut located = LocatedDeclarations::new();
+
+    for decl in decls.drain(..) {
+      match decl {
+        VarDeclarations::Inputs(mut i) => {
+          io.inputs.append(&mut i);
+        },
+        VarDeclarations::Outputs(mut o) => {
+          io.outputs.append(&mut o);
+        },
+        VarDeclarations::Inouts(mut inouts) => {
+          io.inouts.append(&mut inouts);
+        },
+        VarDeclarations::Located(mut l) => {
+          located.decl.append(&mut l);
+        },
+        VarDeclarations::Var(mut v) => {
+          other.vars.append(&mut v);
+        },
+        VarDeclarations::External(mut v) => {
+          other.externals.append(&mut v);
+        },
+        VarDeclarations::Retentive(mut v) => {
+          other.retentives.append(&mut v);
+        },
+        VarDeclarations::NonRetentive(mut v) => {
+          other.non_retentives.append(&mut v);
+        },
+        VarDeclarations::Temp(mut v) => {
+          other.temps.append(&mut v);
+        }
+      }
+    }
+
+    return (io, other, located);
+  }
+
+  pub fn map(declarations: Vec<VarInitDecl>,
+    storage_class: Option<StorageClass>,) -> Vec<VarInitDecl> {
+      declarations
+      .into_iter()
+      .map(|declaration| {
+          let storage = storage_class
+              .clone()
+              .unwrap_or_else(|| StorageClass::Unspecified);
+          let mut declaration = declaration.clone();
+          declaration.storage_class = storage;
+          declaration
+      })
+      .collect()
+    }
+
+  pub fn flat_map(
+    declarations: Vec<Vec<VarInitDecl>>,
+    storage_class: Option<StorageClass>,
+) -> Vec<VarInitDecl> {
+    let declarations = declarations
+        .into_iter()
+        .flatten()
+        .collect::<Vec<VarInitDecl>>();
+    
+        declarations
+        .into_iter()
+        .map(|declaration| {
+            let storage = storage_class
+                .clone()
+                .unwrap_or_else(|| StorageClass::Unspecified);
+            let mut declaration = declaration.clone();
+            declaration.storage_class = storage;
+            declaration
+        })
+        .collect()
+  }
+
+  pub fn map_located(declarations: Vec<LocatedVarInit>,
+    storage_class: Option<StorageClass>,) -> Vec<LocatedVarInit> {
+      declarations
+      .into_iter()
+      .map(|declaration| {
+          let storage = storage_class
+              .clone()
+              .unwrap_or_else(|| StorageClass::Unspecified);
+          let mut declaration = declaration.clone();
+          declaration.storage_class = storage;
+          declaration
+      })
+      .collect()
+    }
+}
+
 parser! {
   grammar plc_parser() for str {
 
@@ -301,25 +469,17 @@ parser! {
     pub rule input_output_declarations() -> Vec<VarInitDecl> = "VAR_IN_OUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
       var_init_flat_map(declarations, storage)
     }
-    rule var_declarations() -> Vec<VarInitDecl> = "VAR" _ storage:"CONSTANT"? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+    rule var_declarations() -> VarDeclarations = "VAR" _ storage:"CONSTANT"? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
       let storage = storage.map(|()| StorageClass::Constant);
-      var_init_flat_map(declarations, storage)
+      VarDeclarations::Var(VarDeclarations::flat_map(declarations, storage))
     }
-    rule retentive_var_declarations() -> Vec<VarInitDecl> = "VAR" _ "RETAIN" _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
-      var_init_flat_map(declarations, Option::Some(StorageClass::Retain))
+    rule retentive_var_declarations() -> VarDeclarations = "VAR" _ "RETAIN" _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+      let storage = Option::Some(StorageClass::Retain);
+      VarDeclarations::Var(VarDeclarations::flat_map(declarations, storage))
     }
-    rule located_var_declarations() -> Vec<LocatedVarInit> = "VAR" _ storage:("CONSTANT" { StorageClass::Constant }/ "RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<located_var_decl()>) _ "END_VAR" {
-      declarations
-          .into_iter()
-          .map(|declaration| {
-              let storage = storage
-                  .clone()
-                  .unwrap_or_else(|| StorageClass::Unspecified);
-              let mut declaration = declaration.clone();
-              declaration.storage_class = storage;
-              declaration
-          })
-          .collect()
+    rule located_var_declarations() -> VarDeclarations = "VAR" _ storage:("CONSTANT" { StorageClass::Constant } / "RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<located_var_decl()>) _ "END_VAR" {
+      let storage = storage.or(Some(StorageClass::Unspecified));
+      VarDeclarations::Located(VarDeclarations::map_located(declarations, storage))
     }
     rule located_var_decl() -> LocatedVarInit = name:variable_name()? _ loc:location() _ ":" _ init:located_var_spec_init() {
       let name = name.map(|n| String::from(n));
@@ -332,9 +492,9 @@ parser! {
     }
     // TODO is this NOT the right type to return?
     // We use the same type as in other places for VarInit, but the external always omits the initializer
-    rule external_var_declarations() -> Vec<VarInitDecl> = "VAR_EXTERNAL" _ constant:"CONSTANT"? _ declarations:semisep(<external_declaration()>) _ "END_VAR" {
+    rule external_var_declarations() -> VarDeclarations = "VAR_EXTERNAL" _ constant:"CONSTANT"? _ declarations:semisep(<external_declaration()>) _ "END_VAR" {
       let storage = constant.map(|()| StorageClass::Constant);
-      var_init_map(declarations, storage)
+      VarDeclarations::External(VarDeclarations::map(declarations, storage))
     }
     // TODO subrange_specification, array_specification(), structure_type_name and others
     rule external_declaration_spec() -> TypeInitializer = type_name:simple_specification() {
@@ -392,20 +552,24 @@ parser! {
     // TODO this isn't correct
     rule standard_function_name() -> &'input str = identifier()
     rule derived_function_name() -> &'input str = identifier()
-    rule function_declaration() -> FunctionDeclaration = "FUNCTION" _  name:derived_function_name() _ ":" _ rt:(elementary_type_name() / derived_type_name()) _ var_decl:(io:io_var_declarations() / func:function_var_decls()) ** _ _ body:function_body() _ "END_FUNCTION" {
-      let declarations = var_decl.into_iter().flatten().collect::<Vec<VarInitDecl>>();
+    rule function_declaration() -> FunctionDeclaration = "FUNCTION" _  name:derived_function_name() _ ":" _ rt:(elementary_type_name() / derived_type_name()) _ var_decls:(io:io_var_declarations() / func:function_var_decls()) ** _ _ body:function_body() _ "END_FUNCTION" {
+      let (io, other, located) = VarDeclarations::unzip(var_decls);
       FunctionDeclaration {
         name: String::from(name),
         return_type: String::from(rt),
-        // TODO separate into different types
-        var_decls: declarations,
+        inputs: io.inputs,
+        outputs: io.outputs,
+        inouts: io.inouts,
+        // TODO
+        vars: other.vars,
+        externals: other.externals,
         body: body,
       }
     }
-    rule io_var_declarations() -> Vec<VarInitDecl> = input_declarations() / output_declarations() / input_output_declarations()
-    rule function_var_decls() -> Vec<VarInitDecl> = "VAR" _ storage:"CONSTANT"? _ vars:semisep_oneplus(<var2_init_decl()>) _ "END_VAR" {
+    rule io_var_declarations() -> VarDeclarations = i:input_declarations() { VarDeclarations::Inputs(i) } / o:output_declarations() { VarDeclarations::Outputs(o) } / io:input_output_declarations() { VarDeclarations::Inouts(io) }
+    rule function_var_decls() -> VarDeclarations = "VAR" _ storage:"CONSTANT"? _ vars:semisep_oneplus(<var2_init_decl()>) _ "END_VAR" {
       let storage = storage.map(|()| StorageClass::Constant);
-      var_init_flat_map(vars, storage)
+      VarDeclarations::Var(var_init_flat_map(vars, storage))
     }
     // TODO a bunch are missing here
     rule function_body() -> Vec<StmtKind> = statement_list()
@@ -418,25 +582,34 @@ parser! {
     rule function_block_type_name() -> &'input str = i:identifier() { i }
     rule derived_function_block_name() -> &'input str = !STANDARD_FUNCTION_BLOCK_NAME() i:identifier() { i }
     // TODO add variable declarations
-    rule function_block_declaration() -> FunctionBlockDeclaration = "FUNCTION_BLOCK" _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { var_init_kind_map(io) } / other:other_var_declarations() { var_init_kind_map(other) }) ** _ _ body:function_block_body() _ "END_FUNCTION_BLOCK" {
-      let declarations = decls.into_iter().flatten().collect::<Vec<VarInitKind>>();
+    rule function_block_declaration() -> FunctionBlockDeclaration = "FUNCTION_BLOCK" _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other }) ** _ _ body:function_block_body() _ "END_FUNCTION_BLOCK" {
+      let (io, other, located) = VarDeclarations::unzip(decls);
       FunctionBlockDeclaration {
         name: String::from(name),
-        var_decls: declarations,
+        inputs: io.inputs,
+        outputs: io.outputs,
+        inouts: io.inouts,
+        // TODO
+        vars: other.vars,
+        externals: other.externals,
         body: body,
       }
     }
     // TODO there are far more here
-    rule other_var_declarations() -> Vec<VarInitDecl> = external_var_declarations() / var_declarations()
+    rule other_var_declarations() -> VarDeclarations = external_var_declarations() / var_declarations()
     rule function_block_body() -> FunctionBlockBody = networks:sequential_function_chart() { FunctionBlockBody::sfc(networks) } / statements:statement_list() { FunctionBlockBody::stmts(statements) }
 
     // B.1.5.3 Program declaration
     rule program_type_name() -> &'input str = i:identifier() { i }
-    pub rule program_declaration() ->  ProgramDeclaration = "PROGRAM" _ p:program_type_name() _ decls:(io:io_var_declarations() { var_init_kind_map(io) } / other:other_var_declarations() { var_init_kind_map(other) } / located:located_var_declarations() { located_var_init_kind_map(located) }) ** _ _ body:function_block_body() _ "END_PROGRAM" {
-      let declarations = decls.into_iter().flatten().collect::<Vec<VarInitKind>>();
+    pub rule program_declaration() ->  ProgramDeclaration = "PROGRAM" _ p:program_type_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other } / located:located_var_declarations() { located }) ** _ _ body:function_block_body() _ "END_PROGRAM" {
+      let (io, other, located) = VarDeclarations::unzip(decls);
       ProgramDeclaration {
         type_name: String::from(p),
-        var_declarations: declarations,
+        inputs: io.inputs,
+        outputs: io.outputs,
+        inouts: io.inouts,
+        vars: other.vars,
+        // TODO more
         body: body,
       }
     }
@@ -656,10 +829,13 @@ parser! {
     }
     // TODO this needs much more
     rule param_assignment() -> ParamAssignment = name:(n:variable_name() _ ":=" { n })? _ expr:expression() {
-      let name = name.map(|n| String::from(n));
-      ParamAssignment::Input {
-        name: name,
-        expr: expr,
+      match name {
+        Some(n) => {
+          ParamAssignment::named(n, expr)
+        },
+        None => {
+          ParamAssignment::positional(expr)
+        }
       }
     } / not:"NOT"? _ src:variable_name() _ "=>" _ tgt:variable() {
       ParamAssignment::Output {
@@ -1038,10 +1214,9 @@ mod test {
         let statement = "CounterLD0(Reset);";
         let expected = Ok(vec![StmtKind::FbCall(FbCall {
             name: String::from("CounterLD0"),
-            params: vec![ParamAssignment::Input {
-                name: None,
-                expr: ExprKind::symbolic_variable("Reset"),
-            }],
+            params: vec![ParamAssignment::positional(
+                ExprKind::symbolic_variable("Reset")
+            )],
         })]);
 
         assert_eq!(plc_parser::statement_list(statement), expected)
@@ -1052,10 +1227,10 @@ mod test {
         let statement = "CounterLD0(Cnt := Reset);";
         let expected = Ok(vec![StmtKind::FbCall(FbCall {
             name: String::from("CounterLD0"),
-            params: vec![ParamAssignment::Input {
-                name: Option::Some(String::from("Cnt")),
-                expr: ExprKind::symbolic_variable("Reset"),
-            }],
+            params: vec![ParamAssignment::named(
+                "Cnt",
+                ExprKind::symbolic_variable("Reset")
+          )],
         })]);
 
         assert_eq!(plc_parser::statement_list(statement), expected)

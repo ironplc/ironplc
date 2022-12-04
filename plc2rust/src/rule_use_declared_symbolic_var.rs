@@ -1,5 +1,6 @@
-use std::{collections::HashMap, fmt::Error};
-
+//! Each reference in a function block, function or program to
+//! a symbolic variable must be to a symbolic variable that is
+//! declared in that scope.
 use ironplc_dsl::{
     dsl::*,
     visitor::{
@@ -23,7 +24,10 @@ impl NodeData for DummyNode {}
 impl Visitor<String> for SymbolTable<DummyNode> {
     type Value = ();
 
-    fn visit_function_declaration(&mut self, func_decl: &FunctionDeclaration) -> Result<(), String> {
+    fn visit_function_declaration(
+        &mut self,
+        func_decl: &FunctionDeclaration,
+    ) -> Result<(), String> {
         self.enter();
         let ret = visit_function_declaration(self, func_decl);
         self.exit();
@@ -37,34 +41,29 @@ impl Visitor<String> for SymbolTable<DummyNode> {
         ret
     }
 
-    fn visit_function_block_declaration(&mut self, func_decl: &FunctionBlockDeclaration) -> Result<(), String> {
+    fn visit_function_block_declaration(
+        &mut self,
+        func_decl: &FunctionBlockDeclaration,
+    ) -> Result<(), String> {
         self.enter();
         let ret = visit_function_block_declaration(self, func_decl);
         self.exit();
         ret
     }
 
-    fn visit_symbolic_variable(&mut self, node: &ironplc_dsl::ast::SymbolicVariable) -> Result<(), String> {
+    fn visit_symbolic_variable(
+        &mut self,
+        node: &ironplc_dsl::ast::SymbolicVariable,
+    ) -> Result<(), String> {
         match self.find(&node.name.as_str()) {
             Some(_) => {
                 // We found the variable being referred to
                 Ok(Self::Value::default())
             }
-            None => {
-                Err(format!("Variable {} not defined before used", node.name))
-            },
+            None => Err(format!("Variable {} not defined before used", node.name)),
         }
     }
 }
-
-struct GlobalTypeDefinitionVisitor<'a> {
-    types: &'a mut HashMap<String, TypeDefinitionKind>,
-}
-
-struct UseDeclaredChecker {
-    symbol_table: symbol_table::SymbolTable<DummyNode>,
-}
-impl UseDeclaredChecker {}
 
 #[cfg(test)]
 mod tests {
@@ -80,7 +79,11 @@ mod tests {
         let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: String::from("LOGGER"),
-                var_decls: vec![],
+                inputs: vec![],
+                outputs: vec![],
+                inouts: vec![],
+                vars: vec![],
+                externals: vec![],
                 body: FunctionBlockBody::stmts(vec![StmtKind::if_then(
                     ExprKind::Compare {
                         op: CompareOp::And,
