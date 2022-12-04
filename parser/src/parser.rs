@@ -22,163 +22,171 @@ pub fn parse_library(source: &str) -> Result<Vec<LibraryElement>, String> {
 // because we need to return a common type but that type is not needed
 // outside of the parser.
 enum VarDeclarations {
-  // input_declarations
-  Inputs(Vec<VarInitDecl>),
-  // output_declarations
-  Outputs(Vec<VarInitDecl>),
-  // input_output_declarations
-  Inouts(Vec<VarInitDecl>),
-  // located_var_declarations
-  Located(Vec<LocatedVarInit>),
-  // var_declarations
-  Var(Vec<VarInitDecl>),
-  // external_declarations
-  External(Vec<VarInitDecl>),
-  Retentive(Vec<VarInitDecl>),
-  NonRetentive(Vec<VarInitDecl>),
-  Temp(Vec<VarInitDecl>)
+    // input_declarations
+    Inputs(Vec<VarInitDecl>),
+    // output_declarations
+    Outputs(Vec<VarInitDecl>),
+    // input_output_declarations
+    Inouts(Vec<VarInitDecl>),
+    // located_var_declarations
+    Located(Vec<LocatedVarInit>),
+    // var_declarations
+    Var(Vec<VarInitDecl>),
+    // external_declarations
+    External(Vec<VarInitDecl>),
+    Retentive(Vec<VarInitDecl>),
+    NonRetentive(Vec<VarInitDecl>),
+    Temp(Vec<VarInitDecl>),
 }
 
 struct InputOutputDeclarations {
-  inputs: Vec<VarInitDecl>,
-  outputs: Vec<VarInitDecl>,
-  inouts: Vec<VarInitDecl>,
+    inputs: Vec<VarInitDecl>,
+    outputs: Vec<VarInitDecl>,
+    inouts: Vec<VarInitDecl>,
 }
 
 impl InputOutputDeclarations {
-  fn new() -> Self {
-    InputOutputDeclarations {
-      inputs: vec![],
-      outputs: vec![],
-      inouts: vec![],
+    fn new() -> Self {
+        InputOutputDeclarations {
+            inputs: vec![],
+            outputs: vec![],
+            inouts: vec![],
+        }
     }
-  }
 }
 struct OtherDeclarations {
-  externals: Vec<VarInitDecl>,
-  vars: Vec<VarInitDecl>,
-  retentives: Vec<VarInitDecl>,
-  non_retentives: Vec<VarInitDecl>,
-  temps: Vec<VarInitDecl>,
-  // TODO incompl_located_var_declarations
+    externals: Vec<VarInitDecl>,
+    vars: Vec<VarInitDecl>,
+    retentives: Vec<VarInitDecl>,
+    non_retentives: Vec<VarInitDecl>,
+    temps: Vec<VarInitDecl>,
+    // TODO incompl_located_var_declarations
 }
 
 impl OtherDeclarations {
-  fn new() -> Self {
-    OtherDeclarations {
-      externals: vec![],
-      vars: vec![],
-      retentives: vec![],
-      non_retentives: vec![],
-      temps: vec![],
+    fn new() -> Self {
+        OtherDeclarations {
+            externals: vec![],
+            vars: vec![],
+            retentives: vec![],
+            non_retentives: vec![],
+            temps: vec![],
+        }
     }
-  }
 }
 struct LocatedDeclarations {
-  decl: Vec<LocatedVarInit>
+    decl: Vec<LocatedVarInit>,
 }
 
 impl LocatedDeclarations {
-  fn new() -> Self {
-    LocatedDeclarations {
-      decl: vec![],
+    fn new() -> Self {
+        LocatedDeclarations { decl: vec![] }
     }
-  }
 }
 
 impl VarDeclarations {
-  // Given multiple sets of declarations, unzip them into types of
-  // declarations.
-  fn unzip(mut decls: Vec<VarDeclarations>) -> (InputOutputDeclarations, OtherDeclarations, LocatedDeclarations) {
-    let mut io = InputOutputDeclarations::new();
-    let mut other = OtherDeclarations::new();
-    let mut located = LocatedDeclarations::new();
+    // Given multiple sets of declarations, unzip them into types of
+    // declarations.
+    fn unzip(
+        mut decls: Vec<VarDeclarations>,
+    ) -> (
+        InputOutputDeclarations,
+        OtherDeclarations,
+        LocatedDeclarations,
+    ) {
+        let mut io = InputOutputDeclarations::new();
+        let mut other = OtherDeclarations::new();
+        let mut located = LocatedDeclarations::new();
 
-    for decl in decls.drain(..) {
-      match decl {
-        VarDeclarations::Inputs(mut i) => {
-          io.inputs.append(&mut i);
-        },
-        VarDeclarations::Outputs(mut o) => {
-          io.outputs.append(&mut o);
-        },
-        VarDeclarations::Inouts(mut inouts) => {
-          io.inouts.append(&mut inouts);
-        },
-        VarDeclarations::Located(mut l) => {
-          located.decl.append(&mut l);
-        },
-        VarDeclarations::Var(mut v) => {
-          other.vars.append(&mut v);
-        },
-        VarDeclarations::External(mut v) => {
-          other.externals.append(&mut v);
-        },
-        VarDeclarations::Retentive(mut v) => {
-          other.retentives.append(&mut v);
-        },
-        VarDeclarations::NonRetentive(mut v) => {
-          other.non_retentives.append(&mut v);
-        },
-        VarDeclarations::Temp(mut v) => {
-          other.temps.append(&mut v);
+        for decl in decls.drain(..) {
+            match decl {
+                VarDeclarations::Inputs(mut i) => {
+                    io.inputs.append(&mut i);
+                }
+                VarDeclarations::Outputs(mut o) => {
+                    io.outputs.append(&mut o);
+                }
+                VarDeclarations::Inouts(mut inouts) => {
+                    io.inouts.append(&mut inouts);
+                }
+                VarDeclarations::Located(mut l) => {
+                    located.decl.append(&mut l);
+                }
+                VarDeclarations::Var(mut v) => {
+                    other.vars.append(&mut v);
+                }
+                VarDeclarations::External(mut v) => {
+                    other.externals.append(&mut v);
+                }
+                VarDeclarations::Retentive(mut v) => {
+                    other.retentives.append(&mut v);
+                }
+                VarDeclarations::NonRetentive(mut v) => {
+                    other.non_retentives.append(&mut v);
+                }
+                VarDeclarations::Temp(mut v) => {
+                    other.temps.append(&mut v);
+                }
+            }
         }
-      }
+
+        return (io, other, located);
     }
 
-    return (io, other, located);
-  }
-
-  pub fn map(declarations: Vec<VarInitDecl>,
-    storage_class: Option<StorageClass>,) -> Vec<VarInitDecl> {
-      declarations
-      .into_iter()
-      .map(|declaration| {
-          let storage = storage_class
-              .clone()
-              .unwrap_or_else(|| StorageClass::Unspecified);
-          let mut declaration = declaration.clone();
-          declaration.storage_class = storage;
-          declaration
-      })
-      .collect()
-    }
-
-  pub fn flat_map(
-    declarations: Vec<Vec<VarInitDecl>>,
-    storage_class: Option<StorageClass>,
-) -> Vec<VarInitDecl> {
-    let declarations = declarations
-        .into_iter()
-        .flatten()
-        .collect::<Vec<VarInitDecl>>();
-    
+    pub fn map(
+        declarations: Vec<VarInitDecl>,
+        storage_class: Option<StorageClass>,
+    ) -> Vec<VarInitDecl> {
         declarations
-        .into_iter()
-        .map(|declaration| {
-            let storage = storage_class
-                .clone()
-                .unwrap_or_else(|| StorageClass::Unspecified);
-            let mut declaration = declaration.clone();
-            declaration.storage_class = storage;
-            declaration
-        })
-        .collect()
-  }
+            .into_iter()
+            .map(|declaration| {
+                let storage = storage_class
+                    .clone()
+                    .unwrap_or_else(|| StorageClass::Unspecified);
+                let mut declaration = declaration.clone();
+                declaration.storage_class = storage;
+                declaration
+            })
+            .collect()
+    }
 
-  pub fn map_located(declarations: Vec<LocatedVarInit>,
-    storage_class: Option<StorageClass>,) -> Vec<LocatedVarInit> {
-      declarations
-      .into_iter()
-      .map(|declaration| {
-          let storage = storage_class
-              .clone()
-              .unwrap_or_else(|| StorageClass::Unspecified);
-          let mut declaration = declaration.clone();
-          declaration.storage_class = storage;
-          declaration
-      })
-      .collect()
+    pub fn flat_map(
+        declarations: Vec<Vec<VarInitDecl>>,
+        storage_class: Option<StorageClass>,
+    ) -> Vec<VarInitDecl> {
+        let declarations = declarations
+            .into_iter()
+            .flatten()
+            .collect::<Vec<VarInitDecl>>();
+
+        declarations
+            .into_iter()
+            .map(|declaration| {
+                let storage = storage_class
+                    .clone()
+                    .unwrap_or_else(|| StorageClass::Unspecified);
+                let mut declaration = declaration.clone();
+                declaration.storage_class = storage;
+                declaration
+            })
+            .collect()
+    }
+
+    pub fn map_located(
+        declarations: Vec<LocatedVarInit>,
+        storage_class: Option<StorageClass>,
+    ) -> Vec<LocatedVarInit> {
+        declarations
+            .into_iter()
+            .map(|declaration| {
+                let storage = storage_class
+                    .clone()
+                    .unwrap_or_else(|| StorageClass::Unspecified);
+                let mut declaration = declaration.clone();
+                declaration.storage_class = storage;
+                declaration
+            })
+            .collect()
     }
 }
 
@@ -860,6 +868,7 @@ parser! {
 }
 
 mod test {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -1214,9 +1223,9 @@ mod test {
         let statement = "CounterLD0(Reset);";
         let expected = Ok(vec![StmtKind::FbCall(FbCall {
             name: String::from("CounterLD0"),
-            params: vec![ParamAssignment::positional(
-                ExprKind::symbolic_variable("Reset")
-            )],
+            params: vec![ParamAssignment::positional(ExprKind::symbolic_variable(
+                "Reset",
+            ))],
         })]);
 
         assert_eq!(plc_parser::statement_list(statement), expected)
@@ -1229,8 +1238,8 @@ mod test {
             name: String::from("CounterLD0"),
             params: vec![ParamAssignment::named(
                 "Cnt",
-                ExprKind::symbolic_variable("Reset")
-          )],
+                ExprKind::symbolic_variable("Reset"),
+            )],
         })]);
 
         assert_eq!(plc_parser::statement_list(statement), expected)

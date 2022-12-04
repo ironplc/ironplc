@@ -17,9 +17,10 @@ pub fn main() {
     // the type-specific declarations. This just simplifies
     // code generation because we know the type of every declaration
     // exactly
-    let library = type_resolver::apply(library);
+    let library = type_resolver::apply(library).unwrap();
 
-    rule_use_declared_symbolic_var::apply(library);
+    rule_use_declared_symbolic_var::apply(&library).unwrap();
+    rule_use_declared_fb::apply(&library).unwrap();
 
     // Static analysis (binding) and building symbol table
     //
@@ -58,14 +59,14 @@ mod tests {
     use time::Duration;
 
     #[test]
-    fn first_steps() {
+    fn parse_when_first_steps_then_result_is_ok() {
         let src = read_resource("first_steps.st");
         let res = ironplc_parser::parse_program(src.as_str());
         assert!(res.is_ok())
     }
 
     #[test]
-    fn first_steps_data_type_decl() {
+    fn parse_when_first_steps_data_type_decl_then_builds_structure() {
         let src = read_resource("first_steps_data_type_decl.st");
         let expected = new_library(LibraryElement::DataTypeDeclaration(vec![
             EnumerationDeclaration {
@@ -85,7 +86,8 @@ mod tests {
     }
 
     #[test]
-    fn first_steps_function_block_logger() {
+    fn parse_when_first_steps_function_block_logger_then_test_apply_when_names_correct_then_passes()
+    {
         let src = read_resource("first_steps_function_block_logger.st");
         let expected = new_library(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
@@ -93,12 +95,11 @@ mod tests {
                 inputs: vec![
                     VarInitDecl::simple("TRIG", "BOOL"),
                     VarInitDecl::simple("MSG", "STRING"),
-                    VarInitDecl::enumerated("LEVEL", "LOGLEVEL", "INFO"),],
+                    VarInitDecl::enumerated("LEVEL", "LOGLEVEL", "INFO"),
+                ],
                 outputs: vec![],
                 inouts: vec![],
-                vars: vec![
-                    VarInitDecl::simple("TRIG0", "BOOL"),
-                ],
+                vars: vec![VarInitDecl::simple("TRIG0", "BOOL")],
                 externals: vec![],
                 body: FunctionBlockBody::stmts(vec![
                     StmtKind::if_then(
@@ -125,28 +126,23 @@ mod tests {
     }
 
     #[test]
-    fn first_steps_function_block_counter_sfc() {
+    fn parse_when_first_steps_function_block_counter_sfc_then_builds_structure() {
         let src = read_resource("first_steps_function_block_counter_sfc.st");
         let expected = new_library(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: String::from("CounterSFC"),
-                inputs: vec![
-                    VarInitDecl::simple("Reset", "BOOL"),],
-                outputs: vec![
-                    VarInitDecl::simple("OUT", "INT"),],
+                inputs: vec![VarInitDecl::simple("Reset", "BOOL")],
+                outputs: vec![VarInitDecl::simple("OUT", "INT")],
                 inouts: vec![],
-                vars: vec![
-                    VarInitDecl::simple("Cnt", "INT"),],
-                externals: vec![
-                    VarInitDecl {
-                        name: String::from("ResetCounterValue"),
-                        storage_class: StorageClass::Constant,
-                        initializer: Some(TypeInitializer::Simple {
-                            type_name: String::from("INT"),
-                            initial_value: None,
-                        }),
-                    },
-                ],
+                vars: vec![VarInitDecl::simple("Cnt", "INT")],
+                externals: vec![VarInitDecl {
+                    name: String::from("ResetCounterValue"),
+                    storage_class: StorageClass::Constant,
+                    initializer: Some(TypeInitializer::Simple {
+                        type_name: String::from("INT"),
+                        initial_value: None,
+                    }),
+                }],
                 body: FunctionBlockBody::sfc(vec![Network {
                     initial_step: Element::InitialStep {
                         name: String::from("Start"),
@@ -231,29 +227,27 @@ mod tests {
     }
 
     #[test]
-    fn first_steps_function_block_counter_fbd() {
+    fn parse_when_first_steps_function_block_counter_fbd_then_builds_structure() {
         let src = read_resource("first_steps_function_block_counter_fbd.st");
         let expected = new_library(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: String::from("CounterFBD"),
-                inputs: vec![
-                    VarInitDecl::simple("Reset", "BOOL"),],
-                outputs: vec![
-                    VarInitDecl::simple("OUT", "INT")],
+                inputs: vec![VarInitDecl::simple("Reset", "BOOL")],
+                outputs: vec![VarInitDecl::simple("OUT", "INT")],
                 inouts: vec![],
                 vars: vec![
                     VarInitDecl::simple("Cnt", "INT"),
                     VarInitDecl::simple("_TMP_ADD4_OUT", "INT"),
-                    VarInitDecl::simple("_TMP_SEL7_OUT", "INT")],
-                externals: vec![
-                    VarInitDecl {
-                        name: String::from("ResetCounterValue"),
-                        storage_class: StorageClass::Constant,
-                        initializer: Some(TypeInitializer::Simple {
-                            type_name: String::from("INT"),
-                            initial_value: None,
-                        }),
-                    }],
+                    VarInitDecl::simple("_TMP_SEL7_OUT", "INT"),
+                ],
+                externals: vec![VarInitDecl {
+                    name: String::from("ResetCounterValue"),
+                    storage_class: StorageClass::Constant,
+                    initializer: Some(TypeInitializer::Simple {
+                        type_name: String::from("INT"),
+                        initial_value: None,
+                    }),
+                }],
                 body: FunctionBlockBody::stmts(vec![
                     StmtKind::simple_assignment("Cnt", vec!["_TMP_SEL7_OUT"]),
                     StmtKind::simple_assignment("OUT", vec!["Cnt"]),
@@ -264,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn first_steps_func_avg_val() {
+    fn parse_when_first_steps_func_avg_val_then_builds_structure() {
         let src = read_resource("first_steps_func_avg_val.st");
         let expected = new_library(LibraryElement::FunctionDeclaration(FunctionDeclaration {
             name: String::from("AverageVal"),
@@ -275,23 +269,20 @@ mod tests {
                 VarInitDecl::simple("Cnt3", "INT"),
                 VarInitDecl::simple("Cnt4", "INT"),
                 VarInitDecl::simple("Cnt5", "INT"),
-                
             ],
             outputs: vec![],
             inouts: vec![],
-            vars: vec![
-                VarInitDecl {
-                    name: String::from("InputsNumber"),
-                    storage_class: StorageClass::Unspecified,
-                    initializer: Some(TypeInitializer::Simple {
-                        type_name: String::from("REAL"),
-                        initial_value: Some(Initializer::Simple(Constant::RealLiteral(Float {
-                            value: 5.1,
-                            data_type: None,
-                        }))),
-                    }),
-                },
-            ],
+            vars: vec![VarInitDecl {
+                name: String::from("InputsNumber"),
+                storage_class: StorageClass::Unspecified,
+                initializer: Some(TypeInitializer::Simple {
+                    type_name: String::from("REAL"),
+                    initial_value: Some(Initializer::Simple(Constant::RealLiteral(Float {
+                        value: 5.1,
+                        data_type: None,
+                    }))),
+                }),
+            }],
             externals: vec![],
             body: vec![StmtKind::assignment(
                 Variable::symbolic("AverageVal"),
@@ -312,7 +303,7 @@ mod tests {
                                         ExprKind::symbolic_variable("Cnt5"),
                                     ],
                                 },
-            )],
+                            )],
                         },
                         ExprKind::symbolic_variable("InputsNumber"),
                     ],
@@ -333,18 +324,18 @@ mod tests {
     //}
 
     #[test]
-    fn first_steps_program_declaration() {
+    fn parse_when_first_steps_program_declaration_then_builds_structure() {
         let src = read_resource("first_steps_program.st");
         let expected = new_library(LibraryElement::ProgramDeclaration(ProgramDeclaration {
             type_name: String::from("plc_prg"),
-            inputs: vec![
-                VarInitDecl::simple("Reset", "BOOL"),],
+            inputs: vec![VarInitDecl::simple("Reset", "BOOL")],
             outputs: vec![
                 VarInitDecl::simple("Cnt1", "INT"),
                 VarInitDecl::simple("Cnt2", "INT"),
                 VarInitDecl::simple("Cnt3", "INT"),
                 VarInitDecl::simple("Cnt4", "INT"),
-                VarInitDecl::simple("Cnt5", "INT"),],
+                VarInitDecl::simple("Cnt5", "INT"),
+            ],
             inouts: vec![],
             vars: vec![
                 // TODO this are being understood as enumerated types not function blocks
@@ -379,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn first_steps_configuration() {
+    fn parse_when_first_steps_configuration_then_builds_structure() {
         let src = read_resource("first_steps_configuration.st");
         let expected = new_library(LibraryElement::ConfigurationDeclaration(
             ConfigurationDeclaration {

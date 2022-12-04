@@ -368,7 +368,7 @@ mod test {
     }
 
     #[test]
-    fn visit_walks_tree() {
+    fn walk_when_has_symbolic_variable_then_visits_variable() {
         let library = Library {
             elems: vec![LibraryElement::ProgramDeclaration(ProgramDeclaration {
                 type_name: String::from("plc_prg"),
