@@ -11,7 +11,7 @@ use ironplc_dsl::{
 
 use crate::symbol_table::{self, NodeData, SymbolTable};
 
-pub fn apply(lib: Library) -> Result<(), String> {
+pub fn apply(lib: &Library) -> Result<(), String> {
     let mut visitor: SymbolTable<DummyNode> = symbol_table::SymbolTable::new();
 
     visitor.walk(&lib)
@@ -75,7 +75,7 @@ mod tests {
     use crate::test_helpers::new_library;
 
     #[test]
-    fn test_identifies_undeclared_symbol() {
+    fn apply_when_undeclared_symbol_then_returns_error() {
         let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: String::from("LOGGER"),
@@ -101,8 +101,42 @@ mod tests {
         ))
         .unwrap();
 
-        let result = apply(input);
+        let result = apply(&input);
         assert_eq!(true, result.is_err());
         assert_eq!("Variable TRIG not defined before used", result.unwrap_err());
+    }
+
+    #[test]
+    fn apply_when_all_symbol_declared_then_returns_ok() {
+        let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
+            FunctionBlockDeclaration {
+                name: String::from("LOGGER"),
+                inputs: vec![],
+                outputs: vec![],
+                inouts: vec![],
+                vars: vec![
+                    VarInitDecl::simple("TRIG", "BOOL"),
+                    VarInitDecl::simple("TRIG0", "BOOL")
+                ],
+                externals: vec![],
+                body: FunctionBlockBody::stmts(vec![StmtKind::if_then(
+                    ExprKind::Compare {
+                        op: CompareOp::And,
+                        terms: vec![
+                            ExprKind::symbolic_variable("TRIG"),
+                            ExprKind::UnaryOp {
+                                op: UnaryOp::Not,
+                                term: ExprKind::boxed_symbolic_variable("TRIG0"),
+                            },
+                        ],
+                    },
+                    vec![],
+                )]),
+            },
+        ))
+        .unwrap();
+
+        let result = apply(&input);
+        assert_eq!(true, result.is_ok());
     }
 }

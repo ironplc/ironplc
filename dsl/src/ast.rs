@@ -75,9 +75,7 @@ impl StmtKind {
     pub fn fb_assign(fb_name: &str, inputs: Vec<&str>, output: &str) -> StmtKind {
         let assignments = inputs
             .into_iter()
-            .map(|input| ParamAssignment::positional(
-                ExprKind::symbolic_variable(input)
-            ))
+            .map(|input| ParamAssignment::positional(ExprKind::symbolic_variable(input)))
             .collect::<Vec<ParamAssignment>>();
 
         StmtKind::assignment(
@@ -91,10 +89,9 @@ impl StmtKind {
     pub fn fb_call_mapped(fb_name: &str, inputs: Vec<(&str, &str)>) -> StmtKind {
         let assignments = inputs
             .into_iter()
-            .map(|pair| ParamAssignment::named(
-                pair.0,
-                ExprKind::Variable(Variable::symbolic(pair.1))
-            ))
+            .map(|pair| {
+                ParamAssignment::named(pair.0, ExprKind::Variable(Variable::symbolic(pair.1)))
+            })
             .collect::<Vec<ParamAssignment>>();
 
         StmtKind::FbCall(FbCall {
@@ -195,13 +192,13 @@ impl ExprKind {
 }
 #[derive(Debug, PartialEq, Clone)]
 pub struct PositionalInput {
-    pub expr: ExprKind
+    pub expr: ExprKind,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct NamedInput {
     pub name: String,
-    pub expr: ExprKind
+    pub expr: ExprKind,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -221,7 +218,10 @@ impl ParamAssignment {
     }
 
     pub fn named(name: &str, expr: ExprKind) -> ParamAssignment {
-        ParamAssignment::NamedInput(NamedInput { name: String::from(name), expr: expr })
+        ParamAssignment::NamedInput(NamedInput {
+            name: String::from(name),
+            expr: expr,
+        })
     }
 }
 

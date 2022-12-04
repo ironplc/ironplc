@@ -4,7 +4,7 @@ use ironplc_dsl::visitor::Visitor;
 use std::collections::HashMap;
 use std::fmt::Error;
 
-pub fn apply(lib: Library) -> Library {
+pub fn apply(lib: Library) -> Result<Library, Error> {
     let mut type_map = HashMap::new();
 
     // Walk the entire library to find the types. We don't need
@@ -12,11 +12,11 @@ pub fn apply(lib: Library) -> Library {
     let mut visitor = GlobalTypeDefinitionVisitor {
         types: &mut type_map,
     };
-    visitor.walk(&lib);
+    visitor.walk(&lib)?;
 
     // Set the types for each item.
     let mut resolver = TypeResolver { types: type_map };
-    resolver.fold(lib)
+    Ok(resolver.fold(lib))
 }
 
 // Finds types that are valid as variable types. These include enumerations,
@@ -73,7 +73,7 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn test_resolves_function_block_type() {
+    fn fold_when_has_function_block_type_then_resolves_type() {
         let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: String::from("LOGGER"),
@@ -96,9 +96,7 @@ mod tests {
         let expected = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: String::from("LOGGER"),
-                inputs: vec![VarInitDecl::function_block(
-                    "var_name", "var_type",
-                )],
+                inputs: vec![VarInitDecl::function_block("var_name", "var_type")],
                 outputs: vec![],
                 inouts: vec![],
                 vars: vec![],

@@ -60,8 +60,8 @@ pub trait Fold {
             inputs: Foldable::fold(node.inputs, self),
             outputs: Foldable::fold(node.outputs, self),
             inouts: Foldable::fold(node.inouts, self),
-            vars:  Foldable::fold(node.vars, self),
-            externals:  Foldable::fold(node.externals, self),
+            vars: Foldable::fold(node.vars, self),
+            externals: Foldable::fold(node.externals, self),
             body: node.body.clone(),
         }
     }
