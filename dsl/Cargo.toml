@@ -7,4 +7,3 @@ edition = "2021"
 
 [dependencies]
 time = "0.3.11"
-ironplc-derive = { path = "../derive" }
