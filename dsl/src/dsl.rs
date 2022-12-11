@@ -5,8 +5,6 @@ use time::Duration;
 use crate::ast::*;
 use crate::sfc::Network;
 
-use derive::EnumKind;
-
 pub enum TypeDefinitionKind {
     Enumeration,
     FunctionBlock,
@@ -14,8 +12,7 @@ pub enum TypeDefinitionKind {
     Structure,
 }
 
-#[derive(Debug, PartialEq, EnumKind)]
-#[enum_kind(SomeEnumKind)]
+#[derive(Debug, PartialEq)]
 pub enum LibraryElement {
     DataTypeDeclaration(Vec<EnumerationDeclaration>),
     FunctionDeclaration(FunctionDeclaration),

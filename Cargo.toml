@@ -2,7 +2,6 @@
 
 members = [
     "plc2rust",
-    "derive",
     "dsl",
     "parser"
 ]

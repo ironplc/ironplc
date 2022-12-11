@@ -140,6 +140,12 @@ pub trait Visitor<E> {
         visit_compare(self, op, terms)
     }
 
+    fn visit_binary_op(&mut self, op: &Vec<Operator>, terms: &Vec<ExprKind>) -> Result<Self::Value, E> {
+        // TODO this doesn't really go through binary operators - maybe this should be split
+        // into smaller pieces.
+        visit_binary_op(self, op, terms)
+    }
+
     fn visit_direct_variable(&mut self, node: &DirectVariable) -> Result<Self::Value, E> {
         todo!()
     }
@@ -216,6 +222,15 @@ pub fn visit_compare<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(terms, v)
 }
 
+pub fn visit_binary_op<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    op: &Vec<Operator>,
+    terms: &Vec<ExprKind>,
+) -> Result<V::Value, E> {
+    // TODO maybe something with the operator?
+    Acceptor::accept(terms, v)
+}
+
 impl Acceptor for LibraryElement {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
@@ -264,9 +279,7 @@ impl Acceptor for ExprKind {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
             ExprKind::Compare { op, terms } => visitor.visit_compare(op, terms),
-            ExprKind::BinaryOp { ops, terms } => {
-                todo!()
-            }
+            ExprKind::BinaryOp { ops, terms } => visitor.visit_binary_op(ops, terms),
             ExprKind::UnaryOp { op, term } => {
                 todo!()
             }

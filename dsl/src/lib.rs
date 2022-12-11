@@ -1,5 +1,3 @@
-extern crate ironplc_derive as derive;
-
 #[allow(unused)]
 pub mod ast;
 #[allow(unused)]
