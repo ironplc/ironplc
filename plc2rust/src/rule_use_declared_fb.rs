@@ -41,18 +41,22 @@ pub fn apply(lib: &Library) -> Result<(), String> {
         }
     }
 
+    for (key, _) in &function_blocks {
+        println!("{}", key);
+    }
+
     // Walk the library to find all references to function blocks
-    let mut visitor = RuleFunctionBlockUse::new();
+    let mut visitor = RuleFunctionBlockUse::new(&function_blocks);
     visitor.walk(lib)
 }
 
-struct RuleFunctionBlockUse {
-    function_blocks: HashMap<String, FunctionBlockDeclaration>,
+struct RuleFunctionBlockUse<'a> {
+    function_blocks: &'a HashMap<String, &'a FunctionBlockDeclaration>,
 }
-impl RuleFunctionBlockUse {
-    fn new() -> Self {
+impl<'a> RuleFunctionBlockUse<'a> {
+    fn new(decls: &'a HashMap<String, &'a FunctionBlockDeclaration>) -> Self {
         RuleFunctionBlockUse {
-            function_blocks: HashMap::new(),
+            function_blocks: decls,
         }
     }
 
@@ -107,19 +111,25 @@ impl RuleFunctionBlockUse {
         }
 
         if !positional.is_empty() {
-            // TODO Check that the number of arguments matches the function
+            todo!()
         }
 
         Ok(())
     }
 }
 
-impl Visitor<String> for RuleFunctionBlockUse {
+impl Visitor<String> for RuleFunctionBlockUse<'_> {
     type Value = ();
 
     fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, String> {
         // Check if function block is defined because you cannot
         // call a function block that doesn't exist
+        println!("{}", fb_call.name);
+
+        for (key, _) in self.function_blocks {
+            println!("{}", key);
+        }
+
         let function_block_decl = self.function_blocks.get(&fb_call.name);
         match function_block_decl {
             None => {
@@ -136,13 +146,80 @@ impl Visitor<String> for RuleFunctionBlockUse {
 
 #[cfg(test)]
 mod tests {
+    use ironplc_dsl::ast::*;
+    use ironplc_dsl::dsl::*;
+
+    use super::*;
+
+    fn make_fb_call(params: Vec<ParamAssignment>) -> Library {
+        Library {
+            elems: vec![
+                LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
+                    name: String::from("CALLEE"),
+                    inputs: vec![
+                        VarInitDecl::simple("IN1", "BOOL"),
+                        VarInitDecl::simple("IN2", "BOOL"),
+                    ],
+                    outputs: vec![],
+                    inouts: vec![],
+                    vars: vec![],
+                    externals: vec![],
+                    body: FunctionBlockBody::stmts(vec![]),
+                }),
+                LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
+                    name: String::from("CALLER"),
+                    inputs: vec![],
+                    outputs: vec![],
+                    inouts: vec![],
+                    vars: vec![],
+                    externals: vec![],
+                    body: FunctionBlockBody::stmts(vec![StmtKind::FbCall(FbCall {
+                        name: String::from("CALLEE"),
+                        params: params,
+                    })]),
+                }),
+            ],
+        }
+    }
+
     #[test]
-    fn apply_when_names_correct_then_return_ok() {
-        assert_eq!(true, false);
+    fn apply_when_no_names_uses_default_then_return_ok() {
+        let input = make_fb_call(vec![]);
+
+        let result = apply(&input);
+        assert_eq!(true, result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_some_names_assigned_then_return_ok() {
+        let input = make_fb_call(vec![ParamAssignment::named(
+            "IN1",
+            ExprKind::symbolic_variable("LOCAL1"),
+        )]);
+
+        let result = apply(&input);
+        assert_eq!(true, result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_all_names_assigned_then_return_ok() {
+        let input = make_fb_call(vec![
+            ParamAssignment::named("IN1", ExprKind::symbolic_variable("LOCAL1")),
+            ParamAssignment::named("IN2", ExprKind::symbolic_variable("LOCAL1")),
+        ]);
+
+        let result = apply(&input);
+        assert_eq!(true, result.is_ok());
     }
 
     #[test]
     fn apply_when_names_incorrect_then_return_error() {
-        assert_eq!(true, false);
+        let input = make_fb_call(vec![ParamAssignment::named(
+            "BAR",
+            ExprKind::symbolic_variable("LOCAL1"),
+        )]);
+
+        let result = apply(&input);
+        assert_eq!(true, result.is_err());
     }
 }
