@@ -140,10 +140,18 @@ pub trait Visitor<E> {
         visit_compare(self, op, terms)
     }
 
-    fn visit_binary_op(&mut self, op: &Vec<Operator>, terms: &Vec<ExprKind>) -> Result<Self::Value, E> {
+    fn visit_binary_op(
+        &mut self,
+        op: &Vec<Operator>,
+        terms: &Vec<ExprKind>,
+    ) -> Result<Self::Value, E> {
         // TODO this doesn't really go through binary operators - maybe this should be split
         // into smaller pieces.
         visit_binary_op(self, op, terms)
+    }
+
+    fn visit_unary_op(&mut self, op: &UnaryOp, term: &ExprKind) -> Result<Self::Value, E> {
+        visit_unary_op(self, op, term)
     }
 
     fn visit_direct_variable(&mut self, node: &DirectVariable) -> Result<Self::Value, E> {
@@ -151,7 +159,8 @@ pub trait Visitor<E> {
     }
 
     fn visit_symbolic_variable(&mut self, node: &SymbolicVariable) -> Result<Self::Value, E> {
-        todo!()
+        // leaf node - no children
+        Ok(Self::Value::default())
     }
 
     fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, E> {
@@ -231,6 +240,15 @@ pub fn visit_binary_op<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(terms, v)
 }
 
+pub fn visit_unary_op<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    op: &UnaryOp,
+    term: &ExprKind,
+) -> Result<V::Value, E> {
+    // TODO maybe something with the operator?
+    Acceptor::accept(term, v)
+}
+
 impl Acceptor for LibraryElement {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
@@ -280,9 +298,7 @@ impl Acceptor for ExprKind {
         match self {
             ExprKind::Compare { op, terms } => visitor.visit_compare(op, terms),
             ExprKind::BinaryOp { ops, terms } => visitor.visit_binary_op(ops, terms),
-            ExprKind::UnaryOp { op, term } => {
-                todo!()
-            }
+            ExprKind::UnaryOp { op, term } => visitor.visit_unary_op(op, term.as_ref()),
             ExprKind::Const(_) => {
                 todo!()
             }

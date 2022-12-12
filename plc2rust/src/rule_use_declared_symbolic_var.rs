@@ -5,7 +5,7 @@ use ironplc_dsl::{
     dsl::*,
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
-        Visitor, visit_var_int_decl,
+        visit_var_int_decl, Visitor,
     },
 };
 
@@ -52,7 +52,7 @@ impl Visitor<String> for SymbolTable<DummyNode> {
     }
 
     fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<Self::Value, String> {
-        self.add(&node.name, DummyNode{});
+        self.add(&node.name, DummyNode {});
         visit_var_int_decl(self, node)
     }
 
@@ -121,7 +121,7 @@ mod tests {
                 inouts: vec![],
                 vars: vec![
                     VarInitDecl::simple("TRIG", "BOOL"),
-                    VarInitDecl::simple("TRIG0", "BOOL")
+                    VarInitDecl::simple("TRIG0", "BOOL"),
                 ],
                 externals: vec![],
                 body: FunctionBlockBody::stmts(vec![StmtKind::if_then(
@@ -142,6 +142,6 @@ mod tests {
         .unwrap();
 
         let result = apply(&input);
-        //assert_eq!(true, result.is_ok());
+        assert_eq!(true, result.is_ok());
     }
 }
