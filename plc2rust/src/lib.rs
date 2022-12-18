@@ -7,6 +7,7 @@ mod rule_use_declared_enumerated_value;
 mod rule_use_declared_fb;
 mod rule_use_declared_symbolic_var;
 mod rule_constant_vars_initialized;
+mod rule_enumeration_values_unique;
 mod symbol_table;
 #[cfg(test)]
 mod test_helpers;
@@ -24,6 +25,7 @@ pub fn main() {
     rule_use_declared_symbolic_var::apply(&library).unwrap();
     rule_use_declared_enumerated_value::apply(&library).unwrap();
     rule_use_declared_fb::apply(&library).unwrap();
+    rule_constant_vars_initialized::apply(&library).unwrap();
 
     // Static analysis (binding) and building symbol table
     //

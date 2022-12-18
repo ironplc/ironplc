@@ -1,4 +1,4 @@
-//! Each reference in a function block, function or program to
+//! Semantic rule that reference in a function block, function or program to
 //! a symbolic variable must be to a symbolic variable that is
 //! declared in that scope.
 use ironplc_dsl::{
@@ -80,7 +80,7 @@ mod tests {
     use crate::test_helpers::new_library;
 
     #[test]
-    fn apply_when_undeclared_symbol_then_returns_error() {
+    fn apply_when_undeclared_symbol_then_error() {
         let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: String::from("LOGGER"),
@@ -112,7 +112,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_when_all_symbol_declared_then_returns_ok() {
+    fn apply_when_all_symbol_declared_then_ok() {
         let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: String::from("LOGGER"),
