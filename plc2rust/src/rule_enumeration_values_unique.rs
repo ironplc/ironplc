@@ -12,7 +12,7 @@
 //! LOGLEVEL : (CRITICAL, CRITICAL) := CRITICAL;
 //! END_TYPE
 use ironplc_dsl::{dsl::*, visitor::Visitor};
-use std::{collections::HashSet, hash::Hash};
+use std::{collections::HashSet};
 
 pub fn apply(lib: &Library) -> Result<(), String> {
     let mut visitor = RuleEnumerationValuesUnique {};
@@ -55,10 +55,10 @@ mod tests {
         let input = new_library::<String>(LibraryElement::DataTypeDeclaration(
             vec![
                 EnumerationDeclaration {
-                    name: String::from("LOGLEVEL"),
+                    name: Id::from("LOGLEVEL"),
                     spec: EnumeratedSpecificationKind::Values(vec![
-                        String::from("CRITICAL"),
-                        String::from("ERROR"),
+                        Id::from("CRITICAL"),
+                        Id::from("ERROR"),
                     ]),
                     default: None,
                 }
@@ -74,10 +74,10 @@ mod tests {
         let input = new_library::<String>(LibraryElement::DataTypeDeclaration(
             vec![
                 EnumerationDeclaration {
-                    name: String::from("LOGLEVEL"),
+                    name: Id::from("LOGLEVEL"),
                     spec: EnumeratedSpecificationKind::Values(vec![
-                        String::from("CRITICAL"),
-                        String::from("CRITICAL"),
+                        Id::from("CRITICAL"),
+                        Id::from("CRITICAL"),
                     ]),
                     default: None,
                 }

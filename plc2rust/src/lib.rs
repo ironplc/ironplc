@@ -26,6 +26,7 @@ pub fn main() {
     rule_use_declared_enumerated_value::apply(&library).unwrap();
     rule_use_declared_fb::apply(&library).unwrap();
     rule_constant_vars_initialized::apply(&library).unwrap();
+    rule_enumeration_values_unique::apply(&library).unwrap();
 
     // Static analysis (binding) and building symbol table
     //
@@ -75,12 +76,12 @@ mod tests {
         let src = read_resource("first_steps_data_type_decl.st");
         let expected = new_library(LibraryElement::DataTypeDeclaration(vec![
             EnumerationDeclaration {
-                name: String::from("LOGLEVEL"),
+                name: Id::from("LOGLEVEL"),
                 spec: EnumeratedSpecificationKind::Values(vec![
-                    String::from("CRITICAL"),
-                    String::from("WARNING"),
-                    String::from("INFO"),
-                    String::from("DEBUG"),
+                    Id::from("CRITICAL"),
+                    Id::from("WARNING"),
+                    Id::from("INFO"),
+                    Id::from("DEBUG"),
                 ]),
                 default: Option::Some(String::from("INFO")),
             },
@@ -264,7 +265,7 @@ mod tests {
     fn parse_when_first_steps_func_avg_val_then_builds_structure() {
         let src = read_resource("first_steps_func_avg_val.st");
         let expected = new_library(LibraryElement::FunctionDeclaration(FunctionDeclaration {
-            name: String::from("AverageVal"),
+            name: Id::from("AverageVal"),
             return_type: String::from("REAL"),
             inputs: vec![
                 VarInitDecl::simple("Cnt1", "INT"),
