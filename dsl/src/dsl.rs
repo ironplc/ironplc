@@ -1,9 +1,56 @@
 use core::str::FromStr;
 use std::fmt;
 use time::Duration;
+use std::hash::{Hash, Hasher};
 
 use crate::ast::*;
 use crate::sfc::Network;
+
+/// Implements Identifier declared by 2.1.2.
+/// 
+/// 61131-2 declares that identifiers are case insensitive.
+/// This class ensures that we do case insensitive comparisons
+/// and can use containers as appropriate.
+
+#[derive(Clone)]
+pub struct Id {
+    original: String,
+    lower_case: String,
+}
+
+impl Id {
+    pub fn from(str: &str) -> Id {
+        Id {
+            original: String::from(str),
+            lower_case: String::from(str).to_lowercase(),
+        }
+    }
+}
+
+impl PartialEq for Id {
+    fn eq(&self, other: &Self) -> bool {
+        self.lower_case == other.lower_case
+    }
+}
+impl Eq for Id {}
+
+impl Hash for Id {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.lower_case.hash(state);
+    }
+}
+
+impl fmt::Debug for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.original)
+    }
+}
+
+impl fmt::Display for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.original)
+    }
+}
 
 pub enum TypeDefinitionKind {
     Enumeration,
@@ -133,8 +180,8 @@ impl VarInitDecl {
             name: String::from(name),
             storage_class: StorageClass::Unspecified,
             initializer: Some(TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
-                type_name: String::from(type_name),
-                initial_value: Some(String::from(initial_value)),
+                type_name: Id::from(type_name),
+                initial_value: Some(Id::from(initial_value)),
             })),
         }
     }
@@ -144,7 +191,7 @@ impl VarInitDecl {
             name: String::from(name),
             storage_class: StorageClass::Unspecified,
             initializer: Some(TypeInitializer::FunctionBlock {
-                type_name: String::from(type_name),
+                type_name: Id::from(type_name),
             }),
         }
     }
@@ -153,7 +200,7 @@ impl VarInitDecl {
         VarInitDecl {
             name: String::from(name),
             storage_class: StorageClass::Unspecified,
-            initializer: Some(TypeInitializer::LateResolvedType(String::from(type_name))),
+            initializer: Some(TypeInitializer::LateResolvedType(Id::from(type_name))),
         }
     }
 }
@@ -229,8 +276,8 @@ impl fmt::Debug for Initializer {
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct EnumeratedTypeInitializer {
-    pub type_name: String,
-    pub initial_value: Option<String>,
+    pub type_name: Id,
+    pub initial_value: Option<Id>,
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -240,20 +287,20 @@ pub enum TypeInitializer {
         initial_value: Option<Initializer>,
     },
     EnumeratedValues {
-        values: Vec<String>,
-        default: Option<String>,
+        values: Vec<Id>,
+        default: Option<Id>,
     },
     EnumeratedType(EnumeratedTypeInitializer),
     FunctionBlock {
-        type_name: String,
+        type_name: Id,
     },
     Structure {
         // TODO
-        type_name: String,
+        type_name: Id,
     },
-    // A type that is ambiguous until we have discovered type
-    // definitions. Value is the name of the type.
-    LateResolvedType(String),
+    /// Type that is ambiguous until have discovered type
+    /// definitions. Value is the name of the type.
+    LateResolvedType(Id),
 }
 
 impl TypeInitializer {
@@ -341,7 +388,7 @@ pub struct ConfigurationDeclaration {
 
 #[derive(Debug, PartialEq)]
 pub struct EnumerationDeclaration {
-    pub name: String,
+    pub name: Id,
     // TODO need to understand when the context name matters in the definition
     pub spec: EnumeratedSpecificationKind,
     pub default: Option<String>,
@@ -349,8 +396,12 @@ pub struct EnumerationDeclaration {
 
 #[derive(Debug, PartialEq)]
 pub enum EnumeratedSpecificationKind {
-    TypeName(String),
-    Values(Vec<String>),
+    TypeName(Id),
+    /// Enumeration declaration that provides a list of values.
+    /// 
+    /// Order of the values is important because the order declares the
+    /// default value if no default is specified directly.
+    Values(Vec<Id>),
 }
 
 #[derive(PartialEq, Clone)]
@@ -406,7 +457,7 @@ impl FunctionBlockBody {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct FunctionDeclaration {
-    pub name: String,
+    pub name: Id,
     pub return_type: String,
     // TODO rename these to be descriptive
     pub inputs: Vec<VarInitDecl>,

@@ -50,16 +50,29 @@ pub fn apply(lib: &Library) -> Result<(), String> {
 }
 
 struct RuleDeclaredEnumeratedValues<'a> {
-    enum_defs: &'a HashMap<String, &'a EnumerationDeclaration>,
+    enum_defs: &'a HashMap<Id, &'a EnumerationDeclaration>,
 }
 impl<'a> RuleDeclaredEnumeratedValues<'a> {
-    fn new(enum_defs: &'a HashMap<String, &'a EnumerationDeclaration>) -> Self {
+    fn new(enum_defs: &'a HashMap<Id, &'a EnumerationDeclaration>) -> Self {
         RuleDeclaredEnumeratedValues {
             enum_defs: enum_defs,
         }
     }
 
-    fn find_enum_declaration_values(&self, type_name: &'a String) -> Result<&Vec<String>, String> {
+    /// Returns enumeration values for a given enumeration type name.
+    /// 
+    /// Recursively finds the enumeration values when one enumeration
+    /// declaration is a rename of another enumeration declaration.
+    /// 
+    /// Returns Ok containing the list of enumeration values.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns Err(String) description of the error if:
+    /// 
+    /// * a type name does not exist
+    /// * recursive type name
+    fn find_enum_declaration_values(&self, type_name: &'a Id) -> Result<&Vec<Id>, String> {
         // Keep track of names we've seen before so that we can be sure that
         // the loop terminates
         let mut seen_names = HashSet::new();
@@ -116,8 +129,8 @@ mod tests {
 
     fn make_enum_def(name: &str, value: &str) -> LibraryElement {
         LibraryElement::DataTypeDeclaration(vec![EnumerationDeclaration {
-            name: String::from(name),
-            spec: EnumeratedSpecificationKind::Values(vec![String::from(value)]),
+            name: Id::from(name),
+            spec: EnumeratedSpecificationKind::Values(vec![Id::from(value)]),
             default: Option::None,
         }])
     }

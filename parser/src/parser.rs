@@ -322,7 +322,7 @@ parser! {
     rule single_element_type_declaration() -> EnumerationDeclaration = decl:enumerated_type_declaration() { decl }
     rule enumerated_type_declaration() -> EnumerationDeclaration = name:enumerated_type_name() _ ":" _ spec:enumerated_spec_init() {
       EnumerationDeclaration {
-        name: String::from(name),
+        name: Id::from(name),
         spec: spec.0,
         default: spec.1,
       }
@@ -333,13 +333,13 @@ parser! {
         EnumeratedSpecificationKind::TypeName(name) => {
           return TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
             type_name: name,
-            initial_value: Some(String::from(def)),
+            initial_value: Some(Id::from(def)),
           });
         },
         EnumeratedSpecificationKind::Values(values) => {
           return TypeInitializer::EnumeratedValues {
             values: values,
-            default: Some(String::from(def)),
+            default: Some(Id::from(def)),
           };
         },
         _ => panic!("Invalid type")
@@ -350,9 +350,9 @@ parser! {
      }
     // TODO this doesn't support type name as a value
     rule enumerated_specification() -> EnumeratedSpecificationKind  = "(" _ v:enumerated_value() ++ (_ "," _) _ ")" {
-      EnumeratedSpecificationKind::Values(v.iter().map(|v| String::from(*v)).collect())
+      EnumeratedSpecificationKind::Values(v.iter().map(|v| Id::from(*v)).collect())
     }  / name:enumerated_type_name() {
-      EnumeratedSpecificationKind::TypeName(String::from(name))
+      EnumeratedSpecificationKind::TypeName(Id::from(name))
     }
     rule enumerated_value() -> &'input str = (enumerated_type_name() "#")? i:identifier() { i }
     // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
@@ -426,7 +426,7 @@ parser! {
         VarInitDecl {
           name: String::from(*name),
           storage_class: StorageClass::Unspecified,
-          initializer: Option::Some(TypeInitializer::LateResolvedType(String::from(type_name))),
+          initializer: Option::Some(TypeInitializer::LateResolvedType(Id::from(type_name))),
         }
       }).collect()
     }
@@ -515,7 +515,7 @@ parser! {
       }).collect()
     }
     // TODO this doesn't pass all information. I suspect the rule from the dpec is not right
-    rule global_var_decl() -> (Vec<Declaration>) = vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { TypeInitializer::FunctionBlock { type_name: String::from(f) } })? {
+    rule global_var_decl() -> (Vec<Declaration>) = vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { TypeInitializer::FunctionBlock { type_name: Id::from(f) } })? {
       vs.0.iter().map(|name| {
         Declaration {
           name: String::from(*name),
@@ -546,7 +546,7 @@ parser! {
     rule function_declaration() -> FunctionDeclaration = "FUNCTION" _  name:derived_function_name() _ ":" _ rt:(elementary_type_name() / derived_type_name()) _ var_decls:(io:io_var_declarations() / func:function_var_decls()) ** _ _ body:function_body() _ "END_FUNCTION" {
       let (io, other, located) = VarDeclarations::unzip(var_decls);
       FunctionDeclaration {
-        name: String::from(name),
+        name: Id::from(name),
         return_type: String::from(rt),
         inputs: io.inputs,
         outputs: io.outputs,
@@ -893,8 +893,8 @@ mod test {
             name: String::from("LEVEL"),
             storage_class: StorageClass::Unspecified,
             initializer: Some(TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
-                type_name: String::from("LOGLEVEL"),
-                initial_value: Some(String::from("INFO")),
+                type_name: Id::from("LOGLEVEL"),
+                initial_value: Some(Id::from("INFO")),
             })),
         }]);
         assert_eq!(plc_parser::input_declarations(decl), expected)

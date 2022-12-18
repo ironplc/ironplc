@@ -23,7 +23,7 @@
 //! I don't know if it is possible to have an external 
 //! reference where one part declares the value and another
 //! references the value (and still be constant).
-use ironplc_dsl::{ast::*, dsl::*, visitor::Visitor};
+use ironplc_dsl::{dsl::*, visitor::Visitor};
 
 pub fn apply(lib: &Library) -> Result<(), String> {
     let mut visitor = RuleConstantVarsInitialized{};

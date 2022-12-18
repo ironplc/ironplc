@@ -22,7 +22,7 @@ pub fn apply(lib: Library) -> Result<Library, Error> {
 // Finds types that are valid as variable types. These include enumerations,
 // function blocks, functions, structures.
 struct GlobalTypeDefinitionVisitor<'a> {
-    types: &'a mut HashMap<String, TypeDefinitionKind>,
+    types: &'a mut HashMap<Id, TypeDefinitionKind>,
 }
 impl<'a> Visitor<Error> for GlobalTypeDefinitionVisitor<'a> {
     type Value = ();
@@ -34,7 +34,7 @@ impl<'a> Visitor<Error> for GlobalTypeDefinitionVisitor<'a> {
 }
 
 struct TypeResolver {
-    types: HashMap<String, TypeDefinitionKind>,
+    types: HashMap<Id, TypeDefinitionKind>,
 }
 
 impl Fold for TypeResolver {
@@ -90,7 +90,7 @@ mod tests {
         .unwrap();
 
         let mut type_map = HashMap::new();
-        type_map.insert(String::from("var_type"), TypeDefinitionKind::FunctionBlock);
+        type_map.insert(Id::from("var_type"), TypeDefinitionKind::FunctionBlock);
         let mut type_resolver = TypeResolver { types: type_map };
 
         let result = type_resolver.fold(input);
