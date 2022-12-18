@@ -1,5 +1,28 @@
-//! Each reference to a function block must be to a function
+//! Semantic rule that reference to a function block must be to a function
 //! block that is declared.
+//! 
+//! ## Passes
+//! 
+//! FUNCTION_BLOCK Callee
+//! END_FUNCTION_BLOCK
+//! 
+//! FUNCTION_BLOCK Caller
+//!    VAR
+//!       FB_INSTANCE : Callee;
+//!    END_VAR
+//! END_FUNCTION_BLOCK
+//! 
+//! ## Fails
+//! 
+//! FUNCTION_BLOCK Caller
+//!    VAR
+//!       FB_INSTANCE : UndeclaredFunctionBlock;
+//!    END_VAR
+//! END_FUNCTION_BLOCK
+//! 
+//! ## Todo
+//! 
+//! I'm not certain this rule is quite right.
 use ironplc_dsl::{ast::*, dsl::*, visitor::Visitor};
 use std::collections::HashMap;
 
@@ -191,7 +214,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_when_some_names_assigned_then_return_ok() {
+    fn apply_when_some_names_assigned_then_ok() {
         let input = make_fb_call(vec![ParamAssignment::named(
             "IN1",
             ExprKind::symbolic_variable("LOCAL1"),
@@ -202,7 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_when_all_names_assigned_then_return_ok() {
+    fn apply_when_all_names_assigned_then_ok() {
         let input = make_fb_call(vec![
             ParamAssignment::named("IN1", ExprKind::symbolic_variable("LOCAL1")),
             ParamAssignment::named("IN2", ExprKind::symbolic_variable("LOCAL1")),
@@ -213,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_when_names_incorrect_then_return_error() {
+    fn apply_when_names_incorrect_then_error() {
         let input = make_fb_call(vec![ParamAssignment::named(
             "BAR",
             ExprKind::symbolic_variable("LOCAL1"),

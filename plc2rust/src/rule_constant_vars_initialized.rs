@@ -1,3 +1,28 @@
+
+//! Semantic rule that variables declared with the CONSTANT
+//! storage class must have initial values.
+//! 
+//! ## Passes
+//! 
+//! FUNCTION_BLOCK LOGGER
+//!    VAR_EXTERNAL CONSTANT
+//!       ResetCounterValue : INT = 1;
+//!    END_VAR
+//! END_FUNCTION_BLOCK
+//! 
+//! ## Fails
+//! 
+//! FUNCTION_BLOCK LOGGER
+//!    VAR_EXTERNAL CONSTANT
+//!       ResetCounterValue : INT = 1;
+//!    END_VAR
+//! END_FUNCTION_BLOCK
+//! 
+//! ## Todo
+//! 
+//! I don't know if it is possible to have an external 
+//! reference where one part declares the value and another
+//! references the value (and still be constant).
 use ironplc_dsl::{ast::*, dsl::*, visitor::Visitor};
 
 pub fn apply(lib: &Library) -> Result<(), String> {
@@ -6,7 +31,6 @@ pub fn apply(lib: &Library) -> Result<(), String> {
 }
 
 struct RuleConstantVarsInitialized {
-
 }
 
 impl Visitor<String> for RuleConstantVarsInitialized {

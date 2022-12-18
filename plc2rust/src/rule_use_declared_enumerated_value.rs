@@ -1,4 +1,4 @@
-//! Ensures that references to enumerations use enumeration values
+//! Semantic rule that references to enumerations use enumeration values
 //! that are part of the enumeration declaration.
 //! 
 //! ## Passes

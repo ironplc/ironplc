@@ -34,3 +34,8 @@ The project is split into 3 members:
    the pieces
 
 There is no strict definition of what goes where. Better rules would be nice.
+
+## Big TODOs
+
+* Need to replace use of String for identifiers with an identifier class
+  that correctly implements equality.
