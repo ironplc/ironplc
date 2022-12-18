@@ -320,56 +320,39 @@ parser! {
     rule type_declaration() -> EnumerationDeclaration = s:single_element_type_declaration() { s }
     // TODO this is missing multiple types
     rule single_element_type_declaration() -> EnumerationDeclaration = decl:enumerated_type_declaration() { decl }
-    rule enumerated_type_declaration() -> EnumerationDeclaration = name:enumerated_type_name() _ ":" _ def:enumerated_spec_init() {
+    rule enumerated_type_declaration() -> EnumerationDeclaration = name:enumerated_type_name() _ ":" _ spec:enumerated_spec_init() {
       EnumerationDeclaration {
         name: String::from(name),
-        initializer: def,
+        spec: spec.0,
+        default: spec.1,
       }
     }
-    rule enumerated_spec_init__unambiguous() -> TypeInitializer = init:enumerated_specification() _ ":=" _ def:enumerated_value() {
-      match init {
-        TypeInitializer::EnumeratedValues{values, default} => {
+    rule enumerated_spec_init__unambiguous() -> TypeInitializer = spec:enumerated_specification() _ ":=" _ def:enumerated_value() {
+      // TODO gut feeling says there is a defect here but I haven't looked into it
+      match spec {
+        EnumeratedSpecificationKind::TypeName(name) => {
+          return TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
+            type_name: name,
+            initial_value: Some(String::from(def)),
+          });
+        },
+        EnumeratedSpecificationKind::Values(values) => {
           return TypeInitializer::EnumeratedValues {
             values: values,
             default: Some(String::from(def)),
           };
         },
-        TypeInitializer::EnumeratedType{type_name, initial_value} => {
-          return TypeInitializer::EnumeratedType {
-            type_name: type_name,
-            initial_value: Some(String::from(def)),
-          };
-        }
         _ => panic!("Invalid type")
       }
      }
-    rule enumerated_spec_init() -> TypeInitializer = init:enumerated_specification() _ def:(":=" _ d:enumerated_value() { d })? {
-      match init {
-        TypeInitializer::EnumeratedValues{values, default} => {
-          return TypeInitializer::EnumeratedValues {
-            values: values,
-            default: def.map(|d| String::from(d))
-          };
-        },
-        TypeInitializer::EnumeratedType{type_name, initial_value} => {
-          return TypeInitializer::EnumeratedType {
-            type_name: type_name,
-            initial_value: def.map(|d| String::from(d)),
-          };
-        }
-        _ => panic!("Invalid type")
-      }
+    rule enumerated_spec_init() -> (EnumeratedSpecificationKind, Option<String>) = init:enumerated_specification() _ def:(":=" _ d:enumerated_value() { d })? {
+      (init, def.map(|d| String::from(d)))
      }
     // TODO this doesn't support type name as a value
-    rule enumerated_specification() -> TypeInitializer  = "(" _ v:enumerated_value() ++ (_ "," _) _ ")" {
-      TypeInitializer::EnumeratedValues {
-      values: v.iter().map(|v| String::from(*v)).collect(),
-      default: None,
-    }}  / name:enumerated_type_name() {
-      TypeInitializer::EnumeratedType {
-        type_name: String::from(name),
-        initial_value: None,
-      }
+    rule enumerated_specification() -> EnumeratedSpecificationKind  = "(" _ v:enumerated_value() ++ (_ "," _) _ ")" {
+      EnumeratedSpecificationKind::Values(v.iter().map(|v| String::from(*v)).collect())
+    }  / name:enumerated_type_name() {
+      EnumeratedSpecificationKind::TypeName(String::from(name))
     }
     rule enumerated_value() -> &'input str = (enumerated_type_name() "#")? i:identifier() { i }
     // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
@@ -459,7 +442,7 @@ parser! {
         }
       }).collect()
     }
-    rule var1_init_decl() -> Vec<VarInitDecl> = names:var1_list() _ ":" _ init:(s:simple_spec_init() { s } / e:enumerated_spec_init() { e }) {
+    rule var1_init_decl() -> Vec<VarInitDecl> = names:var1_list() _ ":" _ init:(s:simple_spec_init() { s } / e:enumerated_spec_init__unambiguous() { e }) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.iter().map(|name| {
         VarInitDecl {
@@ -909,10 +892,10 @@ mod test {
         let expected = Ok(vec![VarInitDecl {
             name: String::from("LEVEL"),
             storage_class: StorageClass::Unspecified,
-            initializer: Some(TypeInitializer::EnumeratedType {
+            initializer: Some(TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
                 type_name: String::from("LOGLEVEL"),
                 initial_value: Some(String::from("INFO")),
-            }),
+            })),
         }]);
         assert_eq!(plc_parser::input_declarations(decl), expected)
     }

@@ -3,6 +3,7 @@ extern crate ironplc_parser;
 
 use crate::ironplc_dsl::dsl::Library;
 
+mod rule_use_declared_enumerated_value;
 mod rule_use_declared_fb;
 mod rule_use_declared_symbolic_var;
 mod symbol_table;
@@ -20,6 +21,7 @@ pub fn main() {
     let library = type_resolver::apply(library).unwrap();
 
     rule_use_declared_symbolic_var::apply(&library).unwrap();
+    rule_use_declared_enumerated_value::apply(&library).unwrap();
     rule_use_declared_fb::apply(&library).unwrap();
 
     // Static analysis (binding) and building symbol table
@@ -71,15 +73,13 @@ mod tests {
         let expected = new_library(LibraryElement::DataTypeDeclaration(vec![
             EnumerationDeclaration {
                 name: String::from("LOGLEVEL"),
-                initializer: TypeInitializer::EnumeratedValues {
-                    values: vec![
-                        String::from("CRITICAL"),
-                        String::from("WARNING"),
-                        String::from("INFO"),
-                        String::from("DEBUG"),
-                    ],
-                    default: Option::Some(String::from("INFO")),
-                },
+                spec: EnumeratedSpecificationKind::Values(vec![
+                    String::from("CRITICAL"),
+                    String::from("WARNING"),
+                    String::from("INFO"),
+                    String::from("DEBUG"),
+                ]),
+                default: Option::Some(String::from("INFO")),
             },
         ]));
         assert_eq!(ironplc_parser::parse_program(src.as_str()), expected)

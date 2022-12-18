@@ -132,10 +132,10 @@ impl VarInitDecl {
         VarInitDecl {
             name: String::from(name),
             storage_class: StorageClass::Unspecified,
-            initializer: Some(TypeInitializer::EnumeratedType {
+            initializer: Some(TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
                 type_name: String::from(type_name),
                 initial_value: Some(String::from(initial_value)),
-            }),
+            })),
         }
     }
 
@@ -228,6 +228,12 @@ impl fmt::Debug for Initializer {
 }
 
 #[derive(PartialEq, Clone, Debug)]
+pub struct EnumeratedTypeInitializer {
+    pub type_name: String,
+    pub initial_value: Option<String>,
+}
+
+#[derive(PartialEq, Clone, Debug)]
 pub enum TypeInitializer {
     Simple {
         type_name: String,
@@ -237,10 +243,7 @@ pub enum TypeInitializer {
         values: Vec<String>,
         default: Option<String>,
     },
-    EnumeratedType {
-        type_name: String,
-        initial_value: Option<String>,
-    },
+    EnumeratedType(EnumeratedTypeInitializer),
     FunctionBlock {
         type_name: String,
     },
@@ -331,7 +334,14 @@ pub struct ConfigurationDeclaration {
 pub struct EnumerationDeclaration {
     pub name: String,
     // TODO need to understand when the context name matters in the definition
-    pub initializer: TypeInitializer,
+    pub spec: EnumeratedSpecificationKind,
+    pub default: Option<String>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum EnumeratedSpecificationKind {
+    TypeName(String),
+    Values(Vec<String>),
 }
 
 #[derive(PartialEq, Clone)]

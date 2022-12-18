@@ -113,7 +113,7 @@ pub trait Visitor<E> {
     }
 
     fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<Self::Value, E> {
-        visit_var_int_decl(self, &node)
+        visit_var_init_decl(self, &node)
     }
 
     fn visit_type_initializer(&mut self, node: &TypeInitializer) -> Result<Self::Value, E> {
@@ -166,20 +166,28 @@ pub trait Visitor<E> {
     fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, E> {
         todo!()
     }
+
+    fn visit_enumerated_type_initializer(
+        &mut self,
+        init: &EnumeratedTypeInitializer,
+    ) -> Result<Self::Value, E> {
+        // leaf node - no children
+        Ok(Self::Value::default())
+    }
 }
 
 pub fn visit_enum_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &EnumerationDeclaration,
 ) -> Result<V::Value, E> {
-    Acceptor::accept(&node.initializer, v)
+    Acceptor::accept(&node.spec, v)
 }
 
 pub fn visit_function_block_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &FunctionBlockDeclaration,
 ) -> Result<V::Value, E> {
-    Acceptor::accept(&node.inouts, v)?;
+    Acceptor::accept(&node.inputs, v)?;
     Acceptor::accept(&node.outputs, v)?;
     Acceptor::accept(&node.inouts, v)?;
     Acceptor::accept(&node.vars, v)?;
@@ -210,7 +218,7 @@ pub fn visit_function_declaration<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(&node.body, v)
 }
 
-pub fn visit_var_int_decl<V: Visitor<E> + ?Sized, E>(
+pub fn visit_var_init_decl<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &VarInitDecl,
 ) -> Result<V::Value, E> {
@@ -277,10 +285,27 @@ impl Acceptor for EnumerationDeclaration {
     }
 }
 
+impl Acceptor for EnumeratedSpecificationKind {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        // TODO I don't know if we need to visit these items
+        Ok(V::Value::default())
+    }
+}
+
 impl Acceptor for TypeInitializer {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        match self {
+            TypeInitializer::Simple {
+                type_name,
+                initial_value,
+            } => Ok(V::Value::default()),
+            TypeInitializer::EnumeratedValues { values, default } => Ok(V::Value::default()),
+            TypeInitializer::EnumeratedType(et) => visitor.visit_enumerated_type_initializer(et),
+            TypeInitializer::FunctionBlock { type_name } => Ok(V::Value::default()),
+            TypeInitializer::Structure { type_name } => Ok(V::Value::default()),
+            TypeInitializer::LateResolvedType(_) => Ok(V::Value::default()),
+        }
         // TODO don't yet know how to visit these
-        Ok(V::Value::default())
     }
 }
 

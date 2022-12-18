@@ -5,7 +5,7 @@ use ironplc_dsl::{
     dsl::*,
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
-        visit_var_int_decl, Visitor,
+        visit_var_init_decl, Visitor,
     },
 };
 
@@ -53,7 +53,7 @@ impl Visitor<String> for SymbolTable<DummyNode> {
 
     fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<Self::Value, String> {
         self.add(&node.name, DummyNode {});
-        visit_var_int_decl(self, node)
+        visit_var_init_decl(self, node)
     }
 
     fn visit_symbolic_variable(

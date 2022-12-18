@@ -45,10 +45,12 @@ impl Fold for TypeResolver {
                 // TODO error handling
                 let type_kind = self.types.get(&name).unwrap();
                 match type_kind {
-                    TypeDefinitionKind::Enumeration => TypeInitializer::EnumeratedType {
-                        type_name: name,
-                        initial_value: None,
-                    },
+                    TypeDefinitionKind::Enumeration => {
+                        TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
+                            type_name: name,
+                            initial_value: None,
+                        })
+                    }
                     TypeDefinitionKind::FunctionBlock => {
                         TypeInitializer::FunctionBlock { type_name: name }
                     }
