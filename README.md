@@ -10,7 +10,20 @@ machine approach would require "unsafe" Rust. I've not tested this believe
 add don't know whether the belief is true. The source-to-source compiler does
 not yet have code generation.
 
-The Rust project is split into 3 members:
+## Usage
+
+The current state of the project is it parses a small program
+generated from [Beremiz](https://beremiz.org/). The only thing that you can do
+is run unit and integration tests that try to parse correct and incorrect
+programs.
+
+```sh
+cargo test
+```
+
+## How It Works
+
+The project is split into 3 members:
 
 * `dsl` defines relevant domain objects from the IEC 61131-3 language; it is
    the intermediate set of objects from parsing and contains an abstract syntax
@@ -21,15 +34,3 @@ The Rust project is split into 3 members:
    the pieces
 
 There is no strict definition of what goes where. Better rules would be nice.
-
-## Developing
-
-The current state of the project is it parses a small but complete program
-generated from Beremiz. The only thing that you can do is run unit and
-integration tests that try parse correct and incorrect programs.
-
-```
-cargo test
-```
-
-TODO find a new way to represent variables so that they cannot be forgotten from visitors
