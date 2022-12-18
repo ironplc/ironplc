@@ -1,3 +1,31 @@
+//! A table for symbols. The table maintains contexts and a mapping
+//! of a string to data for each item in the context.
+//!
+//! The typical way to use the symbol table is to implement Visitor
+//! for the table. Then use context functions (enter, exit) based on
+//! visited objects that delineate context and use tem functions (add,
+//! remove) as individual items go into and out of definition.
+//!
+//! # Example
+//!
+//! ```ignore
+//! use crate::symbol_table::{self, NodeData, SymbolTable};
+//! use ironplc_dsl::dsl::Library;
+//! use ironplc_dsl::visitor::Visitor;
+//!
+//! // The value in the symbol table. In this example, the value
+//! // has no additional associated data, but you must still define
+//! // data items.
+//! struct DummyData {}
+//! impl NodeData for DummyData {}
+//!
+//! impl Visitor<String> for SymbolTable<DummyData> {}
+//!
+//! fn uses_symbol_table(lib: &Library) {
+//!    let mut visitor: SymbolTable<DummyData> = symbol_table::SymbolTable::new();
+//!     visitor.walk(&lib);
+//! }
+//! ```
 use std::collections::HashMap;
 use std::collections::LinkedList;
 
@@ -22,6 +50,7 @@ impl<T: NodeData> Scope<T> {
         self.table.get(name)
     }
 
+    #[allow(unused)]
     fn remove(&mut self, name: &str) -> Option<T> {
         self.table.remove(name)
     }
@@ -74,6 +103,7 @@ impl<T: NodeData> SymbolTable<T> {
     ///
     /// Returns the value or `None` if value is not in
     /// the inner-most scope.
+    #[allow(unused)]
     pub fn remove(&mut self, name: &str) -> Option<T> {
         match self.stack.front_mut() {
             None => None,

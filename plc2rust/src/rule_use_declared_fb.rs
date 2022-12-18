@@ -70,10 +70,10 @@ impl<'a> RuleFunctionBlockUse<'a> {
         for param in params.iter() {
             match param {
                 ParamAssignment::NamedInput(n) => {
-                    named.push(n);
+                    named.push(&n);
                 }
                 ParamAssignment::PositionalInput(p) => {
-                    positional.push(p);
+                    positional.push(&p);
                 }
                 ParamAssignment::Output {
                     not: _,
