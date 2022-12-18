@@ -256,6 +256,15 @@ pub enum TypeInitializer {
     LateResolvedType(String),
 }
 
+impl TypeInitializer {
+    pub fn simple(type_name: &str, value: Initializer) -> TypeInitializer {
+        TypeInitializer::Simple {
+            type_name: String::from(type_name),
+            initial_value: Some(value)
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum LocationPrefix {
     I,

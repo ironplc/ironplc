@@ -1,6 +1,29 @@
 //! Ensures that references to enumerations use enumeration values
 //! that are part of the enumeration declaration.
-
+//! 
+//! ## Passes
+//! 
+//! TYPE
+//! LOGLEVEL : (CRITICAL) := CRITICAL;
+//! END_TYPE
+//! 
+//! FUNCTION_BLOCK LOGGER
+//! VAR_INPUT
+//! LEVEL : LOGLEVEL := CRITICAL;
+//! END_VAR
+//! END_FUNCTION_BLOCK
+//! 
+//! ## Fails
+//! 
+//! TYPE
+//! LOGLEVEL : (INFO) := INFO;
+//! END_TYPE
+//! 
+//! FUNCTION_BLOCK LOGGER
+//! VAR_INPUT
+//! LEVEL : LOGLEVEL := CRITICAL;
+//! END_VAR
+//! END_FUNCTION_BLOCK
 use ironplc_dsl::{dsl::*, visitor::Visitor};
 use std::collections::{HashMap, HashSet};
 

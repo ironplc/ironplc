@@ -6,6 +6,7 @@ use crate::ironplc_dsl::dsl::Library;
 mod rule_use_declared_enumerated_value;
 mod rule_use_declared_fb;
 mod rule_use_declared_symbolic_var;
+mod rule_constant_vars_initialized;
 mod symbol_table;
 #[cfg(test)]
 mod test_helpers;
