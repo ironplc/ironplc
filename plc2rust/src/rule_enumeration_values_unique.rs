@@ -44,6 +44,7 @@ impl Visitor<String> for RuleEnumerationValuesUnique {
 
 #[cfg(test)]
 mod tests {
+    use ironplc_dsl::ast::Id;
     use ironplc_dsl::dsl::*;
 
     use super::*;

@@ -1,4 +1,60 @@
+use std::fmt;
+use std::hash::{Hash, Hasher};
 use crate::dsl::{Constant, DirectVariable};
+
+/// Implements Identifier declared by 2.1.2.
+/// 
+/// 61131-2 declares that identifiers are case insensitive.
+/// This class ensures that we do case insensitive comparisons
+/// and can use containers as appropriate.
+
+#[derive(Clone)]
+pub struct Id {
+    original: String,
+    lower_case: String,
+}
+
+impl Id {
+    pub fn from(str: &str) -> Id {
+        Id {
+            original: String::from(str),
+            lower_case: String::from(str).to_lowercase(),
+        }
+    }
+
+    pub fn clone(&self) -> Id {
+        Id::from(self.original.as_str())
+    }
+
+    pub fn to_string(&self) -> String {
+        String::from(&self.lower_case)
+    }
+}
+
+impl PartialEq for Id {
+    fn eq(&self, other: &Self) -> bool {
+        self.lower_case == other.lower_case
+    }
+}
+impl Eq for Id {}
+
+impl Hash for Id {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.lower_case.hash(state);
+    }
+}
+
+impl fmt::Debug for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.original)
+    }
+}
+
+impl fmt::Display for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.original)
+    }
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Variable {
@@ -12,14 +68,14 @@ pub enum Variable {
 impl Variable {
     pub fn symbolic(name: &str) -> Variable {
         Variable::SymbolicVariable(SymbolicVariable {
-            name: String::from(name),
+            name: Id::from(name),
         })
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SymbolicVariable {
-    pub name: String,
+    pub name: Id,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -30,7 +86,7 @@ pub struct Assignment {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct FbCall {
-    pub name: String,
+    pub name: Id,
     pub params: Vec<ParamAssignment>,
 }
 
@@ -95,7 +151,7 @@ impl StmtKind {
             .collect::<Vec<ParamAssignment>>();
 
         StmtKind::FbCall(FbCall {
-            name: String::from(fb_name),
+            name: Id::from(fb_name),
             params: assignments,
         })
     }
@@ -197,7 +253,7 @@ pub struct PositionalInput {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct NamedInput {
-    pub name: String,
+    pub name: Id,
     pub expr: ExprKind,
 }
 
@@ -219,7 +275,7 @@ impl ParamAssignment {
 
     pub fn named(name: &str, expr: ExprKind) -> ParamAssignment {
         ParamAssignment::NamedInput(NamedInput {
-            name: String::from(name),
+            name: Id::from(name),
             expr: expr,
         })
     }

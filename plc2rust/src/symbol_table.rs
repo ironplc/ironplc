@@ -28,39 +28,42 @@
 //! ```
 use std::collections::HashMap;
 use std::collections::LinkedList;
+use std::hash::Hash;
 
 pub trait NodeData: Clone {}
 
-struct Scope<T: NodeData> {
-    table: HashMap<String, T>,
+pub trait Key : Eq + Hash + Clone {}
+
+struct Scope<K: Key, T: NodeData> {
+    table: HashMap<K, T>,
 }
 
-impl<T: NodeData> Scope<T> {
+impl<K: Key, T: NodeData> Scope<K, T> {
     fn new() -> Self {
         Scope {
             table: HashMap::new(),
         }
     }
 
-    fn add(&mut self, name: &str, value: T) {
-        self.table.insert(name.to_string(), value);
+    fn add(&mut self, name: &K, value: T) {
+        self.table.insert(name.clone(), value);
     }
 
-    fn find(&mut self, name: &str) -> Option<&T> {
+    fn find(&mut self, name: &K) -> Option<&T> {
         self.table.get(name)
     }
 
     #[allow(unused)]
-    fn remove(&mut self, name: &str) -> Option<T> {
+    fn remove(&mut self, name: &K) -> Option<T> {
         self.table.remove(name)
     }
 }
 
-pub struct SymbolTable<T: NodeData> {
-    stack: LinkedList<Scope<T>>,
+pub struct SymbolTable<K: Key, V: NodeData> {
+    stack: LinkedList<Scope<K, V>>,
 }
 
-impl<T: NodeData> SymbolTable<T> {
+impl<K: Key, V: NodeData> SymbolTable<K, V> {
     /// Creates an empty `SymbolTable`.
     pub fn new() -> Self {
         let mut stack = LinkedList::new();
@@ -84,7 +87,7 @@ impl<T: NodeData> SymbolTable<T> {
     }
 
     /// Adds the given name to the scope with the specified value.
-    pub fn add(&mut self, name: &str, value: T) {
+    pub fn add(&mut self, name: &K, value: V) {
         match self.stack.front_mut() {
             None => {}
             Some(scope) => {
@@ -94,7 +97,7 @@ impl<T: NodeData> SymbolTable<T> {
     }
 
     /// Returns the value for the given name.
-    pub fn find(&mut self, name: &str) -> Option<&T> {
+    pub fn find(&mut self, name: &K) -> Option<&V> {
         self.stack.iter_mut().find_map(|scope| scope.find(name))
     }
 
@@ -104,7 +107,7 @@ impl<T: NodeData> SymbolTable<T> {
     /// Returns the value or `None` if value is not in
     /// the inner-most scope.
     #[allow(unused)]
-    pub fn remove(&mut self, name: &str) -> Option<T> {
+    pub fn remove(&mut self, name: &K) -> Option<V> {
         match self.stack.front_mut() {
             None => None,
             Some(scope) => scope.remove(name),

@@ -1,3 +1,4 @@
+use ironplc_dsl::ast::Id;
 use ironplc_dsl::dsl::*;
 use time::Duration;
 
@@ -30,6 +31,6 @@ pub fn var_init_flat_map(
         .collect()
 }
 
-pub fn to_strings(input: Vec<&str>) -> Vec<String> {
-    input.into_iter().map(|item| String::from(item)).collect()
+pub fn to_ids(input: Vec<&str>) -> Vec<Id> {
+    input.into_iter().map(|item| Id::from(item)).collect()
 }

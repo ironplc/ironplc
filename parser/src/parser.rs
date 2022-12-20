@@ -359,7 +359,7 @@ parser! {
     rule simple_spec_init__unambiguous() -> TypeInitializer = simple_spec_init()
     rule simple_spec_init() -> TypeInitializer = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
       TypeInitializer::Simple {
-        type_name: String::from(type_name),
+        type_name: Id::from(type_name),
         initial_value: constant.map(|v| Initializer::Simple(v)),
       }
     }
@@ -424,7 +424,7 @@ parser! {
     rule late_bound_type_init() -> Vec<VarInitDecl> = names:identifier() ** (_ "," _ ) _ ":" _ type_name:identifier() {
       names.iter().map(|name| {
         VarInitDecl {
-          name: String::from(*name),
+          name: Id::from(*name),
           storage_class: StorageClass::Unspecified,
           initializer: Option::Some(TypeInitializer::LateResolvedType(Id::from(type_name))),
         }
@@ -436,7 +436,7 @@ parser! {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.iter().map(|name| {
         VarInitDecl {
-          name: String::from(*name),
+          name: Id::from(*name),
           storage_class: StorageClass::Unspecified,
           initializer: Option::Some(init.clone()),
         }
@@ -446,7 +446,7 @@ parser! {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.iter().map(|name| {
         VarInitDecl {
-          name: String::from(*name),
+          name: Id::from(*name),
           storage_class: StorageClass::Unspecified,
           initializer: Option::Some(init.clone()),
         }
@@ -490,13 +490,13 @@ parser! {
     // TODO subrange_specification, array_specification(), structure_type_name and others
     rule external_declaration_spec() -> TypeInitializer = type_name:simple_specification() {
       TypeInitializer::Simple {
-        type_name: String::from(type_name),
+        type_name: Id::from(type_name),
         initial_value: None,
       }
     }
     rule external_declaration() -> VarInitDecl = name:global_var_name() _ ":" _ spec:external_declaration_spec() {
       VarInitDecl {
-        name: String::from(name),
+        name: Id::from(name),
         storage_class: StorageClass::Unspecified,
         initializer: Option::Some(spec),
       }
@@ -518,7 +518,7 @@ parser! {
     rule global_var_decl() -> (Vec<Declaration>) = vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { TypeInitializer::FunctionBlock { type_name: Id::from(f) } })? {
       vs.0.iter().map(|name| {
         Declaration {
-          name: String::from(*name),
+          name: Id::from(*name),
           storage_class: StorageClass::Unspecified,
           at: vs.1.clone(),
           initializer: initializer.clone(),
@@ -576,7 +576,7 @@ parser! {
     rule function_block_declaration() -> FunctionBlockDeclaration = "FUNCTION_BLOCK" _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other }) ** _ _ body:function_block_body() _ "END_FUNCTION_BLOCK" {
       let (io, other, located) = VarDeclarations::unzip(decls);
       FunctionBlockDeclaration {
-        name: String::from(name),
+        name: Id::from(name),
         inputs: io.inputs,
         outputs: io.outputs,
         inouts: io.inouts,
@@ -595,7 +595,7 @@ parser! {
     pub rule program_declaration() ->  ProgramDeclaration = "PROGRAM" _ p:program_type_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other } / located:located_var_declarations() { located }) ** _ _ body:function_block_body() _ "END_PROGRAM" {
       let (io, other, located) = VarDeclarations::unzip(decls);
       ProgramDeclaration {
-        type_name: String::from(p),
+        type_name: Id::from(p),
         inputs: io.inputs,
         outputs: io.outputs,
         inouts: io.inouts,
@@ -617,13 +617,13 @@ parser! {
     }
     rule initial_step() -> Element = "INITIAL_STEP" _ name:step_name() _ ":" _ assoc:action_association() ** (_ ";" _) "END_STEP" {
       Element::InitialStep {
-        name: String::from(name),
+        name: Id::from(name),
         action_associations: assoc,
       }
     }
     rule step() -> Element = "STEP" _ name:step_name() _ ":" _ assoc:semisep(<action_association()>) _ "END_STEP" {
       Element::Step {
-        name: String::from(name),
+        name: Id::from(name),
         action_associations: assoc
       }
     }
@@ -631,9 +631,9 @@ parser! {
     // TODO this is missing stuff
     rule action_association() -> ActionAssociation = name:action_name() _ "(" _ qualifier:action_qualifier()? _ indicators:("," _ i:indicator_name() ** (_ "," _) { i })? _ ")" {
       ActionAssociation {
-        name: String::from(name),
+        name: Id::from(name),
         qualifier: qualifier,
-        indicators: indicators.map(|ind| to_strings(ind)).unwrap_or_else(|| vec![]),
+        indicators: indicators.map(|ind| to_ids(ind)).unwrap_or_else(|| vec![]),
       }
     }
     rule action_name() -> &'input str = identifier()
@@ -642,10 +642,10 @@ parser! {
     rule indicator_name() -> &'input str = variable_name()
     rule transition() -> Element = "TRANSITION" _ name:transition_name()? _ priority:("(" _ "PRIORITY" _ ":=" _ p:integer() _ ")" {p})? _ "FROM" _ from:steps() _ "TO" _ to:steps() _ condition:transition_condition() _ "END_TRANSITION" {
       Element::Transition {
-        name: name.map(|n| String::from(n)),
+        name: name.map(|n| Id::from(n)),
         priority: priority.map(|p| p.try_from::<u32>()),
-        from: to_strings(from),
-        to: to_strings(to),
+        from: to_ids(from),
+        to: to_ids(to),
         condition: condition,
       }
     }
@@ -660,7 +660,7 @@ parser! {
     rule transition_condition() -> ExprKind =  ":=" _ expr:expression() _ ";" { expr }
     rule action() -> Element = "ACTION" _ name:action_name() _ ":" _ body:function_block_body() _ "END_ACTION" {
       Element::Action {
-        name: String::from(name),
+        name: Id::from(name),
         body: body
       }
     }
@@ -673,14 +673,14 @@ parser! {
       // TODO this should really be multiple items
       let r = vec![r];
       ConfigurationDeclaration {
-        name: String::from(n),
+        name: Id::from(n),
         global_var: g,
         resource_decl: r,
       }
     }
     rule resource_declaration() -> ResourceDeclaration = "RESOURCE" _ n:resource_name() _ "ON" _ t:resource_type_name() _ g:global_var_declarations()? _ resource:single_resource_declaration() _ "END_RESOURCE" {
       ResourceDeclaration {
-        name: String::from(n),
+        name: Id::from(n),
         tasks: resource.0,
         programs: resource.1,
       }
@@ -691,7 +691,7 @@ parser! {
     rule program_name() -> &'input str = i:identifier() { i }
     pub rule task_configuration() -> TaskConfiguration = "TASK" _ name:task_name() _ init:task_initialization() {
       TaskConfiguration {
-        name: String::from(name),
+        name: Id::from(name),
         priority: init.0,
         // TODO This needs to set the interval
         interval: init.1,
@@ -714,7 +714,7 @@ parser! {
     //pub rule data_source() -> &'input str =
     pub rule program_configuration() -> ProgramConfiguration = "PROGRAM" _ name:program_name() task_name:( _ "WITH" _ t:task_name() { t })? _ ":" _ pt:program_type_name() (_ "(" _ c:prog_conf_element() ** (_ "," _) _ ")")? {
       ProgramConfiguration {
-        name: String::from(name),
+        name: Id::from(name),
         task_name: task_name.map(|n| String::from(n)),
         type_name: String::from(pt),
       }
@@ -814,7 +814,7 @@ parser! {
     rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb }
     rule fb_invocation() -> StmtKind = name:fb_name() _ "(" _ params:param_assignment() ** (_ "," _) _ ")" {
       StmtKind::FbCall(FbCall {
-        name: String::from(name),
+        name: Id::from(name),
         params: params,
       })
     }
@@ -863,18 +863,18 @@ mod test {
       END_VAR";
         let vars = vec![
             VarInitDecl {
-                name: String::from("TRIG"),
+                name: Id::from("TRIG"),
                 storage_class: StorageClass::Unspecified,
                 initializer: Option::Some(TypeInitializer::Simple {
-                    type_name: String::from("BOOL"),
+                    type_name: Id::from("BOOL"),
                     initial_value: None,
                 }),
             },
             VarInitDecl {
-                name: String::from("MSG"),
+                name: Id::from("MSG"),
                 storage_class: StorageClass::Unspecified,
                 initializer: Option::Some(TypeInitializer::Simple {
-                    type_name: String::from("STRING"),
+                    type_name: Id::from("STRING"),
                     initial_value: None,
                 }),
             },
@@ -890,7 +890,7 @@ mod test {
         LEVEL : LOGLEVEL := INFO;
       END_VAR";
         let expected = Ok(vec![VarInitDecl {
-            name: String::from("LEVEL"),
+            name: Id::from("LEVEL"),
             storage_class: StorageClass::Unspecified,
             initializer: Some(TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
                 type_name: Id::from("LOGLEVEL"),
@@ -908,18 +908,18 @@ mod test {
       END_VAR";
         let vars = vec![
             VarInitDecl {
-                name: String::from("TRIG"),
+                name: Id::from("TRIG"),
                 storage_class: StorageClass::Unspecified,
                 initializer: Option::Some(TypeInitializer::Simple {
-                    type_name: String::from("BOOL"),
+                    type_name: Id::from("BOOL"),
                     initial_value: None,
                 }),
             },
             VarInitDecl {
-                name: String::from("MSG"),
+                name: Id::from("MSG"),
                 storage_class: StorageClass::Unspecified,
                 initializer: Option::Some(TypeInitializer::Simple {
-                    type_name: String::from("STRING"),
+                    type_name: Id::from("STRING"),
                     initial_value: None,
                 }),
             },
@@ -938,7 +938,7 @@ mod test {
     #[test]
     fn task_configuration() {
         let config = Ok(TaskConfiguration {
-            name: String::from("abc"),
+            name: Id::from("abc"),
             priority: 11,
             interval: None,
         });
@@ -968,7 +968,7 @@ mod test {
     fn program_configuration() {
         // TODO there is more to extract here
         let cfg = ProgramConfiguration {
-            name: String::from("plc_task_instance"),
+            name: Id::from("plc_task_instance"),
             task_name: Option::Some(String::from("plc_task")),
             type_name: String::from("plc_prg"),
         };
@@ -1004,11 +1004,11 @@ mod test {
     fn var_global() {
         // TODO assign the right values
         let reset = vec![Declaration {
-            name: String::from("ResetCounterValue"),
+            name: Id::from("ResetCounterValue"),
             storage_class: StorageClass::Constant,
             at: None,
             initializer: Option::Some(TypeInitializer::Simple {
-                type_name: String::from("INT"),
+                type_name: Id::from("INT"),
                 initial_value: Option::Some(Initializer::Simple(Constant::IntegerLiteral(17))),
             }),
         }];
@@ -1043,27 +1043,27 @@ mod test {
   END_STEP";
         let expected = Ok(vec![Network {
             initial_step: Element::InitialStep {
-                name: String::from("Start"),
+                name: Id::from("Start"),
                 action_associations: vec![],
             },
             elements: vec![
                 Element::Step {
-                    name: String::from("ResetCounter"),
+                    name: Id::from("ResetCounter"),
                     action_associations: vec![
                         ActionAssociation {
-                            name: String::from("RESETCOUNTER_INLINE1"),
+                            name: Id::from("RESETCOUNTER_INLINE1"),
                             qualifier: Some(ActionQualifier::N),
                             indicators: vec![],
                         },
                         ActionAssociation {
-                            name: String::from("RESETCOUNTER_INLINE2"),
+                            name: Id::from("RESETCOUNTER_INLINE2"),
                             qualifier: Some(ActionQualifier::N),
                             indicators: vec![],
                         },
                     ],
                 },
                 Element::Action {
-                    name: String::from("RESETCOUNTER_INLINE1"),
+                    name: Id::from("RESETCOUNTER_INLINE1"),
                     body: FunctionBlockBody::stmts(vec![StmtKind::assignment(
                         Variable::symbolic("Cnt"),
                         ExprKind::symbolic_variable("ResetCounterValue"),
@@ -1072,8 +1072,8 @@ mod test {
                 Element::Transition {
                     name: None,
                     priority: None,
-                    from: vec![String::from("ResetCounter")],
-                    to: vec![String::from("Start")],
+                    from: vec![Id::from("ResetCounter")],
+                    to: vec![Id::from("Start")],
                     condition: ExprKind::UnaryOp {
                         op: UnaryOp::Not,
                         term: ExprKind::boxed_symbolic_variable("Reset"),
@@ -1082,23 +1082,23 @@ mod test {
                 Element::Transition {
                     name: None,
                     priority: None,
-                    from: vec![String::from("Start")],
-                    to: vec![String::from("Count")],
+                    from: vec![Id::from("Start")],
+                    to: vec![Id::from("Count")],
                     condition: ExprKind::UnaryOp {
                         op: UnaryOp::Not,
                         term: Box::new(ExprKind::symbolic_variable("Reset")),
                     },
                 },
                 Element::Step {
-                    name: String::from("Count"),
+                    name: Id::from("Count"),
                     action_associations: vec![
                         ActionAssociation {
-                            name: String::from("COUNT_INLINE3"),
+                            name: Id::from("COUNT_INLINE3"),
                             qualifier: Some(ActionQualifier::N),
                             indicators: vec![],
                         },
                         ActionAssociation {
-                            name: String::from("COUNT_INLINE4"),
+                            name: Id::from("COUNT_INLINE4"),
                             qualifier: Some(ActionQualifier::N),
                             indicators: vec![],
                         },
@@ -1205,7 +1205,7 @@ mod test {
     fn statement_fb_invocation_without_name() {
         let statement = "CounterLD0(Reset);";
         let expected = Ok(vec![StmtKind::FbCall(FbCall {
-            name: String::from("CounterLD0"),
+            name: Id::from("CounterLD0"),
             params: vec![ParamAssignment::positional(ExprKind::symbolic_variable(
                 "Reset",
             ))],
@@ -1218,7 +1218,7 @@ mod test {
     fn statement_fb_invocation_with_name() {
         let statement = "CounterLD0(Cnt := Reset);";
         let expected = Ok(vec![StmtKind::FbCall(FbCall {
-            name: String::from("CounterLD0"),
+            name: Id::from("CounterLD0"),
             params: vec![ParamAssignment::named(
                 "Cnt",
                 ExprKind::symbolic_variable("Reset"),

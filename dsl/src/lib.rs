@@ -1,3 +1,7 @@
+//! Provides definitions of objects from the IEC 61131-3 language elements.
+//! 
+//! Create also provides standard definitions for working with the language
+//! elements.
 #[allow(unused)]
 pub mod ast;
 #[allow(unused)]

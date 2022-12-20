@@ -1,4 +1,4 @@
-use ironplc_dsl::dsl::*;
+use ironplc_dsl::{ast::Id, dsl::*};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
 use std::collections::HashMap;
@@ -70,7 +70,7 @@ impl Fold for TypeResolver {
 mod tests {
     use crate::test_helpers::*;
     use crate::type_resolver::TypeResolver;
-    use ironplc_dsl::dsl::*;
+    use ironplc_dsl::{ast::Id, dsl::*};
     use ironplc_dsl::fold::Fold;
     use std::collections::HashMap;
 
@@ -78,7 +78,7 @@ mod tests {
     fn fold_when_has_function_block_type_then_resolves_type() {
         let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
-                name: String::from("LOGGER"),
+                name: Id::from("LOGGER"),
                 inputs: vec![VarInitDecl::late_bound("var_name", "var_type")],
                 outputs: vec![],
                 inouts: vec![],
@@ -97,7 +97,7 @@ mod tests {
 
         let expected = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
-                name: String::from("LOGGER"),
+                name: Id::from("LOGGER"),
                 inputs: vec![VarInitDecl::function_block("var_name", "var_type")],
                 outputs: vec![],
                 inouts: vec![],

@@ -1,3 +1,12 @@
+//! A set of traits and functions for folding all nodes in a library.
+//! 
+//! Folding the library returns a new instance with changes to the
+//! library defined based on the fold_* functions. The default behavior
+//! returns an copy of input.
+//!
+//! To fold a library, define a struct and implement the Fold trait
+//! for the struct. The implement fold_* functions from the trait to
+//! customize the behavior.
 use crate::ast::*;
 use crate::dsl::*;
 

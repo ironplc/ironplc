@@ -95,7 +95,7 @@ mod tests {
         let src = read_resource("first_steps_function_block_logger.st");
         let expected = new_library(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
-                name: String::from("LOGGER"),
+                name: Id::from("LOGGER"),
                 inputs: vec![
                     VarInitDecl::simple("TRIG", "BOOL"),
                     VarInitDecl::simple("MSG", "STRING"),
@@ -134,22 +134,22 @@ mod tests {
         let src = read_resource("first_steps_function_block_counter_sfc.st");
         let expected = new_library(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
-                name: String::from("CounterSFC"),
+                name: Id::from("CounterSFC"),
                 inputs: vec![VarInitDecl::simple("Reset", "BOOL")],
                 outputs: vec![VarInitDecl::simple("OUT", "INT")],
                 inouts: vec![],
                 vars: vec![VarInitDecl::simple("Cnt", "INT")],
                 externals: vec![VarInitDecl {
-                    name: String::from("ResetCounterValue"),
+                    name: Id::from("ResetCounterValue"),
                     storage_class: StorageClass::Constant,
                     initializer: Some(TypeInitializer::Simple {
-                        type_name: String::from("INT"),
+                        type_name: Id::from("INT"),
                         initial_value: None,
                     }),
                 }],
                 body: FunctionBlockBody::sfc(vec![Network {
                     initial_step: Element::InitialStep {
-                        name: String::from("Start"),
+                        name: Id::from("Start"),
                         action_associations: vec![],
                     },
                     elements: vec![
@@ -159,7 +159,7 @@ mod tests {
                             ExprKind::symbolic_variable("Reset"),
                         ),
                         Element::Step {
-                            name: String::from("ResetCounter"),
+                            name: Id::from("ResetCounter"),
                             action_associations: vec![
                                 ActionAssociation::new(
                                     "RESETCOUNTER_INLINE1",
@@ -199,7 +199,7 @@ mod tests {
                             },
                         ),
                         Element::Step {
-                            name: String::from("Count"),
+                            name: Id::from("Count"),
                             action_associations: vec![
                                 ActionAssociation::new("COUNT_INLINE3", Some(ActionQualifier::N)),
                                 ActionAssociation::new("COUNT_INLINE4", Some(ActionQualifier::N)),
@@ -235,7 +235,7 @@ mod tests {
         let src = read_resource("first_steps_function_block_counter_fbd.st");
         let expected = new_library(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
-                name: String::from("CounterFBD"),
+                name: Id::from("CounterFBD"),
                 inputs: vec![VarInitDecl::simple("Reset", "BOOL")],
                 outputs: vec![VarInitDecl::simple("OUT", "INT")],
                 inouts: vec![],
@@ -245,10 +245,10 @@ mod tests {
                     VarInitDecl::simple("_TMP_SEL7_OUT", "INT"),
                 ],
                 externals: vec![VarInitDecl {
-                    name: String::from("ResetCounterValue"),
+                    name: Id::from("ResetCounterValue"),
                     storage_class: StorageClass::Constant,
                     initializer: Some(TypeInitializer::Simple {
-                        type_name: String::from("INT"),
+                        type_name: Id::from("INT"),
                         initial_value: None,
                     }),
                 }],
@@ -277,10 +277,10 @@ mod tests {
             outputs: vec![],
             inouts: vec![],
             vars: vec![VarInitDecl {
-                name: String::from("InputsNumber"),
+                name: Id::from("InputsNumber"),
                 storage_class: StorageClass::Unspecified,
                 initializer: Some(TypeInitializer::Simple {
-                    type_name: String::from("REAL"),
+                    type_name: Id::from("REAL"),
                     initial_value: Some(Initializer::Simple(Constant::RealLiteral(Float {
                         value: 5.1,
                         data_type: None,
@@ -331,7 +331,7 @@ mod tests {
     fn parse_when_first_steps_program_declaration_then_builds_structure() {
         let src = read_resource("first_steps_program.st");
         let expected = new_library(LibraryElement::ProgramDeclaration(ProgramDeclaration {
-            type_name: String::from("plc_prg"),
+            type_name: Id::from("plc_prg"),
             inputs: vec![VarInitDecl::simple("Reset", "BOOL")],
             outputs: vec![
                 VarInitDecl::simple("Cnt1", "INT"),
@@ -378,27 +378,27 @@ mod tests {
         let src = read_resource("first_steps_configuration.st");
         let expected = new_library(LibraryElement::ConfigurationDeclaration(
             ConfigurationDeclaration {
-                name: String::from("config"),
+                name: Id::from("config"),
                 global_var: vec![Declaration {
-                    name: String::from("ResetCounterValue"),
+                    name: Id::from("ResetCounterValue"),
                     storage_class: StorageClass::Constant,
                     at: None,
                     initializer: Option::Some(TypeInitializer::Simple {
-                        type_name: String::from("INT"),
+                        type_name: Id::from("INT"),
                         initial_value: Option::Some(Initializer::Simple(Constant::IntegerLiteral(
                             17,
                         ))),
                     }),
                 }],
                 resource_decl: vec![ResourceDeclaration {
-                    name: String::from("resource1"),
+                    name: Id::from("resource1"),
                     tasks: vec![TaskConfiguration {
-                        name: String::from("plc_task"),
+                        name: Id::from("plc_task"),
                         priority: 1,
                         interval: Option::Some(Duration::new(0, 100_000_000)),
                     }],
                     programs: vec![ProgramConfiguration {
-                        name: String::from("plc_task_instance"),
+                        name: Id::from("plc_task_instance"),
                         task_name: Option::Some(String::from("plc_task")),
                         type_name: String::from("plc_prg"),
                     }],

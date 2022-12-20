@@ -27,12 +27,12 @@ use ironplc_dsl::{ast::*, dsl::*, visitor::Visitor};
 use std::collections::HashMap;
 
 trait FindIOVariable {
-    fn find_input(&self, name: &str) -> Option<&VarInitDecl>;
-    fn find_output(&self, name: &str) -> Option<&VarInitDecl>;
+    fn find_input(&self, name: &Id) -> Option<&VarInitDecl>;
+    fn find_output(&self, name: &Id) -> Option<&VarInitDecl>;
 }
 
 impl FindIOVariable for FunctionBlockDeclaration {
-    fn find_input(&self, name: &str) -> Option<&VarInitDecl> {
+    fn find_input(&self, name: &Id) -> Option<&VarInitDecl> {
         match self.inputs.iter().find(|item| item.name.eq(name)) {
             Some(v) => return Some(v),
             None => {}
@@ -41,7 +41,7 @@ impl FindIOVariable for FunctionBlockDeclaration {
         self.inouts.iter().find(|item| item.name.eq(name))
     }
 
-    fn find_output(&self, name: &str) -> Option<&VarInitDecl> {
+    fn find_output(&self, name: &Id) -> Option<&VarInitDecl> {
         match self.outputs.iter().find(|item| item.name.eq(name)) {
             Some(v) => return Some(v),
             None => {}
@@ -74,10 +74,10 @@ pub fn apply(lib: &Library) -> Result<(), String> {
 }
 
 struct RuleFunctionBlockUse<'a> {
-    function_blocks: &'a HashMap<String, &'a FunctionBlockDeclaration>,
+    function_blocks: &'a HashMap<Id, &'a FunctionBlockDeclaration>,
 }
 impl<'a> RuleFunctionBlockUse<'a> {
-    fn new(decls: &'a HashMap<String, &'a FunctionBlockDeclaration>) -> Self {
+    fn new(decls: &'a HashMap<Id, &'a FunctionBlockDeclaration>) -> Self {
         RuleFunctionBlockUse {
             function_blocks: decls,
         }
@@ -121,7 +121,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
             // TODO Check that the names and types match. Unassigned values are
             // permitted so we use the assignments as the set to iterate
             for name in named {
-                match function_block.find_input(name.name.as_str()) {
+                match function_block.find_input(&name.name) {
                     Some(_) => {}
                     None => {
                         return Err(format!(
@@ -178,7 +178,7 @@ mod tests {
         Library {
             elems: vec![
                 LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: String::from("CALLEE"),
+                    name: Id::from("CALLEE"),
                     inputs: vec![
                         VarInitDecl::simple("IN1", "BOOL"),
                         VarInitDecl::simple("IN2", "BOOL"),
@@ -190,14 +190,14 @@ mod tests {
                     body: FunctionBlockBody::stmts(vec![]),
                 }),
                 LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: String::from("CALLER"),
+                    name: Id::from("CALLER"),
                     inputs: vec![],
                     outputs: vec![],
                     inouts: vec![],
                     vars: vec![],
                     externals: vec![],
                     body: FunctionBlockBody::stmts(vec![StmtKind::FbCall(FbCall {
-                        name: String::from("CALLEE"),
+                        name: Id::from("CALLEE"),
                         params: params,
                     })]),
                 }),
