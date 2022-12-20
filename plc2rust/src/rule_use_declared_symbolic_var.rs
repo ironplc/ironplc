@@ -2,6 +2,7 @@
 //! a symbolic variable must be to a symbolic variable that is
 //! declared in that scope.
 use ironplc_dsl::{
+    ast::Id,
     dsl::*,
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
@@ -9,10 +10,10 @@ use ironplc_dsl::{
     },
 };
 
-use crate::symbol_table::{self, NodeData, SymbolTable};
+use crate::symbol_table::{self, Key, NodeData, SymbolTable};
 
 pub fn apply(lib: &Library) -> Result<(), String> {
-    let mut visitor: SymbolTable<DummyNode> = symbol_table::SymbolTable::new();
+    let mut visitor: SymbolTable<Id, DummyNode> = symbol_table::SymbolTable::new();
 
     visitor.walk(&lib)
 }
@@ -20,8 +21,9 @@ pub fn apply(lib: &Library) -> Result<(), String> {
 #[derive(Clone)]
 struct DummyNode {}
 impl NodeData for DummyNode {}
+impl Key for Id {}
 
-impl Visitor<String> for SymbolTable<DummyNode> {
+impl Visitor<String> for SymbolTable<Id, DummyNode> {
     type Value = ();
 
     fn visit_function_declaration(
@@ -60,7 +62,7 @@ impl Visitor<String> for SymbolTable<DummyNode> {
         &mut self,
         node: &ironplc_dsl::ast::SymbolicVariable,
     ) -> Result<(), String> {
-        match self.find(&node.name.as_str()) {
+        match self.find(&node.name) {
             Some(_) => {
                 // We found the variable being referred to
                 Ok(Self::Value::default())
@@ -83,7 +85,7 @@ mod tests {
     fn apply_when_undeclared_symbol_then_error() {
         let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
-                name: String::from("LOGGER"),
+                name: Id::from("LOGGER"),
                 inputs: vec![],
                 outputs: vec![],
                 inouts: vec![],
@@ -115,7 +117,7 @@ mod tests {
     fn apply_when_all_symbol_declared_then_ok() {
         let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
-                name: String::from("LOGGER"),
+                name: Id::from("LOGGER"),
                 inputs: vec![],
                 outputs: vec![],
                 inouts: vec![],

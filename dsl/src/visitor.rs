@@ -1,5 +1,6 @@
 //! A set of traits and functions for visiting all nodes in a library.
-//! To use the visitor, define a struct and implement the Visitor train
+//!
+//! To use the visitor, define a struct and implement the Visitor trait
 //! for the struct.
 //!
 //! Visitor trait functions call functions that implement walking through
@@ -410,13 +411,13 @@ mod test {
 
         fn visit_symbolic_variable(&mut self, var: &SymbolicVariable) -> Result<(), Error> {
             let mut dst = &mut self.names;
-            dst.push_back(var.name.clone());
+            dst.push_back(var.name.to_string());
             Ok(())
         }
 
         fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<(), Error> {
             let mut dst = &mut self.names;
-            dst.push_back(fb_call.name.clone());
+            dst.push_back(fb_call.name.to_string());
             Ok(())
         }
     }
@@ -425,7 +426,7 @@ mod test {
     fn walk_when_has_symbolic_variable_then_visits_variable() {
         let library = Library {
             elems: vec![LibraryElement::ProgramDeclaration(ProgramDeclaration {
-                type_name: String::from("plc_prg"),
+                type_name: Id::from("plc_prg"),
                 inputs: vec![VarInitDecl::simple("Reset", "BOOL")],
                 outputs: vec![],
                 inouts: vec![],

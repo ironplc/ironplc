@@ -53,6 +53,7 @@ impl Visitor<String> for RuleConstantVarsInitialized {
 
 #[cfg(test)]
 mod tests {
+    use ironplc_dsl::ast::Id;
     use ironplc_dsl::dsl::*;
 
     use super::*;
@@ -61,7 +62,7 @@ mod tests {
         Library {
             elems: vec![
                 LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: String::from("CALLEE"),
+                    name: Id::from("CALLEE"),
                     inputs: vec![
                         var,
                     ],
@@ -77,7 +78,7 @@ mod tests {
 
     #[test]
     fn apply_when_missing_initializer_then_error() {
-        let lib = make_declaration_with_var(VarInitDecl { name: String::from("name"), storage_class: StorageClass::Constant, initializer: None });
+        let lib = make_declaration_with_var(VarInitDecl { name: Id::from("name"), storage_class: StorageClass::Constant, initializer: None });
 
         let result = apply(&lib);
 
@@ -86,7 +87,7 @@ mod tests {
 
     #[test]
     fn apply_when_missing_initializer_then_ok() {
-        let lib = make_declaration_with_var(VarInitDecl { name: String::from("name"), storage_class: StorageClass::Constant, initializer: Some(TypeInitializer::simple("INT", Initializer::Simple(Constant::IntegerLiteral(1)))) });
+        let lib = make_declaration_with_var(VarInitDecl { name: Id::from("name"), storage_class: StorageClass::Constant, initializer: Some(TypeInitializer::simple("INT", Initializer::Simple(Constant::IntegerLiteral(1)))) });
 
         let result = apply(&lib);
 

@@ -1,3 +1,6 @@
+//! Provides definitions specific to sequential function chart elements.
+//! 
+//!  
 use crate::ast::*;
 use crate::dsl::*;
 
@@ -24,15 +27,15 @@ impl ActionQualifier {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ActionAssociation {
-    pub name: String,
+    pub name: Id,
     pub qualifier: Option<ActionQualifier>,
-    pub indicators: Vec<String>,
+    pub indicators: Vec<Id>,
 }
 
 impl ActionAssociation {
     pub fn new(name: &str, qualifier: Option<ActionQualifier>) -> ActionAssociation {
         ActionAssociation {
-            name: String::from(name),
+            name: Id::from(name),
             qualifier: qualifier,
             indicators: vec![],
         }
@@ -42,25 +45,25 @@ impl ActionAssociation {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Element {
     Action {
-        name: String,
+        name: Id,
         body: FunctionBlockBody,
     },
 
     Transition {
-        name: Option<String>,
+        name: Option<Id>,
         priority: Option<u32>,
-        from: Vec<String>,
-        to: Vec<String>,
+        from: Vec<Id>,
+        to: Vec<Id>,
         condition: ExprKind,
     },
 
     Step {
-        name: String,
+        name: Id,
         action_associations: Vec<ActionAssociation>,
     },
 
     InitialStep {
-        name: String,
+        name: Id,
         action_associations: Vec<ActionAssociation>,
     },
 }
@@ -68,7 +71,7 @@ pub enum Element {
 impl Element {
     pub fn action(name: &str, body: Vec<StmtKind>) -> Element {
         Element::Action {
-            name: String::from(name),
+            name: Id::from(name),
             body: FunctionBlockBody::Statements(Statements { body: body }),
         }
     }
@@ -77,8 +80,8 @@ impl Element {
         Element::Transition {
             name: None,
             priority: None,
-            from: vec![String::from(from)],
-            to: vec![String::from(to)],
+            from: vec![Id::from(from)],
+            to: vec![Id::from(to)],
             condition: condition,
         }
     }

@@ -24,7 +24,7 @@
 //! LEVEL : LOGLEVEL := CRITICAL;
 //! END_VAR
 //! END_FUNCTION_BLOCK
-use ironplc_dsl::{dsl::*, visitor::Visitor};
+use ironplc_dsl::{ast::Id, dsl::*, visitor::Visitor};
 use std::collections::{HashMap, HashSet};
 
 pub fn apply(lib: &Library) -> Result<(), String> {
@@ -141,7 +141,7 @@ mod tests {
             elems: vec![
                 make_enum_def("LOGGER", "CRITICAL"),
                 LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: String::from("FB"),
+                    name: Id::from("FB"),
                     inputs: vec![VarInitDecl::enumerated("IN", "LOGGER", "UNDEFINED")],
                     outputs: vec![],
                     inouts: vec![],
@@ -162,7 +162,7 @@ mod tests {
             elems: vec![
                 make_enum_def("LOGGER", "CRITICAL"),
                 LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: String::from("FB"),
+                    name: Id::from("FB"),
                     inputs: vec![VarInitDecl::enumerated("IN", "LOGGER", "CRITICAL")],
                     outputs: vec![],
                     inouts: vec![],

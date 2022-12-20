@@ -6,52 +6,6 @@ use std::hash::{Hash, Hasher};
 use crate::ast::*;
 use crate::sfc::Network;
 
-/// Implements Identifier declared by 2.1.2.
-/// 
-/// 61131-2 declares that identifiers are case insensitive.
-/// This class ensures that we do case insensitive comparisons
-/// and can use containers as appropriate.
-
-#[derive(Clone)]
-pub struct Id {
-    original: String,
-    lower_case: String,
-}
-
-impl Id {
-    pub fn from(str: &str) -> Id {
-        Id {
-            original: String::from(str),
-            lower_case: String::from(str).to_lowercase(),
-        }
-    }
-}
-
-impl PartialEq for Id {
-    fn eq(&self, other: &Self) -> bool {
-        self.lower_case == other.lower_case
-    }
-}
-impl Eq for Id {}
-
-impl Hash for Id {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.lower_case.hash(state);
-    }
-}
-
-impl fmt::Debug for Id {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.original)
-    }
-}
-
-impl fmt::Display for Id {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.original)
-    }
-}
-
 pub enum TypeDefinitionKind {
     Enumeration,
     FunctionBlock,
@@ -149,7 +103,7 @@ pub struct Float {
 // 2.4.3 Declaration
 #[derive(Debug, PartialEq, Clone)]
 pub struct Declaration {
-    pub name: String,
+    pub name: Id,
     pub storage_class: StorageClass,
     pub at: Option<At>,
     pub initializer: Option<TypeInitializer>,
@@ -157,27 +111,29 @@ pub struct Declaration {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct VarInitDecl {
-    pub name: String,
+    pub name: Id,
     pub storage_class: StorageClass,
     pub initializer: Option<TypeInitializer>,
     // TODO this need much more
 }
 
 impl VarInitDecl {
+    /// Creates a variable declaration for simple type and no initialization.
     pub fn simple(name: &str, type_name: &str) -> VarInitDecl {
         VarInitDecl {
-            name: String::from(name),
+            name: Id::from(name),
             storage_class: StorageClass::Unspecified,
             initializer: Some(TypeInitializer::Simple {
-                type_name: String::from(type_name),
+                type_name: Id::from(type_name),
                 initial_value: None,
             }),
         }
     }
 
+    /// Creates a variable declaration for enumeration having an initial value.
     pub fn enumerated(name: &str, type_name: &str, initial_value: &str) -> VarInitDecl {
         VarInitDecl {
-            name: String::from(name),
+            name: Id::from(name),
             storage_class: StorageClass::Unspecified,
             initializer: Some(TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
                 type_name: Id::from(type_name),
@@ -186,9 +142,10 @@ impl VarInitDecl {
         }
     }
 
+    /// Creates a variable declaration for a function block.
     pub fn function_block(name: &str, type_name: &str) -> VarInitDecl {
         VarInitDecl {
-            name: String::from(name),
+            name: Id::from(name),
             storage_class: StorageClass::Unspecified,
             initializer: Some(TypeInitializer::FunctionBlock {
                 type_name: Id::from(type_name),
@@ -196,9 +153,13 @@ impl VarInitDecl {
         }
     }
 
+    /// Creates a variable declaration that is ambiguous on the type.
+    /// 
+    /// The language has some ambiguity for types. The late bound represents
+    /// a placeholder that is later resolved once all types are known.
     pub fn late_bound(name: &str, type_name: &str) -> VarInitDecl {
         VarInitDecl {
-            name: String::from(name),
+            name: Id::from(name),
             storage_class: StorageClass::Unspecified,
             initializer: Some(TypeInitializer::LateResolvedType(Id::from(type_name))),
         }
@@ -239,7 +200,7 @@ pub struct At {}
 // 2.7.2 Tasks
 #[derive(Debug, PartialEq)]
 pub struct TaskConfiguration {
-    pub name: String,
+    pub name: Id,
     pub priority: u32,
     // TODO this might not be optional
     pub interval: Option<Duration>,
@@ -283,7 +244,7 @@ pub struct EnumeratedTypeInitializer {
 #[derive(PartialEq, Clone, Debug)]
 pub enum TypeInitializer {
     Simple {
-        type_name: String,
+        type_name: Id,
         initial_value: Option<Initializer>,
     },
     EnumeratedValues {
@@ -306,7 +267,7 @@ pub enum TypeInitializer {
 impl TypeInitializer {
     pub fn simple(type_name: &str, value: Initializer) -> TypeInitializer {
         TypeInitializer::Simple {
-            type_name: String::from(type_name),
+            type_name: Id::from(type_name),
             initial_value: Some(value)
         }
     }
@@ -367,21 +328,21 @@ pub enum StorageClass {
 
 #[derive(Debug, PartialEq)]
 pub struct ResourceDeclaration {
-    pub name: String,
+    pub name: Id,
     pub tasks: Vec<TaskConfiguration>,
     pub programs: Vec<ProgramConfiguration>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct ProgramConfiguration {
-    pub name: String,
+    pub name: Id,
     pub task_name: Option<String>,
     pub type_name: String,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct ConfigurationDeclaration {
-    pub name: String,
+    pub name: Id,
     pub global_var: Vec<Declaration>,
     pub resource_decl: Vec<ResourceDeclaration>,
 }
@@ -471,7 +432,7 @@ pub struct FunctionDeclaration {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct FunctionBlockDeclaration {
-    pub name: String,
+    pub name: Id,
     pub inputs: Vec<VarInitDecl>,
     pub outputs: Vec<VarInitDecl>,
     pub inouts: Vec<VarInitDecl>,
@@ -483,7 +444,7 @@ pub struct FunctionBlockDeclaration {
 
 #[derive(Debug, PartialEq)]
 pub struct ProgramDeclaration {
-    pub type_name: String,
+    pub type_name: Id,
     pub inputs: Vec<VarInitDecl>,
     pub outputs: Vec<VarInitDecl>,
     pub inouts: Vec<VarInitDecl>,
