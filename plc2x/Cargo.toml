@@ -1,5 +1,5 @@
 [package]
-name = "iron-plc"
+name = "ironplc-plc2x"
 version = "0.1.0"
 authors = [ "Garret Fick" ]
 edition = "2021"
