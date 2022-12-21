@@ -1,5 +1,7 @@
 [workspace]
 
+license = "MIT"
+
 members = [
     "plc2rust",
     "dsl",
