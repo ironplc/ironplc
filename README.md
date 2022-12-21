@@ -3,6 +3,13 @@
 IronPLC aims to be a SoftPLC written entirely in "safe" Rust for embedded
 devices running programs written in the IEC 61131-3 language.
 
+SoftPLCs enable embedded other computers to operate as programmable logic 
+controllers (PLCs) to execute all sorts of processes from home automation
+and factories to industrial process automation and the electrical power grid.
+They do this by implementing control algorithms that connect to sensors,
+transducers and actuators using analog/digital IO, industrial protocols such as
+I²C and Modbus, or even common internet protocol such as HTTP.
+
 It is now where near there yet - currently what exists is a prototype of
 source-to-source compiler for IEC 61131 to Rust. The reason for
 source-to-source rather than virtual machine is a belief that the virtual
@@ -30,12 +37,7 @@ The project is split into 3 members:
    tree as one component (among many)
 * `parser` is tokenizes and parses an IEC 61131-3 text file into the `dsl`
    objects
-* `plc2rust` is the front-end for a source-to-source compiler; it assembles all
+* `plc2x` is the front-end for a source-to-source compiler; it assembles all
    the pieces
 
 There is no strict definition of what goes where. Better rules would be nice.
-
-## Big TODOs
-
-* Need to replace use of String for identifiers with an identifier class
-  that correctly implements equality.
