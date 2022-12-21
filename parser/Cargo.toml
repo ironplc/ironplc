@@ -1,9 +1,14 @@
 [package]
 name = "ironplc-parser"
 version = "0.1.0"
-description = "Parser for IEC 61131 code."
 authors = [ "Garret Fick" ]
 edition = "2021"
+description = "Parser for IEC 61131-3 language elements."
+repository = "https://github.com/garretfick/ironplc"
+license = "MIT"
+
+[badges]
+maintenance = { status = "experimental" }
 
 [dependencies]
 time = "0.3.11"
