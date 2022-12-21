@@ -12,7 +12,7 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 time = "0.3.11"
-ironplc-dsl = { path = "../dsl" }
+ironplc-dsl = { path = "../dsl", version = "0.1.0" }
 
 [dependencies.peg]
 version = "0.8.0"
