@@ -3,15 +3,6 @@
 version = 3
 
 [[package]]
-name = "iron-plc"
-version = "0.1.0"
-dependencies = [
- "ironplc-dsl",
- "ironplc-parser",
- "time",
-]
-
-[[package]]
 name = "ironplc-dsl"
 version = "0.1.0"
 dependencies = [
@@ -24,6 +15,15 @@ version = "0.1.0"
 dependencies = [
  "ironplc-dsl",
  "peg",
+ "time",
+]
+
+[[package]]
+name = "ironplc-plc2x"
+version = "0.1.0"
+dependencies = [
+ "ironplc-dsl",
+ "ironplc-parser",
  "time",
 ]
 
