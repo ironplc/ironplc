@@ -3,7 +3,7 @@
 license = "MIT"
 
 members = [
-    "plc2rust",
+    "plc2x",
     "dsl",
     "parser"
 ]
