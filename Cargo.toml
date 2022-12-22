@@ -1,7 +1,5 @@
 [workspace]
 
-license = "MIT"
-
 members = [
     "plc2x",
     "dsl",
