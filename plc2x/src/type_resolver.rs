@@ -1,6 +1,6 @@
-use ironplc_dsl::{ast::Id, dsl::*};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
+use ironplc_dsl::{ast::Id, dsl::*};
 use std::collections::HashMap;
 use std::fmt::Error;
 
@@ -70,8 +70,8 @@ impl Fold for TypeResolver {
 mod tests {
     use crate::test_helpers::*;
     use crate::type_resolver::TypeResolver;
-    use ironplc_dsl::{ast::Id, dsl::*};
     use ironplc_dsl::fold::Fold;
+    use ironplc_dsl::{ast::Id, dsl::*};
     use std::collections::HashMap;
 
     #[test]

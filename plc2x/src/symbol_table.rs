@@ -32,7 +32,7 @@ use std::hash::Hash;
 
 pub trait NodeData: Clone {}
 
-pub trait Key : Eq + Hash + Clone {}
+pub trait Key: Eq + Hash + Clone {}
 
 struct Scope<K: Key, T: NodeData> {
     table: HashMap<K, T>,

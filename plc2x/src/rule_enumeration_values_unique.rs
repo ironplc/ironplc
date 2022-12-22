@@ -1,26 +1,25 @@
 //! Semantic rule that enumeration values in declarations must be unique.
-//! 
+//!
 //! ## Passes
-//! 
+//!
 //! TYPE
 //! LOGLEVEL : (CRITICAL) := CRITICAL;
 //! END_TYPE
-//! 
+//!
 //! ## Fails
-//! 
+//!
 //! //! TYPE
 //! LOGLEVEL : (CRITICAL, CRITICAL) := CRITICAL;
 //! END_TYPE
 use ironplc_dsl::{dsl::*, visitor::Visitor};
-use std::{collections::HashSet};
+use std::collections::HashSet;
 
 pub fn apply(lib: &Library) -> Result<(), String> {
     let mut visitor = RuleEnumerationValuesUnique {};
     visitor.walk(&lib)
 }
 
-struct RuleEnumerationValuesUnique {
-}
+struct RuleEnumerationValuesUnique {}
 
 impl Visitor<String> for RuleEnumerationValuesUnique {
     type Value = ();
@@ -32,12 +31,15 @@ impl Visitor<String> for RuleEnumerationValuesUnique {
                 let mut seen_values = HashSet::new();
                 for value in values {
                     if seen_values.contains(&value) {
-                        return Err(format!("Enumeration declaration {} has duplicated value {}", node.name, value));
+                        return Err(format!(
+                            "Enumeration declaration {} has duplicated value {}",
+                            node.name, value
+                        ));
                     }
                     seen_values.insert(value);
                 }
-                return Ok(Self::Value::default())
-            },
+                return Ok(Self::Value::default());
+            }
         }
     }
 }
@@ -53,18 +55,17 @@ mod tests {
 
     #[test]
     fn apply_when_values_unique_then_ok() {
-        let input = new_library::<String>(LibraryElement::DataTypeDeclaration(
-            vec![
-                EnumerationDeclaration {
-                    name: Id::from("LOGLEVEL"),
-                    spec: EnumeratedSpecificationKind::Values(vec![
-                        Id::from("CRITICAL"),
-                        Id::from("ERROR"),
-                    ]),
-                    default: None,
-                }
-            ]
-        )).unwrap();
+        let input = new_library::<String>(LibraryElement::DataTypeDeclaration(vec![
+            EnumerationDeclaration {
+                name: Id::from("LOGLEVEL"),
+                spec: EnumeratedSpecificationKind::Values(vec![
+                    Id::from("CRITICAL"),
+                    Id::from("ERROR"),
+                ]),
+                default: None,
+            },
+        ]))
+        .unwrap();
 
         let result = apply(&input);
         assert_eq!(true, result.is_ok())
@@ -72,18 +73,17 @@ mod tests {
 
     #[test]
     fn apply_when_value_duplicated_then_error() {
-        let input = new_library::<String>(LibraryElement::DataTypeDeclaration(
-            vec![
-                EnumerationDeclaration {
-                    name: Id::from("LOGLEVEL"),
-                    spec: EnumeratedSpecificationKind::Values(vec![
-                        Id::from("CRITICAL"),
-                        Id::from("CRITICAL"),
-                    ]),
-                    default: None,
-                }
-            ]
-        )).unwrap();
+        let input = new_library::<String>(LibraryElement::DataTypeDeclaration(vec![
+            EnumerationDeclaration {
+                name: Id::from("LOGLEVEL"),
+                spec: EnumeratedSpecificationKind::Values(vec![
+                    Id::from("CRITICAL"),
+                    Id::from("CRITICAL"),
+                ]),
+                default: None,
+            },
+        ]))
+        .unwrap();
 
         let result = apply(&input);
         assert_eq!(true, result.is_err())

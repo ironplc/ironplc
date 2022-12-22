@@ -1,0 +1,23 @@
+name: Build and Test IronPLC
+on: [push]
+jobs:
+  test_linux_x86:
+    name: IronPLC Ubuntu Latest Build and Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all-features --all-targets
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --check
