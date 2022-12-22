@@ -1,27 +1,27 @@
 //! Semantic rule that reference to a function block must be to a function
 //! block that is declared.
-//! 
+//!
 //! ## Passes
-//! 
+//!
 //! FUNCTION_BLOCK Callee
 //! END_FUNCTION_BLOCK
-//! 
+//!
 //! FUNCTION_BLOCK Caller
 //!    VAR
 //!       FB_INSTANCE : Callee;
 //!    END_VAR
 //! END_FUNCTION_BLOCK
-//! 
+//!
 //! ## Fails
-//! 
+//!
 //! FUNCTION_BLOCK Caller
 //!    VAR
 //!       FB_INSTANCE : UndeclaredFunctionBlock;
 //!    END_VAR
 //! END_FUNCTION_BLOCK
-//! 
+//!
 //! ## Todo
-//! 
+//!
 //! I'm not certain this rule is quite right.
 use ironplc_dsl::{ast::*, dsl::*, visitor::Visitor};
 use std::collections::HashMap;

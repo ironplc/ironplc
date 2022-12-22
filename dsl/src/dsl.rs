@@ -1,7 +1,7 @@
 use core::str::FromStr;
 use std::fmt;
-use time::Duration;
 use std::hash::{Hash, Hasher};
+use time::Duration;
 
 use crate::ast::*;
 use crate::sfc::Network;
@@ -154,7 +154,7 @@ impl VarInitDecl {
     }
 
     /// Creates a variable declaration that is ambiguous on the type.
-    /// 
+    ///
     /// The language has some ambiguity for types. The late bound represents
     /// a placeholder that is later resolved once all types are known.
     pub fn late_bound(name: &str, type_name: &str) -> VarInitDecl {
@@ -268,7 +268,7 @@ impl TypeInitializer {
     pub fn simple(type_name: &str, value: Initializer) -> TypeInitializer {
         TypeInitializer::Simple {
             type_name: Id::from(type_name),
-            initial_value: Some(value)
+            initial_value: Some(value),
         }
     }
 }
@@ -359,7 +359,7 @@ pub struct EnumerationDeclaration {
 pub enum EnumeratedSpecificationKind {
     TypeName(Id),
     /// Enumeration declaration that provides a list of values.
-    /// 
+    ///
     /// Order of the values is important because the order declares the
     /// default value if no default is specified directly.
     Values(Vec<Id>),

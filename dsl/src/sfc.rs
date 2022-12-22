@@ -1,5 +1,5 @@
 //! Provides definitions specific to sequential function chart elements.
-//! 
+//!
 //!  
 use crate::ast::*;
 use crate::dsl::*;
