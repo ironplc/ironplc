@@ -83,7 +83,7 @@ mod tests {
                     Id::from("INFO"),
                     Id::from("DEBUG"),
                 ]),
-                default: Option::Some(String::from("INFO")),
+                default: Option::Some(Id::from("INFO")),
             },
         ]));
         assert_eq!(ironplc_parser::parse_program(src.as_str()), expected)
@@ -266,7 +266,7 @@ mod tests {
         let src = read_resource("first_steps_func_avg_val.st");
         let expected = new_library(LibraryElement::FunctionDeclaration(FunctionDeclaration {
             name: Id::from("AverageVal"),
-            return_type: String::from("REAL"),
+            return_type: Id::from("REAL"),
             inputs: vec![
                 VarInitDecl::simple("Cnt1", "INT"),
                 VarInitDecl::simple("Cnt2", "INT"),
@@ -295,7 +295,7 @@ mod tests {
                     ops: vec![Operator::Mul],
                     terms: vec![
                         ExprKind::Function {
-                            name: String::from("INT_TO_REAL"),
+                            name: Id::from("INT_TO_REAL"),
                             param_assignment: vec![ParamAssignment::positional(
                                 ExprKind::BinaryOp {
                                     ops: vec![Operator::Add],
@@ -399,8 +399,8 @@ mod tests {
                     }],
                     programs: vec![ProgramConfiguration {
                         name: Id::from("plc_task_instance"),
-                        task_name: Option::Some(String::from("plc_task")),
-                        type_name: String::from("plc_prg"),
+                        task_name: Option::Some(Id::from("plc_task")),
+                        type_name: Id::from("plc_prg"),
                     }],
                 }],
             },

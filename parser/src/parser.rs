@@ -210,7 +210,7 @@ parser! {
 
     // B.1.1 Letters, digits and identifier
     //rule digit() -> &'input str = $(['0'..='9'])
-    rule identifier() -> &'input str = !KEYWORD() i:$(['a'..='z' | '0'..='9' | 'A'..='Z' | '_']+) { i }
+    rule identifier() -> Id = !KEYWORD() i:$(['a'..='z' | '0'..='9' | 'A'..='Z' | '_']+) { Id::from(i) }
 
     // B.1.2 Constants
     rule constant() -> Constant = r:real_literal() { Constant::RealLiteral(r) } / i:integer_literal() { Constant::IntegerLiteral(i.try_from::<i128>()) } / c:character_string() { Constant::CharacterString() }  / d:duration() { Constant::Duration(d) } / t:time_of_day() { Constant::TimeOfDay() } / d:date() { Constant::Date() } / dt:date_and_time() { Constant::DateAndTime() }
@@ -237,7 +237,7 @@ parser! {
 
       Float {
         value: whole + frac,
-        data_type: tn.map(|v| String::from(v)),
+        data_type: tn,
       }
     }
     rule exponent() -> (bool, Integer) = ("E" / "e") s:("+" / "-")? i:integer() { (true, i) }
@@ -304,17 +304,17 @@ parser! {
     rule date_and_time() -> PrimitiveDateTime = ("DATE_AND_TIME" / "DT") "#" d:date_literal() "-" t:daytime() { PrimitiveDateTime::new(d, t) }
 
     // B.1.3.1 Elementary data types
-    rule elementary_type_name() -> &'input str = "INT" { "INT"} / "BOOL" { "BOOL" } / "STRING" { "STRING" } / "REAL" { "REAL" }
+    rule elementary_type_name() -> Id = "INT" { Id::from("INT")} / "BOOL" { Id::from("BOOL") } / "STRING" { Id::from("STRING") } / "REAL" { Id::from("REAL") }
     // TODO regex for REAL
-    rule real_type_name() -> &'input str = t:$(("LREAL")) { t }
+    rule real_type_name() -> Id = t:$(("LREAL")) { Id::from(t) }
 
     // B.1.3.3
     // TODO add all types
-    rule derived_type_name() -> &'input str = single_element_type_name()
+    rule derived_type_name() -> Id = single_element_type_name()
     // TODO add all options
-    rule single_element_type_name() -> &'input str = simple_type_name()
-    rule simple_type_name() -> &'input str = identifier()
-    rule enumerated_type_name() -> &'input str = identifier()
+    rule single_element_type_name() -> Id = simple_type_name()
+    rule simple_type_name() -> Id = identifier()
+    rule enumerated_type_name() -> Id = identifier()
     rule data_type_declaration() -> Vec<EnumerationDeclaration> = "TYPE" _ declarations:semisep(<type_declaration()>) _ "END_TYPE" { declarations }
     // TODO this is missing multiple types
     rule type_declaration() -> EnumerationDeclaration = s:single_element_type_declaration() { s }
@@ -322,7 +322,7 @@ parser! {
     rule single_element_type_declaration() -> EnumerationDeclaration = decl:enumerated_type_declaration() { decl }
     rule enumerated_type_declaration() -> EnumerationDeclaration = name:enumerated_type_name() _ ":" _ spec:enumerated_spec_init() {
       EnumerationDeclaration {
-        name: Id::from(name),
+        name: name,
         spec: spec.0,
         default: spec.1,
       }
@@ -333,43 +333,43 @@ parser! {
         EnumeratedSpecificationKind::TypeName(name) => {
           return TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
             type_name: name,
-            initial_value: Some(Id::from(def)),
+            initial_value: Some(def),
           });
         },
         EnumeratedSpecificationKind::Values(values) => {
           return TypeInitializer::EnumeratedValues {
             values: values,
-            default: Some(Id::from(def)),
+            default: Some(def),
           };
         },
         _ => panic!("Invalid type")
       }
      }
-    rule enumerated_spec_init() -> (EnumeratedSpecificationKind, Option<String>) = init:enumerated_specification() _ def:(":=" _ d:enumerated_value() { d })? {
-      (init, def.map(|d| String::from(d)))
+    rule enumerated_spec_init() -> (EnumeratedSpecificationKind, Option<Id>) = init:enumerated_specification() _ def:(":=" _ d:enumerated_value() { d })? {
+      (init, def)
      }
     // TODO this doesn't support type name as a value
     rule enumerated_specification() -> EnumeratedSpecificationKind  = "(" _ v:enumerated_value() ++ (_ "," _) _ ")" {
-      EnumeratedSpecificationKind::Values(v.iter().map(|v| Id::from(*v)).collect())
+      EnumeratedSpecificationKind::Values(v)
     }  / name:enumerated_type_name() {
-      EnumeratedSpecificationKind::TypeName(Id::from(name))
+      EnumeratedSpecificationKind::TypeName(name)
     }
-    rule enumerated_value() -> &'input str = (enumerated_type_name() "#")? i:identifier() { i }
+    rule enumerated_value() -> Id = (enumerated_type_name() "#")? i:identifier() { i }
     // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
     rule simple_spec_init__unambiguous() -> TypeInitializer = simple_spec_init()
     rule simple_spec_init() -> TypeInitializer = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
       TypeInitializer::Simple {
-        type_name: Id::from(type_name),
+        type_name: type_name,
         initial_value: constant.map(|v| Initializer::Simple(v)),
       }
     }
-    rule simple_specification() -> &'input str = elementary_type_name()
+    rule simple_specification() -> Id = elementary_type_name()
 
     // B.1.4 Variables
     rule variable() -> Variable = d:direct_variable() { Variable::DirectVariable(d) } / symbolic_variable()
     // TODO add multi-element variable
-    rule symbolic_variable() -> Variable = multi_element_variable() / name:variable_name() { Variable::symbolic(name) }
-    rule variable_name() -> &'input str = i:identifier() { i }
+    rule symbolic_variable() -> Variable = multi_element_variable() / name:variable_name() { Variable::SymbolicVariable(SymbolicVariable{name: name}) }
+    rule variable_name() -> Id = i:identifier() { i }
 
     // B.1.4.1 Directly represented variables
     pub rule direct_variable() -> DirectVariable = "%" l:location_prefix() s:size_prefix()? addr:integer() ++ "." {
@@ -391,19 +391,19 @@ parser! {
     rule multi_element_variable() -> Variable = sv:structured_variable() {
       // TODO this is clearly wrong
       Variable::MultiElementVariable(vec![
-        String::from(sv.0),
-        String::from(sv.1),
+        sv.0,
+        sv.1,
       ])
     }
     //rule array_variable() -> () = subscripted_variable() _ subscript_list() {}
     //rule subscripted_variable() -> () = symbolic_variable()
     //rule subscript_list() -> () = "[" _ subscript()++ (_ "," _) _ "]" {}
     //rule subscript() -> () = expression() {}
-    rule structured_variable() -> (&'input str, &'input str) = r:record_variable() "." f:field_selector() { (r, f)}
+    rule structured_variable() -> (Id, Id) = r:record_variable() "." f:field_selector() { (r, f)}
     // TODO this is most definitely wrong but it unblocks for now
     // very likely need to make this a repeated item with ++
-    rule record_variable() -> &'input str = identifier()
-    rule field_selector() -> &'input str = identifier()
+    rule record_variable() -> Id = identifier()
+    rule field_selector() -> Id = identifier()
 
     // B.1.4.3 Declarations and initialization
     pub rule input_declarations() -> Vec<VarInitDecl> = "VAR_INPUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<input_declaration()>) _ "END_VAR" {
@@ -422,11 +422,11 @@ parser! {
     // The initialize for some types looks the same if there is not initialization component. We use this to
     // late bind and later resolve the type.
     rule late_bound_type_init() -> Vec<VarInitDecl> = names:identifier() ** (_ "," _ ) _ ":" _ type_name:identifier() {
-      names.iter().map(|name| {
+      names.into_iter().map(|name| {
         VarInitDecl {
-          name: Id::from(*name),
+          name: name,
           storage_class: StorageClass::Unspecified,
-          initializer: Option::Some(TypeInitializer::LateResolvedType(Id::from(type_name))),
+          initializer: Option::Some(TypeInitializer::LateResolvedType(type_name.clone())),
         }
       }).collect()
     }
@@ -434,9 +434,9 @@ parser! {
 
     rule var1_init_decl__unambiguous() -> Vec<VarInitDecl> = names:var1_list() _ ":" _ init:(s:simple_spec_init__unambiguous() { s } / e:enumerated_spec_init__unambiguous() { e }) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
-      names.iter().map(|name| {
+      names.into_iter().map(|name| {
         VarInitDecl {
-          name: Id::from(*name),
+          name: name,
           storage_class: StorageClass::Unspecified,
           initializer: Option::Some(init.clone()),
         }
@@ -444,16 +444,16 @@ parser! {
     }
     rule var1_init_decl() -> Vec<VarInitDecl> = names:var1_list() _ ":" _ init:(s:simple_spec_init() { s } / e:enumerated_spec_init__unambiguous() { e }) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
-      names.iter().map(|name| {
+      names.into_iter().map(|name| {
         VarInitDecl {
-          name: Id::from(*name),
+          name: name,
           storage_class: StorageClass::Unspecified,
           initializer: Option::Some(init.clone()),
         }
       }).collect()
     }
-    rule var1_list() -> Vec<&'input str> = names:variable_name() ++ (_ "," _) { names }
-    rule fb_name() -> &'input str = i:identifier() { i }
+    rule var1_list() -> Vec<Id> = names:variable_name() ++ (_ "," _) { names }
+    rule fb_name() -> Id = i:identifier() { i }
     pub rule output_declarations() -> Vec<VarInitDecl> = "VAR_OUTPUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
       var_init_flat_map(declarations, storage)
     }
@@ -473,7 +473,6 @@ parser! {
       VarDeclarations::Located(VarDeclarations::map_located(declarations, storage))
     }
     rule located_var_decl() -> LocatedVarInit = name:variable_name()? _ loc:location() _ ":" _ init:located_var_spec_init() {
-      let name = name.map(|n| String::from(n));
       LocatedVarInit {
         name: name,
         storage_class: StorageClass::Unspecified,
@@ -490,18 +489,18 @@ parser! {
     // TODO subrange_specification, array_specification(), structure_type_name and others
     rule external_declaration_spec() -> TypeInitializer = type_name:simple_specification() {
       TypeInitializer::Simple {
-        type_name: Id::from(type_name),
+        type_name: type_name,
         initial_value: None,
       }
     }
     rule external_declaration() -> VarInitDecl = name:global_var_name() _ ":" _ spec:external_declaration_spec() {
       VarInitDecl {
-        name: Id::from(name),
+        name: name,
         storage_class: StorageClass::Unspecified,
         initializer: Option::Some(spec),
       }
     }
-    rule global_var_name() -> &'input str = i:identifier() { i }
+    rule global_var_name() -> Id = i:identifier() { i }
 
     rule storage_class() -> StorageClass = "CONSTANT" { StorageClass::Constant } / "RETAIN" { StorageClass::Retain }
     pub rule global_var_declarations() -> Vec<Declaration> = "VAR_GLOBAL" _ storage:storage_class()? _ declarations:semisep(<global_var_decl()>) _ "END_VAR" {
@@ -515,39 +514,39 @@ parser! {
       }).collect()
     }
     // TODO this doesn't pass all information. I suspect the rule from the dpec is not right
-    rule global_var_decl() -> (Vec<Declaration>) = vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { TypeInitializer::FunctionBlock { type_name: Id::from(f) } })? {
-      vs.0.iter().map(|name| {
+    rule global_var_decl() -> (Vec<Declaration>) = vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { TypeInitializer::FunctionBlock { type_name: f } })? {
+      vs.0.into_iter().map(|name| {
         Declaration {
-          name: Id::from(*name),
+          name: name,
           storage_class: StorageClass::Unspecified,
           at: vs.1.clone(),
           initializer: initializer.clone(),
         }
       }).collect()
      }
-    rule global_var_spec() -> (Vec<& 'input str>, Option<At>) = names:global_var_list() {
+    rule global_var_spec() -> (Vec<Id>, Option<At>) = names:global_var_list() {
       (names, None)
     } / global_var_name()? location() {
       // TODO this is clearly wrong, but it feel like the spec is wrong here
-      (vec![""], None)
+      (vec![Id::from("")], None)
     }
     // TODO this is completely fabricated - it isn't correct.
     rule located_var_spec_init() -> TypeInitializer = simple:simple_spec_init() { simple }
     // TODO
     pub rule location() -> DirectVariable = "AT" _ v:direct_variable() { v }
-    rule global_var_list() -> Vec<&'input str> = names:global_var_name() ++ (_ "," _) { names }
+    rule global_var_list() -> Vec<Id> = names:global_var_name() ++ (_ "," _) { names }
     //rule string_var_declaration() -> stri
 
     // B.1.5.1 Functions
-    rule function_name() -> &'input str = standard_function_name() / derived_function_name()
+    rule function_name() -> Id = standard_function_name() / derived_function_name()
     // TODO this isn't correct
-    rule standard_function_name() -> &'input str = identifier()
-    rule derived_function_name() -> &'input str = identifier()
+    rule standard_function_name() -> Id = identifier()
+    rule derived_function_name() -> Id = identifier()
     rule function_declaration() -> FunctionDeclaration = "FUNCTION" _  name:derived_function_name() _ ":" _ rt:(elementary_type_name() / derived_type_name()) _ var_decls:(io:io_var_declarations() / func:function_var_decls()) ** _ _ body:function_body() _ "END_FUNCTION" {
       let (io, other, located) = VarDeclarations::unzip(var_decls);
       FunctionDeclaration {
-        name: Id::from(name),
-        return_type: String::from(rt),
+        name: name,
+        return_type: rt,
         inputs: io.inputs,
         outputs: io.outputs,
         inouts: io.inouts,
@@ -570,13 +569,13 @@ parser! {
     // B.1.5.2 Function blocks
     // IEC 61131 defines separate standard and derived function block names,
     // but we don't need that distinction here.
-    rule function_block_type_name() -> &'input str = i:identifier() { i }
-    rule derived_function_block_name() -> &'input str = !STANDARD_FUNCTION_BLOCK_NAME() i:identifier() { i }
+    rule function_block_type_name() -> Id = i:identifier() { i }
+    rule derived_function_block_name() -> Id = !STANDARD_FUNCTION_BLOCK_NAME() i:identifier() { i }
     // TODO add variable declarations
     rule function_block_declaration() -> FunctionBlockDeclaration = "FUNCTION_BLOCK" _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other }) ** _ _ body:function_block_body() _ "END_FUNCTION_BLOCK" {
       let (io, other, located) = VarDeclarations::unzip(decls);
       FunctionBlockDeclaration {
-        name: Id::from(name),
+        name: name,
         inputs: io.inputs,
         outputs: io.outputs,
         inouts: io.inouts,
@@ -591,11 +590,11 @@ parser! {
     rule function_block_body() -> FunctionBlockBody = networks:sequential_function_chart() { FunctionBlockBody::sfc(networks) } / statements:statement_list() { FunctionBlockBody::stmts(statements) }
 
     // B.1.5.3 Program declaration
-    rule program_type_name() -> &'input str = i:identifier() { i }
+    rule program_type_name() -> Id = i:identifier() { i }
     pub rule program_declaration() ->  ProgramDeclaration = "PROGRAM" _ p:program_type_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other } / located:located_var_declarations() { located }) ** _ _ body:function_block_body() _ "END_PROGRAM" {
       let (io, other, located) = VarDeclarations::unzip(decls);
       ProgramDeclaration {
-        type_name: Id::from(p),
+        type_name: p,
         inputs: io.inputs,
         outputs: io.outputs,
         inouts: io.inouts,
@@ -617,40 +616,40 @@ parser! {
     }
     rule initial_step() -> Element = "INITIAL_STEP" _ name:step_name() _ ":" _ assoc:action_association() ** (_ ";" _) "END_STEP" {
       Element::InitialStep {
-        name: Id::from(name),
+        name: name,
         action_associations: assoc,
       }
     }
     rule step() -> Element = "STEP" _ name:step_name() _ ":" _ assoc:semisep(<action_association()>) _ "END_STEP" {
       Element::Step {
-        name: Id::from(name),
+        name: name,
         action_associations: assoc
       }
     }
-    rule step_name() -> &'input str = identifier()
+    rule step_name() -> Id = identifier()
     // TODO this is missing stuff
     rule action_association() -> ActionAssociation = name:action_name() _ "(" _ qualifier:action_qualifier()? _ indicators:("," _ i:indicator_name() ** (_ "," _) { i })? _ ")" {
       ActionAssociation {
-        name: Id::from(name),
+        name: name,
         qualifier: qualifier,
-        indicators: indicators.map(|ind| to_ids(ind)).unwrap_or_else(|| vec![]),
+        indicators: indicators.unwrap_or_else(|| vec![]),
       }
     }
-    rule action_name() -> &'input str = identifier()
+    rule action_name() -> Id = identifier()
     // TODO this is missing some
     rule action_qualifier() -> ActionQualifier = q:['N' | 'R' | 'S' | 'P'] { ActionQualifier::from_char(q) }
-    rule indicator_name() -> &'input str = variable_name()
+    rule indicator_name() -> Id = variable_name()
     rule transition() -> Element = "TRANSITION" _ name:transition_name()? _ priority:("(" _ "PRIORITY" _ ":=" _ p:integer() _ ")" {p})? _ "FROM" _ from:steps() _ "TO" _ to:steps() _ condition:transition_condition() _ "END_TRANSITION" {
       Element::Transition {
-        name: name.map(|n| Id::from(n)),
+        name: name,
         priority: priority.map(|p| p.try_from::<u32>()),
-        from: to_ids(from),
-        to: to_ids(to),
+        from: from,
+        to: to,
         condition: condition,
       }
     }
-    rule transition_name() -> &'input str = identifier()
-    rule steps() -> Vec<&'input str> = name:step_name() {
+    rule transition_name() -> Id = identifier()
+    rule steps() -> Vec<Id> = name:step_name() {
       vec![name]
     } / "(" _ n1:step_name() _ "," _ n2:step_name() _ nr:("," _ n:step_name()) ** _ _ ")" {
       // TODO need to extend with nr
@@ -660,44 +659,44 @@ parser! {
     rule transition_condition() -> ExprKind =  ":=" _ expr:expression() _ ";" { expr }
     rule action() -> Element = "ACTION" _ name:action_name() _ ":" _ body:function_block_body() _ "END_ACTION" {
       Element::Action {
-        name: Id::from(name),
+        name: name,
         body: body
       }
     }
 
     // B.1.7 Configuration elements
-    rule configuration_name() -> &'input str = i:identifier() { i }
-    rule resource_type_name() -> &'input str = i:identifier() { i }
+    rule configuration_name() -> Id = i:identifier() { i }
+    rule resource_type_name() -> Id = i:identifier() { i }
     pub rule configuration_declaration() -> ConfigurationDeclaration = "CONFIGURATION" _ n:configuration_name() _ g:global_var_declarations()? _ r:resource_declaration() _ "END_CONFIGURATION" {
       let g = g.unwrap_or_else(|| vec![]);
       // TODO this should really be multiple items
       let r = vec![r];
       ConfigurationDeclaration {
-        name: Id::from(n),
+        name: n,
         global_var: g,
         resource_decl: r,
       }
     }
     rule resource_declaration() -> ResourceDeclaration = "RESOURCE" _ n:resource_name() _ "ON" _ t:resource_type_name() _ g:global_var_declarations()? _ resource:single_resource_declaration() _ "END_RESOURCE" {
       ResourceDeclaration {
-        name: Id::from(n),
+        name: n,
         tasks: resource.0,
         programs: resource.1,
       }
     }
     // TODO need to have more than one
     rule single_resource_declaration() -> (Vec<TaskConfiguration>, Vec<ProgramConfiguration>) = t:semisep(<task_configuration()>) _ p:semisep_oneplus(<program_configuration()>) { (t, p) }
-    rule resource_name() -> &'input str = i:identifier() { i }
-    rule program_name() -> &'input str = i:identifier() { i }
+    rule resource_name() -> Id = i:identifier() { i }
+    rule program_name() -> Id = i:identifier() { i }
     pub rule task_configuration() -> TaskConfiguration = "TASK" _ name:task_name() _ init:task_initialization() {
       TaskConfiguration {
-        name: Id::from(name),
+        name: name,
         priority: init.0,
         // TODO This needs to set the interval
         interval: init.1,
       }
     }
-    rule task_name() -> &'input str = i:identifier() { i }
+    rule task_name() -> Id = i:identifier() { i }
     // TODO add single and interval
     pub rule task_initialization() -> (u32, Option<Duration>) = "(" _ interval:task_initialization_interval()? _ priority:task_initialization_priority() _ ")" { (priority, interval) }
     rule task_initialization_interval() -> Duration = "INTERVAL" _ ":=" _ source:data_source() _ "," {
@@ -714,13 +713,13 @@ parser! {
     //pub rule data_source() -> &'input str =
     pub rule program_configuration() -> ProgramConfiguration = "PROGRAM" _ name:program_name() task_name:( _ "WITH" _ t:task_name() { t })? _ ":" _ pt:program_type_name() (_ "(" _ c:prog_conf_element() ** (_ "," _) _ ")")? {
       ProgramConfiguration {
-        name: Id::from(name),
-        task_name: task_name.map(|n| String::from(n)),
-        type_name: String::from(pt),
+        name: name,
+        task_name: task_name,
+        type_name: pt,
       }
      }
-    rule prog_conf_element() -> &'input str = t:fb_task() { t.0 } /*/ p:prog_cnxn() { p }*/
-    rule fb_task() -> (&'input str, &'input str) = n:fb_name() _ "WITH" _ tn:task_name() { (n, tn) }
+    rule prog_conf_element() -> Id = t:fb_task() { t.0 } /*/ p:prog_cnxn() { p }*/
+    rule fb_task() -> (Id, Id) = n:fb_name() _ "WITH" _ tn:task_name() { (n, tn) }
 
     // B.3.1 Expressions
     rule expression() -> ExprKind = exprs:xor_expression() ** (_ "OR" _) {
@@ -795,7 +794,7 @@ parser! {
     }
     rule function_expression() -> ExprKind = name:function_name() _ "(" params:param_assignment() ++ (_ "," _) _ ")" {
       ExprKind::Function {
-        name: String::from(name),
+        name: name,
         param_assignment: params
       }
     }
@@ -814,7 +813,7 @@ parser! {
     rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb }
     rule fb_invocation() -> StmtKind = name:fb_name() _ "(" _ params:param_assignment() ** (_ "," _) _ ")" {
       StmtKind::FbCall(FbCall {
-        name: Id::from(name),
+        name: name,
         params: params,
       })
     }
@@ -822,7 +821,7 @@ parser! {
     rule param_assignment() -> ParamAssignment = name:(n:variable_name() _ ":=" { n })? _ expr:expression() {
       match name {
         Some(n) => {
-          ParamAssignment::named(n, expr)
+          ParamAssignment::NamedInput(NamedInput {name: n, expr: expr} )
         },
         None => {
           ParamAssignment::positional(expr)
@@ -832,7 +831,7 @@ parser! {
       ParamAssignment::Output {
         // TODO map this optional
         not: false,
-        src: String::from(src),
+        src: src,
         tgt: tgt,
       }
     }
@@ -969,8 +968,8 @@ mod test {
         // TODO there is more to extract here
         let cfg = ProgramConfiguration {
             name: Id::from("plc_task_instance"),
-            task_name: Option::Some(String::from("plc_task")),
-            type_name: String::from("plc_prg"),
+            task_name: Option::Some(Id::from("plc_task")),
+            type_name: Id::from("plc_prg"),
         };
         assert_eq!(
             plc_parser::program_configuration("PROGRAM plc_task_instance WITH plc_task : plc_prg"),
@@ -1234,8 +1233,8 @@ mod test {
         let expected = Ok(StmtKind::assignment(
             Variable::symbolic("Cnt1"),
             ExprKind::Variable(Variable::MultiElementVariable(vec![
-                String::from("CounterST0"),
-                String::from("OUT"),
+                Id::from("CounterST0"),
+                Id::from("OUT"),
             ])),
         ));
         assert_eq!(plc_parser::assignment_statement(assign), expected)
