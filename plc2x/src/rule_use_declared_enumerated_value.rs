@@ -1,24 +1,24 @@
 //! Semantic rule that references to enumerations use enumeration values
 //! that are part of the enumeration declaration.
-//! 
+//!
 //! ## Passes
-//! 
+//!
 //! TYPE
 //! LOGLEVEL : (CRITICAL) := CRITICAL;
 //! END_TYPE
-//! 
+//!
 //! FUNCTION_BLOCK LOGGER
 //! VAR_INPUT
 //! LEVEL : LOGLEVEL := CRITICAL;
 //! END_VAR
 //! END_FUNCTION_BLOCK
-//! 
+//!
 //! ## Fails
-//! 
+//!
 //! TYPE
 //! LOGLEVEL : (INFO) := INFO;
 //! END_TYPE
-//! 
+//!
 //! FUNCTION_BLOCK LOGGER
 //! VAR_INPUT
 //! LEVEL : LOGLEVEL := CRITICAL;
@@ -60,16 +60,16 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
     }
 
     /// Returns enumeration values for a given enumeration type name.
-    /// 
+    ///
     /// Recursively finds the enumeration values when one enumeration
     /// declaration is a rename of another enumeration declaration.
-    /// 
+    ///
     /// Returns Ok containing the list of enumeration values.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns Err(String) description of the error if:
-    /// 
+    ///
     /// * a type name does not exist
     /// * recursive type name
     fn find_enum_declaration_values(&self, type_name: &'a Id) -> Result<&Vec<Id>, String> {
