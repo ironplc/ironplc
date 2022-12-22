@@ -261,11 +261,7 @@ pub struct NamedInput {
 pub enum ParamAssignment {
     PositionalInput(PositionalInput),
     NamedInput(NamedInput),
-    Output {
-        not: bool,
-        src: Id,
-        tgt: Variable,
-    },
+    Output { not: bool, src: Id, tgt: Variable },
 }
 
 impl ParamAssignment {
