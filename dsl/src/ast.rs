@@ -1,9 +1,9 @@
+use crate::dsl::{Constant, DirectVariable};
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use crate::dsl::{Constant, DirectVariable};
 
 /// Implements Identifier declared by 2.1.2.
-/// 
+///
 /// 61131-2 declares that identifiers are case insensitive.
 /// This class ensures that we do case insensitive comparisons
 /// and can use containers as appropriate.
