@@ -62,7 +62,7 @@ pub enum Variable {
     SymbolicVariable(SymbolicVariable),
     // A structured variable that may be nested. This data type is definitely
     // incorrect because it doesn't support array types
-    MultiElementVariable(Vec<String>),
+    MultiElementVariable(Vec<Id>),
 }
 
 impl Variable {
@@ -137,7 +137,7 @@ impl StmtKind {
         StmtKind::assignment(
             Variable::symbolic(output),
             ExprKind::Function {
-                name: String::from(fb_name),
+                name: Id::from(fb_name),
                 param_assignment: assignments,
             },
         )
@@ -169,8 +169,8 @@ impl StmtKind {
             _ => {
                 let src = src
                     .into_iter()
-                    .map(|part| String::from(part))
-                    .collect::<Vec<String>>();
+                    .map(|part| Id::from(part))
+                    .collect::<Vec<Id>>();
                 Variable::MultiElementVariable(src)
             }
         };
@@ -228,7 +228,7 @@ pub enum ExprKind {
     Const(Constant),
     Variable(Variable),
     Function {
-        name: String,
+        name: Id,
         param_assignment: Vec<ParamAssignment>,
     },
 }
@@ -261,11 +261,7 @@ pub struct NamedInput {
 pub enum ParamAssignment {
     PositionalInput(PositionalInput),
     NamedInput(NamedInput),
-    Output {
-        not: bool,
-        src: String,
-        tgt: Variable,
-    },
+    Output { not: bool, src: Id, tgt: Variable },
 }
 
 impl ParamAssignment {
