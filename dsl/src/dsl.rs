@@ -95,7 +95,7 @@ impl SignedInteger {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Float {
     pub value: f64,
-    pub data_type: Option<String>,
+    pub data_type: Option<Id>,
 }
 
 // TODO I don't know if I need to support multiple storage classes for the
@@ -168,7 +168,7 @@ impl VarInitDecl {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct LocatedVarInit {
-    pub name: Option<String>,
+    pub name: Option<Id>,
     pub storage_class: StorageClass,
     pub at: DirectVariable,
     pub initializer: TypeInitializer,
@@ -336,8 +336,8 @@ pub struct ResourceDeclaration {
 #[derive(Debug, PartialEq)]
 pub struct ProgramConfiguration {
     pub name: Id,
-    pub task_name: Option<String>,
-    pub type_name: String,
+    pub task_name: Option<Id>,
+    pub type_name: Id,
 }
 
 #[derive(Debug, PartialEq)]
@@ -352,7 +352,7 @@ pub struct EnumerationDeclaration {
     pub name: Id,
     // TODO need to understand when the context name matters in the definition
     pub spec: EnumeratedSpecificationKind,
-    pub default: Option<String>,
+    pub default: Option<Id>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -419,7 +419,7 @@ impl FunctionBlockBody {
 #[derive(Debug, PartialEq, Clone)]
 pub struct FunctionDeclaration {
     pub name: Id,
-    pub return_type: String,
+    pub return_type: Id,
     // TODO rename these to be descriptive
     pub inputs: Vec<VarInitDecl>,
     pub outputs: Vec<VarInitDecl>,
