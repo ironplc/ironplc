@@ -2,7 +2,7 @@
 use crate::{
     ironplc_dsl::dsl::Library, rule_constant_vars_initialized, rule_enumeration_values_unique,
     rule_program_task_definition_exists, rule_use_declared_enumerated_value, rule_use_declared_fb,
-    rule_use_declared_symbolic_var, type_resolver,
+    rule_use_declared_symbolic_var, xform_resolve_late_bound_types,
 };
 
 /// Parse combines lexical and sematic analysis (stages 1 & 2).
@@ -19,7 +19,7 @@ pub fn parse(source: &str) -> Result<Library, String> {
     // the type-specific declarations. This just simplifies
     // code generation because we know the type of every declaration
     // exactly
-    type_resolver::apply(library).map_err(|err| err.to_string())
+    xform_resolve_late_bound_types::apply(library).map_err(|err| err.to_string())
 }
 
 /// Semantic implements semantic analysis (stage 3).
@@ -46,7 +46,7 @@ pub fn semantic(library: &Library) -> Result<(), String> {
 mod tests {
     use crate::test_helpers;
 
-    use super::*;
+    use super::parse;
 
     use ironplc_dsl::ast::*;
     use ironplc_dsl::dsl::*;
@@ -54,6 +54,9 @@ mod tests {
     use test_helpers::*;
 
     use time::Duration;
+
+    // TODO all of these should use the parse function rather that from
+    // the parser crate.
 
     #[test]
     fn parse_when_first_steps_then_result_is_ok() {
@@ -77,7 +80,7 @@ mod tests {
                 default: Option::Some(Id::from("INFO")),
             },
         ]));
-        assert_eq!(ironplc_parser::parse_program(src.as_str()), expected)
+        assert_eq!(parse(src.as_str()), expected)
     }
 
     #[test]

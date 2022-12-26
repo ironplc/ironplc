@@ -11,9 +11,11 @@ mod rule_use_declared_fb;
 mod rule_use_declared_symbolic_var;
 mod stages;
 mod symbol_table;
+mod xform_resolve_late_bound_types;
+
 #[cfg(test)]
 mod test_helpers;
-mod type_resolver;
+
 
 pub fn main() {
     let library = parse("").unwrap();

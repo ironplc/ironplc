@@ -1,3 +1,8 @@
+//! Transform that resolves late bound types into specific types.
+//! 
+//! The IEC 61131-3 syntax has some ambiguous types that are initially
+//! parsed into a placeholder. This transform replaces the placeholders
+//! with well-known types.
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
 use ironplc_dsl::{ast::Id, dsl::*};
@@ -69,7 +74,7 @@ impl Fold for TypeResolver {
 #[cfg(test)]
 mod tests {
     use crate::test_helpers::*;
-    use crate::type_resolver::TypeResolver;
+    use crate::xform_resolve_late_bound_types::TypeResolver;
     use ironplc_dsl::fold::Fold;
     use ironplc_dsl::{ast::Id, dsl::*};
     use std::collections::HashMap;
