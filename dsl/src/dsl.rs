@@ -326,10 +326,23 @@ pub enum StorageClass {
     NonRetain,
 }
 
+/// Resource assigns tasks to a particular CPU.
 #[derive(Debug, PartialEq)]
 pub struct ResourceDeclaration {
+    /// Symbolic name for a CPU
     pub name: Id,
+    /// The identifier for a CPU
+    pub resource: Id,
+    /// Global variables in the scope of the resource.
+    ///
+    /// Global variables are not in scope for other resources.
+    pub global_vars: Vec<Declaration>,
+    /// Defines the configuration of programs on this resource.
     pub tasks: Vec<TaskConfiguration>,
+    /// Defines runnable programs.
+    ///
+    /// A runnable program can be associated with a task configuration
+    /// by name.
     pub programs: Vec<ProgramConfiguration>,
 }
 

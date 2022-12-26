@@ -678,14 +678,17 @@ parser! {
       }
     }
     rule resource_declaration() -> ResourceDeclaration = "RESOURCE" _ n:resource_name() _ "ON" _ t:resource_type_name() _ g:global_var_declarations()? _ resource:single_resource_declaration() _ "END_RESOURCE" {
+      let g = g.unwrap_or_else(|| vec![]);
       ResourceDeclaration {
         name: n,
+        resource: t,
+        global_vars: g,
         tasks: resource.0,
         programs: resource.1,
       }
     }
     // TODO need to have more than one
-    rule single_resource_declaration() -> (Vec<TaskConfiguration>, Vec<ProgramConfiguration>) = t:semisep(<task_configuration()>) _ p:semisep_oneplus(<program_configuration()>) { (t, p) }
+    rule single_resource_declaration() -> (Vec<TaskConfiguration>, Vec<ProgramConfiguration>) = t:semisep(<task_configuration()>)? _ p:semisep_oneplus(<program_configuration()>) { (t.unwrap_or(vec![]), p) }
     rule resource_name() -> Id = i:identifier() { i }
     rule program_name() -> Id = i:identifier() { i }
     pub rule task_configuration() -> TaskConfiguration = "TASK" _ name:task_name() _ init:task_initialization() {
