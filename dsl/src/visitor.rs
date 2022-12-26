@@ -90,6 +90,21 @@ pub trait Visitor<E> {
         Acceptor::accept(&node.elems, self)
     }
 
+    fn visit_configuration_declaration(
+        &mut self,
+        node: &ConfigurationDeclaration,
+    ) -> Result<Self::Value, E> {
+        visit_configuration_declaration(self, node)
+    }
+
+    fn visit_resource_declaration(&mut self, node: &ResourceDeclaration) -> Result<Self::Value, E> {
+        visit_resource_declaration(self, node)
+    }
+
+    fn visit_declaration(&mut self, node: &Declaration) -> Result<Self::Value, E> {
+        visit_declaration(self, node)
+    }
+
     fn visit_enum_declaration(&mut self, node: &EnumerationDeclaration) -> Result<Self::Value, E> {
         visit_enum_declaration(self, node)
     }
@@ -177,6 +192,29 @@ pub trait Visitor<E> {
     }
 }
 
+pub fn visit_configuration_declaration<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &ConfigurationDeclaration,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.global_var, v)?;
+    Acceptor::accept(&node.resource_decl, v)
+}
+
+pub fn visit_resource_declaration<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &ResourceDeclaration,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.global_vars, v)
+    // TODO there are more child elements here
+}
+
+pub fn visit_declaration<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &Declaration,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.initializer, v)
+}
+
 pub fn visit_enum_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &EnumerationDeclaration,
@@ -262,7 +300,7 @@ impl Acceptor for LibraryElement {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
             LibraryElement::ConfigurationDeclaration(config) => {
-                todo!()
+                visitor.visit_configuration_declaration(config)
             }
             LibraryElement::DataTypeDeclaration(data_type_decl) => {
                 Acceptor::accept(data_type_decl, visitor)
@@ -277,6 +315,18 @@ impl Acceptor for LibraryElement {
                 visitor.visit_program_declaration(prog_decl)
             }
         }
+    }
+}
+
+impl Acceptor for ResourceDeclaration {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        visitor.visit_resource_declaration(self)
+    }
+}
+
+impl Acceptor for Declaration {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        visitor.visit_declaration(self)
     }
 }
 
