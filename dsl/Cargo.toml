@@ -11,4 +11,4 @@ license = "MIT"
 maintenance = { status = "experimental" }
 
 [dependencies]
-time = "0.3.11"
+time = "0.3.17"
