@@ -4,25 +4,25 @@
 //! ## Passes
 //!
 //! TYPE
-//! LOGLEVEL : (CRITICAL) := CRITICAL;
+//!    LOGLEVEL : (CRITICAL) := CRITICAL;
 //! END_TYPE
 //!
 //! FUNCTION_BLOCK LOGGER
-//! VAR_INPUT
-//! LEVEL : LOGLEVEL := CRITICAL;
-//! END_VAR
+//!    VAR_INPUT
+//!       LEVEL : LOGLEVEL := CRITICAL;
+//!    END_VAR
 //! END_FUNCTION_BLOCK
 //!
 //! ## Fails
 //!
 //! TYPE
-//! LOGLEVEL : (INFO) := INFO;
+//!    LOGLEVEL : (INFO) := INFO;
 //! END_TYPE
 //!
 //! FUNCTION_BLOCK LOGGER
-//! VAR_INPUT
-//! LEVEL : LOGLEVEL := CRITICAL;
-//! END_VAR
+//!    VAR_INPUT
+//!       LEVEL : LOGLEVEL := CRITICAL;
+//!    END_VAR
 //! END_FUNCTION_BLOCK
 use ironplc_dsl::{ast::Id, dsl::*, visitor::Visitor};
 use std::collections::{HashMap, HashSet};
@@ -123,57 +123,45 @@ impl Visitor<String> for RuleDeclaredEnumeratedValues<'_> {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_dsl::dsl::*;
-
     use super::*;
 
-    fn make_enum_def(name: &str, value: &str) -> LibraryElement {
-        LibraryElement::DataTypeDeclaration(vec![EnumerationDeclaration {
-            name: Id::from(name),
-            spec: EnumeratedSpecificationKind::Values(vec![Id::from(value)]),
-            default: Option::None,
-        }])
-    }
+    use crate::stages::parse;
 
     #[test]
     fn apply_when_var_init_undefined_enum_value_then_error() {
-        let lib = Library {
-            elems: vec![
-                make_enum_def("LOGGER", "CRITICAL"),
-                LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: Id::from("FB"),
-                    inputs: vec![VarInitDecl::enumerated("IN", "LOGGER", "UNDEFINED")],
-                    outputs: vec![],
-                    inouts: vec![],
-                    vars: vec![],
-                    externals: vec![],
-                    body: FunctionBlockBody::stmts(vec![]),
-                }),
-            ],
-        };
-
-        let result = apply(&lib);
-        assert_eq!(true, result.is_err());
+        let program = "
+TYPE
+LOGLEVEL : (INFO) := INFO;
+END_TYPE
+        
+FUNCTION_BLOCK LOGGER
+VAR_INPUT
+LEVEL : LOGLEVEL := CRITICAL;
+END_VAR
+END_FUNCTION_BLOCK";
+        
+                let library = parse(program).unwrap();
+                let result = apply(&library);
+                
+                assert_eq!(true, result.is_err());
     }
 
     #[test]
     fn apply_when_var_init_valid_enum_value_then_ok() {
-        let lib = Library {
-            elems: vec![
-                make_enum_def("LOGGER", "CRITICAL"),
-                LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: Id::from("FB"),
-                    inputs: vec![VarInitDecl::enumerated("IN", "LOGGER", "CRITICAL")],
-                    outputs: vec![],
-                    inouts: vec![],
-                    vars: vec![],
-                    externals: vec![],
-                    body: FunctionBlockBody::stmts(vec![]),
-                }),
-            ],
-        };
+        let program = "
+TYPE
+LOGLEVEL : (CRITICAL) := CRITICAL;
+END_TYPE
 
-        let result = apply(&lib);
+FUNCTION_BLOCK LOGGER
+VAR_INPUT
+LEVEL : LOGLEVEL := CRITICAL;
+END_VAR
+END_FUNCTION_BLOCK";
+
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+        
         assert_eq!(true, result.is_ok());
     }
 }

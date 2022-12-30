@@ -4,7 +4,7 @@
 //! ## Passes
 //!
 //! FUNCTION_BLOCK LOGGER
-//!    VAR_EXTERNAL CONSTANT
+//!    VAR CONSTANT
 //!       ResetCounterValue : INT := 1;
 //!    END_VAR
 //! END_FUNCTION_BLOCK
@@ -12,7 +12,7 @@
 //! ## Fails
 //!
 //! FUNCTION_BLOCK LOGGER
-//!    VAR_EXTERNAL CONSTANT
+//!    VAR CONSTANT
 //!       ResetCounterValue : INT;
 //!    END_VAR
 //! END_FUNCTION_BLOCK
