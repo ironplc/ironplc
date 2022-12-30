@@ -46,46 +46,33 @@ impl Visitor<String> for RuleEnumerationValuesUnique {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_dsl::ast::Id;
-    use ironplc_dsl::dsl::*;
-
     use super::*;
 
-    use crate::test_helpers::new_library;
+    use crate::stages::parse;
 
     #[test]
     fn apply_when_values_unique_then_ok() {
-        let input = new_library::<String>(LibraryElement::DataTypeDeclaration(vec![
-            EnumerationDeclaration {
-                name: Id::from("LOGLEVEL"),
-                spec: EnumeratedSpecificationKind::Values(vec![
-                    Id::from("CRITICAL"),
-                    Id::from("ERROR"),
-                ]),
-                default: None,
-            },
-        ]))
-        .unwrap();
-
-        let result = apply(&input);
-        assert_eq!(true, result.is_ok())
+        let program = "
+TYPE
+LOGLEVEL : (CRITICAL, ERROR);
+END_TYPE";
+        
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+                
+        assert_eq!(true, result.is_ok());
     }
 
     #[test]
     fn apply_when_value_duplicated_then_error() {
-        let input = new_library::<String>(LibraryElement::DataTypeDeclaration(vec![
-            EnumerationDeclaration {
-                name: Id::from("LOGLEVEL"),
-                spec: EnumeratedSpecificationKind::Values(vec![
-                    Id::from("CRITICAL"),
-                    Id::from("CRITICAL"),
-                ]),
-                default: None,
-            },
-        ]))
-        .unwrap();
-
-        let result = apply(&input);
-        assert_eq!(true, result.is_err())
+        let program = "
+TYPE
+LOGLEVEL : (CRITICAL, CRITICAL);
+END_TYPE";
+        
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+                
+        assert_eq!(true, result.is_err());
     }
 }
