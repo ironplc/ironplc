@@ -136,10 +136,10 @@ mod tests {
                 externals: vec![VarInitDecl {
                     name: Id::from("ResetCounterValue"),
                     storage_class: StorageClass::Constant,
-                    initializer: Some(TypeInitializer::Simple {
+                    initializer: TypeInitializer::Simple {
                         type_name: Id::from("INT"),
                         initial_value: None,
-                    }),
+                    },
                 }],
                 body: FunctionBlockBody::sfc(vec![Network {
                     initial_step: Element::InitialStep {
@@ -241,10 +241,10 @@ mod tests {
                 externals: vec![VarInitDecl {
                     name: Id::from("ResetCounterValue"),
                     storage_class: StorageClass::Constant,
-                    initializer: Some(TypeInitializer::Simple {
+                    initializer: TypeInitializer::Simple {
                         type_name: Id::from("INT"),
                         initial_value: None,
-                    }),
+                    },
                 }],
                 body: FunctionBlockBody::stmts(vec![
                     StmtKind::simple_assignment("Cnt", vec!["_TMP_SEL7_OUT"]),
@@ -273,13 +273,13 @@ mod tests {
             vars: vec![VarInitDecl {
                 name: Id::from("InputsNumber"),
                 storage_class: StorageClass::Unspecified,
-                initializer: Some(TypeInitializer::Simple {
+                initializer: TypeInitializer::Simple {
                     type_name: Id::from("REAL"),
                     initial_value: Some(Initializer::Simple(Constant::RealLiteral(Float {
                         value: 5.1,
                         data_type: None,
                     }))),
-                }),
+                },
             }],
             externals: vec![],
             body: vec![StmtKind::assignment(

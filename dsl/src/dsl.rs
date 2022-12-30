@@ -113,7 +113,7 @@ pub struct Declaration {
 pub struct VarInitDecl {
     pub name: Id,
     pub storage_class: StorageClass,
-    pub initializer: Option<TypeInitializer>,
+    pub initializer: TypeInitializer,
     // TODO this need much more
 }
 
@@ -123,10 +123,10 @@ impl VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
             storage_class: StorageClass::Unspecified,
-            initializer: Some(TypeInitializer::Simple {
+            initializer: TypeInitializer::Simple {
                 type_name: Id::from(type_name),
                 initial_value: None,
-            }),
+            },
         }
     }
 
@@ -135,10 +135,10 @@ impl VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
             storage_class: StorageClass::Unspecified,
-            initializer: Some(TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
+            initializer: TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
                 type_name: Id::from(type_name),
                 initial_value: Some(Id::from(initial_value)),
-            })),
+            }),
         }
     }
 
@@ -147,9 +147,9 @@ impl VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
             storage_class: StorageClass::Unspecified,
-            initializer: Some(TypeInitializer::FunctionBlock {
+            initializer: TypeInitializer::FunctionBlock {
                 type_name: Id::from(type_name),
-            }),
+            },
         }
     }
 
@@ -161,7 +161,7 @@ impl VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
             storage_class: StorageClass::Unspecified,
-            initializer: Some(TypeInitializer::LateResolvedType(Id::from(type_name))),
+            initializer: TypeInitializer::LateResolvedType(Id::from(type_name)),
         }
     }
 }
@@ -265,6 +265,13 @@ pub enum TypeInitializer {
 }
 
 impl TypeInitializer {
+    pub fn simple_uninitialized(type_name: &str) -> TypeInitializer {
+        TypeInitializer::Simple {
+            type_name: Id::from(type_name),
+            initial_value: None,
+        }
+    }
+
     pub fn simple(type_name: &str, value: Initializer) -> TypeInitializer {
         TypeInitializer::Simple {
             type_name: Id::from(type_name),
@@ -417,6 +424,11 @@ pub struct Statements {
 pub enum FunctionBlockBody {
     Sfc(Sfc),
     Statements(Statements),
+    /// A function block that has no body (and is therefore no known type).
+    /// 
+    /// This type is not strictly valid, but highly useful and can be detected
+    /// with a semantic rule.
+    Empty(),
 }
 
 impl FunctionBlockBody {
@@ -426,6 +438,10 @@ impl FunctionBlockBody {
 
     pub fn sfc(networks: Vec<Network>) -> FunctionBlockBody {
         FunctionBlockBody::Sfc(Sfc { networks: networks })
+    }
+
+    pub fn empty() -> FunctionBlockBody {
+        FunctionBlockBody::Empty()
     }
 }
 
