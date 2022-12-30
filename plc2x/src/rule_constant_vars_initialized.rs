@@ -5,7 +5,7 @@
 //!
 //! FUNCTION_BLOCK LOGGER
 //!    VAR_EXTERNAL CONSTANT
-//!       ResetCounterValue : INT = 1;
+//!       ResetCounterValue : INT := 1;
 //!    END_VAR
 //! END_FUNCTION_BLOCK
 //!
@@ -13,7 +13,7 @@
 //!
 //! FUNCTION_BLOCK LOGGER
 //!    VAR_EXTERNAL CONSTANT
-//!       ResetCounterValue : INT = 1;
+//!       ResetCounterValue : INT;
 //!    END_VAR
 //! END_FUNCTION_BLOCK
 //!
@@ -35,14 +35,47 @@ impl Visitor<String> for RuleConstantVarsInitialized {
     type Value = ();
 
     fn visit_var_init_decl(&mut self, decl: &VarInitDecl) -> Result<(), String> {
+        println!("Storage class {:?}", decl.storage_class);
         match decl.storage_class {
-            StorageClass::Constant => match decl.initializer {
-                Some(_) => {}
-                None => {
-                    return Err(format!(
-                        "Variable is constant but does not define value {} ",
-                        decl.name
-                    ))
+            StorageClass::Constant => {
+                println!("Initializer {:?}", decl.initializer);
+                match &decl.initializer {
+                    TypeInitializer::Simple { type_name: _, initial_value } => {
+                        match initial_value {
+                            Some(_) => {},
+                            None => {
+                                return Err(format!(
+                                    "Variable is constant but does not define value {} ",
+                                    decl.name
+                                ))
+                            },
+                        }
+                    },
+                    TypeInitializer::EnumeratedValues { values: _, default } => {
+                        match default {
+                            Some(_) => {},
+                            None => {
+                                return Err(format!(
+                                    "Variable is constant but does not define value {} ",
+                                    decl.name
+                                ))
+                            },
+                        }
+                    },
+                    TypeInitializer::EnumeratedType(type_init) => {
+                        match type_init.initial_value {
+                            Some(_) => {},
+                            None => {
+                                return Err(format!(
+                                    "Variable is constant but does not define value {} ",
+                                    decl.name
+                                ))
+                            },
+                        }
+                    },
+                    TypeInitializer::FunctionBlock { type_name: _ } => todo!(),
+                    TypeInitializer::Structure { type_name: _ } => todo!(),
+                    TypeInitializer::LateResolvedType(_) => todo!(),
                 }
             },
             _ => {}
@@ -53,53 +86,59 @@ impl Visitor<String> for RuleConstantVarsInitialized {
 }
 
 #[cfg(test)]
-mod tests {
-    use ironplc_dsl::ast::Id;
-    use ironplc_dsl::dsl::*;
-
+mod test {
     use super::*;
 
-    fn make_declaration_with_var(var: VarInitDecl) -> Library {
-        Library {
-            elems: vec![LibraryElement::FunctionBlockDeclaration(
-                FunctionBlockDeclaration {
-                    name: Id::from("CALLEE"),
-                    inputs: vec![var],
-                    outputs: vec![],
-                    inouts: vec![],
-                    vars: vec![],
-                    externals: vec![],
-                    body: FunctionBlockBody::stmts(vec![]),
-                },
-            )],
-        }
+    use crate::stages::parse;
+
+    #[test]
+    fn apply_when_simple_type_missing_initializer_then_error() {
+        let program = "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : INT;
+END_VAR
+
+END_FUNCTION_BLOCK";
+
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+
+        assert_eq!(true, result.is_err())
     }
 
     #[test]
-    fn apply_when_missing_initializer_then_error() {
-        let lib = make_declaration_with_var(VarInitDecl {
-            name: Id::from("name"),
-            storage_class: StorageClass::Constant,
-            initializer: None,
-        });
+    fn apply_when_enum_type_missing_initializer_then_error() {
+        let program = "
+TYPE
+LOGLEVEL : (CRITICAL) := CRITICAL;
+END_TYPE
 
-        let result = apply(&lib);
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : LOGLEVEL;
+END_VAR
+
+END_FUNCTION_BLOCK";
+
+        let library = parse(program).unwrap();
+        let result = apply(&library);
 
         assert_eq!(true, result.is_err())
     }
 
     #[test]
     fn apply_when_missing_initializer_then_ok() {
-        let lib = make_declaration_with_var(VarInitDecl {
-            name: Id::from("name"),
-            storage_class: StorageClass::Constant,
-            initializer: Some(TypeInitializer::simple(
-                "INT",
-                Initializer::Simple(Constant::IntegerLiteral(1)),
-            )),
-        });
+        let program = "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : INT := 1;
+END_VAR
 
-        let result = apply(&lib);
+END_FUNCTION_BLOCK";
+
+        let library = parse(program).unwrap();
+        let result = apply(&library);
 
         assert_eq!(true, result.is_ok())
     }

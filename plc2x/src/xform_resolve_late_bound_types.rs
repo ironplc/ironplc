@@ -8,6 +8,39 @@ use ironplc_dsl::visitor::Visitor;
 use ironplc_dsl::{ast::Id, dsl::*};
 use std::collections::HashMap;
 use std::fmt::Error;
+use phf::{phf_set, Set};
+
+static ELEMENTARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
+    // signed_integer_type_name
+    "sint",
+    "int",
+    "dint",
+    "lint",
+    // unsigned_integer_type_name
+    "usint",
+    "uint",
+    "udint",
+    "ulint",
+    // real_type_name
+    "real",
+    "lreal",
+    // date_type_name
+    "date",
+    "time_of_day",
+    "tod",
+    "date_and_time",
+    "dt",
+    // bit_string_type_name
+    "bool",
+    "byte",
+    "word",
+    "dword",
+    "lword",
+    // remaining elementary_type_name
+    "string",
+    "wstring",
+    "time"
+};
 
 pub fn apply(lib: Library) -> Result<Library, Error> {
     let mut type_map = HashMap::new();
@@ -42,11 +75,21 @@ struct TypeResolver {
     types: HashMap<Id, TypeDefinitionKind>,
 }
 
+impl TypeResolver {
+    fn is_elementary_type(id: &Id) -> bool {
+        ELEMENTARY_TYPES_LOWER_CASE.contains(&id.lower_case().to_string())
+    }
+}
+
 impl Fold for TypeResolver {
     fn fold_type_initializer(&mut self, node: TypeInitializer) -> TypeInitializer {
         match node {
             TypeInitializer::LateResolvedType(name) => {
                 // Try to find the type for the specified name.
+                if TypeResolver::is_elementary_type(&name) {
+                    return TypeInitializer::Simple { type_name: name, initial_value: None }
+                }
+
                 // TODO error handling
                 let type_kind = self.types.get(&name).unwrap();
                 match type_kind {

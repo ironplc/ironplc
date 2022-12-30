@@ -29,6 +29,10 @@ impl Id {
     pub fn to_string(&self) -> String {
         String::from(&self.lower_case)
     }
+
+    pub fn lower_case(&self) -> &String {
+        &self.lower_case
+    }
 }
 
 impl PartialEq for Id {

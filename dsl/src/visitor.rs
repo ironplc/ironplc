@@ -400,6 +400,8 @@ impl Acceptor for FunctionBlockBody {
         match self {
             FunctionBlockBody::Sfc(network) => visitor.visit_sfc(network),
             FunctionBlockBody::Statements(stmts) => visitor.visit_statements(stmts),
+            // TODO it isn't clear if visiting this is necessary
+            FunctionBlockBody::Empty() => Ok(V::Value::default()),
         }
     }
 }

@@ -200,13 +200,13 @@ parser! {
     rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) semicolon() {v}
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
 
-    rule KEYWORD() = "END_VAR" / "VAR" / "VAR_INPUT" / "IF" / "END_IF" / "FUNCTION_BLOCK" / "AND" / "NOT" / "THEN" / "END_IF" / "STEP" / "END_STEP" / "FROM" / "PRIORITY" / "END_VAR"
+    rule KEYWORD() = "END_VAR" / "VAR" / "VAR_INPUT" / "IF" / "END_IF" / "FUNCTION_BLOCK" / "END_FUNCTION_BLOCK" / "AND" / "NOT" / "THEN" / "END_IF" / "STEP" / "END_STEP" / "FROM" / "PRIORITY" / "END_VAR"
     rule STANDARD_FUNCTION_BLOCK_NAME() = "END_VAR"
 
     // B.0
     pub rule library() -> Vec<LibraryElement> = _ libs:library_element_declaration() ** _ _ { libs }
     // TODO This misses some types such as ladder diagrams
-    rule library_element_declaration() -> LibraryElement = dt:data_type_declaration() { LibraryElement::DataTypeDeclaration(dt) } / fd:function_declaration() { LibraryElement::FunctionDeclaration(fd) } / fbd:function_block_declaration() { LibraryElement::FunctionBlockDeclaration(fbd) } / pd:program_declaration() { LibraryElement::ProgramDeclaration(pd) } / cd:configuration_declaration() { LibraryElement::ConfigurationDeclaration(cd) }
+    rule library_element_declaration() -> LibraryElement = dt:data_type_declaration() { LibraryElement::DataTypeDeclaration(dt) } / fbd:function_block_declaration() { LibraryElement::FunctionBlockDeclaration(fbd) } / fd:function_declaration() { LibraryElement::FunctionDeclaration(fd) } / pd:program_declaration() { LibraryElement::ProgramDeclaration(pd) } / cd:configuration_declaration() { LibraryElement::ConfigurationDeclaration(cd) }
 
     // B.1.1 Letters, digits and identifier
     //rule digit() -> &'input str = $(['0'..='9'])
@@ -327,7 +327,7 @@ parser! {
         default: spec.1,
       }
     }
-    rule enumerated_spec_init__unambiguous() -> TypeInitializer = spec:enumerated_specification() _ ":=" _ def:enumerated_value() {
+    rule enumerated_spec_init__with_constant() -> TypeInitializer = spec:enumerated_specification() _ ":=" _ def:enumerated_value() {
       // TODO gut feeling says there is a defect here but I haven't looked into it
       match spec {
         EnumeratedSpecificationKind::TypeName(name) => {
@@ -341,8 +341,7 @@ parser! {
             values: values,
             default: Some(def),
           };
-        },
-        _ => panic!("Invalid type")
+        }
       }
      }
     rule enumerated_spec_init() -> (EnumeratedSpecificationKind, Option<Id>) = init:enumerated_specification() _ def:(":=" _ d:enumerated_value() { d })? {
@@ -356,14 +355,70 @@ parser! {
     }
     rule enumerated_value() -> Id = (enumerated_type_name() "#")? i:identifier() { i }
     // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
-    rule simple_spec_init__unambiguous() -> TypeInitializer = simple_spec_init()
+    rule simple_spec_init__with_constant() -> TypeInitializer = type_name:simple_specification() _ ":=" _ c:constant() {
+      TypeInitializer::Simple {
+        type_name: type_name,
+        initial_value: Some(Initializer::Simple(c)),
+      }
+    }
     rule simple_spec_init() -> TypeInitializer = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
       TypeInitializer::Simple {
         type_name: type_name,
         initial_value: constant.map(|v| Initializer::Simple(v)),
       }
     }
-    rule simple_specification() -> Id = elementary_type_name()
+    rule simple_specification() -> Id = elementary_type_name() / simple_type_name()
+
+    // Union of simple_spec_init and enumerated_spec_init rules. In some cases, these both
+    // reduce to identifier [':=' identifier] and are inherently ambiguous. To work around
+    // this, combine this to check for the unambiguous cases first, later reducing to
+    // the ambiguous case that we resolve later.
+    //
+    // There is still value in trying to disambiguate early because it allows us to use
+    // the parser definitions.
+    rule simple_or_enumerated_spec_init() -> TypeInitializer = s:simple_specification() _ ":=" _ c:constant() {
+      // A simple_specification with a constant is unambiguous because the constant is
+      // not a valid identifier.
+      TypeInitializer::Simple {
+        type_name: s,
+        initial_value: Some(Initializer::Simple(c)),
+      }
+    } / spec:enumerated_specification() _ ":=" _ init:enumerated_value() {
+      // An enumerated_specification defined with a value is unambiguous the value
+      // is not a valid constant.
+      match spec {
+        EnumeratedSpecificationKind::TypeName(name) => {
+          return TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
+            type_name: name,
+            initial_value: Some(init),
+          });
+        },
+        EnumeratedSpecificationKind::Values(values) => {
+          return TypeInitializer::EnumeratedValues {
+            values: values,
+            default: Some(init),
+          };
+        }
+      }
+    } / "(" _ values:enumerated_value() ** (_ "," _ ) _ ")" _  init:(":=" _ i:enumerated_value() {i})? {
+      // An enumerated_specification defined by enum values is unambiguous because
+      // the parenthesis are not valid simple_specification.
+      TypeInitializer::EnumeratedValues {
+        values: values,
+        default: init
+      }
+    } / et:elementary_type_name() {
+      // An identifier that is an elementary_type_name s unambiguous because these are
+      // reserved keywords
+      TypeInitializer::Simple {
+        type_name: et,
+        initial_value: None,
+      }
+    }/ i:identifier() {
+      // What remains is ambiguous and the devolves to a single identifier because the prior
+      // cases have captures all cases with a value.
+      TypeInitializer::LateResolvedType(i)
+    }
 
     // B.1.4 Variables
     rule variable() -> Variable = d:direct_variable() { Variable::DirectVariable(d) } / symbolic_variable()
@@ -417,7 +472,7 @@ parser! {
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    rule var_init_decl() -> Vec<VarInitDecl> = i:var1_init_decl__unambiguous() { i } / i:late_bound_type_init() { i }
+    rule var_init_decl() -> Vec<VarInitDecl> = var1_init_decl()
 
     // The initialize for some types looks the same if there is not initialization component. We use this to
     // late bind and later resolve the type.
@@ -426,32 +481,42 @@ parser! {
         VarInitDecl {
           name: name,
           storage_class: StorageClass::Unspecified,
-          initializer: Option::Some(TypeInitializer::LateResolvedType(type_name.clone())),
+          initializer: TypeInitializer::LateResolvedType(type_name.clone()),
         }
       }).collect()
     }
     // TODO add in subrange_spec_init(), enumerated_spec_init()
 
-    rule var1_init_decl__unambiguous() -> Vec<VarInitDecl> = names:var1_list() _ ":" _ init:(s:simple_spec_init__unambiguous() { s } / e:enumerated_spec_init__unambiguous() { e }) {
+    rule var1_init_decl__with_constant() -> Vec<VarInitDecl> = names:var1_list() _ ":" _ init:(s:simple_spec_init__with_constant() { s } / e:enumerated_spec_init__with_constant() { e }) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
         VarInitDecl {
           name: name,
           storage_class: StorageClass::Unspecified,
-          initializer: Option::Some(init.clone()),
+          initializer: init.clone(),
         }
       }).collect()
     }
-    rule var1_init_decl() -> Vec<VarInitDecl> = names:var1_list() _ ":" _ init:(s:simple_spec_init() { s } / e:enumerated_spec_init__unambiguous() { e }) {
+    rule var1_init_decl() -> Vec<VarInitDecl> = names:var1_list() _ ":" _ init:(a:simple_or_enumerated_spec_init()) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
         VarInitDecl {
           name: name,
           storage_class: StorageClass::Unspecified,
-          initializer: Option::Some(init.clone()),
+          initializer: init.clone(),
         }
       }).collect()
     }
+    //rule var1_init_decl() -> Vec<VarInitDecl> = names:var1_list() _ ":" _ init:(s:simple_spec_init() { s } / e:enumerated_spec_init__with_constant() { e }) {
+    //  // Each of the names variables has is initialized in the same way. Here we flatten initialization
+    //  names.into_iter().map(|name| {
+    //    VarInitDecl {
+    //      name: name,
+    //      storage_class: StorageClass::Unspecified,
+    //      initializer: init.clone(),
+    //    }
+    //  }).collect()
+    //}
     rule var1_list() -> Vec<Id> = names:variable_name() ++ (_ "," _) { names }
     rule fb_name() -> Id = i:identifier() { i }
     pub rule output_declarations() -> Vec<VarInitDecl> = "VAR_OUTPUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
@@ -497,7 +562,7 @@ parser! {
       VarInitDecl {
         name: name,
         storage_class: StorageClass::Unspecified,
-        initializer: Option::Some(spec),
+        initializer: spec,
       }
     }
     rule global_var_name() -> Id = i:identifier() { i }
@@ -587,7 +652,7 @@ parser! {
     }
     // TODO there are far more here
     rule other_var_declarations() -> VarDeclarations = external_var_declarations() / var_declarations()
-    rule function_block_body() -> FunctionBlockBody = networks:sequential_function_chart() { FunctionBlockBody::sfc(networks) } / statements:statement_list() { FunctionBlockBody::stmts(statements) }
+    rule function_block_body() -> FunctionBlockBody = networks:sequential_function_chart() { FunctionBlockBody::sfc(networks) } / statements:statement_list() { FunctionBlockBody::stmts(statements) } / _ { FunctionBlockBody::empty( )}
 
     // B.1.5.3 Program declaration
     rule program_type_name() -> Id = i:identifier() { i }
@@ -867,18 +932,12 @@ mod test {
             VarInitDecl {
                 name: Id::from("TRIG"),
                 storage_class: StorageClass::Unspecified,
-                initializer: Option::Some(TypeInitializer::Simple {
-                    type_name: Id::from("BOOL"),
-                    initial_value: None,
-                }),
+                initializer: TypeInitializer::simple_uninitialized("BOOL"),
             },
             VarInitDecl {
                 name: Id::from("MSG"),
                 storage_class: StorageClass::Unspecified,
-                initializer: Option::Some(TypeInitializer::Simple {
-                    type_name: Id::from("STRING"),
-                    initial_value: None,
-                }),
+                initializer: TypeInitializer::simple_uninitialized("STRING"),
             },
         ];
         assert_eq!(plc_parser::input_declarations(decl), Ok(vars))
@@ -889,15 +948,15 @@ mod test {
         // TODO add a test
         // TODO enumerations - I think we need to be lazy here and make simple less strict
         let decl = "VAR_INPUT
-        LEVEL : LOGLEVEL := INFO;
-      END_VAR";
+LEVEL : LOGLEVEL := INFO;
+END_VAR";
         let expected = Ok(vec![VarInitDecl {
             name: Id::from("LEVEL"),
             storage_class: StorageClass::Unspecified,
-            initializer: Some(TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
+            initializer: TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
                 type_name: Id::from("LOGLEVEL"),
                 initial_value: Some(Id::from("INFO")),
-            })),
+            }),
         }]);
         assert_eq!(plc_parser::input_declarations(decl), expected)
     }
@@ -912,18 +971,12 @@ mod test {
             VarInitDecl {
                 name: Id::from("TRIG"),
                 storage_class: StorageClass::Unspecified,
-                initializer: Option::Some(TypeInitializer::Simple {
-                    type_name: Id::from("BOOL"),
-                    initial_value: None,
-                }),
+                initializer: TypeInitializer::simple_uninitialized("BOOL"),
             },
             VarInitDecl {
                 name: Id::from("MSG"),
                 storage_class: StorageClass::Unspecified,
-                initializer: Option::Some(TypeInitializer::Simple {
-                    type_name: Id::from("STRING"),
-                    initial_value: None,
-                }),
+                initializer: TypeInitializer::simple_uninitialized("STRING"),
             },
         ];
         assert_eq!(plc_parser::output_declarations(decl), Ok(vars))
