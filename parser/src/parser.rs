@@ -34,9 +34,10 @@ enum VarDeclarations {
     Var(Vec<VarInitDecl>),
     // external_declarations
     External(Vec<VarInitDecl>),
-    Retentive(Vec<VarInitDecl>),
-    NonRetentive(Vec<VarInitDecl>),
-    Temp(Vec<VarInitDecl>),
+    // TODO
+    // Retentive(Vec<VarInitDecl>),
+    // NonRetentive(Vec<VarInitDecl>),
+    // Temp(Vec<VarInitDecl>),
 }
 
 struct InputOutputDeclarations {
@@ -57,9 +58,9 @@ impl InputOutputDeclarations {
 struct OtherDeclarations {
     externals: Vec<VarInitDecl>,
     vars: Vec<VarInitDecl>,
-    retentives: Vec<VarInitDecl>,
-    non_retentives: Vec<VarInitDecl>,
-    temps: Vec<VarInitDecl>,
+    //retentives: Vec<VarInitDecl>,
+    //non_retentives: Vec<VarInitDecl>,
+    //temps: Vec<VarInitDecl>,
     // TODO incompl_located_var_declarations
 }
 
@@ -68,9 +69,9 @@ impl OtherDeclarations {
         OtherDeclarations {
             externals: vec![],
             vars: vec![],
-            retentives: vec![],
-            non_retentives: vec![],
-            temps: vec![],
+            //retentives: vec![],
+            //non_retentives: vec![],
+            //temps: vec![],
         }
     }
 }
@@ -118,15 +119,15 @@ impl VarDeclarations {
                 VarDeclarations::External(mut v) => {
                     other.externals.append(&mut v);
                 }
-                VarDeclarations::Retentive(mut v) => {
-                    other.retentives.append(&mut v);
-                }
-                VarDeclarations::NonRetentive(mut v) => {
-                    other.non_retentives.append(&mut v);
-                }
-                VarDeclarations::Temp(mut v) => {
-                    other.temps.append(&mut v);
-                }
+                //VarDeclarations::Retentive(mut v) => {
+                //    other.retentives.append(&mut v);
+                //}
+                //VarDeclarations::NonRetentive(mut v) => {
+                //    other.non_retentives.append(&mut v);
+                //}
+                //VarDeclarations::Temp(mut v) => {
+                //    other.temps.append(&mut v);
+                //}
             }
         }
 
