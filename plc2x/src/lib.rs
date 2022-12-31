@@ -16,7 +16,6 @@ mod xform_resolve_late_bound_types;
 #[cfg(test)]
 mod test_helpers;
 
-
 pub fn main() {
     let library = parse("").unwrap();
     semantic(&library).unwrap();

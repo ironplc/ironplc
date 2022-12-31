@@ -790,25 +790,25 @@ parser! {
     rule fb_task() -> (Id, Id) = n:fb_name() _ "WITH" _ tn:task_name() { (n, tn) }
 
     // B.3.1 Expressions
-    rule expression() -> ExprKind = exprs:xor_expression() ** (_ "OR" _) {
+    rule expression() -> ExprKind = exprs:xor_expression() ++ (_ "OR" _) {
       if exprs.len() > 1 {
         return ExprKind::Compare {op: CompareOp::Or, terms: exprs}
       }
       exprs[0].clone()
     }
-    rule xor_expression() -> ExprKind = exprs:and_expression() ** (_ "XOR" _) {
+    rule xor_expression() -> ExprKind = exprs:and_expression() ++ (_ "XOR" _) {
       if exprs.len() > 1 {
         return ExprKind::Compare {op: CompareOp::Xor, terms: exprs}
       }
       exprs[0].clone()
     }
-    rule and_expression() -> ExprKind = exprs:comparison() ** (_ ("&" / "AND") _) {
+    rule and_expression() -> ExprKind = exprs:comparison() ++ (_ ("&" / "AND") _) {
       if exprs.len() > 1 {
         return ExprKind::Compare {op: CompareOp::And, terms: exprs}
       }
       exprs[0].clone()
     }
-    rule comparison() -> ExprKind = exprs:equ_expression() ** (_ op:("=" {CompareOp::Eq} / "<>" {CompareOp::Ne}) _) {
+    rule comparison() -> ExprKind = exprs:equ_expression() ++ (_ op:("=" {CompareOp::Eq} / "<>" {CompareOp::Ne}) _) {
       // TODO capture the operator type to distinguish
       if exprs.len() > 1 {
         // TODO this is wrong op type
@@ -816,7 +816,7 @@ parser! {
       }
       exprs[0].clone()
     }
-    rule equ_expression() -> ExprKind = exprs:add_expression() ** (_ comparison_operator() _) {// TODO capture the operator type to distinguish
+    rule equ_expression() -> ExprKind = exprs:add_expression() ++ (_ comparison_operator() _) {// TODO capture the operator type to distinguish
       if exprs.len() > 1 {
         // TODO this is wrong op type
         return ExprKind::Compare {op: CompareOp::Lt, terms: exprs}
@@ -824,7 +824,7 @@ parser! {
       exprs[0].clone()
     }
     rule comparison_operator() -> CompareOp = "<"  {CompareOp::Lt } / ">" {CompareOp::Gt} / "<=" {CompareOp::LtEq} / ">=" {CompareOp::GtEq}
-    rule add_expression() -> ExprKind = exprs:term() ** (_ add_operator() _ ) {
+    rule add_expression() -> ExprKind = exprs:term() ++ (_ add_operator() _ ) {
       if exprs.len() > 1 {
         // TODO this is wrong op type
         return ExprKind::BinaryOp {ops: vec![Operator::Add], terms: exprs}
@@ -832,7 +832,7 @@ parser! {
       exprs[0].clone()
     }
     rule add_operator() -> Operator = "+" {Operator::Add} / "-" {Operator::Sub}
-    rule term() -> ExprKind = exprs:power_expression() ** (_ multiply_operator() _) {
+    rule term() -> ExprKind = exprs:power_expression() ++ (_ multiply_operator() _) {
       if exprs.len() > 1 {
         // TODO this is wrong op type
         return ExprKind::BinaryOp {ops: vec![Operator::Mul], terms: exprs}
@@ -840,7 +840,7 @@ parser! {
       exprs[0].clone()
     }
     rule multiply_operator() -> Operator = "*" {Operator::Mul} / "/" {Operator::Div}/ "MOD" {Operator::Mod}
-    rule power_expression() -> ExprKind = exprs:unary_expression() ** (_ "**" _)  {
+    rule power_expression() -> ExprKind = exprs:unary_expression() ++ (_ "**" _) {
       if exprs.len() > 1 {
         return ExprKind::BinaryOp {ops: vec![Operator::Pow], terms: exprs}
       }
@@ -860,7 +860,7 @@ parser! {
     } / variable:variable() {
       ExprKind::Variable(variable)
     }
-    rule function_expression() -> ExprKind = name:function_name() _ "(" params:param_assignment() ++ (_ "," _) _ ")" {
+    rule function_expression() -> ExprKind = name:function_name() _ "(" _ params:param_assignment() ** (_ "," _) _ ")" {
       ExprKind::Function {
         name: name,
         param_assignment: params
@@ -881,7 +881,7 @@ parser! {
     rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb }
     rule fb_invocation() -> StmtKind = name:fb_name() _ "(" _ params:param_assignment() ** (_ "," _) _ ")" {
       StmtKind::FbCall(FbCall {
-        name: name,
+        var_name: name,
         params: params,
       })
     }
@@ -1260,7 +1260,7 @@ END_VAR";
     fn statement_fb_invocation_without_name() {
         let statement = "CounterLD0(Reset);";
         let expected = Ok(vec![StmtKind::FbCall(FbCall {
-            name: Id::from("CounterLD0"),
+            var_name: Id::from("CounterLD0"),
             params: vec![ParamAssignment::positional(ExprKind::symbolic_variable(
                 "Reset",
             ))],
@@ -1273,7 +1273,7 @@ END_VAR";
     fn statement_fb_invocation_with_name() {
         let statement = "CounterLD0(Cnt := Reset);";
         let expected = Ok(vec![StmtKind::FbCall(FbCall {
-            name: Id::from("CounterLD0"),
+            var_name: Id::from("CounterLD0"),
             params: vec![ParamAssignment::named(
                 "Cnt",
                 ExprKind::symbolic_variable("Reset"),

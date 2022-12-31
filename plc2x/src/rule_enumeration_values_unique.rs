@@ -56,10 +56,10 @@ mod tests {
 TYPE
 LOGLEVEL : (CRITICAL, ERROR);
 END_TYPE";
-        
+
         let library = parse(program).unwrap();
         let result = apply(&library);
-                
+
         assert_eq!(true, result.is_ok());
     }
 
@@ -69,10 +69,10 @@ END_TYPE";
 TYPE
 LOGLEVEL : (CRITICAL, CRITICAL);
 END_TYPE";
-        
+
         let library = parse(program).unwrap();
         let result = apply(&library);
-                
+
         assert_eq!(true, result.is_err());
     }
 }
