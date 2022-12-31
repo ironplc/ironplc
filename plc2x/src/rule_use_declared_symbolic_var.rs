@@ -1,6 +1,27 @@
 //! Semantic rule that reference in a function block, function or program to
 //! a symbolic variable must be to a symbolic variable that is
 //! declared in that scope.
+//!
+//! ## Passes
+//! 
+//! FUNCTION_BLOCK LOGGER
+//!    VAR
+//!       TRIG : BOOL;
+//!       TRIG0 : BOOL;
+//!    END_VAR
+//! 
+//!    TRIG := TRIG0;
+//! END_FUNCTION_BLOCK
+//!   
+//! ## Fails
+//! 
+//! FUNCTION_BLOCK LOGGER
+//!    VAR
+//!       TRIG0 : BOOL;
+//!    END_VAR
+//! 
+//!    TRIG := TRIG0;
+//! END_FUNCTION_BLOCK
 use ironplc_dsl::{
     ast::Id,
     dsl::*,
@@ -74,76 +95,42 @@ impl Visitor<String> for SymbolTable<Id, DummyNode> {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_dsl::ast::*;
-    use ironplc_dsl::dsl::*;
-
     use super::*;
-
-    use crate::test_helpers::new_library;
+    use crate::stages::parse;
 
     #[test]
     fn apply_when_undeclared_symbol_then_error() {
-        let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
-            FunctionBlockDeclaration {
-                name: Id::from("LOGGER"),
-                inputs: vec![],
-                outputs: vec![],
-                inouts: vec![],
-                vars: vec![],
-                externals: vec![],
-                body: FunctionBlockBody::stmts(vec![StmtKind::if_then(
-                    ExprKind::Compare {
-                        op: CompareOp::And,
-                        terms: vec![
-                            ExprKind::symbolic_variable("TRIG"),
-                            ExprKind::UnaryOp {
-                                op: UnaryOp::Not,
-                                term: ExprKind::boxed_symbolic_variable("TRIG0"),
-                            },
-                        ],
-                    },
-                    vec![],
-                )]),
-            },
-        ))
-        .unwrap();
+        let program = "
+FUNCTION_BLOCK LOGGER
+VAR
+TRIG0 : BOOL;
+END_VAR
+         
+TRIG := TRIG0;
+END_FUNCTION_BLOCK";
+        
+        let library = parse(program).unwrap();
+        let result = apply(&library);
 
-        let result = apply(&input);
         assert_eq!(true, result.is_err());
         assert_eq!("Variable TRIG not defined before used", result.unwrap_err());
     }
 
     #[test]
     fn apply_when_all_symbol_declared_then_ok() {
-        let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
-            FunctionBlockDeclaration {
-                name: Id::from("LOGGER"),
-                inputs: vec![],
-                outputs: vec![],
-                inouts: vec![],
-                vars: vec![
-                    VarInitDecl::simple("TRIG", "BOOL"),
-                    VarInitDecl::simple("TRIG0", "BOOL"),
-                ],
-                externals: vec![],
-                body: FunctionBlockBody::stmts(vec![StmtKind::if_then(
-                    ExprKind::Compare {
-                        op: CompareOp::And,
-                        terms: vec![
-                            ExprKind::symbolic_variable("TRIG"),
-                            ExprKind::UnaryOp {
-                                op: UnaryOp::Not,
-                                term: ExprKind::boxed_symbolic_variable("TRIG0"),
-                            },
-                        ],
-                    },
-                    vec![],
-                )]),
-            },
-        ))
-        .unwrap();
+        let program = "
+FUNCTION_BLOCK LOGGER
+VAR
+TRIG : BOOL;
+TRIG0 : BOOL;
+END_VAR
+         
+TRIG := TRIG0;
+END_FUNCTION_BLOCK";
+        
+        let library = parse(program).unwrap();
+        let result = apply(&library);
 
-        let result = apply(&input);
         assert_eq!(true, result.is_ok());
     }
 }
