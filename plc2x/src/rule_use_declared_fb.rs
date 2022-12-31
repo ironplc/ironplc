@@ -14,7 +14,7 @@
 //! END_FUNCTION_BLOCK
 //!
 //! ## Fails (Incorrect Parameters)
-//! 
+//!
 //! FUNCTION_BLOCK Callee
 //!    VAR_INPUT
 //!       IN1: BOOL;
