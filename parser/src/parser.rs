@@ -118,16 +118,15 @@ impl VarDeclarations {
                 }
                 VarDeclarations::External(mut v) => {
                     other.externals.append(&mut v);
-                }
-                //VarDeclarations::Retentive(mut v) => {
-                //    other.retentives.append(&mut v);
-                //}
-                //VarDeclarations::NonRetentive(mut v) => {
-                //    other.non_retentives.append(&mut v);
-                //}
-                //VarDeclarations::Temp(mut v) => {
-                //    other.temps.append(&mut v);
-                //}
+                } //VarDeclarations::Retentive(mut v) => {
+                  //    other.retentives.append(&mut v);
+                  //}
+                  //VarDeclarations::NonRetentive(mut v) => {
+                  //    other.non_retentives.append(&mut v);
+                  //}
+                  //VarDeclarations::Temp(mut v) => {
+                  //    other.temps.append(&mut v);
+                  //}
             }
         }
 
