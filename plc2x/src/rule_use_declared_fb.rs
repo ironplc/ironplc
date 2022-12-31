@@ -13,17 +13,20 @@
 //!    FB_INSTANCE();
 //! END_FUNCTION_BLOCK
 //!
-//! ## Fails
-//!
-//! FUNCTION_BLOCK Caller
-//!    VAR
-//!       FB_INSTANCE : UndeclaredFunctionBlock;
+//! ## Fails (Incorrect Parameters)
+//! 
+//! FUNCTION_BLOCK Callee
+//!    VAR_INPUT
+//!       IN1: BOOL;
 //!    END_VAR
 //! END_FUNCTION_BLOCK
-//!
-//! ## Todo
-//!
-//! I'm not certain this rule is quite right.
+//!     
+//! FUNCTION_BLOCK Caller
+//!    VAR
+//!       FB_INSTANCE : Callee;
+//!    END_VAR
+//!    FB_INSTANCE(IN1 := TRUE, BAR := TRUE);
+//! END_FUNCTION_BLOCK
 use ironplc_dsl::{
     ast::*,
     dsl::*,
