@@ -139,11 +139,11 @@ VAR_INPUT
 LEVEL : LOGLEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
-        
-                let library = parse(program).unwrap();
-                let result = apply(&library);
-                
-                assert_eq!(true, result.is_err());
+
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+
+        assert_eq!(true, result.is_err());
     }
 
     #[test]
@@ -161,7 +161,7 @@ END_FUNCTION_BLOCK";
 
         let library = parse(program).unwrap();
         let result = apply(&library);
-        
+
         assert_eq!(true, result.is_ok());
     }
 }

@@ -90,7 +90,9 @@ pub struct Assignment {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct FbCall {
-    pub name: Id,
+    /// Name of the variable that is associated with the function block
+    /// call.
+    pub var_name: Id,
     pub params: Vec<ParamAssignment>,
 }
 
@@ -155,7 +157,7 @@ impl StmtKind {
             .collect::<Vec<ParamAssignment>>();
 
         StmtKind::FbCall(FbCall {
-            name: Id::from(fb_name),
+            var_name: Id::from(fb_name),
             params: assignments,
         })
     }

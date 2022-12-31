@@ -40,44 +40,41 @@ impl Visitor<String> for RuleConstantVarsInitialized {
             StorageClass::Constant => {
                 println!("Initializer {:?}", decl.initializer);
                 match &decl.initializer {
-                    TypeInitializer::Simple { type_name: _, initial_value } => {
-                        match initial_value {
-                            Some(_) => {},
-                            None => {
-                                return Err(format!(
-                                    "Variable is constant but does not define value {} ",
-                                    decl.name
-                                ))
-                            },
+                    TypeInitializer::Simple {
+                        type_name: _,
+                        initial_value,
+                    } => match initial_value {
+                        Some(_) => {}
+                        None => {
+                            return Err(format!(
+                                "Variable is constant but does not define value {} ",
+                                decl.name
+                            ))
                         }
                     },
-                    TypeInitializer::EnumeratedValues { values: _, default } => {
-                        match default {
-                            Some(_) => {},
-                            None => {
-                                return Err(format!(
-                                    "Variable is constant but does not define value {} ",
-                                    decl.name
-                                ))
-                            },
+                    TypeInitializer::EnumeratedValues { values: _, default } => match default {
+                        Some(_) => {}
+                        None => {
+                            return Err(format!(
+                                "Variable is constant but does not define value {} ",
+                                decl.name
+                            ))
                         }
                     },
-                    TypeInitializer::EnumeratedType(type_init) => {
-                        match type_init.initial_value {
-                            Some(_) => {},
-                            None => {
-                                return Err(format!(
-                                    "Variable is constant but does not define value {} ",
-                                    decl.name
-                                ))
-                            },
+                    TypeInitializer::EnumeratedType(type_init) => match type_init.initial_value {
+                        Some(_) => {}
+                        None => {
+                            return Err(format!(
+                                "Variable is constant but does not define value {} ",
+                                decl.name
+                            ))
                         }
                     },
                     TypeInitializer::FunctionBlock { type_name: _ } => todo!(),
                     TypeInitializer::Structure { type_name: _ } => todo!(),
                     TypeInitializer::LateResolvedType(_) => todo!(),
                 }
-            },
+            }
             _ => {}
         }
 

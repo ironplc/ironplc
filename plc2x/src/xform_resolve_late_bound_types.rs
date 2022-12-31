@@ -1,14 +1,14 @@
 //! Transform that resolves late bound types into specific types.
-//! 
+//!
 //! The IEC 61131-3 syntax has some ambiguous types that are initially
 //! parsed into a placeholder. This transform replaces the placeholders
 //! with well-known types.
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
 use ironplc_dsl::{ast::Id, dsl::*};
+use phf::{phf_set, Set};
 use std::collections::HashMap;
 use std::fmt::Error;
-use phf::{phf_set, Set};
 
 static ELEMENTARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
     // signed_integer_type_name
@@ -69,6 +69,19 @@ impl<'a> Visitor<Error> for GlobalTypeDefinitionVisitor<'a> {
             .insert(enum_decl.name.clone(), TypeDefinitionKind::Enumeration);
         Ok(())
     }
+    fn visit_function_block_declaration(
+        &mut self,
+        node: &FunctionBlockDeclaration,
+    ) -> Result<(), Error> {
+        self.types
+            .insert(node.name.clone(), TypeDefinitionKind::FunctionBlock);
+        Ok(())
+    }
+    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Error> {
+        self.types
+            .insert(node.name.clone(), TypeDefinitionKind::FunctionBlock);
+        Ok(())
+    }
 }
 
 struct TypeResolver {
@@ -87,26 +100,38 @@ impl Fold for TypeResolver {
             TypeInitializer::LateResolvedType(name) => {
                 // Try to find the type for the specified name.
                 if TypeResolver::is_elementary_type(&name) {
-                    return TypeInitializer::Simple { type_name: name, initial_value: None }
+                    return TypeInitializer::Simple {
+                        type_name: name,
+                        initial_value: None,
+                    };
                 }
 
                 // TODO error handling
-                let type_kind = self.types.get(&name).unwrap();
-                match type_kind {
-                    TypeDefinitionKind::Enumeration => {
-                        TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
-                            type_name: name,
-                            initial_value: None,
-                        })
+                let maybe_type_kind = self.types.get(&name);
+                match maybe_type_kind {
+                    Some(type_kind) => {
+                        match type_kind {
+                            TypeDefinitionKind::Enumeration => {
+                                TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
+                                    type_name: name,
+                                    initial_value: None,
+                                })
+                            }
+                            TypeDefinitionKind::FunctionBlock => {
+                                TypeInitializer::FunctionBlock { type_name: name }
+                            }
+                            TypeDefinitionKind::Function => {
+                                // TODO this is wrong and should be an error
+                                TypeInitializer::Structure { type_name: name }
+                            }
+                            TypeDefinitionKind::Structure => {
+                                TypeInitializer::Structure { type_name: name }
+                            }
+                        }
                     }
-                    TypeDefinitionKind::FunctionBlock => {
-                        TypeInitializer::FunctionBlock { type_name: name }
+                    None => {
+                        todo!()
                     }
-                    TypeDefinitionKind::Function => {
-                        // TODO this is wrong and should be an error
-                        TypeInitializer::Structure { type_name: name }
-                    }
-                    TypeDefinitionKind::Structure => TypeInitializer::Structure { type_name: name },
                 }
             }
             _ => node,

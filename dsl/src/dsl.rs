@@ -425,7 +425,7 @@ pub enum FunctionBlockBody {
     Sfc(Sfc),
     Statements(Statements),
     /// A function block that has no body (and is therefore no known type).
-    /// 
+    ///
     /// This type is not strictly valid, but highly useful and can be detected
     /// with a semantic rule.
     Empty(),

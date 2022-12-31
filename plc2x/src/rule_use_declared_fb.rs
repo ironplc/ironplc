@@ -10,6 +10,7 @@
 //!    VAR
 //!       FB_INSTANCE : Callee;
 //!    END_VAR
+//!    FB_INSTANCE();
 //! END_FUNCTION_BLOCK
 //!
 //! ## Fails
@@ -23,7 +24,14 @@
 //! ## Todo
 //!
 //! I'm not certain this rule is quite right.
-use ironplc_dsl::{ast::*, dsl::*, visitor::Visitor};
+use ironplc_dsl::{
+    ast::*,
+    dsl::*,
+    visitor::{
+        visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
+        Visitor,
+    },
+};
 use std::collections::HashMap;
 
 trait FindIOVariable {
@@ -65,7 +73,7 @@ pub fn apply(lib: &Library) -> Result<(), String> {
     }
 
     for (key, _) in &function_blocks {
-        println!("{}", key);
+        println!("Found blocks: {}", key);
     }
 
     // Walk the library to find all references to function blocks
@@ -74,12 +82,18 @@ pub fn apply(lib: &Library) -> Result<(), String> {
 }
 
 struct RuleFunctionBlockUse<'a> {
+    // Map of the name of a function block declaration to the
+    // declaration itself.
     function_blocks: &'a HashMap<Id, &'a FunctionBlockDeclaration>,
+
+    // Map of variable name to the function block name that is the implementation
+    var_to_fb: HashMap<Id, Id>,
 }
 impl<'a> RuleFunctionBlockUse<'a> {
     fn new(decls: &'a HashMap<Id, &'a FunctionBlockDeclaration>) -> Self {
         RuleFunctionBlockUse {
             function_blocks: decls,
+            var_to_fb: HashMap::new(),
         }
     }
 
@@ -144,24 +158,89 @@ impl<'a> RuleFunctionBlockUse<'a> {
 impl Visitor<String> for RuleFunctionBlockUse<'_> {
     type Value = ();
 
+    fn visit_function_block_declaration(
+        &mut self,
+        node: &FunctionBlockDeclaration,
+    ) -> Result<Self::Value, String> {
+        let res = visit_function_block_declaration(self, node);
+
+        // Remove all items from var init decl since we have left this context
+        self.var_to_fb.clear();
+        res
+    }
+
+    fn visit_function_declaration(
+        &mut self,
+        node: &FunctionDeclaration,
+    ) -> Result<Self::Value, String> {
+        let res = visit_function_declaration(self, node);
+
+        // Remove all items from var init decl since we have left this context
+        self.var_to_fb.clear();
+        res
+    }
+
+    fn visit_program_declaration(
+        &mut self,
+        node: &ProgramDeclaration,
+    ) -> Result<Self::Value, String> {
+        let res = visit_program_declaration(self, node);
+
+        // Remove all items from var init decl since we have left this context
+        self.var_to_fb.clear();
+        res
+    }
+
+    fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<Self::Value, String> {
+        match &node.initializer {
+            TypeInitializer::Simple {
+                type_name: _,
+                initial_value: _,
+            } => {}
+            TypeInitializer::EnumeratedValues {
+                values: _,
+                default: _,
+            } => {}
+            TypeInitializer::EnumeratedType(_) => {}
+            TypeInitializer::FunctionBlock { type_name } => {
+                self.var_to_fb.insert(node.name.clone(), type_name.clone());
+            }
+            TypeInitializer::Structure { type_name: _ } => {}
+            TypeInitializer::LateResolvedType(_) => {
+                panic!()
+            }
+        }
+        Ok(Self::Value::default())
+    }
+
     fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, String> {
         // Check if function block is defined because you cannot
         // call a function block that doesn't exist
-        println!("{}", fb_call.name);
+        println!("FB Invocation: {}", fb_call.var_name);
 
-        for (key, _) in self.function_blocks {
-            println!("{}", key);
-        }
-
-        let function_block_decl = self.function_blocks.get(&fb_call.name);
-        match function_block_decl {
-            None => {
-                // Not defined, so this is not a valid use.
-                return Err(format!("Function block {} is not declared", fb_call.name));
+        let function_block_name = self.var_to_fb.get(&fb_call.var_name);
+        match function_block_name {
+            Some(function_block_name) => {
+                let function_block_decl = self.function_blocks.get(function_block_name);
+                match function_block_decl {
+                    None => {
+                        // Not defined, so this is not a valid use.
+                        return Err(format!(
+                            "Function block {} is not declared",
+                            function_block_name
+                        ));
+                    }
+                    Some(fb) => {
+                        // Validate the parameter assignments
+                        return RuleFunctionBlockUse::check_inputs(fb, &fb_call.params);
+                    }
+                }
             }
-            Some(fb) => {
-                // Validate the parameter assignments
-                return RuleFunctionBlockUse::check_inputs(fb, &fb_call.params);
+            None => {
+                return Err(format!(
+                    "Function block invocation {} do not refer to a variable in scope",
+                    fb_call.var_name
+                ))
             }
         }
     }
@@ -169,80 +248,113 @@ impl Visitor<String> for RuleFunctionBlockUse<'_> {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_dsl::ast::*;
-    use ironplc_dsl::dsl::*;
-
     use super::*;
-
-    fn make_fb_call(params: Vec<ParamAssignment>) -> Library {
-        Library {
-            elems: vec![
-                LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: Id::from("CALLEE"),
-                    inputs: vec![
-                        VarInitDecl::simple("IN1", "BOOL"),
-                        VarInitDecl::simple("IN2", "BOOL"),
-                    ],
-                    outputs: vec![],
-                    inouts: vec![],
-                    vars: vec![],
-                    externals: vec![],
-                    body: FunctionBlockBody::stmts(vec![]),
-                }),
-                LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: Id::from("CALLER"),
-                    inputs: vec![],
-                    outputs: vec![],
-                    inouts: vec![],
-                    vars: vec![],
-                    externals: vec![],
-                    body: FunctionBlockBody::stmts(vec![StmtKind::FbCall(FbCall {
-                        name: Id::from("CALLEE"),
-                        params: params,
-                    })]),
-                }),
-            ],
-        }
-    }
+    use crate::stages::parse;
 
     #[test]
     fn apply_when_no_names_uses_default_then_return_ok() {
-        let input = make_fb_call(vec![]);
+        let program = "
+FUNCTION_BLOCK Callee
 
-        let result = apply(&input);
-        assert_eq!(true, result.is_ok());
+END_FUNCTION_BLOCK
+        
+FUNCTION_BLOCK Caller
+VAR
+FB_INSTANCE : Callee;
+END_VAR
+FB_INSTANCE();
+END_FUNCTION_BLOCK";
+
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+
+        assert_eq!(true, result.is_ok())
     }
 
     #[test]
     fn apply_when_some_names_assigned_then_ok() {
-        let input = make_fb_call(vec![ParamAssignment::named(
-            "IN1",
-            ExprKind::symbolic_variable("LOCAL1"),
-        )]);
+        let program = "
+FUNCTION_BLOCK Callee
+VAR_INPUT
+IN1: BOOL;
+IN2: BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+        
+FUNCTION_BLOCK Caller
+VAR
+FB_INSTANCE : Callee;
+END_VAR
+FB_INSTANCE(IN1 := TRUE);
+END_FUNCTION_BLOCK";
 
-        let result = apply(&input);
-        assert_eq!(true, result.is_ok());
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+
+        assert_eq!(true, result.is_ok())
     }
 
     #[test]
     fn apply_when_all_names_assigned_then_ok() {
-        let input = make_fb_call(vec![
-            ParamAssignment::named("IN1", ExprKind::symbolic_variable("LOCAL1")),
-            ParamAssignment::named("IN2", ExprKind::symbolic_variable("LOCAL1")),
-        ]);
+        let program = "
+FUNCTION_BLOCK Callee
+VAR_INPUT
+IN1: BOOL;
+IN2: BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+        
+FUNCTION_BLOCK Caller
+VAR
+FB_INSTANCE : Callee;
+END_VAR
+FB_INSTANCE(IN1 := TRUE, IN2 := FALSE);
+END_FUNCTION_BLOCK";
 
-        let result = apply(&input);
-        assert_eq!(true, result.is_ok());
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+
+        assert_eq!(true, result.is_ok())
     }
 
     #[test]
     fn apply_when_names_incorrect_then_error() {
-        let input = make_fb_call(vec![ParamAssignment::named(
-            "BAR",
-            ExprKind::symbolic_variable("LOCAL1"),
-        )]);
+        let program = "
+FUNCTION_BLOCK Callee
+END_FUNCTION_BLOCK
+        
+FUNCTION_BLOCK Caller
+VAR
+FB_INSTANCE : Callee;
+END_VAR
+FB_INSTANCE(BAR := TRUE);
+END_FUNCTION_BLOCK";
 
-        let result = apply(&input);
-        assert_eq!(true, result.is_err());
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+
+        assert_eq!(true, result.is_err())
+    }
+
+    #[test]
+    fn apply_when_one_name_incorrect_then_error() {
+        let program = "
+FUNCTION_BLOCK Callee
+VAR_INPUT
+IN1: BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+        
+FUNCTION_BLOCK Caller
+VAR
+FB_INSTANCE : Callee;
+END_VAR
+FB_INSTANCE(IN1 := TRUE, BAR := TRUE);
+END_FUNCTION_BLOCK";
+
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+
+        assert_eq!(true, result.is_err())
     }
 }

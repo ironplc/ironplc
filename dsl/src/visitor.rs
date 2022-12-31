@@ -180,7 +180,8 @@ pub trait Visitor<E> {
     }
 
     fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, E> {
-        todo!()
+        // TODO
+        Ok(Self::Value::default())
     }
 
     fn visit_enumerated_type_initializer(
@@ -469,7 +470,7 @@ mod test {
 
         fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<(), Error> {
             let mut dst = &mut self.names;
-            dst.push_back(fb_call.name.to_string());
+            dst.push_back(fb_call.var_name.to_string());
             Ok(())
         }
     }

@@ -3,23 +3,23 @@
 //! declared in that scope.
 //!
 //! ## Passes
-//! 
+//!
 //! FUNCTION_BLOCK LOGGER
 //!    VAR
 //!       TRIG : BOOL;
 //!       TRIG0 : BOOL;
 //!    END_VAR
-//! 
+//!
 //!    TRIG := TRIG0;
 //! END_FUNCTION_BLOCK
 //!   
 //! ## Fails
-//! 
+//!
 //! FUNCTION_BLOCK LOGGER
 //!    VAR
 //!       TRIG0 : BOOL;
 //!    END_VAR
-//! 
+//!
 //!    TRIG := TRIG0;
 //! END_FUNCTION_BLOCK
 use ironplc_dsl::{
@@ -108,7 +108,7 @@ END_VAR
          
 TRIG := TRIG0;
 END_FUNCTION_BLOCK";
-        
+
         let library = parse(program).unwrap();
         let result = apply(&library);
 
@@ -127,7 +127,7 @@ END_VAR
          
 TRIG := TRIG0;
 END_FUNCTION_BLOCK";
-        
+
         let library = parse(program).unwrap();
         let result = apply(&library);
 
