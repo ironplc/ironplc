@@ -118,7 +118,9 @@ impl Fold for TypeResolver {
                                 })
                             }
                             TypeDefinitionKind::FunctionBlock => {
-                                TypeInitializer::FunctionBlock { type_name: name }
+                                TypeInitializer::FunctionBlock(FunctionBlockTypeInitializer {
+                                    type_name: name,
+                                })
                             }
                             TypeDefinitionKind::Function => {
                                 // TODO this is wrong and should be an error

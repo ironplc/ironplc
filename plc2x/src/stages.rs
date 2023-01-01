@@ -1,8 +1,8 @@
 //! The compiler as individual stages (to enable testing).
 use crate::{
     ironplc_dsl::dsl::Library, rule_constant_vars_initialized, rule_enumeration_values_unique,
-    rule_program_task_definition_exists, rule_use_declared_enumerated_value, rule_use_declared_fb,
-    rule_use_declared_symbolic_var, xform_resolve_late_bound_types,
+    rule_pous_no_cycles, rule_program_task_definition_exists, rule_use_declared_enumerated_value,
+    rule_use_declared_fb, rule_use_declared_symbolic_var, xform_resolve_late_bound_types,
 };
 
 /// Parse combines lexical and sematic analysis (stages 1 & 2).
@@ -33,6 +33,7 @@ pub fn semantic(library: &Library) -> Result<(), String> {
     rule_constant_vars_initialized::apply(&library)?;
     rule_enumeration_values_unique::apply(&library)?;
     rule_program_task_definition_exists::apply(&library)?;
+    rule_pous_no_cycles::apply(&library)?;
 
     // 1. Check all identifiers defined (need scope)
     // 2. Type checking

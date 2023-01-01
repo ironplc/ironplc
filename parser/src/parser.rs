@@ -579,7 +579,7 @@ parser! {
       }).collect()
     }
     // TODO this doesn't pass all information. I suspect the rule from the dpec is not right
-    rule global_var_decl() -> (Vec<Declaration>) = vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { TypeInitializer::FunctionBlock { type_name: f } })? {
+    rule global_var_decl() -> (Vec<Declaration>) = vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { TypeInitializer::FunctionBlock(FunctionBlockTypeInitializer{type_name: f})})? {
       vs.0.into_iter().map(|name| {
         Declaration {
           name: name,

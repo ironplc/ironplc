@@ -1,10 +1,11 @@
 use crate::dsl::{Constant, DirectVariable};
+use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
 /// Implements Identifier declared by 2.1.2.
 ///
-/// 61131-2 declares that identifiers are case insensitive.
+/// 61131-3 declares that identifiers are case insensitive.
 /// This class ensures that we do case insensitive comparisons
 /// and can use containers as appropriate.
 
@@ -45,6 +46,18 @@ impl Eq for Id {}
 impl Hash for Id {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.lower_case.hash(state);
+    }
+}
+
+impl Ord for Id {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.lower_case.cmp(&other.lower_case)
+    }
+}
+
+impl PartialOrd for Id {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 

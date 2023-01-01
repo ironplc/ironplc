@@ -5,6 +5,7 @@ extern crate ironplc_parser;
 
 mod rule_constant_vars_initialized;
 mod rule_enumeration_values_unique;
+mod rule_pous_no_cycles;
 mod rule_program_task_definition_exists;
 mod rule_use_declared_enumerated_value;
 mod rule_use_declared_fb;
