@@ -132,10 +132,6 @@ pub trait Visitor<E> {
         visit_var_init_decl(self, &node)
     }
 
-    fn visit_type_initializer(&mut self, node: &TypeInitializer) -> Result<Self::Value, E> {
-        todo!()
-    }
-
     fn visit_sfc(&mut self, node: &Sfc) -> Result<Self::Value, E> {
         Acceptor::accept(&node.networks, self)
     }
@@ -187,6 +183,14 @@ pub trait Visitor<E> {
     fn visit_enumerated_type_initializer(
         &mut self,
         init: &EnumeratedTypeInitializer,
+    ) -> Result<Self::Value, E> {
+        // leaf node - no children
+        Ok(Self::Value::default())
+    }
+
+    fn visit_function_block_type_initializer(
+        &mut self,
+        init: &FunctionBlockTypeInitializer,
     ) -> Result<Self::Value, E> {
         // leaf node - no children
         Ok(Self::Value::default())
@@ -353,7 +357,9 @@ impl Acceptor for TypeInitializer {
             } => Ok(V::Value::default()),
             TypeInitializer::EnumeratedValues { values, default } => Ok(V::Value::default()),
             TypeInitializer::EnumeratedType(et) => visitor.visit_enumerated_type_initializer(et),
-            TypeInitializer::FunctionBlock { type_name } => Ok(V::Value::default()),
+            TypeInitializer::FunctionBlock(fbi) => {
+                visitor.visit_function_block_type_initializer(fbi)
+            }
             TypeInitializer::Structure { type_name } => Ok(V::Value::default()),
             TypeInitializer::LateResolvedType(_) => Ok(V::Value::default()),
         }

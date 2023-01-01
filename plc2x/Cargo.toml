@@ -15,3 +15,4 @@ ironplc-parser = { path = "../parser", version = "0.1.0" }
 ironplc-dsl = { path = "../dsl", version = "0.1.0" }
 time = "0.3.17"
 phf = { version = "0.11", features = ["macros"] }
+petgraph = { version = "0.6.2" }

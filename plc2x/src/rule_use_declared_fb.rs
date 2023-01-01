@@ -205,8 +205,9 @@ impl Visitor<String> for RuleFunctionBlockUse<'_> {
                 default: _,
             } => {}
             TypeInitializer::EnumeratedType(_) => {}
-            TypeInitializer::FunctionBlock { type_name } => {
-                self.var_to_fb.insert(node.name.clone(), type_name.clone());
+            TypeInitializer::FunctionBlock(fbi) => {
+                self.var_to_fb
+                    .insert(node.name.clone(), fbi.type_name.clone());
             }
             TypeInitializer::Structure { type_name: _ } => {}
             TypeInitializer::LateResolvedType(_) => {

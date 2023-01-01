@@ -3,26 +3,33 @@
 //!
 //! ## Passes
 //!
+//! ```ignore
 //! FUNCTION_BLOCK LOGGER
 //!    VAR CONSTANT
 //!       ResetCounterValue : INT := 1;
 //!    END_VAR
 //! END_FUNCTION_BLOCK
+//! ```
 //!
 //! ## Fails
 //!
+//! ```ignore
 //! FUNCTION_BLOCK LOGGER
 //!    VAR CONSTANT
 //!       ResetCounterValue : INT;
 //!    END_VAR
 //! END_FUNCTION_BLOCK
+//! ```
 //!
 //! ## Todo
 //!
 //! I don't know if it is possible to have an external
 //! reference where one part declares the value and another
 //! references the value (and still be constant).
-use ironplc_dsl::{dsl::*, visitor::Visitor};
+use ironplc_dsl::{
+    dsl::*,
+    visitor::{visit_var_init_decl, Visitor},
+};
 
 pub fn apply(lib: &Library) -> Result<(), String> {
     let mut visitor = RuleConstantVarsInitialized {};
@@ -34,51 +41,47 @@ struct RuleConstantVarsInitialized {}
 impl Visitor<String> for RuleConstantVarsInitialized {
     type Value = ();
 
-    fn visit_var_init_decl(&mut self, decl: &VarInitDecl) -> Result<(), String> {
-        println!("Storage class {:?}", decl.storage_class);
-        match decl.storage_class {
-            StorageClass::Constant => {
-                println!("Initializer {:?}", decl.initializer);
-                match &decl.initializer {
-                    TypeInitializer::Simple {
-                        type_name: _,
-                        initial_value,
-                    } => match initial_value {
-                        Some(_) => {}
-                        None => {
-                            return Err(format!(
-                                "Variable is constant but does not define value {} ",
-                                decl.name
-                            ))
-                        }
-                    },
-                    TypeInitializer::EnumeratedValues { values: _, default } => match default {
-                        Some(_) => {}
-                        None => {
-                            return Err(format!(
-                                "Variable is constant but does not define value {} ",
-                                decl.name
-                            ))
-                        }
-                    },
-                    TypeInitializer::EnumeratedType(type_init) => match type_init.initial_value {
-                        Some(_) => {}
-                        None => {
-                            return Err(format!(
-                                "Variable is constant but does not define value {} ",
-                                decl.name
-                            ))
-                        }
-                    },
-                    TypeInitializer::FunctionBlock { type_name: _ } => todo!(),
-                    TypeInitializer::Structure { type_name: _ } => todo!(),
-                    TypeInitializer::LateResolvedType(_) => todo!(),
-                }
-            }
+    fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<(), String> {
+        match node.storage_class {
+            StorageClass::Constant => match &node.initializer {
+                TypeInitializer::Simple {
+                    type_name: _,
+                    initial_value,
+                } => match initial_value {
+                    Some(_) => {}
+                    None => {
+                        return Err(format!(
+                            "Variable is constant but does not define value {} ",
+                            node.name
+                        ))
+                    }
+                },
+                TypeInitializer::EnumeratedValues { values: _, default } => match default {
+                    Some(_) => {}
+                    None => {
+                        return Err(format!(
+                            "Variable is constant but does not define value {} ",
+                            node.name
+                        ))
+                    }
+                },
+                TypeInitializer::EnumeratedType(type_init) => match type_init.initial_value {
+                    Some(_) => {}
+                    None => {
+                        return Err(format!(
+                            "Variable is constant but does not define value {} ",
+                            node.name
+                        ))
+                    }
+                },
+                TypeInitializer::FunctionBlock(_) => todo!(),
+                TypeInitializer::Structure { type_name: _ } => todo!(),
+                TypeInitializer::LateResolvedType(_) => todo!(),
+            },
             _ => {}
         }
 
-        Ok(Self::Value::default())
+        visit_var_init_decl(self, node)
     }
 }
 

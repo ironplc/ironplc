@@ -147,9 +147,9 @@ impl VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
             storage_class: StorageClass::Unspecified,
-            initializer: TypeInitializer::FunctionBlock {
+            initializer: TypeInitializer::FunctionBlock(FunctionBlockTypeInitializer {
                 type_name: Id::from(type_name),
-            },
+            }),
         }
     }
 
@@ -242,6 +242,11 @@ pub struct EnumeratedTypeInitializer {
 }
 
 #[derive(PartialEq, Clone, Debug)]
+pub struct FunctionBlockTypeInitializer {
+    pub type_name: Id,
+}
+
+#[derive(PartialEq, Clone, Debug)]
 pub enum TypeInitializer {
     Simple {
         type_name: Id,
@@ -252,9 +257,7 @@ pub enum TypeInitializer {
         default: Option<Id>,
     },
     EnumeratedType(EnumeratedTypeInitializer),
-    FunctionBlock {
-        type_name: Id,
-    },
+    FunctionBlock(FunctionBlockTypeInitializer),
     Structure {
         // TODO
         type_name: Id,
