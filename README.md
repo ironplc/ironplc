@@ -45,6 +45,12 @@ Run the IEC 61131-3 checker:
 .\target\debug\ironplc-plc2x.exe plc2x\resources\test\first_steps.st
 ```
 
+You can also run using Cargo directly:
+
+```sh
+cargo run plc2x\resources\test\first_steps.st
+```
+
 ## Developing
 
 The current state of the project is it parses a small program
@@ -55,6 +61,36 @@ programs.
 ```sh
 cargo test
 ```
+
+### Debugging the Parser
+
+The PEG parser is difficult to debug without a little help. The steps below
+will help enormously in understanding and fixing what the parser is doing.
+
+Run tests with the `trace` feature enabled to get output on rule matching
+for any test that is failing:
+
+```sh
+cargo test --features trace
+```
+
+For even better debug support, use pegviz. First, build and install the pegviz
+application into your path.
+
+```sh
+git clone https://github.com/fasterthanlime/pegviz.git
+cd pegviz
+cargo install --force --path .
+```
+
+After installing pegviz, pipe output to pegviz for pretty printing of results,
+then open the generated file in a web browser.
+
+```sh
+cargo test --features trace | pegviz --output ./pegviz.html
+```
+
+
 
 ## How It Works
 
