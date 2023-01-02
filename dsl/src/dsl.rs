@@ -110,8 +110,35 @@ pub struct Declaration {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum VariableType {
+    /// Local to a POU.
+    Var,
+    /// Local to a POU. Does not need to be maintained
+    /// between calls to a POU.
+    VarTemp,
+    /// Variable that is visible to a calling POU as an input.
+    Input,
+    /// Variable that is visible to calling POU and can only
+    /// be ready from the calling POU. It can be written to
+    /// by the POU that defines the variable.
+    Output,
+    /// Variable that is visible to calling POU and is readable
+    /// writeable by the calling POU.
+    InOut,
+    /// Enables a POU to read and (possibly) write to a global
+    /// variable.
+    External,
+    /// A variable that may be read and written by multiple
+    /// POUs that also declare the variable as external.
+    Global,
+    /// Configurations for communication channels.
+    Access,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct VarInitDecl {
     pub name: Id,
+    pub var_type: VariableType,
     pub storage_class: StorageClass,
     pub initializer: TypeInitializer,
     // TODO this need much more
@@ -119,9 +146,30 @@ pub struct VarInitDecl {
 
 impl VarInitDecl {
     /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple(name: &str, type_name: &str) -> VarInitDecl {
+    pub fn simple_input(name: &str, type_name: &str) -> VarInitDecl {
+        VarInitDecl::simple(name, type_name, VariableType::Input)
+    }
+
+    /// Creates a variable declaration for simple type and no initialization.
+    pub fn simple_output(name: &str, type_name: &str) -> VarInitDecl {
+        VarInitDecl::simple(name, type_name, VariableType::Output)
+    }
+
+    /// Creates a variable declaration for simple type and no initialization.
+    pub fn simple_var(name: &str, type_name: &str) -> VarInitDecl {
+        VarInitDecl::simple(name, type_name, VariableType::Var)
+    }
+
+    /// Creates a variable declaration for simple type and no initialization.
+    pub fn simple_external(name: &str, type_name: &str) -> VarInitDecl {
+        VarInitDecl::simple(name, type_name, VariableType::External)
+    }
+
+    /// Creates a variable declaration for simple type and no initialization.
+    pub fn simple(name: &str, type_name: &str, var_type: VariableType) -> VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
+            var_type: var_type,
             storage_class: StorageClass::Unspecified,
             initializer: TypeInitializer::Simple {
                 type_name: Id::from(type_name),
@@ -131,9 +179,10 @@ impl VarInitDecl {
     }
 
     /// Creates a variable declaration for enumeration having an initial value.
-    pub fn enumerated(name: &str, type_name: &str, initial_value: &str) -> VarInitDecl {
+    pub fn enumerated_input(name: &str, type_name: &str, initial_value: &str) -> VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
+            var_type: VariableType::Input,
             storage_class: StorageClass::Unspecified,
             initializer: TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
                 type_name: Id::from(type_name),
@@ -143,9 +192,10 @@ impl VarInitDecl {
     }
 
     /// Creates a variable declaration for a function block.
-    pub fn function_block(name: &str, type_name: &str) -> VarInitDecl {
+    pub fn function_block_var(name: &str, type_name: &str) -> VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
+            var_type: VariableType::Var,
             storage_class: StorageClass::Unspecified,
             initializer: TypeInitializer::FunctionBlock(FunctionBlockTypeInitializer {
                 type_name: Id::from(type_name),
@@ -157,9 +207,26 @@ impl VarInitDecl {
     ///
     /// The language has some ambiguity for types. The late bound represents
     /// a placeholder that is later resolved once all types are known.
-    pub fn late_bound(name: &str, type_name: &str) -> VarInitDecl {
+    pub fn late_bound_input(name: &str, type_name: &str) -> VarInitDecl {
+        VarInitDecl::late_bound(name, type_name, VariableType::Input)
+    }
+
+    /// Creates a variable declaration that is ambiguous on the type.
+    ///
+    /// The language has some ambiguity for types. The late bound represents
+    /// a placeholder that is later resolved once all types are known.
+    pub fn late_bound_var(name: &str, type_name: &str) -> VarInitDecl {
+        VarInitDecl::late_bound(name, type_name, VariableType::Var)
+    }
+
+    /// Creates a variable declaration that is ambiguous on the type.
+    ///
+    /// The language has some ambiguity for types. The late bound represents
+    /// a placeholder that is later resolved once all types are known.
+    pub fn late_bound(name: &str, type_name: &str, var_type: VariableType) -> VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
+            var_type: var_type,
             storage_class: StorageClass::Unspecified,
             initializer: TypeInitializer::LateResolvedType(Id::from(type_name)),
         }
@@ -178,19 +245,6 @@ pub struct LocatedVarInit {
 pub enum VarInitKind {
     VarInit(VarInitDecl),
     LocatedVarInit(LocatedVarInit),
-}
-
-impl VarInitKind {
-    pub fn simple(name: &str, type_name: &str) -> VarInitKind {
-        VarInitKind::VarInit(VarInitDecl::simple(name, type_name))
-    }
-
-    pub fn enumerated(name: &str, type_name: &str, initial_value: &str) -> VarInitKind {
-        VarInitKind::VarInit(VarInitDecl::enumerated(name, type_name, initial_value))
-    }
-    pub fn late_bound(name: &str, type_name: &str) -> VarInitKind {
-        VarInitKind::VarInit(VarInitDecl::late_bound(name, type_name))
-    }
 }
 
 // 2.4.3.1 Type assignment

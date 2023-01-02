@@ -42,6 +42,12 @@ impl Visitor<String> for RuleConstantVarsInitialized {
     type Value = ();
 
     fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<(), String> {
+        if node.var_type == VariableType::External {
+            // If the variable type is external, than it must be initialized
+            // somewhere else and therefore we do not need to check here.
+            return visit_var_init_decl(self, node);
+        }
+
         match node.storage_class {
             StorageClass::Constant => match &node.initializer {
                 TypeInitializer::Simple {
@@ -78,7 +84,9 @@ impl Visitor<String> for RuleConstantVarsInitialized {
                 TypeInitializer::Structure { type_name: _ } => todo!(),
                 TypeInitializer::LateResolvedType(_) => todo!(),
             },
-            _ => {}
+            StorageClass::Unspecified => {}
+            StorageClass::Retain => {}
+            StorageClass::NonRetain => {}
         }
 
         visit_var_init_decl(self, node)
@@ -92,7 +100,7 @@ mod test {
     use crate::stages::parse;
 
     #[test]
-    fn apply_when_simple_type_missing_initializer_then_error() {
+    fn apply_when_const_simple_type_missing_initializer_then_error() {
         let program = "
 FUNCTION_BLOCK LOGGER
 VAR CONSTANT
@@ -108,7 +116,7 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
-    fn apply_when_enum_type_missing_initializer_then_error() {
+    fn apply_when_const_enum_type_missing_initializer_then_error() {
         let program = "
 TYPE
 LOGLEVEL : (CRITICAL) := CRITICAL;
@@ -128,7 +136,27 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
-    fn apply_when_missing_initializer_then_ok() {
+    fn apply_when_const_simple_external_type_missing_initializer_then_ok() {
+        let program = "
+TYPE
+LOGLEVEL : (CRITICAL) := CRITICAL;
+END_TYPE
+
+FUNCTION_BLOCK LOGGER
+VAR_EXTERNAL CONSTANT
+ResetCounterValue : LOGLEVEL;
+END_VAR
+
+END_FUNCTION_BLOCK";
+
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+
+        assert_eq!(true, result.is_ok())
+    }
+
+    #[test]
+    fn apply_when_const_simple_has_initializer_then_ok() {
         let program = "
 FUNCTION_BLOCK LOGGER
 VAR CONSTANT
