@@ -487,7 +487,7 @@ mod test {
         let library = Library {
             elems: vec![LibraryElement::ProgramDeclaration(ProgramDeclaration {
                 type_name: Id::from("plc_prg"),
-                inputs: vec![VarInitDecl::simple("Reset", "BOOL")],
+                inputs: vec![VarInitDecl::simple_input("Reset", "BOOL")],
                 outputs: vec![],
                 inouts: vec![],
                 vars: vec![],

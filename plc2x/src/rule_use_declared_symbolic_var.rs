@@ -47,13 +47,10 @@ impl Key for Id {}
 impl Visitor<String> for SymbolTable<Id, DummyNode> {
     type Value = ();
 
-    fn visit_function_declaration(
-        &mut self,
-        node: &FunctionDeclaration,
-    ) -> Result<(), String> {
+    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), String> {
         self.enter();
 
-        self.add(&node.name, DummyNode{});
+        self.add(&node.name, DummyNode {});
         let ret = visit_function_declaration(self, node);
         self.exit();
         ret
@@ -61,7 +58,7 @@ impl Visitor<String> for SymbolTable<Id, DummyNode> {
 
     fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), String> {
         self.enter();
-        self.add(&node.type_name, DummyNode{});
+        self.add(&node.type_name, DummyNode {});
         let ret = visit_program_declaration(self, node);
         self.exit();
         ret
@@ -72,7 +69,7 @@ impl Visitor<String> for SymbolTable<Id, DummyNode> {
         node: &FunctionBlockDeclaration,
     ) -> Result<(), String> {
         self.enter();
-        self.add(&node.name, DummyNode{});
+        self.add(&node.name, DummyNode {});
         let ret = visit_function_block_declaration(self, node);
         self.exit();
         ret

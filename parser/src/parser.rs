@@ -14,6 +14,15 @@ pub fn parse_library(source: &str) -> Result<Vec<LibraryElement>, String> {
     plc_parser::library(source).map_err(|e| String::from(e.to_string()))
 }
 
+/// Defines VarInitDecl type without the type information (e.g. input, output).
+/// Useful only as an intermediate step in the parser where we do not know
+/// the specific type.
+struct UntypedVarInitDecl {
+    pub name: Id,
+    pub storage_class: StorageClass,
+    pub initializer: TypeInitializer,
+}
+
 // Container for IO variable declarations.
 //
 // This is internal for the parser to help with retaining context (input,
@@ -151,13 +160,14 @@ impl VarDeclarations {
     }
 
     pub fn flat_map(
-        declarations: Vec<Vec<VarInitDecl>>,
+        declarations: Vec<Vec<UntypedVarInitDecl>>,
+        var_type: VariableType,
         storage_class: Option<StorageClass>,
     ) -> Vec<VarInitDecl> {
         let declarations = declarations
             .into_iter()
             .flatten()
-            .collect::<Vec<VarInitDecl>>();
+            .collect::<Vec<UntypedVarInitDecl>>();
 
         declarations
             .into_iter()
@@ -165,9 +175,13 @@ impl VarDeclarations {
                 let storage = storage_class
                     .clone()
                     .unwrap_or_else(|| StorageClass::Unspecified);
-                let mut declaration = declaration.clone();
-                declaration.storage_class = storage;
-                declaration
+
+                VarInitDecl {
+                    name: declaration.name,
+                    var_type: var_type.clone(),
+                    storage_class: storage,
+                    initializer: declaration.initializer,
+                }
             })
             .collect()
     }
@@ -462,76 +476,46 @@ parser! {
 
     // B.1.4.3 Declarations and initialization
     pub rule input_declarations() -> Vec<VarInitDecl> = "VAR_INPUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<input_declaration()>) _ "END_VAR" {
-      var_init_flat_map(declarations, storage)
+      VarDeclarations::flat_map(declarations, VariableType::Input, storage)
     }
     // TODO add edge declaration (as a separate item - a tuple)
-    rule input_declaration() -> Vec<VarInitDecl> = i:var_init_decl() { i }
+    rule input_declaration() -> Vec<UntypedVarInitDecl> = i:var_init_decl() { i }
     rule edge_declaration() -> () = var1_list() _ ":" _ "BOOL" _ ("R_EDGE" / "F_EDGE")? {}
     // TODO the problem is we match first, then
     // TODO missing multiple here
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    rule var_init_decl() -> Vec<VarInitDecl> = var1_init_decl()
+    rule var_init_decl() -> Vec<UntypedVarInitDecl> = var1_init_decl()
 
-    // The initialize for some types looks the same if there is not initialization component. We use this to
-    // late bind and later resolve the type.
-    rule late_bound_type_init() -> Vec<VarInitDecl> = names:identifier() ** (_ "," _ ) _ ":" _ type_name:identifier() {
-      names.into_iter().map(|name| {
-        VarInitDecl {
-          name: name,
-          storage_class: StorageClass::Unspecified,
-          initializer: TypeInitializer::LateResolvedType(type_name.clone()),
-        }
-      }).collect()
-    }
     // TODO add in subrange_spec_init(), enumerated_spec_init()
 
-    rule var1_init_decl__with_constant() -> Vec<VarInitDecl> = names:var1_list() _ ":" _ init:(s:simple_spec_init__with_constant() { s } / e:enumerated_spec_init__with_constant() { e }) {
+    rule var1_init_decl() -> Vec<UntypedVarInitDecl> = names:var1_list() _ ":" _ init:(a:simple_or_enumerated_spec_init()) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
-        VarInitDecl {
+        UntypedVarInitDecl {
           name: name,
           storage_class: StorageClass::Unspecified,
           initializer: init.clone(),
         }
       }).collect()
     }
-    rule var1_init_decl() -> Vec<VarInitDecl> = names:var1_list() _ ":" _ init:(a:simple_or_enumerated_spec_init()) {
-      // Each of the names variables has is initialized in the same way. Here we flatten initialization
-      names.into_iter().map(|name| {
-        VarInitDecl {
-          name: name,
-          storage_class: StorageClass::Unspecified,
-          initializer: init.clone(),
-        }
-      }).collect()
-    }
-    //rule var1_init_decl() -> Vec<VarInitDecl> = names:var1_list() _ ":" _ init:(s:simple_spec_init() { s } / e:enumerated_spec_init__with_constant() { e }) {
-    //  // Each of the names variables has is initialized in the same way. Here we flatten initialization
-    //  names.into_iter().map(|name| {
-    //    VarInitDecl {
-    //      name: name,
-    //      storage_class: StorageClass::Unspecified,
-    //      initializer: init.clone(),
-    //    }
-    //  }).collect()
-    //}
+
     rule var1_list() -> Vec<Id> = names:variable_name() ++ (_ "," _) { names }
     rule fb_name() -> Id = i:identifier() { i }
     pub rule output_declarations() -> Vec<VarInitDecl> = "VAR_OUTPUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
-      var_init_flat_map(declarations, storage)
+      VarDeclarations::flat_map(declarations, VariableType::Output, storage)
     }
     pub rule input_output_declarations() -> Vec<VarInitDecl> = "VAR_IN_OUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
-      var_init_flat_map(declarations, storage)
+      VarDeclarations::flat_map(declarations, VariableType::InOut,  storage)
     }
     rule var_declarations() -> VarDeclarations = "VAR" _ storage:"CONSTANT"? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
       let storage = storage.map(|()| StorageClass::Constant);
-      VarDeclarations::Var(VarDeclarations::flat_map(declarations, storage))
+      VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, storage))
     }
     rule retentive_var_declarations() -> VarDeclarations = "VAR" _ "RETAIN" _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
       let storage = Option::Some(StorageClass::Retain);
-      VarDeclarations::Var(VarDeclarations::flat_map(declarations, storage))
+      VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, storage))
     }
     rule located_var_declarations() -> VarDeclarations = "VAR" _ storage:("CONSTANT" { StorageClass::Constant } / "RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<located_var_decl()>) _ "END_VAR" {
       let storage = storage.or(Some(StorageClass::Unspecified));
@@ -561,6 +545,7 @@ parser! {
     rule external_declaration() -> VarInitDecl = name:global_var_name() _ ":" _ spec:external_declaration_spec() {
       VarInitDecl {
         name: name,
+        var_type: VariableType::External,
         storage_class: StorageClass::Unspecified,
         initializer: spec,
       }
@@ -624,12 +609,12 @@ parser! {
     rule io_var_declarations() -> VarDeclarations = i:input_declarations() { VarDeclarations::Inputs(i) } / o:output_declarations() { VarDeclarations::Outputs(o) } / io:input_output_declarations() { VarDeclarations::Inouts(io) }
     rule function_var_decls() -> VarDeclarations = "VAR" _ storage:"CONSTANT"? _ vars:semisep_oneplus(<var2_init_decl()>) _ "END_VAR" {
       let storage = storage.map(|()| StorageClass::Constant);
-      VarDeclarations::Var(var_init_flat_map(vars, storage))
+      VarDeclarations::Var(VarDeclarations::flat_map(vars, VariableType::Var, storage))
     }
     // TODO a bunch are missing here
     rule function_body() -> Vec<StmtKind> = statement_list()
     // TODO return types
-    rule var2_init_decl() -> Vec<VarInitDecl> = var1_init_decl()
+    rule var2_init_decl() -> Vec<UntypedVarInitDecl> = var1_init_decl()
 
     // B.1.5.2 Function blocks
     // IEC 61131 defines separate standard and derived function block names,
@@ -931,11 +916,13 @@ mod test {
         let vars = vec![
             VarInitDecl {
                 name: Id::from("TRIG"),
+                var_type: VariableType::Input,
                 storage_class: StorageClass::Unspecified,
                 initializer: TypeInitializer::simple_uninitialized("BOOL"),
             },
             VarInitDecl {
                 name: Id::from("MSG"),
+                var_type: VariableType::Input,
                 storage_class: StorageClass::Unspecified,
                 initializer: TypeInitializer::simple_uninitialized("STRING"),
             },
@@ -952,6 +939,7 @@ LEVEL : LOGLEVEL := INFO;
 END_VAR";
         let expected = Ok(vec![VarInitDecl {
             name: Id::from("LEVEL"),
+            var_type: VariableType::Input,
             storage_class: StorageClass::Unspecified,
             initializer: TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
                 type_name: Id::from("LOGLEVEL"),
@@ -970,11 +958,13 @@ END_VAR";
         let vars = vec![
             VarInitDecl {
                 name: Id::from("TRIG"),
+                var_type: VariableType::Output,
                 storage_class: StorageClass::Unspecified,
                 initializer: TypeInitializer::simple_uninitialized("BOOL"),
             },
             VarInitDecl {
                 name: Id::from("MSG"),
+                var_type: VariableType::Output,
                 storage_class: StorageClass::Unspecified,
                 initializer: TypeInitializer::simple_uninitialized("STRING"),
             },

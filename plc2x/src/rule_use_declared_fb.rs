@@ -75,10 +75,6 @@ pub fn apply(lib: &Library) -> Result<(), String> {
         }
     }
 
-    for (key, _) in &function_blocks {
-        println!("Found blocks: {}", key);
-    }
-
     // Walk the library to find all references to function blocks
     let mut visitor = RuleFunctionBlockUse::new(&function_blocks);
     visitor.walk(lib)
