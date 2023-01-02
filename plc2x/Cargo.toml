@@ -10,6 +10,9 @@ license = "MIT"
 [badges]
 maintenance = { status = "experimental" }
 
+[features]
+trace = ["ironplc-parser/trace"]
+
 [dependencies]
 ironplc-parser = { path = "../parser", version = "0.1.0" }
 ironplc-dsl = { path = "../dsl", version = "0.1.0" }
