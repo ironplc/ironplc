@@ -49,27 +49,31 @@ impl Visitor<String> for SymbolTable<Id, DummyNode> {
 
     fn visit_function_declaration(
         &mut self,
-        func_decl: &FunctionDeclaration,
+        node: &FunctionDeclaration,
     ) -> Result<(), String> {
         self.enter();
-        let ret = visit_function_declaration(self, func_decl);
+
+        self.add(&node.name, DummyNode{});
+        let ret = visit_function_declaration(self, node);
         self.exit();
         ret
     }
 
-    fn visit_program_declaration(&mut self, prog_decl: &ProgramDeclaration) -> Result<(), String> {
+    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), String> {
         self.enter();
-        let ret = visit_program_declaration(self, prog_decl);
+        self.add(&node.type_name, DummyNode{});
+        let ret = visit_program_declaration(self, node);
         self.exit();
         ret
     }
 
     fn visit_function_block_declaration(
         &mut self,
-        func_decl: &FunctionBlockDeclaration,
+        node: &FunctionBlockDeclaration,
     ) -> Result<(), String> {
         self.enter();
-        let ret = visit_function_block_declaration(self, func_decl);
+        self.add(&node.name, DummyNode{});
+        let ret = visit_function_block_declaration(self, node);
         self.exit();
         ret
     }
