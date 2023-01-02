@@ -206,6 +206,19 @@ impl VarDeclarations {
 parser! {
   grammar plc_parser() for str {
 
+    /// Rule to enable optional tracing rule for pegviz markers that makes
+    /// working with the parser easier in the terminal.
+    rule traced<T>(e: rule<T>) -> T =
+    &(input:$([_]*) {
+        #[cfg(feature = "trace")]
+        println!("[PEG_INPUT_START]\n{}\n[PEG_TRACE_START]", input);
+    })
+    e:e()? {?
+        #[cfg(feature = "trace")]
+        println!("[PEG_TRACE_STOP]");
+        e.ok_or("")
+    }
+
     // peg rules for making the grammar easier to work with
     rule semicolon() -> () = ";" ()
     rule _ = [' ' | '\n' | '\r' ]*
@@ -217,7 +230,8 @@ parser! {
     rule STANDARD_FUNCTION_BLOCK_NAME() = "END_VAR"
 
     // B.0
-    pub rule library() -> Vec<LibraryElement> = _ libs:library_element_declaration() ** _ _ { libs }
+    pub rule library() -> Vec<LibraryElement> = traced(<library__impl()>)
+    pub rule library__impl() -> Vec<LibraryElement> = _ libs:library_element_declaration() ** _ _ { libs }
     // TODO This misses some types such as ladder diagrams
     rule library_element_declaration() -> LibraryElement = dt:data_type_declaration() { LibraryElement::DataTypeDeclaration(dt) } / fbd:function_block_declaration() { LibraryElement::FunctionBlockDeclaration(fbd) } / fd:function_declaration() { LibraryElement::FunctionDeclaration(fd) } / pd:program_declaration() { LibraryElement::ProgramDeclaration(pd) } / cd:configuration_declaration() { LibraryElement::ConfigurationDeclaration(cd) }
 

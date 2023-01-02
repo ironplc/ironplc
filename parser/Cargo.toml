@@ -10,10 +10,12 @@ license = "MIT"
 [badges]
 maintenance = { status = "experimental" }
 
+[features]
+trace = ["peg/trace"]
+
 [dependencies]
 time = "0.3.17"
 ironplc-dsl = { path = "../dsl", version = "0.1.0" }
 
 [dependencies.peg]
 version = "0.8.1"
-features = ["trace"]
