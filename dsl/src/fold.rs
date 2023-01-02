@@ -111,6 +111,7 @@ pub trait Fold {
     fn fold_var_init_decl(&mut self, node: VarInitDecl) -> VarInitDecl {
         VarInitDecl {
             name: node.name.clone(),
+            var_type: node.var_type,
             storage_class: node.storage_class.clone(),
             initializer: Foldable::fold(node.initializer, self),
         }

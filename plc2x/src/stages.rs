@@ -92,13 +92,13 @@ mod tests {
             FunctionBlockDeclaration {
                 name: Id::from("LOGGER"),
                 inputs: vec![
-                    VarInitDecl::simple("TRIG", "BOOL"),
-                    VarInitDecl::simple("MSG", "STRING"),
-                    VarInitDecl::enumerated("LEVEL", "LOGLEVEL", "INFO"),
+                    VarInitDecl::simple_input("TRIG", "BOOL"),
+                    VarInitDecl::simple_input("MSG", "STRING"),
+                    VarInitDecl::enumerated_input("LEVEL", "LOGLEVEL", "INFO"),
                 ],
                 outputs: vec![],
                 inouts: vec![],
-                vars: vec![VarInitDecl::simple("TRIG0", "BOOL")],
+                vars: vec![VarInitDecl::simple_var("TRIG0", "BOOL")],
                 externals: vec![],
                 body: FunctionBlockBody::stmts(vec![
                     StmtKind::if_then(
@@ -130,12 +130,13 @@ mod tests {
         let expected = new_library(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("CounterSFC"),
-                inputs: vec![VarInitDecl::simple("Reset", "BOOL")],
-                outputs: vec![VarInitDecl::simple("OUT", "INT")],
+                inputs: vec![VarInitDecl::simple_input("Reset", "BOOL")],
+                outputs: vec![VarInitDecl::simple_output("OUT", "INT")],
                 inouts: vec![],
-                vars: vec![VarInitDecl::simple("Cnt", "INT")],
+                vars: vec![VarInitDecl::simple_var("Cnt", "INT")],
                 externals: vec![VarInitDecl {
                     name: Id::from("ResetCounterValue"),
+                    var_type: VariableType::External,
                     storage_class: StorageClass::Constant,
                     initializer: TypeInitializer::Simple {
                         type_name: Id::from("INT"),
@@ -231,16 +232,17 @@ mod tests {
         let expected = new_library(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("CounterFBD"),
-                inputs: vec![VarInitDecl::simple("Reset", "BOOL")],
-                outputs: vec![VarInitDecl::simple("OUT", "INT")],
+                inputs: vec![VarInitDecl::simple_input("Reset", "BOOL")],
+                outputs: vec![VarInitDecl::simple_output("OUT", "INT")],
                 inouts: vec![],
                 vars: vec![
-                    VarInitDecl::simple("Cnt", "INT"),
-                    VarInitDecl::simple("_TMP_ADD4_OUT", "INT"),
-                    VarInitDecl::simple("_TMP_SEL7_OUT", "INT"),
+                    VarInitDecl::simple_var("Cnt", "INT"),
+                    VarInitDecl::simple_var("_TMP_ADD4_OUT", "INT"),
+                    VarInitDecl::simple_var("_TMP_SEL7_OUT", "INT"),
                 ],
                 externals: vec![VarInitDecl {
                     name: Id::from("ResetCounterValue"),
+                    var_type: VariableType::External,
                     storage_class: StorageClass::Constant,
                     initializer: TypeInitializer::Simple {
                         type_name: Id::from("INT"),
@@ -263,16 +265,17 @@ mod tests {
             name: Id::from("AverageVal"),
             return_type: Id::from("REAL"),
             inputs: vec![
-                VarInitDecl::simple("Cnt1", "INT"),
-                VarInitDecl::simple("Cnt2", "INT"),
-                VarInitDecl::simple("Cnt3", "INT"),
-                VarInitDecl::simple("Cnt4", "INT"),
-                VarInitDecl::simple("Cnt5", "INT"),
+                VarInitDecl::simple_input("Cnt1", "INT"),
+                VarInitDecl::simple_input("Cnt2", "INT"),
+                VarInitDecl::simple_input("Cnt3", "INT"),
+                VarInitDecl::simple_input("Cnt4", "INT"),
+                VarInitDecl::simple_input("Cnt5", "INT"),
             ],
             outputs: vec![],
             inouts: vec![],
             vars: vec![VarInitDecl {
                 name: Id::from("InputsNumber"),
+                var_type: VariableType::Var,
                 storage_class: StorageClass::Unspecified,
                 initializer: TypeInitializer::Simple {
                     type_name: Id::from("REAL"),
@@ -327,24 +330,24 @@ mod tests {
         let src = read_resource("first_steps_program.st");
         let expected = new_library(LibraryElement::ProgramDeclaration(ProgramDeclaration {
             type_name: Id::from("plc_prg"),
-            inputs: vec![VarInitDecl::simple("Reset", "BOOL")],
+            inputs: vec![VarInitDecl::simple_input("Reset", "BOOL")],
             outputs: vec![
-                VarInitDecl::simple("Cnt1", "INT"),
-                VarInitDecl::simple("Cnt2", "INT"),
-                VarInitDecl::simple("Cnt3", "INT"),
-                VarInitDecl::simple("Cnt4", "INT"),
-                VarInitDecl::simple("Cnt5", "INT"),
+                VarInitDecl::simple_output("Cnt1", "INT"),
+                VarInitDecl::simple_output("Cnt2", "INT"),
+                VarInitDecl::simple_output("Cnt3", "INT"),
+                VarInitDecl::simple_output("Cnt4", "INT"),
+                VarInitDecl::simple_output("Cnt5", "INT"),
             ],
             inouts: vec![],
             vars: vec![
                 // TODO this are being understood as enumerated types not function blocks
-                VarInitDecl::late_bound("CounterST0", "CounterST"),
-                VarInitDecl::late_bound("CounterFBD0", "CounterFBD"),
-                VarInitDecl::late_bound("CounterSFC0", "CounterSFC"),
-                VarInitDecl::late_bound("CounterIL0", "CounterIL"),
-                VarInitDecl::late_bound("CounterLD0", "CounterLD"),
-                VarInitDecl::simple("AVCnt", "REAL"),
-                VarInitDecl::simple("_TMP_AverageVal17_OUT", "REAL"),
+                VarInitDecl::late_bound_var("CounterST0", "CounterST"),
+                VarInitDecl::late_bound_var("CounterFBD0", "CounterFBD"),
+                VarInitDecl::late_bound_var("CounterSFC0", "CounterSFC"),
+                VarInitDecl::late_bound_var("CounterIL0", "CounterIL"),
+                VarInitDecl::late_bound_var("CounterLD0", "CounterLD"),
+                VarInitDecl::simple_var("AVCnt", "REAL"),
+                VarInitDecl::simple_var("_TMP_AverageVal17_OUT", "REAL"),
             ],
             body: FunctionBlockBody::stmts(vec![
                 StmtKind::fb_call_mapped("CounterST0", vec![("Reset", "Reset")]),

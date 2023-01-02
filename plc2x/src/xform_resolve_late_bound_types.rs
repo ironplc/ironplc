@@ -154,10 +154,10 @@ mod tests {
         let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("LOGGER"),
-                inputs: vec![VarInitDecl::late_bound("var_name", "var_type")],
+                inputs: vec![],
                 outputs: vec![],
                 inouts: vec![],
-                vars: vec![],
+                vars: vec![VarInitDecl::late_bound_var("var_name", "var_type")],
                 externals: vec![],
                 body: FunctionBlockBody::stmts(vec![]),
             },
@@ -173,10 +173,10 @@ mod tests {
         let expected = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("LOGGER"),
-                inputs: vec![VarInitDecl::function_block("var_name", "var_type")],
+                inputs: vec![],
                 outputs: vec![],
                 inouts: vec![],
-                vars: vec![],
+                vars: vec![VarInitDecl::function_block_var("var_name", "var_type")],
                 externals: vec![],
                 body: FunctionBlockBody::stmts(vec![]),
             },
