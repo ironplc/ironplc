@@ -19,7 +19,6 @@ pub fn parse_library(source: &str) -> Result<Vec<LibraryElement>, String> {
 /// the specific type.
 struct UntypedVarInitDecl {
     pub name: Id,
-    pub storage_class: StorageClass,
     pub initializer: TypeInitializer,
 }
 
@@ -495,7 +494,6 @@ parser! {
       names.into_iter().map(|name| {
         UntypedVarInitDecl {
           name: name,
-          storage_class: StorageClass::Unspecified,
           initializer: init.clone(),
         }
       }).collect()
