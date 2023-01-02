@@ -425,7 +425,8 @@ impl Acceptor for StmtKind {
 
 impl Acceptor for Network {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
-        todo!()
+        // TODO
+        Ok(V::Value::default())
     }
 }
 

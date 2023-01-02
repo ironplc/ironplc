@@ -1,3 +1,6 @@
+use std::{fs::File, io::Read};
+
+use clap::Parser;
 use stages::{parse, semantic};
 
 extern crate ironplc_dsl;
@@ -17,9 +20,20 @@ mod xform_resolve_late_bound_types;
 #[cfg(test)]
 mod test_helpers;
 
-pub fn main() {
-    let library = parse("").unwrap();
+#[derive(Parser, Debug)]
+struct Args {
+    file: String,
+}
+
+pub fn main() -> std::io::Result<()> {
+    let args = Args::parse();
+
+    let mut file = File::open(args.file)?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+
+    let library = parse(contents.as_str()).unwrap();
     semantic(&library).unwrap();
 
-    // Code generation
+    Ok(())
 }
