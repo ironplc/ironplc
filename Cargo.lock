@@ -58,6 +58,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "codespan-reporting"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3538270d33cc669650c4b093848450d380def10c331d38c768e34cac80576e6e"
+dependencies = [
+ "termcolor",
+ "unicode-width",
+]
+
+[[package]]
 name = "errno"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -136,6 +146,7 @@ dependencies = [
 name = "ironplc-parser"
 version = "0.1.0"
 dependencies = [
+ "codespan-reporting",
  "ironplc-dsl",
  "peg",
  "time",
@@ -146,6 +157,7 @@ name = "ironplc-plc2x"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "codespan-reporting",
  "ironplc-dsl",
  "ironplc-parser",
  "petgraph",
@@ -398,6 +410,12 @@ name = "unicode-ident"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ceab39d59e4c9499d4e5a8ee0e2735b891bb7308ac83dfb4e80cad195c9f6f3"
+
+[[package]]
+name = "unicode-width"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0edd1e5b14653f783770bce4a4dabb4a5108a5370a5f5d8cfe8710c361f6c8b"
 
 [[package]]
 name = "version_check"

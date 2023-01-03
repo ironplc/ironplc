@@ -8,7 +8,8 @@ use ironplc_dsl::visitor::Visitor;
 use ironplc_dsl::{ast::Id, dsl::*};
 use phf::{phf_set, Set};
 use std::collections::HashMap;
-use std::fmt::Error;
+
+use crate::error::SemanticDiagnostic;
 
 static ELEMENTARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
     // signed_integer_type_name
@@ -42,7 +43,7 @@ static ELEMENTARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
     "time"
 };
 
-pub fn apply(lib: Library) -> Result<Library, Error> {
+pub fn apply(lib: Library) -> Result<Library, SemanticDiagnostic> {
     let mut type_map = HashMap::new();
 
     // Walk the entire library to find the types. We don't need
@@ -62,9 +63,9 @@ pub fn apply(lib: Library) -> Result<Library, Error> {
 struct GlobalTypeDefinitionVisitor<'a> {
     types: &'a mut HashMap<Id, TypeDefinitionKind>,
 }
-impl<'a> Visitor<Error> for GlobalTypeDefinitionVisitor<'a> {
+impl<'a> Visitor<SemanticDiagnostic> for GlobalTypeDefinitionVisitor<'a> {
     type Value = ();
-    fn visit_enum_declaration(&mut self, enum_decl: &EnumerationDeclaration) -> Result<(), Error> {
+    fn visit_enum_declaration(&mut self, enum_decl: &EnumerationDeclaration) -> Result<(), SemanticDiagnostic> {
         self.types
             .insert(enum_decl.name.clone(), TypeDefinitionKind::Enumeration);
         Ok(())
@@ -72,12 +73,12 @@ impl<'a> Visitor<Error> for GlobalTypeDefinitionVisitor<'a> {
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<(), Error> {
+    ) -> Result<(), SemanticDiagnostic> {
         self.types
             .insert(node.name.clone(), TypeDefinitionKind::FunctionBlock);
         Ok(())
     }
-    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Error> {
+    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), SemanticDiagnostic> {
         self.types
             .insert(node.name.clone(), TypeDefinitionKind::FunctionBlock);
         Ok(())

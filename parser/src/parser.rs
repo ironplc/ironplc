@@ -2,6 +2,7 @@ extern crate peg;
 
 use peg::parser;
 
+use crate::error::{Location, ParserDiagnostic};
 use crate::mapper::*;
 use ironplc_dsl::ast::*;
 use ironplc_dsl::dsl::*;
@@ -10,8 +11,18 @@ use ironplc_dsl::sfc::*;
 // Don't use std::time::Duration because it does not allow negative values.
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
-pub fn parse_library(source: &str) -> Result<Vec<LibraryElement>, String> {
-    plc_parser::library(source).map_err(|e| String::from(e.to_string()))
+use std::collections::HashSet;
+
+/// Parses a IEC 61131-3 library into object form.
+pub fn parse_library(source: &str) -> Result<Vec<LibraryElement>, ParserDiagnostic> {
+    plc_parser::library(source).map_err(|e| ParserDiagnostic {
+      location: Location {
+        line: e.location.line,
+        column: e.location.column,
+        offset: e.location.offset,
+      },
+      expected: HashSet::from_iter(e.expected.tokens())
+    })
 }
 
 /// Defines VarInitDecl type without the type information (e.g. input, output).

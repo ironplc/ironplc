@@ -20,6 +20,7 @@
 //!       CalleeInstance : Callee;
 //!    END_VAR
 //! END_FUNCTION_BLOCK
+//! ```
 //!
 //! ## Fails
 //!
@@ -44,7 +45,9 @@ use petgraph::{
 };
 use std::collections::HashMap;
 
-pub fn apply(lib: &Library) -> Result<(), String> {
+use crate::error::SemanticDiagnostic;
+
+pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     // Walk to build a graph of POUs and their relationships
     let mut visitor = RulePousNoCycles::new();
     visitor.walk(&lib)?;
@@ -52,7 +55,7 @@ pub fn apply(lib: &Library) -> Result<(), String> {
     // Check if there are cycles in the graph.
     // TODO report what the cycle is
     if is_cyclic_directed(&visitor.graph) {
-        return Err(format!("Library has a recursive cycle"));
+        return SemanticDiagnostic::error("S0005", format!("Library has a recursive cycle"));
     }
 
     // TODO Check the relative calls that it obeys rules
@@ -95,13 +98,13 @@ impl RulePousNoCycles {
     }
 }
 
-impl Visitor<String> for RulePousNoCycles {
+impl Visitor<SemanticDiagnostic> for RulePousNoCycles {
     type Value = ();
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, String> {
+    ) -> Result<Self::Value, SemanticDiagnostic> {
         self.current_from = Some(node.name.clone());
         let res = visit_function_block_declaration(self, node);
         self.current_from = None;
@@ -111,7 +114,7 @@ impl Visitor<String> for RulePousNoCycles {
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
-    ) -> Result<Self::Value, String> {
+    ) -> Result<Self::Value, SemanticDiagnostic> {
         self.current_from = Some(node.name.clone());
         let res = visit_function_declaration(self, node);
         self.current_from = None;
@@ -121,7 +124,7 @@ impl Visitor<String> for RulePousNoCycles {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
-    ) -> Result<Self::Value, String> {
+    ) -> Result<Self::Value, SemanticDiagnostic> {
         self.current_from = Some(node.type_name.clone());
         let res = visit_program_declaration(self, node);
         self.current_from = None;
@@ -131,7 +134,7 @@ impl Visitor<String> for RulePousNoCycles {
     fn visit_function_block_type_initializer(
         &mut self,
         init: &FunctionBlockTypeInitializer,
-    ) -> Result<Self::Value, String> {
+    ) -> Result<Self::Value, SemanticDiagnostic> {
         // Current context has a reference to this function block
         match &self.current_from {
             Some(from) => {
