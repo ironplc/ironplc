@@ -1,12 +1,20 @@
 use std::{fs::File, io::Read};
 
 use clap::Parser;
-use codespan_reporting::{term::{termcolor::{StandardStream, ColorChoice}, self}, diagnostic::Diagnostic, files::SimpleFile};
+use codespan_reporting::{
+    diagnostic::Diagnostic,
+    files::SimpleFile,
+    term::{
+        self,
+        termcolor::{ColorChoice, StandardStream},
+    },
+};
 use stages::{parse, semantic};
 
 extern crate ironplc_dsl;
 extern crate ironplc_parser;
 
+mod error;
 mod rule_constant_vars_initialized;
 mod rule_enumeration_values_unique;
 mod rule_pous_no_cycles;
@@ -17,7 +25,6 @@ mod rule_use_declared_symbolic_var;
 mod stages;
 mod symbol_table;
 mod xform_resolve_late_bound_types;
-mod error;
 
 #[cfg(test)]
 mod test_helpers;
@@ -41,11 +48,11 @@ pub fn main() -> Result<(), ()> {
     match analyze(&contents) {
         Ok(_) => {
             println!("OK");
-        },
+        }
         Err(diagnostic) => {
             let file = SimpleFile::new(filename.clone(), contents);
             term::emit(&mut writer.lock(), &config, &file, &diagnostic).map_err(|_| ())?;
-        },
+        }
     }
 
     Ok(())

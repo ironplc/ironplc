@@ -126,10 +126,13 @@ impl<'a> RuleFunctionBlockUse<'a> {
         // Don't allow a mixture so assert that either named is empty or
         // positional is empty
         if named.len() > 0 && positional.len() > 0 {
-            return SemanticDiagnostic::error("S0001", format!(
-                "Function call {} mixes named and positional input arguments",
-                function_block.name
-            ));
+            return SemanticDiagnostic::error(
+                "S0001",
+                format!(
+                    "Function call {} mixes named and positional input arguments",
+                    function_block.name
+                ),
+            );
         }
 
         if !named.is_empty() {
@@ -139,10 +142,13 @@ impl<'a> RuleFunctionBlockUse<'a> {
                 match function_block.find_input(&name.name) {
                     Some(_) => {}
                     None => {
-                        return SemanticDiagnostic::error("S0001", format!(
-                            "Function call {} assigns input that is not defined {}",
-                            function_block.name, name.name
-                        ))
+                        return SemanticDiagnostic::error(
+                            "S0001",
+                            format!(
+                                "Function call {} assigns input that is not defined {}",
+                                function_block.name, name.name
+                            ),
+                        )
                     }
                 }
             }
@@ -192,7 +198,10 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
         res
     }
 
-    fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<Self::Value, SemanticDiagnostic> {
+    fn visit_var_init_decl(
+        &mut self,
+        node: &VarInitDecl,
+    ) -> Result<Self::Value, SemanticDiagnostic> {
         match &node.initializer {
             TypeInitializer::Simple {
                 type_name: _,
@@ -227,10 +236,10 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
                 match function_block_decl {
                     None => {
                         // Not defined, so this is not a valid use.
-                        return SemanticDiagnostic::error("S0001", format!(
-                            "Function block {} is not declared",
-                            function_block_name
-                        ));
+                        return SemanticDiagnostic::error(
+                            "S0001",
+                            format!("Function block {} is not declared", function_block_name),
+                        );
                     }
                     Some(fb) => {
                         // Validate the parameter assignments
@@ -239,10 +248,13 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
                 }
             }
             None => {
-                return SemanticDiagnostic::error("S0001", format!(
-                    "Function block invocation {} do not refer to a variable in scope",
-                    fb_call.var_name
-                ))
+                return SemanticDiagnostic::error(
+                    "S0001",
+                    format!(
+                        "Function block invocation {} do not refer to a variable in scope",
+                        fb_call.var_name
+                    ),
+                )
             }
         }
     }

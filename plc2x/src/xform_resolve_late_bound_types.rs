@@ -65,7 +65,10 @@ struct GlobalTypeDefinitionVisitor<'a> {
 }
 impl<'a> Visitor<SemanticDiagnostic> for GlobalTypeDefinitionVisitor<'a> {
     type Value = ();
-    fn visit_enum_declaration(&mut self, enum_decl: &EnumerationDeclaration) -> Result<(), SemanticDiagnostic> {
+    fn visit_enum_declaration(
+        &mut self,
+        enum_decl: &EnumerationDeclaration,
+    ) -> Result<(), SemanticDiagnostic> {
         self.types
             .insert(enum_decl.name.clone(), TypeDefinitionKind::Enumeration);
         Ok(())
@@ -78,7 +81,10 @@ impl<'a> Visitor<SemanticDiagnostic> for GlobalTypeDefinitionVisitor<'a> {
             .insert(node.name.clone(), TypeDefinitionKind::FunctionBlock);
         Ok(())
     }
-    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), SemanticDiagnostic> {
+    fn visit_function_declaration(
+        &mut self,
+        node: &FunctionDeclaration,
+    ) -> Result<(), SemanticDiagnostic> {
         self.types
             .insert(node.name.clone(), TypeDefinitionKind::FunctionBlock);
         Ok(())

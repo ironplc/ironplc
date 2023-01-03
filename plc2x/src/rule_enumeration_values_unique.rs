@@ -26,17 +26,23 @@ struct RuleEnumerationValuesUnique {}
 impl Visitor<SemanticDiagnostic> for RuleEnumerationValuesUnique {
     type Value = ();
 
-    fn visit_enum_declaration(&mut self, node: &EnumerationDeclaration) -> Result<(), SemanticDiagnostic> {
+    fn visit_enum_declaration(
+        &mut self,
+        node: &EnumerationDeclaration,
+    ) -> Result<(), SemanticDiagnostic> {
         match &node.spec {
             EnumeratedSpecificationKind::TypeName(_) => return Ok(Self::Value::default()),
             EnumeratedSpecificationKind::Values(values) => {
                 let mut seen_values = HashSet::new();
                 for value in values {
                     if seen_values.contains(&value) {
-                        return SemanticDiagnostic::error("S0004", format!(
-                            "Enumeration declaration {} has duplicated value {}",
-                            node.name, value
-                        ));
+                        return SemanticDiagnostic::error(
+                            "S0004",
+                            format!(
+                                "Enumeration declaration {} has duplicated value {}",
+                                node.name, value
+                            ),
+                        );
                     }
                     seen_values.insert(value);
                 }
