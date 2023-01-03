@@ -15,7 +15,9 @@
 use ironplc_dsl::{dsl::*, visitor::Visitor};
 use std::collections::HashSet;
 
-pub fn apply(lib: &Library) -> Result<(), String> {
+use crate::error::SemanticDiagnostic;
+
+pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     let mut visitor = RuleProgramTaskDefinitionExists::new();
     visitor.walk(lib)
 }
@@ -27,13 +29,13 @@ impl RuleProgramTaskDefinitionExists {
     }
 }
 
-impl Visitor<String> for RuleProgramTaskDefinitionExists {
+impl Visitor<SemanticDiagnostic> for RuleProgramTaskDefinitionExists {
     type Value = ();
 
     fn visit_resource_declaration(
         &mut self,
         node: &ResourceDeclaration,
-    ) -> Result<Self::Value, String> {
+    ) -> Result<Self::Value, SemanticDiagnostic> {
         let mut task_names = HashSet::new();
 
         // Collect all task names for easy lookup
@@ -45,7 +47,7 @@ impl Visitor<String> for RuleProgramTaskDefinitionExists {
         for program in &node.programs {
             if let Some(task_name) = &program.task_name {
                 if !task_names.contains(&task_name) {
-                    return Err(format!(
+                    return SemanticDiagnostic::error("S0001", format!(
                         "Program {} task configuration reference not defined {}",
                         program.name, task_name
                     ));

@@ -27,7 +27,9 @@
 use ironplc_dsl::{ast::Id, dsl::*, visitor::Visitor};
 use std::collections::{HashMap, HashSet};
 
-pub fn apply(lib: &Library) -> Result<(), String> {
+use crate::error::SemanticDiagnostic;
+
+pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     // Collect the data type definitions from the library into a map so that
     // we can quickly look up invocations
     let mut enum_defs = HashMap::new();
@@ -72,7 +74,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
     ///
     /// * a type name does not exist
     /// * recursive type name
-    fn find_enum_declaration_values(&self, type_name: &'a Id) -> Result<&Vec<Id>, String> {
+    fn find_enum_declaration_values(&self, type_name: &'a Id) -> Result<&Vec<Id>, SemanticDiagnostic> {
         // Keep track of names we've seen before so that we can be sure that
         // the loop terminates
         let mut seen_names = HashSet::new();
@@ -89,28 +91,28 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                         EnumeratedSpecificationKind::Values(values) => return Ok(values),
                     }
                 }
-                None => return Err(format!("Enumeration type {} is not declared", name)),
+                None => return Err(SemanticDiagnostic { code: "S0001", message: format!("Enumeration type {} is not declared", name)}),
             }
 
             // Check that our next name is new and we haven't seen it before
             if seen_names.contains(name) {
-                return Err(format!("Recursive enumeration for type {}", name));
+                return Err(SemanticDiagnostic { code: "S0001",message: format!("Recursive enumeration for type {}", name)});
             }
         }
     }
 }
 
-impl Visitor<String> for RuleDeclaredEnumeratedValues<'_> {
+impl Visitor<SemanticDiagnostic> for RuleDeclaredEnumeratedValues<'_> {
     type Value = ();
 
     fn visit_enumerated_type_initializer(
         &mut self,
         init: &EnumeratedTypeInitializer,
-    ) -> Result<Self::Value, String> {
+    ) -> Result<Self::Value, SemanticDiagnostic> {
         let defined_values = self.find_enum_declaration_values(&init.type_name)?;
         if let Some(value) = &init.initial_value {
             if !defined_values.contains(&value) {
-                return Err(format!(
+                return SemanticDiagnostic::error("S0001", format!(
                     "Enumeration uses value {} which is not defined in the enumeration",
                     value
                 ));

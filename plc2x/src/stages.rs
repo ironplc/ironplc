@@ -1,4 +1,7 @@
 //! The compiler as individual stages (to enable testing).
+use codespan_reporting::diagnostic::{Diagnostic};
+use ironplc_parser::error::ParserDiagnostic;
+
 use crate::{
     ironplc_dsl::dsl::Library, rule_constant_vars_initialized, rule_enumeration_values_unique,
     rule_pous_no_cycles, rule_program_task_definition_exists, rule_use_declared_enumerated_value,
@@ -12,21 +15,21 @@ use crate::{
 ///
 /// Returns `Ok(Library)` if parsing succeeded.
 /// Returns `Err(String)` if parsing did not succeed.
-pub fn parse(source: &str) -> Result<Library, String> {
-    let library = ironplc_parser::parse_program(source)?;
+pub fn parse(source: &str) -> Result<Library, Diagnostic<()>> {
+    let library = ironplc_parser::parse_program(source).map_err(|err| <ParserDiagnostic as Into<Diagnostic<()>>>::into(err))?;
 
     // Resolve the late bound type declarations, replacing with
     // the type-specific declarations. This just simplifies
     // code generation because we know the type of every declaration
     // exactly
-    xform_resolve_late_bound_types::apply(library).map_err(|err| err.to_string())
+    xform_resolve_late_bound_types::apply(library).map_err(|err| err.into())
 }
 
 /// Semantic implements semantic analysis (stage 3).
 ///
 /// Returns `Ok(())` if the library is free of semantic errors.
 /// Returns `Err(String)` if the library contains a semantic error.
-pub fn semantic(library: &Library) -> Result<(), String> {
+pub fn semantic(library: &Library) -> Result<(), Diagnostic<()>> {
     rule_use_declared_symbolic_var::apply(&library)?;
     rule_use_declared_enumerated_value::apply(&library)?;
     rule_use_declared_fb::apply(&library)?;

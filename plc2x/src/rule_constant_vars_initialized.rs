@@ -31,17 +31,19 @@ use ironplc_dsl::{
     visitor::{visit_var_init_decl, Visitor},
 };
 
-pub fn apply(lib: &Library) -> Result<(), String> {
+use crate::error::SemanticDiagnostic;
+
+pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     let mut visitor = RuleConstantVarsInitialized {};
     visitor.walk(&lib)
 }
 
 struct RuleConstantVarsInitialized {}
 
-impl Visitor<String> for RuleConstantVarsInitialized {
+impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
     type Value = ();
 
-    fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<(), String> {
+    fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<(), SemanticDiagnostic> {
         if node.var_type == VariableType::External {
             // If the variable type is external, than it must be initialized
             // somewhere else and therefore we do not need to check here.
@@ -56,25 +58,25 @@ impl Visitor<String> for RuleConstantVarsInitialized {
                 } => match initial_value {
                     Some(_) => {}
                     None => {
-                        return Err(format!(
+                        return SemanticDiagnostic::error("S0001", format!(
                             "Variable is constant but does not define value {} ",
                             node.name
-                        ))
+                        ));
                     }
                 },
                 TypeInitializer::EnumeratedValues { values: _, default } => match default {
                     Some(_) => {}
                     None => {
-                        return Err(format!(
+                        return SemanticDiagnostic::error("S0002", format!(
                             "Variable is constant but does not define value {} ",
                             node.name
-                        ))
+                        ));
                     }
                 },
                 TypeInitializer::EnumeratedType(type_init) => match type_init.initial_value {
                     Some(_) => {}
                     None => {
-                        return Err(format!(
+                        return SemanticDiagnostic::error("S0003", format!(
                             "Variable is constant but does not define value {} ",
                             node.name
                         ))

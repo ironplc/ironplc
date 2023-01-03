@@ -39,7 +39,8 @@ Build the application:
 cargo build
 ```
 
-Run the IEC 61131-3 checker:
+Run the IEC 61131-3 checker on small sample program generated from
+[Beremiz](https://beremiz.org/):
 
 ```sh
 .\target\debug\ironplc-plc2x.exe plc2x\resources\test\first_steps.st
@@ -53,14 +54,21 @@ cargo run plc2x\resources\test\first_steps.st
 
 ## Developing
 
-The current state of the project is it parses a small program
-generated from [Beremiz](https://beremiz.org/). The only thing that you can do
-is run unit and integration tests that try to parse correct and incorrect
-programs.
+Compilers and runtimes are tricky to get right and hard to keep right. Use
+Cargo to run tests during development:
 
 ```sh
 cargo test
 ```
+
+### Running the Full Test Suite
+
+The `Cargo` test approach does not executed all tests. The full test suite
+is defined in GitHub actions workflow. You can run the full tests locally
+using [act](https://github.com/nektos/act) (requires Docker).
+
+Follow the steps described in the [act](https://github.com/nektos/act)
+repository to install `act`.
 
 ### Debugging the Parser
 
