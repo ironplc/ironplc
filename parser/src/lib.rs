@@ -1,8 +1,8 @@
 extern crate ironplc_dsl as dsl;
 
+pub mod error;
 mod mapper;
 mod parser;
-pub mod error;
 
 use crate::parser::parse_library;
 use error::ParserDiagnostic;

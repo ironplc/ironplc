@@ -74,7 +74,10 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
     ///
     /// * a type name does not exist
     /// * recursive type name
-    fn find_enum_declaration_values(&self, type_name: &'a Id) -> Result<&Vec<Id>, SemanticDiagnostic> {
+    fn find_enum_declaration_values(
+        &self,
+        type_name: &'a Id,
+    ) -> Result<&Vec<Id>, SemanticDiagnostic> {
         // Keep track of names we've seen before so that we can be sure that
         // the loop terminates
         let mut seen_names = HashSet::new();
@@ -91,12 +94,20 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                         EnumeratedSpecificationKind::Values(values) => return Ok(values),
                     }
                 }
-                None => return Err(SemanticDiagnostic { code: "S0001", message: format!("Enumeration type {} is not declared", name)}),
+                None => {
+                    return Err(SemanticDiagnostic {
+                        code: "S0001",
+                        message: format!("Enumeration type {} is not declared", name),
+                    })
+                }
             }
 
             // Check that our next name is new and we haven't seen it before
             if seen_names.contains(name) {
-                return Err(SemanticDiagnostic { code: "S0001",message: format!("Recursive enumeration for type {}", name)});
+                return Err(SemanticDiagnostic {
+                    code: "S0001",
+                    message: format!("Recursive enumeration for type {}", name),
+                });
             }
         }
     }
@@ -112,10 +123,13 @@ impl Visitor<SemanticDiagnostic> for RuleDeclaredEnumeratedValues<'_> {
         let defined_values = self.find_enum_declaration_values(&init.type_name)?;
         if let Some(value) = &init.initial_value {
             if !defined_values.contains(&value) {
-                return SemanticDiagnostic::error("S0001", format!(
-                    "Enumeration uses value {} which is not defined in the enumeration",
-                    value
-                ));
+                return SemanticDiagnostic::error(
+                    "S0001",
+                    format!(
+                        "Enumeration uses value {} which is not defined in the enumeration",
+                        value
+                    ),
+                );
             }
         }
 

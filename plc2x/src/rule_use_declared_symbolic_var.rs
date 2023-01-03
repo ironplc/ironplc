@@ -35,7 +35,10 @@ use ironplc_dsl::{
     },
 };
 
-use crate::{symbol_table::{self, Key, NodeData, SymbolTable}, error::SemanticDiagnostic};
+use crate::{
+    error::SemanticDiagnostic,
+    symbol_table::{self, Key, NodeData, SymbolTable},
+};
 
 pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     let mut visitor: SymbolTable<Id, DummyNode> = symbol_table::SymbolTable::new();
@@ -51,7 +54,10 @@ impl Key for Id {}
 impl Visitor<SemanticDiagnostic> for SymbolTable<Id, DummyNode> {
     type Value = ();
 
-    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), SemanticDiagnostic> {
+    fn visit_function_declaration(
+        &mut self,
+        node: &FunctionDeclaration,
+    ) -> Result<(), SemanticDiagnostic> {
         self.enter();
 
         self.add(&node.name, DummyNode {});
@@ -60,7 +66,10 @@ impl Visitor<SemanticDiagnostic> for SymbolTable<Id, DummyNode> {
         ret
     }
 
-    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), SemanticDiagnostic> {
+    fn visit_program_declaration(
+        &mut self,
+        node: &ProgramDeclaration,
+    ) -> Result<(), SemanticDiagnostic> {
         self.enter();
         self.add(&node.type_name, DummyNode {});
         let ret = visit_program_declaration(self, node);
@@ -79,7 +88,10 @@ impl Visitor<SemanticDiagnostic> for SymbolTable<Id, DummyNode> {
         ret
     }
 
-    fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<Self::Value, SemanticDiagnostic> {
+    fn visit_var_init_decl(
+        &mut self,
+        node: &VarInitDecl,
+    ) -> Result<Self::Value, SemanticDiagnostic> {
         self.add(&node.name, DummyNode {});
         visit_var_init_decl(self, node)
     }
@@ -93,7 +105,10 @@ impl Visitor<SemanticDiagnostic> for SymbolTable<Id, DummyNode> {
                 // We found the variable being referred to
                 Ok(Self::Value::default())
             }
-            None => SemanticDiagnostic::error("S0001", format!("Variable {} not defined before used", node.name)),
+            None => SemanticDiagnostic::error(
+                "S0001",
+                format!("Variable {} not defined before used", node.name),
+            ),
         }
     }
 }
