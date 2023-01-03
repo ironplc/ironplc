@@ -14,24 +14,26 @@
 use ironplc_dsl::{dsl::*, visitor::Visitor};
 use std::collections::HashSet;
 
-pub fn apply(lib: &Library) -> Result<(), String> {
+use crate::error::SemanticDiagnostic;
+
+pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     let mut visitor = RuleEnumerationValuesUnique {};
     visitor.walk(&lib)
 }
 
 struct RuleEnumerationValuesUnique {}
 
-impl Visitor<String> for RuleEnumerationValuesUnique {
+impl Visitor<SemanticDiagnostic> for RuleEnumerationValuesUnique {
     type Value = ();
 
-    fn visit_enum_declaration(&mut self, node: &EnumerationDeclaration) -> Result<(), String> {
+    fn visit_enum_declaration(&mut self, node: &EnumerationDeclaration) -> Result<(), SemanticDiagnostic> {
         match &node.spec {
             EnumeratedSpecificationKind::TypeName(_) => return Ok(Self::Value::default()),
             EnumeratedSpecificationKind::Values(values) => {
                 let mut seen_values = HashSet::new();
                 for value in values {
                     if seen_values.contains(&value) {
-                        return Err(format!(
+                        return SemanticDiagnostic::error("S0004", format!(
                             "Enumeration declaration {} has duplicated value {}",
                             node.name, value
                         ));

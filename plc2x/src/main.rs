@@ -1,6 +1,7 @@
 use std::{fs::File, io::Read};
 
 use clap::Parser;
+use codespan_reporting::{term::{termcolor::{StandardStream, ColorChoice}, self}, diagnostic::Diagnostic, files::SimpleFile};
 use stages::{parse, semantic};
 
 extern crate ironplc_dsl;
@@ -16,6 +17,7 @@ mod rule_use_declared_symbolic_var;
 mod stages;
 mod symbol_table;
 mod xform_resolve_late_bound_types;
+mod error;
 
 #[cfg(test)]
 mod test_helpers;
@@ -25,15 +27,31 @@ struct Args {
     file: String,
 }
 
-pub fn main() -> std::io::Result<()> {
+pub fn main() -> Result<(), ()> {
     let args = Args::parse();
 
-    let mut file = File::open(args.file)?;
+    let filename = args.file;
+    let mut file = File::open(filename.clone()).map_err(|_| ())?;
     let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
+    file.read_to_string(&mut contents).map_err(|_| ())?;
 
-    let library = parse(contents.as_str()).unwrap();
-    semantic(&library).unwrap();
+    let writer = StandardStream::stderr(ColorChoice::Always);
+    let config = codespan_reporting::term::Config::default();
+
+    match analyze(&contents) {
+        Ok(_) => {
+            println!("OK");
+        },
+        Err(diagnostic) => {
+            let file = SimpleFile::new(filename.clone(), contents);
+            term::emit(&mut writer.lock(), &config, &file, &diagnostic).map_err(|_| ())?;
+        },
+    }
 
     Ok(())
+}
+
+fn analyze(contents: &String) -> Result<(), Diagnostic<()>> {
+    let library = parse(contents.as_str())?;
+    semantic(&library)
 }

@@ -37,6 +37,8 @@ use ironplc_dsl::{
 };
 use std::collections::HashMap;
 
+use crate::error::SemanticDiagnostic;
+
 trait FindIOVariable {
     fn find_input(&self, name: &Id) -> Option<&VarInitDecl>;
     fn find_output(&self, name: &Id) -> Option<&VarInitDecl>;
@@ -62,7 +64,7 @@ impl FindIOVariable for FunctionBlockDeclaration {
     }
 }
 
-pub fn apply(lib: &Library) -> Result<(), String> {
+pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     // Collect the names from the library into a map so that
     // we can quickly look up invocations
     let mut function_blocks = HashMap::new();
@@ -99,7 +101,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
     fn check_inputs(
         function_block: &FunctionBlockDeclaration,
         params: &Vec<ParamAssignment>,
-    ) -> Result<(), String> {
+    ) -> Result<(), SemanticDiagnostic> {
         // Sort the inputs as either named or positional
         let mut named: Vec<&NamedInput> = vec![];
         let mut positional: Vec<&PositionalInput> = vec![];
@@ -124,7 +126,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
         // Don't allow a mixture so assert that either named is empty or
         // positional is empty
         if named.len() > 0 && positional.len() > 0 {
-            return Err(format!(
+            return SemanticDiagnostic::error("S0001", format!(
                 "Function call {} mixes named and positional input arguments",
                 function_block.name
             ));
@@ -137,7 +139,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
                 match function_block.find_input(&name.name) {
                     Some(_) => {}
                     None => {
-                        return Err(format!(
+                        return SemanticDiagnostic::error("S0001", format!(
                             "Function call {} assigns input that is not defined {}",
                             function_block.name, name.name
                         ))
@@ -154,13 +156,13 @@ impl<'a> RuleFunctionBlockUse<'a> {
     }
 }
 
-impl Visitor<String> for RuleFunctionBlockUse<'_> {
+impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
     type Value = ();
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, String> {
+    ) -> Result<Self::Value, SemanticDiagnostic> {
         let res = visit_function_block_declaration(self, node);
 
         // Remove all items from var init decl since we have left this context
@@ -171,7 +173,7 @@ impl Visitor<String> for RuleFunctionBlockUse<'_> {
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
-    ) -> Result<Self::Value, String> {
+    ) -> Result<Self::Value, SemanticDiagnostic> {
         let res = visit_function_declaration(self, node);
 
         // Remove all items from var init decl since we have left this context
@@ -182,7 +184,7 @@ impl Visitor<String> for RuleFunctionBlockUse<'_> {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
-    ) -> Result<Self::Value, String> {
+    ) -> Result<Self::Value, SemanticDiagnostic> {
         let res = visit_program_declaration(self, node);
 
         // Remove all items from var init decl since we have left this context
@@ -190,7 +192,7 @@ impl Visitor<String> for RuleFunctionBlockUse<'_> {
         res
     }
 
-    fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<Self::Value, String> {
+    fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<Self::Value, SemanticDiagnostic> {
         match &node.initializer {
             TypeInitializer::Simple {
                 type_name: _,
@@ -213,7 +215,7 @@ impl Visitor<String> for RuleFunctionBlockUse<'_> {
         Ok(Self::Value::default())
     }
 
-    fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, String> {
+    fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, SemanticDiagnostic> {
         // Check if function block is defined because you cannot
         // call a function block that doesn't exist
         println!("FB Invocation: {}", fb_call.var_name);
@@ -225,7 +227,7 @@ impl Visitor<String> for RuleFunctionBlockUse<'_> {
                 match function_block_decl {
                     None => {
                         // Not defined, so this is not a valid use.
-                        return Err(format!(
+                        return SemanticDiagnostic::error("S0001", format!(
                             "Function block {} is not declared",
                             function_block_name
                         ));
@@ -237,7 +239,7 @@ impl Visitor<String> for RuleFunctionBlockUse<'_> {
                 }
             }
             None => {
-                return Err(format!(
+                return SemanticDiagnostic::error("S0001", format!(
                     "Function block invocation {} do not refer to a variable in scope",
                     fb_call.var_name
                 ))
