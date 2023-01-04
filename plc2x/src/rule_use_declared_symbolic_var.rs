@@ -27,7 +27,7 @@
 //! END_FUNCTION_BLOCK
 //! ```
 use ironplc_dsl::{
-    ast::Id,
+    core::Id,
     dsl::*,
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
@@ -105,10 +105,10 @@ impl Visitor<SemanticDiagnostic> for SymbolTable<Id, DummyNode> {
                 // We found the variable being referred to
                 Ok(Self::Value::default())
             }
-            None => SemanticDiagnostic::error(
+            None => Err(SemanticDiagnostic::error(
                 "S0001",
                 format!("Variable {} not defined before used", node.name),
-            ),
+            )),
         }
     }
 }

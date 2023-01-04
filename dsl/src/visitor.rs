@@ -445,6 +445,7 @@ impl Acceptor for Variable {
 mod test {
     use super::*;
     use crate::ast::*;
+    use crate::core::{Id, SourceLoc};
     use crate::dsl::*;
     use std::collections::LinkedList;
     use std::fmt::Error;
@@ -487,7 +488,11 @@ mod test {
         let library = Library {
             elems: vec![LibraryElement::ProgramDeclaration(ProgramDeclaration {
                 type_name: Id::from("plc_prg"),
-                inputs: vec![VarInitDecl::simple_input("Reset", "BOOL")],
+                inputs: vec![VarInitDecl::simple_input(
+                    "Reset",
+                    "BOOL",
+                    SourceLoc::new(0),
+                )],
                 outputs: vec![],
                 inouts: vec![],
                 vars: vec![],

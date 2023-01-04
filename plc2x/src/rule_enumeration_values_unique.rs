@@ -36,13 +36,13 @@ impl Visitor<SemanticDiagnostic> for RuleEnumerationValuesUnique {
                 let mut seen_values = HashSet::new();
                 for value in values {
                     if seen_values.contains(&value) {
-                        return SemanticDiagnostic::error(
+                        return Err(SemanticDiagnostic::error(
                             "S0004",
                             format!(
                                 "Enumeration declaration {} has duplicated value {}",
                                 node.name, value
                             ),
-                        );
+                        ));
                     }
                     seen_values.insert(value);
                 }

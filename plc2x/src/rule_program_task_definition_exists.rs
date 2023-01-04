@@ -47,13 +47,13 @@ impl Visitor<SemanticDiagnostic> for RuleProgramTaskDefinitionExists {
         for program in &node.programs {
             if let Some(task_name) = &program.task_name {
                 if !task_names.contains(&task_name) {
-                    return SemanticDiagnostic::error(
+                    return Err(SemanticDiagnostic::error(
                         "S0001",
                         format!(
                             "Program {} task configuration reference not defined {}",
                             program.name, task_name
                         ),
-                    );
+                    ));
                 }
             }
         }

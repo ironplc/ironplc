@@ -114,6 +114,7 @@ pub trait Fold {
             var_type: node.var_type,
             storage_class: node.storage_class.clone(),
             initializer: Foldable::fold(node.initializer, self),
+            position: node.position.clone(),
         }
     }
 

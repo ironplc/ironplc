@@ -3,6 +3,7 @@
 //!
 //! ## Passes
 //!
+//! ```ignore
 //! FUNCTION_BLOCK Callee
 //! END_FUNCTION_BLOCK
 //!
@@ -12,9 +13,11 @@
 //!    END_VAR
 //!    FB_INSTANCE();
 //! END_FUNCTION_BLOCK
+//! ```
 //!
 //! ## Fails (Incorrect Parameters)
 //!
+//! ```ignore
 //! FUNCTION_BLOCK Callee
 //!    VAR_INPUT
 //!       IN1: BOOL;
@@ -27,8 +30,10 @@
 //!    END_VAR
 //!    FB_INSTANCE(IN1 := TRUE, BAR := TRUE);
 //! END_FUNCTION_BLOCK
+//! ```
 use ironplc_dsl::{
     ast::*,
+    core::Id,
     dsl::*,
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
@@ -126,13 +131,13 @@ impl<'a> RuleFunctionBlockUse<'a> {
         // Don't allow a mixture so assert that either named is empty or
         // positional is empty
         if named.len() > 0 && positional.len() > 0 {
-            return SemanticDiagnostic::error(
+            return Err(SemanticDiagnostic::error(
                 "S0001",
                 format!(
                     "Function call {} mixes named and positional input arguments",
                     function_block.name
                 ),
-            );
+            ));
         }
 
         if !named.is_empty() {
@@ -142,13 +147,13 @@ impl<'a> RuleFunctionBlockUse<'a> {
                 match function_block.find_input(&name.name) {
                     Some(_) => {}
                     None => {
-                        return SemanticDiagnostic::error(
+                        return Err(SemanticDiagnostic::error(
                             "S0001",
                             format!(
                                 "Function call {} assigns input that is not defined {}",
                                 function_block.name, name.name
                             ),
-                        )
+                        ))
                     }
                 }
             }
@@ -236,10 +241,10 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
                 match function_block_decl {
                     None => {
                         // Not defined, so this is not a valid use.
-                        return SemanticDiagnostic::error(
+                        return Err(SemanticDiagnostic::error(
                             "S0001",
                             format!("Function block {} is not declared", function_block_name),
-                        );
+                        ));
                     }
                     Some(fb) => {
                         // Validate the parameter assignments
@@ -248,13 +253,13 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
                 }
             }
             None => {
-                return SemanticDiagnostic::error(
+                return Err(SemanticDiagnostic::error(
                     "S0001",
                     format!(
                         "Function block invocation {} do not refer to a variable in scope",
                         fb_call.var_name
                     ),
-                )
+                ))
             }
         }
     }

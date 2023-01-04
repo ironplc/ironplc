@@ -58,37 +58,37 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
                 } => match initial_value {
                     Some(_) => {}
                     None => {
-                        return SemanticDiagnostic::error(
+                        return Err(SemanticDiagnostic::error(
                             "S0001",
                             format!(
                                 "Variable is constant but does not define value {} ",
                                 node.name
                             ),
-                        );
+                        ).with_location(&node.position));
                     }
                 },
                 TypeInitializer::EnumeratedValues { values: _, default } => match default {
                     Some(_) => {}
                     None => {
-                        return SemanticDiagnostic::error(
+                        return Err(SemanticDiagnostic::error(
                             "S0002",
                             format!(
                                 "Variable is constant but does not define value {} ",
                                 node.name
                             ),
-                        );
+                        ).with_location(&node.position));
                     }
                 },
                 TypeInitializer::EnumeratedType(type_init) => match type_init.initial_value {
                     Some(_) => {}
                     None => {
-                        return SemanticDiagnostic::error(
+                        return Err(SemanticDiagnostic::error(
                             "S0003",
                             format!(
                                 "Variable is constant but does not define value {} ",
                                 node.name
                             ),
-                        )
+                        ).with_location(&node.position))
                     }
                 },
                 TypeInitializer::FunctionBlock(_) => todo!(),

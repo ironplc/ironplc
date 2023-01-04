@@ -4,6 +4,7 @@ use std::hash::{Hash, Hasher};
 use time::Duration;
 
 use crate::ast::*;
+use crate::core::{Id, SourceLoc};
 use crate::sfc::Network;
 
 pub enum TypeDefinitionKind {
@@ -13,6 +14,7 @@ pub enum TypeDefinitionKind {
     Structure,
 }
 
+/// Defines the top-level elements that are valid declarations in a library.
 #[derive(Debug, PartialEq)]
 pub enum LibraryElement {
     DataTypeDeclaration(Vec<EnumerationDeclaration>),
@@ -23,6 +25,10 @@ pub enum LibraryElement {
     ConfigurationDeclaration(ConfigurationDeclaration),
 }
 
+/// IEC 61131-3 integer.
+///
+/// Underlying data type is a String to trace back to the original
+/// representation if the value is not valid.
 pub struct Integer {
     value: String,
 }
@@ -142,31 +148,37 @@ pub struct VarInitDecl {
     pub storage_class: StorageClass,
     pub initializer: TypeInitializer,
     // TODO this need much more
+    pub position: SourceLoc,
 }
 
 impl VarInitDecl {
     /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple_input(name: &str, type_name: &str) -> VarInitDecl {
-        VarInitDecl::simple(name, type_name, VariableType::Input)
+    pub fn simple_input(name: &str, type_name: &str, loc: SourceLoc) -> VarInitDecl {
+        VarInitDecl::simple(name, type_name, VariableType::Input, loc)
     }
 
     /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple_output(name: &str, type_name: &str) -> VarInitDecl {
-        VarInitDecl::simple(name, type_name, VariableType::Output)
+    pub fn simple_output(name: &str, type_name: &str, loc: SourceLoc) -> VarInitDecl {
+        VarInitDecl::simple(name, type_name, VariableType::Output, loc)
     }
 
     /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple_var(name: &str, type_name: &str) -> VarInitDecl {
-        VarInitDecl::simple(name, type_name, VariableType::Var)
+    pub fn simple_var(name: &str, type_name: &str, loc: SourceLoc) -> VarInitDecl {
+        VarInitDecl::simple(name, type_name, VariableType::Var, loc)
     }
 
     /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple_external(name: &str, type_name: &str) -> VarInitDecl {
-        VarInitDecl::simple(name, type_name, VariableType::External)
+    pub fn simple_external(name: &str, type_name: &str, loc: SourceLoc) -> VarInitDecl {
+        VarInitDecl::simple(name, type_name, VariableType::External, loc)
     }
 
     /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple(name: &str, type_name: &str, var_type: VariableType) -> VarInitDecl {
+    pub fn simple(
+        name: &str,
+        type_name: &str,
+        var_type: VariableType,
+        loc: SourceLoc,
+    ) -> VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
             var_type: var_type,
@@ -175,11 +187,17 @@ impl VarInitDecl {
                 type_name: Id::from(type_name),
                 initial_value: None,
             },
+            position: loc,
         }
     }
 
     /// Creates a variable declaration for enumeration having an initial value.
-    pub fn enumerated_input(name: &str, type_name: &str, initial_value: &str) -> VarInitDecl {
+    pub fn enumerated_input(
+        name: &str,
+        type_name: &str,
+        initial_value: &str,
+        loc: SourceLoc,
+    ) -> VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
             var_type: VariableType::Input,
@@ -188,11 +206,12 @@ impl VarInitDecl {
                 type_name: Id::from(type_name),
                 initial_value: Some(Id::from(initial_value)),
             }),
+            position: loc,
         }
     }
 
     /// Creates a variable declaration for a function block.
-    pub fn function_block_var(name: &str, type_name: &str) -> VarInitDecl {
+    pub fn function_block_var(name: &str, type_name: &str, loc: SourceLoc) -> VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
             var_type: VariableType::Var,
@@ -200,6 +219,7 @@ impl VarInitDecl {
             initializer: TypeInitializer::FunctionBlock(FunctionBlockTypeInitializer {
                 type_name: Id::from(type_name),
             }),
+            position: loc,
         }
     }
 
@@ -207,28 +227,34 @@ impl VarInitDecl {
     ///
     /// The language has some ambiguity for types. The late bound represents
     /// a placeholder that is later resolved once all types are known.
-    pub fn late_bound_input(name: &str, type_name: &str) -> VarInitDecl {
-        VarInitDecl::late_bound(name, type_name, VariableType::Input)
+    pub fn late_bound_input(name: &str, type_name: &str, loc: SourceLoc) -> VarInitDecl {
+        VarInitDecl::late_bound(name, type_name, VariableType::Input, loc)
     }
 
     /// Creates a variable declaration that is ambiguous on the type.
     ///
     /// The language has some ambiguity for types. The late bound represents
     /// a placeholder that is later resolved once all types are known.
-    pub fn late_bound_var(name: &str, type_name: &str) -> VarInitDecl {
-        VarInitDecl::late_bound(name, type_name, VariableType::Var)
+    pub fn late_bound_var(name: &str, type_name: &str, loc: SourceLoc) -> VarInitDecl {
+        VarInitDecl::late_bound(name, type_name, VariableType::Var, loc)
     }
 
     /// Creates a variable declaration that is ambiguous on the type.
     ///
     /// The language has some ambiguity for types. The late bound represents
     /// a placeholder that is later resolved once all types are known.
-    pub fn late_bound(name: &str, type_name: &str, var_type: VariableType) -> VarInitDecl {
+    pub fn late_bound(
+        name: &str,
+        type_name: &str,
+        var_type: VariableType,
+        loc: SourceLoc,
+    ) -> VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
             var_type: var_type,
             storage_class: StorageClass::Unspecified,
             initializer: TypeInitializer::LateResolvedType(Id::from(type_name)),
+            position: loc,
         }
     }
 }
@@ -386,7 +412,9 @@ pub enum StorageClass {
     // storage classes, indicate some how, or fail?
     Unspecified,
     Constant,
+    /// Stored so that the value is retained through power loss.
     Retain,
+    /// Stored so that the value is NOT retained through power loss.
     NonRetain,
 }
 
