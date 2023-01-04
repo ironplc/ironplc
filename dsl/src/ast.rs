@@ -1,77 +1,7 @@
+use crate::core::Id;
 use crate::dsl::{Constant, DirectVariable};
 use std::cmp::Ordering;
 use std::fmt;
-use std::hash::{Hash, Hasher};
-
-/// Implements Identifier declared by 2.1.2.
-///
-/// 61131-3 declares that identifiers are case insensitive.
-/// This class ensures that we do case insensitive comparisons
-/// and can use containers as appropriate.
-
-#[derive(Clone)]
-pub struct Id {
-    original: String,
-    lower_case: String,
-}
-
-impl Id {
-    pub fn from(str: &str) -> Id {
-        Id {
-            original: String::from(str),
-            lower_case: String::from(str).to_lowercase(),
-        }
-    }
-
-    pub fn clone(&self) -> Id {
-        Id::from(self.original.as_str())
-    }
-
-    pub fn to_string(&self) -> String {
-        String::from(&self.lower_case)
-    }
-
-    pub fn lower_case(&self) -> &String {
-        &self.lower_case
-    }
-}
-
-impl PartialEq for Id {
-    fn eq(&self, other: &Self) -> bool {
-        self.lower_case == other.lower_case
-    }
-}
-impl Eq for Id {}
-
-impl Hash for Id {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.lower_case.hash(state);
-    }
-}
-
-impl Ord for Id {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.lower_case.cmp(&other.lower_case)
-    }
-}
-
-impl PartialOrd for Id {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl fmt::Debug for Id {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.original)
-    }
-}
-
-impl fmt::Display for Id {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.original)
-    }
-}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Variable {

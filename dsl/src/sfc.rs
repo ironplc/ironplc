@@ -2,6 +2,7 @@
 //!
 //!  
 use crate::ast::*;
+use crate::core::Id;
 use crate::dsl::*;
 
 #[derive(Debug, PartialEq, Clone)]

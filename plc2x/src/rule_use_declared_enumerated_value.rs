@@ -3,6 +3,7 @@
 //!
 //! ## Passes
 //!
+//! ```ignore
 //! TYPE
 //!    LOGLEVEL : (CRITICAL) := CRITICAL;
 //! END_TYPE
@@ -12,9 +13,11 @@
 //!       LEVEL : LOGLEVEL := CRITICAL;
 //!    END_VAR
 //! END_FUNCTION_BLOCK
+//! ```
 //!
 //! ## Fails
 //!
+//! ```ignore
 //! TYPE
 //!    LOGLEVEL : (INFO) := INFO;
 //! END_TYPE
@@ -24,7 +27,8 @@
 //!       LEVEL : LOGLEVEL := CRITICAL;
 //!    END_VAR
 //! END_FUNCTION_BLOCK
-use ironplc_dsl::{ast::Id, dsl::*, visitor::Visitor};
+//! ```
+use ironplc_dsl::{core::Id, dsl::*, visitor::Visitor};
 use std::collections::{HashMap, HashSet};
 
 use crate::error::SemanticDiagnostic;
@@ -95,19 +99,19 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                     }
                 }
                 None => {
-                    return Err(SemanticDiagnostic {
-                        code: "S0001",
-                        message: format!("Enumeration type {} is not declared", name),
-                    })
+                    return Err(SemanticDiagnostic::error(
+                        "S0001",
+                        format!("Enumeration type {} is not declared", name),
+                    ))
                 }
             }
 
             // Check that our next name is new and we haven't seen it before
             if seen_names.contains(name) {
-                return Err(SemanticDiagnostic {
-                    code: "S0001",
-                    message: format!("Recursive enumeration for type {}", name),
-                });
+                return Err(SemanticDiagnostic::error(
+                    "S0001",
+                    format!("Recursive enumeration for type {}", name),
+                ));
             }
         }
     }
@@ -123,13 +127,13 @@ impl Visitor<SemanticDiagnostic> for RuleDeclaredEnumeratedValues<'_> {
         let defined_values = self.find_enum_declaration_values(&init.type_name)?;
         if let Some(value) = &init.initial_value {
             if !defined_values.contains(&value) {
-                return SemanticDiagnostic::error(
+                return Err(SemanticDiagnostic::error(
                     "S0001",
                     format!(
                         "Enumeration uses value {} which is not defined in the enumeration",
                         value
                     ),
-                );
+                ));
             }
         }
 

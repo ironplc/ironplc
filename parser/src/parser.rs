@@ -1,10 +1,12 @@
 extern crate peg;
 
+use dsl::core::SourceLoc;
 use peg::parser;
 
 use crate::error::{Location, ParserDiagnostic};
 use crate::mapper::*;
 use ironplc_dsl::ast::*;
+use ironplc_dsl::core::Id;
 use ironplc_dsl::dsl::*;
 use ironplc_dsl::sfc::*;
 
@@ -31,6 +33,7 @@ pub fn parse_library(source: &str) -> Result<Vec<LibraryElement>, ParserDiagnost
 struct UntypedVarInitDecl {
     pub name: Id,
     pub initializer: TypeInitializer,
+    pub position: SourceLoc,
 }
 
 // Container for IO variable declarations.
@@ -191,6 +194,7 @@ impl VarDeclarations {
                     var_type: var_type.clone(),
                     storage_class: storage,
                     initializer: declaration.initializer,
+                    position: declaration.position,
                 }
             })
             .collect()
@@ -514,12 +518,13 @@ parser! {
 
     // TODO add in subrange_spec_init(), enumerated_spec_init()
 
-    rule var1_init_decl() -> Vec<UntypedVarInitDecl> = names:var1_list() _ ":" _ init:(a:simple_or_enumerated_spec_init()) {
+    rule var1_init_decl() -> Vec<UntypedVarInitDecl> = start:position!() names:var1_list() _ ":" _ init:(a:simple_or_enumerated_spec_init()) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
         UntypedVarInitDecl {
           name: name,
           initializer: init.clone(),
+          position: SourceLoc::new(start)
         }
       }).collect()
     }
@@ -565,12 +570,13 @@ parser! {
         initial_value: None,
       }
     }
-    rule external_declaration() -> VarInitDecl = name:global_var_name() _ ":" _ spec:external_declaration_spec() {
+    rule external_declaration() -> VarInitDecl = start:position!() name:global_var_name() _ ":" _ spec:external_declaration_spec() {
       VarInitDecl {
         name: name,
         var_type: VariableType::External,
         storage_class: StorageClass::Unspecified,
         initializer: spec,
+        position: SourceLoc::new(start),
       }
     }
     rule global_var_name() -> Id = i:identifier() { i }
@@ -942,12 +948,14 @@ mod test {
                 var_type: VariableType::Input,
                 storage_class: StorageClass::Unspecified,
                 initializer: TypeInitializer::simple_uninitialized("BOOL"),
+                position: SourceLoc::new(18),
             },
             VarInitDecl {
                 name: Id::from("MSG"),
                 var_type: VariableType::Input,
                 storage_class: StorageClass::Unspecified,
                 initializer: TypeInitializer::simple_uninitialized("STRING"),
+                position: SourceLoc::new(39),
             },
         ];
         assert_eq!(plc_parser::input_declarations(decl), Ok(vars))
@@ -968,6 +976,7 @@ END_VAR";
                 type_name: Id::from("LOGLEVEL"),
                 initial_value: Some(Id::from("INFO")),
             }),
+            position: SourceLoc::new(10),
         }]);
         assert_eq!(plc_parser::input_declarations(decl), expected)
     }
@@ -984,12 +993,14 @@ END_VAR";
                 var_type: VariableType::Output,
                 storage_class: StorageClass::Unspecified,
                 initializer: TypeInitializer::simple_uninitialized("BOOL"),
+                position: SourceLoc::new(19),
             },
             VarInitDecl {
                 name: Id::from("MSG"),
                 var_type: VariableType::Output,
                 storage_class: StorageClass::Unspecified,
                 initializer: TypeInitializer::simple_uninitialized("STRING"),
+                position: SourceLoc::new(40),
             },
         ];
         assert_eq!(plc_parser::output_declarations(decl), Ok(vars))

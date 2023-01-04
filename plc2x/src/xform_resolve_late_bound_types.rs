@@ -5,7 +5,7 @@
 //! with well-known types.
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
-use ironplc_dsl::{ast::Id, dsl::*};
+use ironplc_dsl::{core::Id, dsl::*};
 use phf::{phf_set, Set};
 use std::collections::HashMap;
 
@@ -152,8 +152,9 @@ impl Fold for TypeResolver {
 mod tests {
     use crate::test_helpers::*;
     use crate::xform_resolve_late_bound_types::TypeResolver;
+    use ironplc_dsl::core::SourceLoc;
     use ironplc_dsl::fold::Fold;
-    use ironplc_dsl::{ast::Id, dsl::*};
+    use ironplc_dsl::{core::Id, dsl::*};
     use std::collections::HashMap;
 
     #[test]
@@ -164,7 +165,11 @@ mod tests {
                 inputs: vec![],
                 outputs: vec![],
                 inouts: vec![],
-                vars: vec![VarInitDecl::late_bound_var("var_name", "var_type")],
+                vars: vec![VarInitDecl::late_bound_var(
+                    "var_name",
+                    "var_type",
+                    SourceLoc::new(0),
+                )],
                 externals: vec![],
                 body: FunctionBlockBody::stmts(vec![]),
             },
@@ -183,7 +188,11 @@ mod tests {
                 inputs: vec![],
                 outputs: vec![],
                 inouts: vec![],
-                vars: vec![VarInitDecl::function_block_var("var_name", "var_type")],
+                vars: vec![VarInitDecl::function_block_var(
+                    "var_name",
+                    "var_type",
+                    SourceLoc::new(0),
+                )],
                 externals: vec![],
                 body: FunctionBlockBody::stmts(vec![]),
             },

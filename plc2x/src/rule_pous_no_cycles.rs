@@ -32,7 +32,7 @@
 //! END_FUNCTION_BLOCK
 //! ```
 use ironplc_dsl::{
-    ast::Id,
+    core::Id,
     dsl::*,
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
@@ -55,7 +55,10 @@ pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     // Check if there are cycles in the graph.
     // TODO report what the cycle is
     if is_cyclic_directed(&visitor.graph) {
-        return SemanticDiagnostic::error("S0005", format!("Library has a recursive cycle"));
+        return Err(SemanticDiagnostic::error(
+            "S0005",
+            format!("Library has a recursive cycle"),
+        ));
     }
 
     // TODO Check the relative calls that it obeys rules
