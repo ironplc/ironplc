@@ -65,7 +65,7 @@ fn analyze(contents: &String) -> Result<(), Diagnostic<()>> {
 
 #[cfg(test)]
 mod test {
-    use crate::{test_helpers::read_resource, analyze};
+    use crate::{analyze, test_helpers::read_resource};
 
     #[test]
     fn analyze_when_first_steps_then_result_is_ok() {
