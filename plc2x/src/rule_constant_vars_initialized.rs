@@ -68,7 +68,7 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
                         .with_location(&node.position));
                     }
                 },
-                TypeInitializer::EnumeratedValues { values: _, default } => match default {
+                TypeInitializer::EnumeratedValues(spec) => match spec.initial_value {
                     Some(_) => {}
                     None => {
                         return Err(SemanticDiagnostic::error(

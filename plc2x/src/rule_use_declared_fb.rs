@@ -212,10 +212,7 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
                 type_name: _,
                 initial_value: _,
             } => {}
-            TypeInitializer::EnumeratedValues {
-                values: _,
-                default: _,
-            } => {}
+            TypeInitializer::EnumeratedValues(_) => {}
             TypeInitializer::EnumeratedType(_) => {}
             TypeInitializer::FunctionBlock(fbi) => {
                 self.var_to_fb

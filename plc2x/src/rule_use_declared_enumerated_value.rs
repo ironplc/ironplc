@@ -95,7 +95,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                     // might be a reference to another name
                     match &def.spec {
                         EnumeratedSpecificationKind::TypeName(n) => name = &n,
-                        EnumeratedSpecificationKind::Values(values) => return Ok(values),
+                        EnumeratedSpecificationKind::Values(values) => return Ok(&values.ids),
                     }
                 }
                 None => {

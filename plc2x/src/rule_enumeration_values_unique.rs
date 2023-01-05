@@ -32,9 +32,9 @@ impl Visitor<SemanticDiagnostic> for RuleEnumerationValuesUnique {
     ) -> Result<(), SemanticDiagnostic> {
         match &node.spec {
             EnumeratedSpecificationKind::TypeName(_) => return Ok(Self::Value::default()),
-            EnumeratedSpecificationKind::Values(values) => {
+            EnumeratedSpecificationKind::Values(spec) => {
                 let mut seen_values = HashSet::new();
-                for value in values {
+                for value in &spec.ids {
                     if seen_values.contains(&value) {
                         return Err(SemanticDiagnostic::error(
                             "S0004",
