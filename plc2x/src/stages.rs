@@ -66,13 +66,6 @@ mod tests {
     // the parser crate.
 
     #[test]
-    fn parse_when_first_steps_then_result_is_ok() {
-        let src = read_resource("first_steps.st");
-        let res = ironplc_parser::parse_program(src.as_str());
-        assert!(res.is_ok())
-    }
-
-    #[test]
     fn parse_when_first_steps_data_type_decl_then_builds_structure() {
         let src = read_resource("first_steps_data_type_decl.st");
         let expected = new_library(LibraryElement::DataTypeDeclaration(vec![
