@@ -62,3 +62,29 @@ fn analyze(contents: &String) -> Result<(), Diagnostic<()>> {
     let library = parse(contents.as_str())?;
     semantic(&library)
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{test_helpers::read_resource, analyze};
+
+    #[test]
+    fn analyze_when_first_steps_then_result_is_ok() {
+        let src = read_resource("first_steps.st");
+        let res = analyze(&src);
+        assert!(res.is_ok())
+    }
+
+    #[test]
+    fn analyze_when_first_steps_syntax_error_then_result_is_err() {
+        let src = read_resource("first_steps_syntax_error.st");
+        let res = analyze(&src);
+        assert!(res.is_err())
+    }
+
+    #[test]
+    fn analyze_when_first_steps_semantic_error_then_result_is_err() {
+        let src = read_resource("first_steps_semantic_error.st");
+        let res = analyze(&src);
+        assert!(res.is_err())
+    }
+}
