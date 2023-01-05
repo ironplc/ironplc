@@ -322,6 +322,13 @@ pub struct EnumeratedTypeInitializer {
 }
 
 #[derive(PartialEq, Clone, Debug)]
+pub struct EnumeratedValuesInitializer {
+    pub values: Vec<Id>,
+    pub initial_value: Option<Id>,
+    pub position: SourceLoc,
+}
+
+#[derive(PartialEq, Clone, Debug)]
 pub struct FunctionBlockTypeInitializer {
     pub type_name: Id,
 }
@@ -332,10 +339,7 @@ pub enum TypeInitializer {
         type_name: Id,
         initial_value: Option<Initializer>,
     },
-    EnumeratedValues {
-        values: Vec<Id>,
-        default: Option<Id>,
-    },
+    EnumeratedValues(EnumeratedValuesInitializer),
     EnumeratedType(EnumeratedTypeInitializer),
     FunctionBlock(FunctionBlockTypeInitializer),
     Structure {
@@ -360,6 +364,18 @@ impl TypeInitializer {
             type_name: Id::from(type_name),
             initial_value: Some(value),
         }
+    }
+
+    pub fn enumerated_values(
+        values: Vec<Id>,
+        initial_value: Option<Id>,
+        position: SourceLoc,
+    ) -> TypeInitializer {
+        TypeInitializer::EnumeratedValues(EnumeratedValuesInitializer {
+            values: values,
+            initial_value: initial_value,
+            position: position,
+        })
     }
 }
 
@@ -461,13 +477,28 @@ pub struct EnumerationDeclaration {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct EnumeratedSpecificationValues {
+    pub ids: Vec<Id>,
+    pub position: SourceLoc,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum EnumeratedSpecificationKind {
     TypeName(Id),
     /// Enumeration declaration that provides a list of values.
     ///
     /// Order of the values is important because the order declares the
     /// default value if no default is specified directly.
-    Values(Vec<Id>),
+    Values(EnumeratedSpecificationValues),
+}
+
+impl EnumeratedSpecificationKind {
+    pub fn values(values: Vec<Id>, position: SourceLoc) -> EnumeratedSpecificationKind {
+        EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues {
+            ids: values,
+            position: position,
+        })
+    }
 }
 
 #[derive(PartialEq, Clone)]

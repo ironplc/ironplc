@@ -188,6 +188,14 @@ pub trait Visitor<E> {
         Ok(Self::Value::default())
     }
 
+    fn visit_enumerated_values_initializer(
+        &mut self,
+        init: &EnumeratedValuesInitializer,
+    ) -> Result<Self::Value, E> {
+        // leaf node - no children
+        Ok(Self::Value::default())
+    }
+
     fn visit_function_block_type_initializer(
         &mut self,
         init: &FunctionBlockTypeInitializer,
@@ -355,7 +363,9 @@ impl Acceptor for TypeInitializer {
                 type_name,
                 initial_value,
             } => Ok(V::Value::default()),
-            TypeInitializer::EnumeratedValues { values, default } => Ok(V::Value::default()),
+            TypeInitializer::EnumeratedValues(ev) => {
+                visitor.visit_enumerated_values_initializer(ev)
+            }
             TypeInitializer::EnumeratedType(et) => visitor.visit_enumerated_type_initializer(et),
             TypeInitializer::FunctionBlock(fbi) => {
                 visitor.visit_function_block_type_initializer(fbi)
