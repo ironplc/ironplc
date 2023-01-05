@@ -78,12 +78,15 @@ mod tests {
         let expected = new_library(LibraryElement::DataTypeDeclaration(vec![
             EnumerationDeclaration {
                 name: Id::from("LOGLEVEL"),
-                spec: EnumeratedSpecificationKind::Values(vec![
-                    Id::from("CRITICAL"),
-                    Id::from("WARNING"),
-                    Id::from("INFO"),
-                    Id::from("DEBUG"),
-                ]),
+                spec: EnumeratedSpecificationKind::values(
+                    vec![
+                        Id::from("CRITICAL"),
+                        Id::from("WARNING"),
+                        Id::from("INFO"),
+                        Id::from("DEBUG"),
+                    ],
+                    SourceLoc::new(0),
+                ),
                 default: Option::Some(Id::from("INFO")),
             },
         ]));

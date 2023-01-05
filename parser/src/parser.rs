@@ -369,7 +369,7 @@ parser! {
         default: spec.1,
       }
     }
-    rule enumerated_spec_init__with_constant() -> TypeInitializer = spec:enumerated_specification() _ ":=" _ def:enumerated_value() {
+    rule enumerated_spec_init__with_constant() -> TypeInitializer = start:position!() spec:enumerated_specification() _ ":=" _ def:enumerated_value() {
       // TODO gut feeling says there is a defect here but I haven't looked into it
       match spec {
         EnumeratedSpecificationKind::TypeName(name) => {
@@ -379,10 +379,11 @@ parser! {
           });
         },
         EnumeratedSpecificationKind::Values(values) => {
-          return TypeInitializer::EnumeratedValues {
-            values: values,
-            default: Some(def),
-          };
+          return TypeInitializer::enumerated_values(
+            values.ids,
+            Some(def),
+            SourceLoc::new(start),
+          );
         }
       }
      }
@@ -390,8 +391,8 @@ parser! {
       (init, def)
      }
     // TODO this doesn't support type name as a value
-    rule enumerated_specification() -> EnumeratedSpecificationKind  = "(" _ v:enumerated_value() ++ (_ "," _) _ ")" {
-      EnumeratedSpecificationKind::Values(v)
+    rule enumerated_specification() -> EnumeratedSpecificationKind  = start:position!() "(" _ v:enumerated_value() ++ (_ "," _) _ ")" {
+      EnumeratedSpecificationKind::values(v, SourceLoc::new(start))
     }  / name:enumerated_type_name() {
       EnumeratedSpecificationKind::TypeName(name)
     }
@@ -436,19 +437,21 @@ parser! {
           });
         },
         EnumeratedSpecificationKind::Values(values) => {
-          return TypeInitializer::EnumeratedValues {
-            values: values,
-            default: Some(init),
-          };
+          return TypeInitializer::enumerated_values(
+            values.ids,
+            Some(init),
+            values.position,
+          );
         }
       }
-    } / "(" _ values:enumerated_value() ** (_ "," _ ) _ ")" _  init:(":=" _ i:enumerated_value() {i})? {
+    } / start:position!() "(" _ values:enumerated_value() ** (_ "," _ ) _ ")" _  init:(":=" _ i:enumerated_value() {i})? {
       // An enumerated_specification defined by enum values is unambiguous because
       // the parenthesis are not valid simple_specification.
-      TypeInitializer::EnumeratedValues {
-        values: values,
-        default: init
-      }
+      return TypeInitializer::enumerated_values(
+        values,
+        init,
+        SourceLoc::new(start),
+      );
     } / et:elementary_type_name() {
       // An identifier that is an elementary_type_name s unambiguous because these are
       // reserved keywords
