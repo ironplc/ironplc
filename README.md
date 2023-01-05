@@ -35,7 +35,7 @@ Build the application:
 cargo build
 ```
 
-Run the IEC 61131-3 checker on small sample program generated from
+Run the IEC 61131-3 checker on a small sample program generated from
 [Beremiz](https://beremiz.org/):
 
 ```sh
@@ -59,7 +59,7 @@ cargo test
 
 ### Running the Full Test Suite
 
-The `Cargo` test approach does not executed all tests. The full test suite
+The `Cargo` test approach does not execute all tests. The full test suite
 is defined in GitHub actions workflow. You can run the full tests locally
 using [act](https://github.com/nektos/act) (requires Docker).
 
