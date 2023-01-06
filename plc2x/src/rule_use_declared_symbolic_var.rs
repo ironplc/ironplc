@@ -119,7 +119,7 @@ mod tests {
     use crate::stages::parse;
 
     #[test]
-    fn apply_when_undeclared_symbol_then_error() {
+    fn apply_when_function_block_undeclared_symbol_then_error() {
         let program = "
 FUNCTION_BLOCK LOGGER
 VAR
@@ -136,7 +136,7 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
-    fn apply_when_all_symbol_declared_then_ok() {
+    fn apply_when_function_block_all_symbol_declared_then_ok() {
         let program = "
 FUNCTION_BLOCK LOGGER
 VAR
@@ -146,6 +146,42 @@ END_VAR
          
 TRIG := TRIG0;
 END_FUNCTION_BLOCK";
+
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+
+        assert_eq!(true, result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_function_all_symbol_declared_then_ok() {
+        let program = "
+FUNCTION LOGGER : REAL
+VAR_INPUT
+TRIG : BOOL;
+TRIG0 : BOOL;
+END_VAR
+         
+TRIG := TRIG0;
+END_FUNCTION";
+
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+
+        assert_eq!(true, result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_program_all_symbol_declared_then_ok() {
+        let program = "
+PROGRAM LOGGER
+VAR
+TRIG : BOOL;
+TRIG0 : BOOL;
+END_VAR
+         
+TRIG := TRIG0;
+END_PROGRAM";
 
         let library = parse(program).unwrap();
         let result = apply(&library);

@@ -72,6 +72,20 @@ END_TYPE";
     }
 
     #[test]
+    fn apply_when_typename_values_unique_then_ok() {
+        let program = "
+TYPE
+LOGLEVEL : (CRITICAL, ERROR);
+LOGLEVEL2 : LOGLEVEL;
+END_TYPE";
+
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+
+        assert_eq!(true, result.is_ok());
+    }
+
+    #[test]
     fn apply_when_value_duplicated_then_error() {
         let program = "
 TYPE
