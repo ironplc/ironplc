@@ -137,14 +137,14 @@ dependencies = [
 
 [[package]]
 name = "ironplc-dsl"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "time",
 ]
 
 [[package]]
 name = "ironplc-parser"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "codespan-reporting",
  "ironplc-dsl",
@@ -154,7 +154,7 @@ dependencies = [
 
 [[package]]
 name = "ironplc-plc2x"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "codespan-reporting",

@@ -1,6 +1,6 @@
 [package]
 name = "ironplc-plc2x"
-version = "0.1.0"
+version = "0.1.1"
 authors = [ "Garret Fick" ]
 edition = "2021"
 description = "Compiler front-end for ironplc."
@@ -14,8 +14,8 @@ maintenance = { status = "experimental" }
 trace = ["ironplc-parser/trace"]
 
 [dependencies]
-ironplc-parser = { path = "../parser", version = "0.1.0" }
-ironplc-dsl = { path = "../dsl", version = "0.1.0" }
+ironplc-parser = { path = "../parser", version = "0.1.1" }
+ironplc-dsl = { path = "../dsl", version = "0.1.1" }
 time = "0.3.17"
 phf = { version = "0.11", features = ["macros"] }
 petgraph = { version = "0.6.2" }
