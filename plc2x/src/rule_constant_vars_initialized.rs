@@ -150,6 +150,38 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
+    fn apply_when_const_enum_values_type_missing_initializer_then_error() {
+        let program = "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : (INFO, WARN);
+END_VAR
+
+END_FUNCTION_BLOCK";
+
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+
+        assert_eq!(true, result.is_err())
+    }
+
+    #[test]
+    fn apply_when_const_enum_values_type_has_initializer_then_ok() {
+        let program = "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : (INFO, WARN) := INFO;
+END_VAR
+
+END_FUNCTION_BLOCK";
+
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+
+        assert_eq!(true, result.is_ok())
+    }
+
+    #[test]
     fn apply_when_const_simple_external_type_missing_initializer_then_ok() {
         let program = "
 TYPE
