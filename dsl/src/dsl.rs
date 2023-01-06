@@ -7,10 +7,13 @@ use crate::ast::*;
 use crate::core::{Id, SourceLoc};
 use crate::sfc::Network;
 
+/// Derived data types declared by 2.3.3.
 pub enum TypeDefinitionKind {
+    /// Defines a type that can take one of a set number of values.
     Enumeration,
     FunctionBlock,
     Function,
+    /// Defines a type composed of sub-elements.
     Structure,
 }
 

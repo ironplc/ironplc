@@ -54,18 +54,6 @@ impl Hash for Id {
     }
 }
 
-impl Ord for Id {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.lower_case.cmp(&other.lower_case)
-    }
-}
-
-impl PartialOrd for Id {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 impl fmt::Debug for Id {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.original)
