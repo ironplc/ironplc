@@ -4,8 +4,9 @@ use ironplc_parser::error::ParserDiagnostic;
 
 use crate::{
     ironplc_dsl::dsl::Library, rule_constant_vars_initialized, rule_enumeration_values_unique,
-    rule_pous_no_cycles, rule_program_task_definition_exists, rule_use_declared_enumerated_value,
-    rule_use_declared_fb, rule_use_declared_symbolic_var, xform_resolve_late_bound_types,
+    rule_global_const_implies_external_const, rule_pous_no_cycles,
+    rule_program_task_definition_exists, rule_use_declared_enumerated_value, rule_use_declared_fb,
+    rule_use_declared_symbolic_var, xform_resolve_late_bound_types,
 };
 
 /// Parse combines lexical and sematic analysis (stages 1 & 2).
@@ -38,6 +39,7 @@ pub fn semantic(library: &Library) -> Result<(), Diagnostic<()>> {
     rule_enumeration_values_unique::apply(&library)?;
     rule_program_task_definition_exists::apply(&library)?;
     rule_pous_no_cycles::apply(&library)?;
+    rule_global_const_implies_external_const::apply(&library)?;
 
     // 1. Check all identifiers defined (need scope)
     // 2. Type checking
@@ -143,7 +145,7 @@ mod tests {
                 externals: vec![VarInitDecl {
                     name: Id::from("ResetCounterValue"),
                     var_type: VariableType::External,
-                    storage_class: StorageClass::Constant,
+                    qualifier: StorageQualifier::Constant,
                     initializer: TypeInitializer::Simple {
                         type_name: Id::from("INT"),
                         initial_value: None,
@@ -254,7 +256,7 @@ mod tests {
                 externals: vec![VarInitDecl {
                     name: Id::from("ResetCounterValue"),
                     var_type: VariableType::External,
-                    storage_class: StorageClass::Constant,
+                    qualifier: StorageQualifier::Constant,
                     initializer: TypeInitializer::Simple {
                         type_name: Id::from("INT"),
                         initial_value: None,
@@ -288,7 +290,7 @@ mod tests {
             vars: vec![VarInitDecl {
                 name: Id::from("InputsNumber"),
                 var_type: VariableType::Var,
-                storage_class: StorageClass::Unspecified,
+                qualifier: StorageQualifier::Unspecified,
                 initializer: TypeInitializer::Simple {
                     type_name: Id::from("REAL"),
                     initial_value: Some(Initializer::Simple(Constant::RealLiteral(Float {
@@ -396,7 +398,7 @@ mod tests {
                 name: Id::from("config"),
                 global_var: vec![Declaration {
                     name: Id::from("ResetCounterValue"),
-                    storage_class: StorageClass::Constant,
+                    qualifier: StorageQualifier::Constant,
                     at: None,
                     initializer: Option::Some(TypeInitializer::Simple {
                         type_name: Id::from("INT"),

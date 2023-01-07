@@ -17,6 +17,7 @@ extern crate ironplc_parser;
 mod error;
 mod rule_constant_vars_initialized;
 mod rule_enumeration_values_unique;
+mod rule_global_const_implies_external_const;
 mod rule_pous_no_cycles;
 mod rule_program_task_definition_exists;
 mod rule_use_declared_enumerated_value;
