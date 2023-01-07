@@ -157,16 +157,16 @@ impl VarDeclarations {
 
     pub fn map(
         declarations: Vec<VarInitDecl>,
-        storage_class: Option<StorageClass>,
+        qualifier: Option<StorageQualifier>,
     ) -> Vec<VarInitDecl> {
         declarations
             .into_iter()
             .map(|declaration| {
-                let storage = storage_class
+                let qualifier = qualifier
                     .clone()
-                    .unwrap_or_else(|| StorageClass::Unspecified);
+                    .unwrap_or_else(|| StorageQualifier::Unspecified);
                 let mut declaration = declaration.clone();
-                declaration.storage_class = storage;
+                declaration.qualifier = qualifier;
                 declaration
             })
             .collect()
@@ -175,7 +175,7 @@ impl VarDeclarations {
     pub fn flat_map(
         declarations: Vec<Vec<UntypedVarInitDecl>>,
         var_type: VariableType,
-        storage_class: Option<StorageClass>,
+        qualifier: Option<StorageQualifier>,
     ) -> Vec<VarInitDecl> {
         let declarations = declarations
             .into_iter()
@@ -185,14 +185,14 @@ impl VarDeclarations {
         declarations
             .into_iter()
             .map(|declaration| {
-                let storage = storage_class
+                let qualifier = qualifier
                     .clone()
-                    .unwrap_or_else(|| StorageClass::Unspecified);
+                    .unwrap_or_else(|| StorageQualifier::Unspecified);
 
                 VarInitDecl {
                     name: declaration.name,
                     var_type: var_type.clone(),
-                    storage_class: storage,
+                    qualifier: qualifier,
                     initializer: declaration.initializer,
                     position: declaration.position,
                 }
@@ -202,16 +202,16 @@ impl VarDeclarations {
 
     pub fn map_located(
         declarations: Vec<LocatedVarInit>,
-        storage_class: Option<StorageClass>,
+        qualifier: Option<StorageQualifier>,
     ) -> Vec<LocatedVarInit> {
         declarations
             .into_iter()
             .map(|declaration| {
-                let storage = storage_class
+                let qualifier = qualifier
                     .clone()
-                    .unwrap_or_else(|| StorageClass::Unspecified);
+                    .unwrap_or_else(|| StorageQualifier::Unspecified);
                 let mut declaration = declaration.clone();
-                declaration.storage_class = storage;
+                declaration.qualifier = qualifier;
                 declaration
             })
             .collect()
@@ -506,8 +506,8 @@ parser! {
     rule field_selector() -> Id = identifier()
 
     // B.1.4.3 Declarations and initialization
-    pub rule input_declarations() -> Vec<VarInitDecl> = "VAR_INPUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<input_declaration()>) _ "END_VAR" {
-      VarDeclarations::flat_map(declarations, VariableType::Input, storage)
+    pub rule input_declarations() -> Vec<VarInitDecl> = "VAR_INPUT" _ qualifier:("RETAIN" {StorageQualifier::Retain} / "NON_RETAIN" {StorageQualifier::NonRetain})? _ declarations:semisep(<input_declaration()>) _ "END_VAR" {
+      VarDeclarations::flat_map(declarations, VariableType::Input, qualifier)
     }
     // TODO add edge declaration (as a separate item - a tuple)
     rule input_declaration() -> Vec<UntypedVarInitDecl> = i:var_init_decl() { i }
@@ -534,28 +534,28 @@ parser! {
 
     rule var1_list() -> Vec<Id> = names:variable_name() ++ (_ "," _) { names }
     rule fb_name() -> Id = i:identifier() { i }
-    pub rule output_declarations() -> Vec<VarInitDecl> = "VAR_OUTPUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
-      VarDeclarations::flat_map(declarations, VariableType::Output, storage)
+    pub rule output_declarations() -> Vec<VarInitDecl> = "VAR_OUTPUT" _ qualifier:("RETAIN" {StorageQualifier::Retain} / "NON_RETAIN" {StorageQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+      VarDeclarations::flat_map(declarations, VariableType::Output, qualifier)
     }
-    pub rule input_output_declarations() -> Vec<VarInitDecl> = "VAR_IN_OUT" _ storage:("RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
-      VarDeclarations::flat_map(declarations, VariableType::InOut,  storage)
+    pub rule input_output_declarations() -> Vec<VarInitDecl> = "VAR_IN_OUT" _ qualifier:("RETAIN" {StorageQualifier::Retain} / "NON_RETAIN" {StorageQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+      VarDeclarations::flat_map(declarations, VariableType::InOut,  qualifier)
     }
-    rule var_declarations() -> VarDeclarations = "VAR" _ storage:"CONSTANT"? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
-      let storage = storage.map(|()| StorageClass::Constant);
-      VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, storage))
+    rule var_declarations() -> VarDeclarations = "VAR" _ qualifier:"CONSTANT"? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+      let qualifier = qualifier.map(|()| StorageQualifier::Constant);
+      VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
     rule retentive_var_declarations() -> VarDeclarations = "VAR" _ "RETAIN" _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
-      let storage = Option::Some(StorageClass::Retain);
-      VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, storage))
+      let qualifier = Option::Some(StorageQualifier::Retain);
+      VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
-    rule located_var_declarations() -> VarDeclarations = "VAR" _ storage:("CONSTANT" { StorageClass::Constant } / "RETAIN" {StorageClass::Retain} / "NON_RETAIN" {StorageClass::NonRetain})? _ declarations:semisep(<located_var_decl()>) _ "END_VAR" {
-      let storage = storage.or(Some(StorageClass::Unspecified));
-      VarDeclarations::Located(VarDeclarations::map_located(declarations, storage))
+    rule located_var_declarations() -> VarDeclarations = "VAR" _ qualifier:("CONSTANT" { StorageQualifier::Constant } / "RETAIN" {StorageQualifier::Retain} / "NON_RETAIN" {StorageQualifier::NonRetain})? _ declarations:semisep(<located_var_decl()>) _ "END_VAR" {
+      let qualifier = qualifier.or(Some(StorageQualifier::Unspecified));
+      VarDeclarations::Located(VarDeclarations::map_located(declarations, qualifier))
     }
     rule located_var_decl() -> LocatedVarInit = name:variable_name()? _ loc:location() _ ":" _ init:located_var_spec_init() {
       LocatedVarInit {
         name: name,
-        storage_class: StorageClass::Unspecified,
+        qualifier: StorageQualifier::Unspecified,
         at: loc,
         initializer: init,
       }
@@ -563,8 +563,8 @@ parser! {
     // TODO is this NOT the right type to return?
     // We use the same type as in other places for VarInit, but the external always omits the initializer
     rule external_var_declarations() -> VarDeclarations = "VAR_EXTERNAL" _ constant:"CONSTANT"? _ declarations:semisep(<external_declaration()>) _ "END_VAR" {
-      let storage = constant.map(|()| StorageClass::Constant);
-      VarDeclarations::External(VarDeclarations::map(declarations, storage))
+      let qualifier = constant.map(|()| StorageQualifier::Constant);
+      VarDeclarations::External(VarDeclarations::map(declarations, qualifier))
     }
     // TODO subrange_specification, array_specification(), structure_type_name and others
     rule external_declaration_spec() -> TypeInitializer = type_name:simple_specification() {
@@ -577,21 +577,21 @@ parser! {
       VarInitDecl {
         name: name,
         var_type: VariableType::External,
-        storage_class: StorageClass::Unspecified,
+        qualifier: StorageQualifier::Unspecified,
         initializer: spec,
         position: SourceLoc::new(start),
       }
     }
     rule global_var_name() -> Id = i:identifier() { i }
 
-    rule storage_class() -> StorageClass = "CONSTANT" { StorageClass::Constant } / "RETAIN" { StorageClass::Retain }
-    pub rule global_var_declarations() -> Vec<Declaration> = "VAR_GLOBAL" _ storage:storage_class()? _ declarations:semisep(<global_var_decl()>) _ "END_VAR" {
+    rule qualifier() -> StorageQualifier = "CONSTANT" { StorageQualifier::Constant } / "RETAIN" { StorageQualifier::Retain }
+    pub rule global_var_declarations() -> Vec<Declaration> = "VAR_GLOBAL" _ qualifier:qualifier()? _ declarations:semisep(<global_var_decl()>) _ "END_VAR" {
       // TODO set the options - this is pretty similar to VarInit - maybe it should be the same
       let declarations = declarations.into_iter().flatten().collect::<Vec<Declaration>>();
       declarations.into_iter().map(|declaration| {
-        let storage = storage.clone().unwrap_or_else(|| StorageClass::Unspecified);
+        let qualifier = qualifier.clone().unwrap_or_else(|| StorageQualifier::Unspecified);
         let mut declaration = declaration.clone();
-        declaration.storage_class = storage;
+        declaration.qualifier = qualifier;
         declaration
       }).collect()
     }
@@ -600,7 +600,7 @@ parser! {
       vs.0.into_iter().map(|name| {
         Declaration {
           name: name,
-          storage_class: StorageClass::Unspecified,
+          qualifier: StorageQualifier::Unspecified,
           at: vs.1.clone(),
           initializer: initializer.clone(),
         }
@@ -639,9 +639,9 @@ parser! {
       }
     }
     rule io_var_declarations() -> VarDeclarations = i:input_declarations() { VarDeclarations::Inputs(i) } / o:output_declarations() { VarDeclarations::Outputs(o) } / io:input_output_declarations() { VarDeclarations::Inouts(io) }
-    rule function_var_decls() -> VarDeclarations = "VAR" _ storage:"CONSTANT"? _ vars:semisep_oneplus(<var2_init_decl()>) _ "END_VAR" {
-      let storage = storage.map(|()| StorageClass::Constant);
-      VarDeclarations::Var(VarDeclarations::flat_map(vars, VariableType::Var, storage))
+    rule function_var_decls() -> VarDeclarations = "VAR" _ qualifier:"CONSTANT"? _ vars:semisep_oneplus(<var2_init_decl()>) _ "END_VAR" {
+      let qualifier = qualifier.map(|()| StorageQualifier::Constant);
+      VarDeclarations::Var(VarDeclarations::flat_map(vars, VariableType::Var, qualifier))
     }
     // TODO a bunch are missing here
     rule function_body() -> Vec<StmtKind> = statement_list()
@@ -949,14 +949,14 @@ mod test {
             VarInitDecl {
                 name: Id::from("TRIG"),
                 var_type: VariableType::Input,
-                storage_class: StorageClass::Unspecified,
+                qualifier: StorageQualifier::Unspecified,
                 initializer: TypeInitializer::simple_uninitialized("BOOL"),
                 position: SourceLoc::new(18),
             },
             VarInitDecl {
                 name: Id::from("MSG"),
                 var_type: VariableType::Input,
-                storage_class: StorageClass::Unspecified,
+                qualifier: StorageQualifier::Unspecified,
                 initializer: TypeInitializer::simple_uninitialized("STRING"),
                 position: SourceLoc::new(39),
             },
@@ -974,7 +974,7 @@ END_VAR";
         let expected = Ok(vec![VarInitDecl {
             name: Id::from("LEVEL"),
             var_type: VariableType::Input,
-            storage_class: StorageClass::Unspecified,
+            qualifier: StorageQualifier::Unspecified,
             initializer: TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
                 type_name: Id::from("LOGLEVEL"),
                 initial_value: Some(Id::from("INFO")),
@@ -994,14 +994,14 @@ END_VAR";
             VarInitDecl {
                 name: Id::from("TRIG"),
                 var_type: VariableType::Output,
-                storage_class: StorageClass::Unspecified,
+                qualifier: StorageQualifier::Unspecified,
                 initializer: TypeInitializer::simple_uninitialized("BOOL"),
                 position: SourceLoc::new(19),
             },
             VarInitDecl {
                 name: Id::from("MSG"),
                 var_type: VariableType::Output,
-                storage_class: StorageClass::Unspecified,
+                qualifier: StorageQualifier::Unspecified,
                 initializer: TypeInitializer::simple_uninitialized("STRING"),
                 position: SourceLoc::new(40),
             },
@@ -1087,7 +1087,7 @@ END_VAR";
         // TODO assign the right values
         let reset = vec![Declaration {
             name: Id::from("ResetCounterValue"),
-            storage_class: StorageClass::Constant,
+            qualifier: StorageQualifier::Constant,
             at: None,
             initializer: Option::Some(TypeInitializer::Simple {
                 type_name: Id::from("INT"),

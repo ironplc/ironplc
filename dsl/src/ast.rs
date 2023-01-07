@@ -225,8 +225,3 @@ impl ParamAssignment {
         })
     }
 }
-
-pub struct InputParamAssignment {
-    pub name: Option<String>,
-    pub expr: ExprKind,
-}

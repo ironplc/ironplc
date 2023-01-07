@@ -112,7 +112,7 @@ pub trait Fold {
         VarInitDecl {
             name: node.name.clone(),
             var_type: node.var_type,
-            storage_class: node.storage_class.clone(),
+            qualifier: node.qualifier.clone(),
             initializer: Foldable::fold(node.initializer, self),
             position: node.position.clone(),
         }
