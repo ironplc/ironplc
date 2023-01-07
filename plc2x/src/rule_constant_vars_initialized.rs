@@ -1,5 +1,5 @@
 //! Semantic rule that variables declared with the CONSTANT
-//! storage class must have initial values.
+//! qualifier class must have initial values.
 //!
 //! ## Passes
 //!
@@ -50,8 +50,8 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
             return visit_var_init_decl(self, node);
         }
 
-        match node.storage_class {
-            StorageClass::Constant => match &node.initializer {
+        match node.qualifier {
+            StorageQualifier::Constant => match &node.initializer {
                 TypeInitializer::Simple {
                     type_name: _,
                     initial_value,
@@ -98,9 +98,9 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
                 TypeInitializer::Structure { type_name: _ } => todo!(),
                 TypeInitializer::LateResolvedType(_) => todo!(),
             },
-            StorageClass::Unspecified => {}
-            StorageClass::Retain => {}
-            StorageClass::NonRetain => {}
+            StorageQualifier::Unspecified => {}
+            StorageQualifier::Retain => {}
+            StorageQualifier::NonRetain => {}
         }
 
         visit_var_init_decl(self, node)

@@ -7,26 +7,9 @@ use crate::ast::*;
 use crate::core::{Id, SourceLoc};
 use crate::sfc::Network;
 
-/// Derived data types declared by 2.3.3.
-pub enum TypeDefinitionKind {
-    /// Defines a type that can take one of a set number of values.
-    Enumeration,
-    FunctionBlock,
-    Function,
-    /// Defines a type composed of sub-elements.
-    Structure,
-}
-
-/// Defines the top-level elements that are valid declarations in a library.
-#[derive(Debug, PartialEq)]
-pub enum LibraryElement {
-    DataTypeDeclaration(Vec<EnumerationDeclaration>),
-    FunctionDeclaration(FunctionDeclaration),
-    // TODO
-    FunctionBlockDeclaration(FunctionBlockDeclaration),
-    ProgramDeclaration(ProgramDeclaration),
-    ConfigurationDeclaration(ConfigurationDeclaration),
-}
+/// Numeric liberals declared by 2.2.1. Numeric literals define
+/// how data is expressed and are distinct from but associated with
+/// data types.
 
 /// IEC 61131-3 integer.
 ///
@@ -107,15 +90,49 @@ pub struct Float {
     pub data_type: Option<Id>,
 }
 
-// TODO I don't know if I need to support multiple storage classes for the
+/// Derived data types declared by 2.3.3.
+pub enum TypeDefinitionKind {
+    /// Defines a type that can take one of a set number of values.
+    Enumeration,
+    FunctionBlock,
+    Function,
+    /// Defines a type composed of sub-elements.
+    Structure,
+}
+
+// TODO I don't know if I need to support multiple qualifier classes for the
 // same value.
 // 2.4.3 Declaration
 #[derive(Debug, PartialEq, Clone)]
 pub struct Declaration {
     pub name: Id,
-    pub storage_class: StorageClass,
+    pub qualifier: StorageQualifier,
     pub at: Option<At>,
     pub initializer: Option<TypeInitializer>,
+}
+
+/// 2.4.3 Qualifier types for definitions
+#[derive(Debug, PartialEq, Clone)]
+pub enum StorageQualifier {
+    // TODO Some of these are not valid for some contexts - should there be multiple
+    // qualifier classes, indicate some how, or fail?
+    Unspecified,
+    Constant,
+    /// Stored so that the value is retained through power loss.
+    Retain,
+    /// Stored so that the value is NOT retained through power loss.
+    NonRetain,
+}
+
+/// Defines the top-level elements that are valid declarations in a library.
+#[derive(Debug, PartialEq)]
+pub enum LibraryElement {
+    DataTypeDeclaration(Vec<EnumerationDeclaration>),
+    FunctionDeclaration(FunctionDeclaration),
+    // TODO
+    FunctionBlockDeclaration(FunctionBlockDeclaration),
+    ProgramDeclaration(ProgramDeclaration),
+    ConfigurationDeclaration(ConfigurationDeclaration),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -148,7 +165,7 @@ pub enum VariableType {
 pub struct VarInitDecl {
     pub name: Id,
     pub var_type: VariableType,
-    pub storage_class: StorageClass,
+    pub qualifier: StorageQualifier,
     pub initializer: TypeInitializer,
     // TODO this need much more
     pub position: SourceLoc,
@@ -185,7 +202,7 @@ impl VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
             var_type: var_type,
-            storage_class: StorageClass::Unspecified,
+            qualifier: StorageQualifier::Unspecified,
             initializer: TypeInitializer::Simple {
                 type_name: Id::from(type_name),
                 initial_value: None,
@@ -204,7 +221,7 @@ impl VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
             var_type: VariableType::Input,
-            storage_class: StorageClass::Unspecified,
+            qualifier: StorageQualifier::Unspecified,
             initializer: TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
                 type_name: Id::from(type_name),
                 initial_value: Some(Id::from(initial_value)),
@@ -218,7 +235,7 @@ impl VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
             var_type: VariableType::Var,
-            storage_class: StorageClass::Unspecified,
+            qualifier: StorageQualifier::Unspecified,
             initializer: TypeInitializer::FunctionBlock(FunctionBlockTypeInitializer {
                 type_name: Id::from(type_name),
             }),
@@ -255,7 +272,7 @@ impl VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
             var_type: var_type,
-            storage_class: StorageClass::Unspecified,
+            qualifier: StorageQualifier::Unspecified,
             initializer: TypeInitializer::LateResolvedType(Id::from(type_name)),
             position: loc,
         }
@@ -265,7 +282,7 @@ impl VarInitDecl {
 #[derive(Debug, PartialEq, Clone)]
 pub struct LocatedVarInit {
     pub name: Option<Id>,
-    pub storage_class: StorageClass,
+    pub qualifier: StorageQualifier,
     pub at: DirectVariable,
     pub initializer: TypeInitializer,
 }
@@ -423,18 +440,6 @@ impl SizePrefix {
             _ => panic!(),
         }
     }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum StorageClass {
-    // TODO Some of these are not valid for some contexts - should there be multiple
-    // storage classes, indicate some how, or fail?
-    Unspecified,
-    Constant,
-    /// Stored so that the value is retained through power loss.
-    Retain,
-    /// Stored so that the value is NOT retained through power loss.
-    NonRetain,
 }
 
 /// Resource assigns tasks to a particular CPU.
