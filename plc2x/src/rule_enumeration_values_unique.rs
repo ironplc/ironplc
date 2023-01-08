@@ -11,7 +11,7 @@
 //! //! TYPE
 //! LOGLEVEL : (CRITICAL, CRITICAL) := CRITICAL;
 //! END_TYPE
-use ironplc_dsl::{dsl::*, visitor::Visitor};
+use ironplc_dsl::{core::Id, dsl::*, visitor::Visitor};
 use std::collections::HashSet;
 
 use crate::error::SemanticDiagnostic;
@@ -33,18 +33,25 @@ impl Visitor<SemanticDiagnostic> for RuleEnumerationValuesUnique {
         match &node.spec {
             EnumeratedSpecificationKind::TypeName(_) => return Ok(Self::Value::default()),
             EnumeratedSpecificationKind::Values(spec) => {
-                let mut seen_values = HashSet::new();
-                for value in &spec.ids {
-                    if seen_values.contains(&value) {
-                        return Err(SemanticDiagnostic::error(
-                            "S0004",
-                            format!(
-                                "Enumeration declaration {} has duplicated value {}",
-                                node.name, value
-                            ),
-                        ));
+                let mut seen_values: HashSet<&Id> = HashSet::new();
+                for current in &spec.ids {
+                    let seen = seen_values.get(&current);
+                    match seen {
+                        Some(first) => {
+                            return Err(SemanticDiagnostic::error(
+                                "S0004",
+                                format!(
+                                    "Enumeration declaration {} has duplicated value {}",
+                                    node.name, first
+                                ),
+                            )
+                            .with_label(first.location(), "First instance")
+                            .with_label(current.location(), "Duplicate value"));
+                        }
+                        None => {
+                            seen_values.insert(current);
+                        }
                     }
-                    seen_values.insert(value);
                 }
                 return Ok(Self::Value::default());
             }
