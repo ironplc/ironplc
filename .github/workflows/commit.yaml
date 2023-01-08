@@ -26,4 +26,10 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: taiki-e/install-action@cargo-llvm-cov
       - name: Generate coverage
-        run: cargo llvm-cov --all-features --workspace --fail-under-lines 80 --show-missing-lines
+        run: cargo llvm-cov --all-features --workspace --fail-under-lines 80 --show-missing-lines --output-path lcov.info
+      - name: Upload coverage to Codecov
+        # Codecov is used for badges so not configured to fail the build
+        uses: codecov/codecov-action@v3
+        with:
+          files: lcov.info
+          
