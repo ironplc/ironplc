@@ -1,6 +1,32 @@
 use core::fmt;
 use std::{cmp::Ordering, hash::Hash, hash::Hasher};
 
+// TODO it is very questionable to have this part of equality
+#[derive(Debug, Clone)]
+pub struct SourceLoc {
+    pub offset: usize,
+}
+
+impl SourceLoc {
+    pub fn new(offset: usize) -> SourceLoc {
+        SourceLoc { offset: offset }
+    }
+
+    pub fn range(start: usize, end: usize) -> SourceLoc {
+        SourceLoc { offset: start }
+    }
+}
+
+impl PartialEq for SourceLoc {
+    fn eq(&self, other: &Self) -> bool {
+        // TODO this is dubious - two source locations are equal? But to some
+        // degree this is true because we don't care about the location for
+        // equality purposes.
+        true
+    }
+}
+impl Eq for SourceLoc {}
+
 /// Implements Identifier declared by 2.1.2.
 ///
 /// 61131-3 declares that identifiers are case insensitive.
@@ -10,6 +36,7 @@ use std::{cmp::Ordering, hash::Hash, hash::Hasher};
 pub struct Id {
     original: String,
     lower_case: String,
+    location: Option<SourceLoc>,
 }
 
 impl Id {
@@ -18,12 +45,22 @@ impl Id {
         Id {
             original: String::from(str),
             lower_case: String::from(str).to_lowercase(),
+            location: None,
         }
+    }
+
+    pub fn with_location(mut self, loc: SourceLoc) -> Id {
+        self.location = Some(loc);
+        self
     }
 
     /// Returns a copy of the value.
     pub fn clone(&self) -> Id {
-        Id::from(self.original.as_str())
+        let mut id = Id::from(self.original.as_str());
+        if let Some(loc) = &self.location {
+            id = id.with_location(loc.clone());
+        }
+        id
     }
 
     /// Converts an `Identifier` into a `String`.
@@ -38,6 +75,11 @@ impl Id {
     /// Converts an `Identifier` into a lower case `String`.
     pub fn lower_case(&self) -> &String {
         &self.lower_case
+    }
+
+    /// Get the location of the identifier
+    pub fn location(&self) -> &Option<SourceLoc> {
+        &self.location
     }
 }
 
@@ -65,25 +107,3 @@ impl fmt::Display for Id {
         f.write_str(&self.original)
     }
 }
-
-// TODO it is very questionable to have this part of equality
-#[derive(Debug, Clone)]
-pub struct SourceLoc {
-    pub offset: usize,
-}
-
-impl SourceLoc {
-    pub fn new(offset: usize) -> SourceLoc {
-        SourceLoc { offset: offset }
-    }
-}
-
-impl PartialEq for SourceLoc {
-    fn eq(&self, other: &Self) -> bool {
-        // TODO this is dubious - two source locations are equal? But to some
-        // degree this is true because we don't care about the location for
-        // equality purposes.
-        true
-    }
-}
-impl Eq for SourceLoc {}

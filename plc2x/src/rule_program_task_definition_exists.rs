@@ -53,7 +53,8 @@ impl Visitor<SemanticDiagnostic> for RuleProgramTaskDefinitionExists {
                             "Program {} task configuration reference not defined {}",
                             program.name, task_name
                         ),
-                    ));
+                    )
+                    .with_label(task_name.location(), "Reference to task configuration"));
                 }
             }
         }
