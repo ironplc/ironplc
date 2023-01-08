@@ -23,6 +23,15 @@ impl SemanticDiagnostic {
         self.location = Some(loc.clone());
         self
     }
+
+    /// Adds a label to the error indicating a location and description of the position.
+    pub fn with_label(mut self, loc: &Option<SourceLoc>, _: &str) -> SemanticDiagnostic {
+        match loc {
+            Some(loc) => self.location = Some(loc.clone()),
+            None => {}
+        }
+        self
+    }
 }
 
 impl fmt::Display for SemanticDiagnostic {

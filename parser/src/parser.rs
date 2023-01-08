@@ -252,7 +252,7 @@ parser! {
 
     // B.1.1 Letters, digits and identifier
     //rule digit() -> &'input str = $(['0'..='9'])
-    rule identifier() -> Id = !KEYWORD() i:$(['a'..='z' | '0'..='9' | 'A'..='Z' | '_']+) { Id::from(i) }
+    rule identifier() -> Id = start:position!() !KEYWORD() i:$(['a'..='z' | '0'..='9' | 'A'..='Z' | '_']+) end:position!() { Id::from(i).with_location(SourceLoc::range(start, end)) }
 
     // B.1.2 Constants
     rule constant() -> Constant = r:real_literal() { Constant::RealLiteral(r) } / i:integer_literal() { Constant::IntegerLiteral(i.try_from::<i128>()) } / c:character_string() { Constant::CharacterString() }  / d:duration() { Constant::Duration(d) } / t:time_of_day() { Constant::TimeOfDay() } / d:date() { Constant::Date() } / dt:date_and_time() { Constant::DateAndTime() }
