@@ -101,8 +101,9 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                 None => {
                     return Err(SemanticDiagnostic::error(
                         "S0001",
-                        format!("Enumeration type {} is not declared", name),
-                    ))
+                        format!("Enumeration {} is not declared", name),
+                    )
+                    .with_label(name.location(), "Enumeration reference"))
                 }
             }
 
@@ -111,7 +112,8 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                 return Err(SemanticDiagnostic::error(
                     "S0001",
                     format!("Recursive enumeration for type {}", name),
-                ));
+                )
+                .with_label(name.location(), "Current enumeration"));
             }
         }
     }
@@ -133,7 +135,8 @@ impl Visitor<SemanticDiagnostic> for RuleDeclaredEnumeratedValues<'_> {
                         "Enumeration uses value {} which is not defined in the enumeration",
                         value
                     ),
-                ));
+                )
+                .with_label(value.location(), "Expected value in enumeration"));
             }
         }
 
