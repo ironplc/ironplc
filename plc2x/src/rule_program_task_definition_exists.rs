@@ -59,7 +59,7 @@ impl Visitor<SemanticDiagnostic> for RuleProgramTaskDefinitionExists {
             }
         }
 
-        return Ok(Self::Value::default());
+        Ok(())
     }
 }
 

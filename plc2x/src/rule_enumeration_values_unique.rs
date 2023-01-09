@@ -18,7 +18,7 @@ use crate::error::SemanticDiagnostic;
 
 pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     let mut visitor = RuleEnumerationValuesUnique {};
-    visitor.walk(&lib)
+    visitor.walk(lib)
 }
 
 struct RuleEnumerationValuesUnique {}
@@ -31,7 +31,7 @@ impl Visitor<SemanticDiagnostic> for RuleEnumerationValuesUnique {
         node: &EnumerationDeclaration,
     ) -> Result<(), SemanticDiagnostic> {
         match &node.spec {
-            EnumeratedSpecificationKind::TypeName(_) => return Ok(Self::Value::default()),
+            EnumeratedSpecificationKind::TypeName(_) => Ok(()),
             EnumeratedSpecificationKind::Values(spec) => {
                 let mut seen_values: HashSet<&Id> = HashSet::new();
                 for current in &spec.ids {
@@ -53,7 +53,7 @@ impl Visitor<SemanticDiagnostic> for RuleEnumerationValuesUnique {
                         }
                     }
                 }
-                return Ok(Self::Value::default());
+                Ok(())
             }
         }
     }

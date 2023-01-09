@@ -209,8 +209,8 @@ impl VarDeclarations {
             .map(|declaration| {
                 let qualifier = qualifier
                     .clone()
-                    .unwrap_or_else(|| StorageQualifier::Unspecified);
-                let mut declaration = declaration.clone();
+                    .unwrap_or(StorageQualifier::Unspecified);
+                let mut declaration = declaration;
                 declaration.qualifier = qualifier;
                 declaration
             })
@@ -304,7 +304,7 @@ parser! {
       if let Some(sign) = s {
         return i * -1;
       }
-      return i;
+      i
     }
     // milliseconds must come first because the "m" in "ms" would match the minutes rule
     rule interval() -> Duration = ms:milliseconds() { ms } / d:days() { d } / h:hours() { h } / m:minutes() { m } / s:seconds() { s }
@@ -373,17 +373,17 @@ parser! {
       // TODO gut feeling says there is a defect here but I haven't looked into it
       match spec {
         EnumeratedSpecificationKind::TypeName(name) => {
-          return TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
+          TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
             type_name: name,
             initial_value: Some(def),
-          });
+          })
         },
         EnumeratedSpecificationKind::Values(values) => {
-          return TypeInitializer::enumerated_values(
+          TypeInitializer::enumerated_values(
             values.ids,
             Some(def),
             SourceLoc::new(start),
-          );
+          )
         }
       }
      }
@@ -407,7 +407,7 @@ parser! {
     rule simple_spec_init() -> TypeInitializer = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
       TypeInitializer::Simple {
         type_name: type_name,
-        initial_value: constant.map(|v| Initializer::Simple(v)),
+        initial_value: constant.map(Initializer::Simple),
       }
     }
     rule simple_specification() -> Id = elementary_type_name() / simple_type_name()
@@ -431,27 +431,27 @@ parser! {
       // is not a valid constant.
       match spec {
         EnumeratedSpecificationKind::TypeName(name) => {
-          return TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
+          TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
             type_name: name,
             initial_value: Some(init),
-          });
+          })
         },
         EnumeratedSpecificationKind::Values(values) => {
-          return TypeInitializer::enumerated_values(
+          TypeInitializer::enumerated_values(
             values.ids,
             Some(init),
             values.position,
-          );
+          )
         }
       }
     } / start:position!() "(" _ values:enumerated_value() ** (_ "," _ ) _ ")" _  init:(":=" _ i:enumerated_value() {i})? {
       // An enumerated_specification defined by enum values is unambiguous because
       // the parenthesis are not valid simple_specification.
-      return TypeInitializer::enumerated_values(
+      TypeInitializer::enumerated_values(
         values,
         init,
         SourceLoc::new(start),
-      );
+      )
     } / et:elementary_type_name() {
       // An identifier that is an elementary_type_name s unambiguous because these are
       // reserved keywords
@@ -473,7 +473,7 @@ parser! {
 
     // B.1.4.1 Directly represented variables
     pub rule direct_variable() -> DirectVariable = "%" l:location_prefix() s:size_prefix()? addr:integer() ++ "." {
-      let size = s.unwrap_or_else(|| SizePrefix::Nil);
+      let size = s.unwrap_or(SizePrefix::Nil);
       let addr = addr.iter().map(|part|
         part.try_from::<u32>()
       ).collect();
@@ -589,7 +589,7 @@ parser! {
       // TODO set the options - this is pretty similar to VarInit - maybe it should be the same
       let declarations = declarations.into_iter().flatten().collect::<Vec<Declaration>>();
       declarations.into_iter().map(|declaration| {
-        let qualifier = qualifier.clone().unwrap_or_else(|| StorageQualifier::Unspecified);
+        let qualifier = qualifier.clone().unwrap_or(StorageQualifier::Unspecified);
         let mut declaration = declaration.clone();
         declaration.qualifier = qualifier;
         declaration
@@ -714,7 +714,7 @@ parser! {
       ActionAssociation {
         name: name,
         qualifier: qualifier,
-        indicators: indicators.unwrap_or_else(|| vec![]),
+        indicators: indicators.unwrap_or_default(),
       }
     }
     rule action_name() -> Id = identifier()
@@ -750,7 +750,7 @@ parser! {
     rule configuration_name() -> Id = i:identifier() { i }
     rule resource_type_name() -> Id = i:identifier() { i }
     pub rule configuration_declaration() -> ConfigurationDeclaration = "CONFIGURATION" _ n:configuration_name() _ g:global_var_declarations()? _ r:resource_declaration() _ "END_CONFIGURATION" {
-      let g = g.unwrap_or_else(|| vec![]);
+      let g = g.unwrap_or_default();
       // TODO this should really be multiple items
       let r = vec![r];
       ConfigurationDeclaration {
@@ -760,7 +760,7 @@ parser! {
       }
     }
     rule resource_declaration() -> ResourceDeclaration = "RESOURCE" _ n:resource_name() _ "ON" _ t:resource_type_name() _ g:global_var_declarations()? _ resource:single_resource_declaration() _ "END_RESOURCE" {
-      let g = g.unwrap_or_else(|| vec![]);
+      let g = g.unwrap_or_default();
       ResourceDeclaration {
         name: n,
         resource: t,
@@ -770,7 +770,7 @@ parser! {
       }
     }
     // TODO need to have more than one
-    rule single_resource_declaration() -> (Vec<TaskConfiguration>, Vec<ProgramConfiguration>) = t:semisep(<task_configuration()>)? _ p:semisep_oneplus(<program_configuration()>) { (t.unwrap_or(vec![]), p) }
+    rule single_resource_declaration() -> (Vec<TaskConfiguration>, Vec<ProgramConfiguration>) = t:semisep(<task_configuration()>)? _ p:semisep_oneplus(<program_configuration()>) { (t.unwrap_or_default(), p) }
     rule resource_name() -> Id = i:identifier() { i }
     rule program_name() -> Id = i:identifier() { i }
     pub rule task_configuration() -> TaskConfiguration = "TASK" _ name:task_name() _ init:task_initialization() {
@@ -927,8 +927,8 @@ parser! {
     rule if_statement() -> StmtKind = "IF" _ expr:expression() _ "THEN" _ body:statement_list()? _ else_body:("ELSE" _ e:statement_list() { e })? _ "END_IF" {
       StmtKind::If(If {
         expr: expr,
-        body: body.unwrap_or_else(|| vec![]),
-        else_body: else_body.unwrap_or_else(|| vec![])
+        body: body.unwrap_or_default(),
+        else_body: else_body.unwrap_or_default()
       })
     }
   }
