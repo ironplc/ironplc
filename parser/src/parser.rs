@@ -152,7 +152,7 @@ impl VarDeclarations {
             }
         }
 
-        return (io, other, located);
+        (io, other, located)
     }
 
     pub fn map(
@@ -162,10 +162,8 @@ impl VarDeclarations {
         declarations
             .into_iter()
             .map(|declaration| {
-                let qualifier = qualifier
-                    .clone()
-                    .unwrap_or_else(|| StorageQualifier::Unspecified);
-                let mut declaration = declaration.clone();
+                let qualifier = qualifier.clone().unwrap_or(StorageQualifier::Unspecified);
+                let mut declaration = declaration;
                 declaration.qualifier = qualifier;
                 declaration
             })
@@ -177,22 +175,17 @@ impl VarDeclarations {
         var_type: VariableType,
         qualifier: Option<StorageQualifier>,
     ) -> Vec<VarInitDecl> {
-        let declarations = declarations
-            .into_iter()
-            .flatten()
-            .collect::<Vec<UntypedVarInitDecl>>();
+        let declarations = declarations.into_iter().flatten();
 
         declarations
             .into_iter()
             .map(|declaration| {
-                let qualifier = qualifier
-                    .clone()
-                    .unwrap_or_else(|| StorageQualifier::Unspecified);
+                let qualifier = qualifier.clone().unwrap_or(StorageQualifier::Unspecified);
 
                 VarInitDecl {
                     name: declaration.name,
                     var_type: var_type.clone(),
-                    qualifier: qualifier,
+                    qualifier,
                     initializer: declaration.initializer,
                     position: declaration.position,
                 }
@@ -362,7 +355,7 @@ parser! {
     rule single_element_type_declaration() -> EnumerationDeclaration = decl:enumerated_type_declaration() { decl }
     rule enumerated_type_declaration() -> EnumerationDeclaration = name:enumerated_type_name() _ ":" _ spec:enumerated_spec_init() {
       EnumerationDeclaration {
-        name: name,
+        name,
         spec: spec.0,
         default: spec.1,
       }
@@ -398,13 +391,13 @@ parser! {
     // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
     rule simple_spec_init__with_constant() -> TypeInitializer = type_name:simple_specification() _ ":=" _ c:constant() {
       TypeInitializer::Simple {
-        type_name: type_name,
+        type_name,
         initial_value: Some(Initializer::Simple(c)),
       }
     }
     rule simple_spec_init() -> TypeInitializer = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
       TypeInitializer::Simple {
-        type_name: type_name,
+        type_name,
         initial_value: constant.map(Initializer::Simple),
       }
     }
@@ -466,7 +459,7 @@ parser! {
     // B.1.4 Variables
     rule variable() -> Variable = d:direct_variable() { Variable::DirectVariable(d) } / symbolic_variable()
     // TODO add multi-element variable
-    rule symbolic_variable() -> Variable = multi_element_variable() / name:variable_name() { Variable::SymbolicVariable(SymbolicVariable{name: name}) }
+    rule symbolic_variable() -> Variable = multi_element_variable() / name:variable_name() { Variable::SymbolicVariable(SymbolicVariable{name}) }
     rule variable_name() -> Id = i:identifier() { i }
 
     // B.1.4.1 Directly represented variables
@@ -478,7 +471,7 @@ parser! {
 
       DirectVariable {
         location: l,
-        size: size,
+        size,
         address: addr,
       }
     }
@@ -523,7 +516,7 @@ parser! {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
         UntypedVarInitDecl {
-          name: name,
+          name,
           initializer: init.clone(),
           position: SourceLoc::new(start)
         }
@@ -552,7 +545,7 @@ parser! {
     }
     rule located_var_decl() -> LocatedVarInit = name:variable_name()? _ loc:location() _ ":" _ init:located_var_spec_init() {
       LocatedVarInit {
-        name: name,
+        name,
         qualifier: StorageQualifier::Unspecified,
         at: loc,
         initializer: init,
@@ -567,13 +560,13 @@ parser! {
     // TODO subrange_specification, array_specification(), structure_type_name and others
     rule external_declaration_spec() -> TypeInitializer = type_name:simple_specification() {
       TypeInitializer::Simple {
-        type_name: type_name,
+        type_name,
         initial_value: None,
       }
     }
     rule external_declaration() -> VarInitDecl = start:position!() name:global_var_name() _ ":" _ spec:external_declaration_spec() {
       VarInitDecl {
-        name: name,
+        name,
         var_type: VariableType::External,
         qualifier: StorageQualifier::Unspecified,
         initializer: spec,
@@ -585,10 +578,10 @@ parser! {
     rule qualifier() -> StorageQualifier = "CONSTANT" { StorageQualifier::Constant } / "RETAIN" { StorageQualifier::Retain }
     pub rule global_var_declarations() -> Vec<Declaration> = "VAR_GLOBAL" _ qualifier:qualifier()? _ declarations:semisep(<global_var_decl()>) _ "END_VAR" {
       // TODO set the options - this is pretty similar to VarInit - maybe it should be the same
-      let declarations = declarations.into_iter().flatten().collect::<Vec<Declaration>>();
+      let declarations = declarations.into_iter().flatten();
       declarations.into_iter().map(|declaration| {
         let qualifier = qualifier.clone().unwrap_or(StorageQualifier::Unspecified);
-        let mut declaration = declaration.clone();
+        let mut declaration = declaration;
         declaration.qualifier = qualifier;
         declaration
       }).collect()
@@ -597,7 +590,7 @@ parser! {
     rule global_var_decl() -> (Vec<Declaration>) = vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { TypeInitializer::FunctionBlock(FunctionBlockTypeInitializer{type_name: f})})? {
       vs.0.into_iter().map(|name| {
         Declaration {
-          name: name,
+          name,
           qualifier: StorageQualifier::Unspecified,
           at: vs.1.clone(),
           initializer: initializer.clone(),
@@ -625,7 +618,7 @@ parser! {
     rule function_declaration() -> FunctionDeclaration = "FUNCTION" _  name:derived_function_name() _ ":" _ rt:(elementary_type_name() / derived_type_name()) _ var_decls:(io:io_var_declarations() / func:function_var_decls()) ** _ _ body:function_body() _ "END_FUNCTION" {
       let (io, other, located) = VarDeclarations::unzip(var_decls);
       FunctionDeclaration {
-        name: name,
+        name,
         return_type: rt,
         inputs: io.inputs,
         outputs: io.outputs,
@@ -633,7 +626,7 @@ parser! {
         // TODO
         vars: other.vars,
         externals: other.externals,
-        body: body,
+        body,
       }
     }
     rule io_var_declarations() -> VarDeclarations = i:input_declarations() { VarDeclarations::Inputs(i) } / o:output_declarations() { VarDeclarations::Outputs(o) } / io:input_output_declarations() { VarDeclarations::Inouts(io) }
@@ -655,14 +648,14 @@ parser! {
     rule function_block_declaration() -> FunctionBlockDeclaration = "FUNCTION_BLOCK" _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other }) ** _ _ body:function_block_body() _ "END_FUNCTION_BLOCK" {
       let (io, other, located) = VarDeclarations::unzip(decls);
       FunctionBlockDeclaration {
-        name: name,
+        name,
         inputs: io.inputs,
         outputs: io.outputs,
         inouts: io.inouts,
         // TODO
         vars: other.vars,
         externals: other.externals,
-        body: body,
+        body,
       }
     }
     // TODO there are far more here
@@ -680,7 +673,7 @@ parser! {
         inouts: io.inouts,
         vars: other.vars,
         // TODO more
-        body: body,
+        body,
       }
     }
 
@@ -691,18 +684,18 @@ parser! {
     rule sfc_network() ->  Network = init:initial_step() _ elements:((s:step() {s } / a:action() {a} / t:transition() {t}) ** _) {
       Network {
         initial_step: init,
-        elements: elements
+        elements
       }
     }
     rule initial_step() -> Element = "INITIAL_STEP" _ name:step_name() _ ":" _ assoc:action_association() ** (_ ";" _) "END_STEP" {
       Element::InitialStep {
-        name: name,
+        name,
         action_associations: assoc,
       }
     }
     rule step() -> Element = "STEP" _ name:step_name() _ ":" _ assoc:semisep(<action_association()>) _ "END_STEP" {
       Element::Step {
-        name: name,
+        name,
         action_associations: assoc
       }
     }
@@ -710,8 +703,8 @@ parser! {
     // TODO this is missing stuff
     rule action_association() -> ActionAssociation = name:action_name() _ "(" _ qualifier:action_qualifier()? _ indicators:("," _ i:indicator_name() ** (_ "," _) { i })? _ ")" {
       ActionAssociation {
-        name: name,
-        qualifier: qualifier,
+        name,
+        qualifier,
         indicators: indicators.unwrap_or_default(),
       }
     }
@@ -721,11 +714,11 @@ parser! {
     rule indicator_name() -> Id = variable_name()
     rule transition() -> Element = "TRANSITION" _ name:transition_name()? _ priority:("(" _ "PRIORITY" _ ":=" _ p:integer() _ ")" {p})? _ "FROM" _ from:steps() _ "TO" _ to:steps() _ condition:transition_condition() _ "END_TRANSITION" {
       Element::Transition {
-        name: name,
+        name,
         priority: priority.map(|p| p.try_from::<u32>()),
-        from: from,
-        to: to,
-        condition: condition,
+        from,
+        to,
+        condition,
       }
     }
     rule transition_name() -> Id = identifier()
@@ -739,8 +732,8 @@ parser! {
     rule transition_condition() -> ExprKind =  ":=" _ expr:expression() _ ";" { expr }
     rule action() -> Element = "ACTION" _ name:action_name() _ ":" _ body:function_block_body() _ "END_ACTION" {
       Element::Action {
-        name: name,
-        body: body
+        name,
+        body
       }
     }
 
@@ -773,7 +766,7 @@ parser! {
     rule program_name() -> Id = i:identifier() { i }
     pub rule task_configuration() -> TaskConfiguration = "TASK" _ name:task_name() _ init:task_initialization() {
       TaskConfiguration {
-        name: name,
+        name,
         priority: init.0,
         // TODO This needs to set the interval
         interval: init.1,
@@ -796,8 +789,8 @@ parser! {
     //pub rule data_source() -> &'input str =
     pub rule program_configuration() -> ProgramConfiguration = "PROGRAM" _ name:program_name() task_name:( _ "WITH" _ t:task_name() { t })? _ ":" _ pt:program_type_name() (_ "(" _ c:prog_conf_element() ** (_ "," _) _ ")")? {
       ProgramConfiguration {
-        name: name,
-        task_name: task_name,
+        name,
+        task_name,
         type_name: pt,
       }
      }
@@ -863,7 +856,7 @@ parser! {
     }
     rule unary_expression() -> ExprKind = unary:unary_operator()? _ expr:primary_expression() {
       if let Some(op) = unary {
-        return ExprKind::UnaryOp { op: op, term: Box::new(expr) };
+        return ExprKind::UnaryOp { op, term: Box::new(expr) };
       }
       expr
     }
@@ -877,7 +870,7 @@ parser! {
     }
     rule function_expression() -> ExprKind = name:function_name() _ "(" _ params:param_assignment() ** (_ "," _) _ ")" {
       ExprKind::Function {
-        name: name,
+        name,
         param_assignment: params
       }
     }
@@ -897,14 +890,14 @@ parser! {
     rule fb_invocation() -> StmtKind = name:fb_name() _ "(" _ params:param_assignment() ** (_ "," _) _ ")" {
       StmtKind::FbCall(FbCall {
         var_name: name,
-        params: params,
+        params,
       })
     }
     // TODO this needs much more
     rule param_assignment() -> ParamAssignment = name:(n:variable_name() _ ":=" { n })? _ expr:expression() {
       match name {
         Some(n) => {
-          ParamAssignment::NamedInput(NamedInput {name: n, expr: expr} )
+          ParamAssignment::NamedInput(NamedInput {name: n, expr} )
         },
         None => {
           ParamAssignment::positional(expr)
@@ -914,8 +907,8 @@ parser! {
       ParamAssignment::Output {
         // TODO map this optional
         not: false,
-        src: src,
-        tgt: tgt,
+        src,
+        tgt,
       }
     }
     // B.3.2.3 Selection statement
@@ -924,7 +917,7 @@ parser! {
     // TODO handle else if
     rule if_statement() -> StmtKind = "IF" _ expr:expression() _ "THEN" _ body:statement_list()? _ else_body:("ELSE" _ e:statement_list() { e })? _ "END_IF" {
       StmtKind::If(If {
-        expr: expr,
+        expr,
         body: body.unwrap_or_default(),
         else_body: else_body.unwrap_or_default()
       })
@@ -1064,7 +1057,7 @@ END_VAR";
         let var = DirectVariable {
             location: LocationPrefix::I,
             size: SizePrefix::X,
-            address: address,
+            address,
         };
         assert_eq!(plc_parser::direct_variable("%IX1"), Ok(var))
     }
@@ -1075,7 +1068,7 @@ END_VAR";
         let var = DirectVariable {
             location: LocationPrefix::I,
             size: SizePrefix::X,
-            address: address,
+            address,
         };
         assert_eq!(plc_parser::location("AT %IX1"), Ok(var))
     }
