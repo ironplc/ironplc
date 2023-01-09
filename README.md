@@ -1,6 +1,6 @@
 # IronPLC
 
-IronPLC aims to be a SoftPLC written entirely in "safe" Rust for embedded
+IronPLC aims to be a SoftPLC written entirely in safe Rust for embedded
 devices running programs written in the IEC 61131-3 language.
 
 [![Build Status](https://github.com/garretfick/ironplc/workflows/Build%20and%20Test/badge.svg)](https://github.com/garretfick/ironplc/actions?query=workflow%3ABuild-and-Test)
@@ -17,6 +17,11 @@ I²C and Modbus, or even common internet protocol such as HTTP.
 
 IronPLC is now where near those capabilities yet. What exists is parser and semantic analyzer are building blocks for a
 for IEC 61131-3. These are the first building blocks towards a complete runtime.
+
+## Mission
+
+Complete runtime for IEC 61131-3 entirely in safe Rust and following
+security best practices.
 
 ## Usage
 
