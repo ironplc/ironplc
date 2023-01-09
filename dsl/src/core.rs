@@ -32,7 +32,6 @@ impl Eq for SourceLoc {}
 /// 61131-3 declares that identifiers are case insensitive.
 /// This class ensures that we do case insensitive comparisons
 /// and can use containers as appropriate.
-#[derive(Clone)]
 pub struct Id {
     original: String,
     lower_case: String,
@@ -54,15 +53,6 @@ impl Id {
         self
     }
 
-    /// Returns a copy of the value.
-    pub fn clone(&self) -> Id {
-        let mut id = Id::from(self.original.as_str());
-        if let Some(loc) = &self.location {
-            id = id.with_location(loc.clone());
-        }
-        id
-    }
-
     /// Converts an `Identifier` into a `String`.
     ///
     /// The `String` representation is such that comparison
@@ -80,6 +70,16 @@ impl Id {
     /// Get the location of the identifier
     pub fn location(&self) -> &Option<SourceLoc> {
         &self.location
+    }
+}
+
+impl Clone for Id {
+    fn clone(&self) -> Self {
+        let mut id = Id::from(self.original.as_str());
+        if let Some(loc) = &self.location {
+            id = id.with_location(loc.clone());
+        }
+        id
     }
 }
 
