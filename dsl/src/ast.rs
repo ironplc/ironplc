@@ -50,7 +50,7 @@ impl StmtKind {
     pub fn if_then(condition: ExprKind, body: Vec<StmtKind>) -> StmtKind {
         StmtKind::If(If {
             expr: condition,
-            body: body,
+            body,
             else_body: vec![],
         })
     }
@@ -62,8 +62,8 @@ impl StmtKind {
     ) -> StmtKind {
         StmtKind::If(If {
             expr: condition,
-            body: body,
-            else_body: else_body,
+            body,
+            else_body,
         })
     }
 }
@@ -106,20 +106,14 @@ impl StmtKind {
     }
 
     pub fn assignment(target: Variable, value: ExprKind) -> StmtKind {
-        StmtKind::Assignment(Assignment {
-            target: target,
-            value: value,
-        })
+        StmtKind::Assignment(Assignment { target, value })
     }
 
     pub fn simple_assignment(target: &str, src: Vec<&str>) -> StmtKind {
         let variable = match src.len() {
             1 => Variable::symbolic(src[0]),
             _ => {
-                let src = src
-                    .into_iter()
-                    .map(|part| Id::from(part))
-                    .collect::<Vec<Id>>();
+                let src = src.into_iter().map(Id::from).collect::<Vec<Id>>();
                 Variable::MultiElementVariable(src)
             }
         };
@@ -215,13 +209,13 @@ pub enum ParamAssignment {
 
 impl ParamAssignment {
     pub fn positional(expr: ExprKind) -> ParamAssignment {
-        ParamAssignment::PositionalInput(PositionalInput { expr: expr })
+        ParamAssignment::PositionalInput(PositionalInput { expr })
     }
 
     pub fn named(name: &str, expr: ExprKind) -> ParamAssignment {
         ParamAssignment::NamedInput(NamedInput {
             name: Id::from(name),
-            expr: expr,
+            expr,
         })
     }
 }

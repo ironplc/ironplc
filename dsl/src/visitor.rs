@@ -46,11 +46,7 @@ where
     X: Acceptor,
 {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
-        match self
-            .into_iter()
-            .map(|x| x.accept(visitor))
-            .find(|r| r.is_err())
-        {
+        match self.iter().map(|x| x.accept(visitor)).find(|r| r.is_err()) {
             Some(err) => {
                 // At least one of the items returned an error, so
                 // return the first error.
@@ -129,7 +125,7 @@ pub trait Visitor<E> {
     }
 
     fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<Self::Value, E> {
-        visit_var_init_decl(self, &node)
+        visit_var_init_decl(self, node)
     }
 
     fn visit_sfc(&mut self, node: &Sfc) -> Result<Self::Value, E> {
@@ -145,7 +141,7 @@ pub trait Visitor<E> {
     }
 
     fn visit_if(&mut self, node: &If) -> Result<Self::Value, E> {
-        visit_if(self, &node)
+        visit_if(self, node)
     }
 
     fn visit_compare(&mut self, op: &CompareOp, terms: &Vec<ExprKind>) -> Result<Self::Value, E> {
@@ -154,7 +150,7 @@ pub trait Visitor<E> {
 
     fn visit_binary_op(
         &mut self,
-        op: &Vec<Operator>,
+        op: &[Operator],
         terms: &Vec<ExprKind>,
     ) -> Result<Self::Value, E> {
         // TODO this doesn't really go through binary operators - maybe this should be split
@@ -293,7 +289,7 @@ pub fn visit_compare<V: Visitor<E> + ?Sized, E>(
 
 pub fn visit_binary_op<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
-    op: &Vec<Operator>,
+    op: &[Operator],
     terms: &Vec<ExprKind>,
 ) -> Result<V::Value, E> {
     // TODO maybe something with the operator?
