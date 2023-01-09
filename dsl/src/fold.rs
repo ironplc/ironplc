@@ -65,37 +65,37 @@ pub trait Fold {
         node: FunctionBlockDeclaration,
     ) -> FunctionBlockDeclaration {
         FunctionBlockDeclaration {
-            name: node.name.clone(),
+            name: node.name,
             inputs: Foldable::fold(node.inputs, self),
             outputs: Foldable::fold(node.outputs, self),
             inouts: Foldable::fold(node.inouts, self),
             vars: Foldable::fold(node.vars, self),
             externals: Foldable::fold(node.externals, self),
-            body: node.body.clone(),
+            body: node.body,
         }
     }
 
     fn fold_function_declaration(&mut self, node: FunctionDeclaration) -> FunctionDeclaration {
         FunctionDeclaration {
             name: node.name.clone(),
-            return_type: node.return_type.clone(),
+            return_type: node.return_type,
             inputs: Foldable::fold(node.inputs, self),
             outputs: Foldable::fold(node.outputs, self),
             inouts: Foldable::fold(node.inouts, self),
             vars: Foldable::fold(node.vars, self),
             externals: Foldable::fold(node.externals, self),
-            body: node.body.clone(),
+            body: node.body,
         }
     }
 
     fn fold_program_declaration(&mut self, node: ProgramDeclaration) -> ProgramDeclaration {
         ProgramDeclaration {
-            type_name: node.type_name.clone(),
+            type_name: node.type_name,
             inputs: Foldable::fold(node.inputs, self),
             outputs: Foldable::fold(node.outputs, self),
             inouts: Foldable::fold(node.inouts, self),
             vars: Foldable::fold(node.vars, self),
-            body: node.body.clone(),
+            body: node.body,
         }
     }
 
@@ -112,9 +112,9 @@ pub trait Fold {
         VarInitDecl {
             name: node.name.clone(),
             var_type: node.var_type,
-            qualifier: node.qualifier.clone(),
+            qualifier: node.qualifier,
             initializer: Foldable::fold(node.initializer, self),
-            position: node.position.clone(),
+            position: node.position,
         }
     }
 

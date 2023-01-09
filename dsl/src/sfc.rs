@@ -16,10 +16,10 @@ pub enum ActionQualifier {
 impl ActionQualifier {
     pub fn from_char(l: char) -> ActionQualifier {
         match l {
-            'N' => return ActionQualifier::N,
-            'R' => return ActionQualifier::R,
-            'S' => return ActionQualifier::S,
-            'P' => return ActionQualifier::P,
+            'N' => ActionQualifier::N,
+            'R' => ActionQualifier::R,
+            'S' => ActionQualifier::S,
+            'P' => ActionQualifier::P,
             // TODO error message
             _ => panic!(),
         }
@@ -37,7 +37,7 @@ impl ActionAssociation {
     pub fn new(name: &str, qualifier: Option<ActionQualifier>) -> ActionAssociation {
         ActionAssociation {
             name: Id::from(name),
-            qualifier: qualifier,
+            qualifier,
             indicators: vec![],
         }
     }
@@ -73,7 +73,7 @@ impl Element {
     pub fn action(name: &str, body: Vec<StmtKind>) -> Element {
         Element::Action {
             name: Id::from(name),
-            body: FunctionBlockBody::Statements(Statements { body: body }),
+            body: FunctionBlockBody::Statements(Statements { body }),
         }
     }
 
@@ -83,7 +83,7 @@ impl Element {
             priority: None,
             from: vec![Id::from(from)],
             to: vec![Id::from(to)],
-            condition: condition,
+            condition,
         }
     }
 }

@@ -21,9 +21,9 @@ pub struct Integer {
 
 impl Integer {
     pub fn try_from<T: FromStr>(&self) -> T {
-        let v: String = self.value.chars().filter(|c| c.is_digit(10)).collect();
+        let v: String = self.value.chars().filter(|c| c.is_ascii_digit()).collect();
         match v.parse::<T>() {
-            Ok(v) => return v,
+            Ok(v) => v,
             Err(_) => panic!("out of range"),
         }
     }
@@ -33,7 +33,7 @@ impl Integer {
     }
 
     pub fn num_chars(&self) -> u8 {
-        let value: String = self.value.chars().filter(|c| c.is_digit(10)).collect();
+        let value: String = self.value.chars().filter(|c| c.is_ascii_digit()).collect();
         // TODO This is most obviously wrong
         let value: u8 = 1;
         value
@@ -53,29 +53,28 @@ pub struct SignedInteger {
 
 impl SignedInteger {
     pub fn as_type<T: FromStr>(&self) -> T {
-        let val = self.value.try_from::<T>();
+        self.value.try_from::<T>()
         // TODO
         //if self.is_neg {
         //    val *= -1;
         //}
-        val
     }
     pub fn from(a: &str) -> SignedInteger {
-        match a.chars().nth(0) {
+        match a.chars().next() {
             Some('+') => {
-                return SignedInteger {
+                SignedInteger {
                     value: Integer::from(a.get(1..).unwrap()),
                     is_neg: false,
                 }
             }
             Some('-') => {
-                return SignedInteger {
+                SignedInteger {
                     value: Integer::from(a.get(1..).unwrap()),
                     is_neg: true,
                 }
             }
             _ => {
-                return SignedInteger {
+                SignedInteger {
                     value: Integer::from(a),
                     is_neg: false,
                 }
@@ -201,7 +200,7 @@ impl VarInitDecl {
     ) -> VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
-            var_type: var_type,
+            var_type,
             qualifier: StorageQualifier::Unspecified,
             initializer: TypeInitializer::Simple {
                 type_name: Id::from(type_name),
@@ -271,7 +270,7 @@ impl VarInitDecl {
     ) -> VarInitDecl {
         VarInitDecl {
             name: Id::from(name),
-            var_type: var_type,
+            var_type,
             qualifier: StorageQualifier::Unspecified,
             initializer: TypeInitializer::LateResolvedType(Id::from(type_name)),
             position: loc,
@@ -392,9 +391,9 @@ impl TypeInitializer {
         position: SourceLoc,
     ) -> TypeInitializer {
         TypeInitializer::EnumeratedValues(EnumeratedValuesInitializer {
-            values: values,
-            initial_value: initial_value,
-            position: position,
+            values,
+            initial_value,
+            position,
         })
     }
 }
@@ -409,9 +408,9 @@ pub enum LocationPrefix {
 impl LocationPrefix {
     pub fn from_char(l: char) -> LocationPrefix {
         match l {
-            'I' => return LocationPrefix::I,
-            'Q' => return LocationPrefix::Q,
-            'M' => return LocationPrefix::M,
+            'I' => LocationPrefix::I,
+            'Q' => LocationPrefix::Q,
+            'M' => LocationPrefix::M,
             // TODO error message
             _ => panic!(),
         }
@@ -431,11 +430,11 @@ pub enum SizePrefix {
 impl SizePrefix {
     pub fn from_char(s: char) -> SizePrefix {
         match s {
-            'X' => return SizePrefix::X,
-            'B' => return SizePrefix::B,
-            'W' => return SizePrefix::W,
-            'D' => return SizePrefix::D,
-            'L' => return SizePrefix::L,
+            'X' => SizePrefix::X,
+            'B' => SizePrefix::B,
+            'W' => SizePrefix::W,
+            'D' => SizePrefix::D,
+            'L' => SizePrefix::L,
             // TODO error message
             _ => panic!(),
         }
@@ -504,7 +503,7 @@ impl EnumeratedSpecificationKind {
     pub fn values(values: Vec<Id>, position: SourceLoc) -> EnumeratedSpecificationKind {
         EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues {
             ids: values,
-            position: position,
+            position,
         })
     }
 }
@@ -561,7 +560,7 @@ impl FunctionBlockBody {
     }
 
     pub fn sfc(networks: Vec<Network>) -> FunctionBlockBody {
-        FunctionBlockBody::Sfc(Sfc { networks: networks })
+        FunctionBlockBody::Sfc(Sfc { networks })
     }
 
     pub fn empty() -> FunctionBlockBody {
@@ -615,6 +614,6 @@ pub struct Library {
 
 impl Library {
     pub fn new(elems: Vec<LibraryElement>) -> Self {
-        Library { elems: elems }
+        Library { elems }
     }
 }
