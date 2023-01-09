@@ -13,8 +13,8 @@ pub struct SemanticDiagnostic {
 impl SemanticDiagnostic {
     pub fn error(code: &'static str, message: String) -> SemanticDiagnostic {
         SemanticDiagnostic {
-            code: code,
-            message: message,
+            code,
+            message,
             location: None,
         }
     }
