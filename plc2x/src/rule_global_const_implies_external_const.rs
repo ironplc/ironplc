@@ -77,22 +77,19 @@ impl<'a> Visitor<SemanticDiagnostic> for RuleExternalGlobalConst<'a> {
         &mut self,
         node: &VarInitDecl,
     ) -> Result<Self::Value, SemanticDiagnostic> {
-        match node.var_type {
-            VariableType::External => {
-                if node.qualifier != StorageQualifier::Constant
-                    && self.global_consts.contains(&node.name)
-                {
-                    return Err(SemanticDiagnostic::error(
-                        "S0001",
-                        format!(
-                            "External var {} is global constant and must be declared constant",
-                            node.name,
-                        ),
-                    ));
-                }
-            }
-            _ => {}
+        if node.var_type == VariableType::External
+            && node.qualifier != StorageQualifier::Constant
+            && self.global_consts.contains(&node.name)
+        {
+            return Err(SemanticDiagnostic::error(
+                "S0001",
+                format!(
+                    "External var {} is global constant and must be declared constant",
+                    node.name,
+                ),
+            ));
         }
+
         Ok(())
     }
 }
