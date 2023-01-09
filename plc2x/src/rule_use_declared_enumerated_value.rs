@@ -38,13 +38,10 @@ pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     // we can quickly look up invocations
     let mut enum_defs = HashMap::new();
     for x in lib.elems.iter() {
-        match x {
-            LibraryElement::DataTypeDeclaration(dtds) => {
-                for dtd in dtds {
-                    enum_defs.insert(dtd.name.clone(), dtd);
-                }
+        if let LibraryElement::DataTypeDeclaration(dtds) = x {
+            for dtd in dtds {
+                enum_defs.insert(dtd.name.clone(), dtd);
             }
-            _ => {}
         }
     }
 
@@ -60,9 +57,7 @@ struct RuleDeclaredEnumeratedValues<'a> {
 }
 impl<'a> RuleDeclaredEnumeratedValues<'a> {
     fn new(enum_defs: &'a HashMap<Id, &'a EnumerationDeclaration>) -> Self {
-        RuleDeclaredEnumeratedValues {
-            enum_defs: enum_defs,
-        }
+        RuleDeclaredEnumeratedValues { enum_defs }
     }
 
     /// Returns enumeration values for a given enumeration type name.
@@ -94,7 +89,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                     // The definition might be the final definition, or it
                     // might be a reference to another name
                     match &def.spec {
-                        EnumeratedSpecificationKind::TypeName(n) => name = &n,
+                        EnumeratedSpecificationKind::TypeName(n) => name = n,
                         EnumeratedSpecificationKind::Values(values) => return Ok(&values.ids),
                     }
                 }
@@ -128,7 +123,7 @@ impl Visitor<SemanticDiagnostic> for RuleDeclaredEnumeratedValues<'_> {
     ) -> Result<Self::Value, SemanticDiagnostic> {
         let defined_values = self.find_enum_declaration_values(&init.type_name)?;
         if let Some(value) = &init.initial_value {
-            if !defined_values.contains(&value) {
+            if !defined_values.contains(value) {
                 return Err(SemanticDiagnostic::error(
                     "S0001",
                     format!(
@@ -140,7 +135,7 @@ impl Visitor<SemanticDiagnostic> for RuleDeclaredEnumeratedValues<'_> {
             }
         }
 
-        return Ok(Self::Value::default());
+        Ok(())
     }
 }
 

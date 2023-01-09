@@ -68,7 +68,7 @@ impl<K: Key, V: NodeData> SymbolTable<K, V> {
     pub fn new() -> Self {
         let mut stack = LinkedList::new();
         stack.push_back(Scope::new());
-        return SymbolTable { stack: stack };
+        SymbolTable { stack }
     }
 
     /// Enters a new scope.

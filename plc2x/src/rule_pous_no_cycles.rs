@@ -50,14 +50,14 @@ use crate::error::SemanticDiagnostic;
 pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     // Walk to build a graph of POUs and their relationships
     let mut visitor = RulePousNoCycles::new();
-    visitor.walk(&lib)?;
+    visitor.walk(lib)?;
 
     // Check if there are cycles in the graph.
     // TODO report what the cycle is
     if is_cyclic_directed(&visitor.graph) {
         return Err(SemanticDiagnostic::error(
             "S0005",
-            format!("Library has a recursive cycle"),
+            "Library has a recursive cycle".to_string(),
         ));
     }
 
@@ -89,13 +89,11 @@ impl RulePousNoCycles {
 
     fn add_node(&mut self, id: &Id) -> NodeIndex<u32> {
         match self.nodes.get(id) {
-            Some(node) => {
-                return *node;
-            }
+            Some(node) => *node,
             None => {
                 let node = self.graph.add_node(());
                 self.nodes.insert(id.clone(), node);
-                return node;
+                node
             }
         }
     }
@@ -144,12 +142,12 @@ impl Visitor<SemanticDiagnostic> for RulePousNoCycles {
                 let from = self.add_node(&from.clone());
                 let to = self.add_node(&init.type_name);
                 //let to = self.insert(type_name);
-                self.graph.add_edge(from.into(), to.into(), ());
+                self.graph.add_edge(from, to, ());
             }
             None => todo!(),
         }
 
-        Ok(Self::Value::default())
+        Ok(())
     }
 }
 

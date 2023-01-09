@@ -45,13 +45,13 @@ pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     let mut visitor = FindGlobalConstVars {
         global_consts: &mut global_consts,
     };
-    visitor.walk(&lib)?;
+    visitor.walk(lib)?;
 
     // Check that externals with the same name are constants
     let mut visitor = RuleExternalGlobalConst {
         global_consts: &mut global_consts,
     };
-    visitor.walk(&lib)
+    visitor.walk(lib)
 }
 
 struct FindGlobalConstVars<'a> {

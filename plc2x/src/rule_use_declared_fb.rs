@@ -51,20 +51,16 @@ trait FindIOVariable {
 
 impl FindIOVariable for FunctionBlockDeclaration {
     fn find_input(&self, name: &Id) -> Option<&VarInitDecl> {
-        match self.inputs.iter().find(|item| item.name.eq(name)) {
-            Some(v) => return Some(v),
-            None => {}
+        if let Some(v) = self.inputs.iter().find(|item| item.name.eq(name)) {
+            return Some(v);
         }
-
         self.inouts.iter().find(|item| item.name.eq(name))
     }
 
     fn find_output(&self, name: &Id) -> Option<&VarInitDecl> {
-        match self.outputs.iter().find(|item| item.name.eq(name)) {
-            Some(v) => return Some(v),
-            None => {}
+        if let Some(v) = self.outputs.iter().find(|item| item.name.eq(name)) {
+            return Some(v);
         }
-
         self.inouts.iter().find(|item| item.name.eq(name))
     }
 }
@@ -74,11 +70,8 @@ pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     // we can quickly look up invocations
     let mut function_blocks = HashMap::new();
     for x in lib.elems.iter() {
-        match x {
-            LibraryElement::FunctionBlockDeclaration(fb) => {
-                function_blocks.insert(fb.name.clone(), fb);
-            }
-            _ => {}
+        if let LibraryElement::FunctionBlockDeclaration(fb) = x {
+            function_blocks.insert(fb.name.clone(), fb);
         }
     }
 
@@ -105,7 +98,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
 
     fn check_inputs(
         function_block: &FunctionBlockDeclaration,
-        params: &Vec<ParamAssignment>,
+        params: &[ParamAssignment],
     ) -> Result<(), SemanticDiagnostic> {
         // Sort the inputs as either named or positional
         let mut named: Vec<&NamedInput> = vec![];
@@ -113,10 +106,10 @@ impl<'a> RuleFunctionBlockUse<'a> {
         for param in params.iter() {
             match param {
                 ParamAssignment::NamedInput(n) => {
-                    named.push(&n);
+                    named.push(n);
                 }
                 ParamAssignment::PositionalInput(p) => {
-                    positional.push(&p);
+                    positional.push(p);
                 }
                 ParamAssignment::Output {
                     not: _,
@@ -130,7 +123,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
 
         // Don't allow a mixture so assert that either named is empty or
         // positional is empty
-        if named.len() > 0 && positional.len() > 0 {
+        if !named.is_empty() && !positional.is_empty() {
             return Err(SemanticDiagnostic::error(
                 "S0001",
                 format!(
@@ -223,14 +216,12 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
                 panic!()
             }
         }
-        Ok(Self::Value::default())
+        Ok(())
     }
 
     fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, SemanticDiagnostic> {
         // Check if function block is defined because you cannot
         // call a function block that doesn't exist
-        println!("FB Invocation: {}", fb_call.var_name);
-
         let function_block_name = self.var_to_fb.get(&fb_call.var_name);
         match function_block_name {
             Some(function_block_name) => {
@@ -238,14 +229,14 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
                 match function_block_decl {
                     None => {
                         // Not defined, so this is not a valid use.
-                        return Err(SemanticDiagnostic::error(
+                        Err(SemanticDiagnostic::error(
                             "S0001",
                             format!("Function block {} is not declared", function_block_name),
-                        ));
+                        ))
                     }
                     Some(fb) => {
                         // Validate the parameter assignments
-                        return RuleFunctionBlockUse::check_inputs(fb, &fb_call.params);
+                        RuleFunctionBlockUse::check_inputs(fb, &fb_call.params)
                     }
                 }
             }

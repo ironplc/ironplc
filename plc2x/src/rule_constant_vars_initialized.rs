@@ -35,7 +35,7 @@ use crate::error::SemanticDiagnostic;
 
 pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     let mut visitor = RuleConstantVarsInitialized {};
-    visitor.walk(&lib)
+    visitor.walk(lib)
 }
 
 struct RuleConstantVarsInitialized {}
