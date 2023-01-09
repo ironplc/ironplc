@@ -51,7 +51,7 @@ pub fn main() -> Result<(), ()> {
             println!("OK");
         }
         Err(diagnostic) => {
-            let file = SimpleFile::new(filename.clone(), contents);
+            let file = SimpleFile::new(filename, contents);
             term::emit(&mut writer.lock(), &config, &file, &diagnostic).map_err(|_| ())?;
         }
     }
@@ -59,8 +59,8 @@ pub fn main() -> Result<(), ()> {
     Ok(())
 }
 
-fn analyze(contents: &String) -> Result<(), Diagnostic<()>> {
-    let library = parse(contents.as_str())?;
+fn analyze(contents: &str) -> Result<(), Diagnostic<()>> {
+    let library = parse(contents)?;
     semantic(&library)
 }
 

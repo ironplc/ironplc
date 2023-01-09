@@ -43,7 +43,7 @@ use crate::{
 pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     let mut visitor: SymbolTable<Id, DummyNode> = symbol_table::SymbolTable::new();
 
-    visitor.walk(&lib)
+    visitor.walk(lib)
 }
 
 #[derive(Clone)]
@@ -103,7 +103,7 @@ impl Visitor<SemanticDiagnostic> for SymbolTable<Id, DummyNode> {
         match self.find(&node.name) {
             Some(_) => {
                 // We found the variable being referred to
-                Ok(Self::Value::default())
+                Ok(())
             }
             None => Err(SemanticDiagnostic::error(
                 "S0001",

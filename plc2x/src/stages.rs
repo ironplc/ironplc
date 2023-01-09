@@ -32,14 +32,14 @@ pub fn parse(source: &str) -> Result<Library, Diagnostic<()>> {
 /// Returns `Ok(())` if the library is free of semantic errors.
 /// Returns `Err(String)` if the library contains a semantic error.
 pub fn semantic(library: &Library) -> Result<(), Diagnostic<()>> {
-    rule_use_declared_symbolic_var::apply(&library)?;
-    rule_use_declared_enumerated_value::apply(&library)?;
-    rule_use_declared_fb::apply(&library)?;
-    rule_constant_vars_initialized::apply(&library)?;
-    rule_enumeration_values_unique::apply(&library)?;
-    rule_program_task_definition_exists::apply(&library)?;
-    rule_pous_no_cycles::apply(&library)?;
-    rule_global_const_implies_external_const::apply(&library)?;
+    rule_use_declared_symbolic_var::apply(library)?;
+    rule_use_declared_enumerated_value::apply(library)?;
+    rule_use_declared_fb::apply(library)?;
+    rule_constant_vars_initialized::apply(library)?;
+    rule_enumeration_values_unique::apply(library)?;
+    rule_program_task_definition_exists::apply(library)?;
+    rule_pous_no_cycles::apply(library)?;
+    rule_global_const_implies_external_const::apply(library)?;
 
     // 1. Check all identifiers defined (need scope)
     // 2. Type checking
