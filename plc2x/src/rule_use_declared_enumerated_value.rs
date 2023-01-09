@@ -57,9 +57,7 @@ struct RuleDeclaredEnumeratedValues<'a> {
 }
 impl<'a> RuleDeclaredEnumeratedValues<'a> {
     fn new(enum_defs: &'a HashMap<Id, &'a EnumerationDeclaration>) -> Self {
-        RuleDeclaredEnumeratedValues {
-            enum_defs,
-        }
+        RuleDeclaredEnumeratedValues { enum_defs }
     }
 
     /// Returns enumeration values for a given enumeration type name.

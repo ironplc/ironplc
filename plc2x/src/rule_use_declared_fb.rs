@@ -52,14 +52,14 @@ trait FindIOVariable {
 impl FindIOVariable for FunctionBlockDeclaration {
     fn find_input(&self, name: &Id) -> Option<&VarInitDecl> {
         if let Some(v) = self.inputs.iter().find(|item| item.name.eq(name)) {
-            return Some(v)
+            return Some(v);
         }
         self.inouts.iter().find(|item| item.name.eq(name))
     }
 
     fn find_output(&self, name: &Id) -> Option<&VarInitDecl> {
         if let Some(v) = self.outputs.iter().find(|item| item.name.eq(name)) {
-            return Some(v)
+            return Some(v);
         }
         self.inouts.iter().find(|item| item.name.eq(name))
     }

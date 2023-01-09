@@ -207,9 +207,7 @@ impl VarDeclarations {
         declarations
             .into_iter()
             .map(|declaration| {
-                let qualifier = qualifier
-                    .clone()
-                    .unwrap_or(StorageQualifier::Unspecified);
+                let qualifier = qualifier.clone().unwrap_or(StorageQualifier::Unspecified);
                 let mut declaration = declaration;
                 declaration.qualifier = qualifier;
                 declaration
