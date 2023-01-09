@@ -1,4 +1,4 @@
-name: Build and Test IronPLC
+name: Build and Test
 on: [push]
 jobs:
   test_linux_x86:
