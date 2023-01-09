@@ -15,9 +15,11 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          components: rustfmt
-      - name: Rustfmt Check
+          components: rustfmt, clippy
+      - name: Rustfmt Check (for standard Rust formatting)
         uses: actions-rust-lang/rustfmt@v1
+      - name: Clippy Check (for idiomatic Rust code)
+        run: cargo clippy
   min-coverage:
     name: IronPLC Min Coverage
     runs-on: ubuntu-latest

@@ -35,13 +35,14 @@ struct Args {
     file: String,
 }
 
-pub fn main() -> Result<(), ()> {
+pub fn main() -> Result<(), String> {
     let args = Args::parse();
 
     let filename = args.file;
-    let mut file = File::open(filename.clone()).map_err(|_| ())?;
+    let mut file = File::open(filename.clone()).map_err(|_| "Failed opening file")?;
     let mut contents = String::new();
-    file.read_to_string(&mut contents).map_err(|_| ())?;
+    file.read_to_string(&mut contents)
+        .map_err(|_| "Failed to reach file")?;
 
     let writer = StandardStream::stderr(ColorChoice::Always);
     let config = codespan_reporting::term::Config::default();
@@ -52,7 +53,8 @@ pub fn main() -> Result<(), ()> {
         }
         Err(diagnostic) => {
             let file = SimpleFile::new(filename, contents);
-            term::emit(&mut writer.lock(), &config, &file, &diagnostic).map_err(|_| ())?;
+            term::emit(&mut writer.lock(), &config, &file, &diagnostic)
+                .map_err(|_| "Failed writing to terminal")?;
         }
     }
 

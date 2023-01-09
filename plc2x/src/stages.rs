@@ -18,7 +18,7 @@ use crate::{
 /// Returns `Err(String)` if parsing did not succeed.
 pub fn parse(source: &str) -> Result<Library, Diagnostic<()>> {
     let library = ironplc_parser::parse_program(source)
-        .map_err(|err| <ParserDiagnostic as Into<Diagnostic<()>>>::into(err))?;
+        .map_err(<ParserDiagnostic as Into<Diagnostic<()>>>::into)?;
 
     // Resolve the late bound type declarations, replacing with
     // the type-specific declarations. This just simplifies
