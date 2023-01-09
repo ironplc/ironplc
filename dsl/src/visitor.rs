@@ -46,11 +46,7 @@ where
     X: Acceptor,
 {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
-        match self
-            .iter()
-            .map(|x| x.accept(visitor))
-            .find(|r| r.is_err())
-        {
+        match self.iter().map(|x| x.accept(visitor)).find(|r| r.is_err()) {
             Some(err) => {
                 // At least one of the items returned an error, so
                 // return the first error.
