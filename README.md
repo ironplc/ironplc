@@ -3,7 +3,12 @@
 IronPLC aims to be a SoftPLC written entirely in "safe" Rust for embedded
 devices running programs written in the IEC 61131-3 language.
 
-SoftPLCs enable embedded and other computers to operate as programmable logic 
+[![Build Status](https://github.com/garretfick/ironplc/workflows/Build%20and%20Test/badge.svg)](https://github.com/garretfick/ironplc/actions?query=workflow%3ABuild-and-Test)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Crates.io - 0.1.1](https://img.shields.io/crates/v/ironplc-plc2x)](https://crates.io/crates/ironplc-plc2x)
+[![Dependency status - 0.1.1](https://deps.rs/crate/ironplc-plc2x/0.1.1/status.svg)](https://deps.rs/crate/ironplc-plc2x/0.1.1)
+
+SoftPLCs enable embedded and other computers to operate as programmable logic
 controllers (PLCs) that execute all sorts of processes from home automation
 and factories to industrial process andd electrical power grid control.
 PLC-based devices do this by implementing control algorithms that connect to sensors,
