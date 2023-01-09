@@ -89,9 +89,7 @@ impl RulePousNoCycles {
 
     fn add_node(&mut self, id: &Id) -> NodeIndex<u32> {
         match self.nodes.get(id) {
-            Some(node) => {
-                *node
-            }
+            Some(node) => *node,
             None => {
                 let node = self.graph.add_node(());
                 self.nodes.insert(id.clone(), node);
