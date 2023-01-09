@@ -106,20 +106,14 @@ impl StmtKind {
     }
 
     pub fn assignment(target: Variable, value: ExprKind) -> StmtKind {
-        StmtKind::Assignment(Assignment {
-            target,
-            value,
-        })
+        StmtKind::Assignment(Assignment { target, value })
     }
 
     pub fn simple_assignment(target: &str, src: Vec<&str>) -> StmtKind {
         let variable = match src.len() {
             1 => Variable::symbolic(src[0]),
             _ => {
-                let src = src
-                    .into_iter()
-                    .map(Id::from)
-                    .collect::<Vec<Id>>();
+                let src = src.into_iter().map(Id::from).collect::<Vec<Id>>();
                 Variable::MultiElementVariable(src)
             }
         };

@@ -61,24 +61,18 @@ impl SignedInteger {
     }
     pub fn from(a: &str) -> SignedInteger {
         match a.chars().next() {
-            Some('+') => {
-                SignedInteger {
-                    value: Integer::from(a.get(1..).unwrap()),
-                    is_neg: false,
-                }
-            }
-            Some('-') => {
-                SignedInteger {
-                    value: Integer::from(a.get(1..).unwrap()),
-                    is_neg: true,
-                }
-            }
-            _ => {
-                SignedInteger {
-                    value: Integer::from(a),
-                    is_neg: false,
-                }
-            }
+            Some('+') => SignedInteger {
+                value: Integer::from(a.get(1..).unwrap()),
+                is_neg: false,
+            },
+            Some('-') => SignedInteger {
+                value: Integer::from(a.get(1..).unwrap()),
+                is_neg: true,
+            },
+            _ => SignedInteger {
+                value: Integer::from(a),
+                is_neg: false,
+            },
         }
     }
 }
