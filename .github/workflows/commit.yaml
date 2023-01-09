@@ -31,5 +31,5 @@ jobs:
         # Codecov is used for badges so not configured to fail the build
         uses: codecov/codecov-action@v3
         with:
-          files: lcov.info
+          file: lcov.info
           
