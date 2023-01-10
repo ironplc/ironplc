@@ -1,5 +1,5 @@
 [package]
-name = "ironplc-plc2x"
+name = "ironplc"
 version = "0.1.1"
 authors = [ "Garret Fick" ]
 edition = "2021"
@@ -14,8 +14,8 @@ maintenance = { status = "experimental" }
 trace = ["ironplc-parser/trace"]
 
 [dependencies]
-ironplc-parser = { path = "../parser", version = "0.1.1" }
-ironplc-dsl = { path = "../dsl", version = "0.1.1" }
+ironplc-parser = { path = "../parser", version = "0.1.2" }
+ironplc-dsl = { path = "../dsl", version = "0.1.2" }
 time = "0.3.17"
 phf = { version = "0.11", features = ["macros"] }
 petgraph = { version = "0.6.2" }
