@@ -108,7 +108,8 @@ impl Visitor<SemanticDiagnostic> for SymbolTable<Id, DummyNode> {
             None => Err(SemanticDiagnostic::error(
                 "S0001",
                 format!("Variable {} not defined before used", node.name),
-            )),
+            )
+            .with_label(node.name.location(), "Undefined variable")),
         }
     }
 }

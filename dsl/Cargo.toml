@@ -1,6 +1,6 @@
 [package]
 name = "ironplc-dsl"
-version = "0.1.1"
+version = "0.1.2"
 authors = [ "Garret Fick" ]
 edition = "2021"
 description = "Domain-specific language objects for IEC 61131 language elements."

@@ -1,6 +1,6 @@
 [package]
 name = "ironplc-parser"
-version = "0.1.1"
+version = "0.1.2"
 authors = [ "Garret Fick" ]
 edition = "2021"
 description = "Parser for IEC 61131-3 language elements."
@@ -15,7 +15,7 @@ trace = ["peg/trace"]
 
 [dependencies]
 time = "0.3.17"
-ironplc-dsl = { path = "../dsl", version = "0.1.1" }
+ironplc-dsl = { path = "../dsl", version = "0.1.2" }
 codespan-reporting = { version = "0.11.1" }
 
 [dependencies.peg]
