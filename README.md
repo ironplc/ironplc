@@ -119,3 +119,10 @@ The project is split into 3 members:
    the pieces
 
 There is no strict definition of what goes where. Better rules would be nice.
+
+## Similar Projects
+
+* [rusty](https://github.com/PLC-lang/rusty) - Structured text compiler written in Rust.
+* [msr](https://github.com/slowtec/msr) - A Rust library for industrial automation.
+* [ethercat-rs](https://github.com/birkenfeld/ethercat-rs) - An experimental Rust automation toolbox using the IgH (Etherlab) EtherCAT master.
+* [rustmatic](https://github.com/NOP0/rustmatic) - Rustmatic is a thought experiment on creating a PLC-like environment in Rust.
