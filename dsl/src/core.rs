@@ -4,16 +4,20 @@ use std::{cmp::Ordering, hash::Hash, hash::Hasher};
 // TODO it is very questionable to have this part of equality
 #[derive(Debug, Clone)]
 pub struct SourceLoc {
-    pub offset: usize,
+    pub start: usize,
+    pub end: Option<usize>,
 }
 
 impl SourceLoc {
-    pub fn new(offset: usize) -> SourceLoc {
-        SourceLoc { offset }
+    pub fn new(start: usize) -> SourceLoc {
+        SourceLoc { start, end: None }
     }
 
     pub fn range(start: usize, end: usize) -> SourceLoc {
-        SourceLoc { offset: start }
+        SourceLoc {
+            start,
+            end: Some(end),
+        }
     }
 }
 
