@@ -1,5 +1,8 @@
 # IronPLC
 
+⚠ This project's capabilities are presently limited to a parser and
+semantic analyzer that are building blocks for a complete IEC 61131-3 runtime.
+
 IronPLC aims to be a SoftPLC written entirely in safe Rust for embedded
 devices running programs written in the IEC 61131-3 language.
 
@@ -15,8 +18,7 @@ PLC-based devices do this by implementing control algorithms that connect to sen
 transducers and actuators through analog/digital IO, industrial protocols such as
 I²C and Modbus, or even common internet protocol such as HTTP.
 
-IronPLC is now where near those capabilities yet. What exists is parser and semantic analyzer are building blocks for a
-for IEC 61131-3. These are the first building blocks towards a complete runtime.
+IronPLC is now where near those capabilities yet.
 
 ## Mission
 
@@ -103,8 +105,6 @@ then open the generated file in a web browser.
 ```sh
 cargo test --features trace | pegviz --output ./pegviz.html
 ```
-
-
 
 ## How It Works
 

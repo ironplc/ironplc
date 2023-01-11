@@ -1,9 +1,6 @@
-use core::fmt;
-
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::core::SourceLoc;
 
-#[derive(Debug)]
 pub struct SemanticDiagnostic {
     pub code: &'static str,
     pub message: String,
@@ -31,15 +28,6 @@ impl SemanticDiagnostic {
             None => {}
         }
         self
-    }
-}
-
-impl fmt::Display for SemanticDiagnostic {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SemanticDiagnostic")
-            .field("code", &self.code)
-            .field("message", &self.message)
-            .finish()
     }
 }
 

@@ -181,11 +181,6 @@ impl VarInitDecl {
     }
 
     /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple_external(name: &str, type_name: &str, loc: SourceLoc) -> VarInitDecl {
-        VarInitDecl::simple(name, type_name, VariableType::External, loc)
-    }
-
-    /// Creates a variable declaration for simple type and no initialization.
     pub fn simple(
         name: &str,
         type_name: &str,
