@@ -95,15 +95,12 @@ mod tests {
         let expected = new_library(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("LOGGER"),
-                inputs: vec![
-                    VarInitDecl::simple_input("TRIG", "BOOL", SourceLoc::new(0)),
-                    VarInitDecl::simple_input("MSG", "STRING", SourceLoc::new(0)),
-                    VarInitDecl::enumerated_input("LEVEL", "LOGLEVEL", "INFO", SourceLoc::new(0)),
+                variables: vec![
+                    VarDecl::simple_input("TRIG", "BOOL", SourceLoc::new(0)),
+                    VarDecl::simple_input("MSG", "STRING", SourceLoc::new(0)),
+                    VarDecl::enumerated_input("LEVEL", "LOGLEVEL", "INFO", SourceLoc::new(0)),
+                    VarDecl::simple_var("TRIG0", "BOOL", SourceLoc::new(0)),
                 ],
-                outputs: vec![],
-                inouts: vec![],
-                vars: vec![VarInitDecl::simple_var("TRIG0", "BOOL", SourceLoc::new(0))],
-                externals: vec![],
                 body: FunctionBlockBody::stmts(vec![
                     StmtKind::if_then(
                         ExprKind::Compare {
@@ -134,24 +131,21 @@ mod tests {
         let expected = new_library(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("CounterSFC"),
-                inputs: vec![VarInitDecl::simple_input(
-                    "Reset",
-                    "BOOL",
-                    SourceLoc::new(0),
-                )],
-                outputs: vec![VarInitDecl::simple_output("OUT", "INT", SourceLoc::new(0))],
-                inouts: vec![],
-                vars: vec![VarInitDecl::simple_var("Cnt", "INT", SourceLoc::new(0))],
-                externals: vec![VarInitDecl {
-                    name: Id::from("ResetCounterValue"),
-                    var_type: VariableType::External,
-                    qualifier: StorageQualifier::Constant,
-                    initializer: TypeInitializer::Simple {
-                        type_name: Id::from("INT"),
-                        initial_value: None,
+                variables: vec![
+                    VarDecl::simple_input("Reset", "BOOL", SourceLoc::new(0)),
+                    VarDecl::simple_output("OUT", "INT", SourceLoc::new(0)),
+                    VarDecl::simple_var("Cnt", "INT", SourceLoc::new(0)),
+                    VarDecl {
+                        name: Id::from("ResetCounterValue"),
+                        var_type: VariableType::External,
+                        qualifier: StorageQualifier::Constant,
+                        initializer: TypeInitializer::Simple {
+                            type_name: Id::from("INT"),
+                            initial_value: None,
+                        },
+                        position: SourceLoc::new(0),
                     },
-                    position: SourceLoc::new(0),
-                }],
+                ],
                 body: FunctionBlockBody::sfc(vec![Network {
                     initial_step: Element::InitialStep {
                         name: Id::from("Start"),
@@ -241,28 +235,23 @@ mod tests {
         let expected = new_library(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("CounterFBD"),
-                inputs: vec![VarInitDecl::simple_input(
-                    "Reset",
-                    "BOOL",
-                    SourceLoc::new(0),
-                )],
-                outputs: vec![VarInitDecl::simple_output("OUT", "INT", SourceLoc::new(0))],
-                inouts: vec![],
-                vars: vec![
-                    VarInitDecl::simple_var("Cnt", "INT", SourceLoc::new(0)),
-                    VarInitDecl::simple_var("_TMP_ADD4_OUT", "INT", SourceLoc::new(0)),
-                    VarInitDecl::simple_var("_TMP_SEL7_OUT", "INT", SourceLoc::new(0)),
-                ],
-                externals: vec![VarInitDecl {
-                    name: Id::from("ResetCounterValue"),
-                    var_type: VariableType::External,
-                    qualifier: StorageQualifier::Constant,
-                    initializer: TypeInitializer::Simple {
-                        type_name: Id::from("INT"),
-                        initial_value: None,
+                variables: vec![
+                    VarDecl::simple_input("Reset", "BOOL", SourceLoc::new(44)),
+                    VarDecl::simple_output("OUT", "INT", SourceLoc::new(88)),
+                    VarDecl::simple_var("Cnt", "INT", SourceLoc::new(122)),
+                    VarDecl {
+                        name: Id::from("ResetCounterValue"),
+                        var_type: VariableType::External,
+                        qualifier: StorageQualifier::Constant,
+                        initializer: TypeInitializer::Simple {
+                            type_name: Id::from("INT"),
+                            initial_value: None,
+                        },
+                        position: SourceLoc::new(174),
                     },
-                    position: SourceLoc::new(0),
-                }],
+                    VarDecl::simple_var("_TMP_ADD4_OUT", "INT", SourceLoc::new(0)),
+                    VarDecl::simple_var("_TMP_SEL7_OUT", "INT", SourceLoc::new(0)),
+                ],
                 body: FunctionBlockBody::stmts(vec![
                     StmtKind::simple_assignment("Cnt", vec!["_TMP_SEL7_OUT"]),
                     StmtKind::simple_assignment("OUT", vec!["Cnt"]),
@@ -278,29 +267,26 @@ mod tests {
         let expected = new_library(LibraryElement::FunctionDeclaration(FunctionDeclaration {
             name: Id::from("AverageVal"),
             return_type: Id::from("REAL"),
-            inputs: vec![
-                VarInitDecl::simple_input("Cnt1", "INT", SourceLoc::new(0)),
-                VarInitDecl::simple_input("Cnt2", "INT", SourceLoc::new(0)),
-                VarInitDecl::simple_input("Cnt3", "INT", SourceLoc::new(0)),
-                VarInitDecl::simple_input("Cnt4", "INT", SourceLoc::new(0)),
-                VarInitDecl::simple_input("Cnt5", "INT", SourceLoc::new(0)),
-            ],
-            outputs: vec![],
-            inouts: vec![],
-            vars: vec![VarInitDecl {
-                name: Id::from("InputsNumber"),
-                var_type: VariableType::Var,
-                qualifier: StorageQualifier::Unspecified,
-                initializer: TypeInitializer::Simple {
-                    type_name: Id::from("REAL"),
-                    initial_value: Some(Initializer::Simple(Constant::RealLiteral(Float {
-                        value: 5.1,
-                        data_type: None,
-                    }))),
+            variables: vec![
+                VarDecl::simple_input("Cnt1", "INT", SourceLoc::new(0)),
+                VarDecl::simple_input("Cnt2", "INT", SourceLoc::new(0)),
+                VarDecl::simple_input("Cnt3", "INT", SourceLoc::new(0)),
+                VarDecl::simple_input("Cnt4", "INT", SourceLoc::new(0)),
+                VarDecl::simple_input("Cnt5", "INT", SourceLoc::new(0)),
+                VarDecl {
+                    name: Id::from("InputsNumber"),
+                    var_type: VariableType::Var,
+                    qualifier: StorageQualifier::Unspecified,
+                    initializer: TypeInitializer::Simple {
+                        type_name: Id::from("REAL"),
+                        initial_value: Some(Initializer::Simple(Constant::RealLiteral(Float {
+                            value: 5.1,
+                            data_type: None,
+                        }))),
+                    },
+                    position: SourceLoc::new(0),
                 },
-                position: SourceLoc::new(0),
-            }],
-            externals: vec![],
+            ],
             body: vec![StmtKind::assignment(
                 Variable::symbolic("AverageVal"),
                 ExprKind::BinaryOp {
@@ -345,28 +331,20 @@ mod tests {
         let src = read_resource("first_steps_program.st");
         let expected = new_library(LibraryElement::ProgramDeclaration(ProgramDeclaration {
             type_name: Id::from("plc_prg"),
-            inputs: vec![VarInitDecl::simple_input(
-                "Reset",
-                "BOOL",
-                SourceLoc::new(0),
-            )],
-            outputs: vec![
-                VarInitDecl::simple_output("Cnt1", "INT", SourceLoc::new(0)),
-                VarInitDecl::simple_output("Cnt2", "INT", SourceLoc::new(0)),
-                VarInitDecl::simple_output("Cnt3", "INT", SourceLoc::new(0)),
-                VarInitDecl::simple_output("Cnt4", "INT", SourceLoc::new(0)),
-                VarInitDecl::simple_output("Cnt5", "INT", SourceLoc::new(0)),
-            ],
-            inouts: vec![],
-            vars: vec![
-                // TODO this are being understood as enumerated types not function blocks
-                VarInitDecl::late_bound_var("CounterST0", "CounterST", SourceLoc::new(0)),
-                VarInitDecl::late_bound_var("CounterFBD0", "CounterFBD", SourceLoc::new(0)),
-                VarInitDecl::late_bound_var("CounterSFC0", "CounterSFC", SourceLoc::new(0)),
-                VarInitDecl::late_bound_var("CounterIL0", "CounterIL", SourceLoc::new(0)),
-                VarInitDecl::late_bound_var("CounterLD0", "CounterLD", SourceLoc::new(0)),
-                VarInitDecl::simple_var("AVCnt", "REAL", SourceLoc::new(0)),
-                VarInitDecl::simple_var("_TMP_AverageVal17_OUT", "REAL", SourceLoc::new(0)),
+            variables: vec![
+                VarDecl::simple_input("Reset", "BOOL", SourceLoc::new(0)),
+                VarDecl::simple_output("Cnt1", "INT", SourceLoc::new(0)),
+                VarDecl::simple_output("Cnt2", "INT", SourceLoc::new(0)),
+                VarDecl::simple_output("Cnt3", "INT", SourceLoc::new(0)),
+                VarDecl::simple_output("Cnt4", "INT", SourceLoc::new(0)),
+                VarDecl::simple_output("Cnt5", "INT", SourceLoc::new(0)),
+                VarDecl::late_bound_var("CounterST0", "CounterST", SourceLoc::new(0)),
+                VarDecl::late_bound_var("CounterFBD0", "CounterFBD", SourceLoc::new(0)),
+                VarDecl::late_bound_var("CounterSFC0", "CounterSFC", SourceLoc::new(0)),
+                VarDecl::late_bound_var("CounterIL0", "CounterIL", SourceLoc::new(0)),
+                VarDecl::late_bound_var("CounterLD0", "CounterLD", SourceLoc::new(0)),
+                VarDecl::simple_var("AVCnt", "REAL", SourceLoc::new(0)),
+                VarDecl::simple_var("_TMP_AverageVal17_OUT", "REAL", SourceLoc::new(0)),
             ],
             body: FunctionBlockBody::stmts(vec![
                 StmtKind::fb_call_mapped("CounterST0", vec![("Reset", "Reset")]),
@@ -396,16 +374,17 @@ mod tests {
         let expected = new_library(LibraryElement::ConfigurationDeclaration(
             ConfigurationDeclaration {
                 name: Id::from("config"),
-                global_var: vec![Declaration {
+                global_var: vec![VarDecl {
                     name: Id::from("ResetCounterValue"),
+                    var_type: VariableType::Global,
                     qualifier: StorageQualifier::Constant,
-                    at: None,
-                    initializer: Option::Some(TypeInitializer::Simple {
+                    initializer: TypeInitializer::Simple {
                         type_name: Id::from("INT"),
                         initial_value: Option::Some(Initializer::Simple(Constant::IntegerLiteral(
                             17,
                         ))),
-                    }),
+                    },
+                    position: SourceLoc::new(0),
                 }],
                 resource_decl: vec![ResourceDeclaration {
                     name: Id::from("resource1"),

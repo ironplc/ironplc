@@ -27,10 +27,10 @@ pub fn parse_library(source: &str) -> Result<Vec<LibraryElement>, ParserDiagnost
     })
 }
 
-/// Defines VarInitDecl type without the type information (e.g. input, output).
+/// Defines VarDecl type without the type information (e.g. input, output).
 /// Useful only as an intermediate step in the parser where we do not know
 /// the specific type.
-struct UntypedVarInitDecl {
+struct UntypedVarDecl {
     pub name: Id,
     pub initializer: TypeInitializer,
     pub position: SourceLoc,
@@ -45,101 +45,49 @@ struct UntypedVarInitDecl {
 // outside of the parser.
 enum VarDeclarations {
     // input_declarations
-    Inputs(Vec<VarInitDecl>),
+    Inputs(Vec<VarDecl>),
     // output_declarations
-    Outputs(Vec<VarInitDecl>),
+    Outputs(Vec<VarDecl>),
     // input_output_declarations
-    Inouts(Vec<VarInitDecl>),
+    Inouts(Vec<VarDecl>),
     // located_var_declarations
-    Located(Vec<LocatedVarInit>),
+    Located(Vec<LocatedVarDecl>),
     // var_declarations
-    Var(Vec<VarInitDecl>),
+    Var(Vec<VarDecl>),
     // external_declarations
-    External(Vec<VarInitDecl>),
+    External(Vec<VarDecl>),
     // TODO
-    // Retentive(Vec<VarInitDecl>),
-    // NonRetentive(Vec<VarInitDecl>),
-    // Temp(Vec<VarInitDecl>),
-}
-
-struct InputOutputDeclarations {
-    inputs: Vec<VarInitDecl>,
-    outputs: Vec<VarInitDecl>,
-    inouts: Vec<VarInitDecl>,
-}
-
-impl InputOutputDeclarations {
-    fn new() -> Self {
-        InputOutputDeclarations {
-            inputs: vec![],
-            outputs: vec![],
-            inouts: vec![],
-        }
-    }
-}
-struct OtherDeclarations {
-    externals: Vec<VarInitDecl>,
-    vars: Vec<VarInitDecl>,
-    //retentives: Vec<VarInitDecl>,
-    //non_retentives: Vec<VarInitDecl>,
-    //temps: Vec<VarInitDecl>,
-    // TODO incompl_located_var_declarations
-}
-
-impl OtherDeclarations {
-    fn new() -> Self {
-        OtherDeclarations {
-            externals: vec![],
-            vars: vec![],
-            //retentives: vec![],
-            //non_retentives: vec![],
-            //temps: vec![],
-        }
-    }
-}
-struct LocatedDeclarations {
-    decl: Vec<LocatedVarInit>,
-}
-
-impl LocatedDeclarations {
-    fn new() -> Self {
-        LocatedDeclarations { decl: vec![] }
-    }
+    // Retentive(Vec<VarDecl>),
+    // NonRetentive(Vec<VarDecl>),
+    // Temp(Vec<VarDecl>),
 }
 
 impl VarDeclarations {
     // Given multiple sets of declarations, unzip them into types of
     // declarations.
-    fn unzip(
-        mut decls: Vec<VarDeclarations>,
-    ) -> (
-        InputOutputDeclarations,
-        OtherDeclarations,
-        LocatedDeclarations,
-    ) {
-        let mut io = InputOutputDeclarations::new();
-        let mut other = OtherDeclarations::new();
-        let mut located = LocatedDeclarations::new();
+    pub fn unzip(mut decls: Vec<VarDeclarations>) -> (Vec<VarDecl>, Vec<LocatedVarDecl>) {
+        let mut vars = Vec::new();
+        let mut located = Vec::new();
 
         for decl in decls.drain(..) {
             match decl {
                 VarDeclarations::Inputs(mut i) => {
-                    io.inputs.append(&mut i);
+                    vars.append(&mut i);
                 }
                 VarDeclarations::Outputs(mut o) => {
-                    io.outputs.append(&mut o);
+                    vars.append(&mut o);
                 }
                 VarDeclarations::Inouts(mut inouts) => {
-                    io.inouts.append(&mut inouts);
+                    vars.append(&mut inouts);
                 }
                 VarDeclarations::Located(mut l) => {
-                    located.decl.append(&mut l);
+                    located.append(&mut l);
                 }
                 VarDeclarations::Var(mut v) => {
-                    other.vars.append(&mut v);
+                    vars.append(&mut v);
                 }
                 VarDeclarations::External(mut v) => {
-                    other.externals.append(&mut v);
+                    vars.append(&mut v);
                 } //VarDeclarations::Retentive(mut v) => {
                   //    other.retentives.append(&mut v);
                   //}
@@ -152,13 +100,10 @@ impl VarDeclarations {
             }
         }
 
-        (io, other, located)
+        (vars, located)
     }
 
-    pub fn map(
-        declarations: Vec<VarInitDecl>,
-        qualifier: Option<StorageQualifier>,
-    ) -> Vec<VarInitDecl> {
+    pub fn map(declarations: Vec<VarDecl>, qualifier: Option<StorageQualifier>) -> Vec<VarDecl> {
         declarations
             .into_iter()
             .map(|declaration| {
@@ -171,10 +116,10 @@ impl VarDeclarations {
     }
 
     pub fn flat_map(
-        declarations: Vec<Vec<UntypedVarInitDecl>>,
+        declarations: Vec<Vec<UntypedVarDecl>>,
         var_type: VariableType,
         qualifier: Option<StorageQualifier>,
-    ) -> Vec<VarInitDecl> {
+    ) -> Vec<VarDecl> {
         let declarations = declarations.into_iter().flatten();
 
         declarations
@@ -182,7 +127,7 @@ impl VarDeclarations {
             .map(|declaration| {
                 let qualifier = qualifier.clone().unwrap_or(StorageQualifier::Unspecified);
 
-                VarInitDecl {
+                VarDecl {
                     name: declaration.name,
                     var_type: var_type.clone(),
                     qualifier,
@@ -194,9 +139,9 @@ impl VarDeclarations {
     }
 
     pub fn map_located(
-        declarations: Vec<LocatedVarInit>,
+        declarations: Vec<LocatedVarDecl>,
         qualifier: Option<StorageQualifier>,
-    ) -> Vec<LocatedVarInit> {
+    ) -> Vec<LocatedVarDecl> {
         declarations
             .into_iter()
             .map(|declaration| {
@@ -497,25 +442,25 @@ parser! {
     rule field_selector() -> Id = identifier()
 
     // B.1.4.3 Declarations and initialization
-    pub rule input_declarations() -> Vec<VarInitDecl> = "VAR_INPUT" _ qualifier:("RETAIN" {StorageQualifier::Retain} / "NON_RETAIN" {StorageQualifier::NonRetain})? _ declarations:semisep(<input_declaration()>) _ "END_VAR" {
+    pub rule input_declarations() -> Vec<VarDecl> = "VAR_INPUT" _ qualifier:("RETAIN" {StorageQualifier::Retain} / "NON_RETAIN" {StorageQualifier::NonRetain})? _ declarations:semisep(<input_declaration()>) _ "END_VAR" {
       VarDeclarations::flat_map(declarations, VariableType::Input, qualifier)
     }
     // TODO add edge declaration (as a separate item - a tuple)
-    rule input_declaration() -> Vec<UntypedVarInitDecl> = i:var_init_decl() { i }
+    rule input_declaration() -> Vec<UntypedVarDecl> = i:var_init_decl() { i }
     rule edge_declaration() -> () = var1_list() _ ":" _ "BOOL" _ ("R_EDGE" / "F_EDGE")? {}
     // TODO the problem is we match first, then
     // TODO missing multiple here
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    rule var_init_decl() -> Vec<UntypedVarInitDecl> = var1_init_decl()
+    rule var_init_decl() -> Vec<UntypedVarDecl> = var1_init_decl()
 
     // TODO add in subrange_spec_init(), enumerated_spec_init()
 
-    rule var1_init_decl() -> Vec<UntypedVarInitDecl> = start:position!() names:var1_list() _ ":" _ init:(a:simple_or_enumerated_spec_init()) {
+    rule var1_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init:(a:simple_or_enumerated_spec_init()) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
-        UntypedVarInitDecl {
+        UntypedVarDecl {
           name,
           initializer: init.clone(),
           position: SourceLoc::new(start)
@@ -525,10 +470,10 @@ parser! {
 
     rule var1_list() -> Vec<Id> = names:variable_name() ++ (_ "," _) { names }
     rule fb_name() -> Id = i:identifier() { i }
-    pub rule output_declarations() -> Vec<VarInitDecl> = "VAR_OUTPUT" _ qualifier:("RETAIN" {StorageQualifier::Retain} / "NON_RETAIN" {StorageQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+    pub rule output_declarations() -> Vec<VarDecl> = "VAR_OUTPUT" _ qualifier:("RETAIN" {StorageQualifier::Retain} / "NON_RETAIN" {StorageQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
       VarDeclarations::flat_map(declarations, VariableType::Output, qualifier)
     }
-    pub rule input_output_declarations() -> Vec<VarInitDecl> = "VAR_IN_OUT" _ qualifier:("RETAIN" {StorageQualifier::Retain} / "NON_RETAIN" {StorageQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+    pub rule input_output_declarations() -> Vec<VarDecl> = "VAR_IN_OUT" _ qualifier:("RETAIN" {StorageQualifier::Retain} / "NON_RETAIN" {StorageQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
       VarDeclarations::flat_map(declarations, VariableType::InOut,  qualifier)
     }
     rule var_declarations() -> VarDeclarations = "VAR" _ qualifier:"CONSTANT"? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
@@ -543,12 +488,13 @@ parser! {
       let qualifier = qualifier.or(Some(StorageQualifier::Unspecified));
       VarDeclarations::Located(VarDeclarations::map_located(declarations, qualifier))
     }
-    rule located_var_decl() -> LocatedVarInit = name:variable_name()? _ loc:location() _ ":" _ init:located_var_spec_init() {
-      LocatedVarInit {
+    rule located_var_decl() -> LocatedVarDecl = start:position!() name:variable_name()? _ location:location() _ ":" _ initializer:located_var_spec_init() {
+      LocatedVarDecl {
         name,
         qualifier: StorageQualifier::Unspecified,
-        at: loc,
-        initializer: init,
+        location,
+        initializer,
+        position: SourceLoc::new(start),
       }
     }
     // TODO is this NOT the right type to return?
@@ -564,8 +510,8 @@ parser! {
         initial_value: None,
       }
     }
-    rule external_declaration() -> VarInitDecl = start:position!() name:global_var_name() _ ":" _ spec:external_declaration_spec() {
-      VarInitDecl {
+    rule external_declaration() -> VarDecl = start:position!() name:global_var_name() _ ":" _ spec:external_declaration_spec() {
+      VarDecl {
         name,
         var_type: VariableType::External,
         qualifier: StorageQualifier::Unspecified,
@@ -576,7 +522,7 @@ parser! {
     rule global_var_name() -> Id = i:identifier() { i }
 
     rule qualifier() -> StorageQualifier = "CONSTANT" { StorageQualifier::Constant } / "RETAIN" { StorageQualifier::Retain }
-    pub rule global_var_declarations() -> Vec<Declaration> = "VAR_GLOBAL" _ qualifier:qualifier()? _ declarations:semisep(<global_var_decl()>) _ "END_VAR" {
+    pub rule global_var_declarations() -> Vec<VarDecl> = "VAR_GLOBAL" _ qualifier:qualifier()? _ declarations:semisep(<global_var_decl()>) _ "END_VAR" {
       // TODO set the options - this is pretty similar to VarInit - maybe it should be the same
       let declarations = declarations.into_iter().flatten();
       declarations.into_iter().map(|declaration| {
@@ -587,17 +533,21 @@ parser! {
       }).collect()
     }
     // TODO this doesn't pass all information. I suspect the rule from the dpec is not right
-    rule global_var_decl() -> (Vec<Declaration>) = vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { TypeInitializer::FunctionBlock(FunctionBlockTypeInitializer{type_name: f})})? {
+    rule global_var_decl() -> (Vec<VarDecl>) = start:position!() vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { TypeInitializer::FunctionBlock(FunctionBlockTypeInitializer{type_name: f})})? {
       vs.0.into_iter().map(|name| {
-        Declaration {
+        let init = initializer.clone().unwrap_or(TypeInitializer::None);
+        VarDecl {
           name,
+          var_type: VariableType::Global,
           qualifier: StorageQualifier::Unspecified,
-          at: vs.1.clone(),
-          initializer: initializer.clone(),
+          // TODO this is clearly wrong
+          initializer: init,
+          // TODO this is clearly wrong
+          position: SourceLoc::new(start),
         }
       }).collect()
      }
-    rule global_var_spec() -> (Vec<Id>, Option<At>) = names:global_var_list() {
+    rule global_var_spec() -> (Vec<Id>, Option<DirectVariable>) = names:global_var_list() {
       (names, None)
     } / global_var_name()? location() {
       // TODO this is clearly wrong, but it feel like the spec is wrong here
@@ -616,16 +566,11 @@ parser! {
     rule standard_function_name() -> Id = identifier()
     rule derived_function_name() -> Id = identifier()
     rule function_declaration() -> FunctionDeclaration = "FUNCTION" _  name:derived_function_name() _ ":" _ rt:(elementary_type_name() / derived_type_name()) _ var_decls:(io:io_var_declarations() / func:function_var_decls()) ** _ _ body:function_body() _ "END_FUNCTION" {
-      let (io, other, located) = VarDeclarations::unzip(var_decls);
+      let (variables, located) = VarDeclarations::unzip(var_decls);
       FunctionDeclaration {
         name,
         return_type: rt,
-        inputs: io.inputs,
-        outputs: io.outputs,
-        inouts: io.inouts,
-        // TODO
-        vars: other.vars,
-        externals: other.externals,
+        variables,
         body,
       }
     }
@@ -637,7 +582,7 @@ parser! {
     // TODO a bunch are missing here
     rule function_body() -> Vec<StmtKind> = statement_list()
     // TODO return types
-    rule var2_init_decl() -> Vec<UntypedVarInitDecl> = var1_init_decl()
+    rule var2_init_decl() -> Vec<UntypedVarDecl> = var1_init_decl()
 
     // B.1.5.2 Function blocks
     // IEC 61131 defines separate standard and derived function block names,
@@ -646,15 +591,11 @@ parser! {
     rule derived_function_block_name() -> Id = !STANDARD_FUNCTION_BLOCK_NAME() i:identifier() { i }
     // TODO add variable declarations
     rule function_block_declaration() -> FunctionBlockDeclaration = "FUNCTION_BLOCK" _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other }) ** _ _ body:function_block_body() _ "END_FUNCTION_BLOCK" {
-      let (io, other, located) = VarDeclarations::unzip(decls);
+      let (variables, located) = VarDeclarations::unzip(decls);
       FunctionBlockDeclaration {
         name,
-        inputs: io.inputs,
-        outputs: io.outputs,
-        inouts: io.inouts,
-        // TODO
-        vars: other.vars,
-        externals: other.externals,
+        variables,
+        // TODO located?
         body,
       }
     }
@@ -665,13 +606,10 @@ parser! {
     // B.1.5.3 Program declaration
     rule program_type_name() -> Id = i:identifier() { i }
     pub rule program_declaration() ->  ProgramDeclaration = "PROGRAM" _ p:program_type_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other } / located:located_var_declarations() { located }) ** _ _ body:function_block_body() _ "END_PROGRAM" {
-      let (io, other, located) = VarDeclarations::unzip(decls);
+      let (variables, located) = VarDeclarations::unzip(decls);
       ProgramDeclaration {
         type_name: p,
-        inputs: io.inputs,
-        outputs: io.outputs,
-        inouts: io.inouts,
-        vars: other.vars,
+        variables,
         // TODO more
         body,
       }
@@ -937,14 +875,14 @@ mod test {
         MSG : STRING;
       END_VAR";
         let vars = vec![
-            VarInitDecl {
+            VarDecl {
                 name: Id::from("TRIG"),
                 var_type: VariableType::Input,
                 qualifier: StorageQualifier::Unspecified,
                 initializer: TypeInitializer::simple_uninitialized("BOOL"),
                 position: SourceLoc::new(18),
             },
-            VarInitDecl {
+            VarDecl {
                 name: Id::from("MSG"),
                 var_type: VariableType::Input,
                 qualifier: StorageQualifier::Unspecified,
@@ -962,7 +900,7 @@ mod test {
         let decl = "VAR_INPUT
 LEVEL : LOGLEVEL := INFO;
 END_VAR";
-        let expected = Ok(vec![VarInitDecl {
+        let expected = Ok(vec![VarDecl {
             name: Id::from("LEVEL"),
             var_type: VariableType::Input,
             qualifier: StorageQualifier::Unspecified,
@@ -982,14 +920,14 @@ END_VAR";
         MSG : STRING;
       END_VAR";
         let vars = vec![
-            VarInitDecl {
+            VarDecl {
                 name: Id::from("TRIG"),
                 var_type: VariableType::Output,
                 qualifier: StorageQualifier::Unspecified,
                 initializer: TypeInitializer::simple_uninitialized("BOOL"),
                 position: SourceLoc::new(19),
             },
-            VarInitDecl {
+            VarDecl {
                 name: Id::from("MSG"),
                 var_type: VariableType::Output,
                 qualifier: StorageQualifier::Unspecified,
@@ -1076,14 +1014,15 @@ END_VAR";
     #[test]
     fn var_global() {
         // TODO assign the right values
-        let reset = vec![Declaration {
+        let reset = vec![VarDecl {
             name: Id::from("ResetCounterValue"),
+            var_type: VariableType::Global,
             qualifier: StorageQualifier::Constant,
-            at: None,
-            initializer: Option::Some(TypeInitializer::Simple {
+            initializer: TypeInitializer::Simple {
                 type_name: Id::from("INT"),
                 initial_value: Option::Some(Initializer::Simple(Constant::IntegerLiteral(17))),
-            }),
+            },
+            position: SourceLoc::new(0),
         }];
         assert_eq!(
             plc_parser::global_var_declarations(

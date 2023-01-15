@@ -45,23 +45,24 @@ use std::collections::HashMap;
 use crate::error::SemanticDiagnostic;
 
 trait FindIOVariable {
-    fn find_input(&self, name: &Id) -> Option<&VarInitDecl>;
-    fn find_output(&self, name: &Id) -> Option<&VarInitDecl>;
+    fn find_first_input(&self, name: &Id) -> Option<&VarDecl>;
+    fn find_first_output(&self, name: &Id) -> Option<&VarDecl>;
 }
 
 impl FindIOVariable for FunctionBlockDeclaration {
-    fn find_input(&self, name: &Id) -> Option<&VarInitDecl> {
-        if let Some(v) = self.inputs.iter().find(|item| item.name.eq(name)) {
+    fn find_first_input(&self, name: &Id) -> Option<&VarDecl> {
+        // TODO this doesn't filter inputs
+        if let Some(v) = self.variables.iter().find(|item| item.name.eq(name)) {
             return Some(v);
         }
-        self.inouts.iter().find(|item| item.name.eq(name))
+        None
     }
 
-    fn find_output(&self, name: &Id) -> Option<&VarInitDecl> {
-        if let Some(v) = self.outputs.iter().find(|item| item.name.eq(name)) {
+    fn find_first_output(&self, name: &Id) -> Option<&VarDecl> {
+        if let Some(v) = self.variables.iter().find(|item| item.name.eq(name)) {
             return Some(v);
         }
-        self.inouts.iter().find(|item| item.name.eq(name))
+        None
     }
 }
 
@@ -137,7 +138,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
             // TODO Check that the names and types match. Unassigned values are
             // permitted so we use the assignments as the set to iterate
             for name in named {
-                match function_block.find_input(&name.name) {
+                match function_block.find_first_input(&name.name) {
                     Some(_) => {}
                     None => {
                         return Err(SemanticDiagnostic::error(
@@ -196,11 +197,12 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
         res
     }
 
-    fn visit_var_init_decl(
+    fn visit_variable_declaration(
         &mut self,
-        node: &VarInitDecl,
+        node: &VarDecl,
     ) -> Result<Self::Value, SemanticDiagnostic> {
         match &node.initializer {
+            TypeInitializer::None => todo!(),
             TypeInitializer::Simple {
                 type_name: _,
                 initial_value: _,
@@ -275,7 +277,7 @@ END_FUNCTION_BLOCK";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_ok())
+        assert!(result.is_ok())
     }
 
     #[test]
@@ -298,7 +300,7 @@ END_FUNCTION_BLOCK";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_ok())
+        assert!(result.is_ok())
     }
 
     #[test]
@@ -321,7 +323,7 @@ END_FUNCTION_BLOCK";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_ok())
+        assert!(result.is_ok())
     }
 
     #[test]
@@ -340,7 +342,7 @@ END_FUNCTION_BLOCK";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_err())
+        assert!(result.is_err())
     }
 
     #[test]
@@ -362,6 +364,6 @@ END_FUNCTION_BLOCK";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_err())
+        assert!(result.is_err())
     }
 }

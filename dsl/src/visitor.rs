@@ -97,8 +97,8 @@ pub trait Visitor<E> {
         visit_resource_declaration(self, node)
     }
 
-    fn visit_declaration(&mut self, node: &Declaration) -> Result<Self::Value, E> {
-        visit_declaration(self, node)
+    fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<Self::Value, E> {
+        visit_variable_declaration(self, node)
     }
 
     fn visit_enum_declaration(&mut self, node: &EnumerationDeclaration) -> Result<Self::Value, E> {
@@ -118,14 +118,6 @@ pub trait Visitor<E> {
 
     fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<Self::Value, E> {
         visit_program_declaration(self, node)
-    }
-
-    fn visit_located_var_init(&mut self, node: &LocatedVarInit) -> Result<Self::Value, E> {
-        todo!()
-    }
-
-    fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<Self::Value, E> {
-        visit_var_init_decl(self, node)
     }
 
     fn visit_sfc(&mut self, node: &Sfc) -> Result<Self::Value, E> {
@@ -217,9 +209,9 @@ pub fn visit_resource_declaration<V: Visitor<E> + ?Sized, E>(
     // TODO there are more child elements here
 }
 
-pub fn visit_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_variable_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
-    node: &Declaration,
+    node: &VarDecl,
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.initializer, v)
 }
@@ -235,11 +227,7 @@ pub fn visit_function_block_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &FunctionBlockDeclaration,
 ) -> Result<V::Value, E> {
-    Acceptor::accept(&node.inputs, v)?;
-    Acceptor::accept(&node.outputs, v)?;
-    Acceptor::accept(&node.inouts, v)?;
-    Acceptor::accept(&node.vars, v)?;
-    Acceptor::accept(&node.externals, v)?;
+    Acceptor::accept(&node.variables, v)?;
     Acceptor::accept(&node.body, v)
 }
 
@@ -247,10 +235,7 @@ pub fn visit_program_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &ProgramDeclaration,
 ) -> Result<V::Value, E> {
-    Acceptor::accept(&node.inputs, v)?;
-    Acceptor::accept(&node.outputs, v)?;
-    Acceptor::accept(&node.inouts, v)?;
-    Acceptor::accept(&node.vars, v)?;
+    Acceptor::accept(&node.variables, v)?;
     Acceptor::accept(&node.body, v)
 }
 
@@ -258,19 +243,8 @@ pub fn visit_function_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &FunctionDeclaration,
 ) -> Result<V::Value, E> {
-    Acceptor::accept(&node.inputs, v)?;
-    Acceptor::accept(&node.outputs, v)?;
-    Acceptor::accept(&node.inouts, v)?;
-    Acceptor::accept(&node.vars, v)?;
-    Acceptor::accept(&node.externals, v)?;
+    Acceptor::accept(&node.variables, v)?;
     Acceptor::accept(&node.body, v)
-}
-
-pub fn visit_var_init_decl<V: Visitor<E> + ?Sized, E>(
-    v: &mut V,
-    node: &VarInitDecl,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.initializer, v)
 }
 
 pub fn visit_if<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &If) -> Result<V::Value, E> {
@@ -333,9 +307,9 @@ impl Acceptor for ResourceDeclaration {
     }
 }
 
-impl Acceptor for Declaration {
+impl Acceptor for VarDecl {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
-        visitor.visit_declaration(self)
+        visitor.visit_variable_declaration(self)
     }
 }
 
@@ -355,6 +329,7 @@ impl Acceptor for EnumeratedSpecificationKind {
 impl Acceptor for TypeInitializer {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
+            TypeInitializer::None => Ok(V::Value::default()),
             TypeInitializer::Simple {
                 type_name,
                 initial_value,
@@ -370,15 +345,6 @@ impl Acceptor for TypeInitializer {
             TypeInitializer::LateResolvedType(_) => Ok(V::Value::default()),
         }
         // TODO don't yet know how to visit these
-    }
-}
-
-impl Acceptor for VarInitKind {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
-        match self {
-            VarInitKind::VarInit(init) => visitor.visit_var_init_decl(init),
-            VarInitKind::LocatedVarInit(located_var) => visitor.visit_located_var_init(located_var),
-        }
     }
 }
 
@@ -399,12 +365,6 @@ impl Acceptor for ExprKind {
                 todo!()
             }
         }
-    }
-}
-
-impl Acceptor for VarInitDecl {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
-        visitor.visit_var_init_decl(self)
     }
 }
 
@@ -494,14 +454,7 @@ mod test {
         let library = Library {
             elems: vec![LibraryElement::ProgramDeclaration(ProgramDeclaration {
                 type_name: Id::from("plc_prg"),
-                inputs: vec![VarInitDecl::simple_input(
-                    "Reset",
-                    "BOOL",
-                    SourceLoc::new(0),
-                )],
-                outputs: vec![],
-                inouts: vec![],
-                vars: vec![],
+                variables: vec![VarDecl::simple_input("Reset", "BOOL", SourceLoc::new(0))],
                 body: FunctionBlockBody::stmts(vec![StmtKind::fb_assign(
                     "AverageVal",
                     vec!["Cnt1", "Cnt2"],

@@ -31,7 +31,7 @@ use ironplc_dsl::{
     dsl::*,
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
-        visit_var_init_decl, Visitor,
+        visit_variable_declaration, Visitor,
     },
 };
 
@@ -88,12 +88,12 @@ impl Visitor<SemanticDiagnostic> for SymbolTable<Id, DummyNode> {
         ret
     }
 
-    fn visit_var_init_decl(
+    fn visit_variable_declaration(
         &mut self,
-        node: &VarInitDecl,
+        node: &VarDecl,
     ) -> Result<Self::Value, SemanticDiagnostic> {
         self.add(&node.name, DummyNode {});
-        visit_var_init_decl(self, node)
+        visit_variable_declaration(self, node)
     }
 
     fn visit_symbolic_variable(
@@ -133,7 +133,7 @@ END_FUNCTION_BLOCK";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_err());
+        assert!(result.is_err());
     }
 
     #[test]
@@ -151,7 +151,7 @@ END_FUNCTION_BLOCK";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_ok());
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -169,7 +169,7 @@ END_FUNCTION";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_ok());
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -187,6 +187,6 @@ END_PROGRAM";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_ok());
+        assert!(result.is_ok());
     }
 }

@@ -169,7 +169,7 @@ mod tests {
 
         let library = parse(program).unwrap();
         let result = apply(&library);
-        assert_eq!(true, result.is_err());
+        assert!(result.is_err());
     }
 
     #[test]
@@ -191,6 +191,6 @@ mod tests {
 
         let library = parse(program).unwrap();
         let result = apply(&library);
-        assert_eq!(true, result.is_ok());
+        assert!(result.is_ok());
     }
 }

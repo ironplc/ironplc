@@ -75,7 +75,7 @@ END_TYPE";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_ok());
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -89,7 +89,7 @@ END_TYPE";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_ok());
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -102,6 +102,6 @@ END_TYPE";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_err());
+        assert!(result.is_err());
     }
 }

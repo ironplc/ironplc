@@ -28,7 +28,7 @@
 //! references the value (and still be constant).
 use ironplc_dsl::{
     dsl::*,
-    visitor::{visit_var_init_decl, Visitor},
+    visitor::{visit_variable_declaration, Visitor},
 };
 
 use crate::error::SemanticDiagnostic;
@@ -43,15 +43,16 @@ struct RuleConstantVarsInitialized {}
 impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
     type Value = ();
 
-    fn visit_var_init_decl(&mut self, node: &VarInitDecl) -> Result<(), SemanticDiagnostic> {
+    fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<(), SemanticDiagnostic> {
         if node.var_type == VariableType::External {
             // If the variable type is external, than it must be initialized
             // somewhere else and therefore we do not need to check here.
-            return visit_var_init_decl(self, node);
+            return visit_variable_declaration(self, node);
         }
 
         match node.qualifier {
             StorageQualifier::Constant => match &node.initializer {
+                TypeInitializer::None => todo!(),
                 TypeInitializer::Simple {
                     type_name: _,
                     initial_value,
@@ -103,7 +104,7 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
             StorageQualifier::NonRetain => {}
         }
 
-        visit_var_init_decl(self, node)
+        visit_variable_declaration(self, node)
     }
 }
 
@@ -126,7 +127,7 @@ END_FUNCTION_BLOCK";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_err())
+        assert!(result.is_err())
     }
 
     #[test]
@@ -146,7 +147,7 @@ END_FUNCTION_BLOCK";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_err())
+        assert!(result.is_err())
     }
 
     #[test]
@@ -162,7 +163,7 @@ END_FUNCTION_BLOCK";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_err())
+        assert!(result.is_err())
     }
 
     #[test]
@@ -178,7 +179,7 @@ END_FUNCTION_BLOCK";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_ok())
+        assert!(result.is_ok())
     }
 
     #[test]
@@ -198,7 +199,7 @@ END_FUNCTION_BLOCK";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_ok())
+        assert!(result.is_ok())
     }
 
     #[test]
@@ -214,6 +215,6 @@ END_FUNCTION_BLOCK";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_ok())
+        assert!(result.is_ok())
     }
 }

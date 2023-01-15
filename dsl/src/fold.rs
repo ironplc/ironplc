@@ -66,11 +66,7 @@ pub trait Fold {
     ) -> FunctionBlockDeclaration {
         FunctionBlockDeclaration {
             name: node.name,
-            inputs: Foldable::fold(node.inputs, self),
-            outputs: Foldable::fold(node.outputs, self),
-            inouts: Foldable::fold(node.inouts, self),
-            vars: Foldable::fold(node.vars, self),
-            externals: Foldable::fold(node.externals, self),
+            variables: Foldable::fold(node.variables, self),
             body: node.body,
         }
     }
@@ -79,11 +75,7 @@ pub trait Fold {
         FunctionDeclaration {
             name: node.name.clone(),
             return_type: node.return_type,
-            inputs: Foldable::fold(node.inputs, self),
-            outputs: Foldable::fold(node.outputs, self),
-            inouts: Foldable::fold(node.inouts, self),
-            vars: Foldable::fold(node.vars, self),
-            externals: Foldable::fold(node.externals, self),
+            variables: Foldable::fold(node.variables, self),
             body: node.body,
         }
     }
@@ -91,25 +83,13 @@ pub trait Fold {
     fn fold_program_declaration(&mut self, node: ProgramDeclaration) -> ProgramDeclaration {
         ProgramDeclaration {
             type_name: node.type_name,
-            inputs: Foldable::fold(node.inputs, self),
-            outputs: Foldable::fold(node.outputs, self),
-            inouts: Foldable::fold(node.inouts, self),
-            vars: Foldable::fold(node.vars, self),
+            variables: Foldable::fold(node.variables, self),
             body: node.body,
         }
     }
 
-    fn fold_var_init_kind(&mut self, node: VarInitKind) -> VarInitKind {
-        match node {
-            VarInitKind::VarInit(var_init) => {
-                VarInitKind::VarInit(self.fold_var_init_decl(var_init))
-            }
-            _ => node,
-        }
-    }
-
-    fn fold_var_init_decl(&mut self, node: VarInitDecl) -> VarInitDecl {
-        VarInitDecl {
+    fn fold_variable_declaration(&mut self, node: VarDecl) -> VarDecl {
+        VarDecl {
             name: node.name.clone(),
             var_type: node.var_type,
             qualifier: node.qualifier,
@@ -121,6 +101,10 @@ pub trait Fold {
     fn fold_type_initializer(&mut self, node: TypeInitializer) -> TypeInitializer {
         node
     }
+
+    fn fold_direct_variable(&mut self, node: DirectVariable) -> DirectVariable {
+        node
+    }
 }
 
 impl Foldable for LibraryElement {
@@ -130,17 +114,10 @@ impl Foldable for LibraryElement {
     }
 }
 
-impl Foldable for VarInitKind {
-    type Mapped = VarInitKind;
+impl Foldable for VarDecl {
+    type Mapped = VarDecl;
     fn fold<F: Fold + ?Sized>(self, folder: &mut F) -> Self::Mapped {
-        folder.fold_var_init_kind(self)
-    }
-}
-
-impl Foldable for VarInitDecl {
-    type Mapped = VarInitDecl;
-    fn fold<F: Fold + ?Sized>(self, folder: &mut F) -> Self::Mapped {
-        folder.fold_var_init_decl(self)
+        folder.fold_variable_declaration(self)
     }
 }
 
@@ -148,5 +125,12 @@ impl Foldable for TypeInitializer {
     type Mapped = TypeInitializer;
     fn fold<F: Fold + ?Sized>(self, folder: &mut F) -> Self::Mapped {
         folder.fold_type_initializer(self)
+    }
+}
+
+impl Foldable for DirectVariable {
+    type Mapped = DirectVariable;
+    fn fold<F: Fold + ?Sized>(self, folder: &mut F) -> Self::Mapped {
+        folder.fold_direct_variable(self)
     }
 }
