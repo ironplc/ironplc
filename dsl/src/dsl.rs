@@ -93,41 +93,168 @@ pub enum TypeDefinitionKind {
     Structure,
 }
 
-// TODO I don't know if I need to support multiple qualifier classes for the
-// same value.
-// 2.4.3 Declaration
+/// 2.4.1.1 Single-element variables representation
 #[derive(Debug, PartialEq, Clone)]
-pub struct Declaration {
+pub enum LocationPrefix {
+    /// Input location
+    I,
+    /// Output location
+    Q,
+    /// Memory location
+    M,
+}
+
+impl LocationPrefix {
+    pub fn from_char(l: char) -> LocationPrefix {
+        match l {
+            'I' => LocationPrefix::I,
+            'Q' => LocationPrefix::Q,
+            'M' => LocationPrefix::M,
+            // TODO error message
+            _ => panic!(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum SizePrefix {
+    /// Single bit size
+    Nil,
+    /// Single bit size
+    X,
+    /// 8-bit size
+    B,
+    /// 16-bit size
+    W,
+    /// 32-bit size
+    D,
+    /// 64-bit size
+    L,
+}
+
+impl SizePrefix {
+    pub fn from_char(s: char) -> SizePrefix {
+        match s {
+            'X' => SizePrefix::X,
+            'B' => SizePrefix::B,
+            'W' => SizePrefix::W,
+            'D' => SizePrefix::D,
+            'L' => SizePrefix::L,
+            // TODO error message
+            _ => panic!(),
+        }
+    }
+}
+
+// 2.4.3 Declaration (that does not permit a location).
+#[derive(Debug, PartialEq, Clone)]
+pub struct VarDecl {
     pub name: Id,
+    pub var_type: VariableType,
     pub qualifier: StorageQualifier,
-    pub at: Option<At>,
-    pub initializer: Option<TypeInitializer>,
+    pub initializer: TypeInitializer,
+    pub position: SourceLoc,
 }
 
-/// 2.4.3 Qualifier types for definitions
-#[derive(Debug, PartialEq, Clone)]
-pub enum StorageQualifier {
-    // TODO Some of these are not valid for some contexts - should there be multiple
-    // qualifier classes, indicate some how, or fail?
-    Unspecified,
-    Constant,
-    /// Stored so that the value is retained through power loss.
-    Retain,
-    /// Stored so that the value is NOT retained through power loss.
-    NonRetain,
+impl VarDecl {
+    /// Creates a variable declaration for simple type and no initialization.
+    pub fn simple_input(name: &str, type_name: &str, loc: SourceLoc) -> Self {
+        Self::simple(name, type_name, VariableType::Input, loc)
+    }
+
+    /// Creates a variable declaration for simple type and no initialization.
+    pub fn simple_output(name: &str, type_name: &str, loc: SourceLoc) -> Self {
+        Self::simple(name, type_name, VariableType::Output, loc)
+    }
+
+    /// Creates a variable declaration for simple type and no initialization.
+    pub fn simple_var(name: &str, type_name: &str, loc: SourceLoc) -> Self {
+        Self::simple(name, type_name, VariableType::Var, loc)
+    }
+
+    /// Creates a variable declaration for simple type and no initialization.
+    pub fn simple_external(name: &str, type_name: &str, loc: SourceLoc) -> Self {
+        Self::simple(name, type_name, VariableType::External, loc)
+    }
+
+    /// Creates a variable declaration for simple type and no initialization.
+    pub fn simple(name: &str, type_name: &str, var_type: VariableType, loc: SourceLoc) -> Self {
+        Self {
+            name: Id::from(name),
+            var_type,
+            qualifier: StorageQualifier::Unspecified,
+            initializer: TypeInitializer::Simple {
+                type_name: Id::from(type_name),
+                initial_value: None,
+            },
+            position: loc,
+        }
+    }
+
+    /// Creates a variable declaration for enumeration having an initial value.
+    pub fn enumerated_input(
+        name: &str,
+        type_name: &str,
+        initial_value: &str,
+        loc: SourceLoc,
+    ) -> Self {
+        VarDecl {
+            name: Id::from(name),
+            var_type: VariableType::Input,
+            qualifier: StorageQualifier::Unspecified,
+            initializer: TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
+                type_name: Id::from(type_name),
+                initial_value: Some(Id::from(initial_value)),
+            }),
+            position: loc,
+        }
+    }
+
+    /// Creates a variable declaration for a function block.
+    pub fn function_block_var(name: &str, type_name: &str, loc: SourceLoc) -> Self {
+        VarDecl {
+            name: Id::from(name),
+            var_type: VariableType::Var,
+            qualifier: StorageQualifier::Unspecified,
+            initializer: TypeInitializer::FunctionBlock(FunctionBlockTypeInitializer {
+                type_name: Id::from(type_name),
+            }),
+            position: loc,
+        }
+    }
+
+    /// Creates a variable declaration that is ambiguous on the type.
+    ///
+    /// The language has some ambiguity for types. The late bound represents
+    /// a placeholder that is later resolved once all types are known.
+    pub fn late_bound_input(name: &str, type_name: &str, loc: SourceLoc) -> Self {
+        Self::late_bound(name, type_name, VariableType::Input, loc)
+    }
+
+    /// Creates a variable declaration that is ambiguous on the type.
+    ///
+    /// The language has some ambiguity for types. The late bound represents
+    /// a placeholder that is later resolved once all types are known.
+    pub fn late_bound_var(name: &str, type_name: &str, loc: SourceLoc) -> Self {
+        Self::late_bound(name, type_name, VariableType::Var, loc)
+    }
+
+    /// Creates a variable declaration that is ambiguous on the type.
+    ///
+    /// The language has some ambiguity for types. The late bound represents
+    /// a placeholder that is later resolved once all types are known.
+    pub fn late_bound(name: &str, type_name: &str, var_type: VariableType, loc: SourceLoc) -> Self {
+        VarDecl {
+            name: Id::from(name),
+            var_type,
+            qualifier: StorageQualifier::Unspecified,
+            initializer: TypeInitializer::LateResolvedType(Id::from(type_name)),
+            position: loc,
+        }
+    }
 }
 
-/// Defines the top-level elements that are valid declarations in a library.
-#[derive(Debug, PartialEq)]
-pub enum LibraryElement {
-    DataTypeDeclaration(Vec<EnumerationDeclaration>),
-    FunctionDeclaration(FunctionDeclaration),
-    // TODO
-    FunctionBlockDeclaration(FunctionBlockDeclaration),
-    ProgramDeclaration(ProgramDeclaration),
-    ConfigurationDeclaration(ConfigurationDeclaration),
-}
-
+/// 2.4.3 Declaration
 #[derive(Debug, PartialEq, Clone)]
 pub enum VariableType {
     /// Local to a POU.
@@ -152,133 +279,40 @@ pub enum VariableType {
     Global,
     /// Configurations for communication channels.
     Access,
+    /// TODO is this really a type or just a variation on the set fields?
+    Located,
 }
 
+/// 2.4.3 Qualifier types for definitions
 #[derive(Debug, PartialEq, Clone)]
-pub struct VarInitDecl {
-    pub name: Id,
-    pub var_type: VariableType,
+pub enum StorageQualifier {
+    // TODO Some of these are not valid for some contexts - should there be multiple
+    // qualifier classes, indicate some how, or fail?
+    Unspecified,
+    Constant,
+    /// Stored so that the value is retained through power loss.
+    Retain,
+    /// Stored so that the value is NOT retained through power loss.
+    NonRetain,
+}
+
+pub struct LocatedVarDecl {
+    pub name: Option<Id>,
     pub qualifier: StorageQualifier,
+    pub location: DirectVariable,
     pub initializer: TypeInitializer,
-    // TODO this need much more
     pub position: SourceLoc,
 }
 
-impl VarInitDecl {
-    /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple_input(name: &str, type_name: &str, loc: SourceLoc) -> VarInitDecl {
-        VarInitDecl::simple(name, type_name, VariableType::Input, loc)
-    }
-
-    /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple_output(name: &str, type_name: &str, loc: SourceLoc) -> VarInitDecl {
-        VarInitDecl::simple(name, type_name, VariableType::Output, loc)
-    }
-
-    /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple_var(name: &str, type_name: &str, loc: SourceLoc) -> VarInitDecl {
-        VarInitDecl::simple(name, type_name, VariableType::Var, loc)
-    }
-
-    /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple(
-        name: &str,
-        type_name: &str,
-        var_type: VariableType,
-        loc: SourceLoc,
-    ) -> VarInitDecl {
-        VarInitDecl {
-            name: Id::from(name),
-            var_type,
-            qualifier: StorageQualifier::Unspecified,
-            initializer: TypeInitializer::Simple {
-                type_name: Id::from(type_name),
-                initial_value: None,
-            },
-            position: loc,
-        }
-    }
-
-    /// Creates a variable declaration for enumeration having an initial value.
-    pub fn enumerated_input(
-        name: &str,
-        type_name: &str,
-        initial_value: &str,
-        loc: SourceLoc,
-    ) -> VarInitDecl {
-        VarInitDecl {
-            name: Id::from(name),
-            var_type: VariableType::Input,
-            qualifier: StorageQualifier::Unspecified,
-            initializer: TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
-                type_name: Id::from(type_name),
-                initial_value: Some(Id::from(initial_value)),
-            }),
-            position: loc,
-        }
-    }
-
-    /// Creates a variable declaration for a function block.
-    pub fn function_block_var(name: &str, type_name: &str, loc: SourceLoc) -> VarInitDecl {
-        VarInitDecl {
-            name: Id::from(name),
-            var_type: VariableType::Var,
-            qualifier: StorageQualifier::Unspecified,
-            initializer: TypeInitializer::FunctionBlock(FunctionBlockTypeInitializer {
-                type_name: Id::from(type_name),
-            }),
-            position: loc,
-        }
-    }
-
-    /// Creates a variable declaration that is ambiguous on the type.
-    ///
-    /// The language has some ambiguity for types. The late bound represents
-    /// a placeholder that is later resolved once all types are known.
-    pub fn late_bound_input(name: &str, type_name: &str, loc: SourceLoc) -> VarInitDecl {
-        VarInitDecl::late_bound(name, type_name, VariableType::Input, loc)
-    }
-
-    /// Creates a variable declaration that is ambiguous on the type.
-    ///
-    /// The language has some ambiguity for types. The late bound represents
-    /// a placeholder that is later resolved once all types are known.
-    pub fn late_bound_var(name: &str, type_name: &str, loc: SourceLoc) -> VarInitDecl {
-        VarInitDecl::late_bound(name, type_name, VariableType::Var, loc)
-    }
-
-    /// Creates a variable declaration that is ambiguous on the type.
-    ///
-    /// The language has some ambiguity for types. The late bound represents
-    /// a placeholder that is later resolved once all types are known.
-    pub fn late_bound(
-        name: &str,
-        type_name: &str,
-        var_type: VariableType,
-        loc: SourceLoc,
-    ) -> VarInitDecl {
-        VarInitDecl {
-            name: Id::from(name),
-            var_type,
-            qualifier: StorageQualifier::Unspecified,
-            initializer: TypeInitializer::LateResolvedType(Id::from(type_name)),
-            position: loc,
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct LocatedVarInit {
-    pub name: Option<Id>,
-    pub qualifier: StorageQualifier,
-    pub at: DirectVariable,
-    pub initializer: TypeInitializer,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum VarInitKind {
-    VarInit(VarInitDecl),
-    LocatedVarInit(LocatedVarInit),
+/// Defines the top-level elements that are valid declarations in a library.
+#[derive(Debug, PartialEq)]
+pub enum LibraryElement {
+    DataTypeDeclaration(Vec<EnumerationDeclaration>),
+    FunctionDeclaration(FunctionDeclaration),
+    // TODO
+    FunctionBlockDeclaration(FunctionBlockDeclaration),
+    ProgramDeclaration(ProgramDeclaration),
+    ConfigurationDeclaration(ConfigurationDeclaration),
 }
 
 // 2.4.3.1 Type assignment
@@ -343,6 +377,11 @@ pub struct FunctionBlockTypeInitializer {
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum TypeInitializer {
+    /// Represents no type initializer.
+    ///
+    /// Some types allow no initializer and this avoids nesting of the
+    /// enumeration with an Option enumeration.
+    None,
     Simple {
         type_name: Id,
         initial_value: Option<Initializer>,
@@ -387,49 +426,6 @@ impl TypeInitializer {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum LocationPrefix {
-    I,
-    Q,
-    M,
-}
-
-impl LocationPrefix {
-    pub fn from_char(l: char) -> LocationPrefix {
-        match l {
-            'I' => LocationPrefix::I,
-            'Q' => LocationPrefix::Q,
-            'M' => LocationPrefix::M,
-            // TODO error message
-            _ => panic!(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum SizePrefix {
-    Nil,
-    X,
-    B,
-    W,
-    D,
-    L,
-}
-
-impl SizePrefix {
-    pub fn from_char(s: char) -> SizePrefix {
-        match s {
-            'X' => SizePrefix::X,
-            'B' => SizePrefix::B,
-            'W' => SizePrefix::W,
-            'D' => SizePrefix::D,
-            'L' => SizePrefix::L,
-            // TODO error message
-            _ => panic!(),
-        }
-    }
-}
-
 /// Resource assigns tasks to a particular CPU.
 #[derive(Debug, PartialEq)]
 pub struct ResourceDeclaration {
@@ -440,7 +436,7 @@ pub struct ResourceDeclaration {
     /// Global variables in the scope of the resource.
     ///
     /// Global variables are not in scope for other resources.
-    pub global_vars: Vec<Declaration>,
+    pub global_vars: Vec<VarDecl>,
     /// Defines the configuration of programs on this resource.
     pub tasks: Vec<TaskConfiguration>,
     /// Defines runnable programs.
@@ -460,7 +456,7 @@ pub struct ProgramConfiguration {
 #[derive(Debug, PartialEq)]
 pub struct ConfigurationDeclaration {
     pub name: Id,
-    pub global_var: Vec<Declaration>,
+    pub global_var: Vec<VarDecl>,
     pub resource_decl: Vec<ResourceDeclaration>,
 }
 
@@ -561,12 +557,7 @@ impl FunctionBlockBody {
 pub struct FunctionDeclaration {
     pub name: Id,
     pub return_type: Id,
-    // TODO rename these to be descriptive
-    pub inputs: Vec<VarInitDecl>,
-    pub outputs: Vec<VarInitDecl>,
-    pub inouts: Vec<VarInitDecl>,
-    pub vars: Vec<VarInitDecl>,
-    pub externals: Vec<VarInitDecl>,
+    pub variables: Vec<VarDecl>,
     // TODO other types
     pub body: Vec<StmtKind>,
 }
@@ -574,11 +565,7 @@ pub struct FunctionDeclaration {
 #[derive(Debug, PartialEq, Clone)]
 pub struct FunctionBlockDeclaration {
     pub name: Id,
-    pub inputs: Vec<VarInitDecl>,
-    pub outputs: Vec<VarInitDecl>,
-    pub inouts: Vec<VarInitDecl>,
-    pub vars: Vec<VarInitDecl>,
-    pub externals: Vec<VarInitDecl>,
+    pub variables: Vec<VarDecl>,
     // TODO other var declarations
     pub body: FunctionBlockBody,
 }
@@ -586,10 +573,7 @@ pub struct FunctionBlockDeclaration {
 #[derive(Debug, PartialEq)]
 pub struct ProgramDeclaration {
     pub type_name: Id,
-    pub inputs: Vec<VarInitDecl>,
-    pub outputs: Vec<VarInitDecl>,
-    pub inouts: Vec<VarInitDecl>,
-    pub vars: Vec<VarInitDecl>,
+    pub variables: Vec<VarDecl>,
     // TODO other var declarations
     // TODO located var declarations
     // TODO other stuff here

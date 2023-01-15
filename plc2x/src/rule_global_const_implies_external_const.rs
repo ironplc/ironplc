@@ -59,7 +59,10 @@ struct FindGlobalConstVars<'a> {
 }
 impl<'a> Visitor<SemanticDiagnostic> for FindGlobalConstVars<'a> {
     type Value = ();
-    fn visit_declaration(&mut self, node: &Declaration) -> Result<Self::Value, SemanticDiagnostic> {
+    fn visit_variable_declaration(
+        &mut self,
+        node: &VarDecl,
+    ) -> Result<Self::Value, SemanticDiagnostic> {
         if node.qualifier == StorageQualifier::Constant {
             self.global_consts.insert(node.name.clone());
         }
@@ -73,9 +76,9 @@ struct RuleExternalGlobalConst<'a> {
 impl<'a> Visitor<SemanticDiagnostic> for RuleExternalGlobalConst<'a> {
     type Value = ();
 
-    fn visit_var_init_decl(
+    fn visit_variable_declaration(
         &mut self,
-        node: &VarInitDecl,
+        node: &VarDecl,
     ) -> Result<Self::Value, SemanticDiagnostic> {
         if node.var_type == VariableType::External && node.qualifier != StorageQualifier::Constant {
             if let Some(global) = self.global_consts.get(&node.name) {
@@ -123,7 +126,7 @@ END_FUNCTION_BLOCK";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_err())
+        assert!(result.is_err())
     }
 
     #[test]
@@ -150,6 +153,6 @@ END_FUNCTION_BLOCK";
         let library = parse(program).unwrap();
         let result = apply(&library);
 
-        assert_eq!(true, result.is_ok())
+        assert!(result.is_ok())
     }
 }
