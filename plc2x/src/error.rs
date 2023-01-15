@@ -1,6 +1,7 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::core::SourceLoc;
 
+#[derive(Debug, PartialEq)]
 pub struct SemanticDiagnostic {
     pub code: &'static str,
     pub message: String,

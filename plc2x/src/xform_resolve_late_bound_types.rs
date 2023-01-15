@@ -55,7 +55,7 @@ pub fn apply(lib: Library) -> Result<Library, SemanticDiagnostic> {
 
     // Set the types for each item.
     let mut resolver = TypeResolver { types: type_map };
-    Ok(resolver.fold(lib))
+    resolver.fold(lib)
 }
 
 // Finds types that are valid as variable types. These include enumerations,
@@ -101,16 +101,19 @@ impl TypeResolver {
     }
 }
 
-impl Fold for TypeResolver {
-    fn fold_type_initializer(&mut self, node: TypeInitializer) -> TypeInitializer {
+impl Fold<SemanticDiagnostic> for TypeResolver {
+    fn fold_type_initializer(
+        &mut self,
+        node: TypeInitializer,
+    ) -> Result<TypeInitializer, SemanticDiagnostic> {
         match node {
             TypeInitializer::LateResolvedType(name) => {
                 // Try to find the type for the specified name.
                 if TypeResolver::is_elementary_type(&name) {
-                    return TypeInitializer::Simple {
+                    return Ok(TypeInitializer::Simple {
                         type_name: name,
                         initial_value: None,
-                    };
+                    });
                 }
 
                 // TODO error handling
@@ -119,22 +122,22 @@ impl Fold for TypeResolver {
                     Some(type_kind) => {
                         match type_kind {
                             TypeDefinitionKind::Enumeration => {
-                                TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
+                                Ok(TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
                                     type_name: name,
                                     initial_value: None,
-                                })
+                                }))
                             }
                             TypeDefinitionKind::FunctionBlock => {
-                                TypeInitializer::FunctionBlock(FunctionBlockTypeInitializer {
-                                    type_name: name,
-                                })
+                                Ok(TypeInitializer::FunctionBlock(
+                                    FunctionBlockTypeInitializer { type_name: name },
+                                ))
                             }
                             TypeDefinitionKind::Function => {
                                 // TODO this is wrong and should be an error
-                                TypeInitializer::Structure { type_name: name }
+                                Ok(TypeInitializer::Structure { type_name: name })
                             }
                             TypeDefinitionKind::Structure => {
-                                TypeInitializer::Structure { type_name: name }
+                                Ok(TypeInitializer::Structure { type_name: name })
                             }
                         }
                     }
@@ -143,13 +146,14 @@ impl Fold for TypeResolver {
                     }
                 }
             }
-            _ => node,
+            _ => Ok(node),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::error::SemanticDiagnostic;
     use crate::test_helpers::*;
     use crate::xform_resolve_late_bound_types::TypeResolver;
     use ironplc_dsl::core::SourceLoc;
@@ -178,7 +182,7 @@ mod tests {
 
         let result = type_resolver.fold(input);
 
-        let expected = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
+        let expected = new_library::<SemanticDiagnostic>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("LOGGER"),
                 variables: vec![VarDecl::function_block_var(
@@ -188,8 +192,7 @@ mod tests {
                 )],
                 body: FunctionBlockBody::stmts(vec![]),
             },
-        ))
-        .unwrap();
+        ));
 
         assert_eq!(result, expected)
     }
