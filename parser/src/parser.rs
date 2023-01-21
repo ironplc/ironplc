@@ -5,10 +5,10 @@ use peg::parser;
 
 use crate::error::{Location, ParserDiagnostic};
 use crate::mapper::*;
-use ironplc_dsl::ast::*;
+use ironplc_dsl::common::*;
+use ironplc_dsl::common_sfc::*;
 use ironplc_dsl::core::Id;
-use ironplc_dsl::dsl::*;
-use ironplc_dsl::sfc::*;
+use ironplc_dsl::textual::*;
 
 // Don't use std::time::Duration because it does not allow negative values.
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
@@ -32,7 +32,7 @@ pub fn parse_library(source: &str) -> Result<Vec<LibraryElement>, ParserDiagnost
 /// the specific type.
 struct UntypedVarDecl {
     pub name: Id,
-    pub initializer: TypeInitializer,
+    pub initializer: InitialValueAssignment,
     pub position: SourceLoc,
 }
 
@@ -103,11 +103,16 @@ impl VarDeclarations {
         (vars, located)
     }
 
-    pub fn map(declarations: Vec<VarDecl>, qualifier: Option<StorageQualifier>) -> Vec<VarDecl> {
+    pub fn map(
+        declarations: Vec<VarDecl>,
+        qualifier: Option<DeclarationQualifier>,
+    ) -> Vec<VarDecl> {
         declarations
             .into_iter()
             .map(|declaration| {
-                let qualifier = qualifier.clone().unwrap_or(StorageQualifier::Unspecified);
+                let qualifier = qualifier
+                    .clone()
+                    .unwrap_or(DeclarationQualifier::Unspecified);
                 let mut declaration = declaration;
                 declaration.qualifier = qualifier;
                 declaration
@@ -118,14 +123,16 @@ impl VarDeclarations {
     pub fn flat_map(
         declarations: Vec<Vec<UntypedVarDecl>>,
         var_type: VariableType,
-        qualifier: Option<StorageQualifier>,
+        qualifier: Option<DeclarationQualifier>,
     ) -> Vec<VarDecl> {
         let declarations = declarations.into_iter().flatten();
 
         declarations
             .into_iter()
             .map(|declaration| {
-                let qualifier = qualifier.clone().unwrap_or(StorageQualifier::Unspecified);
+                let qualifier = qualifier
+                    .clone()
+                    .unwrap_or(DeclarationQualifier::Unspecified);
 
                 VarDecl {
                     name: declaration.name,
@@ -140,12 +147,14 @@ impl VarDeclarations {
 
     pub fn map_located(
         declarations: Vec<LocatedVarDecl>,
-        qualifier: Option<StorageQualifier>,
+        qualifier: Option<DeclarationQualifier>,
     ) -> Vec<LocatedVarDecl> {
         declarations
             .into_iter()
             .map(|declaration| {
-                let qualifier = qualifier.clone().unwrap_or(StorageQualifier::Unspecified);
+                let qualifier = qualifier
+                    .clone()
+                    .unwrap_or(DeclarationQualifier::Unspecified);
                 let mut declaration = declaration;
                 declaration.qualifier = qualifier;
                 declaration
@@ -305,17 +314,17 @@ parser! {
         default: spec.1,
       }
     }
-    rule enumerated_spec_init__with_constant() -> TypeInitializer = start:position!() spec:enumerated_specification() _ ":=" _ def:enumerated_value() {
+    rule enumerated_spec_init__with_constant() -> InitialValueAssignment = start:position!() spec:enumerated_specification() _ ":=" _ def:enumerated_value() {
       // TODO gut feeling says there is a defect here but I haven't looked into it
       match spec {
         EnumeratedSpecificationKind::TypeName(name) => {
-          TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
+          InitialValueAssignment::EnumeratedType(EnumeratedInitialValueAssignment {
             type_name: name,
             initial_value: Some(def),
           })
         },
         EnumeratedSpecificationKind::Values(values) => {
-          TypeInitializer::enumerated_values(
+          InitialValueAssignment::enumerated_values(
             values.ids,
             Some(def),
             SourceLoc::new(start),
@@ -334,14 +343,14 @@ parser! {
     }
     rule enumerated_value() -> Id = (enumerated_type_name() "#")? i:identifier() { i }
     // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
-    rule simple_spec_init__with_constant() -> TypeInitializer = type_name:simple_specification() _ ":=" _ c:constant() {
-      TypeInitializer::Simple {
+    rule simple_spec_init__with_constant() -> InitialValueAssignment = type_name:simple_specification() _ ":=" _ c:constant() {
+      InitialValueAssignment::Simple {
         type_name,
         initial_value: Some(Initializer::Simple(c)),
       }
     }
-    rule simple_spec_init() -> TypeInitializer = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
-      TypeInitializer::Simple {
+    rule simple_spec_init() -> InitialValueAssignment = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
+      InitialValueAssignment::Simple {
         type_name,
         initial_value: constant.map(Initializer::Simple),
       }
@@ -355,10 +364,10 @@ parser! {
     //
     // There is still value in trying to disambiguate early because it allows us to use
     // the parser definitions.
-    rule simple_or_enumerated_spec_init() -> TypeInitializer = s:simple_specification() _ ":=" _ c:constant() {
+    rule simple_or_enumerated_spec_init() -> InitialValueAssignment = s:simple_specification() _ ":=" _ c:constant() {
       // A simple_specification with a constant is unambiguous because the constant is
       // not a valid identifier.
-      TypeInitializer::Simple {
+      InitialValueAssignment::Simple {
         type_name: s,
         initial_value: Some(Initializer::Simple(c)),
       }
@@ -367,13 +376,13 @@ parser! {
       // is not a valid constant.
       match spec {
         EnumeratedSpecificationKind::TypeName(name) => {
-          TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
+          InitialValueAssignment::EnumeratedType(EnumeratedInitialValueAssignment {
             type_name: name,
             initial_value: Some(init),
           })
         },
         EnumeratedSpecificationKind::Values(values) => {
-          TypeInitializer::enumerated_values(
+          InitialValueAssignment::enumerated_values(
             values.ids,
             Some(init),
             values.position,
@@ -383,7 +392,7 @@ parser! {
     } / start:position!() "(" _ values:enumerated_value() ** (_ "," _ ) _ ")" _  init:(":=" _ i:enumerated_value() {i})? {
       // An enumerated_specification defined by enum values is unambiguous because
       // the parenthesis are not valid simple_specification.
-      TypeInitializer::enumerated_values(
+      InitialValueAssignment::enumerated_values(
         values,
         init,
         SourceLoc::new(start),
@@ -391,30 +400,30 @@ parser! {
     } / et:elementary_type_name() {
       // An identifier that is an elementary_type_name s unambiguous because these are
       // reserved keywords
-      TypeInitializer::Simple {
+      InitialValueAssignment::Simple {
         type_name: et,
         initial_value: None,
       }
     }/ i:identifier() {
       // What remains is ambiguous and the devolves to a single identifier because the prior
       // cases have captures all cases with a value.
-      TypeInitializer::LateResolvedType(i)
+      InitialValueAssignment::LateResolvedType(i)
     }
 
     // B.1.4 Variables
-    rule variable() -> Variable = d:direct_variable() { Variable::DirectVariable(d) } / symbolic_variable()
+    rule variable() -> Variable = d:direct_variable() { Variable::AddressAssignment(d) } / symbolic_variable()
     // TODO add multi-element variable
     rule symbolic_variable() -> Variable = multi_element_variable() / name:variable_name() { Variable::SymbolicVariable(SymbolicVariable{name}) }
     rule variable_name() -> Id = i:identifier() { i }
 
     // B.1.4.1 Directly represented variables
-    pub rule direct_variable() -> DirectVariable = "%" l:location_prefix() s:size_prefix()? addr:integer() ++ "." {
+    pub rule direct_variable() -> AddressAssignment = "%" l:location_prefix() s:size_prefix()? addr:integer() ++ "." {
       let size = s.unwrap_or(SizePrefix::Nil);
       let addr = addr.iter().map(|part|
         part.try_from::<u32>()
       ).collect();
 
-      DirectVariable {
+      AddressAssignment {
         location: l,
         size,
         address: addr,
@@ -442,7 +451,7 @@ parser! {
     rule field_selector() -> Id = identifier()
 
     // B.1.4.3 Declarations and initialization
-    pub rule input_declarations() -> Vec<VarDecl> = "VAR_INPUT" _ qualifier:("RETAIN" {StorageQualifier::Retain} / "NON_RETAIN" {StorageQualifier::NonRetain})? _ declarations:semisep(<input_declaration()>) _ "END_VAR" {
+    pub rule input_declarations() -> Vec<VarDecl> = "VAR_INPUT" _ qualifier:("RETAIN" {DeclarationQualifier::Retain} / "NON_RETAIN" {DeclarationQualifier::NonRetain})? _ declarations:semisep(<input_declaration()>) _ "END_VAR" {
       VarDeclarations::flat_map(declarations, VariableType::Input, qualifier)
     }
     // TODO add edge declaration (as a separate item - a tuple)
@@ -470,28 +479,28 @@ parser! {
 
     rule var1_list() -> Vec<Id> = names:variable_name() ++ (_ "," _) { names }
     rule fb_name() -> Id = i:identifier() { i }
-    pub rule output_declarations() -> Vec<VarDecl> = "VAR_OUTPUT" _ qualifier:("RETAIN" {StorageQualifier::Retain} / "NON_RETAIN" {StorageQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+    pub rule output_declarations() -> Vec<VarDecl> = "VAR_OUTPUT" _ qualifier:("RETAIN" {DeclarationQualifier::Retain} / "NON_RETAIN" {DeclarationQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
       VarDeclarations::flat_map(declarations, VariableType::Output, qualifier)
     }
-    pub rule input_output_declarations() -> Vec<VarDecl> = "VAR_IN_OUT" _ qualifier:("RETAIN" {StorageQualifier::Retain} / "NON_RETAIN" {StorageQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
+    pub rule input_output_declarations() -> Vec<VarDecl> = "VAR_IN_OUT" _ qualifier:("RETAIN" {DeclarationQualifier::Retain} / "NON_RETAIN" {DeclarationQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
       VarDeclarations::flat_map(declarations, VariableType::InOut,  qualifier)
     }
     rule var_declarations() -> VarDeclarations = "VAR" _ qualifier:"CONSTANT"? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
-      let qualifier = qualifier.map(|()| StorageQualifier::Constant);
+      let qualifier = qualifier.map(|()| DeclarationQualifier::Constant);
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
     rule retentive_var_declarations() -> VarDeclarations = "VAR" _ "RETAIN" _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
-      let qualifier = Option::Some(StorageQualifier::Retain);
+      let qualifier = Option::Some(DeclarationQualifier::Retain);
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
-    rule located_var_declarations() -> VarDeclarations = "VAR" _ qualifier:("CONSTANT" { StorageQualifier::Constant } / "RETAIN" {StorageQualifier::Retain} / "NON_RETAIN" {StorageQualifier::NonRetain})? _ declarations:semisep(<located_var_decl()>) _ "END_VAR" {
-      let qualifier = qualifier.or(Some(StorageQualifier::Unspecified));
+    rule located_var_declarations() -> VarDeclarations = "VAR" _ qualifier:("CONSTANT" { DeclarationQualifier::Constant } / "RETAIN" {DeclarationQualifier::Retain} / "NON_RETAIN" {DeclarationQualifier::NonRetain})? _ declarations:semisep(<located_var_decl()>) _ "END_VAR" {
+      let qualifier = qualifier.or(Some(DeclarationQualifier::Unspecified));
       VarDeclarations::Located(VarDeclarations::map_located(declarations, qualifier))
     }
     rule located_var_decl() -> LocatedVarDecl = start:position!() name:variable_name()? _ location:location() _ ":" _ initializer:located_var_spec_init() {
       LocatedVarDecl {
         name,
-        qualifier: StorageQualifier::Unspecified,
+        qualifier: DeclarationQualifier::Unspecified,
         location,
         initializer,
         position: SourceLoc::new(start),
@@ -500,12 +509,12 @@ parser! {
     // TODO is this NOT the right type to return?
     // We use the same type as in other places for VarInit, but the external always omits the initializer
     rule external_var_declarations() -> VarDeclarations = "VAR_EXTERNAL" _ constant:"CONSTANT"? _ declarations:semisep(<external_declaration()>) _ "END_VAR" {
-      let qualifier = constant.map(|()| StorageQualifier::Constant);
+      let qualifier = constant.map(|()| DeclarationQualifier::Constant);
       VarDeclarations::External(VarDeclarations::map(declarations, qualifier))
     }
     // TODO subrange_specification, array_specification(), structure_type_name and others
-    rule external_declaration_spec() -> TypeInitializer = type_name:simple_specification() {
-      TypeInitializer::Simple {
+    rule external_declaration_spec() -> InitialValueAssignment = type_name:simple_specification() {
+      InitialValueAssignment::Simple {
         type_name,
         initial_value: None,
       }
@@ -514,32 +523,32 @@ parser! {
       VarDecl {
         name,
         var_type: VariableType::External,
-        qualifier: StorageQualifier::Unspecified,
+        qualifier: DeclarationQualifier::Unspecified,
         initializer: spec,
         position: SourceLoc::new(start),
       }
     }
     rule global_var_name() -> Id = i:identifier() { i }
 
-    rule qualifier() -> StorageQualifier = "CONSTANT" { StorageQualifier::Constant } / "RETAIN" { StorageQualifier::Retain }
+    rule qualifier() -> DeclarationQualifier = "CONSTANT" { DeclarationQualifier::Constant } / "RETAIN" { DeclarationQualifier::Retain }
     pub rule global_var_declarations() -> Vec<VarDecl> = "VAR_GLOBAL" _ qualifier:qualifier()? _ declarations:semisep(<global_var_decl()>) _ "END_VAR" {
       // TODO set the options - this is pretty similar to VarInit - maybe it should be the same
       let declarations = declarations.into_iter().flatten();
       declarations.into_iter().map(|declaration| {
-        let qualifier = qualifier.clone().unwrap_or(StorageQualifier::Unspecified);
+        let qualifier = qualifier.clone().unwrap_or(DeclarationQualifier::Unspecified);
         let mut declaration = declaration;
         declaration.qualifier = qualifier;
         declaration
       }).collect()
     }
     // TODO this doesn't pass all information. I suspect the rule from the dpec is not right
-    rule global_var_decl() -> (Vec<VarDecl>) = start:position!() vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { TypeInitializer::FunctionBlock(FunctionBlockTypeInitializer{type_name: f})})? {
+    rule global_var_decl() -> (Vec<VarDecl>) = start:position!() vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { InitialValueAssignment::FunctionBlock(FunctionBlockInitialValueAssignment{type_name: f})})? {
       vs.0.into_iter().map(|name| {
-        let init = initializer.clone().unwrap_or(TypeInitializer::None);
+        let init = initializer.clone().unwrap_or(InitialValueAssignment::None);
         VarDecl {
           name,
           var_type: VariableType::Global,
-          qualifier: StorageQualifier::Unspecified,
+          qualifier: DeclarationQualifier::Unspecified,
           // TODO this is clearly wrong
           initializer: init,
           // TODO this is clearly wrong
@@ -547,16 +556,16 @@ parser! {
         }
       }).collect()
      }
-    rule global_var_spec() -> (Vec<Id>, Option<DirectVariable>) = names:global_var_list() {
+    rule global_var_spec() -> (Vec<Id>, Option<AddressAssignment>) = names:global_var_list() {
       (names, None)
     } / global_var_name()? location() {
       // TODO this is clearly wrong, but it feel like the spec is wrong here
       (vec![Id::from("")], None)
     }
     // TODO this is completely fabricated - it isn't correct.
-    rule located_var_spec_init() -> TypeInitializer = simple:simple_spec_init() { simple }
+    rule located_var_spec_init() -> InitialValueAssignment = simple:simple_spec_init() { simple }
     // TODO
-    pub rule location() -> DirectVariable = "AT" _ v:direct_variable() { v }
+    pub rule location() -> AddressAssignment = "AT" _ v:direct_variable() { v }
     rule global_var_list() -> Vec<Id> = names:global_var_name() ++ (_ "," _) { names }
     //rule string_var_declaration() -> stri
 
@@ -576,7 +585,7 @@ parser! {
     }
     rule io_var_declarations() -> VarDeclarations = i:input_declarations() { VarDeclarations::Inputs(i) } / o:output_declarations() { VarDeclarations::Outputs(o) } / io:input_output_declarations() { VarDeclarations::Inouts(io) }
     rule function_var_decls() -> VarDeclarations = "VAR" _ qualifier:"CONSTANT"? _ vars:semisep_oneplus(<var2_init_decl()>) _ "END_VAR" {
-      let qualifier = qualifier.map(|()| StorageQualifier::Constant);
+      let qualifier = qualifier.map(|()| DeclarationQualifier::Constant);
       VarDeclarations::Var(VarDeclarations::flat_map(vars, VariableType::Var, qualifier))
     }
     // TODO a bunch are missing here
@@ -625,17 +634,17 @@ parser! {
         elements
       }
     }
-    rule initial_step() -> Element = "INITIAL_STEP" _ name:step_name() _ ":" _ assoc:action_association() ** (_ ";" _) "END_STEP" {
-      Element::InitialStep {
+    rule initial_step() -> Element = "INITIAL_STEP" _ name:step_name() _ ":" _ action_associations:action_association() ** (_ ";" _) "END_STEP" {
+      Element::InitialStep(Step{
         name,
-        action_associations: assoc,
-      }
+        action_associations,
+       })
     }
-    rule step() -> Element = "STEP" _ name:step_name() _ ":" _ assoc:semisep(<action_association()>) _ "END_STEP" {
-      Element::Step {
+    rule step() -> Element = "STEP" _ name:step_name() _ ":" _ action_associations:semisep(<action_association()>) _ "END_STEP" {
+      Element::step(
         name,
-        action_associations: assoc
-      }
+        action_associations
+      )
     }
     rule step_name() -> Id = identifier()
     // TODO this is missing stuff
@@ -651,14 +660,14 @@ parser! {
     rule action_qualifier() -> ActionQualifier = q:['N' | 'R' | 'S' | 'P'] { ActionQualifier::from_char(q) }
     rule indicator_name() -> Id = variable_name()
     rule transition() -> Element = "TRANSITION" _ name:transition_name()? _ priority:("(" _ "PRIORITY" _ ":=" _ p:integer() _ ")" {p})? _ "FROM" _ from:steps() _ "TO" _ to:steps() _ condition:transition_condition() _ "END_TRANSITION" {
-      Element::Transition {
+      Element::Transition(Transition {
         name,
         priority: priority.map(|p| p.try_from::<u32>()),
         from,
         to,
         condition,
       }
-    }
+    )}
     rule transition_name() -> Id = identifier()
     rule steps() -> Vec<Id> = name:step_name() {
       vec![name]
@@ -669,10 +678,10 @@ parser! {
     // TODO add simple_instruction_list , fbd_network, rung
     rule transition_condition() -> ExprKind =  ":=" _ expr:expression() _ ";" { expr }
     rule action() -> Element = "ACTION" _ name:action_name() _ ":" _ body:function_block_body() _ "END_ACTION" {
-      Element::Action {
+      Element::Action(Action {
         name,
         body
-      }
+      })
     }
 
     // B.1.7 Configuration elements
@@ -878,15 +887,15 @@ mod test {
             VarDecl {
                 name: Id::from("TRIG"),
                 var_type: VariableType::Input,
-                qualifier: StorageQualifier::Unspecified,
-                initializer: TypeInitializer::simple_uninitialized("BOOL"),
+                qualifier: DeclarationQualifier::Unspecified,
+                initializer: InitialValueAssignment::simple_uninitialized("BOOL"),
                 position: SourceLoc::new(18),
             },
             VarDecl {
                 name: Id::from("MSG"),
                 var_type: VariableType::Input,
-                qualifier: StorageQualifier::Unspecified,
-                initializer: TypeInitializer::simple_uninitialized("STRING"),
+                qualifier: DeclarationQualifier::Unspecified,
+                initializer: InitialValueAssignment::simple_uninitialized("STRING"),
                 position: SourceLoc::new(39),
             },
         ];
@@ -903,8 +912,8 @@ END_VAR";
         let expected = Ok(vec![VarDecl {
             name: Id::from("LEVEL"),
             var_type: VariableType::Input,
-            qualifier: StorageQualifier::Unspecified,
-            initializer: TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
+            qualifier: DeclarationQualifier::Unspecified,
+            initializer: InitialValueAssignment::EnumeratedType(EnumeratedInitialValueAssignment {
                 type_name: Id::from("LOGLEVEL"),
                 initial_value: Some(Id::from("INFO")),
             }),
@@ -923,15 +932,15 @@ END_VAR";
             VarDecl {
                 name: Id::from("TRIG"),
                 var_type: VariableType::Output,
-                qualifier: StorageQualifier::Unspecified,
-                initializer: TypeInitializer::simple_uninitialized("BOOL"),
+                qualifier: DeclarationQualifier::Unspecified,
+                initializer: InitialValueAssignment::simple_uninitialized("BOOL"),
                 position: SourceLoc::new(19),
             },
             VarDecl {
                 name: Id::from("MSG"),
                 var_type: VariableType::Output,
-                qualifier: StorageQualifier::Unspecified,
-                initializer: TypeInitializer::simple_uninitialized("STRING"),
+                qualifier: DeclarationQualifier::Unspecified,
+                initializer: InitialValueAssignment::simple_uninitialized("STRING"),
                 position: SourceLoc::new(40),
             },
         ];
@@ -992,7 +1001,7 @@ END_VAR";
     #[test]
     fn direct_variable() {
         let address = vec![1];
-        let var = DirectVariable {
+        let var = AddressAssignment {
             location: LocationPrefix::I,
             size: SizePrefix::X,
             address,
@@ -1003,7 +1012,7 @@ END_VAR";
     #[test]
     fn location() {
         let address = vec![1];
-        let var = DirectVariable {
+        let var = AddressAssignment {
             location: LocationPrefix::I,
             size: SizePrefix::X,
             address,
@@ -1017,8 +1026,8 @@ END_VAR";
         let reset = vec![VarDecl {
             name: Id::from("ResetCounterValue"),
             var_type: VariableType::Global,
-            qualifier: StorageQualifier::Constant,
-            initializer: TypeInitializer::Simple {
+            qualifier: DeclarationQualifier::Constant,
+            initializer: InitialValueAssignment::Simple {
                 type_name: Id::from("INT"),
                 initial_value: Option::Some(Initializer::Simple(Constant::IntegerLiteral(17))),
             },
@@ -1054,14 +1063,11 @@ END_VAR";
     COUNT_INLINE4(N);
   END_STEP";
         let expected = Ok(vec![Network {
-            initial_step: Element::InitialStep {
-                name: Id::from("Start"),
-                action_associations: vec![],
-            },
+            initial_step: Element::initial_step("Start", vec![]),
             elements: vec![
-                Element::Step {
-                    name: Id::from("ResetCounter"),
-                    action_associations: vec![
+                Element::step(
+                    Id::from("ResetCounter"),
+                    vec![
                         ActionAssociation {
                             name: Id::from("RESETCOUNTER_INLINE1"),
                             qualifier: Some(ActionQualifier::N),
@@ -1073,37 +1079,33 @@ END_VAR";
                             indicators: vec![],
                         },
                     ],
-                },
-                Element::Action {
-                    name: Id::from("RESETCOUNTER_INLINE1"),
-                    body: FunctionBlockBody::stmts(vec![StmtKind::assignment(
+                ),
+                Element::action(
+                    "RESETCOUNTER_INLINE1",
+                    vec![StmtKind::assignment(
                         Variable::symbolic("Cnt"),
                         ExprKind::symbolic_variable("ResetCounterValue"),
-                    )]),
-                },
-                Element::Transition {
-                    name: None,
-                    priority: None,
-                    from: vec![Id::from("ResetCounter")],
-                    to: vec![Id::from("Start")],
-                    condition: ExprKind::UnaryOp {
+                    )],
+                ),
+                Element::transition(
+                    "ResetCounter",
+                    "Start",
+                    ExprKind::UnaryOp {
                         op: UnaryOp::Not,
                         term: ExprKind::boxed_symbolic_variable("Reset"),
                     },
-                },
-                Element::Transition {
-                    name: None,
-                    priority: None,
-                    from: vec![Id::from("Start")],
-                    to: vec![Id::from("Count")],
-                    condition: ExprKind::UnaryOp {
+                ),
+                Element::transition(
+                    "Start",
+                    "Count",
+                    ExprKind::UnaryOp {
                         op: UnaryOp::Not,
                         term: Box::new(ExprKind::symbolic_variable("Reset")),
                     },
-                },
-                Element::Step {
-                    name: Id::from("Count"),
-                    action_associations: vec![
+                ),
+                Element::step(
+                    Id::from("Count"),
+                    vec![
                         ActionAssociation {
                             name: Id::from("COUNT_INLINE3"),
                             qualifier: Some(ActionQualifier::N),
@@ -1115,7 +1117,7 @@ END_VAR";
                             indicators: vec![],
                         },
                     ],
-                },
+                ),
             ],
         }]);
         assert_eq!(plc_parser::sequential_function_chart(sfc), expected);

@@ -31,10 +31,14 @@
 //!    FB_INSTANCE(IN1 := TRUE, BAR := TRUE);
 //! END_FUNCTION_BLOCK
 //! ```
+//!
+//! ```
+//!
+//! ```
 use ironplc_dsl::{
-    ast::*,
+    common::*,
     core::Id,
-    dsl::*,
+    textual::*,
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
         Visitor,
@@ -202,19 +206,19 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
         node: &VarDecl,
     ) -> Result<Self::Value, SemanticDiagnostic> {
         match &node.initializer {
-            TypeInitializer::None => todo!(),
-            TypeInitializer::Simple {
+            InitialValueAssignment::None => todo!(),
+            InitialValueAssignment::Simple {
                 type_name: _,
                 initial_value: _,
             } => {}
-            TypeInitializer::EnumeratedValues(_) => {}
-            TypeInitializer::EnumeratedType(_) => {}
-            TypeInitializer::FunctionBlock(fbi) => {
+            InitialValueAssignment::EnumeratedValues(_) => {}
+            InitialValueAssignment::EnumeratedType(_) => {}
+            InitialValueAssignment::FunctionBlock(fbi) => {
                 self.var_to_fb
                     .insert(node.name.clone(), fbi.type_name.clone());
             }
-            TypeInitializer::Structure { type_name: _ } => {}
-            TypeInitializer::LateResolvedType(_) => {
+            InitialValueAssignment::Structure { type_name: _ } => {}
+            InitialValueAssignment::LateResolvedType(_) => {
                 panic!()
             }
         }

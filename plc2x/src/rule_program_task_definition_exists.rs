@@ -12,7 +12,7 @@
 //! RESOURCE resource1 ON PLC
 //!   PROGRAM plc_task_instance WITH plc_task : plc_prg;
 //! END_RESOURCE
-use ironplc_dsl::{dsl::*, visitor::Visitor};
+use ironplc_dsl::{common::*, visitor::Visitor};
 use std::collections::HashSet;
 
 use crate::error::SemanticDiagnostic;

@@ -34,7 +34,7 @@
 //! ```
 use std::collections::HashSet;
 
-use ironplc_dsl::{core::Id, dsl::*, visitor::Visitor};
+use ironplc_dsl::{common::*, core::Id, visitor::Visitor};
 
 use crate::error::SemanticDiagnostic;
 
@@ -63,7 +63,7 @@ impl<'a> Visitor<SemanticDiagnostic> for FindGlobalConstVars<'a> {
         &mut self,
         node: &VarDecl,
     ) -> Result<Self::Value, SemanticDiagnostic> {
-        if node.qualifier == StorageQualifier::Constant {
+        if node.qualifier == DeclarationQualifier::Constant {
             self.global_consts.insert(node.name.clone());
         }
         Ok(())
@@ -80,7 +80,9 @@ impl<'a> Visitor<SemanticDiagnostic> for RuleExternalGlobalConst<'a> {
         &mut self,
         node: &VarDecl,
     ) -> Result<Self::Value, SemanticDiagnostic> {
-        if node.var_type == VariableType::External && node.qualifier != StorageQualifier::Constant {
+        if node.var_type == VariableType::External
+            && node.qualifier != DeclarationQualifier::Constant
+        {
             if let Some(global) = self.global_consts.get(&node.name) {
                 return Err(SemanticDiagnostic::error(
                     "S0001",

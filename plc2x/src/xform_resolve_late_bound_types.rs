@@ -5,7 +5,7 @@
 //! with well-known types.
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
-use ironplc_dsl::{core::Id, dsl::*};
+use ironplc_dsl::{common::*, core::Id};
 use phf::{phf_set, Set};
 use std::collections::HashMap;
 
@@ -104,13 +104,13 @@ impl TypeResolver {
 impl Fold<SemanticDiagnostic> for TypeResolver {
     fn fold_type_initializer(
         &mut self,
-        node: TypeInitializer,
-    ) -> Result<TypeInitializer, SemanticDiagnostic> {
+        node: InitialValueAssignment,
+    ) -> Result<InitialValueAssignment, SemanticDiagnostic> {
         match node {
-            TypeInitializer::LateResolvedType(name) => {
+            InitialValueAssignment::LateResolvedType(name) => {
                 // Try to find the type for the specified name.
                 if TypeResolver::is_elementary_type(&name) {
-                    return Ok(TypeInitializer::Simple {
+                    return Ok(InitialValueAssignment::Simple {
                         type_name: name,
                         initial_value: None,
                     });
@@ -122,22 +122,24 @@ impl Fold<SemanticDiagnostic> for TypeResolver {
                     Some(type_kind) => {
                         match type_kind {
                             TypeDefinitionKind::Enumeration => {
-                                Ok(TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
-                                    type_name: name,
-                                    initial_value: None,
-                                }))
+                                Ok(InitialValueAssignment::EnumeratedType(
+                                    EnumeratedInitialValueAssignment {
+                                        type_name: name,
+                                        initial_value: None,
+                                    },
+                                ))
                             }
                             TypeDefinitionKind::FunctionBlock => {
-                                Ok(TypeInitializer::FunctionBlock(
-                                    FunctionBlockTypeInitializer { type_name: name },
+                                Ok(InitialValueAssignment::FunctionBlock(
+                                    FunctionBlockInitialValueAssignment { type_name: name },
                                 ))
                             }
                             TypeDefinitionKind::Function => {
                                 // TODO this is wrong and should be an error
-                                Ok(TypeInitializer::Structure { type_name: name })
+                                Ok(InitialValueAssignment::Structure { type_name: name })
                             }
                             TypeDefinitionKind::Structure => {
-                                Ok(TypeInitializer::Structure { type_name: name })
+                                Ok(InitialValueAssignment::Structure { type_name: name })
                             }
                         }
                     }
@@ -158,7 +160,7 @@ mod tests {
     use crate::xform_resolve_late_bound_types::TypeResolver;
     use ironplc_dsl::core::SourceLoc;
     use ironplc_dsl::fold::Fold;
-    use ironplc_dsl::{core::Id, dsl::*};
+    use ironplc_dsl::{common::*, core::Id};
     use std::collections::HashMap;
 
     #[test]

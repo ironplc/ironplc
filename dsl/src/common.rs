@@ -1,20 +1,23 @@
+//! Provides definitions of objects from IEC 61131-3 common elements.
+//!
+//! See section 2.
 use core::str::FromStr;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use time::Duration;
 
-use crate::ast::*;
+use crate::common_sfc::Network;
 use crate::core::{Id, SourceLoc};
-use crate::sfc::Network;
+use crate::textual::*;
 
 /// Numeric liberals declared by 2.2.1. Numeric literals define
 /// how data is expressed and are distinct from but associated with
 /// data types.
 
-/// IEC 61131-3 integer.
+/// Integer liberal.
 ///
 /// Underlying data type is a String to trace back to the original
-/// representation if the value is not valid.
+/// representation if the value is not valid for the particular context.
 pub struct Integer {
     value: String,
 }
@@ -93,7 +96,9 @@ pub enum TypeDefinitionKind {
     Structure,
 }
 
-/// 2.4.1.1 Single-element variables representation
+/// Location prefix for directly represented variables.
+///
+/// See section 2.4.1.1.
 #[derive(Debug, PartialEq, Clone)]
 pub enum LocationPrefix {
     /// Input location
@@ -116,6 +121,10 @@ impl LocationPrefix {
     }
 }
 
+/// Size prefix for directly represented variables. Defines how many bits
+/// are associated with the variable.
+///
+/// See section 2.4.1.1.
 #[derive(Debug, PartialEq, Clone)]
 pub enum SizePrefix {
     /// Single bit size
@@ -146,13 +155,15 @@ impl SizePrefix {
     }
 }
 
-// 2.4.3 Declaration (that does not permit a location).
+/// Declaration (that does not permit a location).
+///
+/// See section 2.4.3.
 #[derive(Debug, PartialEq, Clone)]
 pub struct VarDecl {
     pub name: Id,
     pub var_type: VariableType,
-    pub qualifier: StorageQualifier,
-    pub initializer: TypeInitializer,
+    pub qualifier: DeclarationQualifier,
+    pub initializer: InitialValueAssignment,
     pub position: SourceLoc,
 }
 
@@ -182,8 +193,8 @@ impl VarDecl {
         Self {
             name: Id::from(name),
             var_type,
-            qualifier: StorageQualifier::Unspecified,
-            initializer: TypeInitializer::Simple {
+            qualifier: DeclarationQualifier::Unspecified,
+            initializer: InitialValueAssignment::Simple {
                 type_name: Id::from(type_name),
                 initial_value: None,
             },
@@ -201,8 +212,8 @@ impl VarDecl {
         VarDecl {
             name: Id::from(name),
             var_type: VariableType::Input,
-            qualifier: StorageQualifier::Unspecified,
-            initializer: TypeInitializer::EnumeratedType(EnumeratedTypeInitializer {
+            qualifier: DeclarationQualifier::Unspecified,
+            initializer: InitialValueAssignment::EnumeratedType(EnumeratedInitialValueAssignment {
                 type_name: Id::from(type_name),
                 initial_value: Some(Id::from(initial_value)),
             }),
@@ -215,10 +226,12 @@ impl VarDecl {
         VarDecl {
             name: Id::from(name),
             var_type: VariableType::Var,
-            qualifier: StorageQualifier::Unspecified,
-            initializer: TypeInitializer::FunctionBlock(FunctionBlockTypeInitializer {
-                type_name: Id::from(type_name),
-            }),
+            qualifier: DeclarationQualifier::Unspecified,
+            initializer: InitialValueAssignment::FunctionBlock(
+                FunctionBlockInitialValueAssignment {
+                    type_name: Id::from(type_name),
+                },
+            ),
             position: loc,
         }
     }
@@ -247,14 +260,21 @@ impl VarDecl {
         VarDecl {
             name: Id::from(name),
             var_type,
-            qualifier: StorageQualifier::Unspecified,
-            initializer: TypeInitializer::LateResolvedType(Id::from(type_name)),
+            qualifier: DeclarationQualifier::Unspecified,
+            initializer: InitialValueAssignment::LateResolvedType(Id::from(type_name)),
             position: loc,
         }
     }
 }
 
-/// 2.4.3 Declaration
+/// Keywords for declarations.
+///
+/// IEC 61131-3 defines groups that can contain multiple variables. These
+/// groups introduce complexity in parsing and in iterating. This
+/// implementation treats the groups as labels on individual variables; in
+/// effect, there are no groups.
+///
+/// See section 2.4.3.
 #[derive(Debug, PartialEq, Clone)]
 pub enum VariableType {
     /// Local to a POU.
@@ -283,9 +303,16 @@ pub enum VariableType {
     Located,
 }
 
-/// 2.4.3 Qualifier types for definitions
+/// Qualifier types for definitions.
+///
+/// IEC 61131-3 defines groups that share common qualifiers. These
+/// groups introduce complexity in parsing and in iterating. This
+/// implementation treats the groups as labels on individual variables; in
+/// effect, there are no groups.
+///
+/// See section 2.4.3.
 #[derive(Debug, PartialEq, Clone)]
-pub enum StorageQualifier {
+pub enum DeclarationQualifier {
     // TODO Some of these are not valid for some contexts - should there be multiple
     // qualifier classes, indicate some how, or fail?
     Unspecified,
@@ -298,36 +325,104 @@ pub enum StorageQualifier {
 
 pub struct LocatedVarDecl {
     pub name: Option<Id>,
-    pub qualifier: StorageQualifier,
-    pub location: DirectVariable,
-    pub initializer: TypeInitializer,
+    pub qualifier: DeclarationQualifier,
+    pub location: AddressAssignment,
+    pub initializer: InitialValueAssignment,
     pub position: SourceLoc,
 }
 
-/// Defines the top-level elements that are valid declarations in a library.
-#[derive(Debug, PartialEq)]
-pub enum LibraryElement {
-    DataTypeDeclaration(Vec<EnumerationDeclaration>),
-    FunctionDeclaration(FunctionDeclaration),
-    // TODO
-    FunctionBlockDeclaration(FunctionBlockDeclaration),
-    ProgramDeclaration(ProgramDeclaration),
-    ConfigurationDeclaration(ConfigurationDeclaration),
+/// Location assignment for a variable.
+///
+/// See section 2.4.3.1.
+#[derive(PartialEq, Clone)]
+pub struct AddressAssignment {
+    pub location: LocationPrefix,
+    pub size: SizePrefix,
+    pub address: Vec<u32>,
 }
 
-// 2.4.3.1 Type assignment
-#[derive(Debug, PartialEq, Clone)]
-pub struct At {}
-
-// 2.7.2 Tasks
-#[derive(Debug, PartialEq)]
-pub struct TaskConfiguration {
-    pub name: Id,
-    pub priority: u32,
-    // TODO this might not be optional
-    pub interval: Option<Duration>,
+impl fmt::Debug for AddressAssignment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AddressAssignment")
+            .field("location", &self.location)
+            .field("size", &self.size)
+            .finish()
+    }
 }
 
+impl fmt::Display for AddressAssignment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AddressAssignment")
+            .field("location", &self.location)
+            .field("size", &self.size)
+            .finish()
+    }
+}
+
+/// Container for initial value assignments. The initial value specifies a
+/// "coarse grained assignment",
+///
+/// Declarations of variables can be associated with an initial value. The
+/// initial value assignment is not necessarily compatible with the associated
+/// variable.
+///
+/// See section 2.4.3.2.
+#[derive(PartialEq, Clone, Debug)]
+pub enum InitialValueAssignment {
+    /// Represents no type initializer.
+    ///
+    /// Some types allow no initializer and this avoids nesting of the
+    /// enumeration with an Option enumeration.
+    None,
+    Simple {
+        type_name: Id,
+        initial_value: Option<Initializer>,
+    },
+    EnumeratedValues(EnumeratedValuesInitializer),
+    EnumeratedType(EnumeratedInitialValueAssignment),
+    FunctionBlock(FunctionBlockInitialValueAssignment),
+    Structure {
+        // TODO
+        type_name: Id,
+    },
+    /// Type that is ambiguous until have discovered type
+    /// definitions. Value is the name of the type.
+    LateResolvedType(Id),
+}
+
+impl InitialValueAssignment {
+    /// Creates an initial value with
+    pub fn simple_uninitialized(type_name: &str) -> InitialValueAssignment {
+        InitialValueAssignment::Simple {
+            type_name: Id::from(type_name),
+            initial_value: None,
+        }
+    }
+
+    /// Creates an initial value from the initializer.
+    pub fn simple(type_name: &str, value: Initializer) -> InitialValueAssignment {
+        InitialValueAssignment::Simple {
+            type_name: Id::from(type_name),
+            initial_value: Some(value),
+        }
+    }
+
+    /// Creates an initial value consisting of an enumeration definition and
+    /// possible initial value for the enumeration.
+    pub fn enumerated_values(
+        values: Vec<Id>,
+        initial_value: Option<Id>,
+        position: SourceLoc,
+    ) -> InitialValueAssignment {
+        InitialValueAssignment::EnumeratedValues(EnumeratedValuesInitializer {
+            values,
+            initial_value,
+            position,
+        })
+    }
+}
+
+/// Container for elementary constants.
 #[derive(PartialEq, Clone, Debug)]
 pub enum Constant {
     // TODO these need values
@@ -358,7 +453,7 @@ impl fmt::Debug for Initializer {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct EnumeratedTypeInitializer {
+pub struct EnumeratedInitialValueAssignment {
     pub type_name: Id,
     pub initial_value: Option<Id>,
 }
@@ -371,62 +466,77 @@ pub struct EnumeratedValuesInitializer {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct FunctionBlockTypeInitializer {
+pub struct FunctionBlockInitialValueAssignment {
     pub type_name: Id,
 }
 
-#[derive(PartialEq, Clone, Debug)]
-pub enum TypeInitializer {
-    /// Represents no type initializer.
-    ///
-    /// Some types allow no initializer and this avoids nesting of the
-    /// enumeration with an Option enumeration.
-    None,
-    Simple {
-        type_name: Id,
-        initial_value: Option<Initializer>,
-    },
-    EnumeratedValues(EnumeratedValuesInitializer),
-    EnumeratedType(EnumeratedTypeInitializer),
-    FunctionBlock(FunctionBlockTypeInitializer),
-    Structure {
-        // TODO
-        type_name: Id,
-    },
-    /// Type that is ambiguous until have discovered type
-    /// definitions. Value is the name of the type.
-    LateResolvedType(Id),
+/// Container for top-level elements that are valid top-level declarations in
+/// a library.
+#[derive(Debug, PartialEq)]
+pub enum LibraryElement {
+    DataTypeDeclaration(Vec<EnumerationDeclaration>),
+    FunctionDeclaration(FunctionDeclaration),
+    // TODO
+    FunctionBlockDeclaration(FunctionBlockDeclaration),
+    ProgramDeclaration(ProgramDeclaration),
+    ConfigurationDeclaration(ConfigurationDeclaration),
 }
 
-impl TypeInitializer {
-    pub fn simple_uninitialized(type_name: &str) -> TypeInitializer {
-        TypeInitializer::Simple {
-            type_name: Id::from(type_name),
-            initial_value: None,
-        }
-    }
+///Function Program Organization Unit Declaration
+///
+/// A function is stateless and has no "memory". Functions
+/// consists of a series of statements that provide outputs through the
+/// return value and bound variables.
+///
+/// See section 2.5.1.
+#[derive(Debug, PartialEq, Clone)]
+pub struct FunctionDeclaration {
+    pub name: Id,
+    pub return_type: Id,
+    pub variables: Vec<VarDecl>,
+    pub body: Vec<StmtKind>,
+}
 
-    pub fn simple(type_name: &str, value: Initializer) -> TypeInitializer {
-        TypeInitializer::Simple {
-            type_name: Id::from(type_name),
-            initial_value: Some(value),
-        }
-    }
+/// Function Block Program Organization Unit Declaration
+///
+/// A function block declaration (as distinct from a particular
+/// instance of a function block). The Function block instance is stateful
+/// and variables retain values between invocations.
+///
+/// See section 2.5.2.
+#[derive(Debug, PartialEq, Clone)]
+pub struct FunctionBlockDeclaration {
+    pub name: Id,
+    pub variables: Vec<VarDecl>,
+    pub body: FunctionBlockBody,
+}
 
-    pub fn enumerated_values(
-        values: Vec<Id>,
-        initial_value: Option<Id>,
-        position: SourceLoc,
-    ) -> TypeInitializer {
-        TypeInitializer::EnumeratedValues(EnumeratedValuesInitializer {
-            values,
-            initial_value,
-            position,
-        })
-    }
+/// "Program" Program Organization Unit Declaration Declaration
+///
+/// Programs assembled the units into a whole that embodies a measurement
+/// or control objective.
+///
+/// See section 2.5.3.
+#[derive(Debug, PartialEq)]
+pub struct ProgramDeclaration {
+    pub type_name: Id,
+    pub variables: Vec<VarDecl>,
+    // TODO located variables
+    // TODO other stuff here
+    pub body: FunctionBlockBody,
+}
+
+/// Sequential function chart.
+///
+/// See section 2.6.
+#[derive(Debug, PartialEq, Clone)]
+pub struct Sfc {
+    pub networks: Vec<Network>,
 }
 
 /// Resource assigns tasks to a particular CPU.
+///
+/// See section 2.7.1.
 #[derive(Debug, PartialEq)]
 pub struct ResourceDeclaration {
     /// Symbolic name for a CPU
@@ -446,6 +556,9 @@ pub struct ResourceDeclaration {
     pub programs: Vec<ProgramConfiguration>,
 }
 
+/// Program configurations.
+///
+/// See section 2.7.1.
 #[derive(Debug, PartialEq)]
 pub struct ProgramConfiguration {
     pub name: Id,
@@ -453,11 +566,25 @@ pub struct ProgramConfiguration {
     pub type_name: Id,
 }
 
+/// Configuration declaration,
+///
+/// See section 2.7.1.
 #[derive(Debug, PartialEq)]
 pub struct ConfigurationDeclaration {
     pub name: Id,
     pub global_var: Vec<VarDecl>,
     pub resource_decl: Vec<ResourceDeclaration>,
+}
+
+/// Task configuration.
+///
+/// See section 2.7.2.
+#[derive(Debug, PartialEq)]
+pub struct TaskConfiguration {
+    pub name: Id,
+    pub priority: u32,
+    // TODO this might not be optional
+    pub interval: Option<Duration>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -493,41 +620,13 @@ impl EnumeratedSpecificationKind {
     }
 }
 
-#[derive(PartialEq, Clone)]
-pub struct DirectVariable {
-    pub location: LocationPrefix,
-    pub size: SizePrefix,
-    pub address: Vec<u32>,
-}
-
-impl fmt::Debug for DirectVariable {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DirectVariable")
-            .field("location", &self.location)
-            .field("size", &self.size)
-            .finish()
-    }
-}
-
-impl fmt::Display for DirectVariable {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DirectVariable")
-            .field("location", &self.location)
-            .field("size", &self.size)
-            .finish()
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Sfc {
-    pub networks: Vec<Network>,
-}
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct Statements {
     pub body: Vec<StmtKind>,
 }
 
+/// Container for type types of elements that can compose the body of a
+/// function block.
 #[derive(Debug, PartialEq, Clone)]
 pub enum FunctionBlockBody {
     Sfc(Sfc),
@@ -553,33 +652,8 @@ impl FunctionBlockBody {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct FunctionDeclaration {
-    pub name: Id,
-    pub return_type: Id,
-    pub variables: Vec<VarDecl>,
-    // TODO other types
-    pub body: Vec<StmtKind>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct FunctionBlockDeclaration {
-    pub name: Id,
-    pub variables: Vec<VarDecl>,
-    // TODO other var declarations
-    pub body: FunctionBlockBody,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct ProgramDeclaration {
-    pub type_name: Id,
-    pub variables: Vec<VarDecl>,
-    // TODO other var declarations
-    // TODO located var declarations
-    // TODO other stuff here
-    pub body: FunctionBlockBody,
-}
-
+/// Container for a library that contains top-level elements. Libraries are
+/// typically represented as a file resource.
 #[derive(Debug, PartialEq)]
 pub struct Library {
     pub elems: Vec<LibraryElement>,

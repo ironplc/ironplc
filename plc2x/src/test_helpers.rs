@@ -1,4 +1,4 @@
-use ironplc_dsl::dsl::*;
+use ironplc_dsl::common::*;
 
 use std::fs;
 use std::path::PathBuf;

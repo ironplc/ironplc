@@ -27,8 +27,8 @@
 //! END_FUNCTION_BLOCK
 //! ```
 use ironplc_dsl::{
+    common::*,
     core::Id,
-    dsl::*,
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
         visit_variable_declaration, Visitor,
@@ -98,7 +98,7 @@ impl Visitor<SemanticDiagnostic> for SymbolTable<Id, DummyNode> {
 
     fn visit_symbolic_variable(
         &mut self,
-        node: &ironplc_dsl::ast::SymbolicVariable,
+        node: &ironplc_dsl::textual::SymbolicVariable,
     ) -> Result<(), SemanticDiagnostic> {
         match self.find(&node.name) {
             Some(_) => {
