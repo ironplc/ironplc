@@ -10,7 +10,7 @@
 //! # Example
 //!
 //! ```
-//! use ironplc_dsl::dsl::FunctionDeclaration;
+//! use ironplc_dsl::common::FunctionDeclaration;
 //! use ironplc_dsl::visitor::{ Visitor, visit_function_declaration };
 //!
 //! struct Dummy {}
@@ -31,9 +31,9 @@
 //! }
 //! ```
 
-use crate::ast::*;
-use crate::dsl::*;
-use crate::sfc::Network;
+use crate::common::*;
+use crate::common_sfc::Network;
+use crate::textual::*;
 
 /// Defines a way to recurse into an object in the AST or DSL.
 pub trait Acceptor {
@@ -154,7 +154,7 @@ pub trait Visitor<E> {
         visit_unary_op(self, op, term)
     }
 
-    fn visit_direct_variable(&mut self, node: &DirectVariable) -> Result<Self::Value, E> {
+    fn visit_direct_variable(&mut self, node: &AddressAssignment) -> Result<Self::Value, E> {
         todo!()
     }
 
@@ -170,7 +170,7 @@ pub trait Visitor<E> {
 
     fn visit_enumerated_type_initializer(
         &mut self,
-        init: &EnumeratedTypeInitializer,
+        init: &EnumeratedInitialValueAssignment,
     ) -> Result<Self::Value, E> {
         // leaf node - no children
         Ok(Self::Value::default())
@@ -186,7 +186,7 @@ pub trait Visitor<E> {
 
     fn visit_function_block_type_initializer(
         &mut self,
-        init: &FunctionBlockTypeInitializer,
+        init: &FunctionBlockInitialValueAssignment,
     ) -> Result<Self::Value, E> {
         // leaf node - no children
         Ok(Self::Value::default())
@@ -326,23 +326,25 @@ impl Acceptor for EnumeratedSpecificationKind {
     }
 }
 
-impl Acceptor for TypeInitializer {
+impl Acceptor for InitialValueAssignment {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
-            TypeInitializer::None => Ok(V::Value::default()),
-            TypeInitializer::Simple {
+            InitialValueAssignment::None => Ok(V::Value::default()),
+            InitialValueAssignment::Simple {
                 type_name,
                 initial_value,
             } => Ok(V::Value::default()),
-            TypeInitializer::EnumeratedValues(ev) => {
+            InitialValueAssignment::EnumeratedValues(ev) => {
                 visitor.visit_enumerated_values_initializer(ev)
             }
-            TypeInitializer::EnumeratedType(et) => visitor.visit_enumerated_type_initializer(et),
-            TypeInitializer::FunctionBlock(fbi) => {
+            InitialValueAssignment::EnumeratedType(et) => {
+                visitor.visit_enumerated_type_initializer(et)
+            }
+            InitialValueAssignment::FunctionBlock(fbi) => {
                 visitor.visit_function_block_type_initializer(fbi)
             }
-            TypeInitializer::Structure { type_name } => Ok(V::Value::default()),
-            TypeInitializer::LateResolvedType(_) => Ok(V::Value::default()),
+            InitialValueAssignment::Structure { type_name } => Ok(V::Value::default()),
+            InitialValueAssignment::LateResolvedType(_) => Ok(V::Value::default()),
         }
         // TODO don't yet know how to visit these
     }
@@ -399,7 +401,7 @@ impl Acceptor for Network {
 impl Acceptor for Variable {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
-            Variable::DirectVariable(var) => visitor.visit_direct_variable(var),
+            Variable::AddressAssignment(var) => visitor.visit_direct_variable(var),
             Variable::SymbolicVariable(var) => visitor.visit_symbolic_variable(var),
             Variable::MultiElementVariable(_) => {
                 todo!()
@@ -410,9 +412,9 @@ impl Acceptor for Variable {
 
 mod test {
     use super::*;
-    use crate::ast::*;
+    use crate::common::*;
     use crate::core::{Id, SourceLoc};
-    use crate::dsl::*;
+    use crate::textual::*;
     use std::collections::LinkedList;
     use std::fmt::Error;
 
@@ -430,7 +432,7 @@ mod test {
     impl Visitor<Error> for Descender {
         type Value = ();
 
-        fn visit_direct_variable(&mut self, variable: &DirectVariable) -> Result<(), Error> {
+        fn visit_direct_variable(&mut self, variable: &AddressAssignment) -> Result<(), Error> {
             let mut dst = &mut self.names;
             dst.push_back(variable.to_string());
             Ok(())

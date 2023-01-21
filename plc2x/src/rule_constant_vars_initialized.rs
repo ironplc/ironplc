@@ -27,7 +27,7 @@
 //! reference where one part declares the value and another
 //! references the value (and still be constant).
 use ironplc_dsl::{
-    dsl::*,
+    common::*,
     visitor::{visit_variable_declaration, Visitor},
 };
 
@@ -51,9 +51,9 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
         }
 
         match node.qualifier {
-            StorageQualifier::Constant => match &node.initializer {
-                TypeInitializer::None => todo!(),
-                TypeInitializer::Simple {
+            DeclarationQualifier::Constant => match &node.initializer {
+                InitialValueAssignment::None => todo!(),
+                InitialValueAssignment::Simple {
                     type_name: _,
                     initial_value,
                 } => match initial_value {
@@ -69,7 +69,7 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
                         .with_location(&node.position));
                     }
                 },
-                TypeInitializer::EnumeratedValues(spec) => match spec.initial_value {
+                InitialValueAssignment::EnumeratedValues(spec) => match spec.initial_value {
                     Some(_) => {}
                     None => {
                         return Err(SemanticDiagnostic::error(
@@ -82,26 +82,28 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
                         .with_location(&node.position));
                     }
                 },
-                TypeInitializer::EnumeratedType(type_init) => match type_init.initial_value {
-                    Some(_) => {}
-                    None => {
-                        return Err(SemanticDiagnostic::error(
-                            "S0003",
-                            format!(
-                                "Variable is constant but does not define value {} ",
-                                node.name
-                            ),
-                        )
-                        .with_location(&node.position))
+                InitialValueAssignment::EnumeratedType(type_init) => {
+                    match type_init.initial_value {
+                        Some(_) => {}
+                        None => {
+                            return Err(SemanticDiagnostic::error(
+                                "S0003",
+                                format!(
+                                    "Variable is constant but does not define value {} ",
+                                    node.name
+                                ),
+                            )
+                            .with_location(&node.position))
+                        }
                     }
-                },
-                TypeInitializer::FunctionBlock(_) => todo!(),
-                TypeInitializer::Structure { type_name: _ } => todo!(),
-                TypeInitializer::LateResolvedType(_) => todo!(),
+                }
+                InitialValueAssignment::FunctionBlock(_) => todo!(),
+                InitialValueAssignment::Structure { type_name: _ } => todo!(),
+                InitialValueAssignment::LateResolvedType(_) => todo!(),
             },
-            StorageQualifier::Unspecified => {}
-            StorageQualifier::Retain => {}
-            StorageQualifier::NonRetain => {}
+            DeclarationQualifier::Unspecified => {}
+            DeclarationQualifier::Retain => {}
+            DeclarationQualifier::NonRetain => {}
         }
 
         visit_variable_declaration(self, node)

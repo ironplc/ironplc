@@ -32,8 +32,8 @@
 //! END_FUNCTION_BLOCK
 //! ```
 use ironplc_dsl::{
+    common::*,
     core::Id,
-    dsl::*,
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
         Visitor,
@@ -134,7 +134,7 @@ impl Visitor<SemanticDiagnostic> for RulePousNoCycles {
 
     fn visit_function_block_type_initializer(
         &mut self,
-        init: &FunctionBlockTypeInitializer,
+        init: &FunctionBlockInitialValueAssignment,
     ) -> Result<Self::Value, SemanticDiagnostic> {
         // Current context has a reference to this function block
         match &self.current_from {

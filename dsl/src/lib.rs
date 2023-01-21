@@ -1,16 +1,14 @@
-//! Provides definitions of objects from the IEC 61131-3 language elements.
-//!
-//! Create also provides standard definitions for working with the language
-//! elements.
+//! Provides definitions of objects from the IEC 61131-3 language elements
+//! and base implementations of common patterns for working with libraries.
 #[allow(unused)]
-pub mod ast;
+pub mod common;
+#[allow(unused)]
+pub mod common_sfc;
 #[allow(unused)]
 pub mod core;
 #[allow(unused)]
-pub mod dsl;
-#[allow(unused)]
 pub mod fold;
 #[allow(unused)]
-pub mod sfc;
+pub mod textual;
 #[allow(unused)]
 pub mod visitor;

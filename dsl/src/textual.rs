@@ -1,11 +1,14 @@
+//! Provides definitions of objects from IEC 61131-3 textual languages.
+//!
+//! See section 3.
+use crate::common::{AddressAssignment, Constant};
 use crate::core::Id;
-use crate::dsl::{Constant, DirectVariable};
 use std::cmp::Ordering;
 use std::fmt;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Variable {
-    DirectVariable(DirectVariable),
+    AddressAssignment(AddressAssignment),
     SymbolicVariable(SymbolicVariable),
     // A structured variable that may be nested. This data type is definitely
     // incorrect because it doesn't support array types
