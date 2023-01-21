@@ -28,7 +28,7 @@
 //!    END_VAR
 //! END_FUNCTION_BLOCK
 //! ```
-use ironplc_dsl::{core::Id, dsl::*, visitor::Visitor};
+use ironplc_dsl::{common::*, core::Id, visitor::Visitor};
 use std::collections::{HashMap, HashSet};
 
 use crate::error::SemanticDiagnostic;
@@ -119,7 +119,7 @@ impl Visitor<SemanticDiagnostic> for RuleDeclaredEnumeratedValues<'_> {
 
     fn visit_enumerated_type_initializer(
         &mut self,
-        init: &EnumeratedTypeInitializer,
+        init: &EnumeratedInitialValueAssignment,
     ) -> Result<Self::Value, SemanticDiagnostic> {
         let defined_values = self.find_enum_declaration_values(&init.type_name)?;
         if let Some(value) = &init.initial_value {

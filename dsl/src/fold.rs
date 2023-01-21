@@ -7,8 +7,8 @@
 //! To fold a library, define a struct and implement the Fold trait
 //! for the struct. The implement fold_* functions from the trait to
 //! customize the behavior.
-use crate::ast::*;
-use crate::dsl::*;
+use crate::common::*;
+use crate::textual::*;
 
 // Defines an object as being able to be folded. That is, return a new
 // folded version of itself.
@@ -97,11 +97,14 @@ pub trait Fold<E> {
         })
     }
 
-    fn fold_type_initializer(&mut self, node: TypeInitializer) -> Result<TypeInitializer, E> {
+    fn fold_type_initializer(
+        &mut self,
+        node: InitialValueAssignment,
+    ) -> Result<InitialValueAssignment, E> {
         Ok(node)
     }
 
-    fn fold_direct_variable(&mut self, node: DirectVariable) -> Result<DirectVariable, E> {
+    fn fold_direct_variable(&mut self, node: AddressAssignment) -> Result<AddressAssignment, E> {
         Ok(node)
     }
 }
@@ -120,15 +123,15 @@ impl Foldable for VarDecl {
     }
 }
 
-impl Foldable for TypeInitializer {
-    type Mapped = TypeInitializer;
+impl Foldable for InitialValueAssignment {
+    type Mapped = InitialValueAssignment;
     fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
         folder.fold_type_initializer(self)
     }
 }
 
-impl Foldable for DirectVariable {
-    type Mapped = DirectVariable;
+impl Foldable for AddressAssignment {
+    type Mapped = AddressAssignment;
     fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
         folder.fold_direct_variable(self)
     }

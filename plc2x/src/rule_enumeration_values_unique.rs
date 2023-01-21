@@ -2,16 +2,20 @@
 //!
 //! ## Passes
 //!
+//! ```ignore
 //! TYPE
 //! LOGLEVEL : (CRITICAL) := CRITICAL;
 //! END_TYPE
+//! ```
 //!
 //! ## Fails
 //!
-//! //! TYPE
+//! ```ignore
+//! TYPE
 //! LOGLEVEL : (CRITICAL, CRITICAL) := CRITICAL;
 //! END_TYPE
-use ironplc_dsl::{core::Id, dsl::*, visitor::Visitor};
+//! ```
+use ironplc_dsl::{common::*, core::Id, visitor::Visitor};
 use std::collections::HashSet;
 
 use crate::error::SemanticDiagnostic;

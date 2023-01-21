@@ -6,7 +6,7 @@ mod parser;
 
 use crate::parser::parse_library;
 use error::ParserDiagnostic;
-use ironplc_dsl::dsl::Library;
+use ironplc_dsl::common::Library;
 
 /// Parse a full IEC 61131 program.
 pub fn parse_program(source: &str) -> Result<Library, ParserDiagnostic> {

@@ -3,7 +3,7 @@ use codespan_reporting::diagnostic::Diagnostic;
 use ironplc_parser::error::ParserDiagnostic;
 
 use crate::{
-    ironplc_dsl::dsl::Library, rule_constant_vars_initialized, rule_enumeration_values_unique,
+    ironplc_dsl::common::Library, rule_constant_vars_initialized, rule_enumeration_values_unique,
     rule_global_const_implies_external_const, rule_pous_no_cycles,
     rule_program_task_definition_exists, rule_use_declared_enumerated_value, rule_use_declared_fb,
     rule_use_declared_symbolic_var, xform_resolve_late_bound_types,
@@ -55,11 +55,11 @@ mod tests {
 
     use super::parse;
 
-    use ironplc_dsl::ast::*;
+    use ironplc_dsl::common::*;
+    use ironplc_dsl::common_sfc::*;
     use ironplc_dsl::core::Id;
     use ironplc_dsl::core::SourceLoc;
-    use ironplc_dsl::dsl::*;
-    use ironplc_dsl::sfc::*;
+    use ironplc_dsl::textual::*;
     use test_helpers::*;
 
     use time::Duration;
@@ -138,8 +138,8 @@ mod tests {
                     VarDecl {
                         name: Id::from("ResetCounterValue"),
                         var_type: VariableType::External,
-                        qualifier: StorageQualifier::Constant,
-                        initializer: TypeInitializer::Simple {
+                        qualifier: DeclarationQualifier::Constant,
+                        initializer: InitialValueAssignment::Simple {
                             type_name: Id::from("INT"),
                             initial_value: None,
                         },
@@ -147,19 +147,16 @@ mod tests {
                     },
                 ],
                 body: FunctionBlockBody::sfc(vec![Network {
-                    initial_step: Element::InitialStep {
-                        name: Id::from("Start"),
-                        action_associations: vec![],
-                    },
+                    initial_step: Element::initial_step("Start", vec![]),
                     elements: vec![
                         Element::transition(
                             "Start",
                             "ResetCounter",
                             ExprKind::symbolic_variable("Reset"),
                         ),
-                        Element::Step {
-                            name: Id::from("ResetCounter"),
-                            action_associations: vec![
+                        Element::step(
+                            Id::from("ResetCounter"),
+                            vec![
                                 ActionAssociation::new(
                                     "RESETCOUNTER_INLINE1",
                                     Some(ActionQualifier::N),
@@ -169,7 +166,7 @@ mod tests {
                                     Some(ActionQualifier::N),
                                 ),
                             ],
-                        },
+                        ),
                         Element::action(
                             "RESETCOUNTER_INLINE1",
                             vec![StmtKind::simple_assignment(
@@ -197,13 +194,13 @@ mod tests {
                                 term: ExprKind::boxed_symbolic_variable("Reset"),
                             },
                         ),
-                        Element::Step {
-                            name: Id::from("Count"),
-                            action_associations: vec![
+                        Element::step(
+                            Id::from("Count"),
+                            vec![
                                 ActionAssociation::new("COUNT_INLINE3", Some(ActionQualifier::N)),
                                 ActionAssociation::new("COUNT_INLINE4", Some(ActionQualifier::N)),
                             ],
-                        },
+                        ),
                         Element::action(
                             "COUNT_INLINE3",
                             vec![StmtKind::assignment(
@@ -242,8 +239,8 @@ mod tests {
                     VarDecl {
                         name: Id::from("ResetCounterValue"),
                         var_type: VariableType::External,
-                        qualifier: StorageQualifier::Constant,
-                        initializer: TypeInitializer::Simple {
+                        qualifier: DeclarationQualifier::Constant,
+                        initializer: InitialValueAssignment::Simple {
                             type_name: Id::from("INT"),
                             initial_value: None,
                         },
@@ -276,8 +273,8 @@ mod tests {
                 VarDecl {
                     name: Id::from("InputsNumber"),
                     var_type: VariableType::Var,
-                    qualifier: StorageQualifier::Unspecified,
-                    initializer: TypeInitializer::Simple {
+                    qualifier: DeclarationQualifier::Unspecified,
+                    initializer: InitialValueAssignment::Simple {
                         type_name: Id::from("REAL"),
                         initial_value: Some(Initializer::Simple(Constant::RealLiteral(Float {
                             value: 5.1,
@@ -377,8 +374,8 @@ mod tests {
                 global_var: vec![VarDecl {
                     name: Id::from("ResetCounterValue"),
                     var_type: VariableType::Global,
-                    qualifier: StorageQualifier::Constant,
-                    initializer: TypeInitializer::Simple {
+                    qualifier: DeclarationQualifier::Constant,
+                    initializer: InitialValueAssignment::Simple {
                         type_name: Id::from("INT"),
                         initial_value: Option::Some(Initializer::Simple(Constant::IntegerLiteral(
                             17,
