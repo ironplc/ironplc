@@ -381,7 +381,7 @@ mod tests {
                             17,
                         ))),
                     },
-                    position: SourceLoc::new(0),
+                    position: SourceLoc::new(49),
                 }],
                 resource_decl: vec![ResourceDeclaration {
                     name: Id::from("resource1"),

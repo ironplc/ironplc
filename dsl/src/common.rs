@@ -4,6 +4,7 @@
 use core::str::FromStr;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::num::TryFromIntError;
 use time::Duration;
 
 use crate::common_sfc::Network;
@@ -14,66 +15,104 @@ use crate::textual::*;
 /// how data is expressed and are distinct from but associated with
 /// data types.
 
-/// Integer liberal.
-///
-/// Underlying data type is a String to trace back to the original
-/// representation if the value is not valid for the particular context.
+/// Integer liberal. The representation is of the largest possible integer
+/// and later bound to smaller types depend on context.
 pub struct Integer {
-    value: String,
+    pub position: SourceLoc,
+    /// The value in the maximum possible size. An integer is inherently
+    /// an unsigned value.
+    pub value: u128,
+    /// How many test characters were used to represent the integer.
+    pub num_chars: usize,
+}
+
+#[derive(Debug)]
+pub struct TryFromIntegerError();
+
+impl TryFrom<Integer> for u8 {
+    type Error = TryFromIntegerError;
+    fn try_from(value: Integer) -> Result<u8, Self::Error> {
+        //if value.value <= u8::MAX {
+        //    Ok(value.value.into())
+        //}
+        //Ok(0)
+        value.value.try_into().map_err(|e| TryFromIntegerError {})
+    }
+}
+
+impl TryFrom<Integer> for u32 {
+    type Error = TryFromIntegerError;
+    fn try_from(value: Integer) -> Result<u32, Self::Error> {
+        value.value.try_into().map_err(|e| TryFromIntegerError {})
+    }
+}
+
+impl TryFrom<Integer> for i128 {
+    type Error = TryFromIntegerError;
+    fn try_from(value: Integer) -> Result<i128, Self::Error> {
+        value.value.try_into().map_err(|e| TryFromIntegerError {})
+    }
+}
+
+impl TryFrom<Integer> for f64 {
+    type Error = TryFromIntegerError;
+    fn try_from(value: Integer) -> Result<f64, Self::Error> {
+        let res: Result<u32, _> = value.value.try_into();
+        let val = res.map_err(|e| TryFromIntegerError {})?;
+
+        let res: Result<f64, _> = val.try_into();
+        res.map_err(|e| TryFromIntegerError {})
+    }
+}
+
+impl TryFrom<Integer> for f32 {
+    type Error = &'static str;
+    fn try_from(value: Integer) -> Result<f32, Self::Error> {
+        let res: Result<u32, _> = value.value.try_into();
+        let val = res.map_err(|e| "Error converting to u32")?;
+
+        let res: Result<f64, _> = val.try_into();
+        let val = res.map_err(|e| "Error converting to f64")?;
+
+        // TODO how to do this
+        let val: f32 = val as f32;
+        Ok(val)
+    }
 }
 
 impl Integer {
-    pub fn try_from<T: FromStr>(&self) -> T {
-        let v: String = self.value.chars().filter(|c| c.is_ascii_digit()).collect();
-        match v.parse::<T>() {
-            Ok(v) => v,
+    pub fn new(a: &str, position: SourceLoc) -> Integer {
+        let val: String = a.chars().filter(|c| c.is_ascii_digit()).collect();
+        let num_chars = val.len();
+        match val.parse::<u128>() {
+            Ok(value) => Integer {
+                position,
+                value,
+                num_chars,
+            },
             Err(_) => panic!("out of range"),
-        }
-    }
-
-    pub fn as_type<T: FromStr>(&self) -> T {
-        self.try_from::<T>()
-    }
-
-    pub fn num_chars(&self) -> u8 {
-        let value: String = self.value.chars().filter(|c| c.is_ascii_digit()).collect();
-        // TODO This is most obviously wrong
-        let value: u8 = 1;
-        value
-    }
-
-    pub fn from(a: &str) -> Integer {
-        Integer {
-            value: String::from(a),
         }
     }
 }
 
 pub struct SignedInteger {
-    value: Integer,
-    is_neg: bool,
+    pub value: Integer,
+    pub is_neg: bool,
 }
 
 impl SignedInteger {
-    pub fn as_type<T: FromStr>(&self) -> T {
-        self.value.try_from::<T>()
-        // TODO
-        //if self.is_neg {
-        //    val *= -1;
-        //}
-    }
-    pub fn from(a: &str) -> SignedInteger {
+    pub fn new(a: &str, position: SourceLoc) -> SignedInteger {
         match a.chars().next() {
             Some('+') => SignedInteger {
-                value: Integer::from(a.get(1..).unwrap()),
+                value: Integer::new(a.get(1..).unwrap(), position),
                 is_neg: false,
             },
             Some('-') => SignedInteger {
-                value: Integer::from(a.get(1..).unwrap()),
+                value: Integer::new(a.get(1..).unwrap(), position),
                 is_neg: true,
             },
             _ => SignedInteger {
-                value: Integer::from(a),
+                value: Integer::new(a, position),
                 is_neg: false,
             },
         }
