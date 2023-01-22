@@ -15,14 +15,15 @@ extern crate ironplc_dsl;
 extern crate ironplc_parser;
 
 mod error;
-mod rule_constant_vars_initialized;
 mod rule_enumeration_values_unique;
-mod rule_global_const_implies_external_const;
 mod rule_pous_no_cycles;
 mod rule_program_task_definition_exists;
 mod rule_use_declared_enumerated_value;
 mod rule_use_declared_fb;
 mod rule_use_declared_symbolic_var;
+mod rule_var_decl_const_initialized;
+mod rule_var_decl_const_not_fb;
+mod rule_var_decl_global_const_requires_external_const;
 mod stages;
 mod symbol_table;
 mod xform_resolve_late_bound_types;

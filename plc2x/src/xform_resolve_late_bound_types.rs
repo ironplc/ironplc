@@ -110,10 +110,10 @@ impl Fold<SemanticDiagnostic> for TypeResolver {
             InitialValueAssignment::LateResolvedType(name) => {
                 // Try to find the type for the specified name.
                 if TypeResolver::is_elementary_type(&name) {
-                    return Ok(InitialValueAssignment::Simple {
+                    return Ok(InitialValueAssignment::Simple(SimpleInitializer {
                         type_name: name,
                         initial_value: None,
-                    });
+                    }));
                 }
 
                 // TODO error handling

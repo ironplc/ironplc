@@ -5,12 +5,12 @@
 //!
 //! ```ignore
 //! TYPE
-//!    LOGLEVEL : (CRITICAL) := CRITICAL;
+//!    LEVEL : (CRITICAL) := CRITICAL;
 //! END_TYPE
 //!
 //! FUNCTION_BLOCK LOGGER
 //!    VAR_INPUT
-//!       LEVEL : LOGLEVEL := CRITICAL;
+//!       LEVEL : LEVEL := CRITICAL;
 //!    END_VAR
 //! END_FUNCTION_BLOCK
 //! ```
@@ -19,12 +19,12 @@
 //!
 //! ```ignore
 //! TYPE
-//!    LOGLEVEL : (INFO) := INFO;
+//!    LEVEL : (INFO) := INFO;
 //! END_TYPE
 //!
 //! FUNCTION_BLOCK LOGGER
 //!    VAR_INPUT
-//!       LEVEL : LOGLEVEL := CRITICAL;
+//!       LEVEL : LEVEL := CRITICAL;
 //!    END_VAR
 //! END_FUNCTION_BLOCK
 //! ```
@@ -37,7 +37,7 @@ pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     // Collect the data type definitions from the library into a map so that
     // we can quickly look up invocations
     let mut enum_defs = HashMap::new();
-    for x in lib.elems.iter() {
+    for x in lib.elements.iter() {
         if let LibraryElement::DataTypeDeclaration(dtds) = x {
             for dtd in dtds {
                 enum_defs.insert(dtd.name.clone(), dtd);
@@ -149,12 +149,12 @@ mod tests {
     fn apply_when_var_init_undefined_enum_value_then_error() {
         let program = "
 TYPE
-LOGLEVEL : (INFO) := INFO;
+LEVEL : (INFO) := INFO;
 END_TYPE
         
 FUNCTION_BLOCK LOGGER
 VAR_INPUT
-LEVEL : LOGLEVEL := CRITICAL;
+LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
@@ -168,12 +168,12 @@ END_FUNCTION_BLOCK";
     fn apply_when_var_init_valid_enum_value_then_ok() {
         let program = "
 TYPE
-LOGLEVEL : (CRITICAL) := CRITICAL;
+LEVEL : (CRITICAL) := CRITICAL;
 END_TYPE
 
 FUNCTION_BLOCK LOGGER
 VAR_INPUT
-LEVEL : LOGLEVEL := CRITICAL;
+LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 

@@ -30,7 +30,7 @@ where
 pub trait Fold<E> {
     fn fold(&mut self, node: Library) -> Result<Library, E> {
         Ok(Library {
-            elems: Foldable::fold(node.elems, self)?,
+            elements: Foldable::fold(node.elements, self)?,
         })
     }
     fn fold_library_element_declaration(
