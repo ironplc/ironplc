@@ -200,20 +200,20 @@ parser! {
     rule identifier() -> Id = start:position!() !KEYWORD() i:$(['a'..='z' | '0'..='9' | 'A'..='Z' | '_']+) end:position!() { Id::from(i).with_location(SourceLoc::range(start, end)) }
 
     // B.1.2 Constants
-    rule constant() -> Constant = r:real_literal() { Constant::RealLiteral(r) } / i:integer_literal() { Constant::IntegerLiteral(i.try_from::<i128>()) } / c:character_string() { Constant::CharacterString() }  / d:duration() { Constant::Duration(d) } / t:time_of_day() { Constant::TimeOfDay() } / d:date() { Constant::Date() } / dt:date_and_time() { Constant::DateAndTime() }
+    rule constant() -> Constant = r:real_literal() { Constant::RealLiteral(r) } / i:integer_literal() { Constant::IntegerLiteral(i.try_into().unwrap()) } / c:character_string() { Constant::CharacterString() }  / d:duration() { Constant::Duration(d) } / t:time_of_day() { Constant::TimeOfDay() } / d:date() { Constant::Date() } / dt:date_and_time() { Constant::DateAndTime() }
 
     // B.1.2.1 Numeric literals
     // numeric_literal omitted and only in constant.
     // TODO fill out the rest here
     rule integer_literal() -> Integer = i:integer() { i }
-    rule signed_integer() -> SignedInteger = n:$(['+' | '-']?['0'..='9']("_"? ['0'..='9'])*) { SignedInteger::from(n) }
+    rule signed_integer() -> SignedInteger = start:position!() n:$(['+' | '-']?['0'..='9']("_"? ['0'..='9'])*) { SignedInteger::new(n, SourceLoc::new(start)) }
     rule real_literal() -> Float = tn:(t:real_type_name() "#" {t})? whole:signed_integer() "." f:integer() e:exponent()? {
-      let whole = whole.as_type::<f64>();
-      let frac = f.as_type::<f64>();
-
       // To get the right size of the fraction part, determine how many digits
       // we have
-      let num_chars = f.num_chars();
+      let num_chars = f.num_chars;
+      let whole: f64 = whole.value.try_into().unwrap();
+      let frac: f64 = f.try_into().unwrap();
+
       // TODO this is not right
       let factor = 10;
       let factor: f64 = factor.into();
@@ -229,7 +229,7 @@ parser! {
     }
     rule exponent() -> (bool, Integer) = ("E" / "e") s:("+" / "-")? i:integer() { (true, i) }
     // TODO handle the sign
-    rule integer() -> Integer = n:$(['0'..='9']("_"? ['0'..='9'])*) { Integer::from(n) }
+    rule integer() -> Integer = start:position!() n:$(['0'..='9']("_"? ['0'..='9'])*) { Integer::new(n, SourceLoc::new(start)) }
 
     // B.1.2.2 Character strings
     rule character_string() -> Vec<char> = s:single_byte_character_string() / d:double_byte_character_string()
@@ -253,37 +253,34 @@ parser! {
     }
     // milliseconds must come first because the "m" in "ms" would match the minutes rule
     rule interval() -> Duration = ms:milliseconds() { ms } / d:days() { d } / h:hours() { h } / m:minutes() { m } / s:seconds() { s }
-    rule days() -> Duration = f:fixed_point() "d" { to_duration(f, 3600.0 * 24.0) } / i:integer() "d" "_"? h:hours() { h + to_duration(i.try_from::<f32>(), 3600.0 * 24.0) }
+    rule days() -> Duration = f:fixed_point() "d" { to_duration(f, 3600.0 * 24.0) } / i:integer() "d" "_"? h:hours() { h + to_duration(i.try_into().unwrap(), 3600.0 * 24.0) }
 
     rule fixed_point() -> f32 = i:integer() ("." integer())? {
       // TODO This drops the fraction, but I don't know how to keep it. May need one big regex in the worse case.
-      i.try_from::<f32>()
+      i.try_into().unwrap()
     }
-    rule hours() -> Duration = f:fixed_point() "h" { to_duration(f, 3600.0) } / i:integer() "h" "_"? m:minutes() { m + to_duration(i.try_from::<f32>(), 3600.0) }
-    rule minutes() -> Duration = f:fixed_point() "m" { to_duration(f, 60.0) } / i:integer() "m" "_"? m:seconds() { m + to_duration(i.try_from::<f32>(), 60.0) }
-    rule seconds() -> Duration = f:fixed_point() "s" { to_duration(f, 1.0) } / i:integer() "s" "_"? m:milliseconds() { m + to_duration(i.try_from::<f32>(), 1.0) }
+    rule hours() -> Duration = f:fixed_point() "h" { to_duration(f, 3600.0) } / i:integer() "h" "_"? m:minutes() { m + to_duration(i.try_into().unwrap(), 3600.0) }
+    rule minutes() -> Duration = f:fixed_point() "m" { to_duration(f, 60.0) } / i:integer() "m" "_"? m:seconds() { m + to_duration(i.try_into().unwrap(), 60.0) }
+    rule seconds() -> Duration = f:fixed_point() "s" { to_duration(f, 1.0) } / i:integer() "s" "_"? m:milliseconds() { m + to_duration(i.try_into().unwrap(), 1.0) }
     rule milliseconds() -> Duration = f:fixed_point() "ms" { to_duration(f, 0.001) }
 
     // 1.2.3.2 Time of day and date
     rule time_of_day() -> Time = ("TOD" / "TIME_OF_DAY") "#" d:daytime() { d }
     rule daytime() -> Time = h:day_hour() ":" m:day_minute() ":" s:day_second() {
-      let h = h.try_from::<u8>();
-      let m = m.try_from::<u8>();
-      let s = s.try_from::<u8>();
       // TODO error handling
-      Time::from_hms(h, m, s).unwrap()
+      Time::from_hms(h.try_into().unwrap(), m.try_into().unwrap(), s.try_into().unwrap()).unwrap()
     }
     rule day_hour() -> Integer = i:integer() { i }
     rule day_minute() -> Integer = i:integer() { i }
     rule day_second() -> Integer = i:integer() { i }
     rule date() -> Date = ("DATE" / "D") "#" d:date_literal() { d }
     rule date_literal() -> Date = y:year() "-" m:month() "-" d:day() {
-      let y = y.try_from::<i32>();
+      let y = y.value;
       // TODO error handling
-      let m = Month::try_from(m.try_from::<u8>()).unwrap();
-      let d = d.try_from::<u8>();
+      let m = Month::try_from(<dsl::common::Integer as TryInto<u8>>::try_into(m).unwrap()).unwrap();
+      let d = d.value;
       // TODO error handling
-      Date::from_calendar_date(y, m, d).unwrap()
+      Date::from_calendar_date(y.try_into().unwrap(), m, d.try_into().unwrap()).unwrap()
     }
     rule year() -> Integer = i:integer() { i }
     rule month() -> Integer = i:integer() { i }
@@ -420,7 +417,7 @@ parser! {
     pub rule direct_variable() -> AddressAssignment = "%" l:location_prefix() s:size_prefix()? addr:integer() ++ "." {
       let size = s.unwrap_or(SizePrefix::Nil);
       let addr = addr.iter().map(|part|
-        part.try_from::<u32>()
+        part.value.try_into().unwrap()
       ).collect();
 
       AddressAssignment {
@@ -662,7 +659,7 @@ parser! {
     rule transition() -> Element = "TRANSITION" _ name:transition_name()? _ priority:("(" _ "PRIORITY" _ ":=" _ p:integer() _ ")" {p})? _ "FROM" _ from:steps() _ "TO" _ to:steps() _ condition:transition_condition() _ "END_TRANSITION" {
       Element::Transition(Transition {
         name,
-        priority: priority.map(|p| p.try_from::<u32>()),
+        priority: priority.map(|p| p.value.try_into().unwrap()),
         from,
         to,
         condition,
@@ -729,7 +726,7 @@ parser! {
         _ => panic!("Only supporting Duration types for now"),
       }
      }
-    rule task_initialization_priority() -> u32 = "PRIORITY" _ ":=" _ i:integer() { i.try_from::<u32>() }
+    rule task_initialization_priority() -> u32 = "PRIORITY" _ ":=" _ i:integer() { i.value.try_into().unwrap() }
     // TODO there are more here, but only supporting Constant for now
     pub rule data_source() -> Constant = constant:constant() { constant }
     // TODO more options here
