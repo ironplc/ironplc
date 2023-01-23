@@ -10,6 +10,7 @@ devices running programs written in the IEC 61131-3 language.
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Crates.io - 0.1.1](https://img.shields.io/crates/v/ironplc-plc2x)](https://crates.io/crates/ironplc-plc2x)
 [![Dependency status - 0.1.1](https://deps.rs/crate/ironplc-plc2x/0.1.1/status.svg)](https://deps.rs/crate/ironplc-plc2x/0.1.1)
+[![Lines of Code](https://tokei.rs/b1/github/garretfick/ironplc)](https://github.com/XAMPPRocky/tokei)
 
 SoftPLCs enable embedded and other computers to operate as programmable logic
 controllers (PLCs) that execute all sorts of processes from home automation
@@ -122,7 +123,7 @@ There is no strict definition of what goes where. Better rules would be nice.
 
 ## Similar Projects
 
-* [rusty](https://github.com/PLC-lang/rusty) - Structured text compiler written in Rust.
+* [RuSTy](https://github.com/PLC-lang/rusty) - Structured text compiler written in Rust.
 * [msr](https://github.com/slowtec/msr) - A Rust library for industrial automation.
 * [ethercat-rs](https://github.com/birkenfeld/ethercat-rs) - An experimental Rust automation toolbox using the IgH (Etherlab) EtherCAT master.
 * [rustmatic](https://github.com/NOP0/rustmatic) - Rustmatic is a thought experiment on creating a PLC-like environment in Rust.
