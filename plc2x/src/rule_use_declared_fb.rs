@@ -74,7 +74,7 @@ pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     // Collect the names from the library into a map so that
     // we can quickly look up invocations
     let mut function_blocks = HashMap::new();
-    for x in lib.elems.iter() {
+    for x in lib.elements.iter() {
         if let LibraryElement::FunctionBlockDeclaration(fb) = x {
             function_blocks.insert(fb.name.clone(), fb);
         }
@@ -207,10 +207,7 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
     ) -> Result<Self::Value, SemanticDiagnostic> {
         match &node.initializer {
             InitialValueAssignment::None => todo!(),
-            InitialValueAssignment::Simple {
-                type_name: _,
-                initial_value: _,
-            } => {}
+            InitialValueAssignment::Simple(_) => {}
             InitialValueAssignment::EnumeratedValues(_) => {}
             InitialValueAssignment::EnumeratedType(_) => {}
             InitialValueAssignment::FunctionBlock(fbi) => {

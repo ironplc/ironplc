@@ -13,6 +13,8 @@ pub fn read_resource(name: &'static str) -> String {
 }
 
 #[cfg(test)]
-pub fn new_library<T>(elem: LibraryElement) -> Result<Library, T> {
-    Ok(Library { elems: vec![elem] })
+pub fn new_library<T>(element: LibraryElement) -> Result<Library, T> {
+    Ok(Library {
+        elements: vec![element],
+    })
 }
