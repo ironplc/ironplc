@@ -83,7 +83,7 @@ pub trait Visitor<E> {
     type Value: Default;
 
     fn walk(&mut self, node: &Library) -> Result<Self::Value, E> {
-        Acceptor::accept(&node.elems, self)
+        Acceptor::accept(&node.elements, self)
     }
 
     fn visit_configuration_declaration(
@@ -164,6 +164,11 @@ pub trait Visitor<E> {
     }
 
     fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, E> {
+        // TODO
+        Ok(Self::Value::default())
+    }
+
+    fn visit_simple_initializer(&mut self, init: &SimpleInitializer) -> Result<Self::Value, E> {
         // TODO
         Ok(Self::Value::default())
     }
@@ -330,10 +335,7 @@ impl Acceptor for InitialValueAssignment {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
             InitialValueAssignment::None => Ok(V::Value::default()),
-            InitialValueAssignment::Simple {
-                type_name,
-                initial_value,
-            } => Ok(V::Value::default()),
+            InitialValueAssignment::Simple(si) => visitor.visit_simple_initializer(si),
             InitialValueAssignment::EnumeratedValues(ev) => {
                 visitor.visit_enumerated_values_initializer(ev)
             }
@@ -454,7 +456,7 @@ mod test {
     #[test]
     fn walk_when_has_symbolic_variable_then_visits_variable() {
         let library = Library {
-            elems: vec![LibraryElement::ProgramDeclaration(ProgramDeclaration {
+            elements: vec![LibraryElement::ProgramDeclaration(ProgramDeclaration {
                 type_name: Id::from("plc_prg"),
                 variables: vec![VarDecl::simple_input("Reset", "BOOL", SourceLoc::new(0))],
                 body: FunctionBlockBody::stmts(vec![StmtKind::fb_assign(

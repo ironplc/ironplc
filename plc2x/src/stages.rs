@@ -3,10 +3,10 @@ use codespan_reporting::diagnostic::Diagnostic;
 use ironplc_parser::error::ParserDiagnostic;
 
 use crate::{
-    ironplc_dsl::common::Library, rule_constant_vars_initialized, rule_enumeration_values_unique,
-    rule_global_const_implies_external_const, rule_pous_no_cycles,
+    ironplc_dsl::common::Library, rule_enumeration_values_unique, rule_pous_no_cycles,
     rule_program_task_definition_exists, rule_use_declared_enumerated_value, rule_use_declared_fb,
-    rule_use_declared_symbolic_var, xform_resolve_late_bound_types,
+    rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
+    rule_var_decl_global_const_requires_external_const, xform_resolve_late_bound_types,
 };
 
 /// Parse combines lexical and sematic analysis (stages 1 & 2).
@@ -35,11 +35,12 @@ pub fn semantic(library: &Library) -> Result<(), Diagnostic<()>> {
     rule_use_declared_symbolic_var::apply(library)?;
     rule_use_declared_enumerated_value::apply(library)?;
     rule_use_declared_fb::apply(library)?;
-    rule_constant_vars_initialized::apply(library)?;
+    rule_var_decl_const_initialized::apply(library)?;
+    rule_var_decl_const_not_fb::apply(library)?;
     rule_enumeration_values_unique::apply(library)?;
     rule_program_task_definition_exists::apply(library)?;
     rule_pous_no_cycles::apply(library)?;
-    rule_global_const_implies_external_const::apply(library)?;
+    rule_var_decl_global_const_requires_external_const::apply(library)?;
 
     // 1. Check all identifiers defined (need scope)
     // 2. Type checking
@@ -139,10 +140,10 @@ mod tests {
                         name: Id::from("ResetCounterValue"),
                         var_type: VariableType::External,
                         qualifier: DeclarationQualifier::Constant,
-                        initializer: InitialValueAssignment::Simple {
+                        initializer: InitialValueAssignment::Simple(SimpleInitializer {
                             type_name: Id::from("INT"),
                             initial_value: None,
-                        },
+                        }),
                         position: SourceLoc::new(0),
                     },
                 ],
@@ -240,10 +241,10 @@ mod tests {
                         name: Id::from("ResetCounterValue"),
                         var_type: VariableType::External,
                         qualifier: DeclarationQualifier::Constant,
-                        initializer: InitialValueAssignment::Simple {
+                        initializer: InitialValueAssignment::Simple(SimpleInitializer {
                             type_name: Id::from("INT"),
                             initial_value: None,
-                        },
+                        }),
                         position: SourceLoc::new(174),
                     },
                     VarDecl::simple_var("_TMP_ADD4_OUT", "INT", SourceLoc::new(0)),
@@ -274,13 +275,13 @@ mod tests {
                     name: Id::from("InputsNumber"),
                     var_type: VariableType::Var,
                     qualifier: DeclarationQualifier::Unspecified,
-                    initializer: InitialValueAssignment::Simple {
+                    initializer: InitialValueAssignment::Simple(SimpleInitializer {
                         type_name: Id::from("REAL"),
                         initial_value: Some(Initializer::Simple(Constant::RealLiteral(Float {
                             value: 5.1,
                             data_type: None,
                         }))),
-                    },
+                    }),
                     position: SourceLoc::new(0),
                 },
             ],
@@ -375,12 +376,12 @@ mod tests {
                     name: Id::from("ResetCounterValue"),
                     var_type: VariableType::Global,
                     qualifier: DeclarationQualifier::Constant,
-                    initializer: InitialValueAssignment::Simple {
+                    initializer: InitialValueAssignment::Simple(SimpleInitializer {
                         type_name: Id::from("INT"),
                         initial_value: Option::Some(Initializer::Simple(Constant::IntegerLiteral(
                             17,
                         ))),
-                    },
+                    }),
                     position: SourceLoc::new(49),
                 }],
                 resource_decl: vec![ResourceDeclaration {

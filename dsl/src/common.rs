@@ -32,10 +32,6 @@ pub struct TryFromIntegerError();
 impl TryFrom<Integer> for u8 {
     type Error = TryFromIntegerError;
     fn try_from(value: Integer) -> Result<u8, Self::Error> {
-        //if value.value <= u8::MAX {
-        //    Ok(value.value.into())
-        //}
-        //Ok(0)
         value.value.try_into().map_err(|e| TryFromIntegerError {})
     }
 }
@@ -66,13 +62,13 @@ impl TryFrom<Integer> for f64 {
 }
 
 impl TryFrom<Integer> for f32 {
-    type Error = &'static str;
+    type Error = TryFromIntegerError;
     fn try_from(value: Integer) -> Result<f32, Self::Error> {
         let res: Result<u32, _> = value.value.try_into();
-        let val = res.map_err(|e| "Error converting to u32")?;
+        let val = res.map_err(|e| TryFromIntegerError {})?;
 
         let res: Result<f64, _> = val.try_into();
-        let val = res.map_err(|e| "Error converting to f64")?;
+        let val = res.map_err(|e| TryFromIntegerError {})?;
 
         // TODO how to do this
         let val: f32 = val as f32;
@@ -233,10 +229,7 @@ impl VarDecl {
             name: Id::from(name),
             var_type,
             qualifier: DeclarationQualifier::Unspecified,
-            initializer: InitialValueAssignment::Simple {
-                type_name: Id::from(type_name),
-                initial_value: None,
-            },
+            initializer: InitialValueAssignment::simple_uninitialized(type_name),
             position: loc,
         }
     }
@@ -413,10 +406,7 @@ pub enum InitialValueAssignment {
     /// Some types allow no initializer and this avoids nesting of the
     /// enumeration with an Option enumeration.
     None,
-    Simple {
-        type_name: Id,
-        initial_value: Option<Initializer>,
-    },
+    Simple(SimpleInitializer),
     EnumeratedValues(EnumeratedValuesInitializer),
     EnumeratedType(EnumeratedInitialValueAssignment),
     FunctionBlock(FunctionBlockInitialValueAssignment),
@@ -432,18 +422,18 @@ pub enum InitialValueAssignment {
 impl InitialValueAssignment {
     /// Creates an initial value with
     pub fn simple_uninitialized(type_name: &str) -> InitialValueAssignment {
-        InitialValueAssignment::Simple {
+        InitialValueAssignment::Simple(SimpleInitializer {
             type_name: Id::from(type_name),
             initial_value: None,
-        }
+        })
     }
 
     /// Creates an initial value from the initializer.
     pub fn simple(type_name: &str, value: Initializer) -> InitialValueAssignment {
-        InitialValueAssignment::Simple {
+        InitialValueAssignment::Simple(SimpleInitializer {
             type_name: Id::from(type_name),
             initial_value: Some(value),
-        }
+        })
     }
 
     /// Creates an initial value consisting of an enumeration definition and
@@ -495,6 +485,12 @@ impl fmt::Debug for Initializer {
 pub struct EnumeratedInitialValueAssignment {
     pub type_name: Id,
     pub initial_value: Option<Id>,
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct SimpleInitializer {
+    pub type_name: Id,
+    pub initial_value: Option<Initializer>,
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -678,14 +674,17 @@ pub enum FunctionBlockBody {
 }
 
 impl FunctionBlockBody {
+    /// Creates a function body that is composed of statements.
     pub fn stmts(stmts: Vec<StmtKind>) -> FunctionBlockBody {
         FunctionBlockBody::Statements(Statements { body: stmts })
     }
 
+    /// Creates a function body that is composed of a sequential function block.
     pub fn sfc(networks: Vec<Network>) -> FunctionBlockBody {
         FunctionBlockBody::Sfc(Sfc { networks })
     }
 
+    /// Creates an empty function body.
     pub fn empty() -> FunctionBlockBody {
         FunctionBlockBody::Empty()
     }
@@ -695,11 +694,11 @@ impl FunctionBlockBody {
 /// typically represented as a file resource.
 #[derive(Debug, PartialEq)]
 pub struct Library {
-    pub elems: Vec<LibraryElement>,
+    pub elements: Vec<LibraryElement>,
 }
 
 impl Library {
-    pub fn new(elems: Vec<LibraryElement>) -> Self {
-        Library { elems }
+    pub fn new(elements: Vec<LibraryElement>) -> Self {
+        Library { elements }
     }
 }

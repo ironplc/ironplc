@@ -341,16 +341,16 @@ parser! {
     rule enumerated_value() -> Id = (enumerated_type_name() "#")? i:identifier() { i }
     // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
     rule simple_spec_init__with_constant() -> InitialValueAssignment = type_name:simple_specification() _ ":=" _ c:constant() {
-      InitialValueAssignment::Simple {
+      InitialValueAssignment::Simple(SimpleInitializer {
         type_name,
         initial_value: Some(Initializer::Simple(c)),
-      }
+      })
     }
     rule simple_spec_init() -> InitialValueAssignment = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
-      InitialValueAssignment::Simple {
+      InitialValueAssignment::Simple(SimpleInitializer {
         type_name,
         initial_value: constant.map(Initializer::Simple),
-      }
+      })
     }
     rule simple_specification() -> Id = elementary_type_name() / simple_type_name()
 
@@ -364,10 +364,10 @@ parser! {
     rule simple_or_enumerated_spec_init() -> InitialValueAssignment = s:simple_specification() _ ":=" _ c:constant() {
       // A simple_specification with a constant is unambiguous because the constant is
       // not a valid identifier.
-      InitialValueAssignment::Simple {
+      InitialValueAssignment::Simple(SimpleInitializer {
         type_name: s,
         initial_value: Some(Initializer::Simple(c)),
-      }
+      })
     } / spec:enumerated_specification() _ ":=" _ init:enumerated_value() {
       // An enumerated_specification defined with a value is unambiguous the value
       // is not a valid constant.
@@ -397,10 +397,10 @@ parser! {
     } / et:elementary_type_name() {
       // An identifier that is an elementary_type_name s unambiguous because these are
       // reserved keywords
-      InitialValueAssignment::Simple {
+      InitialValueAssignment::Simple(SimpleInitializer {
         type_name: et,
         initial_value: None,
-      }
+      })
     }/ i:identifier() {
       // What remains is ambiguous and the devolves to a single identifier because the prior
       // cases have captures all cases with a value.
@@ -511,10 +511,10 @@ parser! {
     }
     // TODO subrange_specification, array_specification(), structure_type_name and others
     rule external_declaration_spec() -> InitialValueAssignment = type_name:simple_specification() {
-      InitialValueAssignment::Simple {
+      InitialValueAssignment::Simple(SimpleInitializer {
         type_name,
         initial_value: None,
-      }
+      })
     }
     rule external_declaration() -> VarDecl = start:position!() name:global_var_name() _ ":" _ spec:external_declaration_spec() {
       VarDecl {
@@ -1024,10 +1024,10 @@ END_VAR";
             name: Id::from("ResetCounterValue"),
             var_type: VariableType::Global,
             qualifier: DeclarationQualifier::Constant,
-            initializer: InitialValueAssignment::Simple {
-                type_name: Id::from("INT"),
-                initial_value: Option::Some(Initializer::Simple(Constant::IntegerLiteral(17))),
-            },
+            initializer: InitialValueAssignment::simple(
+                "INT",
+                Initializer::Simple(Constant::IntegerLiteral(17)),
+            ),
             position: SourceLoc::new(0),
         }];
         assert_eq!(

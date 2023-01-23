@@ -1,6 +1,8 @@
 //! Semantic rule that global variables declared with the CONSTANT
 //! qualifier class must be declared constant in contained element.
 //!
+//! See section 2.4.3.
+//!
 //! ## Passes
 //!
 //! ```ignore

@@ -1,5 +1,7 @@
-//! Semantic rule that variables declared with the CONSTANT
+//! Semantic rule that variables declared with the `CONSTANT`
 //! qualifier class must have initial values.
+//!
+//! See section 2.4.3.
 //!
 //! ## Passes
 //!
@@ -53,10 +55,7 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
         match node.qualifier {
             DeclarationQualifier::Constant => match &node.initializer {
                 InitialValueAssignment::None => todo!(),
-                InitialValueAssignment::Simple {
-                    type_name: _,
-                    initial_value,
-                } => match initial_value {
+                InitialValueAssignment::Simple(si) => match si.initial_value {
                     Some(_) => {}
                     None => {
                         return Err(SemanticDiagnostic::error(
