@@ -22,8 +22,6 @@ pub struct Integer {
     /// The value in the maximum possible size. An integer is inherently
     /// an unsigned value.
     pub value: u128,
-    /// How many test characters were used to represent the integer.
-    pub num_chars: usize,
 }
 
 #[derive(Debug)]
@@ -78,16 +76,36 @@ impl TryFrom<Integer> for f32 {
 
 impl Integer {
     pub fn new(a: &str, position: SourceLoc) -> Integer {
-        let val: String = a.chars().filter(|c| c.is_ascii_digit()).collect();
-        let num_chars = val.len();
-        match val.parse::<u128>() {
-            Ok(value) => Integer {
-                position,
-                value,
-                num_chars,
-            },
-            Err(_) => panic!("out of range"),
-        }
+        let without_underscore: String = a.chars().filter(|c| c.is_ascii_digit()).collect();
+        u128::from_str_radix(without_underscore.as_str(), 10).map(|value| Integer {
+            position,
+            value,
+        }).unwrap()
+    }
+
+    pub fn hex(a: &str, position: SourceLoc) -> Integer {
+        let without_underscore: String = a.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+        u128::from_str_radix(without_underscore.as_str(), 16).map(|value| Integer {
+            position,
+            value,
+        }).unwrap()
+    }
+
+
+    pub fn octal(a: &str, position: SourceLoc) -> Integer {
+        let without_underscore: String = a.chars().filter(|c| matches!(c, '0'..='7')).collect();
+        u128::from_str_radix(without_underscore.as_str(), 8).map(|value| Integer {
+            position,
+            value,
+        }).unwrap()
+    }
+
+    pub fn binary(a: &str, position: SourceLoc) -> Integer {
+        let without_underscore: String = a.chars().filter(|c| matches!(c, '0'..='1')).collect();
+        u128::from_str_radix(without_underscore.as_str(), 2).map(|value| Integer {
+            position,
+            value,
+        }).unwrap()
     }
 }
 
@@ -112,6 +130,62 @@ impl SignedInteger {
                 is_neg: false,
             },
         }
+    }
+}
+
+impl From<Integer> for SignedInteger {
+    fn from(value: Integer) -> SignedInteger {
+        SignedInteger {
+            value,
+            is_neg: false,
+        }
+    }
+}
+
+impl TryFrom<SignedInteger> for u8 {
+    type Error = TryFromIntegerError;
+    fn try_from(value: SignedInteger) -> Result<u8, Self::Error> {
+        value.value.try_into().map_err(|e| TryFromIntegerError {})
+    }
+}
+
+impl TryFrom<SignedInteger> for u32 {
+    type Error = TryFromIntegerError;
+    fn try_from(value: SignedInteger) -> Result<u32, Self::Error> {
+        value.value.try_into().map_err(|e| TryFromIntegerError {})
+    }
+}
+
+impl TryFrom<SignedInteger> for i128 {
+    type Error = TryFromIntegerError;
+    fn try_from(value: SignedInteger) -> Result<i128, Self::Error> {
+        value.value.try_into().map_err(|e| TryFromIntegerError {})
+    }
+}
+
+impl TryFrom<SignedInteger> for f64 {
+    type Error = TryFromIntegerError;
+    fn try_from(value: SignedInteger) -> Result<f64, Self::Error> {
+        let res: Result<u32, _> = value.value.try_into();
+        let val = res.map_err(|e| TryFromIntegerError {})?;
+
+        let res: Result<f64, _> = val.try_into();
+        res.map_err(|e| TryFromIntegerError {})
+    }
+}
+
+impl TryFrom<SignedInteger> for f32 {
+    type Error = TryFromIntegerError;
+    fn try_from(value: SignedInteger) -> Result<f32, Self::Error> {
+        let res: Result<u32, _> = value.value.try_into();
+        let val = res.map_err(|e| TryFromIntegerError {})?;
+
+        let res: Result<f64, _> = val.try_into();
+        let val = res.map_err(|e| TryFromIntegerError {})?;
+
+        // TODO how to do this
+        let val: f32 = val as f32;
+        Ok(val)
     }
 }
 
