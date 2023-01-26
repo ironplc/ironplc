@@ -434,7 +434,13 @@ parser! {
     rule variable_name() -> Id = i:identifier() { i }
 
     // B.1.4.1 Directly represented variables
-    pub rule direct_variable() -> AddressAssignment = "%" l:location_prefix() s:size_prefix()? addr:integer() ++ "." {
+    pub rule direct_variable() -> AddressAssignment = "%" l:location_prefix() "*" {
+      AddressAssignment {
+        location: l,
+        size: SizePrefix::Unspecified,
+        address: vec![],
+      }
+    } / "%" l:location_prefix() s:size_prefix()? addr:integer() ++ "." {
       let size = s.unwrap_or(SizePrefix::Nil);
       let addr = addr.iter().map(|part|
         part.value.try_into().unwrap()
