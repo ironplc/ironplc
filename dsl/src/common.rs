@@ -77,35 +77,32 @@ impl TryFrom<Integer> for f32 {
 impl Integer {
     pub fn new(a: &str, position: SourceLoc) -> Integer {
         let without_underscore: String = a.chars().filter(|c| c.is_ascii_digit()).collect();
-        u128::from_str_radix(without_underscore.as_str(), 10).map(|value| Integer {
-            position,
-            value,
-        }).unwrap()
+        without_underscore
+            .as_str()
+            .parse::<u128>()
+            .map(|value| Integer { position, value })
+            .unwrap()
     }
 
     pub fn hex(a: &str, position: SourceLoc) -> Integer {
         let without_underscore: String = a.chars().filter(|c| c.is_ascii_hexdigit()).collect();
-        u128::from_str_radix(without_underscore.as_str(), 16).map(|value| Integer {
-            position,
-            value,
-        }).unwrap()
+        u128::from_str_radix(without_underscore.as_str(), 16)
+            .map(|value| Integer { position, value })
+            .unwrap()
     }
-
 
     pub fn octal(a: &str, position: SourceLoc) -> Integer {
         let without_underscore: String = a.chars().filter(|c| matches!(c, '0'..='7')).collect();
-        u128::from_str_radix(without_underscore.as_str(), 8).map(|value| Integer {
-            position,
-            value,
-        }).unwrap()
+        u128::from_str_radix(without_underscore.as_str(), 8)
+            .map(|value| Integer { position, value })
+            .unwrap()
     }
 
     pub fn binary(a: &str, position: SourceLoc) -> Integer {
         let without_underscore: String = a.chars().filter(|c| matches!(c, '0'..='1')).collect();
-        u128::from_str_radix(without_underscore.as_str(), 2).map(|value| Integer {
-            position,
-            value,
-        }).unwrap()
+        u128::from_str_radix(without_underscore.as_str(), 2)
+            .map(|value| Integer { position, value })
+            .unwrap()
     }
 }
 

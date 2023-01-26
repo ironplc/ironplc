@@ -1,13 +1,13 @@
 //! Primary parser for IEC 61131-3 language elements. The parser transforms
 //! text into objects.
-//! 
+//!
 //! This parser makes some simplifying assumptions:
 //! * there are no comments
 //! * there are no pragmas
-//! 
+//!
 //! These assumptions just mean an earlier stage needs to remove/apply these
 //! elements.
-//! 
+//!
 //! Rules in the parser generally map 1:1 to the production rules in the formal
 //! specification (Appendix B). Important exceptions are:
 //! * parts of a parser rule name following two underscores (__) are variations
@@ -230,16 +230,13 @@ parser! {
       let fraction: String = fraction.chars().filter(|c| c.is_ascii_digit()).collect();
       let mut value = (whole + "." + &fraction).parse::<f64>().unwrap();
 
-      match exp {
-        Some(exp) => {
-          let exp = f64::powf(exp.try_into().unwrap(), 10.0);
-          value *= exp;
-        }
-        None => {}
+      if let Some(exp) = exp {
+        let exp = f64::powf(exp.try_into().unwrap(), 10.0);
+        value *= exp;
       }
 
       Float {
-        value: value,
+        value,
         data_type: tn,
       }
     }
