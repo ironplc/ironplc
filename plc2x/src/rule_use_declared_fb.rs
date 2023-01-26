@@ -31,10 +31,6 @@
 //!    FB_INSTANCE(IN1 := TRUE, BAR := TRUE);
 //! END_FUNCTION_BLOCK
 //! ```
-//!
-//! ```
-//!
-//! ```
 use ironplc_dsl::{
     common::*,
     core::Id,

@@ -1,3 +1,18 @@
+//! Primary parser for IEC 61131-3 language elements. The parser transforms
+//! text into objects.
+//!
+//! This parser makes some simplifying assumptions:
+//! * there are no comments
+//! * there are no pragmas
+//!
+//! These assumptions just mean an earlier stage needs to remove/apply these
+//! elements.
+//!
+//! Rules in the parser generally map 1:1 to the production rules in the formal
+//! specification (Appendix B). Important exceptions are:
+//! * parts of a parser rule name following two underscores (__) are variations
+//!   on formal production rules
+//! * parser rule names in all capital letters are not production rules
 extern crate peg;
 
 use dsl::core::SourceLoc;
@@ -183,10 +198,10 @@ parser! {
     rule semicolon() -> () = ";" ()
     rule _ = [' ' | '\n' | '\r' ]*
     // A semi-colon separated list with required ending separator
-    rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) semicolon() {v}
+    rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v}
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
 
-    rule KEYWORD() = "END_VAR" / "VAR" / "VAR_INPUT" / "IF" / "END_IF" / "FUNCTION_BLOCK" / "END_FUNCTION_BLOCK" / "AND" / "NOT" / "THEN" / "END_IF" / "STEP" / "END_STEP" / "FROM" / "PRIORITY" / "END_VAR"
+    rule KEYWORD() = "END_VAR" / "VAR" / "VAR_INPUT" / "IF" / "END_IF" / "FUNCTION_BLOCK" / "END_FUNCTION_BLOCK" / "AND" / "NOT" / "THEN" / "END_IF" / "STEP" / "END_STEP" / "FROM" / "PRIORITY" / "END_VAR" / "AT"
     rule STANDARD_FUNCTION_BLOCK_NAME() = "END_VAR"
 
     // B.0
@@ -205,31 +220,36 @@ parser! {
     // B.1.2.1 Numeric literals
     // numeric_literal omitted and only in constant.
     // TODO fill out the rest here
-    rule integer_literal() -> Integer = i:integer() { i }
-    rule signed_integer() -> SignedInteger = start:position!() n:$(['+' | '-']?['0'..='9']("_"? ['0'..='9'])*) { SignedInteger::new(n, SourceLoc::new(start)) }
-    rule real_literal() -> Float = tn:(t:real_type_name() "#" {t})? whole:signed_integer() "." f:integer() e:exponent()? {
-      // To get the right size of the fraction part, determine how many digits
-      // we have
-      let num_chars = f.num_chars;
-      let whole: f64 = whole.value.try_into().unwrap();
-      let frac: f64 = f.try_into().unwrap();
+    rule integer_literal() -> SignedInteger = bi:binary_integer() { bi.into() } / oi:octal_integer() { oi.into() } / hi:hex_integer() { hi.into() } / si:signed_integer() { si }
+    rule signed_integer__string() -> &'input str = n:$(['+' | '-']?['0'..='9']("_"? ['0'..='9'])*) { n }
+    rule signed_integer() -> SignedInteger = start:position!() n:signed_integer__string() { SignedInteger::new(n, SourceLoc::new(start)) }
+    rule real_literal() -> Float = tn:(t:real_type_name() "#" {t})? whole:signed_integer__string() "." fraction:integer__string() exp:exponent()? {
+      // Create the value from concatenating the parts so that it is trivial
+      // to existing parsers.
+      let whole: String = whole.chars().filter(|c| c.is_ascii_digit()).collect();
+      let fraction: String = fraction.chars().filter(|c| c.is_ascii_digit()).collect();
+      let mut value = (whole + "." + &fraction).parse::<f64>().unwrap();
 
-      // TODO this is not right
-      let factor = 10;
-      let factor: f64 = factor.into();
-      let frac = frac / factor;
-
-      // TODO need to add the exponent part
-      println!("{} {}", whole, frac);
+      if let Some(exp) = exp {
+        let exp = f64::powf(exp.try_into().unwrap(), 10.0);
+        value *= exp;
+      }
 
       Float {
-        value: whole + frac,
+        value,
         data_type: tn,
       }
     }
-    rule exponent() -> (bool, Integer) = ("E" / "e") s:("+" / "-")? i:integer() { (true, i) }
+    rule exponent() -> SignedInteger = ("E" / "e") si:signed_integer() { si }
     // TODO handle the sign
-    rule integer() -> Integer = start:position!() n:$(['0'..='9']("_"? ['0'..='9'])*) { Integer::new(n, SourceLoc::new(start)) }
+    rule integer__string() -> &'input str = n:$(['0'..='9']("_"? ['0'..='9'])*) { n }
+    rule integer() -> Integer = start:position!() n:integer__string() { Integer::new(n, SourceLoc::new(start)) }
+    rule binary_integer_prefix() -> () = "2#" ()
+    rule binary_integer() -> Integer = start:position!() binary_integer_prefix() n:$(['0'..='1']("_"? ['0'..='1'])*) { Integer::binary(n, SourceLoc::new(start)) }
+    rule octal_integer_prefix() -> () = "8#" ()
+    rule octal_integer() -> Integer = start:position!() octal_integer_prefix() n:$(['0'..='7']("_"? ['0'..='7'])*) { Integer::octal(n, SourceLoc::new(start)) }
+    rule hex_integer_prefix() -> () = "16#" ()
+    rule hex_integer() -> Integer = start:position!() hex_integer_prefix() n:$(['0'..='9' | 'A'..='F']("_"? ['0'..='9' | 'A'..='F'])*) { Integer::hex(n, SourceLoc::new(start)) }
 
     // B.1.2.2 Character strings
     rule character_string() -> Vec<char> = s:single_byte_character_string() / d:double_byte_character_string()
