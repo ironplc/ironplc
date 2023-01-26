@@ -13,6 +13,12 @@ PROGRAM fb
        AT %QW1 : WORD := 16#FF00 ;
        AT %QB2 : WORD := 8#7700 ;
        AT %QB3 : WORD := 2#1010 ;
+       C2 AT %Q* : BYTE ;
+       C3 AT %MW1.2.3 : WORD;
+    END_VAR
+
+    VAR
+        XWORD, YWORD, ZWORD : INT;
     END_VAR
 
 END_PROGRAM

@@ -233,6 +233,8 @@ impl LocationPrefix {
 /// See section 2.4.1.1.
 #[derive(Debug, PartialEq, Clone)]
 pub enum SizePrefix {
+    /// Unspecified (indicated by asterisk)
+    Unspecified,
     /// Single bit size
     Nil,
     /// Single bit size
