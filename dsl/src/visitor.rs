@@ -105,6 +105,10 @@ pub trait Visitor<E> {
         visit_enum_declaration(self, node)
     }
 
+    fn visit_array_declaration(&mut self, node: &ArrayDeclaration) -> Result<Self::Value, E> {
+        visit_array_declaration(self, node)
+    }
+
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
@@ -236,6 +240,14 @@ pub fn visit_enum_declaration<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(&node.spec, v)
 }
 
+pub fn visit_array_declaration<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &ArrayDeclaration,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.spec, v)?;
+    Acceptor::accept(&node.init, v)
+}
+
 pub fn visit_function_block_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &FunctionBlockDeclaration,
@@ -332,10 +344,38 @@ impl Acceptor for EnumerationDeclaration {
     }
 }
 
+impl Acceptor for DataTypeDeclarationKind {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        match self {
+            DataTypeDeclarationKind::Enumeration(e) => visitor.visit_enum_declaration(e),
+            DataTypeDeclarationKind::Array(a) => visitor.visit_array_declaration(a),
+        }
+    }
+}
+
 impl Acceptor for EnumeratedSpecificationKind {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         // TODO I don't know if we need to visit these items
         Ok(V::Value::default())
+    }
+}
+
+impl Acceptor for ArrayInitialElementKind {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        match self {
+            ArrayInitialElementKind::Constant(_) => todo!(),
+            ArrayInitialElementKind::EnumValue(_) => todo!(),
+            ArrayInitialElementKind::Repeated(_, _) => todo!(),
+        }
+    }
+}
+
+impl Acceptor for ArraySpecificationKind {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        match self {
+            ArraySpecificationKind::Type(_) => todo!(),
+            ArraySpecificationKind::Subranges(_, _) => todo!(),
+        }
     }
 }
 

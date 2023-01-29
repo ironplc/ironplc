@@ -208,9 +208,11 @@ parser! {
 
     // B.0
     pub rule library() -> Vec<LibraryElement> = traced(<library__impl()>)
-    pub rule library__impl() -> Vec<LibraryElement> = _ libs:library_element_declaration() ** _ _ { libs }
+    pub rule library__impl() -> Vec<LibraryElement> = _ decls:library_element_declaration() ** _ _ { decls.into_iter().flatten().collect() }
     // TODO This misses some types such as ladder diagrams
-    rule library_element_declaration() -> LibraryElement = dt:data_type_declaration() { LibraryElement::DataTypeDeclaration(dt) } / fbd:function_block_declaration() { LibraryElement::FunctionBlockDeclaration(fbd) } / fd:function_declaration() { LibraryElement::FunctionDeclaration(fd) } / pd:program_declaration() { LibraryElement::ProgramDeclaration(pd) } / cd:configuration_declaration() { LibraryElement::ConfigurationDeclaration(cd) }
+    rule library_element_declaration() -> Vec<LibraryElement> = data_types:data_type_declaration() {
+      data_types.into_iter().map(LibraryElement::DataTypeDeclaration).collect()
+    } / fbd:function_block_declaration() { vec![LibraryElement::FunctionBlockDeclaration(fbd)] } / fd:function_declaration() { vec![LibraryElement::FunctionDeclaration(fd)] } / pd:program_declaration() { vec![LibraryElement::ProgramDeclaration(pd)] } / cd:configuration_declaration() { vec![LibraryElement::ConfigurationDeclaration(cd)] }
 
     // B.1.1 Letters, digits and identifier
     //rule digit() -> &'input str = $(['0'..='9'])
@@ -331,9 +333,9 @@ parser! {
     rule simple_type_name() -> Id = identifier()
     rule enumerated_type_name() -> Id = identifier()
     rule array_type_name() -> Id = identifier()
-    rule data_type_declaration() -> Vec<EnumerationDeclaration> = "TYPE" _ declarations:semisep(<type_declaration()>) _ "END_TYPE" { declarations }
+    rule data_type_declaration() -> Vec<DataTypeDeclarationKind> = "TYPE" _ declarations:semisep(<type_declaration()>) _ "END_TYPE" { declarations }
     // TODO this is missing multiple types
-    rule type_declaration() -> EnumerationDeclaration = s:single_element_type_declaration() { s }
+    rule type_declaration() -> DataTypeDeclarationKind = s:single_element_type_declaration() { DataTypeDeclarationKind::Enumeration(s) } / a:array_type_declaration() { DataTypeDeclarationKind::Array(a) }
     // TODO this is missing multiple types
     rule single_element_type_declaration() -> EnumerationDeclaration = decl:enumerated_type_declaration() { decl }
     rule enumerated_type_declaration() -> EnumerationDeclaration = name:enumerated_type_name() _ ":" _ spec:enumerated_spec_init() {
@@ -378,20 +380,20 @@ parser! {
         init: spec_and_init.1,
       }
     }
-    rule array_spec_init() -> (ArraySpecification, Vec<ArrayInitialElement>) = spec:array_specification() _ init:(":=" _ a:array_initialization() { a })? {
+    rule array_spec_init() -> (ArraySpecificationKind, Vec<ArrayInitialElementKind>) = spec:array_specification() _ init:(":=" _ a:array_initialization() { a })? {
       (spec, init.unwrap_or_default())
     }
-    rule array_specification() -> ArraySpecification = "ARRAY" _ "[" _ ranges:subrange() ** (_ "," _ ) _ "]" _ "OF" _ type_name:non_generic_type_name() {
-      ArraySpecification::Subranges(ranges, type_name)
+    rule array_specification() -> ArraySpecificationKind = "ARRAY" _ "[" _ ranges:subrange() ** (_ "," _ ) _ "]" _ "OF" _ type_name:non_generic_type_name() {
+      ArraySpecificationKind::Subranges(ranges, type_name)
     }
     // TODO
     // type_name:array_type_name() {
     //  ArraySpecification::Type(type_name)
     //} /
-    rule array_initialization() -> Vec<ArrayInitialElement> = "[" _ init:array_initial_elements() ** (_ "," _ ) _ "]" { init }
-    rule array_initial_elements() -> ArrayInitialElement = array_initial_element() / size:integer() _ "(" ai:array_initial_element()? ")" { ArrayInitialElement::repeated(size, ai) }
+    rule array_initialization() -> Vec<ArrayInitialElementKind> = "[" _ init:array_initial_elements() ** (_ "," _ ) _ "]" { init }
+    rule array_initial_elements() -> ArrayInitialElementKind = array_initial_element() / size:integer() _ "(" ai:array_initial_element()? ")" { ArrayInitialElementKind::repeated(size, ai) }
     // TODO | structure_initialization | array_initialization
-    rule array_initial_element() -> ArrayInitialElement = c:constant() { ArrayInitialElement::Constant(c) } / e:enumerated_value() { ArrayInitialElement::EnumValue(e) }
+    rule array_initial_element() -> ArrayInitialElementKind = c:constant() { ArrayInitialElementKind::Constant(c) } / e:enumerated_value() { ArrayInitialElementKind::EnumValue(e) }
     // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
     rule simple_spec_init__with_constant() -> InitialValueAssignment = type_name:simple_specification() _ ":=" _ c:constant() {
       InitialValueAssignment::Simple(SimpleInitializer {
