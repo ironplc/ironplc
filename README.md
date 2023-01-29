@@ -14,12 +14,12 @@ devices running programs written in the IEC 61131-3 language.
 
 SoftPLCs enable embedded and other computers to operate as programmable logic
 controllers (PLCs) that execute all sorts of processes from home automation
-and factories to industrial process andd electrical power grid control.
-PLC-based devices do this by implementing control algorithms that connect to sensors,
+and factories machines to industrial process and electrical power grid control.
+PLC devices do this by implementing control algorithms that connect to sensors,
 transducers and actuators through analog/digital IO, industrial protocols such as
 I²C and Modbus, or even common internet protocol such as HTTP.
 
-IronPLC is now where near those capabilities yet.
+IronPLC is nowhere near those capabilities yet.
 
 ## Mission
 
@@ -109,7 +109,7 @@ cargo test --features trace | pegviz --output ./pegviz.html
 
 ## How It Works
 
-The project is split into 3 members:
+The project is split into 3 parts:
 
 * `dsl` defines relevant domain objects from the IEC 61131-3 language; it is
    the intermediate set of objects from parsing and contains an abstract syntax
