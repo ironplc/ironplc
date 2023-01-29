@@ -98,6 +98,7 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
                 }
                 InitialValueAssignment::FunctionBlock(_) => todo!(),
                 InitialValueAssignment::Structure { type_name: _ } => todo!(),
+                InitialValueAssignment::Array(_) => todo!(),
                 InitialValueAssignment::LateResolvedType(_) => todo!(),
             },
             DeclarationQualifier::Unspecified => {}

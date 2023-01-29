@@ -28,7 +28,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::Id,
+    core::{Id, SourcePosition},
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
         visit_variable_declaration, Visitor,
@@ -109,7 +109,7 @@ impl Visitor<SemanticDiagnostic> for SymbolTable<Id, DummyNode> {
                 "S0001",
                 format!("Variable {} not defined before used", node.name),
             )
-            .with_label(node.name.location(), "Undefined variable")),
+            .with_label(node.name.position(), "Undefined variable")),
         }
     }
 }

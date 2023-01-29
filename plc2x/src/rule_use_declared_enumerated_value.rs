@@ -28,7 +28,11 @@
 //!    END_VAR
 //! END_FUNCTION_BLOCK
 //! ```
-use ironplc_dsl::{common::*, core::Id, visitor::Visitor};
+use ironplc_dsl::{
+    common::*,
+    core::{Id, SourcePosition},
+    visitor::Visitor,
+};
 use std::collections::{HashMap, HashSet};
 
 use crate::error::SemanticDiagnostic;
@@ -76,7 +80,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
     fn find_enum_declaration_values(
         &self,
         type_name: &'a Id,
-    ) -> Result<&Vec<Id>, SemanticDiagnostic> {
+    ) -> Result<&Vec<EnumeratedValue>, SemanticDiagnostic> {
         // Keep track of names we've seen before so that we can be sure that
         // the loop terminates
         let mut seen_names = HashSet::new();
@@ -90,7 +94,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                     // might be a reference to another name
                     match &def.spec {
                         EnumeratedSpecificationKind::TypeName(n) => name = n,
-                        EnumeratedSpecificationKind::Values(values) => return Ok(&values.ids),
+                        EnumeratedSpecificationKind::Values(values) => return Ok(&values.values),
                     }
                 }
                 None => {
@@ -98,7 +102,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                         "S0001",
                         format!("Enumeration {} is not declared", name),
                     )
-                    .with_label(name.location(), "Enumeration reference"))
+                    .with_label(name.position(), "Enumeration reference"))
                 }
             }
 
@@ -108,7 +112,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                     "S0001",
                     format!("Recursive enumeration for type {}", name),
                 )
-                .with_label(name.location(), "Current enumeration"));
+                .with_label(name.position(), "Current enumeration"));
             }
         }
     }
@@ -123,15 +127,18 @@ impl Visitor<SemanticDiagnostic> for RuleDeclaredEnumeratedValues<'_> {
     ) -> Result<Self::Value, SemanticDiagnostic> {
         let defined_values = self.find_enum_declaration_values(&init.type_name)?;
         if let Some(value) = &init.initial_value {
+            // TODO this is using the Id, but not the full enumerated value
+            // and we don't have declared appropriate comparison between things
+            // that are known but partially declared
             if !defined_values.contains(value) {
                 return Err(SemanticDiagnostic::error(
                     "S0001",
                     format!(
                         "Enumeration uses value {} which is not defined in the enumeration",
-                        value
+                        value.value
                     ),
                 )
-                .with_label(value.location(), "Expected value in enumeration"));
+                .with_label(value.position(), "Expected value in enumeration"));
             }
         }
 

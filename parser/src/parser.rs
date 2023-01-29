@@ -196,12 +196,14 @@ parser! {
 
     // peg rules for making the grammar easier to work with
     rule semicolon() -> () = ";" ()
+    rule comma() -> () = "," ()
     rule _ = [' ' | '\n' | '\r' ]*
     // A semi-colon separated list with required ending separator
     rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v}
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
+    rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) comma() {v}
 
-    rule KEYWORD() = "END_VAR" / "VAR" / "VAR_INPUT" / "IF" / "END_IF" / "FUNCTION_BLOCK" / "END_FUNCTION_BLOCK" / "AND" / "NOT" / "THEN" / "END_IF" / "STEP" / "END_STEP" / "FROM" / "PRIORITY" / "END_VAR" / "AT"
+    rule KEYWORD() = "END_VAR" / "VAR" / "VAR_INPUT" / "IF" / "END_IF" / "FUNCTION_BLOCK" / "END_FUNCTION_BLOCK" / "AND" / "NOT" / "THEN" / "END_IF" / "STEP" / "END_STEP" / "FROM" / "PRIORITY" / "END_VAR" / "AT" / "ARRAY"
     rule STANDARD_FUNCTION_BLOCK_NAME() = "END_VAR"
 
     // B.0
@@ -212,7 +214,7 @@ parser! {
 
     // B.1.1 Letters, digits and identifier
     //rule digit() -> &'input str = $(['0'..='9'])
-    rule identifier() -> Id = start:position!() !KEYWORD() i:$(['a'..='z' | '0'..='9' | 'A'..='Z' | '_']+) end:position!() { Id::from(i).with_location(SourceLoc::range(start, end)) }
+    rule identifier() -> Id = start:position!() !KEYWORD() i:$(['a'..='z' | '0'..='9' | 'A'..='Z' | '_']+) end:position!() { Id::from(i).with_position(SourceLoc::range(start, end)) }
 
     // B.1.2 Constants
     rule constant() -> Constant = r:real_literal() { Constant::RealLiteral(r) } / i:integer_literal() { Constant::IntegerLiteral(i.try_into().unwrap()) } / c:character_string() { Constant::CharacterString() }  / d:duration() { Constant::Duration(d) } / t:time_of_day() { Constant::TimeOfDay() } / d:date() { Constant::Date() } / dt:date_and_time() { Constant::DateAndTime() }
@@ -307,10 +309,19 @@ parser! {
     rule day() -> Integer = i:integer() { i }
     rule date_and_time() -> PrimitiveDateTime = ("DATE_AND_TIME" / "DT") "#" d:date_literal() "-" t:daytime() { PrimitiveDateTime::new(d, t) }
 
+    // B.1.3 Data types
+    rule non_generic_type_name() -> Id = et:elementary_type_name() { et.into() } / derived_type_name()
+
     // B.1.3.1 Elementary data types
-    rule elementary_type_name() -> Id = "INT" { Id::from("INT")} / "BOOL" { Id::from("BOOL") } / "STRING" { Id::from("STRING") } / "REAL" { Id::from("REAL") }
-    // TODO regex for REAL
-    rule real_type_name() -> Id = t:$(("LREAL")) { Id::from(t) }
+    rule elementary_type_name() -> ElementaryTypeName = numeric_type_name() / date_type_name() / bit_string_type_name() / string_type_name()
+    rule string_type_name() -> ElementaryTypeName = "STRING" { ElementaryTypeName::STRING } / "WSTRING" { ElementaryTypeName::WSTRING }
+    rule numeric_type_name() -> ElementaryTypeName = integer_type_name() / real_type_name()
+    rule integer_type_name() -> ElementaryTypeName = signed_integer_type_name() / unsigned_integer_type_name()
+    rule signed_integer_type_name() -> ElementaryTypeName = "SINT" { ElementaryTypeName::SINT }  / "INT" { ElementaryTypeName::INT } / "DINT" { ElementaryTypeName::DINT } / "LINT" { ElementaryTypeName::LINT }
+    rule unsigned_integer_type_name() -> ElementaryTypeName = "USINT" { ElementaryTypeName::USINT }  / "UINT" { ElementaryTypeName::UINT } / "UDINT" { ElementaryTypeName::UDINT } / "ULINT" { ElementaryTypeName::ULINT }
+    rule real_type_name() -> ElementaryTypeName = "REAL" { ElementaryTypeName::REAL } / "LREAL" { ElementaryTypeName::LREAL }
+    rule date_type_name() -> ElementaryTypeName = "DATE" { ElementaryTypeName::DATE } / "TIME_OF_DAY" { ElementaryTypeName::TimeOfDay } / "TOD" { ElementaryTypeName::TimeOfDay } / "DATE_AND_TIME" { ElementaryTypeName::DateAndTime } / "DT" { ElementaryTypeName::DateAndTime }
+    rule bit_string_type_name() -> ElementaryTypeName = "BOOL" { ElementaryTypeName::BOOL } / "BYTE" { ElementaryTypeName::BYTE } / "WORD" { ElementaryTypeName::WORD } / "DWORD" { ElementaryTypeName::DWORD } / "LWORD" { ElementaryTypeName::LWORD }
 
     // B.1.3.3
     // TODO add all types
@@ -319,6 +330,7 @@ parser! {
     rule single_element_type_name() -> Id = simple_type_name()
     rule simple_type_name() -> Id = identifier()
     rule enumerated_type_name() -> Id = identifier()
+    rule array_type_name() -> Id = identifier()
     rule data_type_declaration() -> Vec<EnumerationDeclaration> = "TYPE" _ declarations:semisep(<type_declaration()>) _ "END_TYPE" { declarations }
     // TODO this is missing multiple types
     rule type_declaration() -> EnumerationDeclaration = s:single_element_type_declaration() { s }
@@ -342,14 +354,14 @@ parser! {
         },
         EnumeratedSpecificationKind::Values(values) => {
           InitialValueAssignment::enumerated_values(
-            values.ids,
+            values.values,
             Some(def),
             SourceLoc::new(start),
           )
         }
       }
      }
-    rule enumerated_spec_init() -> (EnumeratedSpecificationKind, Option<Id>) = init:enumerated_specification() _ def:(":=" _ d:enumerated_value() { d })? {
+    rule enumerated_spec_init() -> (EnumeratedSpecificationKind, Option<EnumeratedValue>) = init:enumerated_specification() _ def:(":=" _ d:enumerated_value() { d })? {
       (init, def)
      }
     // TODO this doesn't support type name as a value
@@ -358,7 +370,28 @@ parser! {
     }  / name:enumerated_type_name() {
       EnumeratedSpecificationKind::TypeName(name)
     }
-    rule enumerated_value() -> Id = (enumerated_type_name() "#")? i:identifier() { i }
+    rule enumerated_value() -> EnumeratedValue = start:position!() type_name:(name:enumerated_type_name() "#" { name })? value:identifier() end:position!() { EnumeratedValue {type_name, value, position: Some(SourceLoc::range(start, end))} }
+    rule array_type_declaration() -> ArrayDeclaration = type_name:array_type_name() _ ":" _ spec_and_init:array_spec_init() {
+      ArrayDeclaration {
+        type_name,
+        spec: spec_and_init.0,
+        init: spec_and_init.1,
+      }
+    }
+    rule array_spec_init() -> (ArraySpecification, Vec<ArrayInitialElement>) = spec:array_specification() _ init:(":=" _ a:array_initialization() { a })? {
+      (spec, init.unwrap_or_default())
+    }
+    rule array_specification() -> ArraySpecification = "ARRAY" _ "[" _ ranges:subrange() ** (_ "," _ ) _ "]" _ "OF" _ type_name:non_generic_type_name() {
+      ArraySpecification::Subranges(ranges, type_name)
+    }
+    // TODO
+    // type_name:array_type_name() {
+    //  ArraySpecification::Type(type_name)
+    //} /
+    rule array_initialization() -> Vec<ArrayInitialElement> = "[" _ init:array_initial_elements() ** (_ "," _ ) _ "]" { init }
+    rule array_initial_elements() -> ArrayInitialElement = array_initial_element() / size:integer() _ "(" ai:array_initial_element()? ")" { ArrayInitialElement::repeated(size, ai) }
+    // TODO | structure_initialization | array_initialization
+    rule array_initial_element() -> ArrayInitialElement = c:constant() { ArrayInitialElement::Constant(c) } / e:enumerated_value() { ArrayInitialElement::EnumValue(e) }
     // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
     rule simple_spec_init__with_constant() -> InitialValueAssignment = type_name:simple_specification() _ ":=" _ c:constant() {
       InitialValueAssignment::Simple(SimpleInitializer {
@@ -372,7 +405,8 @@ parser! {
         initial_value: constant.map(Initializer::Simple),
       })
     }
-    rule simple_specification() -> Id = elementary_type_name() / simple_type_name()
+    rule simple_specification() -> Id = et:elementary_type_name() { et.into() } / simple_type_name()
+    rule subrange() -> Subrange = start:signed_integer() ".." end:signed_integer() { Subrange{start, end} }
 
     // Union of simple_spec_init and enumerated_spec_init rules. In some cases, these both
     // reduce to identifier [':=' identifier] and are inherently ambiguous. To work around
@@ -400,7 +434,7 @@ parser! {
         },
         EnumeratedSpecificationKind::Values(values) => {
           InitialValueAssignment::enumerated_values(
-            values.ids,
+            values.values,
             Some(init),
             values.position,
           )
@@ -418,7 +452,7 @@ parser! {
       // An identifier that is an elementary_type_name s unambiguous because these are
       // reserved keywords
       InitialValueAssignment::Simple(SimpleInitializer {
-        type_name: et,
+        type_name: et.into(),
         initial_value: None,
       })
     }/ i:identifier() {
@@ -478,14 +512,14 @@ parser! {
       VarDeclarations::flat_map(declarations, VariableType::Input, qualifier)
     }
     // TODO add edge declaration (as a separate item - a tuple)
-    rule input_declaration() -> Vec<UntypedVarDecl> = i:var_init_decl() { i }
+    rule input_declaration() -> Vec<UntypedVarDecl> = var_init_decl()
     rule edge_declaration() -> () = var1_list() _ ":" _ "BOOL" _ ("R_EDGE" / "F_EDGE")? {}
     // TODO the problem is we match first, then
     // TODO missing multiple here
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    rule var_init_decl() -> Vec<UntypedVarDecl> = var1_init_decl()
+    rule var_init_decl() -> Vec<UntypedVarDecl> = array_var_init_decl() / var1_init_decl()
 
     // TODO add in subrange_spec_init(), enumerated_spec_init()
 
@@ -501,6 +535,16 @@ parser! {
     }
 
     rule var1_list() -> Vec<Id> = names:variable_name() ++ (_ "," _) { names }
+    rule array_var_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ array_spec_init() {
+      names.into_iter().map(|name| {
+        // TODO
+        UntypedVarDecl {
+          name,
+          initializer: InitialValueAssignment::None,
+          position: SourceLoc::new(start)
+        }
+      }).collect()
+    }
     rule fb_name() -> Id = i:identifier() { i }
     pub rule output_declarations() -> Vec<VarDecl> = "VAR_OUTPUT" _ qualifier:("RETAIN" {DeclarationQualifier::Retain} / "NON_RETAIN" {DeclarationQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ "END_VAR" {
       VarDeclarations::flat_map(declarations, VariableType::Output, qualifier)
@@ -597,7 +641,7 @@ parser! {
     // TODO this isn't correct
     rule standard_function_name() -> Id = identifier()
     rule derived_function_name() -> Id = identifier()
-    rule function_declaration() -> FunctionDeclaration = "FUNCTION" _  name:derived_function_name() _ ":" _ rt:(elementary_type_name() / derived_type_name()) _ var_decls:(io:io_var_declarations() / func:function_var_decls()) ** _ _ body:function_body() _ "END_FUNCTION" {
+    rule function_declaration() -> FunctionDeclaration = "FUNCTION" _  name:derived_function_name() _ ":" _ rt:(et:elementary_type_name() { et.into() } / dt:derived_type_name() { dt }) _ var_decls:(io:io_var_declarations() / func:function_var_decls()) ** _ _ body:function_body() _ "END_FUNCTION" {
       let (variables, located) = VarDeclarations::unzip(var_decls);
       FunctionDeclaration {
         name,
@@ -938,7 +982,7 @@ END_VAR";
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignment::EnumeratedType(EnumeratedInitialValueAssignment {
                 type_name: Id::from("LOGLEVEL"),
-                initial_value: Some(Id::from("INFO")),
+                initial_value: Some(EnumeratedValue::new("INFO")),
             }),
             position: SourceLoc::new(10),
         }]);

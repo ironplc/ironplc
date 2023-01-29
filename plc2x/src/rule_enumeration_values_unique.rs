@@ -15,7 +15,11 @@
 //! LOGLEVEL : (CRITICAL, CRITICAL) := CRITICAL;
 //! END_TYPE
 //! ```
-use ironplc_dsl::{common::*, core::Id, visitor::Visitor};
+use ironplc_dsl::{
+    common::*,
+    core::{Id, SourcePosition},
+    visitor::Visitor,
+};
 use std::collections::HashSet;
 
 use crate::error::SemanticDiagnostic;
@@ -38,8 +42,10 @@ impl Visitor<SemanticDiagnostic> for RuleEnumerationValuesUnique {
             EnumeratedSpecificationKind::TypeName(_) => Ok(()),
             EnumeratedSpecificationKind::Values(spec) => {
                 let mut seen_values: HashSet<&Id> = HashSet::new();
-                for current in &spec.ids {
-                    let seen = seen_values.get(&current);
+                for current in &spec.values {
+                    // TODO this needs to be updated - this doesn't do
+                    // a comparision that includes the type of the enumeration
+                    let seen = seen_values.get(&current.value);
                     match seen {
                         Some(first) => {
                             return Err(SemanticDiagnostic::error(
@@ -49,11 +55,11 @@ impl Visitor<SemanticDiagnostic> for RuleEnumerationValuesUnique {
                                     node.name, first
                                 ),
                             )
-                            .with_label(first.location(), "First instance")
-                            .with_label(current.location(), "Duplicate value"));
+                            .with_label(first.position(), "First instance")
+                            .with_label(current.position(), "Duplicate value"));
                         }
                         None => {
-                            seen_values.insert(current);
+                            seen_values.insert(&current.value);
                         }
                     }
                 }

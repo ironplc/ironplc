@@ -8,7 +8,7 @@ use std::num::TryFromIntError;
 use time::Duration;
 
 use crate::common_sfc::Network;
-use crate::core::{Id, SourceLoc};
+use crate::core::{Id, SourceLoc, SourcePosition};
 use crate::textual::*;
 
 /// Numeric liberals declared by 2.2.1. Numeric literals define
@@ -17,6 +17,7 @@ use crate::textual::*;
 
 /// Integer liberal. The representation is of the largest possible integer
 /// and later bound to smaller types depend on context.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Integer {
     pub position: SourceLoc,
     /// The value in the maximum possible size. An integer is inherently
@@ -106,6 +107,7 @@ impl Integer {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct SignedInteger {
     pub value: Integer,
     pub is_neg: bool,
@@ -189,10 +191,68 @@ impl TryFrom<SignedInteger> for f32 {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Float {
     pub value: f64,
-    pub data_type: Option<Id>,
+    pub data_type: Option<ElementaryTypeName>,
 }
 
-/// Derived data types declared by 2.3.3.
+/// Elementary type names.
+///
+/// See section 2.3.1.
+#[derive(Debug, PartialEq, Clone)]
+pub enum ElementaryTypeName {
+    BOOL,
+    SINT,
+    INT,
+    DINT,
+    LINT,
+    USINT,
+    UINT,
+    UDINT,
+    ULINT,
+    REAL,
+    LREAL,
+    TIME,
+    DATE,
+    TimeOfDay,
+    DateAndTime,
+    STRING,
+    BYTE,
+    WORD,
+    DWORD,
+    LWORD,
+    WSTRING,
+}
+
+impl From<ElementaryTypeName> for Id {
+    fn from(value: ElementaryTypeName) -> Id {
+        match value {
+            ElementaryTypeName::BOOL => Id::from("BOOL"),
+            ElementaryTypeName::SINT => Id::from("SINT"),
+            ElementaryTypeName::INT => Id::from("INT"),
+            ElementaryTypeName::DINT => Id::from("DINT"),
+            ElementaryTypeName::LINT => Id::from("LINT"),
+            ElementaryTypeName::USINT => Id::from("USINT"),
+            ElementaryTypeName::UINT => Id::from("UINT"),
+            ElementaryTypeName::UDINT => Id::from("UDINT"),
+            ElementaryTypeName::ULINT => Id::from("ULINT"),
+            ElementaryTypeName::REAL => Id::from("REAL"),
+            ElementaryTypeName::LREAL => Id::from("LREAL"),
+            ElementaryTypeName::TIME => Id::from("TIME"),
+            ElementaryTypeName::DATE => Id::from("DATE"),
+            ElementaryTypeName::TimeOfDay => Id::from("TIME_OF_DAY"),
+            ElementaryTypeName::DateAndTime => Id::from("DATE_AND_TIME"),
+            ElementaryTypeName::STRING => Id::from("STRING"),
+            ElementaryTypeName::BYTE => Id::from("BYTE"),
+            ElementaryTypeName::WORD => Id::from("WORD"),
+            ElementaryTypeName::DWORD => Id::from("DWORD"),
+            ElementaryTypeName::LWORD => Id::from("LWORD"),
+            ElementaryTypeName::WSTRING => Id::from("WSTRING"),
+        }
+    }
+}
+
+/// Derived data types declared.
+///
+/// See section 2.3.3.
 pub enum TypeDefinitionKind {
     /// Defines a type that can take one of a set number of values.
     Enumeration,
@@ -263,6 +323,22 @@ impl SizePrefix {
     }
 }
 
+/// Array specification defines a size/shape of an array.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArraySpecification {
+    Type(Id),
+    Subranges(Vec<Subrange>, Id),
+}
+
+/// Subrange of an array.
+///
+/// See section 2.4.2.1.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Subrange {
+    pub start: SignedInteger,
+    pub end: SignedInteger,
+}
+
 /// Declaration (that does not permit a location).
 ///
 /// See section 2.4.3.
@@ -320,7 +396,11 @@ impl VarDecl {
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignment::EnumeratedType(EnumeratedInitialValueAssignment {
                 type_name: Id::from(type_name),
-                initial_value: Some(Id::from(initial_value)),
+                initial_value: Some(EnumeratedValue {
+                    type_name: None,
+                    value: Id::from(initial_value),
+                    position: Some(loc.clone()),
+                }),
             }),
             position: loc,
         }
@@ -487,6 +567,7 @@ pub enum InitialValueAssignment {
         // TODO
         type_name: Id,
     },
+    Array(ArrayInitialValueAssignment),
     /// Type that is ambiguous until have discovered type
     /// definitions. Value is the name of the type.
     LateResolvedType(Id),
@@ -512,8 +593,8 @@ impl InitialValueAssignment {
     /// Creates an initial value consisting of an enumeration definition and
     /// possible initial value for the enumeration.
     pub fn enumerated_values(
-        values: Vec<Id>,
-        initial_value: Option<Id>,
+        values: Vec<EnumeratedValue>,
+        initial_value: Option<EnumeratedValue>,
         position: SourceLoc,
     ) -> InitialValueAssignment {
         InitialValueAssignment::EnumeratedValues(EnumeratedValuesInitializer {
@@ -557,7 +638,7 @@ impl fmt::Debug for Initializer {
 #[derive(PartialEq, Clone, Debug)]
 pub struct EnumeratedInitialValueAssignment {
     pub type_name: Id,
-    pub initial_value: Option<Id>,
+    pub initial_value: Option<EnumeratedValue>,
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -568,14 +649,20 @@ pub struct SimpleInitializer {
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct EnumeratedValuesInitializer {
-    pub values: Vec<Id>,
-    pub initial_value: Option<Id>,
+    pub values: Vec<EnumeratedValue>,
+    pub initial_value: Option<EnumeratedValue>,
     pub position: SourceLoc,
 }
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct FunctionBlockInitialValueAssignment {
     pub type_name: Id,
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct ArrayInitialValueAssignment {
+    pub spec: ArraySpecification,
+    pub initial_values: Vec<ArrayInitialElement>,
 }
 
 /// Container for top-level elements that are valid top-level declarations in
@@ -695,17 +782,45 @@ pub struct TaskConfiguration {
     pub interval: Option<Duration>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct EnumeratedValue {
+    pub type_name: Option<Id>,
+    pub value: Id,
+    pub position: Option<SourceLoc>,
+}
+
+impl EnumeratedValue {
+    pub fn new(value: &str) -> Self {
+        EnumeratedValue {
+            type_name: None,
+            value: Id::from(value),
+            position: Some(SourceLoc::new(0)),
+        }
+    }
+
+    pub fn with_position(mut self, position: SourceLoc) -> Self {
+        self.position = Some(position);
+        self
+    }
+}
+
+impl SourcePosition for EnumeratedValue {
+    fn position(&self) -> &Option<SourceLoc> {
+        &self.position
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct EnumerationDeclaration {
     pub name: Id,
     // TODO need to understand when the context name matters in the definition
     pub spec: EnumeratedSpecificationKind,
-    pub default: Option<Id>,
+    pub default: Option<EnumeratedValue>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct EnumeratedSpecificationValues {
-    pub ids: Vec<Id>,
+    pub values: Vec<EnumeratedValue>,
     pub position: SourceLoc,
 }
 
@@ -720,11 +835,31 @@ pub enum EnumeratedSpecificationKind {
 }
 
 impl EnumeratedSpecificationKind {
-    pub fn values(values: Vec<Id>, position: SourceLoc) -> EnumeratedSpecificationKind {
-        EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues {
-            ids: values,
-            position,
-        })
+    pub fn values(
+        values: Vec<EnumeratedValue>,
+        position: SourceLoc,
+    ) -> EnumeratedSpecificationKind {
+        EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues { values, position })
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ArrayDeclaration {
+    pub type_name: Id,
+    pub spec: ArraySpecification,
+    pub init: Vec<ArrayInitialElement>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArrayInitialElement {
+    Constant(Constant),
+    EnumValue(EnumeratedValue),
+    Repeated(Integer, Box<Option<ArrayInitialElement>>),
+}
+
+impl ArrayInitialElement {
+    pub fn repeated(size: Integer, init: Option<ArrayInitialElement>) -> Self {
+        ArrayInitialElement::Repeated(size, Box::new(init))
     }
 }
 

@@ -31,6 +31,11 @@ impl PartialEq for SourceLoc {
 }
 impl Eq for SourceLoc {}
 
+pub trait SourcePosition {
+    /// Get the source code position of the object.
+    fn position(&self) -> &Option<SourceLoc>;
+}
+
 /// Implements Identifier declared by 2.1.2.
 ///
 /// 61131-3 declares that identifiers are case insensitive.
@@ -39,21 +44,21 @@ impl Eq for SourceLoc {}
 pub struct Id {
     original: String,
     lower_case: String,
-    location: Option<SourceLoc>,
+    position: Option<SourceLoc>,
 }
 
 impl Id {
     /// Converts a `&str` into an `Identifier`.
-    pub fn from(str: &str) -> Id {
+    pub fn from(str: &str) -> Self {
         Id {
             original: String::from(str),
             lower_case: String::from(str).to_lowercase(),
-            location: None,
+            position: None,
         }
     }
 
-    pub fn with_location(mut self, loc: SourceLoc) -> Id {
-        self.location = Some(loc);
+    pub fn with_position(mut self, loc: SourceLoc) -> Self {
+        self.position = Some(loc);
         self
     }
 
@@ -61,18 +66,13 @@ impl Id {
     pub fn lower_case(&self) -> &String {
         &self.lower_case
     }
-
-    /// Get the location of the identifier
-    pub fn location(&self) -> &Option<SourceLoc> {
-        &self.location
-    }
 }
 
 impl Clone for Id {
     fn clone(&self) -> Self {
         let mut id = Id::from(self.original.as_str());
-        if let Some(loc) = &self.location {
-            id = id.with_location(loc.clone());
+        if let Some(loc) = &self.position {
+            id = id.with_position(loc.clone());
         }
         id
     }
@@ -100,5 +100,11 @@ impl fmt::Debug for Id {
 impl fmt::Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.original)
+    }
+}
+
+impl SourcePosition for Id {
+    fn position(&self) -> &Option<SourceLoc> {
+        &self.position
     }
 }

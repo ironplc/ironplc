@@ -211,6 +211,7 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
                     .insert(node.name.clone(), fbi.type_name.clone());
             }
             InitialValueAssignment::Structure { type_name: _ } => {}
+            InitialValueAssignment::Array(_) => {}
             InitialValueAssignment::LateResolvedType(_) => {
                 panic!()
             }
