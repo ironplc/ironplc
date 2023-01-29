@@ -100,7 +100,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                 None => {
                     return Err(SemanticDiagnostic::error(
                         "S0001",
-                        format!("Enumeration {} is not declared", name),
+                        format!("Enumeration {name} is not declared"),
                     )
                     .with_label(name.position(), "Enumeration reference"))
                 }
@@ -110,7 +110,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
             if seen_names.contains(name) {
                 return Err(SemanticDiagnostic::error(
                     "S0001",
-                    format!("Recursive enumeration for type {}", name),
+                    format!("Recursive enumeration for type {name}"),
                 )
                 .with_label(name.position(), "Current enumeration"));
             }

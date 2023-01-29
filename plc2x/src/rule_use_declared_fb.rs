@@ -231,7 +231,7 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
                         // Not defined, so this is not a valid use.
                         Err(SemanticDiagnostic::error(
                             "S0001",
-                            format!("Function block {} is not declared", function_block_name),
+                            format!("Function block {function_block_name} is not declared"),
                         ))
                     }
                     Some(fb) => {
