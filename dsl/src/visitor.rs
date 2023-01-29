@@ -196,6 +196,14 @@ pub trait Visitor<E> {
         // leaf node - no children
         Ok(Self::Value::default())
     }
+
+    fn visit_array_initializer(
+        &mut self,
+        init: &ArrayInitialValueAssignment,
+    ) -> Result<Self::Value, E> {
+        //TODO recurse into the children
+        Ok(Self::Value::default())
+    }
 }
 
 pub fn visit_configuration_declaration<V: Visitor<E> + ?Sized, E>(
@@ -346,6 +354,9 @@ impl Acceptor for InitialValueAssignment {
                 visitor.visit_function_block_type_initializer(fbi)
             }
             InitialValueAssignment::Structure { type_name } => Ok(V::Value::default()),
+            InitialValueAssignment::Array(array_init) => {
+                visitor.visit_array_initializer(array_init)
+            }
             InitialValueAssignment::LateResolvedType(_) => Ok(V::Value::default()),
         }
         // TODO don't yet know how to visit these

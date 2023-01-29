@@ -12,7 +12,7 @@
 //! RESOURCE resource1 ON PLC
 //!   PROGRAM plc_task_instance WITH plc_task : plc_prg;
 //! END_RESOURCE
-use ironplc_dsl::{common::*, visitor::Visitor};
+use ironplc_dsl::{common::*, core::SourcePosition, visitor::Visitor};
 use std::collections::HashSet;
 
 use crate::error::SemanticDiagnostic;
@@ -54,7 +54,7 @@ impl Visitor<SemanticDiagnostic> for RuleProgramTaskDefinitionExists {
                             program.name, task_name
                         ),
                     )
-                    .with_label(task_name.location(), "Reference to task configuration"));
+                    .with_label(task_name.position(), "Reference to task configuration"));
                 }
             }
         }

@@ -17,7 +17,7 @@
 //!    END_VAR
 //! END_FUNCTION_BLOCK
 //! ```
-use ironplc_dsl::{common::*, visitor::Visitor};
+use ironplc_dsl::{common::*, core::SourcePosition, visitor::Visitor};
 
 use crate::error::SemanticDiagnostic;
 
@@ -42,7 +42,7 @@ impl Visitor<SemanticDiagnostic> for RuleVarDeclConstIsNotFunctionBlock {
                     ),
                 )
                 .with_label(
-                    node.name.location(),
+                    node.name.position(),
                     "Declaration of function block instance",
                 ));
             }

@@ -36,7 +36,11 @@
 //! ```
 use std::collections::HashSet;
 
-use ironplc_dsl::{common::*, core::Id, visitor::Visitor};
+use ironplc_dsl::{
+    common::*,
+    core::{Id, SourcePosition},
+    visitor::Visitor,
+};
 
 use crate::error::SemanticDiagnostic;
 
@@ -93,8 +97,8 @@ impl<'a> Visitor<SemanticDiagnostic> for RuleExternalGlobalConst<'a> {
                         node.name,
                     ),
                 )
-                .with_label(node.name.location(), "Reference to global variable")
-                .with_label(global.location(), "Constant global variable"));
+                .with_label(node.name.position(), "Reference to global variable")
+                .with_label(global.position(), "Constant global variable"));
             }
         }
 

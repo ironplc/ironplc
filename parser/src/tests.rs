@@ -26,4 +26,10 @@ mod test {
         let res = parse_resource("var_decl.st");
         assert!(res.is_ok())
     }
+
+    #[test]
+    fn parse_variable_array_declarations() {
+        let res = parse_resource("var_array_decl.st");
+        assert!(res.is_ok())
+    }
 }

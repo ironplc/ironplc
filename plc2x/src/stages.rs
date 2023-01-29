@@ -76,14 +76,14 @@ mod tests {
                 name: Id::from("LOGLEVEL"),
                 spec: EnumeratedSpecificationKind::values(
                     vec![
-                        Id::from("CRITICAL"),
-                        Id::from("WARNING"),
-                        Id::from("INFO"),
-                        Id::from("DEBUG"),
+                        EnumeratedValue::new("CRITICAL"),
+                        EnumeratedValue::new("WARNING"),
+                        EnumeratedValue::new("INFO"),
+                        EnumeratedValue::new("DEBUG"),
                     ],
-                    SourceLoc::new(0),
+                    SourceLoc::new(19),
                 ),
-                default: Option::Some(Id::from("INFO")),
+                default: Option::Some(EnumeratedValue::new("INFO")),
             },
         ]));
         assert_eq!(parse(src.as_str()), expected)
