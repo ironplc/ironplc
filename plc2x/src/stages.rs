@@ -71,8 +71,8 @@ mod tests {
     #[test]
     fn parse_when_first_steps_data_type_decl_then_builds_structure() {
         let src = read_resource("first_steps_data_type_decl.st");
-        let expected = new_library(LibraryElement::DataTypeDeclaration(vec![
-            EnumerationDeclaration {
+        let expected = new_library(LibraryElement::DataTypeDeclaration(
+            DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
                 name: Id::from("LOGLEVEL"),
                 spec: EnumeratedSpecificationKind::values(
                     vec![
@@ -84,8 +84,8 @@ mod tests {
                     SourceLoc::new(19),
                 ),
                 default: Option::Some(EnumeratedValue::new("INFO")),
-            },
-        ]));
+            }),
+        ));
         assert_eq!(parse(src.as_str()), expected)
     }
 
