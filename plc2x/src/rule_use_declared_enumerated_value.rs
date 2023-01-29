@@ -41,11 +41,11 @@ pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     // Collect the data type definitions from the library into a map so that
     // we can quickly look up invocations
     let mut enum_defs = HashMap::new();
-    for x in lib.elements.iter() {
-        if let LibraryElement::DataTypeDeclaration(dtds) = x {
-            for dtd in dtds {
-                enum_defs.insert(dtd.name.clone(), dtd);
-            }
+    for elem in lib.elements.iter() {
+        if let LibraryElement::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(enum_dec)) =
+            elem
+        {
+            enum_defs.insert(enum_dec.name.clone(), enum_dec);
         }
     }
 

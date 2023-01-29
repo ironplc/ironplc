@@ -325,7 +325,7 @@ impl SizePrefix {
 
 /// Array specification defines a size/shape of an array.
 #[derive(Debug, Clone, PartialEq)]
-pub enum ArraySpecification {
+pub enum ArraySpecificationKind {
     Type(Id),
     Subranges(Vec<Subrange>, Id),
 }
@@ -661,15 +661,15 @@ pub struct FunctionBlockInitialValueAssignment {
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct ArrayInitialValueAssignment {
-    pub spec: ArraySpecification,
-    pub initial_values: Vec<ArrayInitialElement>,
+    pub spec: ArraySpecificationKind,
+    pub initial_values: Vec<ArrayInitialElementKind>,
 }
 
 /// Container for top-level elements that are valid top-level declarations in
 /// a library.
 #[derive(Debug, PartialEq)]
 pub enum LibraryElement {
-    DataTypeDeclaration(Vec<EnumerationDeclaration>),
+    DataTypeDeclaration(DataTypeDeclarationKind),
     FunctionDeclaration(FunctionDeclaration),
     // TODO
     FunctionBlockDeclaration(FunctionBlockDeclaration),
@@ -811,6 +811,13 @@ impl SourcePosition for EnumeratedValue {
 }
 
 #[derive(Debug, PartialEq)]
+#[allow(clippy::large_enum_variant)]
+pub enum DataTypeDeclarationKind {
+    Enumeration(EnumerationDeclaration),
+    Array(ArrayDeclaration),
+}
+
+#[derive(Debug, PartialEq)]
 pub struct EnumerationDeclaration {
     pub name: Id,
     // TODO need to understand when the context name matters in the definition
@@ -846,20 +853,20 @@ impl EnumeratedSpecificationKind {
 #[derive(Debug, PartialEq)]
 pub struct ArrayDeclaration {
     pub type_name: Id,
-    pub spec: ArraySpecification,
-    pub init: Vec<ArrayInitialElement>,
+    pub spec: ArraySpecificationKind,
+    pub init: Vec<ArrayInitialElementKind>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ArrayInitialElement {
+pub enum ArrayInitialElementKind {
     Constant(Constant),
     EnumValue(EnumeratedValue),
-    Repeated(Integer, Box<Option<ArrayInitialElement>>),
+    Repeated(Integer, Box<Option<ArrayInitialElementKind>>),
 }
 
-impl ArrayInitialElement {
-    pub fn repeated(size: Integer, init: Option<ArrayInitialElement>) -> Self {
-        ArrayInitialElement::Repeated(size, Box::new(init))
+impl ArrayInitialElementKind {
+    pub fn repeated(size: Integer, init: Option<ArrayInitialElementKind>) -> Self {
+        ArrayInitialElementKind::Repeated(size, Box::new(init))
     }
 }
 
