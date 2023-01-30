@@ -28,8 +28,8 @@ mod test {
     }
 
     #[test]
-    fn parse_variable_array_declarations() {
-        let res = parse_resource("var_array_decl.st");
+    fn parse_type_decl() {
+        let res = parse_resource("type_decl.st");
         assert!(res.is_ok())
     }
 }

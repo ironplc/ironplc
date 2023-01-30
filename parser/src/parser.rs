@@ -331,13 +331,38 @@ parser! {
     // TODO add all options
     rule single_element_type_name() -> Id = simple_type_name()
     rule simple_type_name() -> Id = identifier()
+    rule subrange_type_name() -> Id = identifier()
     rule enumerated_type_name() -> Id = identifier()
     rule array_type_name() -> Id = identifier()
     rule data_type_declaration() -> Vec<DataTypeDeclarationKind> = "TYPE" _ declarations:semisep(<type_declaration()>) _ "END_TYPE" { declarations }
     // TODO this is missing multiple types
-    rule type_declaration() -> DataTypeDeclarationKind = s:single_element_type_declaration() { DataTypeDeclarationKind::Enumeration(s) } / a:array_type_declaration() { DataTypeDeclarationKind::Array(a) }
+    rule type_declaration() -> DataTypeDeclarationKind = single_element_type_declaration() / a:array_type_declaration() { DataTypeDeclarationKind::Array(a) }
     // TODO this is missing multiple types
-    rule single_element_type_declaration() -> EnumerationDeclaration = decl:enumerated_type_declaration() { decl }
+    rule single_element_type_declaration() -> DataTypeDeclarationKind = subrange:subrange_type_declaration() { DataTypeDeclarationKind::Subrange(subrange) }/  decl:enumerated_type_declaration() { DataTypeDeclarationKind::Enumeration(decl) }
+    rule simple_spec_init() -> InitialValueAssignment = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
+      InitialValueAssignment::Simple(SimpleInitializer {
+        type_name,
+        initial_value: constant.map(Initializer::Simple),
+      })
+    }
+    rule simple_specification() -> Id = et:elementary_type_name() { et.into() } / simple_type_name()
+    rule subrange_type_declaration() -> SubrangeDeclaration = type_name:subrange_type_name() _ ":" _ spec:subrange_spec_init() {
+      SubrangeDeclaration {
+        type_name,
+        spec,
+      }
+    }
+    rule subrange_spec_init() -> SubrangeSpecification = spec:subrange_specification() _ default:(":=" _ def:signed_integer() { def })? {
+      SubrangeSpecification {
+        type_name: spec.0,
+        subrange: spec.1,
+        default,
+      }
+    }
+    // TODO or add a subrange type name
+    rule subrange_specification() -> (ElementaryTypeName, Subrange) = itn:integer_type_name() _ "(" _ sr:subrange() _ ")" { (itn, sr) }
+    rule subrange() -> Subrange = start:signed_integer() ".." end:signed_integer() { Subrange{start, end} }
+
     rule enumerated_type_declaration() -> EnumerationDeclaration = name:enumerated_type_name() _ ":" _ spec:enumerated_spec_init() {
       EnumerationDeclaration {
         name,
@@ -401,14 +426,7 @@ parser! {
         initial_value: Some(Initializer::Simple(c)),
       })
     }
-    rule simple_spec_init() -> InitialValueAssignment = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
-      InitialValueAssignment::Simple(SimpleInitializer {
-        type_name,
-        initial_value: constant.map(Initializer::Simple),
-      })
-    }
-    rule simple_specification() -> Id = et:elementary_type_name() { et.into() } / simple_type_name()
-    rule subrange() -> Subrange = start:signed_integer() ".." end:signed_integer() { Subrange{start, end} }
+
 
     // Union of simple_spec_init and enumerated_spec_init rules. In some cases, these both
     // reduce to identifier [':=' identifier] and are inherently ambiguous. To work around
