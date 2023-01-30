@@ -262,6 +262,131 @@ pub enum TypeDefinitionKind {
     Structure,
 }
 
+/// Kinds of derived data types.
+///
+/// See section 2.3.3.1
+#[derive(Debug, PartialEq)]
+#[allow(clippy::large_enum_variant)]
+pub enum DataTypeDeclarationKind {
+    /// Derived data type the restricts permitted values from a set of identifiers.
+    Enumeration(EnumerationDeclaration),
+    /// Derived data type that restricts permitted values to a smaller range
+    /// of the parent data type.
+    Subrange(SubrangeDeclaration),
+    /// Derived data type that specifies required storage space for each instance.
+    Array(ArrayDeclaration),
+}
+
+/// See section 2.3.3.1.
+#[derive(Debug, PartialEq)]
+pub struct EnumerationDeclaration {
+    pub name: Id,
+    // TODO need to understand when the context name matters in the definition
+    pub spec: EnumeratedSpecificationKind,
+    pub default: Option<EnumeratedValue>,
+}
+
+/// See section 2.3.3.1.
+#[derive(Debug, PartialEq)]
+pub enum EnumeratedSpecificationKind {
+    TypeName(Id),
+    /// Enumeration declaration that provides a list of values.
+    ///
+    /// Order of the values is important because the order declares the
+    /// default value if no default is specified directly.
+    Values(EnumeratedSpecificationValues),
+}
+
+impl EnumeratedSpecificationKind {
+    pub fn values(
+        values: Vec<EnumeratedValue>,
+        position: SourceLoc,
+    ) -> EnumeratedSpecificationKind {
+        EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues { values, position })
+    }
+}
+
+/// See section 2.3.3.1.
+#[derive(Debug, PartialEq)]
+pub struct EnumeratedSpecificationValues {
+    pub values: Vec<EnumeratedValue>,
+    pub position: SourceLoc,
+}
+
+/// See section 2.3.3.1.
+#[derive(Debug, PartialEq, Clone)]
+pub struct EnumeratedValue {
+    pub type_name: Option<Id>,
+    pub value: Id,
+    pub position: Option<SourceLoc>,
+}
+
+impl EnumeratedValue {
+    pub fn new(value: &str) -> Self {
+        EnumeratedValue {
+            type_name: None,
+            value: Id::from(value),
+            position: Some(SourceLoc::new(0)),
+        }
+    }
+
+    pub fn with_position(mut self, position: SourceLoc) -> Self {
+        self.position = Some(position);
+        self
+    }
+}
+
+impl SourcePosition for EnumeratedValue {
+    fn position(&self) -> &Option<SourceLoc> {
+        &self.position
+    }
+}
+
+/// Subrange declaration narrows a type definition to the values in a smaller
+/// range. Permitted values are the inclusive range minimum through maximum
+/// specified values, that is, `[minimum, maximum]`.
+///
+/// See section 2.3.3.1.
+#[derive(Debug, PartialEq)]
+pub struct SubrangeDeclaration {
+    pub type_name: Id,
+    pub spec: SubrangeSpecification,
+}
+
+/// The specification for a subrange. The specification restricts an integer
+/// type to a subset of the integer range.
+///
+/// See section 2.3.3.1.
+#[derive(Debug, PartialEq)]
+pub struct SubrangeSpecification {
+    /// The parent type that is being restricted.
+    /// TODO how can this be restricted to integer type names?
+    pub type_name: ElementaryTypeName,
+    pub subrange: Subrange,
+    pub default: Option<SignedInteger>,
+}
+
+/// Derived data type that
+#[derive(Debug, PartialEq)]
+pub struct ArrayDeclaration {
+    pub type_name: Id,
+    pub spec: ArraySpecificationKind,
+    pub init: Vec<ArrayInitialElementKind>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArrayInitialElementKind {
+    Constant(Constant),
+    EnumValue(EnumeratedValue),
+    Repeated(Integer, Box<Option<ArrayInitialElementKind>>),
+}
+
+impl ArrayInitialElementKind {
+    pub fn repeated(size: Integer, init: Option<ArrayInitialElementKind>) -> Self {
+        ArrayInitialElementKind::Repeated(size, Box::new(init))
+    }
+}
+
 /// Location prefix for directly represented variables.
 ///
 /// See section 2.4.1.1.
@@ -780,94 +905,6 @@ pub struct TaskConfiguration {
     pub priority: u32,
     // TODO this might not be optional
     pub interval: Option<Duration>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct EnumeratedValue {
-    pub type_name: Option<Id>,
-    pub value: Id,
-    pub position: Option<SourceLoc>,
-}
-
-impl EnumeratedValue {
-    pub fn new(value: &str) -> Self {
-        EnumeratedValue {
-            type_name: None,
-            value: Id::from(value),
-            position: Some(SourceLoc::new(0)),
-        }
-    }
-
-    pub fn with_position(mut self, position: SourceLoc) -> Self {
-        self.position = Some(position);
-        self
-    }
-}
-
-impl SourcePosition for EnumeratedValue {
-    fn position(&self) -> &Option<SourceLoc> {
-        &self.position
-    }
-}
-
-#[derive(Debug, PartialEq)]
-#[allow(clippy::large_enum_variant)]
-pub enum DataTypeDeclarationKind {
-    Enumeration(EnumerationDeclaration),
-    Array(ArrayDeclaration),
-}
-
-#[derive(Debug, PartialEq)]
-pub struct EnumerationDeclaration {
-    pub name: Id,
-    // TODO need to understand when the context name matters in the definition
-    pub spec: EnumeratedSpecificationKind,
-    pub default: Option<EnumeratedValue>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct EnumeratedSpecificationValues {
-    pub values: Vec<EnumeratedValue>,
-    pub position: SourceLoc,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum EnumeratedSpecificationKind {
-    TypeName(Id),
-    /// Enumeration declaration that provides a list of values.
-    ///
-    /// Order of the values is important because the order declares the
-    /// default value if no default is specified directly.
-    Values(EnumeratedSpecificationValues),
-}
-
-impl EnumeratedSpecificationKind {
-    pub fn values(
-        values: Vec<EnumeratedValue>,
-        position: SourceLoc,
-    ) -> EnumeratedSpecificationKind {
-        EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues { values, position })
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct ArrayDeclaration {
-    pub type_name: Id,
-    pub spec: ArraySpecificationKind,
-    pub init: Vec<ArrayInitialElementKind>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ArrayInitialElementKind {
-    Constant(Constant),
-    EnumValue(EnumeratedValue),
-    Repeated(Integer, Box<Option<ArrayInitialElementKind>>),
-}
-
-impl ArrayInitialElementKind {
-    pub fn repeated(size: Integer, init: Option<ArrayInitialElementKind>) -> Self {
-        ArrayInitialElementKind::Repeated(size, Box::new(init))
-    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
