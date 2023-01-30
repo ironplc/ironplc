@@ -105,6 +105,10 @@ pub trait Visitor<E> {
         visit_enum_declaration(self, node)
     }
 
+    fn visit_subrange_declaration(&mut self, node: &SubrangeDeclaration) -> Result<Self::Value, E> {
+        visit_subrange_declaration(self, node)
+    }
+
     fn visit_array_declaration(&mut self, node: &ArrayDeclaration) -> Result<Self::Value, E> {
         visit_array_declaration(self, node)
     }
@@ -240,6 +244,15 @@ pub fn visit_enum_declaration<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(&node.spec, v)
 }
 
+pub fn visit_subrange_declaration<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &SubrangeDeclaration,
+) -> Result<V::Value, E> {
+    Ok(V::Value::default())
+    // TODO
+    //Acceptor::accept(&node.spec, v)
+}
+
 pub fn visit_array_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &ArrayDeclaration,
@@ -348,6 +361,7 @@ impl Acceptor for DataTypeDeclarationKind {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
             DataTypeDeclarationKind::Enumeration(e) => visitor.visit_enum_declaration(e),
+            DataTypeDeclarationKind::Subrange(sr) => visitor.visit_subrange_declaration(sr),
             DataTypeDeclarationKind::Array(a) => visitor.visit_array_declaration(a),
         }
     }
