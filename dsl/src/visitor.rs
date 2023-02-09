@@ -113,6 +113,10 @@ pub trait Visitor<E> {
         visit_array_declaration(self, node)
     }
 
+    fn visit_string_declaration(&mut self, node: &StringDeclaration) -> Result<Self::Value, E> {
+        visit_string_declaration(self, node)
+    }
+
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
@@ -261,6 +265,13 @@ pub fn visit_array_declaration<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(&node.init, v)
 }
 
+pub fn visit_string_declaration<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &StringDeclaration,
+) -> Result<V::Value, E> {
+    Ok(V::Value::default())
+}
+
 pub fn visit_function_block_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &FunctionBlockDeclaration,
@@ -363,6 +374,7 @@ impl Acceptor for DataTypeDeclarationKind {
             DataTypeDeclarationKind::Enumeration(e) => visitor.visit_enum_declaration(e),
             DataTypeDeclarationKind::Subrange(sr) => visitor.visit_subrange_declaration(sr),
             DataTypeDeclarationKind::Array(a) => visitor.visit_array_declaration(a),
+            DataTypeDeclarationKind::String(s) => visitor.visit_string_declaration(s),
         }
     }
 }

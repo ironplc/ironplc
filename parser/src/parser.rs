@@ -203,7 +203,7 @@ parser! {
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
     rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) comma() {v}
 
-    rule KEYWORD() = "END_VAR" / "VAR" / "VAR_INPUT" / "IF" / "END_IF" / "FUNCTION_BLOCK" / "END_FUNCTION_BLOCK" / "AND" / "NOT" / "THEN" / "END_IF" / "STEP" / "END_STEP" / "FROM" / "PRIORITY" / "END_VAR" / "AT" / "ARRAY"
+    rule KEYWORD() = "END_VAR" / "VAR" / "VAR_INPUT" / "IF" / "END_IF" / "FUNCTION_BLOCK" / "END_FUNCTION_BLOCK" / "AND" / "NOT" / "THEN" / "END_IF" / "STEP" / "END_STEP" / "FROM" / "PRIORITY" / "END_VAR" / "AT" / "ARRAY" / "STRING" / "WSTRING"
     rule STANDARD_FUNCTION_BLOCK_NAME() = "END_VAR"
 
     // B.0
@@ -315,8 +315,8 @@ parser! {
     rule non_generic_type_name() -> Id = et:elementary_type_name() { et.into() } / derived_type_name()
 
     // B.1.3.1 Elementary data types
-    rule elementary_type_name() -> ElementaryTypeName = numeric_type_name() / date_type_name() / bit_string_type_name() / string_type_name()
-    rule string_type_name() -> ElementaryTypeName = "STRING" { ElementaryTypeName::STRING } / "WSTRING" { ElementaryTypeName::WSTRING }
+    rule elementary_type_name() -> ElementaryTypeName = numeric_type_name() / date_type_name() / bit_string_type_name() / elementary_string_type_name()
+    rule elementary_string_type_name() -> ElementaryTypeName = "STRING" { ElementaryTypeName::STRING } / "WSTRING" { ElementaryTypeName::WSTRING }
     rule numeric_type_name() -> ElementaryTypeName = integer_type_name() / real_type_name()
     rule integer_type_name() -> ElementaryTypeName = signed_integer_type_name() / unsigned_integer_type_name()
     rule signed_integer_type_name() -> ElementaryTypeName = "SINT" { ElementaryTypeName::SINT }  / "INT" { ElementaryTypeName::INT } / "DINT" { ElementaryTypeName::DINT } / "LINT" { ElementaryTypeName::LINT }
@@ -336,7 +336,7 @@ parser! {
     rule array_type_name() -> Id = identifier()
     rule data_type_declaration() -> Vec<DataTypeDeclarationKind> = "TYPE" _ declarations:semisep(<type_declaration()>) _ "END_TYPE" { declarations }
     // TODO this is missing multiple types
-    rule type_declaration() -> DataTypeDeclarationKind = single_element_type_declaration() / a:array_type_declaration() { DataTypeDeclarationKind::Array(a) }
+    rule type_declaration() -> DataTypeDeclarationKind = single_element_type_declaration() / a:array_type_declaration() { DataTypeDeclarationKind::Array(a) } / s:string_type_declaration() { DataTypeDeclarationKind::String(s) }
     // TODO this is missing multiple types
     rule single_element_type_declaration() -> DataTypeDeclarationKind = subrange:subrange_type_declaration() { DataTypeDeclarationKind::Subrange(subrange) }/  decl:enumerated_type_declaration() { DataTypeDeclarationKind::Enumeration(decl) }
     rule simple_spec_init() -> InitialValueAssignment = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
@@ -480,12 +480,21 @@ parser! {
       // cases have captures all cases with a value.
       InitialValueAssignment::LateResolvedType(i)
     }
+    rule string_type_name() -> Id = identifier()
+    rule string_type_declaration() -> StringDeclaration = type_name:string_type_name() _ ":" _ width:("STRING" { StringKind::String } / "WSTRING" { StringKind::WString }) _ "[" _ length:integer() _ "]" _ init:(":=" _ str:character_string() {str})? {
+      StringDeclaration {
+        type_name,
+        length,
+        width,
+        init: init.map(|v| v.into_iter().collect()),
+      }
+    }
 
     // B.1.4 Variables
     rule variable() -> Variable = d:direct_variable() { Variable::AddressAssignment(d) } / symbolic_variable()
     // TODO add multi-element variable
     rule symbolic_variable() -> Variable = multi_element_variable() / name:variable_name() { Variable::SymbolicVariable(SymbolicVariable{name}) }
-    rule variable_name() -> Id = i:identifier() { i }
+    rule variable_name() -> Id = identifier()
 
     // B.1.4.1 Directly represented variables
     pub rule direct_variable() -> AddressAssignment = "%" l:location_prefix() "*" {
