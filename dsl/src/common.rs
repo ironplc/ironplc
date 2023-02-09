@@ -275,6 +275,7 @@ pub enum DataTypeDeclarationKind {
     Subrange(SubrangeDeclaration),
     /// Derived data type that specifies required storage space for each instance.
     Array(ArrayDeclaration),
+    String(StringDeclaration),
 }
 
 /// See section 2.3.3.1.
@@ -385,6 +386,23 @@ impl ArrayInitialElementKind {
     pub fn repeated(size: Integer, init: Option<ArrayInitialElementKind>) -> Self {
         ArrayInitialElementKind::Repeated(size, Box::new(init))
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum StringKind {
+    /// String of single-byte characters
+    String,
+    /// String of double-byte characters
+    WString,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct StringDeclaration {
+    pub type_name: Id,
+    pub length: Integer,
+    /// The size of a single 'character'
+    pub width: StringKind,
+    pub init: Option<String>,
 }
 
 /// Location prefix for directly represented variables.
