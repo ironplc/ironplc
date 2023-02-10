@@ -275,6 +275,7 @@ pub enum DataTypeDeclarationKind {
     Subrange(SubrangeDeclaration),
     /// Derived data type that specifies required storage space for each instance.
     Array(ArrayDeclaration),
+    Structure(StructureDeclaration),
     String(StringDeclaration),
 }
 
@@ -386,6 +387,11 @@ impl ArrayInitialElementKind {
     pub fn repeated(size: Integer, init: Option<ArrayInitialElementKind>) -> Self {
         ArrayInitialElementKind::Repeated(size, Box::new(init))
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct StructureDeclaration {
+    pub type_name: Id,
 }
 
 #[derive(Debug, PartialEq)]

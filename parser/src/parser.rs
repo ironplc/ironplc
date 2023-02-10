@@ -203,7 +203,7 @@ parser! {
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
     rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) comma() {v}
 
-    rule KEYWORD() = "END_VAR" / "VAR" / "VAR_INPUT" / "IF" / "END_IF" / "FUNCTION_BLOCK" / "END_FUNCTION_BLOCK" / "AND" / "NOT" / "THEN" / "END_IF" / "STEP" / "END_STEP" / "FROM" / "PRIORITY" / "END_VAR" / "AT" / "ARRAY" / "STRING" / "WSTRING"
+    rule KEYWORD() = "END_VAR" / "VAR" / "VAR_INPUT" / "IF" / "END_IF" / "FUNCTION_BLOCK" / "END_FUNCTION_BLOCK" / "AND" / "NOT" / "THEN" / "END_IF" / "STEP" / "END_STEP" / "FROM" / "PRIORITY" / "END_VAR" / "AT" / "ARRAY" / "STRING" / "WSTRING" / "STRUCT" / "END_STRUCT"
     rule STANDARD_FUNCTION_BLOCK_NAME() = "END_VAR"
 
     // B.0
@@ -334,9 +334,10 @@ parser! {
     rule subrange_type_name() -> Id = identifier()
     rule enumerated_type_name() -> Id = identifier()
     rule array_type_name() -> Id = identifier()
+    rule structure_type_name() -> Id = identifier()
     rule data_type_declaration() -> Vec<DataTypeDeclarationKind> = "TYPE" _ declarations:semisep(<type_declaration()>) _ "END_TYPE" { declarations }
     // TODO this is missing multiple types
-    rule type_declaration() -> DataTypeDeclarationKind = single_element_type_declaration() / a:array_type_declaration() { DataTypeDeclarationKind::Array(a) } / s:string_type_declaration() { DataTypeDeclarationKind::String(s) }
+    rule type_declaration() -> DataTypeDeclarationKind = single_element_type_declaration() / a:array_type_declaration() { DataTypeDeclarationKind::Array(a) } / st:structure_type_declaration() { DataTypeDeclarationKind::Structure(st) } / s:string_type_declaration() { DataTypeDeclarationKind::String(s) }
     // TODO this is missing multiple types
     rule single_element_type_declaration() -> DataTypeDeclarationKind = subrange:subrange_type_declaration() { DataTypeDeclarationKind::Subrange(subrange) }/  decl:enumerated_type_declaration() { DataTypeDeclarationKind::Enumeration(decl) }
     rule simple_spec_init() -> InitialValueAssignment = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
@@ -419,6 +420,19 @@ parser! {
     rule array_initial_elements() -> ArrayInitialElementKind = array_initial_element() / size:integer() _ "(" ai:array_initial_element()? ")" { ArrayInitialElementKind::repeated(size, ai) }
     // TODO | structure_initialization | array_initialization
     rule array_initial_element() -> ArrayInitialElementKind = c:constant() { ArrayInitialElementKind::Constant(c) } / e:enumerated_value() { ArrayInitialElementKind::EnumValue(e) }
+    rule structure_type_declaration() -> StructureDeclaration = type_name:structure_type_name() _ ":" _ spec:structure_specification() {
+      StructureDeclaration {
+        type_name,
+      }
+    }
+    rule structure_specification() -> () = structure_declaration() / initialized_structure()
+    rule initialized_structure() -> () = structure_type_name() _ ":=" _ init:(structure_initialization())?
+    rule structure_declaration() -> () = "STRUCT" _ vars:semisep_oneplus(<structure_element_declaration()>) _ "END_STRUCT"
+    rule structure_element_declaration() -> () = structure_element_name() _ ":" _ (simple_spec_init() / subrange_spec_init() / enumerated_spec_init() / array_spec_init() / initialized_structure())
+    rule structure_element_name() ->Id = identifier()
+    rule structure_initialization() -> () = "(" _ commasep_oneplus(<structure_element_initialization()>)_ ")"
+    rule structure_element_initialization() -> () = structure_element_name() _ ":=" _ (constant() / enumerated_value() / array_initialization() / structure_initialization())
+
     // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
     rule simple_spec_init__with_constant() -> InitialValueAssignment = type_name:simple_specification() _ ":=" _ c:constant() {
       InitialValueAssignment::Simple(SimpleInitializer {
