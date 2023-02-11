@@ -54,7 +54,7 @@ impl Visitor<SemanticDiagnostic> for RuleProgramTaskDefinitionExists {
                             program.name, task_name
                         ),
                     )
-                    .with_label(task_name.position(), "Reference to task configuration"));
+                    .maybe_with_label(task_name.position(), "Reference to task configuration"));
                 }
             }
         }

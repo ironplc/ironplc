@@ -107,6 +107,12 @@ impl Integer {
     }
 }
 
+impl fmt::Display for Integer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{}", self.value))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SignedInteger {
     pub value: Integer,
@@ -158,7 +164,11 @@ impl TryFrom<SignedInteger> for u32 {
 impl TryFrom<SignedInteger> for i128 {
     type Error = TryFromIntegerError;
     fn try_from(value: SignedInteger) -> Result<i128, Self::Error> {
-        value.value.try_into().map_err(|e| TryFromIntegerError {})
+        let mut primitive = value.value.try_into().map_err(|e| TryFromIntegerError {})?;
+        if value.is_neg {
+            primitive *= -1;
+        }
+        Ok(primitive)
     }
 }
 
@@ -185,6 +195,16 @@ impl TryFrom<SignedInteger> for f32 {
         // TODO how to do this
         let val: f32 = val as f32;
         Ok(val)
+    }
+}
+
+impl fmt::Display for SignedInteger {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_neg {
+            f.write_fmt(format_args!("-{}", self.value))
+        } else {
+            f.write_fmt(format_args!("{}", self.value))
+        }
     }
 }
 
