@@ -92,7 +92,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                     seen_names.insert(name);
                     // The definition might be the final definition, or it
                     // might be a reference to another name
-                    match &def.spec {
+                    match &def.spec_init.spec {
                         EnumeratedSpecificationKind::TypeName(n) => name = n,
                         EnumeratedSpecificationKind::Values(values) => return Ok(&values.values),
                     }

@@ -54,8 +54,8 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
 
         match node.qualifier {
             DeclarationQualifier::Constant => match &node.initializer {
-                InitialValueAssignment::None => todo!(),
-                InitialValueAssignment::Simple(si) => match si.initial_value {
+                InitialValueAssignmentKind::None => todo!(),
+                InitialValueAssignmentKind::Simple(si) => match si.initial_value {
                     Some(_) => {}
                     None => {
                         return Err(SemanticDiagnostic::error(
@@ -68,7 +68,7 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
                         .with_location(&node.position));
                     }
                 },
-                InitialValueAssignment::EnumeratedValues(spec) => match spec.initial_value {
+                InitialValueAssignmentKind::EnumeratedValues(spec) => match spec.initial_value {
                     Some(_) => {}
                     None => {
                         return Err(SemanticDiagnostic::error(
@@ -81,7 +81,7 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
                         .with_location(&node.position));
                     }
                 },
-                InitialValueAssignment::EnumeratedType(type_init) => {
+                InitialValueAssignmentKind::EnumeratedType(type_init) => {
                     match type_init.initial_value {
                         Some(_) => {}
                         None => {
@@ -96,10 +96,11 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
                         }
                     }
                 }
-                InitialValueAssignment::FunctionBlock(_) => todo!(),
-                InitialValueAssignment::Structure { type_name: _ } => todo!(),
-                InitialValueAssignment::Array(_) => todo!(),
-                InitialValueAssignment::LateResolvedType(_) => todo!(),
+                InitialValueAssignmentKind::FunctionBlock(_) => todo!(),
+                InitialValueAssignmentKind::Subrange(_) => todo!(),
+                InitialValueAssignmentKind::Structure(_) => todo!(),
+                InitialValueAssignmentKind::Array(_) => todo!(),
+                InitialValueAssignmentKind::LateResolvedType(_) => todo!(),
             },
             DeclarationQualifier::Unspecified => {}
             DeclarationQualifier::Retain => {}

@@ -104,13 +104,13 @@ impl TypeResolver {
 impl Fold<SemanticDiagnostic> for TypeResolver {
     fn fold_type_initializer(
         &mut self,
-        node: InitialValueAssignment,
-    ) -> Result<InitialValueAssignment, SemanticDiagnostic> {
+        node: InitialValueAssignmentKind,
+    ) -> Result<InitialValueAssignmentKind, SemanticDiagnostic> {
         match node {
-            InitialValueAssignment::LateResolvedType(name) => {
+            InitialValueAssignmentKind::LateResolvedType(name) => {
                 // Try to find the type for the specified name.
                 if TypeResolver::is_elementary_type(&name) {
-                    return Ok(InitialValueAssignment::Simple(SimpleInitializer {
+                    return Ok(InitialValueAssignmentKind::Simple(SimpleInitializer {
                         type_name: name,
                         initial_value: None,
                     }));
@@ -122,7 +122,7 @@ impl Fold<SemanticDiagnostic> for TypeResolver {
                     Some(type_kind) => {
                         match type_kind {
                             TypeDefinitionKind::Enumeration => {
-                                Ok(InitialValueAssignment::EnumeratedType(
+                                Ok(InitialValueAssignmentKind::EnumeratedType(
                                     EnumeratedInitialValueAssignment {
                                         type_name: name,
                                         initial_value: None,
@@ -130,16 +130,17 @@ impl Fold<SemanticDiagnostic> for TypeResolver {
                                 ))
                             }
                             TypeDefinitionKind::FunctionBlock => {
-                                Ok(InitialValueAssignment::FunctionBlock(
+                                Ok(InitialValueAssignmentKind::FunctionBlock(
                                     FunctionBlockInitialValueAssignment { type_name: name },
                                 ))
                             }
                             TypeDefinitionKind::Function => {
                                 // TODO this is wrong and should be an error
-                                Ok(InitialValueAssignment::Structure { type_name: name })
+                                panic!()
                             }
                             TypeDefinitionKind::Structure => {
-                                Ok(InitialValueAssignment::Structure { type_name: name })
+                                // TODO this is wrong and should be an error
+                                panic!()
                             }
                         }
                     }

@@ -276,6 +276,7 @@ pub enum DataTypeDeclarationKind {
     /// Derived data type that specifies required storage space for each instance.
     Array(ArrayDeclaration),
     Structure(StructureDeclaration),
+    StructureInitialization(StructureInitializationDeclaration),
     String(StringDeclaration),
 }
 
@@ -284,13 +285,34 @@ pub enum DataTypeDeclarationKind {
 pub struct EnumerationDeclaration {
     pub name: Id,
     // TODO need to understand when the context name matters in the definition
+    pub spec_init: EnumeratedSpecificationInit,
+}
+
+/// The specification of an enumeration with a possible default value.
+///
+/// See section 2.3.3.1.
+#[derive(Debug, PartialEq)]
+pub struct EnumeratedSpecificationInit {
     pub spec: EnumeratedSpecificationKind,
     pub default: Option<EnumeratedValue>,
+}
+
+impl EnumeratedSpecificationInit {
+    pub fn values_and_default(values: Vec<&str>, default: &str) -> Self {
+        EnumeratedSpecificationInit {
+            spec: EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues {
+                values: values.into_iter().map(EnumeratedValue::new).collect(),
+                position: SourceLoc::new(0),
+            }),
+            default: Some(EnumeratedValue::new(default)),
+        }
+    }
 }
 
 /// See section 2.3.3.1.
 #[derive(Debug, PartialEq)]
 pub enum EnumeratedSpecificationKind {
+    /// Enumeration declaration that renames another enumeration.
     TypeName(Id),
     /// Enumeration declaration that provides a list of values.
     ///
@@ -315,6 +337,11 @@ pub struct EnumeratedSpecificationValues {
     pub position: SourceLoc,
 }
 
+/// A particular value in a enumeration.
+///
+/// May include a type name (especially where the enumeration would be
+/// ambiguous.)
+///
 /// See section 2.3.3.1.
 #[derive(Debug, PartialEq, Clone)]
 pub struct EnumeratedValue {
@@ -359,7 +386,7 @@ pub struct SubrangeDeclaration {
 /// type to a subset of the integer range.
 ///
 /// See section 2.3.3.1.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SubrangeSpecification {
     /// The parent type that is being restricted.
     /// TODO how can this be restricted to integer type names?
@@ -389,9 +416,40 @@ impl ArrayInitialElementKind {
     }
 }
 
+/// Structure declaration creates a combination of multiple elements (each having
+/// a specific type) as a single unit. Components are accessed by a name. Structures
+/// may be nested but must not contain an instance of itself.
+///
+/// See section 2.3.3.1.
 #[derive(Debug, PartialEq)]
 pub struct StructureDeclaration {
+    /// The name of the structure.
     pub type_name: Id,
+    /// The elements (components) of the structure declaration.
+    pub elements: Vec<StructureElementDeclaration>,
+}
+
+/// Declares an element contained within a structure.
+///
+/// See section 2.3.3.1.
+#[derive(Debug, PartialEq)]
+pub struct StructureElementDeclaration {
+    pub name: Id,
+    pub init: InitialValueAssignmentKind,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct StructureInitializationDeclaration {
+    pub type_name: Id,
+    pub elements_init: Vec<StructureElementInit>,
+}
+
+/// Initializes a particular element in a structured type.
+#[derive(Debug, PartialEq, Clone)]
+pub struct StructureElementInit {
+    /// The name of the element in the structure to initialize.
+    pub name: Id,
+    pub init: StructInitialValueAssignmentKind,
 }
 
 #[derive(Debug, PartialEq)]
@@ -496,7 +554,7 @@ pub struct VarDecl {
     pub name: Id,
     pub var_type: VariableType,
     pub qualifier: DeclarationQualifier,
-    pub initializer: InitialValueAssignment,
+    pub initializer: InitialValueAssignmentKind,
     pub position: SourceLoc,
 }
 
@@ -527,7 +585,7 @@ impl VarDecl {
             name: Id::from(name),
             var_type,
             qualifier: DeclarationQualifier::Unspecified,
-            initializer: InitialValueAssignment::simple_uninitialized(type_name),
+            initializer: InitialValueAssignmentKind::simple_uninitialized(type_name),
             position: loc,
         }
     }
@@ -543,14 +601,16 @@ impl VarDecl {
             name: Id::from(name),
             var_type: VariableType::Input,
             qualifier: DeclarationQualifier::Unspecified,
-            initializer: InitialValueAssignment::EnumeratedType(EnumeratedInitialValueAssignment {
-                type_name: Id::from(type_name),
-                initial_value: Some(EnumeratedValue {
-                    type_name: None,
-                    value: Id::from(initial_value),
-                    position: Some(loc.clone()),
-                }),
-            }),
+            initializer: InitialValueAssignmentKind::EnumeratedType(
+                EnumeratedInitialValueAssignment {
+                    type_name: Id::from(type_name),
+                    initial_value: Some(EnumeratedValue {
+                        type_name: None,
+                        value: Id::from(initial_value),
+                        position: Some(loc.clone()),
+                    }),
+                },
+            ),
             position: loc,
         }
     }
@@ -561,7 +621,7 @@ impl VarDecl {
             name: Id::from(name),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
-            initializer: InitialValueAssignment::FunctionBlock(
+            initializer: InitialValueAssignmentKind::FunctionBlock(
                 FunctionBlockInitialValueAssignment {
                     type_name: Id::from(type_name),
                 },
@@ -595,7 +655,7 @@ impl VarDecl {
             name: Id::from(name),
             var_type,
             qualifier: DeclarationQualifier::Unspecified,
-            initializer: InitialValueAssignment::LateResolvedType(Id::from(type_name)),
+            initializer: InitialValueAssignmentKind::LateResolvedType(Id::from(type_name)),
             position: loc,
         }
     }
@@ -661,7 +721,7 @@ pub struct LocatedVarDecl {
     pub name: Option<Id>,
     pub qualifier: DeclarationQualifier,
     pub location: AddressAssignment,
-    pub initializer: InitialValueAssignment,
+    pub initializer: InitialValueAssignmentKind,
     pub position: SourceLoc,
 }
 
@@ -702,7 +762,7 @@ impl fmt::Display for AddressAssignment {
 ///
 /// See section 2.4.3.2.
 #[derive(PartialEq, Clone, Debug)]
-pub enum InitialValueAssignment {
+pub enum InitialValueAssignmentKind {
     /// Represents no type initializer.
     ///
     /// Some types allow no initializer and this avoids nesting of the
@@ -712,28 +772,26 @@ pub enum InitialValueAssignment {
     EnumeratedValues(EnumeratedValuesInitializer),
     EnumeratedType(EnumeratedInitialValueAssignment),
     FunctionBlock(FunctionBlockInitialValueAssignment),
-    Structure {
-        // TODO
-        type_name: Id,
-    },
+    Subrange(SubrangeSpecification),
+    Structure(StructureInitializationDeclaration),
     Array(ArrayInitialValueAssignment),
     /// Type that is ambiguous until have discovered type
     /// definitions. Value is the name of the type.
     LateResolvedType(Id),
 }
 
-impl InitialValueAssignment {
+impl InitialValueAssignmentKind {
     /// Creates an initial value with
-    pub fn simple_uninitialized(type_name: &str) -> InitialValueAssignment {
-        InitialValueAssignment::Simple(SimpleInitializer {
+    pub fn simple_uninitialized(type_name: &str) -> Self {
+        InitialValueAssignmentKind::Simple(SimpleInitializer {
             type_name: Id::from(type_name),
             initial_value: None,
         })
     }
 
     /// Creates an initial value from the initializer.
-    pub fn simple(type_name: &str, value: Initializer) -> InitialValueAssignment {
-        InitialValueAssignment::Simple(SimpleInitializer {
+    pub fn simple(type_name: &str, value: Constant) -> Self {
+        InitialValueAssignmentKind::Simple(SimpleInitializer {
             type_name: Id::from(type_name),
             initial_value: Some(value),
         })
@@ -745,13 +803,29 @@ impl InitialValueAssignment {
         values: Vec<EnumeratedValue>,
         initial_value: Option<EnumeratedValue>,
         position: SourceLoc,
-    ) -> InitialValueAssignment {
-        InitialValueAssignment::EnumeratedValues(EnumeratedValuesInitializer {
+    ) -> Self {
+        InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer {
             values,
             initial_value,
             position,
         })
     }
+}
+
+/// Container for initial value assignments in structures.
+///
+/// Initial value assignments in structures are similar to initial value
+/// assignments outside of structures except that they cannot have a
+/// specification (the specification is with the structure) and that the
+/// initialization is required.
+///
+/// See section 2.4.3.2.
+#[derive(PartialEq, Clone, Debug)]
+pub enum StructInitialValueAssignmentKind {
+    Constant(Constant),
+    EnumeratedValue(EnumeratedValue),
+    Array(Vec<ArrayInitialElementKind>),
+    Structure(Vec<StructureElementInit>),
 }
 
 /// Container for elementary constants.
@@ -767,23 +841,6 @@ pub enum Constant {
     DateAndTime(),
 }
 
-#[derive(PartialEq, Clone)]
-pub enum Initializer {
-    Simple(Constant),
-    Subrange(),
-    Enumerated(),
-    Array(),
-    InitializedStructure(),
-    SingleByteString(),
-    DoubleByteString(),
-}
-
-impl fmt::Debug for Initializer {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Initializer").finish()
-    }
-}
-
 #[derive(PartialEq, Clone, Debug)]
 pub struct EnumeratedInitialValueAssignment {
     pub type_name: Id,
@@ -793,7 +850,7 @@ pub struct EnumeratedInitialValueAssignment {
 #[derive(PartialEq, Clone, Debug)]
 pub struct SimpleInitializer {
     pub type_name: Id,
-    pub initial_value: Option<Initializer>,
+    pub initial_value: Option<Constant>,
 }
 
 #[derive(PartialEq, Clone, Debug)]
