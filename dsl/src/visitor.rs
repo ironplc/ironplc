@@ -232,18 +232,21 @@ pub trait Visitor<E> {
 
     fn visit_enumerated_spec_init(
         &mut self,
-        spec_init: &EnumeratedSpecificationInit,
+        node: &EnumeratedSpecificationInit,
     ) -> Result<Self::Value, E> {
-        Acceptor::accept(&spec_init.spec, self)
+        Acceptor::accept(&node.spec, self)
         //TODO visit the default value
         //Acceptor::accept(spec_init.default, self)
     }
 
     fn visit_subrange_specification(
         &mut self,
-        init: &SubrangeSpecification,
+        node: &SubrangeSpecification,
     ) -> Result<Self::Value, E> {
-        // TODO
+        visit_subrange_specification(self, node)
+    }
+
+    fn visit_subrange(&mut self, init: &Subrange) -> Result<Self::Value, E> {
         Ok(Self::Value::default())
     }
 
@@ -299,6 +302,13 @@ pub fn visit_array_declaration<V: Visitor<E> + ?Sized, E>(
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.spec, v)?;
     Acceptor::accept(&node.init, v)
+}
+
+pub fn visit_subrange_specification<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &SubrangeSpecification,
+) -> Result<V::Value, E> {
+    v.visit_subrange(&node.subrange)
 }
 
 pub fn visit_structure_declaration<V: Visitor<E> + ?Sized, E>(

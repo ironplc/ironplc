@@ -102,7 +102,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                         "S0001",
                         format!("Enumeration {name} is not declared"),
                     )
-                    .with_label(name.position(), "Enumeration reference"))
+                    .maybe_with_label(name.position(), "Enumeration reference"))
                 }
             }
 
@@ -112,7 +112,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                     "S0001",
                     format!("Recursive enumeration for type {name}"),
                 )
-                .with_label(name.position(), "Current enumeration"));
+                .maybe_with_label(name.position(), "Current enumeration"));
             }
         }
     }
@@ -138,7 +138,7 @@ impl Visitor<SemanticDiagnostic> for RuleDeclaredEnumeratedValues<'_> {
                         value.value
                     ),
                 )
-                .with_label(value.position(), "Expected value in enumeration"));
+                .maybe_with_label(value.position(), "Expected value in enumeration"));
             }
         }
 

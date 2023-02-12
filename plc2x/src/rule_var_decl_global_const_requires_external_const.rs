@@ -97,8 +97,8 @@ impl<'a> Visitor<SemanticDiagnostic> for RuleExternalGlobalConst<'a> {
                         node.name,
                     ),
                 )
-                .with_label(node.name.position(), "Reference to global variable")
-                .with_label(global.position(), "Constant global variable"));
+                .maybe_with_label(node.name.position(), "Reference to global variable")
+                .maybe_with_label(global.position(), "Constant global variable"));
             }
         }
 

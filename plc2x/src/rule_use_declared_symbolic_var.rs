@@ -109,7 +109,7 @@ impl Visitor<SemanticDiagnostic> for SymbolTable<Id, DummyNode> {
                 "S0001",
                 format!("Variable {} not defined before used", node.name),
             )
-            .with_label(node.name.position(), "Undefined variable")),
+            .maybe_with_label(node.name.position(), "Undefined variable")),
         }
     }
 }
