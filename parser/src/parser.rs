@@ -47,7 +47,7 @@ pub fn parse_library(source: &str) -> Result<Vec<LibraryElement>, ParserDiagnost
 /// the specific type.
 struct UntypedVarDecl {
     pub name: Id,
-    pub initializer: InitialValueAssignment,
+    pub initializer: InitialValueAssignmentKind,
     pub position: SourceLoc,
 }
 
@@ -203,7 +203,7 @@ parser! {
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
     rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) comma() {v}
 
-    rule KEYWORD() = "END_VAR" / "VAR" / "VAR_INPUT" / "IF" / "END_IF" / "FUNCTION_BLOCK" / "END_FUNCTION_BLOCK" / "AND" / "NOT" / "THEN" / "END_IF" / "STEP" / "END_STEP" / "FROM" / "PRIORITY" / "END_VAR" / "AT" / "ARRAY" / "STRING" / "WSTRING"
+    rule KEYWORD() = "END_VAR" / "VAR" / "VAR_INPUT" / "IF" / "END_IF" / "FUNCTION_BLOCK" / "END_FUNCTION_BLOCK" / "AND" / "NOT" / "THEN" / "END_IF" / "STEP" / "END_STEP" / "FROM" / "PRIORITY" / "END_VAR" / "AT" / "ARRAY" / "STRING" / "WSTRING" / "STRUCT" / "END_STRUCT"
     rule STANDARD_FUNCTION_BLOCK_NAME() = "END_VAR"
 
     // B.0
@@ -334,15 +334,16 @@ parser! {
     rule subrange_type_name() -> Id = identifier()
     rule enumerated_type_name() -> Id = identifier()
     rule array_type_name() -> Id = identifier()
+    rule structure_type_name() -> Id = identifier()
     rule data_type_declaration() -> Vec<DataTypeDeclarationKind> = "TYPE" _ declarations:semisep(<type_declaration()>) _ "END_TYPE" { declarations }
     // TODO this is missing multiple types
-    rule type_declaration() -> DataTypeDeclarationKind = single_element_type_declaration() / a:array_type_declaration() { DataTypeDeclarationKind::Array(a) } / s:string_type_declaration() { DataTypeDeclarationKind::String(s) }
+    rule type_declaration() -> DataTypeDeclarationKind = single_element_type_declaration() / a:array_type_declaration() { DataTypeDeclarationKind::Array(a) } / structure_type_declaration() / s:string_type_declaration() { DataTypeDeclarationKind::String(s) }
     // TODO this is missing multiple types
     rule single_element_type_declaration() -> DataTypeDeclarationKind = subrange:subrange_type_declaration() { DataTypeDeclarationKind::Subrange(subrange) }/  decl:enumerated_type_declaration() { DataTypeDeclarationKind::Enumeration(decl) }
-    rule simple_spec_init() -> InitialValueAssignment = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
-      InitialValueAssignment::Simple(SimpleInitializer {
+    rule simple_spec_init() -> InitialValueAssignmentKind = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
+      InitialValueAssignmentKind::Simple(SimpleInitializer {
         type_name,
-        initial_value: constant.map(Initializer::Simple),
+        initial_value: constant,
       })
     }
     rule simple_specification() -> Id = et:elementary_type_name() { et.into() } / simple_type_name()
@@ -363,24 +364,23 @@ parser! {
     rule subrange_specification() -> (ElementaryTypeName, Subrange) = itn:integer_type_name() _ "(" _ sr:subrange() _ ")" { (itn, sr) }
     rule subrange() -> Subrange = start:signed_integer() ".." end:signed_integer() { Subrange{start, end} }
 
-    rule enumerated_type_declaration() -> EnumerationDeclaration = name:enumerated_type_name() _ ":" _ spec:enumerated_spec_init() {
+    rule enumerated_type_declaration() -> EnumerationDeclaration = name:enumerated_type_name() _ ":" _ spec_init:enumerated_spec_init() {
       EnumerationDeclaration {
         name,
-        spec: spec.0,
-        default: spec.1,
+        spec_init,
       }
     }
-    rule enumerated_spec_init__with_constant() -> InitialValueAssignment = start:position!() spec:enumerated_specification() _ ":=" _ def:enumerated_value() {
+    rule enumerated_spec_init__with_constant() -> InitialValueAssignmentKind = start:position!() spec:enumerated_specification() _ ":=" _ def:enumerated_value() {
       // TODO gut feeling says there is a defect here but I haven't looked into it
       match spec {
         EnumeratedSpecificationKind::TypeName(name) => {
-          InitialValueAssignment::EnumeratedType(EnumeratedInitialValueAssignment {
+          InitialValueAssignmentKind::EnumeratedType(EnumeratedInitialValueAssignment {
             type_name: name,
             initial_value: Some(def),
           })
         },
         EnumeratedSpecificationKind::Values(values) => {
-          InitialValueAssignment::enumerated_values(
+          InitialValueAssignmentKind::enumerated_values(
             values.values,
             Some(def),
             SourceLoc::new(start),
@@ -388,9 +388,12 @@ parser! {
         }
       }
      }
-    rule enumerated_spec_init() -> (EnumeratedSpecificationKind, Option<EnumeratedValue>) = init:enumerated_specification() _ def:(":=" _ d:enumerated_value() { d })? {
-      (init, def)
-     }
+    rule enumerated_spec_init() -> EnumeratedSpecificationInit = spec:enumerated_specification() _ default:(":=" _ d:enumerated_value() { d })? {
+      EnumeratedSpecificationInit {
+        spec,
+        default,
+      }
+    }
     // TODO this doesn't support type name as a value
     rule enumerated_specification() -> EnumeratedSpecificationKind  = start:position!() "(" _ v:enumerated_value() ++ (_ "," _) _ ")" {
       EnumeratedSpecificationKind::values(v, SourceLoc::new(start))
@@ -401,12 +404,15 @@ parser! {
     rule array_type_declaration() -> ArrayDeclaration = type_name:array_type_name() _ ":" _ spec_and_init:array_spec_init() {
       ArrayDeclaration {
         type_name,
-        spec: spec_and_init.0,
-        init: spec_and_init.1,
+        spec: spec_and_init.spec,
+        init: spec_and_init.initial_values,
       }
     }
-    rule array_spec_init() -> (ArraySpecificationKind, Vec<ArrayInitialElementKind>) = spec:array_specification() _ init:(":=" _ a:array_initialization() { a })? {
-      (spec, init.unwrap_or_default())
+    rule array_spec_init() -> ArrayInitialValueAssignment = spec:array_specification() _ init:(":=" _ a:array_initialization() { a })? {
+      ArrayInitialValueAssignment {
+        spec,
+        initial_values: init.unwrap_or_default()
+      }
     }
     rule array_specification() -> ArraySpecificationKind = "ARRAY" _ "[" _ ranges:subrange() ** (_ "," _ ) _ "]" _ "OF" _ type_name:non_generic_type_name() {
       ArraySpecificationKind::Subranges(ranges, type_name)
@@ -419,11 +425,76 @@ parser! {
     rule array_initial_elements() -> ArrayInitialElementKind = array_initial_element() / size:integer() _ "(" ai:array_initial_element()? ")" { ArrayInitialElementKind::repeated(size, ai) }
     // TODO | structure_initialization | array_initialization
     rule array_initial_element() -> ArrayInitialElementKind = c:constant() { ArrayInitialElementKind::Constant(c) } / e:enumerated_value() { ArrayInitialElementKind::EnumValue(e) }
-    // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
-    rule simple_spec_init__with_constant() -> InitialValueAssignment = type_name:simple_specification() _ ":=" _ c:constant() {
-      InitialValueAssignment::Simple(SimpleInitializer {
+    rule structure_type_declaration() -> DataTypeDeclarationKind = type_name:structure_type_name() _ ":" _ decl:structure_declaration() {
+      DataTypeDeclarationKind::Structure(StructureDeclaration {
         type_name,
-        initial_value: Some(Initializer::Simple(c)),
+        elements: decl.elements,
+      })
+    } / type_name:structure_type_name() _ ":" _ init:initialized_structure() {
+      DataTypeDeclarationKind::StructureInitialization(StructureInitializationDeclaration {
+        // TODO there is something off with having two type names
+        type_name,
+        elements_init: init.elements_init,
+      })
+    }
+    // structure_specification - covered in structure_type_declaration because that avoids
+    // an intermediate object that doesn't know the type name
+    rule initialized_structure() -> StructureInitializationDeclaration = type_name:structure_type_name() _ ":=" _ init:(structure_initialization())? {
+      StructureInitializationDeclaration {
+        type_name,
+        elements_init: init.unwrap_or_default(),
+      }
+    }
+    rule structure_declaration() -> StructureDeclaration = "STRUCT" _ elements:semisep_oneplus(<structure_element_declaration()>) _ "END_STRUCT" {
+      StructureDeclaration {
+        // Requires a value but we don't know the name until level up
+        type_name: Id::from(""),
+        elements,
+      }
+    }
+    rule structure_element_declaration() -> StructureElementDeclaration = name:structure_element_name() _ ":" _ init:(i:subrange_spec_init() { InitialValueAssignmentKind::Subrange(i) } / spec_init:enumerated_spec_init() {
+      match spec_init.spec {
+        EnumeratedSpecificationKind::TypeName(id) => {
+          InitialValueAssignmentKind::EnumeratedType(
+            EnumeratedInitialValueAssignment {
+              type_name: id,
+              // TODO solve this
+              initial_value: None,
+            }
+          )
+        },
+        EnumeratedSpecificationKind::Values(values) => {
+          InitialValueAssignmentKind::EnumeratedValues(
+            EnumeratedValuesInitializer {
+              values: values.values,
+              // TODO initial value
+              initial_value: None,
+              position: values.position,
+          })
+        }
+      }
+    } / arr:array_spec_init() {
+      InitialValueAssignmentKind::Array(arr)
+    } / i:initialized_structure() { InitialValueAssignmentKind::Structure(i) } / simple_spec_init()) {
+      StructureElementDeclaration {
+        name,
+        init,
+      }
+    }
+    rule structure_element_name() ->Id = identifier()
+    rule structure_initialization() -> Vec<StructureElementInit> = "(" _ elems:commasep_oneplus(<structure_element_initialization()>)_ ")" { elems }
+    rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ ":=" _ init:(c:constant() { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value() { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)}) {
+      StructureElementInit {
+        name,
+        init,
+      }
+    }
+
+    // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
+    rule simple_spec_init__with_constant() -> InitialValueAssignmentKind = type_name:simple_specification() _ ":=" _ c:constant() {
+      InitialValueAssignmentKind::Simple(SimpleInitializer {
+        type_name,
+        initial_value: Some(c),
       })
     }
 
@@ -435,25 +506,25 @@ parser! {
     //
     // There is still value in trying to disambiguate early because it allows us to use
     // the parser definitions.
-    rule simple_or_enumerated_spec_init() -> InitialValueAssignment = s:simple_specification() _ ":=" _ c:constant() {
+    rule simple_or_enumerated_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ ":=" _ c:constant() {
       // A simple_specification with a constant is unambiguous because the constant is
       // not a valid identifier.
-      InitialValueAssignment::Simple(SimpleInitializer {
+      InitialValueAssignmentKind::Simple(SimpleInitializer {
         type_name: s,
-        initial_value: Some(Initializer::Simple(c)),
+        initial_value: Some(c),
       })
     } / spec:enumerated_specification() _ ":=" _ init:enumerated_value() {
       // An enumerated_specification defined with a value is unambiguous the value
       // is not a valid constant.
       match spec {
         EnumeratedSpecificationKind::TypeName(name) => {
-          InitialValueAssignment::EnumeratedType(EnumeratedInitialValueAssignment {
+          InitialValueAssignmentKind::EnumeratedType(EnumeratedInitialValueAssignment {
             type_name: name,
             initial_value: Some(init),
           })
         },
         EnumeratedSpecificationKind::Values(values) => {
-          InitialValueAssignment::enumerated_values(
+          InitialValueAssignmentKind::enumerated_values(
             values.values,
             Some(init),
             values.position,
@@ -463,7 +534,7 @@ parser! {
     } / start:position!() "(" _ values:enumerated_value() ** (_ "," _ ) _ ")" _  init:(":=" _ i:enumerated_value() {i})? {
       // An enumerated_specification defined by enum values is unambiguous because
       // the parenthesis are not valid simple_specification.
-      InitialValueAssignment::enumerated_values(
+      InitialValueAssignmentKind::enumerated_values(
         values,
         init,
         SourceLoc::new(start),
@@ -471,14 +542,14 @@ parser! {
     } / et:elementary_type_name() {
       // An identifier that is an elementary_type_name s unambiguous because these are
       // reserved keywords
-      InitialValueAssignment::Simple(SimpleInitializer {
+      InitialValueAssignmentKind::Simple(SimpleInitializer {
         type_name: et.into(),
         initial_value: None,
       })
     }/ i:identifier() {
       // What remains is ambiguous and the devolves to a single identifier because the prior
       // cases have captures all cases with a value.
-      InitialValueAssignment::LateResolvedType(i)
+      InitialValueAssignmentKind::LateResolvedType(i)
     }
     rule string_type_name() -> Id = identifier()
     rule string_type_declaration() -> StringDeclaration = type_name:string_type_name() _ ":" _ width:("STRING" { StringKind::String } / "WSTRING" { StringKind::WString }) _ "[" _ length:integer() _ "]" _ init:(":=" _ str:character_string() {str})? {
@@ -569,7 +640,7 @@ parser! {
         // TODO
         UntypedVarDecl {
           name,
-          initializer: InitialValueAssignment::None,
+          initializer: InitialValueAssignmentKind::None,
           position: SourceLoc::new(start)
         }
       }).collect()
@@ -609,8 +680,8 @@ parser! {
       VarDeclarations::External(VarDeclarations::map(declarations, qualifier))
     }
     // TODO subrange_specification, array_specification(), structure_type_name and others
-    rule external_declaration_spec() -> InitialValueAssignment = type_name:simple_specification() {
-      InitialValueAssignment::Simple(SimpleInitializer {
+    rule external_declaration_spec() -> InitialValueAssignmentKind = type_name:simple_specification() {
+      InitialValueAssignmentKind::Simple(SimpleInitializer {
         type_name,
         initial_value: None,
       })
@@ -638,9 +709,9 @@ parser! {
       }).collect()
     }
     // TODO this doesn't pass all information. I suspect the rule from the dpec is not right
-    rule global_var_decl() -> (Vec<VarDecl>) = start:position!() vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { InitialValueAssignment::FunctionBlock(FunctionBlockInitialValueAssignment{type_name: f})})? {
+    rule global_var_decl() -> (Vec<VarDecl>) = start:position!() vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment{type_name: f})})? {
       vs.0.into_iter().map(|name| {
-        let init = initializer.clone().unwrap_or(InitialValueAssignment::None);
+        let init = initializer.clone().unwrap_or(InitialValueAssignmentKind::None);
         VarDecl {
           name,
           var_type: VariableType::Global,
@@ -659,7 +730,7 @@ parser! {
       (vec![Id::from("")], None)
     }
     // TODO this is completely fabricated - it isn't correct.
-    rule located_var_spec_init() -> InitialValueAssignment = simple:simple_spec_init() { simple }
+    rule located_var_spec_init() -> InitialValueAssignmentKind = simple:simple_spec_init() { simple }
     // TODO
     pub rule location() -> AddressAssignment = "AT" _ v:direct_variable() { v }
     rule global_var_list() -> Vec<Id> = names:global_var_name() ++ (_ "," _) { names }
@@ -984,14 +1055,14 @@ mod test {
                 name: Id::from("TRIG"),
                 var_type: VariableType::Input,
                 qualifier: DeclarationQualifier::Unspecified,
-                initializer: InitialValueAssignment::simple_uninitialized("BOOL"),
+                initializer: InitialValueAssignmentKind::simple_uninitialized("BOOL"),
                 position: SourceLoc::new(18),
             },
             VarDecl {
                 name: Id::from("MSG"),
                 var_type: VariableType::Input,
                 qualifier: DeclarationQualifier::Unspecified,
-                initializer: InitialValueAssignment::simple_uninitialized("STRING"),
+                initializer: InitialValueAssignmentKind::simple_uninitialized("STRING"),
                 position: SourceLoc::new(39),
             },
         ];
@@ -1009,10 +1080,12 @@ END_VAR";
             name: Id::from("LEVEL"),
             var_type: VariableType::Input,
             qualifier: DeclarationQualifier::Unspecified,
-            initializer: InitialValueAssignment::EnumeratedType(EnumeratedInitialValueAssignment {
-                type_name: Id::from("LOGLEVEL"),
-                initial_value: Some(EnumeratedValue::new("INFO")),
-            }),
+            initializer: InitialValueAssignmentKind::EnumeratedType(
+                EnumeratedInitialValueAssignment {
+                    type_name: Id::from("LOGLEVEL"),
+                    initial_value: Some(EnumeratedValue::new("INFO")),
+                },
+            ),
             position: SourceLoc::new(10),
         }]);
         assert_eq!(plc_parser::input_declarations(decl), expected)
@@ -1029,14 +1102,14 @@ END_VAR";
                 name: Id::from("TRIG"),
                 var_type: VariableType::Output,
                 qualifier: DeclarationQualifier::Unspecified,
-                initializer: InitialValueAssignment::simple_uninitialized("BOOL"),
+                initializer: InitialValueAssignmentKind::simple_uninitialized("BOOL"),
                 position: SourceLoc::new(19),
             },
             VarDecl {
                 name: Id::from("MSG"),
                 var_type: VariableType::Output,
                 qualifier: DeclarationQualifier::Unspecified,
-                initializer: InitialValueAssignment::simple_uninitialized("STRING"),
+                initializer: InitialValueAssignmentKind::simple_uninitialized("STRING"),
                 position: SourceLoc::new(40),
             },
         ];
@@ -1123,10 +1196,7 @@ END_VAR";
             name: Id::from("ResetCounterValue"),
             var_type: VariableType::Global,
             qualifier: DeclarationQualifier::Constant,
-            initializer: InitialValueAssignment::simple(
-                "INT",
-                Initializer::Simple(Constant::IntegerLiteral(17)),
-            ),
+            initializer: InitialValueAssignmentKind::simple("INT", Constant::IntegerLiteral(17)),
             position: SourceLoc::new(0),
         }];
         assert_eq!(
