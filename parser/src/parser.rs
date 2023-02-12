@@ -194,16 +194,32 @@ parser! {
         e.ok_or("")
     }
 
-    // peg rules for making the grammar easier to work with
+    // peg rules for making the grammar easier to work with. These produce
+    // output on matching with the name of the item
     rule semicolon() -> () = ";" ()
     rule comma() -> () = "," ()
     rule _ = [' ' | '\n' | '\r' ]*
+
     // A semi-colon separated list with required ending separator
     rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v}
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
     rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) comma() {v}
 
-    rule KEYWORD() = "END_VAR" / "VAR" / "VAR_INPUT" / "IF" / "END_IF" / "FUNCTION_BLOCK" / "END_FUNCTION_BLOCK" / "AND" / "NOT" / "THEN" / "END_IF" / "STEP" / "END_STEP" / "FROM" / "PRIORITY" / "END_VAR" / "AT" / "ARRAY" / "STRING" / "WSTRING" / "STRUCT" / "END_STRUCT"
+    rule KEYWORD() = "ACTION" / "END_ACTION" / "ARRAY" / "OF" / "AT" / "CASE"
+                     / "ELSE" / "END_CASE" / "CONFIGURATION" / "END_CONFIGURATION"
+                     / "CONSTANT" / "EN" / "ENO" / "EXIT" / "FALSE" / "F_EDGE"
+                     / "FOR" / "TO" / "BY" / "DO" / "END_FOR" / "FUNCTION" / "END_FUNCTION"
+                     / "FUNCTION_BLOCK" / "END_FUNCTION_BLOCK" / "IF" / "THEN"
+                     / "ELSIF" / "ELSE" / "END_IF" / "INITIAL_STEP" / "END_STEP"
+                     / "NOT" / "MOD" / "AND" / "XOR" / "OR" / "PROGRAM" / "END_PROGRAM"
+                     / "R_EDGE" / "READ_ONLY" / "READ_WRITE" / "REPEAT" / "UNTIL"
+                     / "END_REPEAT" / "RESOURCE" / "END_RESOURCE" / "RETAIN" / "NON_RETAIN"
+                     / "RETURN" / "STEP" / "END_STEP" / "STRUCT" / "END_STRUCT"
+                     / "TASK" / "TRANSITION" / "FROM" / "END_TRANSITION" / "TRUE"
+                     / "VAR" / "END_VAR" / "VAR_INPUT" / "VAR_OUTPUT" / "VAR_IN_OUT"
+                     / "VAR_TEMP" / "VAR_EXTERNAL" / "VAR_ACCESS" / "VAR_CONFIG"
+                     / "VAR_GLOBAL" / "WHILE" / "END_WHILE" / "WITH"
+                     / "PRIORITY" / "STRING" / "WSTRING"
     rule STANDARD_FUNCTION_BLOCK_NAME() = "END_VAR"
 
     // B.0
@@ -219,7 +235,14 @@ parser! {
     rule identifier() -> Id = start:position!() !KEYWORD() i:$(['a'..='z' | '0'..='9' | 'A'..='Z' | '_']+) end:position!() { Id::from(i).with_position(SourceLoc::range(start, end)) }
 
     // B.1.2 Constants
-    rule constant() -> Constant = r:real_literal() { Constant::RealLiteral(r) } / i:integer_literal() { Constant::IntegerLiteral(i.try_into().unwrap()) } / c:character_string() { Constant::CharacterString() }  / d:duration() { Constant::Duration(d) } / t:time_of_day() { Constant::TimeOfDay() } / d:date() { Constant::Date() } / dt:date_and_time() { Constant::DateAndTime() }
+    rule constant() -> Constant = r:real_literal() { Constant::RealLiteral(r) }
+        / i:integer_literal() { Constant::IntegerLiteral(i.try_into().unwrap()) }
+        / c:character_string() { Constant::CharacterString() }
+        / d:duration() { Constant::Duration(d) }
+        / t:time_of_day() { Constant::TimeOfDay() }
+        / d:date() { Constant::Date() }
+        / dt:date_and_time() { Constant::DateAndTime() }
+        / b:boolean_literal() { Constant::Boolean(b) }
 
     // B.1.2.1 Numeric literals
     // numeric_literal omitted and only in constant.
@@ -254,6 +277,7 @@ parser! {
     rule octal_integer() -> Integer = start:position!() octal_integer_prefix() n:$(['0'..='7']("_"? ['0'..='7'])*) { Integer::octal(n, SourceLoc::new(start)) }
     rule hex_integer_prefix() -> () = "16#" ()
     rule hex_integer() -> Integer = start:position!() hex_integer_prefix() n:$(['0'..='9' | 'A'..='F']("_"? ['0'..='9' | 'A'..='F'])*) { Integer::hex(n, SourceLoc::new(start)) }
+    rule boolean_literal() -> Boolean =  "BOOL#1" { Boolean::True } / "BOOL#0" {Boolean::False } / "TRUE" { Boolean::True } / "FALSE" { Boolean::False }
 
     // B.1.2.2 Character strings
     rule character_string() -> Vec<char> = s:single_byte_character_string() / d:double_byte_character_string()
@@ -276,7 +300,11 @@ parser! {
       i
     }
     // milliseconds must come first because the "m" in "ms" would match the minutes rule
-    rule interval() -> Duration = ms:milliseconds() { ms } / d:days() { d } / h:hours() { h } / m:minutes() { m } / s:seconds() { s }
+    rule interval() -> Duration = ms:milliseconds() { ms }
+      / d:days() { d }
+      / h:hours() { h }
+      / m:minutes() { m }
+      / s:seconds() { s }
     rule days() -> Duration = f:fixed_point() "d" { to_duration(f, 3600.0 * 24.0) } / i:integer() "d" "_"? h:hours() { h + to_duration(i.try_into().unwrap(), 3600.0 * 24.0) }
 
     rule fixed_point() -> f32 = i:integer() ("." integer())? {
@@ -337,9 +365,15 @@ parser! {
     rule structure_type_name() -> Id = identifier()
     rule data_type_declaration() -> Vec<DataTypeDeclarationKind> = "TYPE" _ declarations:semisep(<type_declaration()>) _ "END_TYPE" { declarations }
     // TODO this is missing multiple types
-    rule type_declaration() -> DataTypeDeclarationKind = single_element_type_declaration() / a:array_type_declaration() { DataTypeDeclarationKind::Array(a) } / structure_type_declaration() / s:string_type_declaration() { DataTypeDeclarationKind::String(s) }
+    rule type_declaration() -> DataTypeDeclarationKind =
+      single_element_type_declaration()
+      / a:array_type_declaration() { DataTypeDeclarationKind::Array(a) }
+      / structure_type_declaration()
+      / s:string_type_declaration() { DataTypeDeclarationKind::String(s) }
     // TODO this is missing multiple types
-    rule single_element_type_declaration() -> DataTypeDeclarationKind = subrange:subrange_type_declaration() { DataTypeDeclarationKind::Subrange(subrange) }/  decl:enumerated_type_declaration() { DataTypeDeclarationKind::Enumeration(decl) }
+    rule single_element_type_declaration() -> DataTypeDeclarationKind =
+      subrange:subrange_type_declaration() { DataTypeDeclarationKind::Subrange(subrange) }
+      / decl:enumerated_type_declaration() { DataTypeDeclarationKind::Enumeration(decl) }
     rule simple_spec_init() -> InitialValueAssignmentKind = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
       InitialValueAssignmentKind::Simple(SimpleInitializer {
         type_name,

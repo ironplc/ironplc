@@ -848,6 +848,12 @@ pub enum StructInitialValueAssignmentKind {
     Structure(Vec<StructureElementInit>),
 }
 
+#[derive(PartialEq, Clone, Debug)]
+pub enum Boolean {
+    True,
+    False,
+}
+
 /// Container for elementary constants.
 #[derive(PartialEq, Clone, Debug)]
 pub enum Constant {
@@ -859,6 +865,7 @@ pub enum Constant {
     TimeOfDay(),
     Date(),
     DateAndTime(),
+    Boolean(Boolean),
 }
 
 #[derive(PartialEq, Clone, Debug)]
