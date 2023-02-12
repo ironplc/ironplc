@@ -15,6 +15,8 @@ extern crate ironplc_dsl;
 extern crate ironplc_parser;
 
 mod error;
+mod rule_decl_struct_element_unique_names;
+mod rule_decl_subrange_limits;
 mod rule_enumeration_values_unique;
 mod rule_pous_no_cycles;
 mod rule_program_task_definition_exists;

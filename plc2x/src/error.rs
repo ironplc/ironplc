@@ -23,11 +23,21 @@ impl SemanticDiagnostic {
     }
 
     /// Adds a label to the error indicating a location and description of the position.
-    pub fn with_label(mut self, loc: &Option<SourceLoc>, message: &str) -> SemanticDiagnostic {
+    pub fn maybe_with_label(
+        mut self,
+        loc: &Option<SourceLoc>,
+        message: &str,
+    ) -> SemanticDiagnostic {
         match loc {
             Some(loc) => self.label.push((message.to_string(), loc.clone())),
             None => {}
         }
+        self
+    }
+
+    /// Adds a label to the error indicating a location and description of the position.
+    pub fn with_label(mut self, loc: &SourceLoc, message: &str) -> SemanticDiagnostic {
+        self.label.push((message.to_string(), loc.clone()));
         self
     }
 }

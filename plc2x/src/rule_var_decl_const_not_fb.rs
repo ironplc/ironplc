@@ -41,7 +41,7 @@ impl Visitor<SemanticDiagnostic> for RuleVarDeclConstIsNotFunctionBlock {
                         fb.type_name
                     ),
                 )
-                .with_label(
+                .maybe_with_label(
                     node.name.position(),
                     "Declaration of function block instance",
                 ));

@@ -55,8 +55,8 @@ impl Visitor<SemanticDiagnostic> for RuleEnumerationValuesUnique {
                                     node.name, first
                                 ),
                             )
-                            .with_label(first.position(), "First instance")
-                            .with_label(current.position(), "Duplicate value"));
+                            .maybe_with_label(first.position(), "First instance")
+                            .maybe_with_label(current.position(), "Duplicate value"));
                         }
                         None => {
                             seen_values.insert(&current.value);

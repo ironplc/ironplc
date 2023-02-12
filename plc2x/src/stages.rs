@@ -3,9 +3,10 @@ use codespan_reporting::diagnostic::Diagnostic;
 use ironplc_parser::error::ParserDiagnostic;
 
 use crate::{
-    ironplc_dsl::common::Library, rule_enumeration_values_unique, rule_pous_no_cycles,
-    rule_program_task_definition_exists, rule_use_declared_enumerated_value, rule_use_declared_fb,
-    rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
+    ironplc_dsl::common::Library, rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
+    rule_enumeration_values_unique, rule_pous_no_cycles, rule_program_task_definition_exists,
+    rule_use_declared_enumerated_value, rule_use_declared_fb, rule_use_declared_symbolic_var,
+    rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, xform_resolve_late_bound_types,
 };
 
@@ -41,6 +42,8 @@ pub fn semantic(library: &Library) -> Result<(), Diagnostic<()>> {
     rule_program_task_definition_exists::apply(library)?;
     rule_pous_no_cycles::apply(library)?;
     rule_var_decl_global_const_requires_external_const::apply(library)?;
+    rule_decl_subrange_limits::apply(library)?;
+    rule_decl_struct_element_unique_names::apply(library)?;
 
     // 1. Check all identifiers defined (need scope)
     // 2. Type checking
