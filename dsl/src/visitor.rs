@@ -113,6 +113,27 @@ pub trait Visitor<E> {
         visit_array_declaration(self, node)
     }
 
+    fn visit_structure_declaration(
+        &mut self,
+        node: &StructureDeclaration,
+    ) -> Result<Self::Value, E> {
+        visit_structure_declaration(self, node)
+    }
+
+    fn visit_structure_initialization_declaration(
+        &mut self,
+        node: &StructureInitializationDeclaration,
+    ) -> Result<Self::Value, E> {
+        visit_structure_initialization_declaration(self, node)
+    }
+
+    fn visit_structure_element_init(
+        &mut self,
+        node: &StructureElementInit,
+    ) -> Result<Self::Value, E> {
+        visit_structure_element_init(self, node)
+    }
+
     fn visit_string_declaration(&mut self, node: &StringDeclaration) -> Result<Self::Value, E> {
         visit_string_declaration(self, node)
     }
@@ -209,6 +230,23 @@ pub trait Visitor<E> {
         Ok(Self::Value::default())
     }
 
+    fn visit_enumerated_spec_init(
+        &mut self,
+        spec_init: &EnumeratedSpecificationInit,
+    ) -> Result<Self::Value, E> {
+        Acceptor::accept(&spec_init.spec, self)
+        //TODO visit the default value
+        //Acceptor::accept(spec_init.default, self)
+    }
+
+    fn visit_subrange_specification(
+        &mut self,
+        init: &SubrangeSpecification,
+    ) -> Result<Self::Value, E> {
+        // TODO
+        Ok(Self::Value::default())
+    }
+
     fn visit_array_initializer(
         &mut self,
         init: &ArrayInitialValueAssignment,
@@ -245,16 +283,14 @@ pub fn visit_enum_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &EnumerationDeclaration,
 ) -> Result<V::Value, E> {
-    Acceptor::accept(&node.spec, v)
+    v.visit_enumerated_spec_init(&node.spec_init)
 }
 
 pub fn visit_subrange_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &SubrangeDeclaration,
 ) -> Result<V::Value, E> {
-    Ok(V::Value::default())
-    // TODO
-    //Acceptor::accept(&node.spec, v)
+    v.visit_subrange_specification(&node.spec)
 }
 
 pub fn visit_array_declaration<V: Visitor<E> + ?Sized, E>(
@@ -262,6 +298,28 @@ pub fn visit_array_declaration<V: Visitor<E> + ?Sized, E>(
     node: &ArrayDeclaration,
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.spec, v)?;
+    Acceptor::accept(&node.init, v)
+}
+
+pub fn visit_structure_declaration<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &StructureDeclaration,
+) -> Result<V::Value, E> {
+    // TODO
+    Ok(V::Value::default())
+}
+
+pub fn visit_structure_initialization_declaration<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &StructureInitializationDeclaration,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.elements_init, v)
+}
+
+pub fn visit_structure_element_init<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &StructureElementInit,
+) -> Result<V::Value, E> {
     Acceptor::accept(&node.init, v)
 }
 
@@ -374,6 +432,10 @@ impl Acceptor for DataTypeDeclarationKind {
             DataTypeDeclarationKind::Enumeration(e) => visitor.visit_enum_declaration(e),
             DataTypeDeclarationKind::Subrange(sr) => visitor.visit_subrange_declaration(sr),
             DataTypeDeclarationKind::Array(a) => visitor.visit_array_declaration(a),
+            DataTypeDeclarationKind::Structure(s) => visitor.visit_structure_declaration(s),
+            DataTypeDeclarationKind::StructureInitialization(si) => {
+                visitor.visit_structure_initialization_declaration(si)
+            }
             DataTypeDeclarationKind::String(s) => visitor.visit_string_declaration(s),
         }
     }
@@ -405,27 +467,47 @@ impl Acceptor for ArraySpecificationKind {
     }
 }
 
-impl Acceptor for InitialValueAssignment {
+impl Acceptor for InitialValueAssignmentKind {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
-            InitialValueAssignment::None => Ok(V::Value::default()),
-            InitialValueAssignment::Simple(si) => visitor.visit_simple_initializer(si),
-            InitialValueAssignment::EnumeratedValues(ev) => {
+            InitialValueAssignmentKind::None => Ok(V::Value::default()),
+            InitialValueAssignmentKind::Simple(si) => visitor.visit_simple_initializer(si),
+            InitialValueAssignmentKind::EnumeratedValues(ev) => {
                 visitor.visit_enumerated_values_initializer(ev)
             }
-            InitialValueAssignment::EnumeratedType(et) => {
+            InitialValueAssignmentKind::EnumeratedType(et) => {
                 visitor.visit_enumerated_type_initializer(et)
             }
-            InitialValueAssignment::FunctionBlock(fbi) => {
+            InitialValueAssignmentKind::FunctionBlock(fbi) => {
                 visitor.visit_function_block_type_initializer(fbi)
             }
-            InitialValueAssignment::Structure { type_name } => Ok(V::Value::default()),
-            InitialValueAssignment::Array(array_init) => {
+            InitialValueAssignmentKind::Subrange(sr) => visitor.visit_subrange_specification(sr),
+            InitialValueAssignmentKind::Structure(si) => {
+                visitor.visit_structure_initialization_declaration(si)
+            }
+            InitialValueAssignmentKind::Array(array_init) => {
                 visitor.visit_array_initializer(array_init)
             }
-            InitialValueAssignment::LateResolvedType(_) => Ok(V::Value::default()),
+            InitialValueAssignmentKind::LateResolvedType(_) => Ok(V::Value::default()),
         }
         // TODO don't yet know how to visit these
+    }
+}
+
+impl Acceptor for StructureElementInit {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        visitor.visit_structure_element_init(self)
+    }
+}
+
+impl Acceptor for StructInitialValueAssignmentKind {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        match self {
+            StructInitialValueAssignmentKind::Constant(_) => todo!(),
+            StructInitialValueAssignmentKind::EnumeratedValue(_) => todo!(),
+            StructInitialValueAssignmentKind::Array(_) => todo!(),
+            StructInitialValueAssignmentKind::Structure(_) => todo!(),
+        }
     }
 }
 

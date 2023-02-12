@@ -38,7 +38,7 @@ impl Visitor<SemanticDiagnostic> for RuleEnumerationValuesUnique {
         &mut self,
         node: &EnumerationDeclaration,
     ) -> Result<(), SemanticDiagnostic> {
-        match &node.spec {
+        match &node.spec_init.spec {
             EnumeratedSpecificationKind::TypeName(_) => Ok(()),
             EnumeratedSpecificationKind::Values(spec) => {
                 let mut seen_values: HashSet<&Id> = HashSet::new();

@@ -74,16 +74,10 @@ mod tests {
         let expected = new_library(LibraryElement::DataTypeDeclaration(
             DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
                 name: Id::from("LOGLEVEL"),
-                spec: EnumeratedSpecificationKind::values(
-                    vec![
-                        EnumeratedValue::new("CRITICAL"),
-                        EnumeratedValue::new("WARNING"),
-                        EnumeratedValue::new("INFO"),
-                        EnumeratedValue::new("DEBUG"),
-                    ],
-                    SourceLoc::new(19),
+                spec_init: EnumeratedSpecificationInit::values_and_default(
+                    vec!["CRITICAL", "WARNING", "INFO", "DEBUG"],
+                    "INFO",
                 ),
-                default: Option::Some(EnumeratedValue::new("INFO")),
             }),
         ));
         assert_eq!(parse(src.as_str()), expected)
@@ -140,7 +134,7 @@ mod tests {
                         name: Id::from("ResetCounterValue"),
                         var_type: VariableType::External,
                         qualifier: DeclarationQualifier::Constant,
-                        initializer: InitialValueAssignment::Simple(SimpleInitializer {
+                        initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
                             type_name: Id::from("INT"),
                             initial_value: None,
                         }),
@@ -241,7 +235,7 @@ mod tests {
                         name: Id::from("ResetCounterValue"),
                         var_type: VariableType::External,
                         qualifier: DeclarationQualifier::Constant,
-                        initializer: InitialValueAssignment::Simple(SimpleInitializer {
+                        initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
                             type_name: Id::from("INT"),
                             initial_value: None,
                         }),
@@ -275,12 +269,12 @@ mod tests {
                     name: Id::from("InputsNumber"),
                     var_type: VariableType::Var,
                     qualifier: DeclarationQualifier::Unspecified,
-                    initializer: InitialValueAssignment::Simple(SimpleInitializer {
+                    initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
                         type_name: Id::from("REAL"),
-                        initial_value: Some(Initializer::Simple(Constant::RealLiteral(Float {
+                        initial_value: Some(Constant::RealLiteral(Float {
                             value: 5.1,
                             data_type: None,
-                        }))),
+                        })),
                     }),
                     position: SourceLoc::new(0),
                 },
@@ -376,11 +370,9 @@ mod tests {
                     name: Id::from("ResetCounterValue"),
                     var_type: VariableType::Global,
                     qualifier: DeclarationQualifier::Constant,
-                    initializer: InitialValueAssignment::Simple(SimpleInitializer {
+                    initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
                         type_name: Id::from("INT"),
-                        initial_value: Option::Some(Initializer::Simple(Constant::IntegerLiteral(
-                            17,
-                        ))),
+                        initial_value: Some(Constant::IntegerLiteral(17)),
                     }),
                     position: SourceLoc::new(49),
                 }],

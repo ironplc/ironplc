@@ -202,17 +202,18 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
         node: &VarDecl,
     ) -> Result<Self::Value, SemanticDiagnostic> {
         match &node.initializer {
-            InitialValueAssignment::None => todo!(),
-            InitialValueAssignment::Simple(_) => {}
-            InitialValueAssignment::EnumeratedValues(_) => {}
-            InitialValueAssignment::EnumeratedType(_) => {}
-            InitialValueAssignment::FunctionBlock(fbi) => {
+            InitialValueAssignmentKind::None => todo!(),
+            InitialValueAssignmentKind::Simple(_) => {}
+            InitialValueAssignmentKind::EnumeratedValues(_) => {}
+            InitialValueAssignmentKind::EnumeratedType(_) => {}
+            InitialValueAssignmentKind::FunctionBlock(fbi) => {
                 self.var_to_fb
                     .insert(node.name.clone(), fbi.type_name.clone());
             }
-            InitialValueAssignment::Structure { type_name: _ } => {}
-            InitialValueAssignment::Array(_) => {}
-            InitialValueAssignment::LateResolvedType(_) => {
+            InitialValueAssignmentKind::Subrange(_) => {}
+            InitialValueAssignmentKind::Structure(_) => {}
+            InitialValueAssignmentKind::Array(_) => {}
+            InitialValueAssignmentKind::LateResolvedType(_) => {
                 panic!()
             }
         }

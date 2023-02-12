@@ -33,7 +33,7 @@ impl Visitor<SemanticDiagnostic> for RuleVarDeclConstIsNotFunctionBlock {
 
     fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<(), SemanticDiagnostic> {
         if node.qualifier == DeclarationQualifier::Constant {
-            if let InitialValueAssignment::FunctionBlock(fb) = &node.initializer {
+            if let InitialValueAssignmentKind::FunctionBlock(fb) = &node.initializer {
                 return Err(SemanticDiagnostic::error(
                     "S0001",
                     format!(

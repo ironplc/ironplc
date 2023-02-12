@@ -99,8 +99,8 @@ pub trait Fold<E> {
 
     fn fold_type_initializer(
         &mut self,
-        node: InitialValueAssignment,
-    ) -> Result<InitialValueAssignment, E> {
+        node: InitialValueAssignmentKind,
+    ) -> Result<InitialValueAssignmentKind, E> {
         Ok(node)
     }
 
@@ -123,8 +123,8 @@ impl Foldable for VarDecl {
     }
 }
 
-impl Foldable for InitialValueAssignment {
-    type Mapped = InitialValueAssignment;
+impl Foldable for InitialValueAssignmentKind {
+    type Mapped = InitialValueAssignmentKind;
     fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
         folder.fold_type_initializer(self)
     }
