@@ -51,8 +51,8 @@ impl Visitor<SemanticDiagnostic> for RuleEnumerationValuesUnique {
                             return Err(SemanticDiagnostic::error(
                                 "S0004",
                                 format!(
-                                    "Enumeration declaration {} has duplicated value {}",
-                                    node.name, first
+                                    "Enumeration type declaration {} has duplicated value {}",
+                                    node.type_name, first
                                 ),
                             )
                             .maybe_with_label(first.position(), "First instance")
