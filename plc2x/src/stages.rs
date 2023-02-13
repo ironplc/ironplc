@@ -94,15 +94,15 @@ mod tests {
             FunctionBlockDeclaration {
                 name: Id::from("LOGGER"),
                 variables: vec![
-                    VarDecl::simple_input("TRIG", "BOOL", SourceLoc::new(0)),
+                    VarDecl::simple("TRIG", "BOOL").with_type(VariableType::Input),
                     VarDecl::string(
                         "MSG",
                         VariableType::Input,
                         DeclarationQualifier::Unspecified,
                         SourceLoc::new(0),
                     ),
-                    VarDecl::enumerated_input("LEVEL", "LOGLEVEL", "INFO", SourceLoc::new(0)),
-                    VarDecl::simple_var("TRIG0", "BOOL", SourceLoc::new(0)),
+                    VarDecl::enumerated("LEVEL", "LOGLEVEL", "INFO").with_type(VariableType::Input),
+                    VarDecl::simple("TRIG0", "BOOL"),
                 ],
                 body: FunctionBlockBody::stmts(vec![
                     StmtKind::if_then(
@@ -135,9 +135,9 @@ mod tests {
             FunctionBlockDeclaration {
                 name: Id::from("CounterSFC"),
                 variables: vec![
-                    VarDecl::simple_input("Reset", "BOOL", SourceLoc::new(0)),
-                    VarDecl::simple_output("OUT", "INT", SourceLoc::new(0)),
-                    VarDecl::simple_var("Cnt", "INT", SourceLoc::new(0)),
+                    VarDecl::simple("Reset", "BOOL").with_type(VariableType::Input),
+                    VarDecl::simple("OUT", "INT").with_type(VariableType::Output),
+                    VarDecl::simple("Cnt", "INT"),
                     VarDecl {
                         name: Id::from("ResetCounterValue"),
                         var_type: VariableType::External,
@@ -236,9 +236,9 @@ mod tests {
             FunctionBlockDeclaration {
                 name: Id::from("CounterFBD"),
                 variables: vec![
-                    VarDecl::simple_input("Reset", "BOOL", SourceLoc::new(44)),
-                    VarDecl::simple_output("OUT", "INT", SourceLoc::new(88)),
-                    VarDecl::simple_var("Cnt", "INT", SourceLoc::new(122)),
+                    VarDecl::simple("Reset", "BOOL").with_type(VariableType::Input),
+                    VarDecl::simple("OUT", "INT").with_type(VariableType::Output),
+                    VarDecl::simple("Cnt", "INT"),
                     VarDecl {
                         name: Id::from("ResetCounterValue"),
                         var_type: VariableType::External,
@@ -249,8 +249,8 @@ mod tests {
                         }),
                         position: SourceLoc::new(174),
                     },
-                    VarDecl::simple_var("_TMP_ADD4_OUT", "INT", SourceLoc::new(0)),
-                    VarDecl::simple_var("_TMP_SEL7_OUT", "INT", SourceLoc::new(0)),
+                    VarDecl::simple("_TMP_ADD4_OUT", "INT"),
+                    VarDecl::simple("_TMP_SEL7_OUT", "INT"),
                 ],
                 body: FunctionBlockBody::stmts(vec![
                     StmtKind::simple_assignment("Cnt", vec!["_TMP_SEL7_OUT"]),
@@ -268,11 +268,11 @@ mod tests {
             name: Id::from("AverageVal"),
             return_type: Id::from("REAL"),
             variables: vec![
-                VarDecl::simple_input("Cnt1", "INT", SourceLoc::new(0)),
-                VarDecl::simple_input("Cnt2", "INT", SourceLoc::new(0)),
-                VarDecl::simple_input("Cnt3", "INT", SourceLoc::new(0)),
-                VarDecl::simple_input("Cnt4", "INT", SourceLoc::new(0)),
-                VarDecl::simple_input("Cnt5", "INT", SourceLoc::new(0)),
+                VarDecl::simple("Cnt1", "INT").with_type(VariableType::Input),
+                VarDecl::simple("Cnt2", "INT").with_type(VariableType::Input),
+                VarDecl::simple("Cnt3", "INT").with_type(VariableType::Input),
+                VarDecl::simple("Cnt4", "INT").with_type(VariableType::Input),
+                VarDecl::simple("Cnt5", "INT").with_type(VariableType::Input),
                 VarDecl {
                     name: Id::from("InputsNumber"),
                     var_type: VariableType::Var,
@@ -332,19 +332,19 @@ mod tests {
         let expected = new_library(LibraryElement::ProgramDeclaration(ProgramDeclaration {
             type_name: Id::from("plc_prg"),
             variables: vec![
-                VarDecl::simple_input("Reset", "BOOL", SourceLoc::new(0)),
-                VarDecl::simple_output("Cnt1", "INT", SourceLoc::new(0)),
-                VarDecl::simple_output("Cnt2", "INT", SourceLoc::new(0)),
-                VarDecl::simple_output("Cnt3", "INT", SourceLoc::new(0)),
-                VarDecl::simple_output("Cnt4", "INT", SourceLoc::new(0)),
-                VarDecl::simple_output("Cnt5", "INT", SourceLoc::new(0)),
-                VarDecl::late_bound_var("CounterST0", "CounterST", SourceLoc::new(0)),
-                VarDecl::late_bound_var("CounterFBD0", "CounterFBD", SourceLoc::new(0)),
-                VarDecl::late_bound_var("CounterSFC0", "CounterSFC", SourceLoc::new(0)),
-                VarDecl::late_bound_var("CounterIL0", "CounterIL", SourceLoc::new(0)),
-                VarDecl::late_bound_var("CounterLD0", "CounterLD", SourceLoc::new(0)),
-                VarDecl::simple_var("AVCnt", "REAL", SourceLoc::new(0)),
-                VarDecl::simple_var("_TMP_AverageVal17_OUT", "REAL", SourceLoc::new(0)),
+                VarDecl::simple("Reset", "BOOL").with_type(VariableType::Input),
+                VarDecl::simple("Cnt1", "INT").with_type(VariableType::Output),
+                VarDecl::simple("Cnt2", "INT").with_type(VariableType::Output),
+                VarDecl::simple("Cnt3", "INT").with_type(VariableType::Output),
+                VarDecl::simple("Cnt4", "INT").with_type(VariableType::Output),
+                VarDecl::simple("Cnt5", "INT").with_type(VariableType::Output),
+                VarDecl::late_bound("CounterST0", "CounterST"),
+                VarDecl::late_bound("CounterFBD0", "CounterFBD"),
+                VarDecl::late_bound("CounterSFC0", "CounterSFC"),
+                VarDecl::late_bound("CounterIL0", "CounterIL"),
+                VarDecl::late_bound("CounterLD0", "CounterLD"),
+                VarDecl::simple("AVCnt", "REAL"),
+                VarDecl::simple("_TMP_AverageVal17_OUT", "REAL"),
             ],
             body: FunctionBlockBody::stmts(vec![
                 StmtKind::fb_call_mapped("CounterST0", vec![("Reset", "Reset")]),

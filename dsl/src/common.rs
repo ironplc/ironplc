@@ -580,33 +580,14 @@ pub struct VarDecl {
 
 impl VarDecl {
     /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple_input(name: &str, type_name: &str, loc: SourceLoc) -> Self {
-        Self::simple(name, type_name, VariableType::Input, loc)
-    }
-
-    /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple_output(name: &str, type_name: &str, loc: SourceLoc) -> Self {
-        Self::simple(name, type_name, VariableType::Output, loc)
-    }
-
-    /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple_var(name: &str, type_name: &str, loc: SourceLoc) -> Self {
-        Self::simple(name, type_name, VariableType::Var, loc)
-    }
-
-    /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple_external(name: &str, type_name: &str, loc: SourceLoc) -> Self {
-        Self::simple(name, type_name, VariableType::External, loc)
-    }
-
-    /// Creates a variable declaration for simple type and no initialization.
-    pub fn simple(name: &str, type_name: &str, var_type: VariableType, loc: SourceLoc) -> Self {
+    /// The declaration has type `VAR` and no qualifier.
+    pub fn simple(name: &str, type_name: &str) -> Self {
         Self {
             name: Id::from(name),
-            var_type,
+            var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::simple_uninitialized(type_name),
-            position: loc,
+            position: SourceLoc::new(0),
         }
     }
 
@@ -630,15 +611,11 @@ impl VarDecl {
     }
 
     /// Creates a variable declaration for enumeration having an initial value.
-    pub fn enumerated_input(
-        name: &str,
-        type_name: &str,
-        initial_value: &str,
-        loc: SourceLoc,
-    ) -> Self {
+    /// The declaration has type `VAR` and no qualifier.
+    pub fn enumerated(name: &str, type_name: &str, initial_value: &str) -> Self {
         VarDecl {
             name: Id::from(name),
-            var_type: VariableType::Input,
+            var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::EnumeratedType(
                 EnumeratedInitialValueAssignment {
@@ -646,16 +623,17 @@ impl VarDecl {
                     initial_value: Some(EnumeratedValue {
                         type_name: None,
                         value: Id::from(initial_value),
-                        position: Some(loc.clone()),
+                        position: Some(SourceLoc::new(0)),
                     }),
                 },
             ),
-            position: loc,
+            position: SourceLoc::new(0),
         }
     }
 
     /// Creates a variable declaration for a function block.
-    pub fn function_block_var(name: &str, type_name: &str, loc: SourceLoc) -> Self {
+    /// The declaration has type `VAR` and no qualifier.
+    pub fn function_block(name: &str, type_name: &str) -> Self {
         VarDecl {
             name: Id::from(name),
             var_type: VariableType::Var,
@@ -665,7 +643,7 @@ impl VarDecl {
                     type_name: Id::from(type_name),
                 },
             ),
-            position: loc,
+            position: SourceLoc::new(0),
         }
     }
 
@@ -686,33 +664,30 @@ impl VarDecl {
     }
 
     /// Creates a variable declaration that is ambiguous on the type.
+    /// The declaration has type `VAR` and no qualifier.
     ///
     /// The language has some ambiguity for types. The late bound represents
     /// a placeholder that is later resolved once all types are known.
-    pub fn late_bound_input(name: &str, type_name: &str, loc: SourceLoc) -> Self {
-        Self::late_bound(name, type_name, VariableType::Input, loc)
-    }
-
-    /// Creates a variable declaration that is ambiguous on the type.
-    ///
-    /// The language has some ambiguity for types. The late bound represents
-    /// a placeholder that is later resolved once all types are known.
-    pub fn late_bound_var(name: &str, type_name: &str, loc: SourceLoc) -> Self {
-        Self::late_bound(name, type_name, VariableType::Var, loc)
-    }
-
-    /// Creates a variable declaration that is ambiguous on the type.
-    ///
-    /// The language has some ambiguity for types. The late bound represents
-    /// a placeholder that is later resolved once all types are known.
-    pub fn late_bound(name: &str, type_name: &str, var_type: VariableType, loc: SourceLoc) -> Self {
+    pub fn late_bound(name: &str, type_name: &str) -> Self {
         VarDecl {
             name: Id::from(name),
-            var_type,
+            var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::LateResolvedType(Id::from(type_name)),
-            position: loc,
+            position: SourceLoc::new(0),
         }
+    }
+
+    /// Assigns the type of the variable declaration.
+    pub fn with_type(mut self, var_type: VariableType) -> Self {
+        self.var_type = var_type;
+        self
+    }
+
+    /// Assigns the qualifier of the variable declaration.
+    pub fn with_qualifier(mut self, qualifier: DeclarationQualifier) -> Self {
+        self.qualifier = qualifier;
+        self
     }
 }
 
