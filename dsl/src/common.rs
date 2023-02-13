@@ -648,7 +648,7 @@ impl VarDecl {
     }
 
     /// Creates a variable declaration for a structure.
-    pub fn structure_var(name: &str, type_name: &str, loc: SourceLoc) -> Self {
+    pub fn structure(name: &str, type_name: &str) -> Self {
         VarDecl {
             name: Id::from(name),
             var_type: VariableType::Var,
@@ -659,7 +659,7 @@ impl VarDecl {
                     elements_init: vec![],
                 },
             ),
-            position: loc,
+            position: SourceLoc::new(0),
         }
     }
 

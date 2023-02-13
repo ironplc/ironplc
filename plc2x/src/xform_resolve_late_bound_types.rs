@@ -217,11 +217,7 @@ mod tests {
         let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("LOGGER"),
-                variables: vec![VarDecl::late_bound_var(
-                    "var_name",
-                    "var_type",
-                    SourceLoc::new(0),
-                )],
+                variables: vec![VarDecl::late_bound("var_name", "var_type")],
                 body: FunctionBlockBody::stmts(vec![]),
             },
         ))
@@ -236,11 +232,7 @@ mod tests {
         let expected = new_library::<SemanticDiagnostic>(LibraryElement::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("LOGGER"),
-                variables: vec![VarDecl::structure_var(
-                    "var_name",
-                    "var_type",
-                    SourceLoc::new(0),
-                )],
+                variables: vec![VarDecl::structure("var_name", "var_type")],
                 body: FunctionBlockBody::stmts(vec![]),
             },
         ));
