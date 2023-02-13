@@ -472,7 +472,7 @@ pub struct StructureElementInit {
     pub init: StructInitialValueAssignmentKind,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum StringKind {
     /// String of single-byte characters
     String,
@@ -606,6 +606,25 @@ impl VarDecl {
             var_type,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::simple_uninitialized(type_name),
+            position: loc,
+        }
+    }
+
+    pub fn string(
+        name: &str,
+        var_type: VariableType,
+        qualifier: DeclarationQualifier,
+        loc: SourceLoc,
+    ) -> Self {
+        Self {
+            name: Id::from(name),
+            var_type,
+            qualifier,
+            initializer: InitialValueAssignmentKind::String(StringInitializer {
+                length: None,
+                width: StringKind::String,
+                initial_value: None,
+            }),
             position: loc,
         }
     }
@@ -789,6 +808,7 @@ pub enum InitialValueAssignmentKind {
     /// enumeration with an Option enumeration.
     None,
     Simple(SimpleInitializer),
+    String(StringInitializer),
     EnumeratedValues(EnumeratedValuesInitializer),
     EnumeratedType(EnumeratedInitialValueAssignment),
     FunctionBlock(FunctionBlockInitialValueAssignment),
@@ -878,6 +898,20 @@ pub struct EnumeratedInitialValueAssignment {
 pub struct SimpleInitializer {
     pub type_name: Id,
     pub initial_value: Option<Constant>,
+}
+
+/// Provides the initialization of a string variable declaration.
+///
+/// See sections 2.4.3.1 and 2.4.3.2.
+#[derive(PartialEq, Clone, Debug)]
+pub struct StringInitializer {
+    /// Maximum length of the string.
+    pub length: Option<Integer>,
+    /// The size of a single 'character'
+    pub width: StringKind,
+    /// Default value of the string. If not specified, then
+    /// the default value is the empty string.
+    pub initial_value: Option<Vec<char>>,
 }
 
 #[derive(PartialEq, Clone, Debug)]

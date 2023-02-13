@@ -22,6 +22,15 @@ PROGRAM fb
 
         UNINIT: ARRAY [0..9] OF INT;
         INIT : ARRAY [1..12] OF SINT := [2,7,18];
+        MULTI_DIM_ARRAY : ARRAY[1..2,3..4,5..6] OF SINT;
+        PARENTHESIS_ARRAY : ARRAY[0..3] OF SINT := [3(2)];
+
+        VAL_STR: STRING[2];
+        VAL_STR_INIT: STRING := 'abc';
+        VAL_STR_SIZED_INIT: STRING[3] := 'abc';
+        VAL_WSTR: WSTRING[9];
+        VAL_WSTR_INIT: WSTRING := "def";
+        VAL_WSTR_SIZED_INIT: WSTRING[3] := "def";
     END_VAR
 
 END_PROGRAM

@@ -204,6 +204,7 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
         match &node.initializer {
             InitialValueAssignmentKind::None => todo!(),
             InitialValueAssignmentKind::Simple(_) => {}
+            InitialValueAssignmentKind::String(_) => {}
             InitialValueAssignmentKind::EnumeratedValues(_) => {}
             InitialValueAssignmentKind::EnumeratedType(_) => {}
             InitialValueAssignmentKind::FunctionBlock(fbi) => {
