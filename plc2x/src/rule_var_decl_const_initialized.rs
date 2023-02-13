@@ -68,6 +68,19 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
                         .with_location(&node.position));
                     }
                 },
+                InitialValueAssignmentKind::String(str) => match str.initial_value {
+                    Some(_) => {}
+                    None => {
+                        return Err(SemanticDiagnostic::error(
+                            "S0001",
+                            format!(
+                                "Variable is constant but does not define value {} ",
+                                node.name
+                            ),
+                        )
+                        .with_location(&node.position));
+                    }
+                },
                 InitialValueAssignmentKind::EnumeratedValues(spec) => match spec.initial_value {
                     Some(_) => {}
                     None => {

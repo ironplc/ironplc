@@ -206,6 +206,11 @@ pub trait Visitor<E> {
         Ok(Self::Value::default())
     }
 
+    fn visit_string_initializer(&mut self, init: &StringInitializer) -> Result<Self::Value, E> {
+        // TODO
+        Ok(Self::Value::default())
+    }
+
     fn visit_enumerated_type_initializer(
         &mut self,
         init: &EnumeratedInitialValueAssignment,
@@ -482,6 +487,7 @@ impl Acceptor for InitialValueAssignmentKind {
         match self {
             InitialValueAssignmentKind::None => Ok(V::Value::default()),
             InitialValueAssignmentKind::Simple(si) => visitor.visit_simple_initializer(si),
+            InitialValueAssignmentKind::String(str) => visitor.visit_string_initializer(str),
             InitialValueAssignmentKind::EnumeratedValues(ev) => {
                 visitor.visit_enumerated_values_initializer(ev)
             }

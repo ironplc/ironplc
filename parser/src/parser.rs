@@ -277,15 +277,19 @@ parser! {
     rule octal_integer() -> Integer = start:position!() octal_integer_prefix() n:$(['0'..='7']("_"? ['0'..='7'])*) { Integer::octal(n, SourceLoc::new(start)) }
     rule hex_integer_prefix() -> () = "16#" ()
     rule hex_integer() -> Integer = start:position!() hex_integer_prefix() n:$(['0'..='9' | 'A'..='F']("_"? ['0'..='9' | 'A'..='F'])*) { Integer::hex(n, SourceLoc::new(start)) }
-    rule boolean_literal() -> Boolean =  "BOOL#1" { Boolean::True } / "BOOL#0" {Boolean::False } / "TRUE" { Boolean::True } / "FALSE" { Boolean::False }
-
+    rule boolean_literal() -> Boolean =
+      // 1 and 0 can be a Boolean, but only with the prefix is it definitely a Boolean
+      "BOOL#1" { Boolean::True }
+      / "BOOL#0" {Boolean::False }
+      / ("BOOL#")? "TRUE" { Boolean::True }
+      / ("BOOL#")? "FALSE" { Boolean::False }
     // B.1.2.2 Character strings
     rule character_string() -> Vec<char> = s:single_byte_character_string() / d:double_byte_character_string()
     rule single_byte_character_string() -> Vec<char>  = "'" s:single_byte_character_representation()+ "'" { s }
     rule double_byte_character_string() -> Vec<char> = "\"" s:double_byte_character_representation()+ "\"" { s }
     // TODO escape characters
-    rule single_byte_character_representation() -> char = c:common_character_representation() { c }
-    rule double_byte_character_representation() -> char = c:common_character_representation() { c }
+    rule single_byte_character_representation() -> char = common_character_representation()
+    rule double_byte_character_representation() -> char = common_character_representation()
     // TODO other printable characters
     rule common_character_representation() -> char = c:['a'..='z' | 'A'..='Z'] { c }
 
@@ -456,7 +460,7 @@ parser! {
     //  ArraySpecification::Type(type_name)
     //} /
     rule array_initialization() -> Vec<ArrayInitialElementKind> = "[" _ init:array_initial_elements() ** (_ "," _ ) _ "]" { init }
-    rule array_initial_elements() -> ArrayInitialElementKind = array_initial_element() / size:integer() _ "(" ai:array_initial_element()? ")" { ArrayInitialElementKind::repeated(size, ai) }
+    rule array_initial_elements() -> ArrayInitialElementKind = size:integer() _ "(" ai:array_initial_element()? ")" { ArrayInitialElementKind::repeated(size, ai) } / array_initial_element()
     // TODO | structure_initialization | array_initialization
     rule array_initial_element() -> ArrayInitialElementKind = c:constant() { ArrayInitialElementKind::Constant(c) } / e:enumerated_value() { ArrayInitialElementKind::EnumValue(e) }
     rule structure_type_declaration() -> DataTypeDeclarationKind = type_name:structure_type_name() _ ":" _ decl:structure_declaration() {
@@ -653,7 +657,7 @@ parser! {
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    rule var_init_decl() -> Vec<UntypedVarDecl> = array_var_init_decl() / var1_init_decl()
+    rule var_init_decl() -> Vec<UntypedVarDecl> = string_var_declaration() / array_var_init_decl() / var1_init_decl()
 
     // TODO add in subrange_spec_init(), enumerated_spec_init()
 
@@ -768,7 +772,39 @@ parser! {
     // TODO
     pub rule location() -> AddressAssignment = "AT" _ v:direct_variable() { v }
     rule global_var_list() -> Vec<Id> = names:global_var_name() ++ (_ "," _) { names }
-    //rule string_var_declaration() -> stri
+    rule string_var_declaration() -> Vec<UntypedVarDecl> = single_byte_string_var_declaration() / double_byte_string_var_declaration()
+    rule single_byte_string_var_declaration() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ spec:single_byte_string_spec() end:position!() {
+      names.into_iter().map(|name| {
+        UntypedVarDecl {
+          name,
+          initializer: InitialValueAssignmentKind::String(spec.clone()),
+          position: SourceLoc::range(start, end)
+        }
+      }).collect()
+    }
+    rule single_byte_string_spec() -> StringInitializer = "STRING" _ length:("[" _ i:integer() _ "]" {i})? _ initial_value:(":=" _ v:single_byte_character_string() {v})? {
+      StringInitializer {
+        length,
+        width: StringKind::String,
+        initial_value,
+      }
+    }
+    rule double_byte_string_var_declaration() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ spec:double_byte_string_spec() end:position!() {
+      names.into_iter().map(|name| {
+        UntypedVarDecl {
+          name,
+          initializer: InitialValueAssignmentKind::String(spec.clone()),
+          position: SourceLoc::range(start, end)
+        }
+      }).collect()
+    }
+    rule double_byte_string_spec() -> StringInitializer = "WSTRING" _ length:("[" _ i:integer() _ "]" {i})? _ initial_value:(":=" _ v:double_byte_character_string() {v})? {
+      StringInitializer {
+        length,
+        width: StringKind::WString,
+        initial_value,
+      }
+    }
 
     // B.1.5.1 Functions
     rule function_name() -> Id = standard_function_name() / derived_function_name()
@@ -1096,7 +1132,11 @@ mod test {
                 name: Id::from("MSG"),
                 var_type: VariableType::Input,
                 qualifier: DeclarationQualifier::Unspecified,
-                initializer: InitialValueAssignmentKind::simple_uninitialized("STRING"),
+                initializer: InitialValueAssignmentKind::String(StringInitializer {
+                    length: None,
+                    width: StringKind::String,
+                    initial_value: None,
+                }),
                 position: SourceLoc::new(39),
             },
         ];
@@ -1143,7 +1183,11 @@ END_VAR";
                 name: Id::from("MSG"),
                 var_type: VariableType::Output,
                 qualifier: DeclarationQualifier::Unspecified,
-                initializer: InitialValueAssignmentKind::simple_uninitialized("STRING"),
+                initializer: InitialValueAssignmentKind::String(StringInitializer {
+                    length: None,
+                    width: StringKind::String,
+                    initial_value: None,
+                }),
                 position: SourceLoc::new(40),
             },
         ];
