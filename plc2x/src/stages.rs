@@ -95,7 +95,12 @@ mod tests {
                 name: Id::from("LOGGER"),
                 variables: vec![
                     VarDecl::simple_input("TRIG", "BOOL", SourceLoc::new(0)),
-                    VarDecl::simple_input("MSG", "STRING", SourceLoc::new(0)),
+                    VarDecl::string(
+                        "MSG",
+                        VariableType::Input,
+                        DeclarationQualifier::Unspecified,
+                        SourceLoc::new(0),
+                    ),
                     VarDecl::enumerated_input("LEVEL", "LOGLEVEL", "INFO", SourceLoc::new(0)),
                     VarDecl::simple_var("TRIG0", "BOOL", SourceLoc::new(0)),
                 ],
