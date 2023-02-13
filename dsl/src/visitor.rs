@@ -633,7 +633,7 @@ mod test {
         let library = Library {
             elements: vec![LibraryElement::ProgramDeclaration(ProgramDeclaration {
                 type_name: Id::from("plc_prg"),
-                variables: vec![VarDecl::simple_input("Reset", "BOOL", SourceLoc::new(0))],
+                variables: vec![VarDecl::simple("Reset", "BOOL").with_type(VariableType::Input)],
                 body: FunctionBlockBody::stmts(vec![StmtKind::fb_assign(
                     "AverageVal",
                     vec!["Cnt1", "Cnt2"],
