@@ -402,9 +402,9 @@ parser! {
     rule subrange_specification() -> (ElementaryTypeName, Subrange) = itn:integer_type_name() _ "(" _ sr:subrange() _ ")" { (itn, sr) }
     rule subrange() -> Subrange = start:signed_integer() ".." end:signed_integer() { Subrange{start, end} }
 
-    rule enumerated_type_declaration() -> EnumerationDeclaration = name:enumerated_type_name() _ ":" _ spec_init:enumerated_spec_init() {
+    rule enumerated_type_declaration() -> EnumerationDeclaration = type_name:enumerated_type_name() _ ":" _ spec_init:enumerated_spec_init() {
       EnumerationDeclaration {
-        name,
+        type_name,
         spec_init,
       }
     }
@@ -477,10 +477,19 @@ parser! {
     }
     // structure_specification - covered in structure_type_declaration because that avoids
     // an intermediate object that doesn't know the type name
-    rule initialized_structure() -> StructureInitializationDeclaration = type_name:structure_type_name() _ ":=" _ init:(structure_initialization())? {
+    rule initialized_structure() -> StructureInitializationDeclaration = type_name:structure_type_name() _ init:(":=" _ i:structure_initialization() {i})? {
       StructureInitializationDeclaration {
         type_name,
         elements_init: init.unwrap_or_default(),
+      }
+    }
+    /// Same as initialized_structure but requires an initializer. Without the
+    /// initializer, this is ambiguous with simple and enumeration initialization
+    /// declarations.
+    rule initialized_structure__without_ambiguous() -> StructureInitializationDeclaration = type_name:structure_type_name() _ ":=" _ init:structure_initialization() {
+      StructureInitializationDeclaration {
+        type_name,
+        elements_init: init,
       }
     }
     rule structure_declaration() -> StructureDeclaration = "STRUCT" _ elements:semisep_oneplus(<structure_element_declaration()>) _ "END_STRUCT" {
@@ -520,7 +529,7 @@ parser! {
       }
     }
     rule structure_element_name() ->Id = identifier()
-    rule structure_initialization() -> Vec<StructureElementInit> = "(" _ elems:commasep_oneplus(<structure_element_initialization()>)_ ")" { elems }
+    rule structure_initialization() -> Vec<StructureElementInit> = "(" _ elems:structure_element_initialization() ++ (_ "," _) _ ")" { elems }
     rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ ":=" _ init:(c:constant() { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value() { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)}) {
       StructureElementInit {
         name,
@@ -536,7 +545,6 @@ parser! {
       })
     }
 
-
     // Union of simple_spec_init and enumerated_spec_init rules. In some cases, these both
     // reduce to identifier [':=' identifier] and are inherently ambiguous. To work around
     // this, combine this to check for the unambiguous cases first, later reducing to
@@ -544,7 +552,7 @@ parser! {
     //
     // There is still value in trying to disambiguate early because it allows us to use
     // the parser definitions.
-    rule simple_or_enumerated_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ ":=" _ c:constant() {
+    rule simple_or_enumerated_or_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ ":=" _ c:constant() {
       // A simple_specification with a constant is unambiguous because the constant is
       // not a valid identifier.
       InitialValueAssignmentKind::Simple(SimpleInitializer {
@@ -586,7 +594,7 @@ parser! {
       })
     }/ i:identifier() {
       // What remains is ambiguous and the devolves to a single identifier because the prior
-      // cases have captures all cases with a value.
+      // cases have captures all cases with a value. This can be simple, enumerated or struct
       InitialValueAssignmentKind::LateResolvedType(i)
     }
     rule string_type_name() -> Id = identifier()
@@ -657,11 +665,11 @@ parser! {
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    rule var_init_decl() -> Vec<UntypedVarDecl> = string_var_declaration() / array_var_init_decl() / var1_init_decl()
+    rule var_init_decl() -> Vec<UntypedVarDecl> = structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() /  var1_init_decl__with_ambiguous_struct()
 
     // TODO add in subrange_spec_init(), enumerated_spec_init()
 
-    rule var1_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init:(a:simple_or_enumerated_spec_init()) {
+    rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init:(a:simple_or_enumerated_or_ambiguous_struct_spec_init()) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
         UntypedVarDecl {
@@ -673,13 +681,33 @@ parser! {
     }
 
     rule var1_list() -> Vec<Id> = names:variable_name() ++ (_ "," _) { names }
-    rule array_var_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ array_spec_init() {
+    rule structured_var_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init_struct:initialized_structure() end:position!() {
+      names.into_iter().map(|name| {
+        // TODO
+        UntypedVarDecl {
+          name,
+          initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
+          position: SourceLoc::range(start, end)
+        }
+      }).collect()
+    }
+    rule structured_var_init_decl__without_ambiguous() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init_struct:initialized_structure__without_ambiguous() end:position!() {
+      names.into_iter().map(|name| {
+        // TODO
+        UntypedVarDecl {
+          name,
+          initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
+          position: SourceLoc::range(start, end)
+        }
+      }).collect()
+    }
+    rule array_var_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ array_spec_init() end:position!() {
       names.into_iter().map(|name| {
         // TODO
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::None,
-          position: SourceLoc::new(start)
+          position: SourceLoc::range(start, end)
         }
       }).collect()
     }
@@ -827,8 +855,8 @@ parser! {
     }
     // TODO a bunch are missing here
     rule function_body() -> Vec<StmtKind> = statement_list()
-    // TODO return types
-    rule var2_init_decl() -> Vec<UntypedVarDecl> = var1_init_decl()
+    // TODO add many types here
+    rule var2_init_decl() -> Vec<UntypedVarDecl> = var1_init_decl__with_ambiguous_struct()
 
     // B.1.5.2 Function blocks
     // IEC 61131 defines separate standard and derived function block names,

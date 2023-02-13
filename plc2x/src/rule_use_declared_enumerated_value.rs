@@ -45,7 +45,7 @@ pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
         if let LibraryElement::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(enum_dec)) =
             elem
         {
-            enum_defs.insert(enum_dec.name.clone(), enum_dec);
+            enum_defs.insert(enum_dec.type_name.clone(), enum_dec);
         }
     }
 

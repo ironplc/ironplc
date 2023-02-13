@@ -33,4 +33,10 @@ PROGRAM fb
         VAL_WSTR_SIZED_INIT: WSTRING[3] := "def";
     END_VAR
 
+    VAR
+        NAME : ONE_STRUCT_ELEMENT := (ELEM := VAL);
+        NAME2 : TWO_STRUCT_ELEMENTS := (ELEM1 := VAL1, ELEM2 := VAL2);
+        (* TODO Nested structures *)
+    END_VAR
+
 END_PROGRAM

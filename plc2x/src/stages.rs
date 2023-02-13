@@ -76,7 +76,7 @@ mod tests {
         let src = read_resource("first_steps_data_type_decl.st");
         let expected = new_library(LibraryElement::DataTypeDeclaration(
             DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
-                name: Id::from("LOGLEVEL"),
+                type_name: Id::from("LOGLEVEL"),
                 spec_init: EnumeratedSpecificationInit::values_and_default(
                     vec!["CRITICAL", "WARNING", "INFO", "DEBUG"],
                     "INFO",

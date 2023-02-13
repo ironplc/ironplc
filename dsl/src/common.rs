@@ -303,7 +303,7 @@ pub enum DataTypeDeclarationKind {
 /// See section 2.3.3.1.
 #[derive(Debug, PartialEq)]
 pub struct EnumerationDeclaration {
-    pub name: Id,
+    pub type_name: Id,
     // TODO need to understand when the context name matters in the definition
     pub spec_init: EnumeratedSpecificationInit,
 }
@@ -663,6 +663,22 @@ impl VarDecl {
             initializer: InitialValueAssignmentKind::FunctionBlock(
                 FunctionBlockInitialValueAssignment {
                     type_name: Id::from(type_name),
+                },
+            ),
+            position: loc,
+        }
+    }
+
+    /// Creates a variable declaration for a structure.
+    pub fn structure_var(name: &str, type_name: &str, loc: SourceLoc) -> Self {
+        VarDecl {
+            name: Id::from(name),
+            var_type: VariableType::Var,
+            qualifier: DeclarationQualifier::Unspecified,
+            initializer: InitialValueAssignmentKind::Structure(
+                StructureInitializationDeclaration {
+                    type_name: Id::from(type_name),
+                    elements_init: vec![],
                 },
             ),
             position: loc,
