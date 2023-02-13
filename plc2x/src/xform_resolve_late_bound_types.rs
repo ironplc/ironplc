@@ -3,6 +3,7 @@
 //! The IEC 61131-3 syntax has some ambiguous types that are initially
 //! parsed into a placeholder. This transform replaces the placeholders
 //! with well-known types.
+use ironplc_dsl::core::SourcePosition;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
 use ironplc_dsl::{common::*, core::Id};
@@ -63,31 +64,47 @@ pub fn apply(lib: Library) -> Result<Library, SemanticDiagnostic> {
 struct GlobalTypeDefinitionVisitor<'a> {
     types: &'a mut HashMap<Id, TypeDefinitionKind>,
 }
+impl GlobalTypeDefinitionVisitor<'_> {
+    fn insert(&mut self, to_add: &Id, kind: TypeDefinitionKind) -> Result<(), SemanticDiagnostic> {
+        if let Some((key, _)) = self.types.get_key_value(to_add) {
+            return Err(SemanticDiagnostic::error(
+                "S0001",
+                format!("Duplicated definitions for name {}", to_add),
+            )
+            .maybe_with_label(key.position(), "First use")
+            .maybe_with_label(to_add.position(), "Second name"));
+        }
+
+        self.types.insert(to_add.clone(), kind);
+
+        Ok(())
+    }
+}
 impl<'a> Visitor<SemanticDiagnostic> for GlobalTypeDefinitionVisitor<'a> {
     type Value = ();
     fn visit_enum_declaration(
         &mut self,
-        enum_decl: &EnumerationDeclaration,
+        node: &EnumerationDeclaration,
     ) -> Result<(), SemanticDiagnostic> {
-        self.types
-            .insert(enum_decl.name.clone(), TypeDefinitionKind::Enumeration);
-        Ok(())
+        self.insert(&node.type_name, TypeDefinitionKind::Enumeration)
     }
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
     ) -> Result<(), SemanticDiagnostic> {
-        self.types
-            .insert(node.name.clone(), TypeDefinitionKind::FunctionBlock);
-        Ok(())
+        self.insert(&node.name, TypeDefinitionKind::FunctionBlock)
     }
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
     ) -> Result<(), SemanticDiagnostic> {
-        self.types
-            .insert(node.name.clone(), TypeDefinitionKind::FunctionBlock);
-        Ok(())
+        self.insert(&node.name, TypeDefinitionKind::FunctionBlock)
+    }
+    fn visit_structure_declaration(
+        &mut self,
+        node: &StructureDeclaration,
+    ) -> Result<Self::Value, SemanticDiagnostic> {
+        self.insert(&node.type_name, TypeDefinitionKind::Structure)
     }
 }
 
@@ -139,8 +156,12 @@ impl Fold<SemanticDiagnostic> for TypeResolver {
                                 panic!()
                             }
                             TypeDefinitionKind::Structure => {
-                                // TODO this is wrong and should be an error
-                                panic!()
+                                Ok(InitialValueAssignmentKind::Structure(
+                                    StructureInitializationDeclaration {
+                                        type_name: name,
+                                        elements_init: vec![],
+                                    },
+                                ))
                             }
                         }
                     }
@@ -189,6 +210,42 @@ mod tests {
             FunctionBlockDeclaration {
                 name: Id::from("LOGGER"),
                 variables: vec![VarDecl::function_block_var(
+                    "var_name",
+                    "var_type",
+                    SourceLoc::new(0),
+                )],
+                body: FunctionBlockBody::stmts(vec![]),
+            },
+        ));
+
+        assert_eq!(result, expected)
+    }
+
+    #[test]
+    fn fold_when_has_structure_type_then_resolves_type() {
+        let input = new_library::<String>(LibraryElement::FunctionBlockDeclaration(
+            FunctionBlockDeclaration {
+                name: Id::from("LOGGER"),
+                variables: vec![VarDecl::late_bound_var(
+                    "var_name",
+                    "var_type",
+                    SourceLoc::new(0),
+                )],
+                body: FunctionBlockBody::stmts(vec![]),
+            },
+        ))
+        .unwrap();
+
+        let mut type_map = HashMap::new();
+        type_map.insert(Id::from("var_type"), TypeDefinitionKind::Structure);
+        let mut type_resolver = TypeResolver { types: type_map };
+
+        let result = type_resolver.fold(input);
+
+        let expected = new_library::<SemanticDiagnostic>(LibraryElement::FunctionBlockDeclaration(
+            FunctionBlockDeclaration {
+                name: Id::from("LOGGER"),
+                variables: vec![VarDecl::structure_var(
                     "var_name",
                     "var_type",
                     SourceLoc::new(0),
