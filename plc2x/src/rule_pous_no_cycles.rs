@@ -193,4 +193,27 @@ mod tests {
         let result = apply(&library);
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn apply_when_function_invokes_function_block_then_error() {
+        let program = "
+        FUNCTION_BLOCK Callee
+            VAR
+               IN1: BOOL;
+            END_VAR
+
+        END_FUNCTION_BLOCK
+        
+        FUNCTION Caller : BOOL
+            VAR
+                CalleeInstance : Callee;
+            END_VAR
+
+            Caller := FALSE;
+        END_FUNCTION";
+
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+        assert!(result.is_ok());
+    }
 }

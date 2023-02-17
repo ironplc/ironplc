@@ -204,10 +204,17 @@ pub struct NamedInput {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct Output {
+    pub not: bool,
+    pub src: Id,
+    pub tgt: Variable,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum ParamAssignment {
     PositionalInput(PositionalInput),
     NamedInput(NamedInput),
-    Output { not: bool, src: Id, tgt: Variable },
+    Output(Output),
 }
 
 impl ParamAssignment {

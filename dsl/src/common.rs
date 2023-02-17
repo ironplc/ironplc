@@ -566,6 +566,14 @@ pub struct Subrange {
     pub end: SignedInteger,
 }
 
+/// Container for structures that have variables.
+///
+/// Several different structures own variables and implementing this trait
+/// allows a common handling of those items.
+pub trait HasVariables {
+    fn variables(&self) -> &Vec<VarDecl>;
+}
+
 /// Declaration (that does not permit a location).
 ///
 /// See section 2.4.3.
@@ -950,6 +958,12 @@ pub struct FunctionDeclaration {
     pub body: Vec<StmtKind>,
 }
 
+impl HasVariables for FunctionDeclaration {
+    fn variables(&self) -> &Vec<VarDecl> {
+        &self.variables
+    }
+}
+
 /// Function Block Program Organization Unit Declaration
 ///
 /// A function block declaration (as distinct from a particular
@@ -962,6 +976,12 @@ pub struct FunctionBlockDeclaration {
     pub name: Id,
     pub variables: Vec<VarDecl>,
     pub body: FunctionBlockBody,
+}
+
+impl HasVariables for FunctionBlockDeclaration {
+    fn variables(&self) -> &Vec<VarDecl> {
+        &self.variables
+    }
 }
 
 /// "Program" Program Organization Unit Declaration Declaration
@@ -977,6 +997,12 @@ pub struct ProgramDeclaration {
     // TODO located variables
     // TODO other stuff here
     pub body: FunctionBlockBody,
+}
+
+impl HasVariables for ProgramDeclaration {
+    fn variables(&self) -> &Vec<VarDecl> {
+        &self.variables
+    }
 }
 
 /// Sequential function chart.
@@ -1009,6 +1035,12 @@ pub struct ResourceDeclaration {
     pub programs: Vec<ProgramConfiguration>,
 }
 
+impl HasVariables for ResourceDeclaration {
+    fn variables(&self) -> &Vec<VarDecl> {
+        &self.global_vars
+    }
+}
+
 /// Program configurations.
 ///
 /// See section 2.7.1.
@@ -1027,6 +1059,12 @@ pub struct ConfigurationDeclaration {
     pub name: Id,
     pub global_var: Vec<VarDecl>,
     pub resource_decl: Vec<ResourceDeclaration>,
+}
+
+impl HasVariables for ConfigurationDeclaration {
+    fn variables(&self) -> &Vec<VarDecl> {
+        &self.global_var
+    }
 }
 
 /// Task configuration.
