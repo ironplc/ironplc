@@ -67,7 +67,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
     /// Returns enumeration values for a given enumeration type name.
     ///
     /// Recursively finds the enumeration values when one enumeration
-    /// declaration is a rename of another enumeration declaration.
+    /// declaration is an alias of another enumeration declaration.
     ///
     /// Returns Ok containing the list of enumeration values.
     ///
@@ -181,6 +181,26 @@ END_TYPE
 FUNCTION_BLOCK LOGGER
 VAR_INPUT
 LEVEL : LEVEL := CRITICAL;
+END_VAR
+END_FUNCTION_BLOCK";
+
+        let library = parse(program).unwrap();
+        let result = apply(&library);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_var_init_valid_enum_value_through_alias_then_ok() {
+        let program = "
+TYPE
+LEVEL : (CRITICAL) := CRITICAL;
+LEVEL_ALIAS : LEVEL;
+END_TYPE
+
+FUNCTION_BLOCK LOGGER
+VAR_INPUT
+NAME : LEVEL_ALIAS := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 

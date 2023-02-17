@@ -1106,7 +1106,14 @@ parser! {
       })
     }
     // TODO this needs much more
-    rule param_assignment() -> ParamAssignment = name:(n:variable_name() _ ":=" { n })? _ expr:expression() {
+    rule param_assignment() -> ParamAssignment = not:"NOT"? _ src:variable_name() _ "=>" _ tgt:variable() {
+      ParamAssignment::Output (
+        Output{
+        not: false,
+        src,
+        tgt,
+      })
+    } / name:(n:variable_name() _ ":=" { n })? _ expr:expression() {
       match name {
         Some(n) => {
           ParamAssignment::NamedInput(NamedInput {name: n, expr} )
@@ -1114,13 +1121,6 @@ parser! {
         None => {
           ParamAssignment::positional(expr)
         }
-      }
-    } / not:"NOT"? _ src:variable_name() _ "=>" _ tgt:variable() {
-      ParamAssignment::Output {
-        // TODO map this optional
-        not: false,
-        src,
-        tgt,
       }
     }
     // B.3.2.3 Selection statement
