@@ -74,7 +74,7 @@ fn find_input_type<'a>(owner: &'a dyn HasVariables, name: &'a Id) -> Option<&'a 
 
 /// Returns the first VAR_OUTPUT variable matching the name
 /// or `None` if the owner does not contain a matching variable.
-/// 
+///
 /// VAR_IN_OUT are output variables, but they are only assigned
 /// through the input `:=` syntax so not included for this rule.
 fn find_output_type<'a>(owner: &'a dyn HasVariables, name: &'a Id) -> Option<&'a VarDecl> {
@@ -178,7 +178,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
                         "Function invocation {} requires {} non-formal inputs but the invocation has {} formal inputs",
                         function_block.name, num_required_inputs, non_formal.len()
                     ),
-                ))
+                ));
             }
         }
 

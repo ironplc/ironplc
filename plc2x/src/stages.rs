@@ -4,9 +4,9 @@ use ironplc_parser::error::ParserDiagnostic;
 
 use crate::{
     ironplc_dsl::common::Library, rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
-    rule_enumeration_values_unique, rule_pous_no_cycles, rule_program_task_definition_exists,
-    rule_use_declared_enumerated_value, rule_function_block_invocation, rule_use_declared_symbolic_var,
-    rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
+    rule_enumeration_values_unique, rule_function_block_invocation, rule_pous_no_cycles,
+    rule_program_task_definition_exists, rule_use_declared_enumerated_value,
+    rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, xform_resolve_late_bound_types,
 };
 
