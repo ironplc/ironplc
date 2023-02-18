@@ -86,6 +86,14 @@ pub trait Visitor<E> {
         Acceptor::accept(&node.elements, self)
     }
 
+    fn visit_signed_integer(&mut self, node: &SignedInteger) -> Result<Self::Value, E> {
+        Ok(Self::Value::default())
+    }
+
+    fn visit_enumerated_value(&mut self, node: &EnumeratedValue) -> Result<Self::Value, E> {
+        Ok(Self::Value::default())
+    }
+
     fn visit_configuration_declaration(
         &mut self,
         node: &ConfigurationDeclaration,
@@ -167,6 +175,14 @@ pub trait Visitor<E> {
 
     fn visit_if(&mut self, node: &If) -> Result<Self::Value, E> {
         visit_if(self, node)
+    }
+
+    fn visit_case(&mut self, node: &Case) -> Result<Self::Value, E> {
+        visit_case(self, node)
+    }
+
+    fn visit_case_statement_group(&mut self, node: &CaseStatementGroup) -> Result<Self::Value, E> {
+        visit_case_statement_group(self, node)
     }
 
     fn visit_compare(&mut self, op: &CompareOp, terms: &Vec<ExprKind>) -> Result<Self::Value, E> {
@@ -375,6 +391,20 @@ pub fn visit_if<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &If) -> Result<V::Va
     Acceptor::accept(&node.else_body, v)
 }
 
+pub fn visit_case<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &Case) -> Result<V::Value, E> {
+    Acceptor::accept(&node.selector, v)?;
+    Acceptor::accept(&node.statement_groups, v)?;
+    Acceptor::accept(&node.else_body, v)
+}
+
+pub fn visit_case_statement_group<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &CaseStatementGroup,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.selectors, v)?;
+    Acceptor::accept(&node.statements, v)
+}
+
 pub fn visit_compare<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     op: &CompareOp,
@@ -562,8 +592,25 @@ impl Acceptor for StmtKind {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
             StmtKind::Assignment(node) => visitor.visit_assignment(node),
-            StmtKind::If(node) => visitor.visit_if(node),
             StmtKind::FbCall(node) => visitor.visit_fb_call(node),
+            StmtKind::If(node) => visitor.visit_if(node),
+            StmtKind::Case(node) => visitor.visit_case(node),
+        }
+    }
+}
+
+impl Acceptor for CaseStatementGroup {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        visitor.visit_case_statement_group(self)
+    }
+}
+
+impl Acceptor for CaseSelection {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        match self {
+            CaseSelection::Subrange(sr) => visitor.visit_subrange(sr),
+            CaseSelection::SignedInteger(si) => visitor.visit_signed_integer(si),
+            CaseSelection::EnumeratedValue(ev) => visitor.visit_enumerated_value(ev),
         }
     }
 }

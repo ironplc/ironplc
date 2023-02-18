@@ -1,7 +1,7 @@
 //! Provides definitions of objects from IEC 61131-3 textual languages.
 //!
 //! See section 3.
-use crate::common::{AddressAssignment, Constant};
+use crate::common::{AddressAssignment, Constant, EnumeratedValue, SignedInteger, Subrange};
 use crate::core::Id;
 use std::cmp::Ordering;
 use std::fmt;
@@ -45,8 +45,11 @@ pub struct FbCall {
 #[derive(Debug, PartialEq, Clone)]
 pub enum StmtKind {
     Assignment(Assignment),
-    If(If),
+    // Function and function block control
     FbCall(FbCall),
+    // Selection statements
+    If(If),
+    Case(Case),
 }
 
 impl StmtKind {
@@ -54,6 +57,7 @@ impl StmtKind {
         StmtKind::If(If {
             expr: condition,
             body,
+            else_ifs: vec![],
             else_body: vec![],
         })
     }
@@ -66,6 +70,7 @@ impl StmtKind {
         StmtKind::If(If {
             expr: condition,
             body,
+            else_ifs: vec![],
             else_body,
         })
     }
@@ -76,7 +81,38 @@ pub struct If {
     // TODO how to handle else else if (that should probably be a nested if)
     pub expr: ExprKind,
     pub body: Vec<StmtKind>,
+    pub else_ifs: Vec<(ExprKind, Vec<StmtKind>)>,
     pub else_body: Vec<StmtKind>,
+}
+
+/// Case selection statement.
+///
+/// See section 3.3.2.3.
+#[derive(Debug, PartialEq, Clone)]
+pub struct Case {
+    /// An expression, the result of which is used to select a particular case.
+    pub selector: ExprKind,
+    pub statement_groups: Vec<CaseStatementGroup>,
+    pub else_body: Vec<StmtKind>,
+}
+
+/// A group of statements that can be selected within a case.
+///
+/// See section 3.3.2.3.
+#[derive(Debug, PartialEq, Clone)]
+pub struct CaseStatementGroup {
+    pub selectors: Vec<CaseSelection>,
+    pub statements: Vec<StmtKind>,
+}
+
+/// W particular value that selects a case statement group.
+///
+/// See section 3.3.2.3.
+#[derive(Debug, PartialEq, Clone)]
+pub enum CaseSelection {
+    Subrange(Subrange),
+    SignedInteger(SignedInteger),
+    EnumeratedValue(EnumeratedValue),
 }
 
 impl StmtKind {
