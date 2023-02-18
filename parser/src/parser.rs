@@ -1124,16 +1124,30 @@ parser! {
       }
     }
     // B.3.2.3 Selection statement
-    // TODO add case statement
-    rule selection_statement() -> StmtKind = ifstmt:if_statement() { ifstmt }
-    // TODO handle else if
-    rule if_statement() -> StmtKind = "IF" _ expr:expression() _ "THEN" _ body:statement_list()? _ else_body:("ELSE" _ e:statement_list() { e })? _ "END_IF" {
+    rule selection_statement() -> StmtKind = if_statement() / case_statement()
+    rule if_statement() -> StmtKind = "IF" _ expr:expression() _ "THEN" _ body:statement_list()? _ else_ifs:("ELSIF" expr:expression() _ "THEN" _ body:statement_list() {(expr, body)}) ** _ _ else_body:("ELSE" _ e:statement_list() { e })? _ "END_IF" {
       StmtKind::If(If {
         expr,
         body: body.unwrap_or_default(),
+        else_ifs,
         else_body: else_body.unwrap_or_default()
       })
     }
+    rule case_statement() -> StmtKind = "CASE" _ selector:expression() _ "OF" _ cases:case_element() ** _ _ else_body:("ELSE" _ e:statement_list() { e })? _ "END_CASE" {
+      StmtKind::Case(Case {
+        selector,
+        statement_groups: cases,
+        else_body: else_body.unwrap_or_default(),
+      })
+    }
+    rule case_element() -> CaseStatementGroup = selectors:case_list() _ ":" _ statements:statement_list() {
+      CaseStatementGroup {
+        selectors,
+        statements,
+      }
+    }
+    rule case_list() -> Vec<CaseSelection> = cases_list:case_list_element() ++ (_ "," _) { cases_list }
+    rule case_list_element() -> CaseSelection = sr:subrange() {CaseSelection::Subrange(sr)} / si:signed_integer() {CaseSelection::SignedInteger(si)} / ev:enumerated_value() {CaseSelection::EnumeratedValue(ev)}
   }
 }
 

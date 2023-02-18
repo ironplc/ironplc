@@ -32,4 +32,10 @@ mod test {
         let res = parse_resource("type_decl.st");
         assert!(res.is_ok())
     }
+
+    #[test]
+    fn parse_textual() {
+        let res = parse_resource("textual.st");
+        assert!(res.is_ok())
+    }
 }
