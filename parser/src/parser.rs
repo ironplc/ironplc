@@ -222,20 +222,25 @@ parser! {
                      / "PRIORITY" / "STRING" / "WSTRING"
     rule STANDARD_FUNCTION_BLOCK_NAME() = "END_VAR"
 
-    // B.0
+
     pub rule library() -> Vec<LibraryElement> = traced(<library__impl()>)
     pub rule library__impl() -> Vec<LibraryElement> = _ decls:library_element_declaration() ** _ _ { decls.into_iter().flatten().collect() }
-    // TODO This misses some types such as ladder diagrams
-    rule library_element_declaration() -> Vec<LibraryElement> = data_types:data_type_declaration() {
-      data_types.into_iter().map(LibraryElement::DataTypeDeclaration).collect()
-    } / fbd:function_block_declaration() { vec![LibraryElement::FunctionBlockDeclaration(fbd)] } / fd:function_declaration() { vec![LibraryElement::FunctionDeclaration(fd)] } / pd:program_declaration() { vec![LibraryElement::ProgramDeclaration(pd)] } / cd:configuration_declaration() { vec![LibraryElement::ConfigurationDeclaration(cd)] }
+
+    // B.0 Programming model
+    rule library_element_declaration() -> Vec<LibraryElement> =
+      data_types:data_type_declaration() { data_types.into_iter().map(LibraryElement::DataTypeDeclaration).collect() }
+      / fbd:function_block_declaration() { vec![LibraryElement::FunctionBlockDeclaration(fbd)] }
+      / fd:function_declaration() { vec![LibraryElement::FunctionDeclaration(fd)] }
+      / pd:program_declaration() { vec![LibraryElement::ProgramDeclaration(pd)] }
+      / cd:configuration_declaration() { vec![LibraryElement::ConfigurationDeclaration(cd)] }
 
     // B.1.1 Letters, digits and identifier
     //rule digit() -> &'input str = $(['0'..='9'])
     rule identifier() -> Id = start:position!() !KEYWORD() i:$(['a'..='z' | '0'..='9' | 'A'..='Z' | '_']+) end:position!() { Id::from(i).with_position(SourceLoc::range(start, end)) }
 
     // B.1.2 Constants
-    rule constant() -> Constant = r:real_literal() { Constant::RealLiteral(r) }
+    rule constant() -> Constant =
+        r:real_literal() { Constant::RealLiteral(r) }
         / i:integer_literal() { Constant::IntegerLiteral(i.try_into().unwrap()) }
         / c:character_string() { Constant::CharacterString() }
         / d:duration() { Constant::Duration(d) }
@@ -344,6 +349,7 @@ parser! {
     rule date_and_time() -> PrimitiveDateTime = ("DATE_AND_TIME" / "DT") "#" d:date_literal() "-" t:daytime() { PrimitiveDateTime::new(d, t) }
 
     // B.1.3 Data types
+    rule data_type_name() -> Id = non_generic_type_name()
     rule non_generic_type_name() -> Id = et:elementary_type_name() { et.into() } / derived_type_name()
 
     // B.1.3.1 Elementary data types
@@ -356,6 +362,10 @@ parser! {
     rule real_type_name() -> ElementaryTypeName = "REAL" { ElementaryTypeName::REAL } / "LREAL" { ElementaryTypeName::LREAL }
     rule date_type_name() -> ElementaryTypeName = "DATE" { ElementaryTypeName::DATE } / "TIME_OF_DAY" { ElementaryTypeName::TimeOfDay } / "TOD" { ElementaryTypeName::TimeOfDay } / "DATE_AND_TIME" { ElementaryTypeName::DateAndTime } / "DT" { ElementaryTypeName::DateAndTime }
     rule bit_string_type_name() -> ElementaryTypeName = "BOOL" { ElementaryTypeName::BOOL } / "BYTE" { ElementaryTypeName::BYTE } / "WORD" { ElementaryTypeName::WORD } / "DWORD" { ElementaryTypeName::DWORD } / "LWORD" { ElementaryTypeName::LWORD }
+
+    // B.1.3.2
+    // TODO
+    // rule generic_type_name() -> &'input str = "ANY" / "ANY_DERIVED" / "ANY_ELEMENTARY" / "ANY_MAGNITUDE" / "ANY_NUM" / "ANY_REAL" / "ANY_INT" / "ANY_BOOL" / "ANY_STRING" / "ANY_DATE"
 
     // B.1.3.3
     // TODO add all types
@@ -1090,8 +1100,7 @@ parser! {
     // B.3.2 Statements
     pub rule statement_list() -> Vec<StmtKind> = statements:semisep(<statement()>) { statements }
     // TODO add other statement types
-    rule statement() -> StmtKind = assignment:assignment_statement() { assignment }
-      / selection:selection_statement() { selection } / fb:fb_invocation() { fb }
+    rule statement() -> StmtKind = assignment_statement() / selection_statement() / iteration_statement() / fb_invocation()
 
     // B.3.2.1 Assignment statements
     pub rule assignment_statement() -> StmtKind = var:variable() _ ":=" _ expr:expression() { StmtKind::assignment(var, expr) }
@@ -1123,7 +1132,7 @@ parser! {
         }
       }
     }
-    // B.3.2.3 Selection statement
+    // B.3.2.3 Selection statements
     rule selection_statement() -> StmtKind = if_statement() / case_statement()
     rule if_statement() -> StmtKind = "IF" _ expr:expression() _ "THEN" _ body:statement_list()? _ else_ifs:("ELSIF" expr:expression() _ "THEN" _ body:statement_list() {(expr, body)}) ** _ _ else_body:("ELSE" _ e:statement_list() { e })? _ "END_IF" {
       StmtKind::If(If {
@@ -1148,6 +1157,34 @@ parser! {
     }
     rule case_list() -> Vec<CaseSelection> = cases_list:case_list_element() ++ (_ "," _) { cases_list }
     rule case_list_element() -> CaseSelection = sr:subrange() {CaseSelection::Subrange(sr)} / si:signed_integer() {CaseSelection::SignedInteger(si)} / ev:enumerated_value() {CaseSelection::EnumeratedValue(ev)}
+
+    // B.3.2.4 Iteration statements
+    rule iteration_statement() -> StmtKind = f:for_statement() {StmtKind::For(f)} / w:while_statement() {StmtKind::While(w)} / r:repeat_statement() {StmtKind::Repeat(r)} / e:exit_statement() {StmtKind::Exit}
+    rule for_statement() -> For = "FOR" _ control:control_variable() _ ":=" _ range:for_list() _ "DO" _ body:statement_list() _ "END_FOR" {
+      For {
+        control,
+        from: range.0,
+        to: range.1,
+        step: range.2,
+        body,
+      }
+    }
+    rule control_variable() -> Id = identifier()
+    rule for_list() -> (ExprKind, ExprKind, Option<ExprKind>) = from:expression() _ "TO" _ to:expression() _ step:("BY" _ s:expression() {s})? { (from, to, step) }
+    rule while_statement() -> While = "WHILE" _ condition:expression() _ "DO" _ body:statement_list() _ "END_WHILE" {
+      While {
+        condition,
+        body,
+      }
+    }
+    rule repeat_statement() -> Repeat = "REPEAT" _ body:statement_list() _ "UNTIL" _ until:expression() _ "END_REPEAT" {
+      Repeat {
+        until,
+        body,
+      }
+    }
+    rule exit_statement() -> () = "EXIT"
+
   }
 }
 
@@ -1187,8 +1224,6 @@ mod test {
 
     #[test]
     fn input_declarations_custom_type() {
-        // TODO add a test
-        // TODO enumerations - I think we need to be lazy here and make simple less strict
         let decl = "VAR_INPUT
 LEVEL : LOGLEVEL := INFO;
 END_VAR";
