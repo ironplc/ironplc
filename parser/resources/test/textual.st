@@ -21,4 +21,17 @@ FUNCTION_BLOCK BLOCK
     VAL2: NUM1 := 1;
     END_CASE;
 
+    FOR VAL1 := 1 TO 10 BY 1 DO
+       VAL2 := VAL1; 
+    END_FOR;
+
+    WHILE VAL1 = 1 DO
+        VAL2 := VAL1;
+    END_WHILE;
+
+    REPEAT
+        VAL2 := VAL1;
+    UNTIL VAL2 = 2
+    END_REPEAT;
+
 END_FUNCTION_BLOCK
