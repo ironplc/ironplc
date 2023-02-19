@@ -595,6 +595,10 @@ impl Acceptor for StmtKind {
             StmtKind::FbCall(node) => visitor.visit_fb_call(node),
             StmtKind::If(node) => visitor.visit_if(node),
             StmtKind::Case(node) => visitor.visit_case(node),
+            StmtKind::For(_) => todo!(),
+            StmtKind::While(_) => todo!(),
+            StmtKind::Repeat(_) => todo!(),
+            StmtKind::Exit => todo!(),
         }
     }
 }
