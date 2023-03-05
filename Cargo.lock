@@ -136,20 +136,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ironplc"
-version = "0.1.1"
-dependencies = [
- "clap",
- "codespan-reporting",
- "fixedbitset",
- "ironplc-dsl",
- "ironplc-parser",
- "petgraph",
- "phf",
- "time",
-]
-
-[[package]]
 name = "ironplc-dsl"
 version = "0.1.2"
 dependencies = [
@@ -163,6 +149,20 @@ dependencies = [
  "codespan-reporting",
  "ironplc-dsl",
  "peg",
+ "time",
+]
+
+[[package]]
+name = "ironplcc"
+version = "0.1.1"
+dependencies = [
+ "clap",
+ "codespan-reporting",
+ "fixedbitset",
+ "ironplc-dsl",
+ "ironplc-parser",
+ "petgraph",
+ "phf",
  "time",
 ]
 
