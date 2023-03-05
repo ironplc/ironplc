@@ -3,11 +3,12 @@ use codespan_reporting::diagnostic::Diagnostic;
 use ironplc_parser::error::ParserDiagnostic;
 
 use crate::{
-    ironplc_dsl::common::Library, rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
-    rule_enumeration_values_unique, rule_function_block_invocation, rule_pous_no_cycles,
-    rule_program_task_definition_exists, rule_use_declared_enumerated_value,
+    error::SemanticDiagnostic, ironplc_dsl::common::Library, rule_decl_struct_element_unique_names,
+    rule_decl_subrange_limits, rule_enumeration_values_unique, rule_function_block_invocation,
+    rule_pous_no_cycles, rule_program_task_definition_exists, rule_use_declared_enumerated_value,
     rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
-    rule_var_decl_global_const_requires_external_const, xform_resolve_late_bound_types,
+    rule_var_decl_global_const_requires_external_const, xform_resolve_late_bound_data_decl,
+    xform_resolve_late_bound_type_initializer,
 };
 
 /// Parse combines lexical and sematic analysis (stages 1 & 2).
@@ -25,7 +26,9 @@ pub fn parse(source: &str) -> Result<Library, Diagnostic<()>> {
     // the type-specific declarations. This just simplifies
     // code generation because we know the type of every declaration
     // exactly
-    xform_resolve_late_bound_types::apply(library).map_err(|err| err.into())
+    let library = xform_resolve_late_bound_data_decl::apply(library)
+        .map_err(<SemanticDiagnostic as Into<Diagnostic<()>>>::into)?;
+    xform_resolve_late_bound_type_initializer::apply(library).map_err(|err| err.into())
 }
 
 /// Semantic implements semantic analysis (stage 3).

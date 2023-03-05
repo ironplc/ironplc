@@ -141,7 +141,6 @@ impl Visitor<SemanticDiagnostic> for RulePousNoCycles {
             Some(from) => {
                 let from = self.add_node(&from.clone());
                 let to = self.add_node(&init.type_name);
-                //let to = self.insert(type_name);
                 self.graph.add_edge(from, to, ());
             }
             None => todo!(),

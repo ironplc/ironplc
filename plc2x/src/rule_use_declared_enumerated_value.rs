@@ -202,6 +202,7 @@ FUNCTION_BLOCK LOGGER
 VAR_INPUT
 NAME : LEVEL_ALIAS := CRITICAL;
 END_VAR
+
 END_FUNCTION_BLOCK";
 
         let library = parse(program).unwrap();

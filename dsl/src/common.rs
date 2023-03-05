@@ -270,18 +270,6 @@ impl From<ElementaryTypeName> for Id {
     }
 }
 
-/// Derived data types declared.
-///
-/// See section 2.3.3.
-pub enum TypeDefinitionKind {
-    /// Defines a type that can take one of a set number of values.
-    Enumeration,
-    FunctionBlock,
-    Function,
-    /// Defines a type composed of sub-elements.
-    Structure,
-}
-
 /// Kinds of derived data types.
 ///
 /// See section 2.3.3.1
@@ -293,11 +281,33 @@ pub enum DataTypeDeclarationKind {
     /// Derived data type that restricts permitted values to a smaller range
     /// of the parent data type.
     Subrange(SubrangeDeclaration),
+    ///
+    Simple(SimpleDeclaration),
     /// Derived data type that specifies required storage space for each instance.
     Array(ArrayDeclaration),
     Structure(StructureDeclaration),
     StructureInitialization(StructureInitializationDeclaration),
     String(StringDeclaration),
+    /// Data declaration that is ambiguous at parse time and must be
+    /// resolved to a data type declaration after parsing all types.
+    LateBound(LateBoundDeclaration),
+}
+
+/// Type declarations that are indistinguishable as parsing time.
+/// These are one of the following without an initial value:
+/// * enumeration
+/// * structure
+/// * simple
+#[derive(Debug, PartialEq)]
+pub struct LateBoundDeclaration {
+    /// The type name of this declaration. Other library elements
+    /// refer to this this type with this name.
+    pub data_type_name: Id,
+    /// The referenced type name.
+    ///
+    /// For example, if this is an alias then this is the underlying
+    /// type.
+    pub base_type_name: Id,
 }
 
 /// See section 2.3.3.1.
@@ -342,6 +352,21 @@ pub enum EnumeratedSpecificationKind {
 }
 
 impl EnumeratedSpecificationKind {
+    pub fn from_values(values: Vec<&'static str>) -> EnumeratedSpecificationKind {
+        let values = values
+            .iter()
+            .map(|v| EnumeratedValue {
+                type_name: None,
+                value: Id::from(v),
+                position: Some(SourceLoc::new(0)),
+            })
+            .collect();
+        EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues {
+            values,
+            position: SourceLoc::new(0),
+        })
+    }
+
     pub fn values(
         values: Vec<EnumeratedValue>,
         position: SourceLoc,
@@ -413,6 +438,15 @@ pub struct SubrangeSpecification {
     pub type_name: ElementaryTypeName,
     pub subrange: Subrange,
     pub default: Option<SignedInteger>,
+}
+
+/// The specification for a simple declared type.
+///
+/// See section 2.3.3.1.
+#[derive(Debug, PartialEq, Clone)]
+pub struct SimpleDeclaration {
+    pub type_name: Id,
+    pub spec_and_init: InitialValueAssignmentKind,
 }
 
 /// Derived data type that
@@ -615,6 +649,23 @@ impl VarDecl {
                 initial_value: None,
             }),
             position: loc,
+        }
+    }
+
+    /// Creates a variable declaration for enumeration without having an initial value.
+    /// The declaration has type `VAR` and no qualifier.
+    pub fn uninitialized_enumerated(name: &str, type_name: &str) -> Self {
+        VarDecl {
+            name: Id::from(name),
+            var_type: VariableType::Var,
+            qualifier: DeclarationQualifier::Unspecified,
+            initializer: InitialValueAssignmentKind::EnumeratedType(
+                EnumeratedInitialValueAssignment {
+                    type_name: Id::from(type_name),
+                    initial_value: None,
+                },
+            ),
+            position: SourceLoc::new(0),
         }
     }
 
@@ -841,12 +892,10 @@ impl InitialValueAssignmentKind {
     pub fn enumerated_values(
         values: Vec<EnumeratedValue>,
         initial_value: Option<EnumeratedValue>,
-        position: SourceLoc,
     ) -> Self {
         InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer {
             values,
             initial_value,
-            position,
         })
     }
 }
@@ -917,7 +966,6 @@ pub struct StringInitializer {
 pub struct EnumeratedValuesInitializer {
     pub values: Vec<EnumeratedValue>,
     pub initial_value: Option<EnumeratedValue>,
-    pub position: SourceLoc,
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -933,6 +981,9 @@ pub struct ArrayInitialValueAssignment {
 
 /// Container for top-level elements that are valid top-level declarations in
 /// a library.
+///
+/// The library element flattens data type declaration blocks so that each
+/// enumeration is for a single data type declaration.
 #[derive(Debug, PartialEq)]
 pub enum LibraryElement {
     DataTypeDeclaration(DataTypeDeclarationKind),
