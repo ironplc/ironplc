@@ -612,7 +612,7 @@ parser! {
       // An enumerated_specification defined by enum values is unambiguous because
       // the parenthesis are not valid simple_specification.
       InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer {
-        values: values,
+        values,
         initial_value: init,
       })
     } / et:elementary_type_name() {
