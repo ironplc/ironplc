@@ -2,27 +2,27 @@ name: Build and Test
 on: [push]
 jobs:
   tests:
-  runs-on:  ${{ matrix.os }}
-  strategy:
-      matrix:
-        os: [ubuntu-latest]
-      fail-fast: false
-  steps:
-    - uses: actions/checkout@v3
-    - uses: actions-rust-lang/setup-rust-toolchain@v1
-      with:
-        components: rustfmt, clippy
-    - uses: actions-rust-lang/rustfmt@v1
-    - uses: taiki-e/install-action@cargo-llvm-cov
+    runs-on:  ${{ matrix.os }}
+    strategy:
+        matrix:
+          os: [ubuntu-latest]
+        fail-fast: false
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+      - uses: actions-rust-lang/rustfmt@v1
+      - uses: taiki-e/install-action@cargo-llvm-cov
 
-    - name: Rust tests
-      run: cargo test --all-features
+      - name: Rust tests
+        run: cargo test --all-features
 
-    - name: Standard Rust format check
-      run: cargo fmt --all -- --check
+      - name: Standard Rust format check
+        run: cargo fmt --all -- --check
 
-    - name: Clippy format check
-      run: cargo clippy
+      - name: Clippy format check
+        run: cargo clippy
 
-    - name: Coverage
-      run: cargo llvm-cov --all-features --workspace --fail-under-lines 85 --show-missing-lines
+      - name: Coverage
+        run: cargo llvm-cov --all-features --workspace --fail-under-lines 85 --show-missing-lines
