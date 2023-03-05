@@ -37,7 +37,7 @@ use ironplc_dsl::{
 
 use crate::{
     error::SemanticDiagnostic,
-    symbol_table::{self, Key, NodeData, SymbolTable},
+    symbol_table::{self, Key, SymbolTable},
 };
 
 pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
@@ -46,12 +46,10 @@ pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     visitor.walk(lib)
 }
 
-#[derive(Clone)]
 struct DummyNode {}
-impl NodeData for DummyNode {}
 impl Key for Id {}
 
-impl Visitor<SemanticDiagnostic> for SymbolTable<Id, DummyNode> {
+impl Visitor<SemanticDiagnostic> for SymbolTable<'_, Id, DummyNode> {
     type Value = ();
 
     fn visit_function_declaration(

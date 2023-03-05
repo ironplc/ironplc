@@ -141,6 +141,7 @@ version = "0.1.1"
 dependencies = [
  "clap",
  "codespan-reporting",
+ "fixedbitset",
  "ironplc-dsl",
  "ironplc-parser",
  "petgraph",

@@ -38,6 +38,11 @@ pub trait Fold<E> {
         node: LibraryElement,
     ) -> Result<LibraryElement, E> {
         match node {
+            LibraryElement::DataTypeDeclaration(data_type) => {
+                Ok(LibraryElement::DataTypeDeclaration(
+                    self.fold_data_type_declaration_kind(data_type)?,
+                ))
+            }
             LibraryElement::FunctionBlockDeclaration(function_block_decl) => {
                 Ok(LibraryElement::FunctionBlockDeclaration(
                     self.fold_function_block_declaration(function_block_decl)?,
@@ -53,17 +58,50 @@ pub trait Fold<E> {
         }
     }
 
-    fn fold_function_block_declaration(
+    /// Fold data type declarations.
+    ///
+    /// See section 2.4.3.
+    fn fold_data_type_declaration_kind(
         &mut self,
-        node: FunctionBlockDeclaration,
-    ) -> Result<FunctionBlockDeclaration, E> {
-        Ok(FunctionBlockDeclaration {
-            name: node.name,
-            variables: Foldable::fold(node.variables, self)?,
-            body: node.body,
+        node: DataTypeDeclarationKind,
+    ) -> Result<DataTypeDeclarationKind, E> {
+        Ok(node)
+    }
+
+    /// Fold variable declaration.
+    ///
+    /// See section 2.4.3.
+    fn fold_variable_declaration(&mut self, node: VarDecl) -> Result<VarDecl, E> {
+        Ok(VarDecl {
+            name: node.name.clone(),
+            var_type: node.var_type,
+            qualifier: node.qualifier,
+            initializer: Foldable::fold(node.initializer, self)?,
+            position: node.position,
         })
     }
 
+    /// Fold an address assignment.
+    ///
+    /// See section 2.4.3.1.
+    fn fold_address_assignment(&mut self, node: AddressAssignment) -> Result<AddressAssignment, E> {
+        Ok(node)
+    }
+
+    /// Fold initial value assignments.
+    ///
+    /// See section 2.4.3.2.
+    fn fold_type_initializer(
+        &mut self,
+        node: InitialValueAssignmentKind,
+    ) -> Result<InitialValueAssignmentKind, E> {
+        // TODO this function name is all wrong
+        Ok(node)
+    }
+
+    /// Fold function declarations.
+    ///
+    /// See section 2.5.1.
     fn fold_function_declaration(
         &mut self,
         node: FunctionDeclaration,
@@ -76,6 +114,23 @@ pub trait Fold<E> {
         })
     }
 
+    /// Fold function block declarations.
+    ///
+    /// See section 2.5.2.
+    fn fold_function_block_declaration(
+        &mut self,
+        node: FunctionBlockDeclaration,
+    ) -> Result<FunctionBlockDeclaration, E> {
+        Ok(FunctionBlockDeclaration {
+            name: node.name,
+            variables: Foldable::fold(node.variables, self)?,
+            body: node.body,
+        })
+    }
+
+    /// Fold program declarations.
+    ///
+    /// See section 2.5.3.
     fn fold_program_declaration(
         &mut self,
         node: ProgramDeclaration,
@@ -85,27 +140,6 @@ pub trait Fold<E> {
             variables: Foldable::fold(node.variables, self)?,
             body: node.body,
         })
-    }
-
-    fn fold_variable_declaration(&mut self, node: VarDecl) -> Result<VarDecl, E> {
-        Ok(VarDecl {
-            name: node.name.clone(),
-            var_type: node.var_type,
-            qualifier: node.qualifier,
-            initializer: Foldable::fold(node.initializer, self)?,
-            position: node.position,
-        })
-    }
-
-    fn fold_type_initializer(
-        &mut self,
-        node: InitialValueAssignmentKind,
-    ) -> Result<InitialValueAssignmentKind, E> {
-        Ok(node)
-    }
-
-    fn fold_direct_variable(&mut self, node: AddressAssignment) -> Result<AddressAssignment, E> {
-        Ok(node)
     }
 }
 
@@ -133,6 +167,6 @@ impl Foldable for InitialValueAssignmentKind {
 impl Foldable for AddressAssignment {
     type Mapped = AddressAssignment;
     fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        folder.fold_direct_variable(self)
+        folder.fold_address_assignment(self)
     }
 }
