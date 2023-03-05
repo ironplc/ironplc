@@ -117,6 +117,10 @@ pub trait Visitor<E> {
         visit_subrange_declaration(self, node)
     }
 
+    fn visit_simple_declaration(&mut self, node: &SimpleDeclaration) -> Result<Self::Value, E> {
+        visit_simple_declaration(self, node)
+    }
+
     fn visit_array_declaration(&mut self, node: &ArrayDeclaration) -> Result<Self::Value, E> {
         visit_array_declaration(self, node)
     }
@@ -144,6 +148,13 @@ pub trait Visitor<E> {
 
     fn visit_string_declaration(&mut self, node: &StringDeclaration) -> Result<Self::Value, E> {
         visit_string_declaration(self, node)
+    }
+
+    fn visit_late_bound_declaration(
+        &mut self,
+        node: &LateBoundDeclaration,
+    ) -> Result<Self::Value, E> {
+        visit_late_bound_declaration(self, node)
     }
 
     fn visit_function_block_declaration(
@@ -203,7 +214,7 @@ pub trait Visitor<E> {
         visit_unary_op(self, op, term)
     }
 
-    fn visit_direct_variable(&mut self, node: &AddressAssignment) -> Result<Self::Value, E> {
+    fn visit_address_assignment(&mut self, node: &AddressAssignment) -> Result<Self::Value, E> {
         todo!()
     }
 
@@ -317,6 +328,13 @@ pub fn visit_subrange_declaration<V: Visitor<E> + ?Sized, E>(
     v.visit_subrange_specification(&node.spec)
 }
 
+pub fn visit_simple_declaration<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &SimpleDeclaration,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.spec_and_init, v)
+}
+
 pub fn visit_array_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &ArrayDeclaration,
@@ -357,6 +375,13 @@ pub fn visit_structure_element_init<V: Visitor<E> + ?Sized, E>(
 pub fn visit_string_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &StringDeclaration,
+) -> Result<V::Value, E> {
+    Ok(V::Value::default())
+}
+
+pub fn visit_late_bound_declaration<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &LateBoundDeclaration,
 ) -> Result<V::Value, E> {
     Ok(V::Value::default())
 }
@@ -476,12 +501,16 @@ impl Acceptor for DataTypeDeclarationKind {
         match self {
             DataTypeDeclarationKind::Enumeration(e) => visitor.visit_enum_declaration(e),
             DataTypeDeclarationKind::Subrange(sr) => visitor.visit_subrange_declaration(sr),
+            DataTypeDeclarationKind::Simple(simple) => visitor.visit_simple_declaration(simple),
             DataTypeDeclarationKind::Array(a) => visitor.visit_array_declaration(a),
             DataTypeDeclarationKind::Structure(s) => visitor.visit_structure_declaration(s),
             DataTypeDeclarationKind::StructureInitialization(si) => {
                 visitor.visit_structure_initialization_declaration(si)
             }
             DataTypeDeclarationKind::String(s) => visitor.visit_string_declaration(s),
+            DataTypeDeclarationKind::LateBound(bound) => {
+                visitor.visit_late_bound_declaration(bound)
+            }
         }
     }
 }
@@ -629,7 +658,7 @@ impl Acceptor for Network {
 impl Acceptor for Variable {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
-            Variable::AddressAssignment(var) => visitor.visit_direct_variable(var),
+            Variable::AddressAssignment(var) => visitor.visit_address_assignment(var),
             Variable::SymbolicVariable(var) => visitor.visit_symbolic_variable(var),
             Variable::MultiElementVariable(_) => {
                 todo!()
@@ -660,7 +689,7 @@ mod test {
     impl Visitor<Error> for Descender {
         type Value = ();
 
-        fn visit_direct_variable(&mut self, variable: &AddressAssignment) -> Result<(), Error> {
+        fn visit_address_assignment(&mut self, variable: &AddressAssignment) -> Result<(), Error> {
             let mut dst = &mut self.names;
             dst.push_back(variable.to_string());
             Ok(())

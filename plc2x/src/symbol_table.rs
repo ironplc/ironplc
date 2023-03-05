@@ -29,41 +29,42 @@
 use std::collections::HashMap;
 use std::collections::LinkedList;
 use std::hash::Hash;
-
-pub trait NodeData: Clone {}
+use std::marker::PhantomData;
 
 pub trait Key: Eq + Hash + Clone {}
 
-struct Scope<K: Key, T: NodeData> {
-    table: HashMap<K, T>,
+struct Scope<'a, K: Key, V: 'a> {
+    table: HashMap<K, V>,
+    phantom: PhantomData<&'a V>,
 }
 
-impl<K: Key, T: NodeData> Scope<K, T> {
+impl<'a, K: Key, V: 'a> Scope<'a, K, V> {
     fn new() -> Self {
         Scope {
             table: HashMap::new(),
+            phantom: PhantomData,
         }
     }
 
-    fn add(&mut self, name: &K, value: T) {
-        self.table.insert(name.clone(), value);
+    fn add(&mut self, name: &K, value: V) -> Option<V> {
+        self.table.insert(name.clone(), value)
     }
 
-    fn find(&mut self, name: &K) -> Option<&T> {
+    fn find(&mut self, name: &K) -> Option<&V> {
         self.table.get(name)
     }
 
     #[allow(unused)]
-    fn remove(&mut self, name: &K) -> Option<T> {
+    fn remove(&mut self, name: &K) -> Option<V> {
         self.table.remove(name)
     }
 }
 
-pub struct SymbolTable<K: Key, V: NodeData> {
-    stack: LinkedList<Scope<K, V>>,
+pub struct SymbolTable<'a, K: Key, V: 'a> {
+    stack: LinkedList<Scope<'a, K, V>>,
 }
 
-impl<K: Key, V: NodeData> SymbolTable<K, V> {
+impl<'a, K: Key, V: 'a> SymbolTable<'a, K, V> {
     /// Creates an empty `SymbolTable`.
     pub fn new() -> Self {
         let mut stack = LinkedList::new();
@@ -87,12 +88,10 @@ impl<K: Key, V: NodeData> SymbolTable<K, V> {
     }
 
     /// Adds the given name to the scope with the specified value.
-    pub fn add(&mut self, name: &K, value: V) {
+    pub fn add(&mut self, name: &K, value: V) -> Option<V> {
         match self.stack.front_mut() {
-            None => {}
-            Some(scope) => {
-                scope.add(name, value);
-            }
+            None => None,
+            Some(scope) => scope.add(name, value),
         }
     }
 

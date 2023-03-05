@@ -27,8 +27,10 @@ mod rule_var_decl_const_initialized;
 mod rule_var_decl_const_not_fb;
 mod rule_var_decl_global_const_requires_external_const;
 mod stages;
+mod symbol_graph;
 mod symbol_table;
-mod xform_resolve_late_bound_types;
+mod xform_resolve_late_bound_data_decl;
+mod xform_resolve_late_bound_type_initializer;
 
 #[cfg(test)]
 mod test_helpers;
