@@ -30,7 +30,19 @@ security best practices.
 
 The current state of the project is it checks an IEC 61131-3 library for
 syntactic and semantic correctness. The result is almost guaranteed to be
-incorrect except for the most basic of libraries.
+incorrect except for the most basic of libraries. You've been warned.
+
+### Install
+
+There exists an installer for Windows 10 and later. Install the package, then
+run the IEC 61131-3 checker on a small sample program generated from
+[Beremiz](https://beremiz.org/), for example:
+
+```cmd
+ironplcc.exe plc2x\resources\test\first_steps.st
+```
+
+### From Source
 
 To run the checker, you need to install git, Rust and Cargo. Once you have
 those, follow the steps below to check a library for correctness.
@@ -52,7 +64,7 @@ Run the IEC 61131-3 checker on a small sample program generated from
 [Beremiz](https://beremiz.org/):
 
 ```sh
-.\target\debug\ironplc-plc2x.exe plc2x\resources\test\first_steps.st
+.\target\debug\ironplcc.exe plc2x\resources\test\first_steps.st
 ```
 
 You can also run using Cargo directly:
@@ -78,6 +90,10 @@ using [act](https://github.com/nektos/act) (requires Docker).
 
 Follow the steps described in the [act](https://github.com/nektos/act)
 repository to install `act`.
+
+```sh
+act --workflows ./github/workflows/commit.yaml
+```
 
 ### Debugging the Parser
 
@@ -123,7 +139,7 @@ There is no strict definition of what goes where. Better rules would be nice.
 
 ## Similar Projects
 
-* [RuSTy](https://github.com/PLC-lang/rusty) - Structured text compiler written in Rust.
+* [RuSTy](https://github.com/PLC-lang/rusty) - Structured text compiler written in Rust. RuSTy is further along but the LGPL and LGPL licenses are difficult for industrial uses.
 * [msr](https://github.com/slowtec/msr) - A Rust library for industrial automation.
 * [ethercat-rs](https://github.com/birkenfeld/ethercat-rs) - An experimental Rust automation toolbox using the IgH (Etherlab) EtherCAT master.
 * [rustmatic](https://github.com/NOP0/rustmatic) - Rustmatic is a thought experiment on creating a PLC-like environment in Rust.
