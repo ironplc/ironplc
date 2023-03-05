@@ -1,31 +1,28 @@
 name: Build and Test
 on: [push]
 jobs:
-  test_linux_x86:
-    name: IronPLC Ubuntu Latest Build and Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - run: cargo test --all-features
-  format:
-    name: IronPLC Format Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt, clippy
-      - name: Rustfmt Check (for standard Rust formatting)
-        uses: actions-rust-lang/rustfmt@v1
-      - name: Clippy Check (for idiomatic Rust code)
-        run: cargo clippy
-  min-coverage:
-    name: IronPLC Min Coverage
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - name: Generate coverage
-        run: cargo llvm-cov --all-features --workspace --fail-under-lines 85 --show-missing-lines
+  tests:
+  runs-on:  ${{ matrix.os }}
+  strategy:
+      matrix:
+        os: [ubuntu-latest]
+      fail-fast: false
+  steps:
+    - uses: actions/checkout@v3
+    - uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        components: rustfmt, clippy
+    - uses: actions-rust-lang/rustfmt@v1
+    - uses: taiki-e/install-action@cargo-llvm-cov
+
+    - name: Rust tests
+      run: cargo test --all-features
+
+    - name: Standard Rust format check
+      run: cargo fmt --all -- --check
+
+    - name: Clippy format check
+      run: cargo clippy
+
+    - name: Coverage
+      run: cargo llvm-cov --all-features --workspace --fail-under-lines 85 --show-missing-lines
