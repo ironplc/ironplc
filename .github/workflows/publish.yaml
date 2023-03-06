@@ -2,22 +2,113 @@ on:
   push:
     tags:        
       - '*'
+  schedule:
+      - cron: '0 19 * * *'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        required: true
+        type: string
 
-name: Publish IronPLC to crates.io
+name: Publish IronPLC Releases
 
 jobs:
-  publish:
-    name: Publish
+  release:
+    name: Create GitHub Release
+    # Only needs to run on one platform because this is defining
+    # the container for the release rather than building the artifacts
     runs-on: ubuntu-latest
+    
+    outputs:
+      release_id: ${{ steps.create_release.outputs.id }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    
     steps:
       - uses: actions/checkout@v3
+        if: github.event_name == 'schedule'
+      - uses: actions/checkout@v3
+        if: github.event_name == 'workflow_dispatch'
+      
+      # The tag depends on whether the this ran because a tag was creates
+      # of it this was a scheduled release.
+      - name: Create Tag
+        id: create_tag
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            tag=v$(date +%Y%m%d.%H%M%S)
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag=${{ inputs.release_tag }}
+          else
+            tag=$(basename "${{ github.ref }}")
+          fi
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.create_tag.outputs.tag }}
+          release_name: ${{ steps.create_tag.outputs.tag }}
+          draft: true
+          prerelease: false
+    
+  build:
+    needs: [release]
+    strategy:
+    fail-fast: false
+    matrix:
+      os: [ ubuntu-latest, windows-latest ]
+      name: [ release ]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Set platform
+        id: platform
+        run: |
+          platform=${{ matrix.os }}
+          echo "platform=$platform" >> $GITHUB_OUTPUT
+
+      - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - run: cargo publish --package ironplc-dsl --token ${CRATES_TOKEN}
+
+      - name: Rust tests
+        # Only runs the unit tests - we don't care here about formatting
+        # or other things because we are building the release
+        run: cargo test --all-features
+
+      - name: Install cargo-wix tool
+        run: cargo install cargo-wix
+        if: startsWith(matrix.os, 'windows')
+
+      # Assumes the wix toolkit is available.
+      - name: Create installer
+        run: cargo wix -v --nocapture -o ./ironplc-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.msi -p ironplcc
+        if: startsWith(matrix.os, 'windows')
+
+      - name: Update Windows Installer
+        uses: actions/upload-release-asset@v1
         env:
-          CRATES_TOKEN: ${{ secrets.CRATES_TOKEN }}
-      - run: cargo publish --package ironplc-parser --token ${CRATES_TOKEN}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.upload_url }}
+          asset_path: ironplc-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.msi
+          asset_name: iconpl-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.msi
+          asset_content_type: application/octet-stream
+
+  cleanup:
+    name: Cleanup Old Development Releases
+    needs: [release, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: eregon/publish-release@v1
         env:
-          CRATES_TOKEN: ${{ secrets.CRATES_TOKEN }}
-      - run: cargo publish --package ironplc-plc2x --token ${CRATES_TOKEN}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          release_id: ${{ needs.release.outputs.release_id }}
+      - uses: eregon/keep-last-n-releases@v1
         env:
-          CRATES_TOKEN: ${{ secrets.CRATES_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          n: 3
+          remove_tags_without_release: true
