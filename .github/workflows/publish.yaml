@@ -4,6 +4,11 @@ on:
       - '*'
   schedule:
       - cron: '0 19 * * *'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        required: true
+        type: string
 
 name: Publish IronPLC Releases
 
@@ -21,6 +26,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         if: github.event_name == 'schedule'
+      - uses: actions/checkout@v3
+        if: github.event_name == 'workflow_dispatch'
       
       # The tag depends on whether the this ran because a tag was creates
       # of it this was a scheduled release.
@@ -29,6 +36,8 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "schedule" ]]; then
             tag=v$(date +%Y%m%d.%H%M%S)
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag=${{ inputs.release_tag }}
           else
             tag=$(basename "${{ github.ref }}")
           fi
