@@ -56,10 +56,10 @@ jobs:
   build:
     needs: [release]
     strategy:
-    fail-fast: false
-    matrix:
-      os: [ ubuntu-latest, windows-latest ]
-      name: [ release ]
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+        name: [ release ]
     runs-on: ${{ matrix.os }}
 
     steps:
