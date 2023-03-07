@@ -53,22 +53,16 @@ jobs:
           draft: true
           prerelease: false
     
-  build:
+  build-win:
     needs: [release]
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, windows-latest ]
+        os: [ windows-latest ]
         name: [ release ]
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
 
     steps:
-      - name: Set platform
-        id: platform
-        run: |
-          platform=${{ matrix.os }}
-          echo "platform=$platform" >> $GITHUB_OUTPUT
-
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
@@ -79,12 +73,10 @@ jobs:
 
       - name: Install cargo-wix tool
         run: cargo install cargo-wix
-        if: startsWith(matrix.os, 'windows')
 
       # Assumes the wix toolkit is available.
       - name: Create installer
-        run: cargo wix -v --nocapture -o ./ironplc-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.msi -p ironplcc
-        if: startsWith(matrix.os, 'windows')
+        run: cargo wix -v --nocapture -o ./ironplc-${{ matrix.name }}-windows.msi -p ironplcc
 
       - name: Update Windows Installer
         uses: actions/upload-release-asset@v1
@@ -92,13 +84,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.release.outputs.upload_url }}
-          asset_path: ironplc-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.msi
-          asset_name: iconpl-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.msi
+          asset_path: ironplc-${{ matrix.name }}-windows.msi
+          asset_name: iconpl-${{ matrix.name }}-windows.msi
           asset_content_type: application/octet-stream
 
   cleanup:
     name: Cleanup Old Development Releases
-    needs: [release, build]
+    needs: [release, build-win]
     runs-on: ubuntu-latest
     steps:
       - uses: eregon/publish-release@v1
