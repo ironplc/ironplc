@@ -84,7 +84,7 @@ jobs:
           files: |
             iconplc-${{ matrix.name }}-windows.msi
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: ${{ needs.release.outputs.id }}
+          tag_name: ${{ needs.release.outputs.release_id }}
 
   cleanup:
     name: Cleanup Old Development Releases
