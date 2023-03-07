@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     
     outputs:
-      release_id: ${{ steps.create_release.outputs.id }}
+      release_id: ${{ steps.create_release.outputs.automatic_release_tag }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     
     steps:
