@@ -44,16 +44,17 @@ jobs:
           echo "tag=$tag" >> $GITHUB_OUTPUT
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
+        uses: "marvinpinto/action-automatic-releases@latest"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: 
         with:
-          tag_name: ${{ steps.create_tag.outputs.tag }}
-          release_name: ${{ steps.create_tag.outputs.tag }}
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: ${{ steps.create_tag.outputs.tag }}
           draft: true
           prerelease: false
     
   build-win:
+    name: Build Windows Installer
     needs: [release]
     strategy:
       fail-fast: false
@@ -85,7 +86,7 @@ jobs:
         with:
           upload_url: ${{ needs.release.outputs.upload_url }}
           asset_path: ironplc-${{ matrix.name }}-windows.msi
-          asset_name: iconpl-${{ matrix.name }}-windows.msi
+          asset_name: iconplc-${{ matrix.name }}-windows.msi
           asset_content_type: application/octet-stream
 
   cleanup:
