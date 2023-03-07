@@ -3,7 +3,8 @@ on:
     tags:        
       - '*'
   schedule:
-      - cron: '0 19 * * *'
+      # Automatically create a release every Monday at 19:00
+      - cron: '0 19 * * 1'
   workflow_dispatch:
     inputs:
       release_tag:
@@ -78,14 +79,12 @@ jobs:
         run: cargo wix -v --nocapture -o ./ironplc-${{ matrix.name }}-windows.msi -p ironplcc
 
       - name: Update Windows Installer
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
-          upload_url: ${{ needs.release.outputs.upload_url }}
-          asset_path: ironplc-${{ matrix.name }}-windows.msi
-          asset_name: iconplc-${{ matrix.name }}-windows.msi
-          asset_content_type: application/octet-stream
+          files: |
+            iconplc-${{ matrix.name }}-windows.msi
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag_name: ${{ needs.release.outputs.id }}
 
   cleanup:
     name: Cleanup Old Development Releases
