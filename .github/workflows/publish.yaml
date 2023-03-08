@@ -79,7 +79,7 @@ jobs:
       - name: Create installer
         run: cargo wix -v --nocapture -o ./ironplc-${{ matrix.name }}-windows.msi -p ironplcc
 
-      - name: Update Windows Installer
+      - name: Upload Windows Installer
         uses: softprops/action-gh-release@v1
         with:
           files: |
@@ -92,11 +92,11 @@ jobs:
     needs: [release, build-win]
     runs-on: ubuntu-latest
     steps:
-      - uses: eregon/publish-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: softprops/action-gh-release@v1
         with:
-          release_id: ${{ needs.release.outputs.release_id }}
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag_name: ${{ needs.release.outputs.tag }}
+          draft: false
       - uses: eregon/keep-last-n-releases@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
