@@ -268,15 +268,13 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
                     }
                 }
             }
-            None => {
-                return Err(SemanticDiagnostic::error(
-                    "S0001",
-                    format!(
-                        "Function block invocation {} do not refer to a variable in scope",
-                        fb_call.var_name
-                    ),
-                ))
-            }
+            None => Err(SemanticDiagnostic::error(
+                "S0001",
+                format!(
+                    "Function block invocation {} do not refer to a variable in scope",
+                    fb_call.var_name
+                ),
+            )),
         }
     }
 }

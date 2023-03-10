@@ -1,16 +1,3 @@
-use std::{fs::File, io::Read};
-
-use clap::Parser;
-use codespan_reporting::{
-    diagnostic::Diagnostic,
-    files::SimpleFile,
-    term::{
-        self,
-        termcolor::{ColorChoice, StandardStream},
-    },
-};
-use stages::{parse, semantic};
-
 extern crate ironplc_dsl;
 extern crate ironplc_parser;
 
@@ -35,38 +22,10 @@ mod xform_resolve_late_bound_type_initializer;
 #[cfg(test)]
 mod test_helpers;
 
-#[derive(Parser, Debug)]
-struct Args {
-    file: String,
-}
+use codespan_reporting::diagnostic::Diagnostic;
+use stages::{parse, semantic};
 
-pub fn main() -> Result<(), String> {
-    let args = Args::parse();
-
-    let filename = args.file;
-    let mut file = File::open(filename.clone()).map_err(|_| "Failed opening file")?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)
-        .map_err(|_| "Failed to reach file")?;
-
-    let writer = StandardStream::stderr(ColorChoice::Always);
-    let config = codespan_reporting::term::Config::default();
-
-    match analyze(&contents) {
-        Ok(_) => {
-            println!("OK");
-        }
-        Err(diagnostic) => {
-            let file = SimpleFile::new(filename, contents);
-            term::emit(&mut writer.lock(), &config, &file, &diagnostic)
-                .map_err(|_| "Failed writing to terminal")?;
-        }
-    }
-
-    Ok(())
-}
-
-fn analyze(contents: &str) -> Result<(), Diagnostic<()>> {
+pub fn analyze(contents: &str) -> Result<(), Diagnostic<()>> {
     let library = parse(contents)?;
     semantic(&library)
 }
