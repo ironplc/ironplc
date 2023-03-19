@@ -6,7 +6,7 @@ use std::path::PathBuf;
 pub type FileId = PathBuf;
 
 /// Location in a file of a language element instance.
-/// 
+///
 /// The location is defined by indices in the source file.
 #[derive(Debug, Clone)]
 pub struct SourceLoc {
