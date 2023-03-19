@@ -40,7 +40,7 @@ run the IEC 61131-3 checker on a small sample program generated from
 [Beremiz](https://beremiz.org/), for example:
 
 ```cmd
-ironplcc.exe plc2x\resources\test\first_steps.st
+ironplcc.exe check plc2x\resources\test\first_steps.st
 ```
 
 ### From Source
@@ -65,13 +65,13 @@ Run the IEC 61131-3 checker on a small sample program generated from
 [Beremiz](https://beremiz.org/):
 
 ```sh
-.\target\debug\ironplcc.exe plc2x\resources\test\first_steps.st
+.\target\debug\ironplcc.exe check plc2x\resources\test\first_steps.st
 ```
 
 You can also run using Cargo directly:
 
 ```sh
-cargo run plc2x\resources\test\first_steps.st
+cargo run check plc2x\resources\test\first_steps.st
 ```
 
 ## Developing
@@ -93,7 +93,7 @@ Follow the steps described in the [act](https://github.com/nektos/act)
 repository to install `act`.
 
 ```sh
-act --workflows ./github/workflows/commit.yaml
+act --workflows ./.github/workflows/commit.yaml
 ```
 
 ### Debugging the Parser
