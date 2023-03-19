@@ -5,7 +5,9 @@ use std::{cmp::Ordering, hash::Hash, hash::Hasher};
 use std::path::PathBuf;
 pub type FileId = PathBuf;
 
-// TODO it is very questionable to have this part of equality
+/// Location in a file of a language element instance.
+///
+/// The location is defined by indices in the source file.
 #[derive(Debug, Clone)]
 pub struct SourceLoc {
     pub start: usize,
@@ -13,10 +15,6 @@ pub struct SourceLoc {
 }
 
 impl SourceLoc {
-    pub fn new(start: usize) -> SourceLoc {
-        SourceLoc { start, end: start }
-    }
-
     pub fn range(start: usize, end: usize) -> SourceLoc {
         SourceLoc { start, end }
     }
@@ -24,7 +22,7 @@ impl SourceLoc {
 
 impl Default for SourceLoc {
     fn default() -> Self {
-        SourceLoc::new(0)
+        SourceLoc::range(0, 0)
     }
 }
 

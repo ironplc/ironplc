@@ -261,7 +261,7 @@ mod tests {
                             type_name: Id::from("INT"),
                             initial_value: None,
                         }),
-                        position: SourceLoc::new(174),
+                        position: SourceLoc::default(),
                     },
                     VarDecl::simple("_TMP_ADD4_OUT", "INT"),
                     VarDecl::simple("_TMP_SEL7_OUT", "INT"),
@@ -403,7 +403,7 @@ mod tests {
                         type_name: Id::from("INT"),
                         initial_value: Some(Constant::IntegerLiteral(17)),
                     }),
-                    position: SourceLoc::new(49),
+                    position: SourceLoc::default(),
                 }],
                 resource_decl: vec![ResourceDeclaration {
                     name: Id::from("resource1"),
