@@ -2,7 +2,7 @@
 //!
 //! See section 3.
 use crate::common::{AddressAssignment, Constant, EnumeratedValue, SignedInteger, Subrange};
-use crate::core::Id;
+use crate::core::{Id, SourceLoc};
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -37,6 +37,7 @@ pub struct FbCall {
     /// call.
     pub var_name: Id,
     pub params: Vec<ParamAssignment>,
+    pub position: SourceLoc,
 }
 
 /// Expressions (instructions).
@@ -233,6 +234,7 @@ impl StmtKind {
         StmtKind::FbCall(FbCall {
             var_name: Id::from(fb_name),
             params: assignments,
+            position: SourceLoc::default(),
         })
     }
 

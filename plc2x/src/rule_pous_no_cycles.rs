@@ -34,6 +34,7 @@
 use ironplc_dsl::{
     common::*,
     core::Id,
+    diagnostic::{Diagnostic, Label},
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
         Visitor,
@@ -43,11 +44,9 @@ use petgraph::{
     algo::is_cyclic_directed,
     stable_graph::{NodeIndex, StableDiGraph},
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
-use crate::error::SemanticDiagnostic;
-
-pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
+pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     // Walk to build a graph of POUs and their relationships
     let mut visitor = RulePousNoCycles::new();
     visitor.walk(lib)?;
@@ -55,9 +54,11 @@ pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
     // Check if there are cycles in the graph.
     // TODO report what the cycle is
     if is_cyclic_directed(&visitor.graph) {
-        return Err(SemanticDiagnostic::error(
+        return Err(Diagnostic::new(
             "S0005",
-            "Library has a recursive cycle".to_string(),
+            "Library has a recursive cycle",
+            // TODO wrong location
+            Label::offset(PathBuf::default(), 0..0, "Cycle"),
         ));
     }
 
@@ -99,13 +100,13 @@ impl RulePousNoCycles {
     }
 }
 
-impl Visitor<SemanticDiagnostic> for RulePousNoCycles {
+impl Visitor<Diagnostic> for RulePousNoCycles {
     type Value = ();
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.name.clone());
         let res = visit_function_block_declaration(self, node);
         self.current_from = None;
@@ -115,7 +116,7 @@ impl Visitor<SemanticDiagnostic> for RulePousNoCycles {
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.name.clone());
         let res = visit_function_declaration(self, node);
         self.current_from = None;
@@ -125,7 +126,7 @@ impl Visitor<SemanticDiagnostic> for RulePousNoCycles {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.type_name.clone());
         let res = visit_program_declaration(self, node);
         self.current_from = None;
@@ -135,7 +136,7 @@ impl Visitor<SemanticDiagnostic> for RulePousNoCycles {
     fn visit_function_block_type_initializer(
         &mut self,
         init: &FunctionBlockInitialValueAssignment,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    ) -> Result<Self::Value, Diagnostic> {
         // Current context has a reference to this function block
         match &self.current_from {
             Some(from) => {
@@ -152,6 +153,8 @@ impl Visitor<SemanticDiagnostic> for RulePousNoCycles {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     use crate::stages::parse;
@@ -166,7 +169,7 @@ mod tests {
 
         END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
         assert!(result.is_err());
     }
@@ -188,7 +191,7 @@ mod tests {
 
         END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
         assert!(result.is_ok());
     }
@@ -211,7 +214,7 @@ mod tests {
             Caller := FALSE;
         END_FUNCTION";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
         assert!(result.is_ok());
     }

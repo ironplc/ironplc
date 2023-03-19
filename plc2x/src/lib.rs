@@ -1,7 +1,10 @@
+// Allow large errors because this is a compiler - we expect large errors.
+#![allow(clippy::result_large_err)]
+
 extern crate ironplc_dsl;
 extern crate ironplc_parser;
 
-mod error;
+pub mod lsp;
 mod rule_decl_struct_element_unique_names;
 mod rule_decl_subrange_limits;
 mod rule_enumeration_values_unique;
@@ -22,36 +25,38 @@ mod xform_resolve_late_bound_type_initializer;
 #[cfg(test)]
 mod test_helpers;
 
-use codespan_reporting::diagnostic::Diagnostic;
+use ironplc_dsl::{core::FileId, diagnostic::Diagnostic};
 use stages::{parse, semantic};
 
-pub fn analyze(contents: &str) -> Result<(), Diagnostic<()>> {
-    let library = parse(contents)?;
+pub fn analyze(contents: &str, file_id: &FileId) -> Result<(), Diagnostic> {
+    let library = parse(contents, file_id)?;
     semantic(&library)
 }
 
 #[cfg(test)]
 mod test {
+    use std::path::PathBuf;
+
     use crate::{analyze, test_helpers::read_resource};
 
     #[test]
     fn analyze_when_first_steps_then_result_is_ok() {
         let src = read_resource("first_steps.st");
-        let res = analyze(&src);
+        let res = analyze(&src, &PathBuf::default());
         assert!(res.is_ok())
     }
 
     #[test]
     fn analyze_when_first_steps_syntax_error_then_result_is_err() {
         let src = read_resource("first_steps_syntax_error.st");
-        let res = analyze(&src);
+        let res = analyze(&src, &PathBuf::default());
         assert!(res.is_err())
     }
 
     #[test]
     fn analyze_when_first_steps_semantic_error_then_result_is_err() {
         let src = read_resource("first_steps_semantic_error.st");
-        let res = analyze(&src);
+        let res = analyze(&src, &PathBuf::default());
         assert!(res.is_err())
     }
 }

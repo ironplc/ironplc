@@ -15,10 +15,13 @@
 //! * parser rule names in all capital letters are not production rules
 extern crate peg;
 
+use dsl::core::FileId;
 use dsl::core::SourceLoc;
+use dsl::diagnostic::Diagnostic;
+use dsl::diagnostic::Label;
+use dsl::diagnostic::QualifiedPosition;
 use peg::parser;
 
-use crate::error::{Location, ParserDiagnostic};
 use crate::mapper::*;
 use ironplc_dsl::common::*;
 use ironplc_dsl::common_sfc::*;
@@ -28,17 +31,19 @@ use ironplc_dsl::textual::*;
 // Don't use std::time::Duration because it does not allow negative values.
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
-use std::collections::HashSet;
-
 /// Parses a IEC 61131-3 library into object form.
-pub fn parse_library(source: &str) -> Result<Vec<LibraryElement>, ParserDiagnostic> {
-    plc_parser::library(source).map_err(|e| ParserDiagnostic {
-        location: Location {
-            line: e.location.line,
-            column: e.location.column,
-            offset: e.location.offset,
-        },
-        expected: HashSet::from_iter(e.expected.tokens()),
+pub fn parse_library(source: &str, file_id: &FileId) -> Result<Vec<LibraryElement>, Diagnostic> {
+    plc_parser::library(source).map_err(|e| {
+        let expected = Vec::from_iter(e.expected.tokens());
+        Diagnostic::new(
+            "P0002",
+            "Syntax error",
+            Label::qualified(
+                file_id.clone(),
+                QualifiedPosition::new(e.location.line, e.location.column, e.location.offset),
+                format!("Expected one of: {:?}", expected),
+            ),
+        )
     })
 }
 
@@ -482,7 +487,7 @@ parser! {
     rule enumerated_specification() -> EnumeratedSpecificationKind  =
       start:position!() "(" _ v:enumerated_value() ++ (_ "," _) _ ")" { EnumeratedSpecificationKind::values(v, SourceLoc::new(start)) }
       / name:enumerated_type_name() { EnumeratedSpecificationKind::TypeName(name) }
-    rule enumerated_value() -> EnumeratedValue = start:position!() type_name:(name:enumerated_type_name() "#" { name })? value:identifier() end:position!() { EnumeratedValue {type_name, value, position: Some(SourceLoc::range(start, end))} }
+    rule enumerated_value() -> EnumeratedValue = start:position!() type_name:(name:enumerated_type_name() "#" { name })? value:identifier() end:position!() { EnumeratedValue {type_name, value, position: SourceLoc::range(start, end)} }
     rule array_type_declaration() -> ArrayDeclaration = type_name:array_type_name() _ ":" _ spec_and_init:array_spec_init() {
       ArrayDeclaration {
         type_name,
@@ -905,13 +910,14 @@ parser! {
     rule function_block_type_name() -> Id = i:identifier() { i }
     rule derived_function_block_name() -> Id = !STANDARD_FUNCTION_BLOCK_NAME() i:identifier() { i }
     // TODO add variable declarations
-    rule function_block_declaration() -> FunctionBlockDeclaration = "FUNCTION_BLOCK" _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other }) ** _ _ body:function_block_body() _ "END_FUNCTION_BLOCK" {
+    rule function_block_declaration() -> FunctionBlockDeclaration = start:position!() "FUNCTION_BLOCK" _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other }) ** _ _ body:function_block_body() _ "END_FUNCTION_BLOCK" end:position!() {
       let (variables, located) = VarDeclarations::unzip(decls);
       FunctionBlockDeclaration {
         name,
         variables,
         // TODO located?
         body,
+        position: SourceLoc::range(start, end),
       }
     }
     // TODO there are far more here
@@ -1139,10 +1145,11 @@ parser! {
     // B.3.2.2 Subprogram control statements
     // TODO add RETURN
     rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb }
-    rule fb_invocation() -> StmtKind = name:fb_name() _ "(" _ params:param_assignment() ** (_ "," _) _ ")" {
+    rule fb_invocation() -> StmtKind = start:position!() name:fb_name() _ "(" _ params:param_assignment() ** (_ "," _) _ ")" end:position!() {
       StmtKind::FbCall(FbCall {
         var_name: name,
         params,
+        position: SourceLoc::range(start, end)
       })
     }
     // TODO this needs much more
@@ -1383,7 +1390,7 @@ END_VAR";
             var_type: VariableType::Global,
             qualifier: DeclarationQualifier::Constant,
             initializer: InitialValueAssignmentKind::simple("INT", Constant::IntegerLiteral(17)),
-            position: SourceLoc::new(0),
+            position: SourceLoc::default(),
         }];
         assert_eq!(
             plc_parser::global_var_declarations(
@@ -1575,6 +1582,7 @@ END_VAR";
             params: vec![ParamAssignment::positional(ExprKind::symbolic_variable(
                 "Reset",
             ))],
+            position: SourceLoc::default(),
         })]);
 
         assert_eq!(plc_parser::statement_list(statement), expected)
@@ -1589,6 +1597,7 @@ END_VAR";
                 "Cnt",
                 ExprKind::symbolic_variable("Reset"),
             )],
+            position: SourceLoc::default(),
         })]);
 
         assert_eq!(plc_parser::statement_list(statement), expected)

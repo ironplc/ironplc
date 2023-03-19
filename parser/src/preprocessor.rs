@@ -8,10 +8,10 @@
 //! original position (this means that source locations remain correct even
 //! after comments are removed).
 
-use crate::error::{Location, ParserDiagnostic};
-use std::collections::HashSet;
+use dsl::{core::FileId, diagnostic::Label};
+use ironplc_dsl::diagnostic::Diagnostic;
 
-pub fn preprocess(source: &str) -> Result<String, ParserDiagnostic> {
+pub fn preprocess(source: &str, file_id: &FileId) -> Result<String, Diagnostic> {
     // True when currently in a comment block, otherwise false.
     let mut in_comment = false;
     // True when the prior character is a candidate for starting or ending a
@@ -50,22 +50,23 @@ pub fn preprocess(source: &str) -> Result<String, ParserDiagnostic> {
     // By the very end, we should no longer be in a comment. If we are, that's
     // an error
     if in_comment {
-        let mut expected = HashSet::new();
-        expected.insert("*) - end of comment");
-        return Err(ParserDiagnostic {
-            location: Location {
-                line: 0,
-                column: 0,
-                offset: source.len(),
-            },
-            expected,
-        });
+        return Err(Diagnostic::new(
+            "P0001",
+            "Syntax error",
+            Label::offset(
+                file_id.clone(),
+                source.len()..source.len(),
+                "Expected '*)' - end of comment",
+            ),
+        ));
     }
     Ok(output.to_string())
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     #[test]
@@ -77,7 +78,7 @@ mod tests {
             END_STRUCT;
         END_TYPE";
 
-        let output = preprocess(program).unwrap();
+        let output = preprocess(program, &PathBuf::new()).unwrap();
         assert_eq!(program, output.as_str());
     }
 
@@ -99,7 +100,7 @@ mod tests {
             END_STRUCT;
         END_TYPE";
 
-        let output = preprocess(program).unwrap();
+        let output = preprocess(program, &PathBuf::new()).unwrap();
         assert_eq!(expected, output.as_str());
     }
 
@@ -115,7 +116,7 @@ mod tests {
                                       
         END_TYPE";
 
-        let output = preprocess(program).unwrap();
+        let output = preprocess(program, &PathBuf::new()).unwrap();
         assert_eq!(expected, output.as_str());
     }
 
@@ -129,6 +130,6 @@ mod tests {
             END_STRUCT;
         END_TYPE";
 
-        assert!(preprocess(program).is_err());
+        assert!(preprocess(program, &PathBuf::new()).is_err());
     }
 }

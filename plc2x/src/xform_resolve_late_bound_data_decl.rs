@@ -1,5 +1,5 @@
-use crate::error::SemanticDiagnostic;
 use crate::symbol_graph::{SymbolGraph, SymbolNode};
+use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
 use ironplc_dsl::{common::*, core::Id};
@@ -14,7 +14,7 @@ enum LateResolvableTypeDecl {
     Unspecified,
 }
 
-pub fn apply(lib: Library) -> Result<Library, SemanticDiagnostic> {
+pub fn apply(lib: Library) -> Result<Library, Diagnostic> {
     let mut declarations = TypeDeclResolver::new();
 
     // Populate the graph.
@@ -80,13 +80,13 @@ impl TypeDeclResolver {
     }
 }
 
-impl Visitor<SemanticDiagnostic> for TypeDeclResolver {
+impl Visitor<Diagnostic> for TypeDeclResolver {
     type Value = ();
 
     fn visit_simple_declaration(
         &mut self,
         node: &SimpleDeclaration,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    ) -> Result<Self::Value, Diagnostic> {
         // TODO handle name collisions
         self.add(&node.type_name, LateResolvableTypeDecl::Simple);
         Ok(())
@@ -95,7 +95,7 @@ impl Visitor<SemanticDiagnostic> for TypeDeclResolver {
     fn visit_enum_declaration(
         &mut self,
         node: &EnumerationDeclaration,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    ) -> Result<Self::Value, Diagnostic> {
         self.add(&node.type_name, LateResolvableTypeDecl::Enumeration);
         Ok(())
     }
@@ -103,7 +103,7 @@ impl Visitor<SemanticDiagnostic> for TypeDeclResolver {
     fn visit_structure_declaration(
         &mut self,
         node: &StructureDeclaration,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    ) -> Result<Self::Value, Diagnostic> {
         self.add(&node.type_name, LateResolvableTypeDecl::Structure);
         Ok(())
     }
@@ -111,7 +111,7 @@ impl Visitor<SemanticDiagnostic> for TypeDeclResolver {
     fn visit_late_bound_declaration(
         &mut self,
         node: &LateBoundDeclaration,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    ) -> Result<Self::Value, Diagnostic> {
         self.connect(
             &node.base_type_name,
             &node.data_type_name,
@@ -126,11 +126,11 @@ struct DeclarationResolver {
     ids_to_types: HashMap<Id, LateResolvableTypeDecl>,
 }
 
-impl Fold<SemanticDiagnostic> for DeclarationResolver {
+impl Fold<Diagnostic> for DeclarationResolver {
     fn fold_data_type_declaration_kind(
         &mut self,
         node: DataTypeDeclarationKind,
-    ) -> Result<DataTypeDeclarationKind, SemanticDiagnostic> {
+    ) -> Result<DataTypeDeclarationKind, Diagnostic> {
         if let DataTypeDeclarationKind::LateBound(late_bound) = node {
             if let Some(desired_type) = self.ids_to_types.get(&late_bound.data_type_name) {
                 match desired_type {
@@ -177,6 +177,8 @@ impl Fold<SemanticDiagnostic> for DeclarationResolver {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::apply;
     use ironplc_dsl::{common::*, core::Id};
 
@@ -188,7 +190,7 @@ LEVEL : (CRITICAL) := CRITICAL;
 LEVEL_ALIAS : LEVEL;
 END_TYPE
         ";
-        let input = ironplc_parser::parse_program(program).unwrap();
+        let input = ironplc_parser::parse_program(program, &PathBuf::default()).unwrap();
         let library = apply(input).unwrap();
 
         let expected = Library {
