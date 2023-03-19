@@ -17,33 +17,39 @@
 //!    END_VAR
 //! END_FUNCTION_BLOCK
 //! ```
-use ironplc_dsl::{common::*, core::SourcePosition, visitor::Visitor};
+use std::path::PathBuf;
 
-use crate::error::SemanticDiagnostic;
+use ironplc_dsl::{
+    common::*,
+    core::SourcePosition,
+    diagnostic::{Diagnostic, Label},
+    visitor::Visitor,
+};
 
-pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
+pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     let mut visitor = RuleVarDeclConstIsNotFunctionBlock {};
     visitor.walk(lib)
 }
 
 struct RuleVarDeclConstIsNotFunctionBlock {}
 
-impl Visitor<SemanticDiagnostic> for RuleVarDeclConstIsNotFunctionBlock {
+impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
     type Value = ();
 
-    fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<(), SemanticDiagnostic> {
+    fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<(), Diagnostic> {
         if node.qualifier == DeclarationQualifier::Constant {
             if let InitialValueAssignmentKind::FunctionBlock(fb) = &node.initializer {
-                return Err(SemanticDiagnostic::error(
+                return Err(Diagnostic::new(
                     "S0001",
                     format!(
                         "CONSTANT qualifier is not permitted for function block instance type {}",
                         fb.type_name
                     ),
-                )
-                .maybe_with_label(
-                    node.name.position(),
-                    "Declaration of function block instance",
+                    Label::source_loc(
+                        PathBuf::default(),
+                        node.name.position(),
+                        "Declaration of function block instance",
+                    ),
                 ));
             }
         }
@@ -54,6 +60,8 @@ impl Visitor<SemanticDiagnostic> for RuleVarDeclConstIsNotFunctionBlock {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     use crate::stages::parse;
@@ -72,7 +80,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -91,7 +99,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())

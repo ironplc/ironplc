@@ -28,24 +28,25 @@
 //! I don't know if it is possible to have an external
 //! reference where one part declares the value and another
 //! references the value (and still be constant).
+use std::path::PathBuf;
+
 use ironplc_dsl::{
     common::*,
+    diagnostic::{Diagnostic, Label},
     visitor::{visit_variable_declaration, Visitor},
 };
 
-use crate::error::SemanticDiagnostic;
-
-pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
+pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     let mut visitor = RuleConstantVarsInitialized {};
     visitor.walk(lib)
 }
 
 struct RuleConstantVarsInitialized {}
 
-impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
+impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
     type Value = ();
 
-    fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<(), SemanticDiagnostic> {
+    fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<(), Diagnostic> {
         if node.var_type == VariableType::External {
             // If the variable type is external, than it must be initialized
             // somewhere else and therefore we do not need to check here.
@@ -58,54 +59,66 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
                 InitialValueAssignmentKind::Simple(si) => match si.initial_value {
                     Some(_) => {}
                     None => {
-                        return Err(SemanticDiagnostic::error(
+                        return Err(Diagnostic::new(
                             "S0001",
                             format!(
                                 "Variable is constant but does not define value {} ",
                                 node.name
                             ),
-                        )
-                        .with_location(&node.position));
+                            Label::source_loc(PathBuf::default(), &node.position, "Variable"),
+                        ));
                     }
                 },
                 InitialValueAssignmentKind::String(str) => match str.initial_value {
                     Some(_) => {}
                     None => {
-                        return Err(SemanticDiagnostic::error(
+                        return Err(Diagnostic::new(
                             "S0001",
                             format!(
                                 "Variable is constant but does not define value {} ",
                                 node.name
                             ),
-                        )
-                        .with_location(&node.position));
+                            Label::source_loc(
+                                PathBuf::default(),
+                                &node.position,
+                                "Variable declaration",
+                            ),
+                        ));
                     }
                 },
                 InitialValueAssignmentKind::EnumeratedValues(spec) => match spec.initial_value {
                     Some(_) => {}
                     None => {
-                        return Err(SemanticDiagnostic::error(
+                        return Err(Diagnostic::new(
                             "S0002",
                             format!(
                                 "Variable is constant but does not define value {} ",
                                 node.name
                             ),
-                        )
-                        .with_location(&node.position));
+                            Label::source_loc(
+                                PathBuf::default(),
+                                &node.position,
+                                "Variable declaration",
+                            ),
+                        ));
                     }
                 },
                 InitialValueAssignmentKind::EnumeratedType(type_init) => {
                     match type_init.initial_value {
                         Some(_) => {}
                         None => {
-                            return Err(SemanticDiagnostic::error(
+                            return Err(Diagnostic::new(
                                 "S0003",
                                 format!(
                                     "Variable is constant but does not define value {} ",
                                     node.name
                                 ),
-                            )
-                            .with_location(&node.position))
+                                Label::source_loc(
+                                    PathBuf::default(),
+                                    &node.position,
+                                    "Variable declaration",
+                                ),
+                            ))
                         }
                     }
                 }
@@ -126,6 +139,8 @@ impl Visitor<SemanticDiagnostic> for RuleConstantVarsInitialized {
 
 #[cfg(test)]
 mod test {
+    use std::path::PathBuf;
+
     use super::*;
 
     use crate::stages::parse;
@@ -140,7 +155,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -160,7 +175,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -176,7 +191,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -192,7 +207,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -212,7 +227,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -228,7 +243,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
