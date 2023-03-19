@@ -259,7 +259,7 @@ parser! {
     // TODO fill out the rest here
     rule integer_literal() -> SignedInteger = bi:binary_integer() { bi.into() } / oi:octal_integer() { oi.into() } / hi:hex_integer() { hi.into() } / si:signed_integer() { si }
     rule signed_integer__string() -> &'input str = n:$(['+' | '-']?['0'..='9']("_"? ['0'..='9'])*) { n }
-    rule signed_integer() -> SignedInteger = start:position!() n:signed_integer__string() { SignedInteger::new(n, SourceLoc::new(start)) }
+    rule signed_integer() -> SignedInteger = start:position!() n:signed_integer__string() end:position!() { SignedInteger::new(n, SourceLoc::range(start, end)) }
     rule real_literal() -> Float = tn:(t:real_type_name() "#" {t})? whole:signed_integer__string() "." fraction:integer__string() exp:exponent()? {
       // Create the value from concatenating the parts so that it is trivial
       // to existing parsers.
@@ -280,13 +280,13 @@ parser! {
     rule exponent() -> SignedInteger = ("E" / "e") si:signed_integer() { si }
     // TODO handle the sign
     rule integer__string() -> &'input str = n:$(['0'..='9']("_"? ['0'..='9'])*) { n }
-    rule integer() -> Integer = start:position!() n:integer__string() { Integer::new(n, SourceLoc::new(start)) }
+    rule integer() -> Integer = start:position!() n:integer__string() end:position!() { Integer::new(n, SourceLoc::range(start, end)) }
     rule binary_integer_prefix() -> () = "2#" ()
-    rule binary_integer() -> Integer = start:position!() binary_integer_prefix() n:$(['0'..='1']("_"? ['0'..='1'])*) { Integer::binary(n, SourceLoc::new(start)) }
+    rule binary_integer() -> Integer = start:position!() binary_integer_prefix() n:$(['0'..='1']("_"? ['0'..='1'])*) end:position!() { Integer::binary(n, SourceLoc::range(start, end)) }
     rule octal_integer_prefix() -> () = "8#" ()
-    rule octal_integer() -> Integer = start:position!() octal_integer_prefix() n:$(['0'..='7']("_"? ['0'..='7'])*) { Integer::octal(n, SourceLoc::new(start)) }
+    rule octal_integer() -> Integer = start:position!() octal_integer_prefix() n:$(['0'..='7']("_"? ['0'..='7'])*) end:position!() { Integer::octal(n, SourceLoc::range(start, end)) }
     rule hex_integer_prefix() -> () = "16#" ()
-    rule hex_integer() -> Integer = start:position!() hex_integer_prefix() n:$(['0'..='9' | 'A'..='F']("_"? ['0'..='9' | 'A'..='F'])*) { Integer::hex(n, SourceLoc::new(start)) }
+    rule hex_integer() -> Integer = start:position!() hex_integer_prefix() n:$(['0'..='9' | 'A'..='F']("_"? ['0'..='9' | 'A'..='F'])*) end:position!() { Integer::hex(n, SourceLoc::range(start, end)) }
     rule boolean_literal() -> Boolean =
       // 1 and 0 can be a Boolean, but only with the prefix is it definitely a Boolean
       "BOOL#1" { Boolean::True }
@@ -483,9 +483,9 @@ parser! {
     }
     // TODO this doesn't support type name as a value
     rule enumerated_specification__only_values() -> EnumeratedSpecificationKind  =
-      start:position!() "(" _ v:enumerated_value() ++ (_ "," _) _ ")" { EnumeratedSpecificationKind::values(v, SourceLoc::new(start)) }
+      start:position!() "(" _ v:enumerated_value() ++ (_ "," _) _ ")" end:position!() { EnumeratedSpecificationKind::values(v, SourceLoc::range(start, end)) }
     rule enumerated_specification() -> EnumeratedSpecificationKind  =
-      start:position!() "(" _ v:enumerated_value() ++ (_ "," _) _ ")" { EnumeratedSpecificationKind::values(v, SourceLoc::new(start)) }
+      start:position!() "(" _ v:enumerated_value() ++ (_ "," _) _ ")" end:position!() { EnumeratedSpecificationKind::values(v, SourceLoc::range(start, end)) }
       / name:enumerated_type_name() { EnumeratedSpecificationKind::TypeName(name) }
     rule enumerated_value() -> EnumeratedValue = start:position!() type_name:(name:enumerated_type_name() "#" { name })? value:identifier() end:position!() { EnumeratedValue {type_name, value, position: SourceLoc::range(start, end)} }
     rule array_type_declaration() -> ArrayDeclaration = type_name:array_type_name() _ ":" _ spec_and_init:array_spec_init() {
@@ -715,13 +715,13 @@ parser! {
 
     // TODO add in subrange_spec_init(), enumerated_spec_init()
 
-    rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init:(a:simple_or_enumerated_or_ambiguous_struct_spec_init()) {
+    rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init:(a:simple_or_enumerated_or_ambiguous_struct_spec_init()) end:position!() {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
           initializer: init.clone(),
-          position: SourceLoc::new(start)
+          position: SourceLoc::range(start, end)
         }
       }).collect()
     }
@@ -776,13 +776,13 @@ parser! {
       let qualifier = qualifier.or(Some(DeclarationQualifier::Unspecified));
       VarDeclarations::Located(VarDeclarations::map_located(declarations, qualifier))
     }
-    rule located_var_decl() -> LocatedVarDecl = start:position!() name:variable_name()? _ location:location() _ ":" _ initializer:located_var_spec_init() {
+    rule located_var_decl() -> LocatedVarDecl = start:position!() name:variable_name()? _ location:location() _ ":" _ initializer:located_var_spec_init() end:position!() {
       LocatedVarDecl {
         name,
         qualifier: DeclarationQualifier::Unspecified,
         location,
         initializer,
-        position: SourceLoc::new(start),
+        position: SourceLoc::range(start, end),
       }
     }
     // TODO is this NOT the right type to return?
@@ -798,13 +798,13 @@ parser! {
         initial_value: None,
       })
     }
-    rule external_declaration() -> VarDecl = start:position!() name:global_var_name() _ ":" _ spec:external_declaration_spec() {
+    rule external_declaration() -> VarDecl = start:position!() name:global_var_name() _ ":" _ spec:external_declaration_spec() end:position!() {
       VarDecl {
         name,
         var_type: VariableType::External,
         qualifier: DeclarationQualifier::Unspecified,
         initializer: spec,
-        position: SourceLoc::new(start),
+        position: SourceLoc::range(start, end),
       }
     }
     rule global_var_name() -> Id = i:identifier() { i }
@@ -821,7 +821,7 @@ parser! {
       }).collect()
     }
     // TODO this doesn't pass all information. I suspect the rule from the dpec is not right
-    rule global_var_decl() -> (Vec<VarDecl>) = start:position!() vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment{type_name: f})})? {
+    rule global_var_decl() -> (Vec<VarDecl>) = start:position!() vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment{type_name: f})})? end:position!() {
       vs.0.into_iter().map(|name| {
         let init = initializer.clone().unwrap_or(InitialValueAssignmentKind::None);
         VarDecl {
@@ -831,7 +831,7 @@ parser! {
           // TODO this is clearly wrong
           initializer: init,
           // TODO this is clearly wrong
-          position: SourceLoc::new(start),
+          position: SourceLoc::range(start, end),
         }
       }).collect()
      }
@@ -1243,7 +1243,7 @@ mod test {
                 var_type: VariableType::Input,
                 qualifier: DeclarationQualifier::Unspecified,
                 initializer: InitialValueAssignmentKind::simple_uninitialized("BOOL"),
-                position: SourceLoc::new(18),
+                position: SourceLoc::default(),
             },
             VarDecl {
                 name: Id::from("MSG"),
@@ -1254,7 +1254,7 @@ mod test {
                     width: StringKind::String,
                     initial_value: None,
                 }),
-                position: SourceLoc::new(39),
+                position: SourceLoc::default(),
             },
         ];
         assert_eq!(plc_parser::input_declarations(decl), Ok(vars))
@@ -1275,7 +1275,7 @@ END_VAR";
                     initial_value: Some(EnumeratedValue::new("INFO")),
                 },
             ),
-            position: SourceLoc::new(10),
+            position: SourceLoc::default(),
         }]);
         assert_eq!(plc_parser::input_declarations(decl), expected)
     }
@@ -1292,7 +1292,7 @@ END_VAR";
                 var_type: VariableType::Output,
                 qualifier: DeclarationQualifier::Unspecified,
                 initializer: InitialValueAssignmentKind::simple_uninitialized("BOOL"),
-                position: SourceLoc::new(19),
+                position: SourceLoc::default(),
             },
             VarDecl {
                 name: Id::from("MSG"),
@@ -1303,7 +1303,7 @@ END_VAR";
                     width: StringKind::String,
                     initial_value: None,
                 }),
-                position: SourceLoc::new(40),
+                position: SourceLoc::default(),
             },
         ];
         assert_eq!(plc_parser::output_declarations(decl), Ok(vars))
