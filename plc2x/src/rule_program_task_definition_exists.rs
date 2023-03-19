@@ -12,12 +12,15 @@
 //! RESOURCE resource1 ON PLC
 //!   PROGRAM plc_task_instance WITH plc_task : plc_prg;
 //! END_RESOURCE
-use ironplc_dsl::{common::*, core::SourcePosition, visitor::Visitor};
-use std::collections::HashSet;
+use ironplc_dsl::{
+    common::*,
+    core::SourcePosition,
+    diagnostic::{Diagnostic, Label},
+    visitor::Visitor,
+};
+use std::{collections::HashSet, path::PathBuf};
 
-use crate::error::SemanticDiagnostic;
-
-pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
+pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     let mut visitor = RuleProgramTaskDefinitionExists::new();
     visitor.walk(lib)
 }
@@ -29,13 +32,13 @@ impl RuleProgramTaskDefinitionExists {
     }
 }
 
-impl Visitor<SemanticDiagnostic> for RuleProgramTaskDefinitionExists {
+impl Visitor<Diagnostic> for RuleProgramTaskDefinitionExists {
     type Value = ();
 
     fn visit_resource_declaration(
         &mut self,
         node: &ResourceDeclaration,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    ) -> Result<Self::Value, Diagnostic> {
         let mut task_names = HashSet::new();
 
         // Collect all task names for easy lookup
@@ -47,14 +50,18 @@ impl Visitor<SemanticDiagnostic> for RuleProgramTaskDefinitionExists {
         for program in &node.programs {
             if let Some(task_name) = &program.task_name {
                 if !task_names.contains(&task_name) {
-                    return Err(SemanticDiagnostic::error(
+                    return Err(Diagnostic::new(
                         "S0001",
                         format!(
                             "Program {} task configuration reference not defined {}",
                             program.name, task_name
                         ),
-                    )
-                    .maybe_with_label(task_name.position(), "Reference to task configuration"));
+                        Label::source_loc(
+                            PathBuf::default(),
+                            task_name.position(),
+                            "Reference to task configuration",
+                        ),
+                    ));
                 }
             }
         }
@@ -65,6 +72,8 @@ impl Visitor<SemanticDiagnostic> for RuleProgramTaskDefinitionExists {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     use crate::stages::parse;
@@ -78,7 +87,7 @@ mod tests {
             END_RESOURCE
         END_CONFIGURATION";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
         assert!(result.is_err());
     }
@@ -93,7 +102,7 @@ mod tests {
             END_RESOURCE
         END_CONFIGURATION";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
         assert!(result.is_ok());
     }

@@ -1,12 +1,14 @@
+// Allow large errors because this is a compiler - we expect large errors.
+#![allow(clippy::result_large_err)]
+
 extern crate ironplc_dsl as dsl;
 
-pub mod error;
 mod mapper;
 mod parser;
 mod preprocessor;
 
 use crate::parser::parse_library;
-use error::ParserDiagnostic;
+use dsl::{core::FileId, diagnostic::Diagnostic};
 use ironplc_dsl::common::Library;
 use preprocessor::preprocess;
 
@@ -14,7 +16,7 @@ use preprocessor::preprocess;
 mod tests;
 
 /// Parse a full IEC 61131 program.
-pub fn parse_program(source: &str) -> Result<Library, ParserDiagnostic> {
-    let source = preprocess(source)?;
-    parse_library(&source).map(|elements| Library { elements })
+pub fn parse_program(source: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
+    let source = preprocess(source, file_id)?;
+    parse_library(&source, file_id).map(|elements| Library { elements })
 }

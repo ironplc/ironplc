@@ -34,15 +34,14 @@
 use ironplc_dsl::{
     common::*,
     core::Id,
+    diagnostic::{Diagnostic, Label},
     textual::*,
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
         Visitor,
     },
 };
-use std::collections::HashMap;
-
-use crate::error::SemanticDiagnostic;
+use std::{collections::HashMap, path::PathBuf};
 
 /// Returns the first variable matching the specified name and one of the
 /// variable types or `None` if the owner does not contain a matching
@@ -81,7 +80,7 @@ fn find_output_type<'a>(owner: &'a dyn HasVariables, name: &'a Id) -> Option<&'a
     find(owner, name, &[VariableType::Output])
 }
 
-pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
+pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     // Collect the names from the library into a map so that
     // we can quickly look up invocations
     let mut function_blocks = HashMap::new();
@@ -114,13 +113,13 @@ impl<'a> RuleFunctionBlockUse<'a> {
 
     fn check_assignments(
         function_block: &FunctionBlockDeclaration,
-        params: &[ParamAssignment],
-    ) -> Result<(), SemanticDiagnostic> {
+        fb_call: &FbCall,
+    ) -> Result<(), Diagnostic> {
         // Sort the inputs as either named, positional, and outputs
         let mut formal: Vec<&NamedInput> = vec![];
         let mut non_formal: Vec<&PositionalInput> = vec![];
         let mut outputs: Vec<&Output> = vec![];
-        for param in params.iter() {
+        for param in fb_call.params.iter() {
             match param {
                 ParamAssignment::NamedInput(n) => {
                     formal.push(n);
@@ -138,12 +137,13 @@ impl<'a> RuleFunctionBlockUse<'a> {
         // Don't allow a mixture so assert that either named is empty or
         // positional is empty
         if !formal.is_empty() && !non_formal.is_empty() {
-            return Err(SemanticDiagnostic::error(
+            return Err(Diagnostic::new(
                 "S0001",
                 format!(
                     "Function call {} mixes named (formal) and positional (non-format) input arguments",
                     function_block.name
                 ),
+                Label::source_loc(PathBuf::default(), &fb_call.position, "Function ")
             ));
         }
 
@@ -155,13 +155,14 @@ impl<'a> RuleFunctionBlockUse<'a> {
                 match find_input_type(function_block, &name.name) {
                     Some(_) => {}
                     None => {
-                        return Err(SemanticDiagnostic::error(
+                        return Err(Diagnostic::new(
                             "S0001",
                             format!(
                                 "Function invocation {} assigns named (formal) input that is not defined {}",
                                 function_block.name, name.name
                             ),
-                        ))
+                            Label::source_loc(PathBuf::default(), &fb_call.position, "Function block invocation")
+                        ).with_secondary(Label::source_loc(PathBuf::default(), &function_block.position, "Function block declaration")))
                     }
                 }
             }
@@ -172,12 +173,13 @@ impl<'a> RuleFunctionBlockUse<'a> {
         if !non_formal.is_empty() {
             let num_required_inputs = count_input_type(function_block);
             if non_formal.len() != num_required_inputs {
-                return Err(SemanticDiagnostic::error(
+                return Err(Diagnostic::new(
                     "S0001",
                     format!(
                         "Function invocation {} requires {} non-formal inputs but the invocation has {} formal inputs",
                         function_block.name, num_required_inputs, non_formal.len()
                     ),
+                    Label::source_loc(PathBuf::default(), &fb_call.position, "Function block invocation")
                 ));
             }
         }
@@ -188,12 +190,13 @@ impl<'a> RuleFunctionBlockUse<'a> {
             match find_output_type(function_block, &output.src) {
                 Some(_) => {},
                 None => {
-                    return Err(SemanticDiagnostic::error(
+                    return Err(Diagnostic::new(
                         "S0001",
                         format!(
                             "Function invocation {} assigns from {} (to {:?}) but {} is not an output variable of the function",
                             function_block.name, output.src, output.tgt, output.src
                         ),
+                        Label::source_loc(PathBuf::default(), &fb_call.position, "Function block invocation")
                     ))
                 }
             }
@@ -203,13 +206,13 @@ impl<'a> RuleFunctionBlockUse<'a> {
     }
 }
 
-impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
+impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
     type Value = ();
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    ) -> Result<Self::Value, Diagnostic> {
         let res = visit_function_block_declaration(self, node);
 
         // Remove all items from var init decl since we have left this context
@@ -220,7 +223,7 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    ) -> Result<Self::Value, Diagnostic> {
         let res = visit_function_declaration(self, node);
 
         // Remove all items from var init decl since we have left this context
@@ -231,7 +234,7 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    ) -> Result<Self::Value, Diagnostic> {
         let res = visit_program_declaration(self, node);
 
         // Remove all items from var init decl since we have left this context
@@ -239,10 +242,7 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
         res
     }
 
-    fn visit_variable_declaration(
-        &mut self,
-        node: &VarDecl,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         if let InitialValueAssignmentKind::FunctionBlock(fbi) = &node.initializer {
             self.var_to_fb
                 .insert(node.name.clone(), fbi.type_name.clone());
@@ -250,7 +250,7 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
         Ok(())
     }
 
-    fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, SemanticDiagnostic> {
+    fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, Diagnostic> {
         // Check if function block is defined because you cannot
         // call a function block that doesn't exist
         let function_block_name = self.var_to_fb.get(&fb_call.var_name);
@@ -264,15 +264,20 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
                     }
                     Some(fb) => {
                         // Validate the parameter assignments
-                        RuleFunctionBlockUse::check_assignments(fb, &fb_call.params)
+                        RuleFunctionBlockUse::check_assignments(fb, fb_call)
                     }
                 }
             }
-            None => Err(SemanticDiagnostic::error(
+            None => Err(Diagnostic::new(
                 "S0001",
                 format!(
                     "Function block invocation {} do not refer to a variable in scope",
                     fb_call.var_name
+                ),
+                Label::source_loc(
+                    PathBuf::new(),
+                    &fb_call.position,
+                    "Function block invocation",
                 ),
             )),
         }
@@ -281,6 +286,8 @@ impl Visitor<SemanticDiagnostic> for RuleFunctionBlockUse<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
     use crate::stages::parse;
 
@@ -298,7 +305,7 @@ END_VAR
 FB_INSTANCE();
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -321,7 +328,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -344,7 +351,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE, FALSE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -360,7 +367,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -383,7 +390,7 @@ END_VAR
 FB_INSTANCE(TRUE, FALSE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -407,7 +414,7 @@ END_VAR
 FB_INSTANCE(OUT1 => LOCAL);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -430,7 +437,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE, IN2 := FALSE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -449,7 +456,7 @@ END_VAR
 FB_INSTANCE(BAR := TRUE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -472,7 +479,7 @@ END_VAR
 FB_INSTANCE(TRUE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -494,7 +501,7 @@ END_VAR
 FB_INSTANCE(TRUE, FALSE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -516,7 +523,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE, BAR := TRUE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -539,7 +546,7 @@ END_VAR
 FB_INSTANCE(OUT2 => LOCAL);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -561,7 +568,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE);
 END_PROGRAM";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())

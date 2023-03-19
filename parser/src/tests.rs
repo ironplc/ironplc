@@ -4,8 +4,8 @@ mod test {
     use std::path::PathBuf;
 
     use dsl::common::Library;
+    use dsl::diagnostic::Diagnostic;
 
-    use crate::error::ParserDiagnostic;
     use crate::parse_program;
 
     pub fn read_resource(name: &'static str) -> String {
@@ -16,9 +16,9 @@ mod test {
         fs::read_to_string(path).expect("Unable to read file")
     }
 
-    pub fn parse_resource(name: &'static str) -> Result<Library, ParserDiagnostic> {
+    pub fn parse_resource(name: &'static str) -> Result<Library, Diagnostic> {
         let source = read_resource(name);
-        parse_program(&source)
+        parse_program(&source, &PathBuf::new())
     }
 
     #[test]

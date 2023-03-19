@@ -7,6 +7,8 @@ pub mod common_sfc;
 #[allow(unused)]
 pub mod core;
 #[allow(unused)]
+pub mod diagnostic;
+#[allow(unused)]
 pub mod fold;
 #[allow(unused)]
 pub mod textual;

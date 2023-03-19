@@ -22,40 +22,56 @@
 //!     END_STRUCT;
 //! END_TYPE
 //! ```
-use crate::error::SemanticDiagnostic;
-use ironplc_dsl::{common::*, core::*, visitor::Visitor};
-use std::collections::HashSet;
+use ironplc_dsl::{
+    common::*,
+    core::*,
+    diagnostic::{Diagnostic, Label},
+    visitor::Visitor,
+};
+use std::{collections::HashSet, path::PathBuf};
 
-pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
+pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     let mut visitor = RuleStructElementNamesUnique {};
     visitor.walk(lib)
 }
 
 struct RuleStructElementNamesUnique {}
 
-impl Visitor<SemanticDiagnostic> for RuleStructElementNamesUnique {
+impl Visitor<Diagnostic> for RuleStructElementNamesUnique {
     type Value = ();
 
     fn visit_structure_declaration(
         &mut self,
         node: &StructureDeclaration,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    ) -> Result<Self::Value, Diagnostic> {
         let mut element_names: HashSet<&Id> = HashSet::new();
 
         for element in &node.elements {
             let seen = element_names.get(&element.name);
             match seen {
                 Some(first) => {
-                    return Err(SemanticDiagnostic::error(
+                    return Err(Diagnostic::new(
                         "S0001",
                         format!(
                             "Structure {} has duplicated element name {}",
                             node.type_name, element.name
                         ),
+                        Label::source_loc(
+                            PathBuf::default(),
+                            node.type_name.position(),
+                            "Structure",
+                        ),
                     )
-                    .maybe_with_label(node.type_name.position(), "Structure")
-                    .maybe_with_label(first.position(), "First use of name")
-                    .maybe_with_label(element.name.position(), "Dupliced use of name"));
+                    .with_secondary(Label::source_loc(
+                        PathBuf::default(),
+                        first.position(),
+                        "First use of name",
+                    ))
+                    .with_secondary(Label::source_loc(
+                        PathBuf::default(),
+                        element.name.position(),
+                        "Second use of name",
+                    )));
                 }
                 None => {
                     element_names.insert(&element.name);
@@ -70,6 +86,8 @@ impl Visitor<SemanticDiagnostic> for RuleStructElementNamesUnique {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     use crate::stages::parse;
@@ -83,7 +101,7 @@ TYPE
     END_STRUCT;
 END_TYPE";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok());
@@ -99,7 +117,7 @@ TYPE
     END_STRUCT;
 END_TYPE";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err());

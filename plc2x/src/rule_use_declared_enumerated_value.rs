@@ -31,13 +31,15 @@
 use ironplc_dsl::{
     common::*,
     core::{Id, SourcePosition},
+    diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
-use crate::error::SemanticDiagnostic;
-
-pub fn apply(lib: &Library) -> Result<(), SemanticDiagnostic> {
+pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     // Collect the data type definitions from the library into a map so that
     // we can quickly look up invocations
     let mut enum_defs = HashMap::new();
@@ -80,7 +82,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
     fn find_enum_declaration_values(
         &self,
         type_name: &'a Id,
-    ) -> Result<&Vec<EnumeratedValue>, SemanticDiagnostic> {
+    ) -> Result<&Vec<EnumeratedValue>, Diagnostic> {
         // Keep track of names we've seen before so that we can be sure that
         // the loop terminates
         let mut seen_names = HashSet::new();
@@ -98,47 +100,55 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                     }
                 }
                 None => {
-                    return Err(SemanticDiagnostic::error(
+                    return Err(Diagnostic::new(
                         "S0001",
                         format!("Enumeration {name} is not declared"),
-                    )
-                    .maybe_with_label(name.position(), "Enumeration reference"))
+                        Label::source_loc(
+                            PathBuf::default(),
+                            name.position(),
+                            "Enumeration reference",
+                        ),
+                    ))
                 }
             }
 
             // Check that our next name is new and we haven't seen it before
             if seen_names.contains(name) {
-                return Err(SemanticDiagnostic::error(
+                return Err(Diagnostic::new(
                     "S0001",
                     format!("Recursive enumeration for type {name}"),
-                )
-                .maybe_with_label(name.position(), "Current enumeration"));
+                    Label::source_loc(PathBuf::default(), name.position(), "Current enumeration"),
+                ));
             }
         }
     }
 }
 
-impl Visitor<SemanticDiagnostic> for RuleDeclaredEnumeratedValues<'_> {
+impl Visitor<Diagnostic> for RuleDeclaredEnumeratedValues<'_> {
     type Value = ();
 
     fn visit_enumerated_type_initializer(
         &mut self,
         init: &EnumeratedInitialValueAssignment,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    ) -> Result<Self::Value, Diagnostic> {
         let defined_values = self.find_enum_declaration_values(&init.type_name)?;
         if let Some(value) = &init.initial_value {
             // TODO this is using the Id, but not the full enumerated value
             // and we don't have declared appropriate comparison between things
             // that are known but partially declared
             if !defined_values.contains(value) {
-                return Err(SemanticDiagnostic::error(
+                return Err(Diagnostic::new(
                     "S0001",
                     format!(
                         "Enumeration uses value {} which is not defined in the enumeration",
                         value.value
                     ),
-                )
-                .maybe_with_label(value.position(), "Expected value in enumeration"));
+                    Label::source_loc(
+                        PathBuf::default(),
+                        value.position(),
+                        "Expected value in enumeration",
+                    ),
+                ));
             }
         }
 
@@ -148,6 +158,8 @@ impl Visitor<SemanticDiagnostic> for RuleDeclaredEnumeratedValues<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     use crate::stages::parse;
@@ -165,7 +177,7 @@ LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err());
@@ -184,7 +196,7 @@ LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok());
@@ -205,7 +217,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program).unwrap();
+        let library = parse(program, &PathBuf::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok());

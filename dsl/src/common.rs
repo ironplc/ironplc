@@ -332,7 +332,7 @@ impl EnumeratedSpecificationInit {
         EnumeratedSpecificationInit {
             spec: EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues {
                 values: values.into_iter().map(EnumeratedValue::new).collect(),
-                position: SourceLoc::new(0),
+                position: SourceLoc::default(),
             }),
             default: Some(EnumeratedValue::new(default)),
         }
@@ -358,12 +358,12 @@ impl EnumeratedSpecificationKind {
             .map(|v| EnumeratedValue {
                 type_name: None,
                 value: Id::from(v),
-                position: Some(SourceLoc::new(0)),
+                position: SourceLoc::default(),
             })
             .collect();
         EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues {
             values,
-            position: SourceLoc::new(0),
+            position: SourceLoc::default(),
         })
     }
 
@@ -392,7 +392,7 @@ pub struct EnumeratedSpecificationValues {
 pub struct EnumeratedValue {
     pub type_name: Option<Id>,
     pub value: Id,
-    pub position: Option<SourceLoc>,
+    pub position: SourceLoc,
 }
 
 impl EnumeratedValue {
@@ -400,18 +400,18 @@ impl EnumeratedValue {
         EnumeratedValue {
             type_name: None,
             value: Id::from(value),
-            position: Some(SourceLoc::new(0)),
+            position: SourceLoc::default(),
         }
     }
 
     pub fn with_position(mut self, position: SourceLoc) -> Self {
-        self.position = Some(position);
+        self.position = position;
         self
     }
 }
 
 impl SourcePosition for EnumeratedValue {
-    fn position(&self) -> &Option<SourceLoc> {
+    fn position(&self) -> &SourceLoc {
         &self.position
     }
 }
@@ -629,7 +629,7 @@ impl VarDecl {
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::simple_uninitialized(type_name),
-            position: SourceLoc::new(0),
+            position: SourceLoc::default(),
         }
     }
 
@@ -665,7 +665,7 @@ impl VarDecl {
                     initial_value: None,
                 },
             ),
-            position: SourceLoc::new(0),
+            position: SourceLoc::default(),
         }
     }
 
@@ -682,11 +682,11 @@ impl VarDecl {
                     initial_value: Some(EnumeratedValue {
                         type_name: None,
                         value: Id::from(initial_value),
-                        position: Some(SourceLoc::new(0)),
+                        position: SourceLoc::default(),
                     }),
                 },
             ),
-            position: SourceLoc::new(0),
+            position: SourceLoc::default(),
         }
     }
 
@@ -702,7 +702,7 @@ impl VarDecl {
                     type_name: Id::from(type_name),
                 },
             ),
-            position: SourceLoc::new(0),
+            position: SourceLoc::default(),
         }
     }
 
@@ -718,7 +718,7 @@ impl VarDecl {
                     elements_init: vec![],
                 },
             ),
-            position: SourceLoc::new(0),
+            position: SourceLoc::default(),
         }
     }
 
@@ -733,7 +733,7 @@ impl VarDecl {
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::LateResolvedType(Id::from(type_name)),
-            position: SourceLoc::new(0),
+            position: SourceLoc::default(),
         }
     }
 
@@ -1027,6 +1027,7 @@ pub struct FunctionBlockDeclaration {
     pub name: Id,
     pub variables: Vec<VarDecl>,
     pub body: FunctionBlockBody,
+    pub position: SourceLoc,
 }
 
 impl HasVariables for FunctionBlockDeclaration {

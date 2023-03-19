@@ -1,39 +1,55 @@
 use core::fmt;
+use std::ops::Range;
 use std::{cmp::Ordering, hash::Hash, hash::Hasher};
+
+use std::path::PathBuf;
+pub type FileId = PathBuf;
 
 // TODO it is very questionable to have this part of equality
 #[derive(Debug, Clone)]
 pub struct SourceLoc {
     pub start: usize,
-    pub end: Option<usize>,
+    pub end: usize,
 }
 
 impl SourceLoc {
     pub fn new(start: usize) -> SourceLoc {
-        SourceLoc { start, end: None }
+        SourceLoc { start, end: start }
     }
 
     pub fn range(start: usize, end: usize) -> SourceLoc {
-        SourceLoc {
-            start,
-            end: Some(end),
-        }
+        SourceLoc { start, end }
+    }
+}
+
+impl Default for SourceLoc {
+    fn default() -> Self {
+        SourceLoc::new(0)
     }
 }
 
 impl PartialEq for SourceLoc {
     fn eq(&self, other: &Self) -> bool {
-        // TODO this is dubious - two source locations are equal? But to some
-        // degree this is true because we don't care about the location for
-        // equality purposes.
+        // Two source locations are equal by default? Yes - when comparing
+        // items, we rarely want to know that they were declared at the same
+        // position. With this, we can use the derived "Clone" implementation.
         true
     }
 }
 impl Eq for SourceLoc {}
 
+impl From<SourceLoc> for Range<usize> {
+    fn from(loc: SourceLoc) -> Self {
+        Range {
+            start: loc.start,
+            end: loc.end,
+        }
+    }
+}
+
 pub trait SourcePosition {
     /// Get the source code position of the object.
-    fn position(&self) -> &Option<SourceLoc>;
+    fn position(&self) -> &SourceLoc;
 }
 
 /// Implements Identifier declared by 2.1.2.
@@ -44,7 +60,7 @@ pub trait SourcePosition {
 pub struct Id {
     original: String,
     lower_case: String,
-    position: Option<SourceLoc>,
+    position: SourceLoc,
 }
 
 impl Id {
@@ -53,12 +69,12 @@ impl Id {
         Id {
             original: String::from(str),
             lower_case: String::from(str).to_lowercase(),
-            position: None,
+            position: SourceLoc::default(),
         }
     }
 
     pub fn with_position(mut self, loc: SourceLoc) -> Self {
-        self.position = Some(loc);
+        self.position = loc;
         self
     }
 
@@ -70,11 +86,7 @@ impl Id {
 
 impl Clone for Id {
     fn clone(&self) -> Self {
-        let mut id = Id::from(self.original.as_str());
-        if let Some(loc) = &self.position {
-            id = id.with_position(loc.clone());
-        }
-        id
+        Id::from(self.original.as_str()).with_position(self.position.clone())
     }
 }
 
@@ -104,7 +116,7 @@ impl fmt::Display for Id {
 }
 
 impl SourcePosition for Id {
-    fn position(&self) -> &Option<SourceLoc> {
+    fn position(&self) -> &SourceLoc {
         &self.position
     }
 }

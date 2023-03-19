@@ -1,11 +1,13 @@
+#![allow(clippy::type_complexity)]
+
 //! The compiler as individual stages (to enable testing).
-use codespan_reporting::diagnostic::Diagnostic;
-use ironplc_parser::error::ParserDiagnostic;
+
+use ironplc_dsl::{core::FileId, diagnostic::Diagnostic};
 
 use crate::{
-    error::SemanticDiagnostic, ironplc_dsl::common::Library, rule_decl_struct_element_unique_names,
-    rule_decl_subrange_limits, rule_enumeration_values_unique, rule_function_block_invocation,
-    rule_pous_no_cycles, rule_program_task_definition_exists, rule_use_declared_enumerated_value,
+    ironplc_dsl::common::Library, rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
+    rule_enumeration_values_unique, rule_function_block_invocation, rule_pous_no_cycles,
+    rule_program_task_definition_exists, rule_use_declared_enumerated_value,
     rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, xform_resolve_late_bound_data_decl,
     xform_resolve_late_bound_type_initializer,
@@ -18,46 +20,47 @@ use crate::{
 ///
 /// Returns `Ok(Library)` if parsing succeeded.
 /// Returns `Err(String)` if parsing did not succeed.
-pub fn parse(source: &str) -> Result<Library, Diagnostic<()>> {
-    let library = ironplc_parser::parse_program(source)
-        .map_err(<ParserDiagnostic as Into<Diagnostic<()>>>::into)?;
+pub fn parse(source: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
+    let library = ironplc_parser::parse_program(source, file_id)?;
 
     // Resolve the late bound type declarations, replacing with
     // the type-specific declarations. This just simplifies
     // code generation because we know the type of every declaration
     // exactly
-    let library = xform_resolve_late_bound_data_decl::apply(library)
-        .map_err(<SemanticDiagnostic as Into<Diagnostic<()>>>::into)?;
-    xform_resolve_late_bound_type_initializer::apply(library).map_err(|err| err.into())
+    let library = xform_resolve_late_bound_data_decl::apply(library)?;
+    xform_resolve_late_bound_type_initializer::apply(library)
 }
 
 /// Semantic implements semantic analysis (stage 3).
 ///
 /// Returns `Ok(())` if the library is free of semantic errors.
 /// Returns `Err(String)` if the library contains a semantic error.
-pub fn semantic(library: &Library) -> Result<(), Diagnostic<()>> {
-    rule_use_declared_symbolic_var::apply(library)?;
-    rule_use_declared_enumerated_value::apply(library)?;
-    rule_function_block_invocation::apply(library)?;
-    rule_var_decl_const_initialized::apply(library)?;
-    rule_var_decl_const_not_fb::apply(library)?;
-    rule_enumeration_values_unique::apply(library)?;
-    rule_program_task_definition_exists::apply(library)?;
-    rule_pous_no_cycles::apply(library)?;
-    rule_var_decl_global_const_requires_external_const::apply(library)?;
-    rule_decl_subrange_limits::apply(library)?;
-    rule_decl_struct_element_unique_names::apply(library)?;
+pub fn semantic(library: &Library) -> Result<(), Diagnostic> {
+    let functions: Vec<fn(&Library) -> Result<(), Diagnostic>> = vec![
+        rule_use_declared_symbolic_var::apply,
+        rule_use_declared_enumerated_value::apply,
+        rule_function_block_invocation::apply,
+        rule_var_decl_const_initialized::apply,
+        rule_var_decl_const_not_fb::apply,
+        rule_enumeration_values_unique::apply,
+        rule_program_task_definition_exists::apply,
+        rule_pous_no_cycles::apply,
+        rule_var_decl_global_const_requires_external_const::apply,
+        rule_decl_subrange_limits::apply,
+        rule_decl_struct_element_unique_names::apply,
+    ];
 
-    // 1. Check all identifiers defined (need scope)
-    // 2. Type checking
-    // 3. Check types only defined once
-    // 4. Check reserved identifiers
-    // 5. Check assignment types compatible
+    for func in functions {
+        func(library)?;
+    }
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use crate::test_helpers;
 
     use super::parse;
@@ -86,7 +89,7 @@ mod tests {
                 ),
             }),
         ));
-        assert_eq!(parse(src.as_str()), expected)
+        assert_eq!(parse(src.as_str(), &PathBuf::default()).unwrap(), expected)
     }
 
     #[test]
@@ -102,7 +105,7 @@ mod tests {
                         "MSG",
                         VariableType::Input,
                         DeclarationQualifier::Unspecified,
-                        SourceLoc::new(0),
+                        SourceLoc::default(),
                     ),
                     VarDecl::enumerated("LEVEL", "LOGLEVEL", "INFO").with_type(VariableType::Input),
                     VarDecl::simple("TRIG0", "BOOL"),
@@ -126,9 +129,13 @@ mod tests {
                         ExprKind::symbolic_variable("TRIG"),
                     ),
                 ]),
+                position: SourceLoc::default(),
             },
         ));
-        assert_eq!(ironplc_parser::parse_program(src.as_str()), expected)
+        assert_eq!(
+            ironplc_parser::parse_program(src.as_str(), &PathBuf::default()).unwrap(),
+            expected
+        )
     }
 
     #[test]
@@ -149,7 +156,7 @@ mod tests {
                             type_name: Id::from("INT"),
                             initial_value: None,
                         }),
-                        position: SourceLoc::new(0),
+                        position: SourceLoc::default(),
                     },
                 ],
                 body: FunctionBlockBody::sfc(vec![Network {
@@ -227,9 +234,13 @@ mod tests {
                         Element::transition("Count", "Start", ExprKind::symbolic_variable("Reset")),
                     ],
                 }]),
+                position: SourceLoc::default(),
             },
         ));
-        assert_eq!(ironplc_parser::parse_program(src.as_str()), expected)
+        assert_eq!(
+            ironplc_parser::parse_program(src.as_str(), &PathBuf::default()).unwrap(),
+            expected
+        )
     }
 
     #[test]
@@ -259,9 +270,13 @@ mod tests {
                     StmtKind::simple_assignment("Cnt", vec!["_TMP_SEL7_OUT"]),
                     StmtKind::simple_assignment("OUT", vec!["Cnt"]),
                 ]),
+                position: SourceLoc::default(),
             },
         ));
-        assert_eq!(ironplc_parser::parse_program(src.as_str()), expected)
+        assert_eq!(
+            ironplc_parser::parse_program(src.as_str(), &PathBuf::default()).unwrap(),
+            expected
+        )
     }
 
     #[test]
@@ -287,7 +302,7 @@ mod tests {
                             data_type: None,
                         })),
                     }),
-                    position: SourceLoc::new(0),
+                    position: SourceLoc::default(),
                 },
             ],
             body: vec![StmtKind::assignment(
@@ -316,7 +331,7 @@ mod tests {
                 },
             )],
         }));
-        let program = ironplc_parser::parse_program(src.as_str());
+        let program = ironplc_parser::parse_program(src.as_str(), &PathBuf::default()).unwrap();
         assert_eq!(program, expected)
     }
 
@@ -368,7 +383,10 @@ mod tests {
                 StmtKind::simple_assignment("Cnt5", vec!["CounterLD0", "Out"]),
             ]),
         }));
-        assert_eq!(ironplc_parser::parse_program(src.as_str()), expected)
+        assert_eq!(
+            ironplc_parser::parse_program(src.as_str(), &PathBuf::default()).unwrap(),
+            expected
+        )
     }
 
     #[test]
@@ -404,6 +422,9 @@ mod tests {
                 }],
             },
         ));
-        assert_eq!(ironplc_parser::parse_program(src.as_str()), expected)
+        assert_eq!(
+            ironplc_parser::parse_program(src.as_str(), &PathBuf::default()).unwrap(),
+            expected
+        )
     }
 }

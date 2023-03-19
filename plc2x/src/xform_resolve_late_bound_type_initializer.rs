@@ -4,13 +4,15 @@
 //! The IEC 61131-3 syntax has some ambiguous types that are initially
 //! parsed into a placeholder. This transform replaces the placeholders
 //! with well-known types.
+use std::path::PathBuf;
+
 use ironplc_dsl::core::SourcePosition;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
 use ironplc_dsl::{common::*, core::Id};
 use phf::{phf_set, Set};
 
-use crate::error::SemanticDiagnostic;
 use crate::symbol_table::SymbolTable;
 
 static ELEMENTARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
@@ -56,7 +58,7 @@ enum TypeDefinitionKind {
     Structure,
 }
 
-pub fn apply(lib: Library) -> Result<Library, SemanticDiagnostic> {
+pub fn apply(lib: Library) -> Result<Library, Diagnostic> {
     let mut id_to_type: SymbolTable<Id, TypeDefinitionKind> = SymbolTable::new();
 
     // Walk the entire library to find the types. We don't need
@@ -69,44 +71,41 @@ pub fn apply(lib: Library) -> Result<Library, SemanticDiagnostic> {
 }
 
 impl SymbolTable<'_, Id, TypeDefinitionKind> {
-    fn add_if_new(
-        &mut self,
-        to_add: &Id,
-        kind: TypeDefinitionKind,
-    ) -> Result<(), SemanticDiagnostic> {
+    fn add_if_new(&mut self, to_add: &Id, kind: TypeDefinitionKind) -> Result<(), Diagnostic> {
         if let Some(_existing) = self.add(to_add, kind) {
-            return Err(SemanticDiagnostic::error(
-                "S0001",
-                format!("Duplicated definitions for name {}", to_add),
-            )
             // TODO it would be nicer to have the first use here but our API
             // doesn't currently return that information
-            .maybe_with_label(to_add.position(), "Second name"));
+            return Err(Diagnostic::new(
+                "S0001",
+                "Duplicate definition name",
+                Label::source_loc(
+                    PathBuf::default(),
+                    to_add.position(),
+                    format!("Duplicated definitions for name {}", to_add),
+                ),
+            ));
         }
 
         Ok(())
     }
 }
 
-impl<'a> Visitor<SemanticDiagnostic> for SymbolTable<'a, Id, TypeDefinitionKind> {
+impl<'a> Visitor<Diagnostic> for SymbolTable<'a, Id, TypeDefinitionKind> {
     type Value = ();
 
-    fn visit_enum_declaration(
-        &mut self,
-        node: &EnumerationDeclaration,
-    ) -> Result<(), SemanticDiagnostic> {
+    fn visit_enum_declaration(&mut self, node: &EnumerationDeclaration) -> Result<(), Diagnostic> {
         self.add_if_new(&node.type_name, TypeDefinitionKind::Enumeration)
     }
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<(), SemanticDiagnostic> {
+    ) -> Result<(), Diagnostic> {
         self.add_if_new(&node.name, TypeDefinitionKind::FunctionBlock)
     }
     fn visit_structure_declaration(
         &mut self,
         node: &StructureDeclaration,
-    ) -> Result<Self::Value, SemanticDiagnostic> {
+    ) -> Result<Self::Value, Diagnostic> {
         self.add_if_new(&node.type_name, TypeDefinitionKind::Structure)
     }
 }
@@ -121,11 +120,11 @@ impl<'a> TypeResolver<'a> {
     }
 }
 
-impl<'a> Fold<SemanticDiagnostic> for TypeResolver<'a> {
+impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
     fn fold_type_initializer(
         &mut self,
         node: InitialValueAssignmentKind,
-    ) -> Result<InitialValueAssignmentKind, SemanticDiagnostic> {
+    ) -> Result<InitialValueAssignmentKind, Diagnostic> {
         match node {
             InitialValueAssignmentKind::LateResolvedType(name) => {
                 // Try to find the type for the specified name.
@@ -172,8 +171,13 @@ impl<'a> Fold<SemanticDiagnostic> for TypeResolver<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::apply;
-    use ironplc_dsl::{common::*, core::Id};
+    use ironplc_dsl::{
+        common::*,
+        core::{Id, SourceLoc},
+    };
 
     #[test]
     fn apply_when_has_function_block_type_then_resolves_type() {
@@ -189,23 +193,25 @@ FUNCTION_BLOCK caller
     
 END_FUNCTION_BLOCK
         ";
-        let input = ironplc_parser::parse_program(program).unwrap();
-        let result = apply(input);
+        let input = ironplc_parser::parse_program(program, &PathBuf::default()).unwrap();
+        let result = apply(input).unwrap();
 
-        let expected = Ok(Library {
+        let expected = Library {
             elements: vec![
                 LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
                     name: Id::from("called"),
                     variables: vec![],
                     body: FunctionBlockBody::empty(),
+                    position: SourceLoc::default(),
                 }),
                 LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
                     name: Id::from("caller"),
                     variables: vec![VarDecl::function_block("fb_var", "called")],
                     body: FunctionBlockBody::empty(),
+                    position: SourceLoc::default(),
                 }),
             ],
-        });
+        };
 
         assert_eq!(result, expected)
     }
@@ -226,10 +232,10 @@ FUNCTION_BLOCK caller
     
 END_FUNCTION_BLOCK
         ";
-        let input = ironplc_parser::parse_program(program).unwrap();
-        let result = apply(input);
+        let input = ironplc_parser::parse_program(program, &PathBuf::default()).unwrap();
+        let result = apply(input).unwrap();
 
-        let expected = Ok(Library {
+        let expected = Library {
             elements: vec![
                 LibraryElement::DataTypeDeclaration(DataTypeDeclarationKind::Structure(
                     StructureDeclaration {
@@ -244,9 +250,10 @@ END_FUNCTION_BLOCK
                     name: Id::from("caller"),
                     variables: vec![VarDecl::structure("the_var", "the_struct")],
                     body: FunctionBlockBody::empty(),
+                    position: SourceLoc::default(),
                 }),
             ],
-        });
+        };
 
         assert_eq!(result, expected)
     }
@@ -265,10 +272,10 @@ FUNCTION_BLOCK caller
     
 END_FUNCTION_BLOCK
         ";
-        let input = ironplc_parser::parse_program(program).unwrap();
-        let result = apply(input);
+        let input = ironplc_parser::parse_program(program, &PathBuf::default()).unwrap();
+        let result = apply(input).unwrap();
 
-        let expected = Ok(Library {
+        let expected = Library {
             elements: vec![
                 LibraryElement::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
                     EnumerationDeclaration {
@@ -285,9 +292,10 @@ END_FUNCTION_BLOCK
                     name: Id::from("caller"),
                     variables: vec![VarDecl::uninitialized_enumerated("the_var", "values")],
                     body: FunctionBlockBody::empty(),
+                    position: SourceLoc::default(),
                 }),
             ],
-        });
+        };
 
         assert_eq!(result, expected)
     }

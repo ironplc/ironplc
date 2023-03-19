@@ -125,6 +125,7 @@ pub trait Fold<E> {
             name: node.name,
             variables: Foldable::fold(node.variables, self)?,
             body: node.body,
+            position: node.position,
         })
     }
 
