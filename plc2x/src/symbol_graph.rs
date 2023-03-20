@@ -21,6 +21,11 @@ impl<N> SymbolGraph<N> {
         }
     }
 
+    /// Returns `true` if the graph contains a node for the specified id.
+    pub fn contains_node(&self, id: &Id) -> bool {
+        self.nodes.contains_key(id)
+    }
+
     pub fn add_node(&mut self, id: &Id, data: N) -> SymbolNode {
         let nodes = &self.nodes;
         match nodes.get(id) {
@@ -31,6 +36,14 @@ impl<N> SymbolGraph<N> {
                 node
             }
         }
+    }
+
+    /// Returns a reference to the key and value corresponding to the key.
+    ///
+    /// Returning the key matters because objects such as Id's can be equal
+    /// even if not identical.
+    pub fn get_node(&self, id: &Id) -> Option<(&Id, &SymbolNode)> {
+        self.nodes.get_key_value(id).map(|kv| (kv.0, &kv.1 .0))
     }
 
     pub fn data(&self, id: &Id) -> Option<&N> {

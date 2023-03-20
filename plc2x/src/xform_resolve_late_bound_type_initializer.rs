@@ -72,18 +72,21 @@ pub fn apply(lib: Library) -> Result<Library, Diagnostic> {
 
 impl SymbolTable<'_, Id, TypeDefinitionKind> {
     fn add_if_new(&mut self, to_add: &Id, kind: TypeDefinitionKind) -> Result<(), Diagnostic> {
-        if let Some(_existing) = self.add(to_add, kind) {
-            // TODO it would be nicer to have the first use here but our API
-            // doesn't currently return that information
+        if let Some(existing) = self.try_add(to_add, kind) {
             return Err(Diagnostic::new(
                 "S0001",
                 "Duplicate definition name",
                 Label::source_loc(
                     PathBuf::default(),
                     to_add.position(),
-                    format!("Duplicated definitions for name {}", to_add),
+                    format!("Duplicated definition {}", to_add),
                 ),
-            ));
+            )
+            .with_secondary(Label::source_loc(
+                PathBuf::default(),
+                existing.0.position(),
+                "First definition",
+            )));
         }
 
         Ok(())
