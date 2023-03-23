@@ -50,6 +50,24 @@ impl<'a, K: Key, V: 'a> Scope<'a, K, V> {
         self.table.insert(name.clone(), value)
     }
 
+    /// Tries to add the name into the scope with the specified value.
+    ///
+    /// If the scope does not have this name, adds the name with the value.
+    ///
+    /// If the scope does have this name, then value is not updated. The
+    /// existing key and value are returned.
+    fn try_add(&mut self, name: &K, value: V) -> Option<(&K, &V)> {
+        // We want the map to be unmodified if the key already exists, so we
+        // must first test if the key exists.
+        if !self.table.contains_key(name) {
+            self.table.insert(name.clone(), value);
+            None
+        } else {
+            let existing = self.table.get_key_value(name).unwrap();
+            Some(existing)
+        }
+    }
+
     fn find(&mut self, name: &K) -> Option<&V> {
         self.table.get(name)
     }
@@ -87,11 +105,30 @@ impl<'a, K: Key, V: 'a> SymbolTable<'a, K, V> {
         self.stack.pop_front();
     }
 
-    /// Adds the given name to the scope with the specified value.
+    /// Adds the key to the scope with the specified value.
+    ///
+    /// If the table does not have this key present in scope, None is returned.
+    ///
+    /// If the table does have this key present in scope, the value is updated,
+    /// and the old value is returned. The key is not updated. This matters
+    /// particularly for Id's which can be equal even if not identical.
     pub fn add(&mut self, name: &K, value: V) -> Option<V> {
         match self.stack.front_mut() {
             None => None,
             Some(scope) => scope.add(name, value),
+        }
+    }
+
+    /// Tries to add the key to the scope with the specified value.
+    ///
+    /// If the table does not have this key present in scope, None is returned.
+    ///
+    /// If the table does have this key present in scope, the value is not
+    /// updated. The existing key and value are returned.
+    pub fn try_add(&mut self, name: &K, value: V) -> Option<(&K, &V)> {
+        match self.stack.front_mut() {
+            None => None,
+            Some(scope) => scope.try_add(name, value),
         }
     }
 

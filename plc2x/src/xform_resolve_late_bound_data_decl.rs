@@ -1,9 +1,11 @@
 use crate::symbol_graph::{SymbolGraph, SymbolNode};
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::core::SourcePosition;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
 use ironplc_dsl::{common::*, core::Id};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 #[derive(Clone)]
 enum LateResolvableTypeDecl {
@@ -68,15 +70,38 @@ impl TypeDeclResolver {
         self.graph.add_edge(parent_node, child_node);
     }
 
-    fn add(&mut self, item: &Id, item_kind: LateResolvableTypeDecl) {
-        let added = self.graph.add_node(item, item_kind);
-        let data = self.graph.data(item);
-        // TODO maybe this should be an error on the unwrap
-        self.roots.push((
-            added,
-            data.map_or_else(|| LateResolvableTypeDecl::Unspecified, |v| v.clone()),
-        ));
-        self.index_to_id.insert(added, item.clone());
+    /// Adds a node into the graph for the specified name and having the
+    /// specified type.
+    ///
+    /// If the name already exists, returns an diagnostic indicating the
+    /// name conflict.
+    fn add(&mut self, item: &Id, item_kind: LateResolvableTypeDecl) -> Result<(), Diagnostic> {
+        if !self.graph.contains_node(item) {
+            let added = self.graph.add_node(item, item_kind);
+            let data = self.graph.data(item);
+            self.roots.push((
+                added,
+                data.map_or_else(|| LateResolvableTypeDecl::Unspecified, |v| v.clone()),
+            ));
+            self.index_to_id.insert(added, item.clone());
+            Ok(())
+        } else {
+            let existing = self
+                .graph
+                .get_node(item)
+                .map(|kv| kv.0)
+                .expect("Expected key");
+            Err(Diagnostic::new(
+                "S0001",
+                "Duplicate name",
+                Label::source_loc(PathBuf::default(), item.position(), "Duplicate declaration"),
+            )
+            .with_secondary(Label::source_loc(
+                PathBuf::default(),
+                existing.position(),
+                "First declaration",
+            )))
+        }
     }
 }
 
@@ -87,8 +112,7 @@ impl Visitor<Diagnostic> for TypeDeclResolver {
         &mut self,
         node: &SimpleDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        // TODO handle name collisions
-        self.add(&node.type_name, LateResolvableTypeDecl::Simple);
+        self.add(&node.type_name, LateResolvableTypeDecl::Simple)?;
         Ok(())
     }
 
@@ -96,7 +120,7 @@ impl Visitor<Diagnostic> for TypeDeclResolver {
         &mut self,
         node: &EnumerationDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.add(&node.type_name, LateResolvableTypeDecl::Enumeration);
+        self.add(&node.type_name, LateResolvableTypeDecl::Enumeration)?;
         Ok(())
     }
 
@@ -104,7 +128,7 @@ impl Visitor<Diagnostic> for TypeDeclResolver {
         &mut self,
         node: &StructureDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.add(&node.type_name, LateResolvableTypeDecl::Structure);
+        self.add(&node.type_name, LateResolvableTypeDecl::Structure)?;
         Ok(())
     }
 
@@ -183,7 +207,7 @@ mod tests {
     use ironplc_dsl::{common::*, core::Id};
 
     #[test]
-    fn apply_when_has_function_block_type_then_resolves_type() {
+    fn apply_when_ambiguous_enum_then_resolves_type() {
         let program = "
 TYPE
 LEVEL : (CRITICAL) := CRITICAL;
@@ -217,5 +241,20 @@ END_TYPE
         };
 
         assert_eq!(library, expected)
+    }
+
+    #[test]
+    fn apply_when_has_duplicate_items_then_error() {
+        let program = "
+TYPE
+LEVEL : (CRITICAL) := CRITICAL;
+LEVEL : (CRITICAL) := CRITICAL;
+LEVEL_ALIAS : LEVEL;
+END_TYPE
+        ";
+        let input = ironplc_parser::parse_program(program, &PathBuf::default()).unwrap();
+        let result = apply(input);
+
+        assert!(result.is_err())
     }
 }
