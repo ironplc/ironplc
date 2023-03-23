@@ -112,16 +112,11 @@ mod tests {
                 ],
                 body: FunctionBlockBody::stmts(vec![
                     StmtKind::if_then(
-                        ExprKind::Compare {
-                            op: CompareOp::And,
-                            terms: vec![
-                                ExprKind::symbolic_variable("TRIG"),
-                                ExprKind::UnaryOp {
-                                    op: UnaryOp::Not,
-                                    term: ExprKind::boxed_symbolic_variable("TRIG0"),
-                                },
-                            ],
-                        },
+                        ExprKind::compare(
+                            CompareOp::And,
+                            ExprKind::symbolic_variable("TRIG"),
+                            ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("TRIG0")),
+                        ),
                         vec![],
                     ),
                     StmtKind::assignment(
@@ -194,18 +189,12 @@ mod tests {
                         Element::transition(
                             "ResetCounter",
                             "Start",
-                            ExprKind::UnaryOp {
-                                op: UnaryOp::Not,
-                                term: ExprKind::boxed_symbolic_variable("Reset"),
-                            },
+                            ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("Reset")),
                         ),
                         Element::transition(
                             "Start",
                             "Count",
-                            ExprKind::UnaryOp {
-                                op: UnaryOp::Not,
-                                term: ExprKind::boxed_symbolic_variable("Reset"),
-                            },
+                            ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("Reset")),
                         ),
                         Element::step(
                             Id::from("Count"),
@@ -218,13 +207,11 @@ mod tests {
                             "COUNT_INLINE3",
                             vec![StmtKind::assignment(
                                 Variable::symbolic("Cnt"),
-                                ExprKind::BinaryOp {
-                                    ops: vec![Operator::Add],
-                                    terms: vec![
-                                        ExprKind::symbolic_variable("Cnt"),
-                                        ExprKind::integer_literal(1),
-                                    ],
-                                },
+                                ExprKind::binary(
+                                    Operator::Add,
+                                    ExprKind::symbolic_variable("Cnt"),
+                                    ExprKind::integer_literal(1),
+                                ),
                             )],
                         ),
                         Element::action(
@@ -307,28 +294,31 @@ mod tests {
             ],
             body: vec![StmtKind::assignment(
                 Variable::symbolic("AverageVal"),
-                ExprKind::BinaryOp {
+                ExprKind::binary(
                     // TODO This operator is incorrect
-                    ops: vec![Operator::Mul],
-                    terms: vec![
-                        ExprKind::Function {
-                            name: Id::from("INT_TO_REAL"),
-                            param_assignment: vec![ParamAssignment::positional(
-                                ExprKind::BinaryOp {
-                                    ops: vec![Operator::Add],
-                                    terms: vec![
+                    Operator::Div,
+                    ExprKind::Function {
+                        name: Id::from("INT_TO_REAL"),
+                        param_assignment: vec![ParamAssignment::positional(ExprKind::binary(
+                            Operator::Add,
+                            ExprKind::binary(
+                                Operator::Add,
+                                ExprKind::binary(
+                                    Operator::Add,
+                                    ExprKind::binary(
+                                        Operator::Add,
                                         ExprKind::symbolic_variable("Cnt1"),
                                         ExprKind::symbolic_variable("Cnt2"),
-                                        ExprKind::symbolic_variable("Cnt3"),
-                                        ExprKind::symbolic_variable("Cnt4"),
-                                        ExprKind::symbolic_variable("Cnt5"),
-                                    ],
-                                },
-                            )],
-                        },
-                        ExprKind::symbolic_variable("InputsNumber"),
-                    ],
-                },
+                                    ),
+                                    ExprKind::symbolic_variable("Cnt3"),
+                                ),
+                                ExprKind::symbolic_variable("Cnt4"),
+                            ),
+                            ExprKind::symbolic_variable("Cnt5"),
+                        ))],
+                    },
+                    ExprKind::symbolic_variable("InputsNumber"),
+                ),
             )],
         }));
         let program = ironplc_parser::parse_program(src.as_str(), &PathBuf::default()).unwrap();

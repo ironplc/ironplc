@@ -196,22 +196,18 @@ pub trait Visitor<E> {
         visit_case_statement_group(self, node)
     }
 
-    fn visit_compare(&mut self, op: &CompareOp, terms: &Vec<ExprKind>) -> Result<Self::Value, E> {
-        visit_compare(self, op, terms)
+    fn visit_compare(&mut self, node: &CompareExpr) -> Result<Self::Value, E> {
+        visit_compare(self, node)
     }
 
-    fn visit_binary_op(
-        &mut self,
-        op: &[Operator],
-        terms: &Vec<ExprKind>,
-    ) -> Result<Self::Value, E> {
+    fn visit_binary_op(&mut self, node: &BinaryExpr) -> Result<Self::Value, E> {
         // TODO this doesn't really go through binary operators - maybe this should be split
         // into smaller pieces.
-        visit_binary_op(self, op, terms)
+        visit_binary_op(self, node)
     }
 
-    fn visit_unary_op(&mut self, op: &UnaryOp, term: &ExprKind) -> Result<Self::Value, E> {
-        visit_unary_op(self, op, term)
+    fn visit_unary_op(&mut self, node: &UnaryExpr) -> Result<Self::Value, E> {
+        visit_unary_op(self, node)
     }
 
     fn visit_address_assignment(&mut self, node: &AddressAssignment) -> Result<Self::Value, E> {
@@ -432,28 +428,25 @@ pub fn visit_case_statement_group<V: Visitor<E> + ?Sized, E>(
 
 pub fn visit_compare<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
-    op: &CompareOp,
-    terms: &Vec<ExprKind>,
+    node: &CompareExpr,
 ) -> Result<V::Value, E> {
-    Acceptor::accept(terms, v)
+    Acceptor::accept(&node.left, v)?;
+    Acceptor::accept(&node.right, v)
 }
 
 pub fn visit_binary_op<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
-    op: &[Operator],
-    terms: &Vec<ExprKind>,
+    node: &BinaryExpr,
 ) -> Result<V::Value, E> {
-    // TODO maybe something with the operator?
-    Acceptor::accept(terms, v)
+    Acceptor::accept(&node.left, v)?;
+    Acceptor::accept(&node.right, v)
 }
 
 pub fn visit_unary_op<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
-    op: &UnaryOp,
-    term: &ExprKind,
+    node: &UnaryExpr,
 ) -> Result<V::Value, E> {
-    // TODO maybe something with the operator?
-    Acceptor::accept(term, v)
+    Acceptor::accept(&node.term, v)
 }
 
 impl Acceptor for LibraryElement {
@@ -589,10 +582,13 @@ impl Acceptor for StructInitialValueAssignmentKind {
 impl Acceptor for ExprKind {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
-            ExprKind::Compare { op, terms } => visitor.visit_compare(op, terms),
-            ExprKind::BinaryOp { ops, terms } => visitor.visit_binary_op(ops, terms),
-            ExprKind::UnaryOp { op, term } => visitor.visit_unary_op(op, term.as_ref()),
+            ExprKind::Compare(compare) => visitor.visit_compare(compare.as_ref()),
+            ExprKind::BinaryOp(binary) => visitor.visit_binary_op(binary.as_ref()),
+            ExprKind::UnaryOp(unary) => visitor.visit_unary_op(unary.as_ref()),
             ExprKind::Const(_) => {
+                todo!()
+            }
+            ExprKind::Expression(_) => {
                 todo!()
             }
             ExprKind::Variable(variable) => Acceptor::accept(variable, visitor),
