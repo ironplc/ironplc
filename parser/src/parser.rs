@@ -1057,65 +1057,52 @@ parser! {
     rule fb_task() -> (Id, Id) = n:fb_name() _ "WITH" _ tn:task_name() { (n, tn) }
 
     // B.3.1 Expressions
-    rule expression() -> ExprKind = exprs:xor_expression() ++ (_ "OR" _) {
-      if exprs.len() > 1 {
-        return ExprKind::Compare {op: CompareOp::Or, terms: exprs}
-      }
-      exprs[0].clone()
-    }
-    rule xor_expression() -> ExprKind = exprs:and_expression() ++ (_ "XOR" _) {
-      if exprs.len() > 1 {
-        return ExprKind::Compare {op: CompareOp::Xor, terms: exprs}
-      }
-      exprs[0].clone()
-    }
-    rule and_expression() -> ExprKind = exprs:comparison() ++ (_ ("&" / "AND") _) {
-      if exprs.len() > 1 {
-        return ExprKind::Compare {op: CompareOp::And, terms: exprs}
-      }
-      exprs[0].clone()
-    }
-    rule comparison() -> ExprKind = exprs:equ_expression() ++ (_ op:("=" {CompareOp::Eq} / "<>" {CompareOp::Ne}) _) {
-      // TODO capture the operator type to distinguish
-      if exprs.len() > 1 {
-        // TODO this is wrong op type
-        return ExprKind::Compare {op: CompareOp::Eq, terms: exprs}
-      }
-      exprs[0].clone()
-    }
-    rule equ_expression() -> ExprKind = exprs:add_expression() ++ (_ comparison_operator() _) {// TODO capture the operator type to distinguish
-      if exprs.len() > 1 {
-        // TODO this is wrong op type
-        return ExprKind::Compare {op: CompareOp::Lt, terms: exprs}
-      }
-      exprs[0].clone()
-    }
-    rule comparison_operator() -> CompareOp = "<"  {CompareOp::Lt } / ">" {CompareOp::Gt} / "<=" {CompareOp::LtEq} / ">=" {CompareOp::GtEq}
-    rule add_expression() -> ExprKind = exprs:term() ++ (_ add_operator() _ ) {
-      if exprs.len() > 1 {
-        // TODO this is wrong op type
-        return ExprKind::BinaryOp {ops: vec![Operator::Add], terms: exprs}
-      }
-      exprs[0].clone()
-    }
-    rule add_operator() -> Operator = "+" {Operator::Add} / "-" {Operator::Sub}
-    rule term() -> ExprKind = exprs:power_expression() ++ (_ multiply_operator() _) {
-      if exprs.len() > 1 {
-        // TODO this is wrong op type
-        return ExprKind::BinaryOp {ops: vec![Operator::Mul], terms: exprs}
-      }
-      exprs[0].clone()
-    }
-    rule multiply_operator() -> Operator = "*" {Operator::Mul} / "/" {Operator::Div}/ "MOD" {Operator::Mod}
-    rule power_expression() -> ExprKind = exprs:unary_expression() ++ (_ "**" _) {
-      if exprs.len() > 1 {
-        return ExprKind::BinaryOp {ops: vec![Operator::Pow], terms: exprs}
-      }
-      exprs[0].clone()
+    pub rule expression() -> ExprKind = precedence!{
+      // or_expression
+      x:(@) _ "OR" _ y:@ { ExprKind::compare(CompareOp::Or, x, y) }
+      --
+      // xor_expression
+      x:(@) _ "XOR" _ y:@ { ExprKind::compare(CompareOp::Xor, x, y) }
+      --
+      // and_expression
+      x:(@) _ "&" _ y:@ { ExprKind::compare(CompareOp::And, x, y ) }
+      x:(@) _ "AND" _ y:@ { ExprKind::compare(CompareOp::And, x, y ) }
+      --
+      // comparison
+      x:(@) _ "=" _ y:@ { ExprKind::compare(CompareOp::Eq, x, y ) }
+      x:(@) _ "<>" _ y:@ { ExprKind::compare(CompareOp::Ne, x, y ) }
+      --
+      // equ_expression
+      x:(@) _ "<" _ y:@ { ExprKind::compare(CompareOp::Lt, x, y ) }
+      x:(@) _ ">" _ y:@ { ExprKind::compare(CompareOp::Gt, x, y ) }
+      x:(@) _ "<=" _ y:@ { ExprKind::compare(CompareOp::LtEq, x, y) }
+      x:(@) _ ">=" _ y:@ { ExprKind::compare(CompareOp::GtEq, x, y) }
+      --
+      // add_expression
+      x:(@) _ "+" _ y:@ { ExprKind::binary(Operator::Add, x, y ) }
+      x:(@) _ "-" _ y:@ { ExprKind::binary(Operator::Sub, x, y ) }
+      --
+      // multiply_operator
+      x:(@) _ "*" _ y:@ { ExprKind::binary(Operator::Mul, x, y ) }
+      x:(@) _ "/" _ y:@ { ExprKind::binary(Operator::Div, x, y ) }
+      x:(@) _ "MOD" _ y:@ { ExprKind::binary(Operator::Mod, x, y ) }
+      --
+      // power_expression
+      x:(@) _ "**" _ y:@ { ExprKind::binary(Operator::Pow, x, y ) }
+      --
+      //unary_expression
+      p:unary_expression() { p }
+      --
+      // primary_expression
+      c:constant() { ExprKind::Const(c) }
+      //ev:enumerated_value()
+      v:variable() { ExprKind::Variable(v) }
+      "(" _ e:expression() _ ")" { ExprKind::Expression(Box::new(e)) }
+      f:function_expression() { f }
     }
     rule unary_expression() -> ExprKind = unary:unary_operator()? _ expr:primary_expression() {
       if let Some(op) = unary {
-        return ExprKind::UnaryOp { op, term: Box::new(expr) };
+        return ExprKind::unary(op, expr);
       }
       expr
     }
@@ -1449,18 +1436,12 @@ END_VAR";
                 Element::transition(
                     "ResetCounter",
                     "Start",
-                    ExprKind::UnaryOp {
-                        op: UnaryOp::Not,
-                        term: ExprKind::boxed_symbolic_variable("Reset"),
-                    },
+                    ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("Reset")),
                 ),
                 Element::transition(
                     "Start",
                     "Count",
-                    ExprKind::UnaryOp {
-                        op: UnaryOp::Not,
-                        term: Box::new(ExprKind::symbolic_variable("Reset")),
-                    },
+                    ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("Reset")),
                 ),
                 Element::step(
                     Id::from("Count"),
@@ -1495,13 +1476,11 @@ END_VAR";
     fn statement_assign_add_const_operator() {
         let expected = Ok(vec![StmtKind::assignment(
             Variable::symbolic("Cnt"),
-            ExprKind::BinaryOp {
-                ops: vec![Operator::Add],
-                terms: vec![
-                    ExprKind::Const(Constant::IntegerLiteral(1)),
-                    ExprKind::Const(Constant::IntegerLiteral(2)),
-                ],
-            },
+            ExprKind::binary(
+                Operator::Add,
+                ExprKind::Const(Constant::IntegerLiteral(1)),
+                ExprKind::Const(Constant::IntegerLiteral(2)),
+            ),
         )]);
         assert_eq!(plc_parser::statement_list("Cnt := 1 + 2;"), expected)
     }
@@ -1510,13 +1489,11 @@ END_VAR";
     fn statement_assign_add_symbol_operator() {
         let expected = Ok(vec![StmtKind::assignment(
             Variable::symbolic("Cnt"),
-            ExprKind::BinaryOp {
-                ops: vec![Operator::Add],
-                terms: vec![
-                    ExprKind::symbolic_variable("Cnt"),
-                    ExprKind::Const(Constant::IntegerLiteral(1)),
-                ],
-            },
+            ExprKind::binary(
+                Operator::Add,
+                ExprKind::symbolic_variable("Cnt"),
+                ExprKind::Const(Constant::IntegerLiteral(1)),
+            ),
         )]);
         assert_eq!(plc_parser::statement_list("Cnt := Cnt + 1;"), expected)
     }
@@ -1528,16 +1505,11 @@ END_VAR";
 
     END_IF;";
         let expected = Ok(vec![StmtKind::if_then(
-            ExprKind::Compare {
-                op: CompareOp::And,
-                terms: vec![
-                    ExprKind::symbolic_variable("TRIG"),
-                    ExprKind::UnaryOp {
-                        op: UnaryOp::Not,
-                        term: Box::new(ExprKind::symbolic_variable("TRIG")),
-                    },
-                ],
-            },
+            ExprKind::compare(
+                CompareOp::And,
+                ExprKind::symbolic_variable("TRIG"),
+                ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("TRIG")),
+            ),
             vec![StmtKind::assignment(
                 Variable::symbolic("TRIG0"),
                 ExprKind::symbolic_variable("TRIG"),
@@ -1561,13 +1533,11 @@ END_VAR";
             )],
             vec![StmtKind::assignment(
                 Variable::symbolic("Cnt"),
-                ExprKind::BinaryOp {
-                    ops: vec![Operator::Add],
-                    terms: vec![
-                        ExprKind::symbolic_variable("Cnt"),
-                        ExprKind::Const(Constant::IntegerLiteral(1)),
-                    ],
-                },
+                ExprKind::binary(
+                    Operator::Add,
+                    ExprKind::symbolic_variable("Cnt"),
+                    ExprKind::Const(Constant::IntegerLiteral(1)),
+                ),
             )],
         )]);
 
