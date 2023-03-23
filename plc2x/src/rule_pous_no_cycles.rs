@@ -70,7 +70,6 @@ pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
 struct RulePousNoCycles {
     // Represents the POUs in the library as a directed graph.
     // Each node is a single POU.
-    // TODO why can I not use Id here???
     graph: StableDiGraph<(), (), u32>,
 
     // Represents the context while visiting. Tracks the name of the current

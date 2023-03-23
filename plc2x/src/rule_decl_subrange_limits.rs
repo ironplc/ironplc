@@ -36,9 +36,8 @@ impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
     type Value = ();
 
     fn visit_subrange(&mut self, node: &Subrange) -> Result<(), Diagnostic> {
-        // TODO return error if try fails
-        let minimum: i128 = node.start.clone().try_into().unwrap();
-        let maximum: i128 = node.end.clone().try_into().unwrap();
+        let minimum: i128 = node.start.clone().try_into().expect("Value in range i128");
+        let maximum: i128 = node.end.clone().try_into().expect("Value in range i128");
 
         if minimum >= maximum {
             return Err(Diagnostic::new(
