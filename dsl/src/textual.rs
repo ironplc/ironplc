@@ -40,21 +40,44 @@ pub struct FbCall {
     pub position: SourceLoc,
 }
 
-/// Expressions (instructions).
+/// A binary expression that produces a Boolean result by comparing operands.
+///
+/// See section 3.3.1.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompareExpr {
+    pub op: CompareOp,
+    pub left: ExprKind,
+    pub right: ExprKind,
+}
+
+/// A binary expression that produces an arithmetic result by operating on
+/// two operands.
+///
+/// See section 3.3.1.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BinaryExpr {
+    pub op: Operator,
+    pub left: ExprKind,
+    pub right: ExprKind,
+}
+
+/// A unary expression that produces a boolean or arithmetic result by
+/// transforming the operand.
+///
+/// See section 3.3.1.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnaryExpr {
+    pub op: UnaryOp,
+    pub term: ExprKind,
+}
+
+/// Expression that yields a value derived from the input(s) to the expression.
 #[derive(Debug, PartialEq, Clone)]
 pub enum ExprKind {
-    Compare {
-        op: CompareOp,
-        terms: Vec<ExprKind>,
-    },
-    BinaryOp {
-        ops: Vec<Operator>,
-        terms: Vec<ExprKind>,
-    },
-    UnaryOp {
-        op: UnaryOp,
-        term: Box<ExprKind>,
-    },
+    Compare(Box<CompareExpr>),
+    BinaryOp(Box<BinaryExpr>),
+    UnaryOp(Box<UnaryExpr>),
+    Expression(Box<ExprKind>),
     Const(Constant),
     Variable(Variable),
     Function {
@@ -64,8 +87,16 @@ pub enum ExprKind {
 }
 
 impl ExprKind {
-    pub fn boxed_symbolic_variable(name: &str) -> Box<ExprKind> {
-        Box::new(ExprKind::symbolic_variable(name))
+    pub fn compare(op: CompareOp, left: ExprKind, right: ExprKind) -> ExprKind {
+        ExprKind::Compare(Box::new(CompareExpr { op, left, right }))
+    }
+
+    pub fn binary(op: Operator, left: ExprKind, right: ExprKind) -> ExprKind {
+        ExprKind::BinaryOp(Box::new(BinaryExpr { op, left, right }))
+    }
+
+    pub fn unary(op: UnaryOp, term: ExprKind) -> ExprKind {
+        ExprKind::UnaryOp(Box::new(UnaryExpr { op, term }))
     }
 
     pub fn symbolic_variable(name: &str) -> ExprKind {
