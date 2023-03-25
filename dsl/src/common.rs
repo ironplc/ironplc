@@ -492,6 +492,7 @@ pub struct StructureElementDeclaration {
     pub init: InitialValueAssignmentKind,
 }
 
+/// See section 2.3.3.1.
 #[derive(Debug, PartialEq, Clone)]
 pub struct StructureInitializationDeclaration {
     pub type_name: Id,
@@ -499,6 +500,8 @@ pub struct StructureInitializationDeclaration {
 }
 
 /// Initializes a particular element in a structured type.
+///
+/// See section 2.3.3.1.
 #[derive(Debug, PartialEq, Clone)]
 pub struct StructureElementInit {
     /// The name of the element in the structure to initialize.
@@ -514,6 +517,9 @@ pub enum StringKind {
     WString,
 }
 
+/// Declares a string type with restricted length.
+///
+/// See section 2.3.3.1.
 #[derive(Debug, PartialEq)]
 pub struct StringDeclaration {
     pub type_name: Id,
@@ -542,8 +548,7 @@ impl LocationPrefix {
             'I' => LocationPrefix::I,
             'Q' => LocationPrefix::Q,
             'M' => LocationPrefix::M,
-            // TODO error message
-            _ => panic!(),
+            _ => panic!("Invalid location prefix"),
         }
     }
 }
@@ -578,8 +583,7 @@ impl SizePrefix {
             'W' => SizePrefix::W,
             'D' => SizePrefix::D,
             'L' => SizePrefix::L,
-            // TODO error message
-            _ => panic!(),
+            _ => panic!("Not valid size prefix"),
         }
     }
 }
@@ -923,6 +927,8 @@ pub enum Boolean {
 }
 
 /// Container for elementary constants.
+///
+/// See section 2.2.
 #[derive(PartialEq, Clone, Debug)]
 pub enum Constant {
     // TODO these need values
@@ -973,6 +979,7 @@ pub struct FunctionBlockInitialValueAssignment {
     pub type_name: Id,
 }
 
+/// See section 2.4.3.2. #6
 #[derive(PartialEq, Clone, Debug)]
 pub struct ArrayInitialValueAssignment {
     pub spec: ArraySpecificationKind,
@@ -1130,13 +1137,10 @@ pub struct TaskConfiguration {
     pub interval: Option<Duration>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct Statements {
-    pub body: Vec<StmtKind>,
-}
-
 /// Container for type types of elements that can compose the body of a
 /// function block.
+///
+/// See section 2.5.2.
 #[derive(Debug, PartialEq, Clone)]
 pub enum FunctionBlockBody {
     Sfc(Sfc),
