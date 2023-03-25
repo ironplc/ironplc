@@ -1,6 +1,5 @@
 //! Implements the command line behavior.
 
-use std::{fs::File, io::Read, ops::Range, path::PathBuf};
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label, LabelStyle, Severity},
     files::SimpleFiles,
@@ -9,10 +8,11 @@ use codespan_reporting::{
         termcolor::{ColorChoice, StandardStream},
     },
 };
+use std::{fs::File, io::Read, ops::Range, path::PathBuf};
 
 use crate::analyze;
 
-pub fn check(files: Vec<PathBuf>, suppress_output: bool)  -> Result<(), String> {
+pub fn check(files: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
     for filename in files {
         let mut file = File::open(filename.clone())
             .map_err(|e| format!("Failed opening file {}. {}", filename.display(), e))?;
@@ -34,15 +34,10 @@ pub fn check(files: Vec<PathBuf>, suppress_output: bool)  -> Result<(), String> 
                 let diagnostic = map_diagnostic(diagnostic);
 
                 if !suppress_output {
-                    term::emit(
-                        &mut writer.lock(),
-                        &config,
-                        &files,
-                        &diagnostic,
-                    )
-                    .map_err(|_| "Failed writing to terminal")?;
+                    term::emit(&mut writer.lock(), &config, &files, &diagnostic)
+                        .map_err(|_| "Failed writing to terminal")?;
                 }
-                return Err(String::from("Error"))
+                return Err(String::from("Error"));
             }
         }
     }
@@ -81,7 +76,7 @@ fn map_diagnostic(diagnostic: ironplc_dsl::diagnostic::Diagnostic) -> Diagnostic
 
 #[cfg(test)]
 mod tests {
-    use crate::{test_helpers::resource_path, cli::check};
+    use crate::{cli::check, test_helpers::resource_path};
 
     #[test]
     fn first_steps_when_invalid_syntax_then_error() {
@@ -96,6 +91,4 @@ mod tests {
         let result = check(paths, true);
         assert!(result.is_ok())
     }
-
-
 }

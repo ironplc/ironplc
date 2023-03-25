@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use ironplcc::lsp;
 use ironplcc::cli;
+use ironplcc::lsp;
 
 #[derive(Parser, Debug)]
 #[command(name = "ironplcc", about = "IronPLC compiler")]
@@ -22,11 +22,7 @@ pub fn main() -> Result<(), String> {
     let args = Args::parse();
 
     match args.action {
-        Action::Lsp => {
-            lsp::start()
-        }
-        Action::Check { files } => {
-            cli::check(files, false)
-        }
+        Action::Lsp => lsp::start(),
+        Action::Check { files } => cli::check(files, false),
     }
 }
