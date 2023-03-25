@@ -36,15 +36,6 @@ impl PartialEq for SourceLoc {
 }
 impl Eq for SourceLoc {}
 
-impl From<SourceLoc> for Range<usize> {
-    fn from(loc: SourceLoc) -> Self {
-        Range {
-            start: loc.start,
-            end: loc.end,
-        }
-    }
-}
-
 pub trait SourcePosition {
     /// Get the source code position of the object.
     fn position(&self) -> &SourceLoc;

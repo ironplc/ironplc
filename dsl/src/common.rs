@@ -7,8 +7,8 @@ use std::hash::{Hash, Hasher};
 use std::num::TryFromIntError;
 use time::Duration;
 
-use crate::common_sfc::Network;
 use crate::core::{Id, SourceLoc, SourcePosition};
+use crate::sfc::Network;
 use crate::textual::*;
 
 /// Numeric liberals declared by 2.2.1. Numeric literals define
@@ -542,17 +542,6 @@ pub enum LocationPrefix {
     M,
 }
 
-impl LocationPrefix {
-    pub fn from_char(l: char) -> LocationPrefix {
-        match l {
-            'I' => LocationPrefix::I,
-            'Q' => LocationPrefix::Q,
-            'M' => LocationPrefix::M,
-            _ => panic!("Invalid location prefix"),
-        }
-    }
-}
-
 /// Size prefix for directly represented variables. Defines how many bits
 /// are associated with the variable.
 ///
@@ -573,19 +562,6 @@ pub enum SizePrefix {
     D,
     /// 64-bit size
     L,
-}
-
-impl SizePrefix {
-    pub fn from_char(s: char) -> SizePrefix {
-        match s {
-            'X' => SizePrefix::X,
-            'B' => SizePrefix::B,
-            'W' => SizePrefix::W,
-            'D' => SizePrefix::D,
-            'L' => SizePrefix::L,
-            _ => panic!("Not valid size prefix"),
-        }
-    }
 }
 
 /// Array specification defines a size/shape of an array.
