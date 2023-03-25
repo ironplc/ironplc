@@ -1,9 +1,9 @@
-use std::{fs::File, io::Read, path::PathBuf};
+use std::{fs::File, io::Read, ops::Range, path::PathBuf};
 
 use clap::Parser;
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label, LabelStyle, Severity},
-    files::SimpleFile,
+    files::SimpleFiles,
     term::{
         self,
         termcolor::{ColorChoice, StandardStream},
@@ -48,11 +48,13 @@ pub fn main() -> Result<(), String> {
                         println!("OK");
                     }
                     Err(diagnostic) => {
-                        let file = SimpleFile::new(filename.display().to_string(), contents);
+                        let mut files = SimpleFiles::new();
+                        files.add(filename.display().to_string(), contents);
+
                         term::emit(
                             &mut writer.lock(),
                             &config,
-                            &file,
+                            &files,
                             &map_diagnostic(diagnostic),
                         )
                         .map_err(|_| "Failed writing to terminal")?;
@@ -66,9 +68,29 @@ pub fn main() -> Result<(), String> {
     Ok(())
 }
 
-fn map_diagnostic(diagnostic: ironplc_dsl::diagnostic::Diagnostic) -> Diagnostic<()> {
-    // TODO this ignores the position and doesn't include secondary information
-    let labels = vec![Label::new(LabelStyle::Primary, (), 0..0)];
+fn map_label(label: ironplc_dsl::diagnostic::Label, style: LabelStyle) -> Label<usize> {
+    let range = match label.location {
+        ironplc_dsl::diagnostic::Location::QualifiedPosition(_pos) => Range { start: 0, end: 0 },
+        ironplc_dsl::diagnostic::Location::OffsetRange(offset) => Range {
+            start: offset.start,
+            end: offset.end,
+        },
+    };
+    Label::new(style, 0, range).with_message(label.message)
+}
+
+fn map_diagnostic(diagnostic: ironplc_dsl::diagnostic::Diagnostic) -> Diagnostic<usize> {
+    // Set the primary labels
+    let mut labels = vec![map_label(diagnostic.primary, LabelStyle::Primary)];
+
+    // Add any secondary labels
+    labels.extend(
+        diagnostic
+            .secondary
+            .into_iter()
+            .map(|lbl| map_label(lbl, LabelStyle::Secondary)),
+    );
+
     Diagnostic::new(Severity::Error)
         .with_code(diagnostic.code)
         .with_message(diagnostic.description)

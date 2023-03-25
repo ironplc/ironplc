@@ -24,8 +24,8 @@ use peg::parser;
 
 use crate::mapper::*;
 use ironplc_dsl::common::*;
-use ironplc_dsl::common_sfc::*;
 use ironplc_dsl::core::Id;
+use ironplc_dsl::sfc::*;
 use ironplc_dsl::textual::*;
 
 // Don't use std::time::Duration because it does not allow negative values.
@@ -678,9 +678,16 @@ parser! {
         address: addr,
       }
     }
-    rule location_prefix() -> LocationPrefix = l:['I' | 'Q' | 'M'] { LocationPrefix::from_char(l) }
-    rule size_prefix() -> SizePrefix = s:['X' | 'B' | 'W' | 'D' | 'L'] { SizePrefix::from_char(s) }
-
+    rule location_prefix() -> LocationPrefix =
+      "I" { LocationPrefix::I }
+      / "Q" { LocationPrefix::Q }
+      / "M" { LocationPrefix::M }
+    rule size_prefix() -> SizePrefix =
+      "X" { SizePrefix::X }
+      / "B" { SizePrefix::B }
+      / "W" { SizePrefix::W }
+      / "D" { SizePrefix::D }
+      / "L" { SizePrefix::L }
     // B.1.4.2 Multi-element variables
     rule multi_element_variable() -> Variable = sv:structured_variable() {
       // TODO this is clearly wrong
@@ -946,14 +953,14 @@ parser! {
         elements
       }
     }
-    rule initial_step() -> Element = "INITIAL_STEP" _ name:step_name() _ ":" _ action_associations:action_association() ** (_ ";" _) "END_STEP" {
-      Element::InitialStep(Step{
+    rule initial_step() -> Step = "INITIAL_STEP" _ name:step_name() _ ":" _ action_associations:action_association() ** (_ ";" _) "END_STEP" {
+      Step{
         name,
         action_associations,
-       })
+       }
     }
-    rule step() -> Element = "STEP" _ name:step_name() _ ":" _ action_associations:semisep(<action_association()>) _ "END_STEP" {
-      Element::step(
+    rule step() -> ElementKind = "STEP" _ name:step_name() _ ":" _ action_associations:semisep(<action_association()>) _ "END_STEP" {
+      ElementKind::step(
         name,
         action_associations
       )
@@ -968,11 +975,21 @@ parser! {
       }
     }
     rule action_name() -> Id = identifier()
-    // TODO this is missing some
-    rule action_qualifier() -> ActionQualifier = q:['N' | 'R' | 'S' | 'P'] { ActionQualifier::from_char(q) }
+    rule action_qualifier() -> ActionQualifier =
+      "N" { ActionQualifier::N }
+      / "R" { ActionQualifier::R }
+      / "S" { ActionQualifier::S }
+      / "L" { ActionQualifier::L }
+      / "D" { ActionQualifier::D }
+      / "P" { ActionQualifier::P }
+      / "SD" { ActionQualifier::SD }
+      / "DS" { ActionQualifier::DS }
+      / "SL" { ActionQualifier::SL }
+      / "P1" { ActionQualifier::PR }
+      / "P0" { ActionQualifier::PF }
     rule indicator_name() -> Id = variable_name()
-    rule transition() -> Element = "TRANSITION" _ name:transition_name()? _ priority:("(" _ "PRIORITY" _ ":=" _ p:integer() _ ")" {p})? _ "FROM" _ from:steps() _ "TO" _ to:steps() _ condition:transition_condition() _ "END_TRANSITION" {
-      Element::Transition(Transition {
+    rule transition() -> ElementKind = "TRANSITION" _ name:transition_name()? _ priority:("(" _ "PRIORITY" _ ":=" _ p:integer() _ ")" {p})? _ "FROM" _ from:steps() _ "TO" _ to:steps() _ condition:transition_condition() _ "END_TRANSITION" {
+      ElementKind::Transition(Transition {
         name,
         priority: priority.map(|p| p.value.try_into().unwrap()),
         from,
@@ -989,8 +1006,8 @@ parser! {
     }
     // TODO add simple_instruction_list , fbd_network, rung
     rule transition_condition() -> ExprKind =  ":=" _ expr:expression() _ ";" { expr }
-    rule action() -> Element = "ACTION" _ name:action_name() _ ":" _ body:function_block_body() _ "END_ACTION" {
-      Element::Action(Action {
+    rule action() -> ElementKind = "ACTION" _ name:action_name() _ ":" _ body:function_block_body() _ "END_ACTION" {
+      ElementKind::Action(Action {
         name,
         body
       })
@@ -1409,9 +1426,12 @@ END_VAR";
     COUNT_INLINE4(N);
   END_STEP";
         let expected = Ok(vec![Network {
-            initial_step: Element::initial_step("Start", vec![]),
+            initial_step: Step {
+                name: Id::from("Start"),
+                action_associations: vec![],
+            },
             elements: vec![
-                Element::step(
+                ElementKind::step(
                     Id::from("ResetCounter"),
                     vec![
                         ActionAssociation {
@@ -1426,24 +1446,24 @@ END_VAR";
                         },
                     ],
                 ),
-                Element::action(
+                ElementKind::action(
                     "RESETCOUNTER_INLINE1",
                     vec![StmtKind::assignment(
                         Variable::symbolic("Cnt"),
                         ExprKind::symbolic_variable("ResetCounterValue"),
                     )],
                 ),
-                Element::transition(
+                ElementKind::transition(
                     "ResetCounter",
                     "Start",
                     ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("Reset")),
                 ),
-                Element::transition(
+                ElementKind::transition(
                     "Start",
                     "Count",
                     ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("Reset")),
                 ),
-                Element::step(
+                ElementKind::step(
                     Id::from("Count"),
                     vec![
                         ActionAssociation {

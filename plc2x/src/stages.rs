@@ -66,9 +66,9 @@ mod tests {
     use super::parse;
 
     use ironplc_dsl::common::*;
-    use ironplc_dsl::common_sfc::*;
     use ironplc_dsl::core::Id;
     use ironplc_dsl::core::SourceLoc;
+    use ironplc_dsl::sfc::*;
     use ironplc_dsl::textual::*;
     use test_helpers::*;
 
@@ -152,14 +152,17 @@ mod tests {
                     },
                 ],
                 body: FunctionBlockBody::sfc(vec![Network {
-                    initial_step: Element::initial_step("Start", vec![]),
+                    initial_step: Step {
+                        name: Id::from("Start"),
+                        action_associations: vec![],
+                    },
                     elements: vec![
-                        Element::transition(
+                        ElementKind::transition(
                             "Start",
                             "ResetCounter",
                             ExprKind::symbolic_variable("Reset"),
                         ),
-                        Element::step(
+                        ElementKind::step(
                             Id::from("ResetCounter"),
                             vec![
                                 ActionAssociation::new(
@@ -172,35 +175,35 @@ mod tests {
                                 ),
                             ],
                         ),
-                        Element::action(
+                        ElementKind::action(
                             "RESETCOUNTER_INLINE1",
                             vec![StmtKind::simple_assignment(
                                 "Cnt",
                                 vec!["ResetCounterValue"],
                             )],
                         ),
-                        Element::action(
+                        ElementKind::action(
                             "RESETCOUNTER_INLINE2",
                             vec![StmtKind::simple_assignment("OUT", vec!["Cnt"])],
                         ),
-                        Element::transition(
+                        ElementKind::transition(
                             "ResetCounter",
                             "Start",
                             ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("Reset")),
                         ),
-                        Element::transition(
+                        ElementKind::transition(
                             "Start",
                             "Count",
                             ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("Reset")),
                         ),
-                        Element::step(
+                        ElementKind::step(
                             Id::from("Count"),
                             vec![
                                 ActionAssociation::new("COUNT_INLINE3", Some(ActionQualifier::N)),
                                 ActionAssociation::new("COUNT_INLINE4", Some(ActionQualifier::N)),
                             ],
                         ),
-                        Element::action(
+                        ElementKind::action(
                             "COUNT_INLINE3",
                             vec![StmtKind::assignment(
                                 Variable::symbolic("Cnt"),
@@ -211,11 +214,15 @@ mod tests {
                                 ),
                             )],
                         ),
-                        Element::action(
+                        ElementKind::action(
                             "COUNT_INLINE4",
                             vec![StmtKind::simple_assignment("OUT", vec!["Cnt"])],
                         ),
-                        Element::transition("Count", "Start", ExprKind::symbolic_variable("Reset")),
+                        ElementKind::transition(
+                            "Count",
+                            "Start",
+                            ExprKind::symbolic_variable("Reset"),
+                        ),
                     ],
                 }]),
                 position: SourceLoc::default(),

@@ -32,7 +32,7 @@
 //! ```
 
 use crate::common::*;
-use crate::common_sfc::Network;
+use crate::sfc::*;
 use crate::textual::*;
 
 /// Defines a way to recurse into an object in the AST or DSL.
@@ -121,6 +121,14 @@ pub trait Visitor<E> {
         node: &StructureDeclaration,
     ) -> Result<Self::Value, E> {
         visit_structure_declaration(self, node)
+    }
+
+    // 2.3.3.1
+    fn visit_structure_element_declaration(
+        &mut self,
+        node: &StructureElementDeclaration,
+    ) -> Result<Self::Value, E> {
+        visit_structure_element_declaration(self, node)
     }
 
     // 2.3.3.1
@@ -251,6 +259,27 @@ pub trait Visitor<E> {
     // 2.6
     fn visit_sfc(&mut self, node: &Sfc) -> Result<Self::Value, E> {
         Acceptor::accept(&node.networks, self)
+    }
+
+    // 2.6
+    fn visit_network(&mut self, node: &Network) -> Result<Self::Value, E> {
+        visit_network(self, node)
+    }
+
+    // 2.6.2
+    fn visit_step(&mut self, node: &Step) -> Result<Self::Value, E> {
+        // leaf node - no children
+        Ok(Self::Value::default())
+    }
+
+    // 2.6.3
+    fn visit_transition(&mut self, node: &Transition) -> Result<Self::Value, E> {
+        visit_transition(self, node)
+    }
+
+    // 2.6.4
+    fn visit_action(&mut self, node: &Action) -> Result<Self::Value, E> {
+        visit_action(self, node)
     }
 
     // 2.7.1
@@ -420,8 +449,14 @@ pub fn visit_structure_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &StructureDeclaration,
 ) -> Result<V::Value, E> {
-    // TODO
-    Ok(V::Value::default())
+    Acceptor::accept(&node.elements, v)
+}
+
+pub fn visit_structure_element_declaration<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &StructureElementDeclaration,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.init, v)
 }
 
 pub fn visit_structure_initialization_declaration<V: Visitor<E> + ?Sized, E>(
@@ -533,6 +568,25 @@ pub fn visit_array_initializer<V: Visitor<E> + ?Sized, E>(
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.spec, v)?;
     Acceptor::accept(&node.initial_values, v)
+}
+
+// 2.6.2
+pub fn visit_network<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &Network) -> Result<V::Value, E> {
+    v.visit_step(&node.initial_step)?;
+    Acceptor::accept(&node.elements, v)
+}
+
+// 2.6.3
+pub fn visit_transition<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &Transition,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.condition, v)
+}
+
+// 2.6.3
+pub fn visit_action<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &Action) -> Result<V::Value, E> {
+    Acceptor::accept(&node.body, v)
 }
 
 // 3.2.3
@@ -769,9 +823,16 @@ impl Acceptor for CaseSelection {
     }
 }
 
+// 2.6.2
 impl Acceptor for Network {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
-        // TODO
+        visitor.visit_network(self)
+    }
+}
+
+// 2.6.2
+impl Acceptor for ElementKind {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         Ok(V::Value::default())
     }
 }
@@ -807,6 +868,13 @@ impl Acceptor for TaskConfiguration {
 impl Acceptor for ProgramConfiguration {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         visitor.visit_program_configuration(self)
+    }
+}
+
+// 2.3.3.1
+impl Acceptor for StructureElementDeclaration {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        visitor.visit_structure_element_declaration(self)
     }
 }
 
