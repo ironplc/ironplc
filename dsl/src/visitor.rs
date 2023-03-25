@@ -737,7 +737,7 @@ impl Acceptor for StructureElementInit {
 impl Acceptor for StructInitialValueAssignmentKind {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
-            StructInitialValueAssignmentKind::Constant(_) => todo!(),
+            StructInitialValueAssignmentKind::Constant(c) => Acceptor::accept(c, visitor),
             StructInitialValueAssignmentKind::EnumeratedValue(_) => todo!(),
             StructInitialValueAssignmentKind::Array(_) => todo!(),
             StructInitialValueAssignmentKind::Structure(_) => todo!(),
