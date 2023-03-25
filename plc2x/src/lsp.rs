@@ -1,3 +1,5 @@
+//! Implements the language server protocol for integration with an IDE such
+//! as Visual Studio Code.
 use std::path::PathBuf;
 
 use crate::analyze;

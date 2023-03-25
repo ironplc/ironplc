@@ -246,7 +246,7 @@ parser! {
     // B.1.2 Constants
     rule constant() -> Constant =
         r:real_literal() { Constant::RealLiteral(r) }
-        / i:integer_literal() { Constant::IntegerLiteral(i.try_into().unwrap()) }
+        / i:integer_literal() { Constant::IntegerLiteral(i) }
         / c:character_string() { Constant::CharacterString() }
         / d:duration() { Constant::Duration(d) }
         / t:time_of_day() { Constant::TimeOfDay() }
@@ -255,11 +255,19 @@ parser! {
         / b:boolean_literal() { Constant::Boolean(b) }
 
     // B.1.2.1 Numeric literals
-    // numeric_literal omitted and only in constant.
-    // TODO fill out the rest here
-    rule integer_literal() -> SignedInteger = bi:binary_integer() { bi.into() } / oi:octal_integer() { oi.into() } / hi:hex_integer() { hi.into() } / si:signed_integer() { si }
+    // numeric_literal omitted because it only appears in constant so we do not need to create a type for it
+    rule integer_literal() -> IntegerLiteral = data_type:(t:integer_type_name() "#" {t})? value:(bi:binary_integer() { bi.into() } / oi:octal_integer() { oi.into() } / hi:hex_integer() { hi.into() } / si:signed_integer() { si }) { IntegerLiteral { value, data_type } }
     rule signed_integer__string() -> &'input str = n:$(['+' | '-']?['0'..='9']("_"? ['0'..='9'])*) { n }
     rule signed_integer() -> SignedInteger = start:position!() n:signed_integer__string() end:position!() { SignedInteger::new(n, SourceLoc::range(start, end)) }
+    // TODO handle the sign
+    rule integer__string() -> &'input str = n:$(['0'..='9']("_"? ['0'..='9'])*) { n }
+    rule integer() -> Integer = start:position!() n:integer__string() end:position!() { Integer::new(n, SourceLoc::range(start, end)) }
+    rule binary_integer_prefix() -> () = "2#" ()
+    rule binary_integer() -> Integer = start:position!() binary_integer_prefix() n:$(['0'..='1']("_"? ['0'..='1'])*) end:position!() { Integer::binary(n, SourceLoc::range(start, end)) }
+    rule octal_integer_prefix() -> () = "8#" ()
+    rule octal_integer() -> Integer = start:position!() octal_integer_prefix() n:$(['0'..='7']("_"? ['0'..='7'])*) end:position!() { Integer::octal(n, SourceLoc::range(start, end)) }
+    rule hex_integer_prefix() -> () = "16#" ()
+    rule hex_integer() -> Integer = start:position!() hex_integer_prefix() n:$(['0'..='9' | 'A'..='F']("_"? ['0'..='9' | 'A'..='F'])*) end:position!() { Integer::hex(n, SourceLoc::range(start, end)) }
     rule real_literal() -> Float = tn:(t:real_type_name() "#" {t})? whole:signed_integer__string() "." fraction:integer__string() exp:exponent()? {
       // Create the value from concatenating the parts so that it is trivial
       // to existing parsers.
@@ -278,15 +286,14 @@ parser! {
       }
     }
     rule exponent() -> SignedInteger = ("E" / "e") si:signed_integer() { si }
-    // TODO handle the sign
-    rule integer__string() -> &'input str = n:$(['0'..='9']("_"? ['0'..='9'])*) { n }
-    rule integer() -> Integer = start:position!() n:integer__string() end:position!() { Integer::new(n, SourceLoc::range(start, end)) }
-    rule binary_integer_prefix() -> () = "2#" ()
-    rule binary_integer() -> Integer = start:position!() binary_integer_prefix() n:$(['0'..='1']("_"? ['0'..='1'])*) end:position!() { Integer::binary(n, SourceLoc::range(start, end)) }
-    rule octal_integer_prefix() -> () = "8#" ()
-    rule octal_integer() -> Integer = start:position!() octal_integer_prefix() n:$(['0'..='7']("_"? ['0'..='7'])*) end:position!() { Integer::octal(n, SourceLoc::range(start, end)) }
-    rule hex_integer_prefix() -> () = "16#" ()
-    rule hex_integer() -> Integer = start:position!() hex_integer_prefix() n:$(['0'..='9' | 'A'..='F']("_"? ['0'..='9' | 'A'..='F'])*) end:position!() { Integer::hex(n, SourceLoc::range(start, end)) }
+    // bit_string_literal_type is not a rule in the specification but helps write simpler code
+    rule bit_string_literal_type() -> ElementaryTypeName =
+      "BYTE" { ElementaryTypeName::BYTE }
+      / "WORD" { ElementaryTypeName::WORD }
+      / "DWORD" { ElementaryTypeName::DWORD }
+      / "LWORD" { ElementaryTypeName::LWORD }
+    // The specification says unsigned_integer, but there is no such rule.
+    rule bit_string_literal() -> BitStringLiteral = data_type:(t:bit_string_literal_type() "#" {t})? value:(bi:binary_integer() { bi }/ oi:octal_integer() { oi } / hi:hex_integer() { hi } / ui:integer() { ui } ) { BitStringLiteral { value, data_type } }
     rule boolean_literal() -> Boolean =
       // 1 and 0 can be a Boolean, but only with the prefix is it definitely a Boolean
       "BOOL#1" { Boolean::True }
@@ -1393,7 +1400,7 @@ END_VAR";
             name: Id::from("ResetCounterValue"),
             var_type: VariableType::Global,
             qualifier: DeclarationQualifier::Constant,
-            initializer: InitialValueAssignmentKind::simple("INT", Constant::IntegerLiteral(17)),
+            initializer: InitialValueAssignmentKind::simple("INT", Constant::integer_literal("17")),
             position: SourceLoc::default(),
         }];
         assert_eq!(
@@ -1487,7 +1494,7 @@ END_VAR";
     fn statement_assign_constant() {
         let expected = Ok(vec![StmtKind::assignment(
             Variable::symbolic("Cnt"),
-            ExprKind::Const(Constant::IntegerLiteral(1)),
+            ExprKind::integer_literal("1"),
         )]);
         assert_eq!(plc_parser::statement_list("Cnt := 1;"), expected)
     }
@@ -1498,8 +1505,8 @@ END_VAR";
             Variable::symbolic("Cnt"),
             ExprKind::binary(
                 Operator::Add,
-                ExprKind::Const(Constant::IntegerLiteral(1)),
-                ExprKind::Const(Constant::IntegerLiteral(2)),
+                ExprKind::integer_literal("1"),
+                ExprKind::integer_literal("2"),
             ),
         )]);
         assert_eq!(plc_parser::statement_list("Cnt := 1 + 2;"), expected)
@@ -1512,7 +1519,7 @@ END_VAR";
             ExprKind::binary(
                 Operator::Add,
                 ExprKind::symbolic_variable("Cnt"),
-                ExprKind::Const(Constant::IntegerLiteral(1)),
+                ExprKind::integer_literal("1"),
             ),
         )]);
         assert_eq!(plc_parser::statement_list("Cnt := Cnt + 1;"), expected)
@@ -1556,7 +1563,7 @@ END_VAR";
                 ExprKind::binary(
                     Operator::Add,
                     ExprKind::symbolic_variable("Cnt"),
-                    ExprKind::Const(Constant::IntegerLiteral(1)),
+                    ExprKind::integer_literal("1"),
                 ),
             )],
         )]);

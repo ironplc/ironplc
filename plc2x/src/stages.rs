@@ -210,7 +210,7 @@ mod tests {
                                 ExprKind::binary(
                                     Operator::Add,
                                     ExprKind::symbolic_variable("Cnt"),
-                                    ExprKind::integer_literal(1),
+                                    ExprKind::integer_literal("1"),
                                 ),
                             )],
                         ),
@@ -394,7 +394,7 @@ mod tests {
                     qualifier: DeclarationQualifier::Constant,
                     initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
                         type_name: Id::from("INT"),
-                        initial_value: Some(Constant::IntegerLiteral(17)),
+                        initial_value: Some(Constant::integer_literal("17")),
                     }),
                     position: SourceLoc::default(),
                 }],

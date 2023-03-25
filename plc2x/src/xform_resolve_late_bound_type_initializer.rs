@@ -302,4 +302,28 @@ END_FUNCTION_BLOCK
 
         assert_eq!(result, expected)
     }
+
+    #[test]
+    fn apply_when_duplicated_type_then_error() {
+        let program = "
+TYPE
+    the_struct : STRUCT
+        member: BOOL;
+    END_STRUCT;  
+    the_struct : STRUCT
+        member: BOOL;
+    END_STRUCT; 
+END_TYPE
+
+FUNCTION_BLOCK caller
+    VAR
+        the_var : the_struct;
+    END_VAR
+    
+END_FUNCTION_BLOCK
+        ";
+        let input = ironplc_parser::parse_program(program, &PathBuf::default()).unwrap();
+        let result = apply(input);
+        assert!(result.is_err())
+    }
 }

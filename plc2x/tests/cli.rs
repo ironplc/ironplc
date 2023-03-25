@@ -47,3 +47,16 @@ fn check_when_syntax_error_file_then_err() -> Result<(), Box<dyn std::error::Err
 
     Ok(())
 }
+
+#[test]
+fn check_when_semantic_error_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("ironplcc")?;
+
+    cmd.arg("check")
+        .arg(path_to_test_resource("first_steps_semantic_error.st"));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Enumeration uses value"));
+
+    Ok(())
+}

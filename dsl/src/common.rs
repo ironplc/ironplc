@@ -11,6 +11,38 @@ use crate::core::{Id, SourceLoc, SourcePosition};
 use crate::sfc::Network;
 use crate::textual::*;
 
+/// Container for elementary constants.
+///
+/// See section 2.2.
+#[derive(PartialEq, Clone, Debug)]
+pub enum Constant {
+    // TODO these need values
+    IntegerLiteral(IntegerLiteral),
+    RealLiteral(Float),
+    CharacterString(),
+    Duration(Duration),
+    TimeOfDay(),
+    Date(),
+    DateAndTime(),
+    Boolean(Boolean),
+    BitStringLiteral(BitStringLiteral),
+}
+
+impl Constant {
+    pub fn integer_literal(value: &str) -> Self {
+        Self::IntegerLiteral(IntegerLiteral {
+            value: SignedInteger::new(value, SourceLoc::default()),
+            data_type: None,
+        })
+    }
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub enum Boolean {
+    True,
+    False,
+}
+
 /// Numeric liberals declared by 2.2.1. Numeric literals define
 /// how data is expressed and are distinct from but associated with
 /// data types.
@@ -208,9 +240,27 @@ impl fmt::Display for SignedInteger {
     }
 }
 
+/// A signed integer literal with a optional type name.
+///
+/// See section 2.2.1.
+#[derive(Debug, PartialEq, Clone)]
+pub struct IntegerLiteral {
+    pub value: SignedInteger,
+    // TODO restrict to valid integer type names
+    pub data_type: Option<ElementaryTypeName>,
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Float {
     pub value: f64,
+    // TODO restrict to valid float type names
+    pub data_type: Option<ElementaryTypeName>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct BitStringLiteral {
+    pub value: Integer,
+    // TODO restrict to valid float type names
     pub data_type: Option<ElementaryTypeName>,
 }
 
@@ -894,28 +944,6 @@ pub enum StructInitialValueAssignmentKind {
     EnumeratedValue(EnumeratedValue),
     Array(Vec<ArrayInitialElementKind>),
     Structure(Vec<StructureElementInit>),
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub enum Boolean {
-    True,
-    False,
-}
-
-/// Container for elementary constants.
-///
-/// See section 2.2.
-#[derive(PartialEq, Clone, Debug)]
-pub enum Constant {
-    // TODO these need values
-    IntegerLiteral(i128),
-    RealLiteral(Float),
-    CharacterString(),
-    Duration(Duration),
-    TimeOfDay(),
-    Date(),
-    DateAndTime(),
-    Boolean(Boolean),
 }
 
 #[derive(PartialEq, Clone, Debug)]
