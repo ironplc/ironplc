@@ -121,14 +121,14 @@ impl<'a> RuleFunctionBlockUse<'a> {
         let mut outputs: Vec<&Output> = vec![];
         for param in fb_call.params.iter() {
             match param {
-                ParamAssignment::NamedInput(n) => {
+                ParamAssignmentKind::NamedInput(n) => {
                     formal.push(n);
                 }
-                ParamAssignment::PositionalInput(p) => {
+                ParamAssignmentKind::PositionalInput(p) => {
                     non_formal.push(p);
                 }
                 // Don't care outputs here
-                ParamAssignment::Output(o) => {
+                ParamAssignmentKind::Output(o) => {
                     outputs.push(o);
                 }
             }
