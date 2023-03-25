@@ -769,6 +769,7 @@ impl Acceptor for ExprKind {
 impl Acceptor for Constant {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
+            // TODO visit the values
             Constant::IntegerLiteral(node) => Ok(V::Value::default()),
             Constant::RealLiteral(node) => Ok(V::Value::default()),
             Constant::CharacterString() => Ok(V::Value::default()),
@@ -777,6 +778,7 @@ impl Acceptor for Constant {
             Constant::Date() => Ok(V::Value::default()),
             Constant::DateAndTime() => Ok(V::Value::default()),
             Constant::Boolean(node) => Ok(V::Value::default()),
+            Constant::BitStringLiteral(node) => Ok(V::Value::default()),
         }
     }
 }

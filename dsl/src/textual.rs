@@ -1,7 +1,9 @@
 //! Provides definitions of objects from IEC 61131-3 textual languages.
 //!
 //! See section 3.
-use crate::common::{AddressAssignment, Constant, EnumeratedValue, SignedInteger, Subrange};
+use crate::common::{
+    AddressAssignment, Constant, EnumeratedValue, IntegerLiteral, SignedInteger, Subrange,
+};
 use crate::core::{Id, SourceLoc};
 use std::cmp::Ordering;
 use std::fmt;
@@ -111,8 +113,11 @@ impl ExprKind {
         ExprKind::Variable(Variable::symbolic(name))
     }
 
-    pub fn integer_literal(value: i128) -> ExprKind {
-        ExprKind::Const(Constant::IntegerLiteral(1))
+    pub fn integer_literal(value: &str) -> ExprKind {
+        ExprKind::Const(Constant::IntegerLiteral(IntegerLiteral {
+            value: SignedInteger::new(value, SourceLoc::default()),
+            data_type: None,
+        }))
     }
 }
 
