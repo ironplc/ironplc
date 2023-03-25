@@ -6,6 +6,14 @@ use crate::core::{Id, SourceLoc};
 use std::cmp::Ordering;
 use std::fmt;
 
+/// A body of a function bock (one of the possible types).
+///
+/// See section 3.
+#[derive(Debug, PartialEq, Clone)]
+pub struct Statements {
+    pub body: Vec<StmtKind>,
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Variable {
     AddressAssignment(AddressAssignment),
@@ -36,7 +44,7 @@ pub struct FbCall {
     /// Name of the variable that is associated with the function block
     /// call.
     pub var_name: Id,
-    pub params: Vec<ParamAssignment>,
+    pub params: Vec<ParamAssignmentKind>,
     pub position: SourceLoc,
 }
 
@@ -82,7 +90,7 @@ pub enum ExprKind {
     Variable(Variable),
     Function {
         name: Id,
-        param_assignment: Vec<ParamAssignment>,
+        param_assignment: Vec<ParamAssignmentKind>,
     },
 }
 
@@ -140,19 +148,19 @@ pub struct Output {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum ParamAssignment {
+pub enum ParamAssignmentKind {
     PositionalInput(PositionalInput),
     NamedInput(NamedInput),
     Output(Output),
 }
 
-impl ParamAssignment {
-    pub fn positional(expr: ExprKind) -> ParamAssignment {
-        ParamAssignment::PositionalInput(PositionalInput { expr })
+impl ParamAssignmentKind {
+    pub fn positional(expr: ExprKind) -> ParamAssignmentKind {
+        ParamAssignmentKind::PositionalInput(PositionalInput { expr })
     }
 
-    pub fn named(name: &str, expr: ExprKind) -> ParamAssignment {
-        ParamAssignment::NamedInput(NamedInput {
+    pub fn named(name: &str, expr: ExprKind) -> ParamAssignmentKind {
+        ParamAssignmentKind::NamedInput(NamedInput {
             name: Id::from(name),
             expr,
         })
@@ -243,8 +251,8 @@ impl StmtKind {
     pub fn fb_assign(fb_name: &str, inputs: Vec<&str>, output: &str) -> StmtKind {
         let assignments = inputs
             .into_iter()
-            .map(|input| ParamAssignment::positional(ExprKind::symbolic_variable(input)))
-            .collect::<Vec<ParamAssignment>>();
+            .map(|input| ParamAssignmentKind::positional(ExprKind::symbolic_variable(input)))
+            .collect::<Vec<ParamAssignmentKind>>();
 
         StmtKind::assignment(
             Variable::symbolic(output),
@@ -258,9 +266,9 @@ impl StmtKind {
         let assignments = inputs
             .into_iter()
             .map(|pair| {
-                ParamAssignment::named(pair.0, ExprKind::Variable(Variable::symbolic(pair.1)))
+                ParamAssignmentKind::named(pair.0, ExprKind::Variable(Variable::symbolic(pair.1)))
             })
-            .collect::<Vec<ParamAssignment>>();
+            .collect::<Vec<ParamAssignmentKind>>();
 
         StmtKind::FbCall(FbCall {
             var_name: Id::from(fb_name),
@@ -303,7 +311,6 @@ pub struct Assignment {
 /// See section 3.3.2.3.
 #[derive(Debug, PartialEq, Clone)]
 pub struct If {
-    // TODO how to handle else else if (that should probably be a nested if)
     pub expr: ExprKind,
     pub body: Vec<StmtKind>,
     pub else_ifs: Vec<(ExprKind, Vec<StmtKind>)>,

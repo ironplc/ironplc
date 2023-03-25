@@ -90,41 +90,32 @@ pub trait Visitor<E> {
         Ok(Self::Value::default())
     }
 
-    fn visit_enumerated_value(&mut self, node: &EnumeratedValue) -> Result<Self::Value, E> {
-        Ok(Self::Value::default())
-    }
-
-    fn visit_configuration_declaration(
-        &mut self,
-        node: &ConfigurationDeclaration,
-    ) -> Result<Self::Value, E> {
-        visit_configuration_declaration(self, node)
-    }
-
-    fn visit_resource_declaration(&mut self, node: &ResourceDeclaration) -> Result<Self::Value, E> {
-        visit_resource_declaration(self, node)
-    }
-
-    fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<Self::Value, E> {
-        visit_variable_declaration(self, node)
-    }
-
+    // 2.3.3.1
     fn visit_enum_declaration(&mut self, node: &EnumerationDeclaration) -> Result<Self::Value, E> {
         visit_enum_declaration(self, node)
     }
 
+    // 2.3.3.1
+    fn visit_enumerated_value(&mut self, node: &EnumeratedValue) -> Result<Self::Value, E> {
+        Ok(Self::Value::default())
+    }
+
+    // 2.3.3.1
     fn visit_subrange_declaration(&mut self, node: &SubrangeDeclaration) -> Result<Self::Value, E> {
         visit_subrange_declaration(self, node)
     }
 
+    // 2.3.3.1
     fn visit_simple_declaration(&mut self, node: &SimpleDeclaration) -> Result<Self::Value, E> {
         visit_simple_declaration(self, node)
     }
 
+    // 2.3.3.1
     fn visit_array_declaration(&mut self, node: &ArrayDeclaration) -> Result<Self::Value, E> {
         visit_array_declaration(self, node)
     }
 
+    // 2.3.3.1
     fn visit_structure_declaration(
         &mut self,
         node: &StructureDeclaration,
@@ -132,6 +123,7 @@ pub trait Visitor<E> {
         visit_structure_declaration(self, node)
     }
 
+    // 2.3.3.1
     fn visit_structure_initialization_declaration(
         &mut self,
         node: &StructureInitializationDeclaration,
@@ -139,6 +131,7 @@ pub trait Visitor<E> {
         visit_structure_initialization_declaration(self, node)
     }
 
+    // 2.3.3.1
     fn visit_structure_element_init(
         &mut self,
         node: &StructureElementInit,
@@ -146,10 +139,20 @@ pub trait Visitor<E> {
         visit_structure_element_init(self, node)
     }
 
+    // 2.3.3.1
     fn visit_string_declaration(&mut self, node: &StringDeclaration) -> Result<Self::Value, E> {
         visit_string_declaration(self, node)
     }
 
+    // 2.3.3.1
+    fn visit_subrange_specification(
+        &mut self,
+        node: &SubrangeSpecification,
+    ) -> Result<Self::Value, E> {
+        visit_subrange_specification(self, node)
+    }
+
+    // 2.3.3.1
     fn visit_late_bound_declaration(
         &mut self,
         node: &LateBoundDeclaration,
@@ -157,99 +160,52 @@ pub trait Visitor<E> {
         visit_late_bound_declaration(self, node)
     }
 
-    fn visit_function_block_declaration(
-        &mut self,
-        node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, E> {
-        visit_function_block_declaration(self, node)
+    // 2.4.2.1
+    fn visit_subrange(&mut self, init: &Subrange) -> Result<Self::Value, E> {
+        Ok(Self::Value::default())
     }
 
-    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<Self::Value, E> {
-        visit_function_declaration(self, node)
+    // 2.4.3
+    fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<Self::Value, E> {
+        visit_variable_declaration(self, node)
     }
 
-    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<Self::Value, E> {
-        visit_program_declaration(self, node)
-    }
-
-    fn visit_sfc(&mut self, node: &Sfc) -> Result<Self::Value, E> {
-        Acceptor::accept(&node.networks, self)
-    }
-
-    fn visit_statements(&mut self, node: &Statements) -> Result<Self::Value, E> {
-        Acceptor::accept(&node.body, self)
-    }
-
-    fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, E> {
-        Acceptor::accept(&node.target, self)
-    }
-
-    fn visit_if(&mut self, node: &If) -> Result<Self::Value, E> {
-        visit_if(self, node)
-    }
-
-    fn visit_case(&mut self, node: &Case) -> Result<Self::Value, E> {
-        visit_case(self, node)
-    }
-
-    fn visit_case_statement_group(&mut self, node: &CaseStatementGroup) -> Result<Self::Value, E> {
-        visit_case_statement_group(self, node)
-    }
-
-    fn visit_compare(&mut self, node: &CompareExpr) -> Result<Self::Value, E> {
-        visit_compare(self, node)
-    }
-
-    fn visit_binary_op(&mut self, node: &BinaryExpr) -> Result<Self::Value, E> {
-        // TODO this doesn't really go through binary operators - maybe this should be split
-        // into smaller pieces.
-        visit_binary_op(self, node)
-    }
-
-    fn visit_unary_op(&mut self, node: &UnaryExpr) -> Result<Self::Value, E> {
-        visit_unary_op(self, node)
-    }
-
+    // 2.4.3.1
     fn visit_address_assignment(&mut self, node: &AddressAssignment) -> Result<Self::Value, E> {
-        todo!()
-    }
-
-    fn visit_symbolic_variable(&mut self, node: &SymbolicVariable) -> Result<Self::Value, E> {
         // leaf node - no children
         Ok(Self::Value::default())
     }
 
-    fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, E> {
-        // TODO
+    // 2.4.3.1 and 2.4.3.2
+    fn visit_string_initializer(&mut self, node: &StringInitializer) -> Result<Self::Value, E> {
+        // leaf node - no children
         Ok(Self::Value::default())
     }
 
-    fn visit_simple_initializer(&mut self, init: &SimpleInitializer) -> Result<Self::Value, E> {
-        // TODO
-        Ok(Self::Value::default())
+    // 2.4.3.2
+    fn visit_simple_initializer(&mut self, node: &SimpleInitializer) -> Result<Self::Value, E> {
+        visit_simple_initializer(self, node)
     }
 
-    fn visit_string_initializer(&mut self, init: &StringInitializer) -> Result<Self::Value, E> {
-        // TODO
-        Ok(Self::Value::default())
-    }
-
+    // 2.4.3.2
     fn visit_enumerated_type_initializer(
         &mut self,
-        init: &EnumeratedInitialValueAssignment,
+        node: &EnumeratedInitialValueAssignment,
     ) -> Result<Self::Value, E> {
         // leaf node - no children
         Ok(Self::Value::default())
     }
 
+    // 2.4.3.2
     fn visit_enumerated_values_initializer(
         &mut self,
-        init: &EnumeratedValuesInitializer,
+        node: &EnumeratedValuesInitializer,
     ) -> Result<Self::Value, E> {
         // leaf node - no children
         Ok(Self::Value::default())
     }
 
+    // 2.4.3.2
     fn visit_function_block_type_initializer(
         &mut self,
         init: &FunctionBlockInitialValueAssignment,
@@ -258,31 +214,133 @@ pub trait Visitor<E> {
         Ok(Self::Value::default())
     }
 
+    // 2.4.3.2
     fn visit_enumerated_spec_init(
         &mut self,
         node: &EnumeratedSpecificationInit,
     ) -> Result<Self::Value, E> {
-        Acceptor::accept(&node.spec, self)
-        //TODO visit the default value
-        //Acceptor::accept(spec_init.default, self)
+        visit_enumerated_spec_init(self, node)
     }
 
-    fn visit_subrange_specification(
+    // 2.4.3.2. #6
+    fn visit_array_initializer(
         &mut self,
-        node: &SubrangeSpecification,
+        node: &ArrayInitialValueAssignment,
     ) -> Result<Self::Value, E> {
-        visit_subrange_specification(self, node)
+        visit_array_initializer(self, node)
     }
 
-    fn visit_subrange(&mut self, init: &Subrange) -> Result<Self::Value, E> {
+    // 2.5.1
+    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<Self::Value, E> {
+        visit_function_declaration(self, node)
+    }
+
+    // 2.5.2
+    fn visit_function_block_declaration(
+        &mut self,
+        node: &FunctionBlockDeclaration,
+    ) -> Result<Self::Value, E> {
+        visit_function_block_declaration(self, node)
+    }
+
+    // 2.5.3
+    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<Self::Value, E> {
+        visit_program_declaration(self, node)
+    }
+
+    // 2.6
+    fn visit_sfc(&mut self, node: &Sfc) -> Result<Self::Value, E> {
+        Acceptor::accept(&node.networks, self)
+    }
+
+    // 2.7.1
+    fn visit_resource_declaration(&mut self, node: &ResourceDeclaration) -> Result<Self::Value, E> {
+        visit_resource_declaration(self, node)
+    }
+
+    // 2.7.1
+    fn visit_program_configuration(
+        &mut self,
+        node: &ProgramConfiguration,
+    ) -> Result<Self::Value, E> {
         Ok(Self::Value::default())
     }
 
-    fn visit_array_initializer(
+    // 2.7.2
+    fn visit_configuration_declaration(
         &mut self,
-        init: &ArrayInitialValueAssignment,
+        node: &ConfigurationDeclaration,
     ) -> Result<Self::Value, E> {
-        //TODO recurse into the children
+        visit_configuration_declaration(self, node)
+    }
+
+    // 2.7.2
+    fn visit_task_configuration(&mut self, node: &TaskConfiguration) -> Result<Self::Value, E> {
+        Ok(Self::Value::default())
+    }
+
+    // 3
+    fn visit_statements(&mut self, node: &Statements) -> Result<Self::Value, E> {
+        Acceptor::accept(&node.body, self)
+    }
+
+    // 3.2.3
+    fn visit_fb_call(&mut self, node: &FbCall) -> Result<Self::Value, E> {
+        visit_fb_call(self, node)
+    }
+
+    // 3.2.3
+    fn visit_positional_input(&mut self, node: &PositionalInput) -> Result<Self::Value, E> {
+        visit_positional_input(self, node)
+    }
+
+    // 3.2.3
+    fn visit_named_input(&mut self, node: &NamedInput) -> Result<Self::Value, E> {
+        visit_named_input(self, node)
+    }
+
+    // 3.2.3
+    fn visit_output(&mut self, node: &Output) -> Result<Self::Value, E> {
+        visit_output(self, node)
+    }
+
+    // 3.3.1
+    fn visit_compare(&mut self, node: &CompareExpr) -> Result<Self::Value, E> {
+        visit_compare(self, node)
+    }
+
+    // 3.3.1
+    fn visit_binary_op(&mut self, node: &BinaryExpr) -> Result<Self::Value, E> {
+        visit_binary_op(self, node)
+    }
+
+    // 3.3.1
+    fn visit_unary_op(&mut self, node: &UnaryExpr) -> Result<Self::Value, E> {
+        visit_unary_op(self, node)
+    }
+
+    // 3.3.2.1
+    fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, E> {
+        Acceptor::accept(&node.target, self)
+    }
+
+    // 3.3.2.3
+    fn visit_if(&mut self, node: &If) -> Result<Self::Value, E> {
+        visit_if(self, node)
+    }
+
+    // 3.3.2.3
+    fn visit_case(&mut self, node: &Case) -> Result<Self::Value, E> {
+        visit_case(self, node)
+    }
+
+    // 3.3.2.3
+    fn visit_case_statement_group(&mut self, node: &CaseStatementGroup) -> Result<Self::Value, E> {
+        visit_case_statement_group(self, node)
+    }
+
+    fn visit_symbolic_variable(&mut self, node: &SymbolicVariable) -> Result<Self::Value, E> {
+        // leaf node - no children
         Ok(Self::Value::default())
     }
 }
@@ -299,8 +357,9 @@ pub fn visit_resource_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &ResourceDeclaration,
 ) -> Result<V::Value, E> {
-    Acceptor::accept(&node.global_vars, v)
-    // TODO there are more child elements here
+    Acceptor::accept(&node.global_vars, v)?;
+    Acceptor::accept(&node.tasks, v)?;
+    Acceptor::accept(&node.programs, v)
 }
 
 pub fn visit_variable_declaration<V: Visitor<E> + ?Sized, E>(
@@ -315,6 +374,17 @@ pub fn visit_enum_declaration<V: Visitor<E> + ?Sized, E>(
     node: &EnumerationDeclaration,
 ) -> Result<V::Value, E> {
     v.visit_enumerated_spec_init(&node.spec_init)
+}
+
+pub fn visit_enumerated_spec_init<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &EnumeratedSpecificationInit,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.spec, v)?;
+    node.default.as_ref().map_or_else(
+        || Ok(V::Value::default()),
+        |val| v.visit_enumerated_value(val),
+    )
 }
 
 pub fn visit_subrange_declaration<V: Visitor<E> + ?Sized, E>(
@@ -447,6 +517,48 @@ pub fn visit_unary_op<V: Visitor<E> + ?Sized, E>(
     node: &UnaryExpr,
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.term, v)
+}
+
+// 2.4.3.2
+pub fn visit_simple_initializer<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &SimpleInitializer,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.initial_value, v)
+}
+
+pub fn visit_array_initializer<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &ArrayInitialValueAssignment,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.spec, v)?;
+    Acceptor::accept(&node.initial_values, v)
+}
+
+// 3.2.3
+pub fn visit_fb_call<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &FbCall) -> Result<V::Value, E> {
+    Acceptor::accept(&node.params, v)
+}
+
+// 3.2.3
+pub fn visit_positional_input<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &PositionalInput,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.expr, v)
+}
+
+// 3.2.3
+pub fn visit_named_input<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &NamedInput,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.expr, v)
+}
+
+// 3.2.3
+pub fn visit_output<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &Output) -> Result<V::Value, E> {
+    Acceptor::accept(&node.tgt, v)
 }
 
 impl Acceptor for LibraryElement {
@@ -585,9 +697,7 @@ impl Acceptor for ExprKind {
             ExprKind::Compare(compare) => visitor.visit_compare(compare.as_ref()),
             ExprKind::BinaryOp(binary) => visitor.visit_binary_op(binary.as_ref()),
             ExprKind::UnaryOp(unary) => visitor.visit_unary_op(unary.as_ref()),
-            ExprKind::Const(_) => {
-                todo!()
-            }
+            ExprKind::Const(node) => Acceptor::accept(node, visitor),
             ExprKind::Expression(_) => {
                 todo!()
             }
@@ -598,6 +708,21 @@ impl Acceptor for ExprKind {
             } => {
                 todo!()
             }
+        }
+    }
+}
+
+impl Acceptor for Constant {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        match self {
+            Constant::IntegerLiteral(node) => Ok(V::Value::default()),
+            Constant::RealLiteral(node) => Ok(V::Value::default()),
+            Constant::CharacterString() => Ok(V::Value::default()),
+            Constant::Duration(node) => Ok(V::Value::default()),
+            Constant::TimeOfDay() => Ok(V::Value::default()),
+            Constant::Date() => Ok(V::Value::default()),
+            Constant::DateAndTime() => Ok(V::Value::default()),
+            Constant::Boolean(node) => Ok(V::Value::default()),
         }
     }
 }
@@ -660,6 +785,28 @@ impl Acceptor for Variable {
                 todo!()
             }
         }
+    }
+}
+
+impl Acceptor for ParamAssignmentKind {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        match self {
+            ParamAssignmentKind::PositionalInput(node) => visitor.visit_positional_input(node),
+            ParamAssignmentKind::NamedInput(node) => visitor.visit_named_input(node),
+            ParamAssignmentKind::Output(node) => visitor.visit_output(node),
+        }
+    }
+}
+
+impl Acceptor for TaskConfiguration {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        visitor.visit_task_configuration(self)
+    }
+}
+
+impl Acceptor for ProgramConfiguration {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        visitor.visit_program_configuration(self)
     }
 }
 

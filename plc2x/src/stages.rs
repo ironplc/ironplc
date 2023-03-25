@@ -74,9 +74,6 @@ mod tests {
 
     use time::Duration;
 
-    // TODO all of these should use the parse function rather that from
-    // the parser crate.
-
     #[test]
     fn parse_when_first_steps_data_type_decl_then_builds_structure() {
         let src = read_resource("first_steps_data_type_decl.st");
@@ -295,11 +292,10 @@ mod tests {
             body: vec![StmtKind::assignment(
                 Variable::symbolic("AverageVal"),
                 ExprKind::binary(
-                    // TODO This operator is incorrect
                     Operator::Div,
                     ExprKind::Function {
                         name: Id::from("INT_TO_REAL"),
-                        param_assignment: vec![ParamAssignment::positional(ExprKind::binary(
+                        param_assignment: vec![ParamAssignmentKind::positional(ExprKind::binary(
                             Operator::Add,
                             ExprKind::binary(
                                 Operator::Add,

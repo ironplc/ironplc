@@ -1140,8 +1140,8 @@ parser! {
       })
     }
     // TODO this needs much more
-    rule param_assignment() -> ParamAssignment = not:"NOT"? _ src:variable_name() _ "=>" _ tgt:variable() {
-      ParamAssignment::Output (
+    rule param_assignment() -> ParamAssignmentKind = not:"NOT"? _ src:variable_name() _ "=>" _ tgt:variable() {
+      ParamAssignmentKind::Output (
         Output{
         not: false,
         src,
@@ -1150,10 +1150,10 @@ parser! {
     } / name:(n:variable_name() _ ":=" { n })? _ expr:expression() {
       match name {
         Some(n) => {
-          ParamAssignment::NamedInput(NamedInput {name: n, expr} )
+          ParamAssignmentKind::NamedInput(NamedInput {name: n, expr} )
         },
         None => {
-          ParamAssignment::positional(expr)
+          ParamAssignmentKind::positional(expr)
         }
       }
     }
@@ -1549,9 +1549,9 @@ END_VAR";
         let statement = "CounterLD0(Reset);";
         let expected = Ok(vec![StmtKind::FbCall(FbCall {
             var_name: Id::from("CounterLD0"),
-            params: vec![ParamAssignment::positional(ExprKind::symbolic_variable(
-                "Reset",
-            ))],
+            params: vec![ParamAssignmentKind::positional(
+                ExprKind::symbolic_variable("Reset"),
+            )],
             position: SourceLoc::default(),
         })]);
 
@@ -1563,7 +1563,7 @@ END_VAR";
         let statement = "CounterLD0(Cnt := Reset);";
         let expected = Ok(vec![StmtKind::FbCall(FbCall {
             var_name: Id::from("CounterLD0"),
-            params: vec![ParamAssignment::named(
+            params: vec![ParamAssignmentKind::named(
                 "Cnt",
                 ExprKind::symbolic_variable("Reset"),
             )],

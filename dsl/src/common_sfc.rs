@@ -32,8 +32,7 @@ impl ActionQualifier {
             'L' => ActionQualifier::L,
             'D' => ActionQualifier::D,
             'P' => ActionQualifier::P,
-            // TODO error message
-            _ => panic!(),
+            _ => panic!("Not a valid action qualifier"),
         }
     }
 }
