@@ -36,6 +36,7 @@ PROGRAM fb
     VAR
         NAME : ONE_STRUCT_ELEMENT := (ELEM := VAL);
         NAME2 : TWO_STRUCT_ELEMENTS := (ELEM1 := VAL1, ELEM2 := VAL2);
+        NAME3 : STRUCT_TWO_ELEMENTS := (ELEM1 := VAL1, ELEM2 := VAL2);
         (* TODO Nested structures *)
     END_VAR
 
