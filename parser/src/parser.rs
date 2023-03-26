@@ -210,7 +210,7 @@ parser! {
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
     rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) comma() {v}
 
-    rule KEYWORD() = "ACTION" / "END_ACTION" / "ARRAY" / "OF" / "AT" / "CASE"
+    rule KEYWORD_ITEM() = "ACTION" / "END_ACTION" / "ARRAY" / "OF" / "AT" / "CASE"
                      / "ELSE" / "END_CASE" / "CONFIGURATION" / "END_CONFIGURATION"
                      / "CONSTANT" / "EN" / "ENO" / "EXIT" / "FALSE" / "F_EDGE"
                      / "FOR" / "TO" / "BY" / "DO" / "END_FOR" / "FUNCTION" / "END_FUNCTION"
@@ -225,6 +225,8 @@ parser! {
                      / "VAR_TEMP" / "VAR_EXTERNAL" / "VAR_ACCESS" / "VAR_CONFIG"
                      / "VAR_GLOBAL" / "WHILE" / "END_WHILE" / "WITH"
                      / "PRIORITY" / "STRING" / "WSTRING"
+    rule ID_CHAR() = ['a'..='z' | '0'..='9' | 'A'..='Z' | '_']
+    rule KEYWORD() = KEYWORD_ITEM() !ID_CHAR()
     rule STANDARD_FUNCTION_BLOCK_NAME() = "END_VAR"
 
 
