@@ -804,6 +804,7 @@ impl Acceptor for StmtKind {
             StmtKind::For(_) => todo!(),
             StmtKind::While(_) => todo!(),
             StmtKind::Repeat(_) => todo!(),
+            StmtKind::Return => todo!(),
             StmtKind::Exit => todo!(),
         }
     }

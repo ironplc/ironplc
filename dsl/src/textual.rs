@@ -226,6 +226,7 @@ pub enum StmtKind {
     For(For),
     While(While),
     Repeat(Repeat),
+    Return,
     // Exit statement.
     Exit,
 }
