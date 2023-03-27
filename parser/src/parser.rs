@@ -363,6 +363,8 @@ parser! {
     rule date_and_time() -> PrimitiveDateTime = ("DATE_AND_TIME" / "DT") "#" d:date_literal() "-" t:daytime() { PrimitiveDateTime::new(d, t) }
 
     // B.1.3 Data types
+    // This should match generic_type_name, but that's unnecessary because
+    // these are all just identifiers
     rule data_type_name() -> Id = non_generic_type_name()
     rule non_generic_type_name() -> Id = et:elementary_type_name() { et.into() } / derived_type_name()
 
@@ -378,14 +380,14 @@ parser! {
     rule bit_string_type_name() -> ElementaryTypeName = "BOOL" { ElementaryTypeName::BOOL } / "BYTE" { ElementaryTypeName::BYTE } / "WORD" { ElementaryTypeName::WORD } / "DWORD" { ElementaryTypeName::DWORD } / "LWORD" { ElementaryTypeName::LWORD }
 
     // B.1.3.2
-    // TODO
+    // Rule not needed for parsing - generics are handled at a later parse stage
     // rule generic_type_name() -> &'input str = "ANY" / "ANY_DERIVED" / "ANY_ELEMENTARY" / "ANY_MAGNITUDE" / "ANY_NUM" / "ANY_REAL" / "ANY_INT" / "ANY_BOOL" / "ANY_STRING" / "ANY_DATE"
 
     // B.1.3.3
-    // TODO add all types
-    rule derived_type_name() -> Id = single_element_type_name()
-    // TODO add all options
-    rule single_element_type_name() -> Id = simple_type_name()
+    // All of these are aliases for identifiers, which means the single_element_type_name will just match first
+    // I've left in just in case the definition changes.
+    rule derived_type_name() -> Id = single_element_type_name() / array_type_name() / structure_type_name() / string_type_name()
+    rule single_element_type_name() -> Id = simple_type_name() / subrange_type_name() / enumerated_type_name()
     rule simple_type_name() -> Id = identifier()
     rule subrange_type_name() -> Id = identifier()
     rule enumerated_type_name() -> Id = identifier()
@@ -755,7 +757,6 @@ parser! {
     }
     rule structured_var_init_decl__without_ambiguous() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init_struct:initialized_structure__without_ambiguous() end:position!() {
       names.into_iter().map(|name| {
-        // TODO
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
@@ -765,7 +766,6 @@ parser! {
     }
     rule array_var_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ array_spec_init() end:position!() {
       names.into_iter().map(|name| {
-        // TODO
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::None,
@@ -801,7 +801,6 @@ parser! {
         position: SourceLoc::range(start, end),
       }
     }
-    // TODO is this NOT the right type to return?
     // We use the same type as in other places for VarInit, but the external always omits the initializer
     rule external_var_declarations() -> VarDeclarations = "VAR_EXTERNAL" _ constant:"CONSTANT"? _ declarations:semisep(<external_declaration()>) _ "END_VAR" {
       let qualifier = constant.map(|()| DeclarationQualifier::Constant);
@@ -898,7 +897,6 @@ parser! {
 
     // B.1.5.1 Functions
     rule function_name() -> Id = standard_function_name() / derived_function_name()
-    // TODO this isn't correct
     rule standard_function_name() -> Id = identifier()
     rule derived_function_name() -> Id = identifier()
     rule function_declaration() -> FunctionDeclaration = "FUNCTION" _  name:derived_function_name() _ ":" _ rt:(et:elementary_type_name() { et.into() } / dt:derived_type_name() { dt }) _ var_decls:(io:io_var_declarations() / func:function_var_decls()) ** _ _ body:function_body() _ "END_FUNCTION" {
@@ -1149,15 +1147,13 @@ parser! {
 
     // B.3.2 Statements
     pub rule statement_list() -> Vec<StmtKind> = statements:semisep(<statement()>) { statements }
-    // TODO add other statement types
-    rule statement() -> StmtKind = assignment_statement() / selection_statement() / iteration_statement() / fb_invocation()
+    rule statement() -> StmtKind = assignment_statement() / selection_statement() / iteration_statement() / subprogram_control_statement()
 
     // B.3.2.1 Assignment statements
     pub rule assignment_statement() -> StmtKind = var:variable() _ ":=" _ expr:expression() { StmtKind::assignment(var, expr) }
 
     // B.3.2.2 Subprogram control statements
-    // TODO add RETURN
-    rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb }
+    rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb } / "RETURN" { StmtKind::Return }
     rule fb_invocation() -> StmtKind = start:position!() name:fb_name() _ "(" _ params:param_assignment() ** (_ "," _) _ ")" end:position!() {
       StmtKind::FbCall(FbCall {
         var_name: name,
