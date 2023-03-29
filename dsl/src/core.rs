@@ -41,11 +41,13 @@ pub trait SourcePosition {
     fn position(&self) -> &SourceLoc;
 }
 
-/// Implements Identifier declared by 2.1.2.
+/// Implements Identifier.
 ///
 /// 61131-3 declares that identifiers are case insensitive.
 /// This class ensures that we do case insensitive comparisons
 /// and can use containers as appropriate.
+///
+/// See section 2.1.2.
 pub struct Id {
     original: String,
     lower_case: String,

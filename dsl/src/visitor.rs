@@ -32,6 +32,7 @@
 //! ```
 
 use crate::common::*;
+use crate::core::Id;
 use crate::sfc::*;
 use crate::textual::*;
 
@@ -87,6 +88,11 @@ pub trait Visitor<E> {
     }
 
     fn visit_signed_integer(&mut self, node: &SignedInteger) -> Result<Self::Value, E> {
+        Ok(Self::Value::default())
+    }
+
+    // 2.1.2.
+    fn visit_identifier(&mut self, node: &Id) -> Result<Self::Value, E> {
         Ok(Self::Value::default())
     }
 
@@ -416,11 +422,16 @@ pub fn visit_enumerated_spec_init<V: Visitor<E> + ?Sized, E>(
     )
 }
 
+// 2.3.3.1
 pub fn visit_subrange_declaration<V: Visitor<E> + ?Sized, E>(
     v: &mut V,
     node: &SubrangeDeclaration,
 ) -> Result<V::Value, E> {
-    v.visit_subrange_specification(&node.spec)
+    Acceptor::accept(&node.spec, v)?;
+    node.default.as_ref().map_or_else(
+        || Ok(V::Value::default()),
+        |val| v.visit_signed_integer(val),
+    )
 }
 
 pub fn visit_simple_declaration<V: Visitor<E> + ?Sized, E>(
@@ -715,7 +726,7 @@ impl Acceptor for InitialValueAssignmentKind {
             InitialValueAssignmentKind::FunctionBlock(fbi) => {
                 visitor.visit_function_block_type_initializer(fbi)
             }
-            InitialValueAssignmentKind::Subrange(sr) => visitor.visit_subrange_specification(sr),
+            InitialValueAssignmentKind::Subrange(node) => Acceptor::accept(node, visitor),
             InitialValueAssignmentKind::Structure(si) => {
                 visitor.visit_structure_initialization_declaration(si)
             }
@@ -878,6 +889,18 @@ impl Acceptor for ProgramConfiguration {
 impl Acceptor for StructureElementDeclaration {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         visitor.visit_structure_element_declaration(self)
+    }
+}
+
+// 2.3.3.1
+impl Acceptor for SubrangeSpecificationKind {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        match self {
+            SubrangeSpecificationKind::Specification(node) => {
+                visitor.visit_subrange_specification(node)
+            }
+            SubrangeSpecificationKind::Type(node) => visitor.visit_identifier(node),
+        }
     }
 }
 
