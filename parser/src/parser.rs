@@ -399,7 +399,7 @@ parser! {
     rule type_declaration() -> DataTypeDeclarationKind =
       a:array_type_declaration() { DataTypeDeclarationKind::Array(a) }
       / s:string_type_declaration() { DataTypeDeclarationKind::String(s) }
-      / subrange:subrange_type_declaration() { DataTypeDeclarationKind::Subrange(subrange) }
+      / subrange:subrange_type_declaration__with_range() { DataTypeDeclarationKind::Subrange(subrange) }
       / structure_type_declaration__with_constant()
       / enumerated:enumerated_type_declaration__with_value() { DataTypeDeclarationKind::Enumeration(enumerated) }
       / simple:simple_type_declaration__with_constant() { DataTypeDeclarationKind::Simple(simple )}
@@ -438,21 +438,19 @@ parser! {
       })
     }
     rule simple_specification() -> Id = et:elementary_type_name() { et.into() } / simple_type_name()
-    rule subrange_type_declaration() -> SubrangeDeclaration = type_name:subrange_type_name() _ ":" _ spec:subrange_spec_init() {
+    rule subrange_type_declaration__with_range() -> SubrangeDeclaration = type_name:subrange_type_name() _ ":" _ spec:subrange_spec_init__with_range() {
       SubrangeDeclaration {
         type_name,
-        spec,
+        spec: spec.0,
+        default: spec.1,
       }
     }
-    rule subrange_spec_init() -> SubrangeSpecification = spec:subrange_specification() _ default:(":=" _ def:signed_integer() { def })? {
-      SubrangeSpecification {
-        type_name: spec.0,
-        subrange: spec.1,
-        default,
-      }
+    rule subrange_spec_init__with_range() -> (SubrangeSpecificationKind, Option<SignedInteger>) = spec:subrange_specification__with_range() _ default:(":=" _ def:signed_integer() { def })? {
+      (spec, default)
     }
     // TODO or add a subrange type name
-    rule subrange_specification() -> (ElementaryTypeName, Subrange) = itn:integer_type_name() _ "(" _ sr:subrange() _ ")" { (itn, sr) }
+    rule subrange_specification__with_range() -> SubrangeSpecificationKind
+      = type_name:integer_type_name() _ "(" _ subrange:subrange() _ ")" { SubrangeSpecificationKind::Specification(SubrangeSpecification{ type_name, subrange }) }
     rule subrange() -> Subrange = start:signed_integer() ".." end:signed_integer() { Subrange{start, end} }
 
     rule enumerated_type_declaration__with_value() -> EnumerationDeclaration =
@@ -563,7 +561,8 @@ parser! {
     }
     rule structure_element_declaration() -> StructureElementDeclaration = name:structure_element_name() _ ":" _ init:(
       arr:array_spec_init() { InitialValueAssignmentKind::Array(arr) }
-      / i:subrange_spec_init() { InitialValueAssignmentKind::Subrange(i) }
+      // handle the initial value
+      / subrange:subrange_spec_init__with_range() { InitialValueAssignmentKind::Subrange(subrange.0) }
       / i:initialized_structure__without_ambiguous() { InitialValueAssignmentKind::Structure(i) }
       / spec_init:enumerated_spec_init__with_value() {
         match spec_init.0 {
@@ -587,7 +586,7 @@ parser! {
         }
       }
       / simple_spec_init__with_constant()
-      / simple_or_enumerated_or_ambiguous_struct_spec_init()
+      / simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()
     ) {
         StructureElementDeclaration {
           name,
@@ -610,7 +609,7 @@ parser! {
     //
     // There is still value in trying to disambiguate early because it allows us to use
     // the parser definitions.
-    rule simple_or_enumerated_or_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ ":=" _ c:constant() {
+    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ ":=" _ c:constant() {
       // A simple_specification with a constant is unambiguous because the constant is
       // not a valid identifier.
       InitialValueAssignmentKind::Simple(SimpleInitializer {
@@ -733,7 +732,7 @@ parser! {
 
     // TODO add in subrange_spec_init(), enumerated_spec_init()
 
-    rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init:(a:simple_or_enumerated_or_ambiguous_struct_spec_init()) end:position!() {
+    rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init:(a:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()) end:position!() {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
         UntypedVarDecl {

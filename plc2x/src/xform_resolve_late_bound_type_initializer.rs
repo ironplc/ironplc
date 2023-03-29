@@ -129,6 +129,7 @@ impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
         node: InitialValueAssignmentKind,
     ) -> Result<InitialValueAssignmentKind, Diagnostic> {
         match node {
+            // TODO this needs to handle struct definitions
             InitialValueAssignmentKind::LateResolvedType(name) => {
                 // Try to find the type for the specified name.
                 if TypeResolver::is_elementary_type(&name) {

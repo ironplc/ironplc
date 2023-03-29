@@ -474,7 +474,18 @@ impl SourcePosition for EnumeratedValue {
 #[derive(Debug, PartialEq)]
 pub struct SubrangeDeclaration {
     pub type_name: Id,
-    pub spec: SubrangeSpecification,
+    pub spec: SubrangeSpecificationKind,
+    pub default: Option<SignedInteger>,
+}
+
+/// Subranges can be specified by either providing a direct specification
+/// or by specializing another type.
+///
+/// See section 2.3.3.1.
+#[derive(Debug, PartialEq, Clone)]
+pub enum SubrangeSpecificationKind {
+    Specification(SubrangeSpecification),
+    Type(Id),
 }
 
 /// The specification for a subrange. The specification restricts an integer
@@ -487,7 +498,6 @@ pub struct SubrangeSpecification {
     /// TODO how can this be restricted to integer type names?
     pub type_name: ElementaryTypeName,
     pub subrange: Subrange,
-    pub default: Option<SignedInteger>,
 }
 
 /// The specification for a simple declared type.
@@ -892,7 +902,7 @@ pub enum InitialValueAssignmentKind {
     EnumeratedValues(EnumeratedValuesInitializer),
     EnumeratedType(EnumeratedInitialValueAssignment),
     FunctionBlock(FunctionBlockInitialValueAssignment),
-    Subrange(SubrangeSpecification),
+    Subrange(SubrangeSpecificationKind),
     Structure(StructureInitializationDeclaration),
     Array(ArrayInitialValueAssignment),
     /// Type that is ambiguous until have discovered type
