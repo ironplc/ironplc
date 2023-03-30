@@ -13,6 +13,11 @@ use crate::{
     xform_resolve_late_bound_type_initializer,
 };
 
+pub fn analyze(contents: &str, file_id: &FileId) -> Result<(), Diagnostic> {
+    let library = parse(contents, file_id)?;
+    semantic(&library)
+}
+
 /// Parse combines lexical and sematic analysis (stages 1 & 2).
 ///
 /// The stage takes text and returns a library of domain specific
@@ -61,6 +66,7 @@ pub fn semantic(library: &Library) -> Result<(), Diagnostic> {
 mod tests {
     use std::path::PathBuf;
 
+    use crate::stages::analyze;
     use crate::test_helpers;
 
     use super::parse;
@@ -73,6 +79,27 @@ mod tests {
     use test_helpers::*;
 
     use time::Duration;
+
+    #[test]
+    fn analyze_when_first_steps_then_result_is_ok() {
+        let src = read_resource("first_steps.st");
+        let res = analyze(&src, &PathBuf::default());
+        assert!(res.is_ok())
+    }
+
+    #[test]
+    fn analyze_when_first_steps_syntax_error_then_result_is_err() {
+        let src = read_resource("first_steps_syntax_error.st");
+        let res = analyze(&src, &PathBuf::default());
+        assert!(res.is_err())
+    }
+
+    #[test]
+    fn analyze_when_first_steps_semantic_error_then_result_is_err() {
+        let src = read_resource("first_steps_semantic_error.st");
+        let res = analyze(&src, &PathBuf::default());
+        assert!(res.is_err())
+    }
 
     #[test]
     fn parse_when_first_steps_data_type_decl_then_builds_structure() {
