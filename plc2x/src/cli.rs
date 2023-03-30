@@ -10,7 +10,7 @@ use codespan_reporting::{
 };
 use std::{fs::File, io::Read, ops::Range, path::PathBuf};
 
-use crate::analyze;
+use crate::stages::analyze;
 
 pub fn check(files: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
     for filename in files {
