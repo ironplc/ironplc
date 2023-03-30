@@ -25,39 +25,3 @@ mod xform_resolve_late_bound_type_initializer;
 
 #[cfg(test)]
 mod test_helpers;
-
-use ironplc_dsl::{core::FileId, diagnostic::Diagnostic};
-use stages::{parse, semantic};
-
-pub fn analyze(contents: &str, file_id: &FileId) -> Result<(), Diagnostic> {
-    let library = parse(contents, file_id)?;
-    semantic(&library)
-}
-
-#[cfg(test)]
-mod test {
-    use std::path::PathBuf;
-
-    use crate::{analyze, test_helpers::read_resource};
-
-    #[test]
-    fn analyze_when_first_steps_then_result_is_ok() {
-        let src = read_resource("first_steps.st");
-        let res = analyze(&src, &PathBuf::default());
-        assert!(res.is_ok())
-    }
-
-    #[test]
-    fn analyze_when_first_steps_syntax_error_then_result_is_err() {
-        let src = read_resource("first_steps_syntax_error.st");
-        let res = analyze(&src, &PathBuf::default());
-        assert!(res.is_err())
-    }
-
-    #[test]
-    fn analyze_when_first_steps_semantic_error_then_result_is_err() {
-        let src = read_resource("first_steps_semantic_error.st");
-        let res = analyze(&src, &PathBuf::default());
-        assert!(res.is_err())
-    }
-}

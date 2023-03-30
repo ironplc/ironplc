@@ -2,7 +2,6 @@
 //! as Visual Studio Code.
 use std::path::PathBuf;
 
-use crate::analyze;
 use lsp_server::{Connection, ExtractError, Message};
 use lsp_types::{
     notification::{self, PublishDiagnostics},
@@ -10,6 +9,8 @@ use lsp_types::{
     ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 use serde::{de::DeserializeOwned, Serialize};
+
+use crate::stages::analyze;
 
 // TODO give a real error
 pub fn start() -> Result<(), String> {
