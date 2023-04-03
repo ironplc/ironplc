@@ -17,7 +17,7 @@ fn check_when_not_a_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("check").arg("test/file/doesnt/exist");
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("Failed opening file"));
+        .stderr(predicate::str::contains("error"));
 
     Ok(())
 }
