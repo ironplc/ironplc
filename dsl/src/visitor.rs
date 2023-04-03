@@ -374,9 +374,14 @@ pub trait Visitor<E> {
         visit_case_statement_group(self, node)
     }
 
-    fn visit_symbolic_variable(&mut self, node: &SymbolicVariable) -> Result<Self::Value, E> {
+    fn visit_named_variable(&mut self, node: &NamedVariable) -> Result<Self::Value, E> {
         // leaf node - no children
         Ok(Self::Value::default())
+    }
+
+    fn visit_array_variable(&mut self, node: &ArrayVariable) -> Result<Self::Value, E> {
+        // leaf node - no children
+        visit_array_variable(self, node)
     }
 }
 
@@ -540,6 +545,14 @@ pub fn visit_case_statement_group<V: Visitor<E> + ?Sized, E>(
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.selectors, v)?;
     Acceptor::accept(&node.statements, v)
+}
+
+pub fn visit_array_variable<V: Visitor<E> + ?Sized, E>(
+    v: &mut V,
+    node: &ArrayVariable,
+) -> Result<V::Value, E> {
+    Acceptor::accept(node.variable.as_ref(), v)?;
+    Acceptor::accept(&node.subscripts, v)
 }
 
 pub fn visit_compare<V: Visitor<E> + ?Sized, E>(
@@ -763,16 +776,12 @@ impl Acceptor for ExprKind {
             ExprKind::BinaryOp(binary) => visitor.visit_binary_op(binary.as_ref()),
             ExprKind::UnaryOp(unary) => visitor.visit_unary_op(unary.as_ref()),
             ExprKind::Const(node) => Acceptor::accept(node, visitor),
-            ExprKind::Expression(_) => {
-                todo!()
-            }
+            ExprKind::Expression(_) => Ok(V::Value::default()),
             ExprKind::Variable(variable) => Acceptor::accept(variable, visitor),
             ExprKind::Function {
                 name,
                 param_assignment,
-            } => {
-                todo!()
-            }
+            } => Ok(V::Value::default()),
         }
     }
 }
@@ -812,11 +821,12 @@ impl Acceptor for StmtKind {
             StmtKind::FbCall(node) => visitor.visit_fb_call(node),
             StmtKind::If(node) => visitor.visit_if(node),
             StmtKind::Case(node) => visitor.visit_case(node),
-            StmtKind::For(_) => todo!(),
-            StmtKind::While(_) => todo!(),
-            StmtKind::Repeat(_) => todo!(),
+            // TODO this
+            StmtKind::For(_) => Ok(V::Value::default()),
+            StmtKind::While(_) => Ok(V::Value::default()),
+            StmtKind::Repeat(_) => Ok(V::Value::default()),
             StmtKind::Return => Ok(V::Value::default()),
-            StmtKind::Exit => todo!(),
+            StmtKind::Exit => Ok(V::Value::default()),
         }
     }
 }
@@ -855,8 +865,19 @@ impl Acceptor for Variable {
     fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
         match self {
             Variable::AddressAssignment(var) => visitor.visit_address_assignment(var),
-            Variable::SymbolicVariable(var) => visitor.visit_symbolic_variable(var),
-            Variable::MultiElementVariable(_) => {
+            Variable::Named(var) => visitor.visit_named_variable(var),
+            Variable::Array(var) => visitor.visit_array_variable(var),
+            Variable::Structured(_) => Ok(V::Value::default()),
+        }
+    }
+}
+
+impl Acceptor for SymbolicVariableKind {
+    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+        match self {
+            SymbolicVariableKind::Named(var) => visitor.visit_named_variable(var),
+            SymbolicVariableKind::Array(var) => visitor.visit_array_variable(var),
+            SymbolicVariableKind::Structured(_) => {
                 todo!()
             }
         }
@@ -932,7 +953,7 @@ mod test {
             Ok(())
         }
 
-        fn visit_symbolic_variable(&mut self, var: &SymbolicVariable) -> Result<(), Error> {
+        fn visit_named_variable(&mut self, var: &NamedVariable) -> Result<(), Error> {
             let mut dst = &mut self.names;
             dst.push_back(var.name.to_string());
             Ok(())

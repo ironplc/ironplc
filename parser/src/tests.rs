@@ -52,4 +52,10 @@ mod test {
         let res = parse_resource("expressions.st");
         assert!(res.is_ok())
     }
+
+    #[test]
+    fn parse_array() {
+        let res = parse_resource("array.st");
+        assert!(res.is_ok())
+    }
 }

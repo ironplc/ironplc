@@ -138,14 +138,14 @@ mod tests {
                     StmtKind::if_then(
                         ExprKind::compare(
                             CompareOp::And,
-                            ExprKind::symbolic_variable("TRIG"),
-                            ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("TRIG0")),
+                            ExprKind::named_variable("TRIG"),
+                            ExprKind::unary(UnaryOp::Not, ExprKind::named_variable("TRIG0")),
                         ),
                         vec![],
                     ),
                     StmtKind::assignment(
-                        Variable::symbolic("TRIG0"),
-                        ExprKind::symbolic_variable("TRIG"),
+                        Variable::named("TRIG0"),
+                        ExprKind::named_variable("TRIG"),
                     ),
                 ]),
                 position: SourceLoc::default(),
@@ -187,7 +187,7 @@ mod tests {
                         ElementKind::transition(
                             "Start",
                             "ResetCounter",
-                            ExprKind::symbolic_variable("Reset"),
+                            ExprKind::named_variable("Reset"),
                         ),
                         ElementKind::step(
                             Id::from("ResetCounter"),
@@ -216,12 +216,12 @@ mod tests {
                         ElementKind::transition(
                             "ResetCounter",
                             "Start",
-                            ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("Reset")),
+                            ExprKind::unary(UnaryOp::Not, ExprKind::named_variable("Reset")),
                         ),
                         ElementKind::transition(
                             "Start",
                             "Count",
-                            ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("Reset")),
+                            ExprKind::unary(UnaryOp::Not, ExprKind::named_variable("Reset")),
                         ),
                         ElementKind::step(
                             Id::from("Count"),
@@ -233,10 +233,10 @@ mod tests {
                         ElementKind::action(
                             "COUNT_INLINE3",
                             vec![StmtKind::assignment(
-                                Variable::symbolic("Cnt"),
+                                Variable::named("Cnt"),
                                 ExprKind::binary(
                                     Operator::Add,
-                                    ExprKind::symbolic_variable("Cnt"),
+                                    ExprKind::named_variable("Cnt"),
                                     ExprKind::integer_literal("1"),
                                 ),
                             )],
@@ -248,7 +248,7 @@ mod tests {
                         ElementKind::transition(
                             "Count",
                             "Start",
-                            ExprKind::symbolic_variable("Reset"),
+                            ExprKind::named_variable("Reset"),
                         ),
                     ],
                 }]),
@@ -324,7 +324,7 @@ mod tests {
                 },
             ],
             body: vec![StmtKind::assignment(
-                Variable::symbolic("AverageVal"),
+                Variable::named("AverageVal"),
                 ExprKind::binary(
                     Operator::Div,
                     ExprKind::Function {
@@ -337,17 +337,17 @@ mod tests {
                                     Operator::Add,
                                     ExprKind::binary(
                                         Operator::Add,
-                                        ExprKind::symbolic_variable("Cnt1"),
-                                        ExprKind::symbolic_variable("Cnt2"),
+                                        ExprKind::named_variable("Cnt1"),
+                                        ExprKind::named_variable("Cnt2"),
                                     ),
-                                    ExprKind::symbolic_variable("Cnt3"),
+                                    ExprKind::named_variable("Cnt3"),
                                 ),
-                                ExprKind::symbolic_variable("Cnt4"),
+                                ExprKind::named_variable("Cnt4"),
                             ),
-                            ExprKind::symbolic_variable("Cnt5"),
+                            ExprKind::named_variable("Cnt5"),
                         ))],
                     },
-                    ExprKind::symbolic_variable("InputsNumber"),
+                    ExprKind::named_variable("InputsNumber"),
                 ),
             )],
         }));

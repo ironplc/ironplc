@@ -19,23 +19,52 @@ pub struct Statements {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Variable {
     AddressAssignment(AddressAssignment),
-    SymbolicVariable(SymbolicVariable),
+    Named(NamedVariable),
+    Array(ArrayVariable),
     // A structured variable that may be nested. This data type is definitely
     // incorrect because it doesn't support array types
-    MultiElementVariable(Vec<Id>),
+    Structured(Vec<Id>),
+}
+
+impl From<SymbolicVariableKind> for Variable {
+    fn from(item: SymbolicVariableKind) -> Self {
+        match item {
+            SymbolicVariableKind::Named(named) => Variable::Named(named),
+            SymbolicVariableKind::Array(array) => Variable::Array(array),
+            SymbolicVariableKind::Structured(structured) => Variable::Structured(structured),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum SymbolicVariableKind {
+    Named(NamedVariable),
+    Array(ArrayVariable),
+    // A structured variable that may be nested. This data type is definitely
+    // incorrect because it doesn't support array types
+    Structured(Vec<Id>),
 }
 
 impl Variable {
-    pub fn symbolic(name: &str) -> Variable {
-        Variable::SymbolicVariable(SymbolicVariable {
+    pub fn named(name: &str) -> Variable {
+        Variable::Named(NamedVariable {
             name: Id::from(name),
         })
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct SymbolicVariable {
+pub struct NamedVariable {
     pub name: Id,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ArrayVariable {
+    /// The variable that is being accessed by subscript (the array).
+    pub variable: Box<SymbolicVariableKind>,
+    /// The ordered set of subscripts. These should be expressions that
+    /// evaluate to an index.
+    pub subscripts: Vec<ExprKind>,
 }
 
 /// Function block invocation.
@@ -109,8 +138,8 @@ impl ExprKind {
         ExprKind::UnaryOp(Box::new(UnaryExpr { op, term }))
     }
 
-    pub fn symbolic_variable(name: &str) -> ExprKind {
-        ExprKind::Variable(Variable::symbolic(name))
+    pub fn named_variable(name: &str) -> ExprKind {
+        ExprKind::Variable(Variable::named(name))
     }
 
     pub fn integer_literal(value: &str) -> ExprKind {
@@ -257,11 +286,11 @@ impl StmtKind {
     pub fn fb_assign(fb_name: &str, inputs: Vec<&str>, output: &str) -> StmtKind {
         let assignments = inputs
             .into_iter()
-            .map(|input| ParamAssignmentKind::positional(ExprKind::symbolic_variable(input)))
+            .map(|input| ParamAssignmentKind::positional(ExprKind::named_variable(input)))
             .collect::<Vec<ParamAssignmentKind>>();
 
         StmtKind::assignment(
-            Variable::symbolic(output),
+            Variable::named(output),
             ExprKind::Function {
                 name: Id::from(fb_name),
                 param_assignment: assignments,
@@ -272,7 +301,7 @@ impl StmtKind {
         let assignments = inputs
             .into_iter()
             .map(|pair| {
-                ParamAssignmentKind::named(pair.0, ExprKind::Variable(Variable::symbolic(pair.1)))
+                ParamAssignmentKind::named(pair.0, ExprKind::Variable(Variable::named(pair.1)))
             })
             .collect::<Vec<ParamAssignmentKind>>();
 
@@ -289,15 +318,15 @@ impl StmtKind {
 
     pub fn simple_assignment(target: &str, src: Vec<&str>) -> StmtKind {
         let variable = match src.len() {
-            1 => Variable::symbolic(src[0]),
+            1 => Variable::named(src[0]),
             _ => {
                 let src = src.into_iter().map(Id::from).collect::<Vec<Id>>();
-                Variable::MultiElementVariable(src)
+                Variable::Structured(src)
             }
         };
 
         StmtKind::Assignment(Assignment {
-            target: Variable::symbolic(target),
+            target: Variable::named(target),
             value: ExprKind::Variable(variable),
         })
     }

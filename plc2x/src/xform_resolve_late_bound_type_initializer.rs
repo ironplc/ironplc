@@ -164,7 +164,11 @@ impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
                         )),
                     },
                     None => {
-                        todo!()
+                        return Err(Diagnostic::new(
+                            "E0001",
+                            "Unknown type",
+                            Label::source_loc(PathBuf::default(), name.position(), "Variable type"),
+                        ));
                     }
                 }
             }

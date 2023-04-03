@@ -665,9 +665,14 @@ parser! {
     }
 
     // B.1.4 Variables
-    rule variable() -> Variable = d:direct_variable() { Variable::AddressAssignment(d) } / symbolic_variable()
-    // TODO add multi-element variable
-    rule symbolic_variable() -> Variable = multi_element_variable() / name:variable_name() { Variable::SymbolicVariable(SymbolicVariable{name}) }
+    rule variable() -> Variable =
+      d:direct_variable() { Variable::AddressAssignment(d) }
+      / symbolic_variable:symbolic_variable() { symbolic_variable.into() }
+    // TODO add multi-element variable. This should probably return a different type
+    #[cache_left_rec]
+    rule symbolic_variable() -> SymbolicVariableKind =
+      multi_element_variable()
+      / name:variable_name() { SymbolicVariableKind::Named(NamedVariable{name}) }
     rule variable_name() -> Id = identifier()
 
     // B.1.4.1 Directly represented variables
@@ -700,19 +705,32 @@ parser! {
       / "D" { SizePrefix::D }
       / "L" { SizePrefix::L }
     // B.1.4.2 Multi-element variables
-    rule multi_element_variable() -> Variable = sv:structured_variable() {
-      // TODO this is clearly wrong
-      Variable::MultiElementVariable(vec![
-        sv.0,
-        sv.1,
-      ])
+    #[cache_left_rec]
+    rule multi_element_variable() -> SymbolicVariableKind =
+      array_variable:array_variable() {
+        SymbolicVariableKind::Array(array_variable)
+      }
+      / sv:structured_variable() {
+        // TODO this is clearly wrong
+        SymbolicVariableKind::Structured(vec![
+          sv.0,
+          sv.1,
+        ])
+      }
+    #[cache_left_rec]
+    rule array_variable() -> ArrayVariable = variable:subscripted_variable() _ subscripts:subscript_list() {
+      ArrayVariable {
+        variable: Box::new(variable),
+        subscripts,
+      }
     }
-    //rule array_variable() -> () = subscripted_variable() _ subscript_list() {}
-    //rule subscripted_variable() -> () = symbolic_variable()
-    //rule subscript_list() -> () = "[" _ subscript()++ (_ "," _) _ "]" {}
-    //rule subscript() -> () = expression() {}
+    //#[cache_left_rec]
+    // TODO this is wrong!!
+    rule subscripted_variable() -> SymbolicVariableKind = name:variable_name() { SymbolicVariableKind::Named(NamedVariable{ name }) }
+    rule subscript_list() -> Vec<ExprKind> = "[" _ list:subscript()++ (_ "," _) _ "]" { list }
+    rule subscript() -> ExprKind = expression()
     rule structured_variable() -> (Id, Id) = r:record_variable() "." f:field_selector() { (r, f)}
-    // TODO this is most definitely wrong but it unblocks for now
+    // TODO this is definitely wrong but it unblocks for now
     // very likely need to make this a repeated item with ++
     rule record_variable() -> Id = identifier()
     rule field_selector() -> Id = identifier()
@@ -1454,19 +1472,19 @@ END_VAR";
                 ElementKind::action(
                     "RESETCOUNTER_INLINE1",
                     vec![StmtKind::assignment(
-                        Variable::symbolic("Cnt"),
-                        ExprKind::symbolic_variable("ResetCounterValue"),
+                        Variable::named("Cnt"),
+                        ExprKind::named_variable("ResetCounterValue"),
                     )],
                 ),
                 ElementKind::transition(
                     "ResetCounter",
                     "Start",
-                    ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("Reset")),
+                    ExprKind::unary(UnaryOp::Not, ExprKind::named_variable("Reset")),
                 ),
                 ElementKind::transition(
                     "Start",
                     "Count",
-                    ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("Reset")),
+                    ExprKind::unary(UnaryOp::Not, ExprKind::named_variable("Reset")),
                 ),
                 ElementKind::step(
                     Id::from("Count"),
@@ -1491,7 +1509,7 @@ END_VAR";
     #[test]
     fn statement_assign_constant() {
         let expected = Ok(vec![StmtKind::assignment(
-            Variable::symbolic("Cnt"),
+            Variable::named("Cnt"),
             ExprKind::integer_literal("1"),
         )]);
         assert_eq!(plc_parser::statement_list("Cnt := 1;"), expected)
@@ -1500,7 +1518,7 @@ END_VAR";
     #[test]
     fn statement_assign_add_const_operator() {
         let expected = Ok(vec![StmtKind::assignment(
-            Variable::symbolic("Cnt"),
+            Variable::named("Cnt"),
             ExprKind::binary(
                 Operator::Add,
                 ExprKind::integer_literal("1"),
@@ -1513,10 +1531,10 @@ END_VAR";
     #[test]
     fn statement_assign_add_symbol_operator() {
         let expected = Ok(vec![StmtKind::assignment(
-            Variable::symbolic("Cnt"),
+            Variable::named("Cnt"),
             ExprKind::binary(
                 Operator::Add,
-                ExprKind::symbolic_variable("Cnt"),
+                ExprKind::named_variable("Cnt"),
                 ExprKind::integer_literal("1"),
             ),
         )]);
@@ -1532,12 +1550,12 @@ END_VAR";
         let expected = Ok(vec![StmtKind::if_then(
             ExprKind::compare(
                 CompareOp::And,
-                ExprKind::symbolic_variable("TRIG"),
-                ExprKind::unary(UnaryOp::Not, ExprKind::symbolic_variable("TRIG")),
+                ExprKind::named_variable("TRIG"),
+                ExprKind::unary(UnaryOp::Not, ExprKind::named_variable("TRIG")),
             ),
             vec![StmtKind::assignment(
-                Variable::symbolic("TRIG0"),
-                ExprKind::symbolic_variable("TRIG"),
+                Variable::named("TRIG0"),
+                ExprKind::named_variable("TRIG"),
             )],
         )]);
         assert_eq!(plc_parser::statement_list(statement), expected)
@@ -1551,16 +1569,16 @@ END_VAR";
     Cnt := Cnt + 1;
   END_IF;";
         let expected = Ok(vec![StmtKind::if_then_else(
-            ExprKind::symbolic_variable("Reset"),
+            ExprKind::named_variable("Reset"),
             vec![StmtKind::assignment(
-                Variable::symbolic("Cnt"),
-                ExprKind::symbolic_variable("ResetCounterValue"),
+                Variable::named("Cnt"),
+                ExprKind::named_variable("ResetCounterValue"),
             )],
             vec![StmtKind::assignment(
-                Variable::symbolic("Cnt"),
+                Variable::named("Cnt"),
                 ExprKind::binary(
                     Operator::Add,
-                    ExprKind::symbolic_variable("Cnt"),
+                    ExprKind::named_variable("Cnt"),
                     ExprKind::integer_literal("1"),
                 ),
             )],
@@ -1574,9 +1592,9 @@ END_VAR";
         let statement = "CounterLD0(Reset);";
         let expected = Ok(vec![StmtKind::FbCall(FbCall {
             var_name: Id::from("CounterLD0"),
-            params: vec![ParamAssignmentKind::positional(
-                ExprKind::symbolic_variable("Reset"),
-            )],
+            params: vec![ParamAssignmentKind::positional(ExprKind::named_variable(
+                "Reset",
+            ))],
             position: SourceLoc::default(),
         })]);
 
@@ -1590,7 +1608,7 @@ END_VAR";
             var_name: Id::from("CounterLD0"),
             params: vec![ParamAssignmentKind::named(
                 "Cnt",
-                ExprKind::symbolic_variable("Reset"),
+                ExprKind::named_variable("Reset"),
             )],
             position: SourceLoc::default(),
         })]);
@@ -1602,8 +1620,8 @@ END_VAR";
     fn assignment() {
         let assign = "Cnt1 := CounterST0.OUT";
         let expected = Ok(StmtKind::assignment(
-            Variable::symbolic("Cnt1"),
-            ExprKind::Variable(Variable::MultiElementVariable(vec![
+            Variable::named("Cnt1"),
+            ExprKind::Variable(Variable::Structured(vec![
                 Id::from("CounterST0"),
                 Id::from("OUT"),
             ])),
