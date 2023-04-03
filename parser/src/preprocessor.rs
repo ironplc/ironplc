@@ -12,14 +12,38 @@ use dsl::{core::FileId, diagnostic::Label};
 use ironplc_dsl::diagnostic::Diagnostic;
 
 pub fn preprocess(source: &str, file_id: &FileId) -> Result<String, Diagnostic> {
+    let source = remove_oscat_comment(source.to_string());
+    remove_standard_comment(&source, file_id)
+}
+
+/// Removes the OSCAT ranged comment. This is not valid IEC 61131, but there
+/// are enough of these that it is worthwhile.
+pub fn remove_oscat_comment(source: String) -> String {
+    if let Some(start) = source.find("(*@KEY@:DESCRIPTION*)") {
+        if let Some(end) = source.find("(*@KEY@:END_DESCRIPTION*)") {
+            if start < end {
+                let prelude = &source[0..start];
+                let epilog = &source[end..source.len()];
+
+                let mut output = String::with_capacity(source.len());
+                output.push_str(prelude);
+                output.push_str(" ".repeat(end - start).as_str());
+                output.push_str(epilog);
+                return output;
+            }
+        }
+    }
+    source
+}
+
+pub fn remove_standard_comment(source: &str, file_id: &FileId) -> Result<String, Diagnostic> {
     // True when currently in a comment block, otherwise false.
     let mut in_comment = false;
     // True when the prior character is a candidate for starting or ending a
     // comment block otherwise, false.
     let mut last_is_comment_candidate = false;
 
-    let mut output = String::new();
-    output.reserve(source.len());
+    let mut output = String::with_capacity(source.len());
 
     for char in source.chars() {
         if in_comment {

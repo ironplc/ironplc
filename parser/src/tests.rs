@@ -38,4 +38,18 @@ mod test {
         let res = parse_resource("textual.st");
         assert!(res.is_ok())
     }
+
+    #[test]
+    fn parse_oscat() {
+        // OSCAT files have a header that as far as I can tell is not valid
+        // but it is common.
+        let res = parse_resource("oscat.st");
+        assert!(res.is_ok())
+    }
+
+    #[test]
+    fn parse_expressions() {
+        let res = parse_resource("expressions.st");
+        assert!(res.is_ok())
+    }
 }

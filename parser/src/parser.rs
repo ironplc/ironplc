@@ -34,14 +34,14 @@ use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 /// Parses a IEC 61131-3 library into object form.
 pub fn parse_library(source: &str, file_id: &FileId) -> Result<Vec<LibraryElement>, Diagnostic> {
     plc_parser::library(source).map_err(|e| {
-        let expected = Vec::from_iter(e.expected.tokens());
+        let expected = Vec::from_iter(e.expected.tokens()).join(", ");
         Diagnostic::new(
             "P0002",
             "Syntax error",
             Label::qualified(
                 file_id.clone(),
                 QualifiedPosition::new(e.location.line, e.location.column, e.location.offset),
-                format!("Expected one of: {:?}", expected),
+                format!("Expected one of: {}", expected),
             ),
         )
     })
@@ -203,7 +203,7 @@ parser! {
     // output on matching with the name of the item
     rule semicolon() -> () = ";" ()
     rule comma() -> () = "," ()
-    rule _ = [' ' | '\n' | '\r' ]*
+    rule _ = [' ' | '\n' | '\r' | '\t' ]*
 
     // A semi-colon separated list with required ending separator
     rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v}
@@ -247,14 +247,15 @@ parser! {
 
     // B.1.2 Constants
     rule constant() -> Constant =
-        r:real_literal() { Constant::RealLiteral(r) }
-        / i:integer_literal() { Constant::IntegerLiteral(i) }
+        real:real_literal() { Constant::RealLiteral(real) }
+        / integer:integer_literal() { Constant::IntegerLiteral(integer) }
         / c:character_string() { Constant::CharacterString() }
-        / d:duration() { Constant::Duration(d) }
+        / duration:duration() { Constant::Duration(duration) }
         / t:time_of_day() { Constant::TimeOfDay() }
         / d:date() { Constant::Date() }
-        / dt:date_and_time() { Constant::DateAndTime() }
-        / b:boolean_literal() { Constant::Boolean(b) }
+        / date_time:date_and_time() { Constant::DateAndTime() }
+        / bit_string:bit_string_literal() { Constant::BitStringLiteral(bit_string) }
+        / boolean:boolean_literal() { Constant::Boolean(boolean) }
 
     // B.1.2.1 Numeric literals
     // numeric_literal omitted because it only appears in constant so we do not need to create a type for it

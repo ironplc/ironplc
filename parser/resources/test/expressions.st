@@ -1,0 +1,11 @@
+FUNCTION fun:BOOL
+
+VAR_INPUT
+    var1: BYTE;
+END_VAR
+
+IF var1 < BYTE#32 THEN
+	var1 := 1;
+END_IF;
+
+END_FUNCTION
