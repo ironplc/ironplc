@@ -35,9 +35,13 @@ incorrect except for the most basic of libraries. You've been warned.
 
 ### Install
 
-There exists an installer for Windows 10 and later. Install the package, then
-run the IEC 61131-3 checker on a small sample program generated from
-[Beremiz](https://beremiz.org/), for example:
+There exists an installer for Windows 10 and later.
+
+Download a release from [IronPLC releases](https://github.com/garretfick/ironplc/releases)
+then execute the installer.
+
+Once installed, run the IEC 61131-3 checker on a small sample program generated
+from [Beremiz](https://beremiz.org/), for example:
 
 ```cmd
 ironplcc.exe check plc2x\resources\test\first_steps.st
@@ -55,23 +59,18 @@ git clone https://github.com/garretfick/ironplc.git
 cd ironplc
 ```
 
-Build the application:
-
-```sh
-cargo build
-```
-
-Run the IEC 61131-3 checker on a small sample program generated from
+Run the checker using Cargo, for example on a sample program generated from
 [Beremiz](https://beremiz.org/):
 
 ```sh
-.\target\debug\ironplcc.exe check plc2x\resources\test\first_steps.st
+cargo run check plc2x\resources\test\first_steps.st
 ```
 
-You can also run using Cargo directly:
+Alternatively, you can build the application then run the program directly:
 
 ```sh
-cargo run check plc2x\resources\test\first_steps.st
+cargo build
+.\target\debug\ironplcc.exe check plc2x\resources\test\first_steps.st
 ```
 
 ## Developing
