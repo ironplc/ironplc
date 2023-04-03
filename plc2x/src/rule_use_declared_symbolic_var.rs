@@ -85,9 +85,9 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
         visit_variable_declaration(self, node)
     }
 
-    fn visit_symbolic_variable(
+    fn visit_named_variable(
         &mut self,
-        node: &ironplc_dsl::textual::SymbolicVariable,
+        node: &ironplc_dsl::textual::NamedVariable,
     ) -> Result<(), Diagnostic> {
         match self.find(&node.name) {
             Some(_) => {
