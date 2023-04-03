@@ -27,36 +27,56 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
         }
     }
 
-    for filename in files {
-        let mut file = File::open(filename.clone())
-            .map_err(|e| format!("Failed opening file {}. {}", filename.display(), e))?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)
-            .map_err(|err| format!("Failed to read file {}\n {}", filename.display(), err))?;
+    let num_errors = files
+        .into_iter()
+        .map(|path| check_file(path, suppress_output))
+        .map(|res| res.map_or(1, |_r| 0))
+        .reduce(|acc, val| acc + val);
 
-        let writer = StandardStream::stderr(ColorChoice::Always);
-        let config = codespan_reporting::term::Config::default();
-
-        match analyze(&contents, &filename) {
-            Ok(_) => {
-                println!("OK");
-            }
-            Err(diagnostic) => {
-                let mut files = SimpleFiles::new();
-                files.add(filename.display().to_string(), contents);
-
-                let diagnostic = map_diagnostic(diagnostic);
-
-                if !suppress_output {
-                    term::emit(&mut writer.lock(), &config, &files, &diagnostic)
-                        .map_err(|_| "Failed writing to terminal")?;
-                }
-                return Err(String::from("Error"));
-            }
+    if let Some(num_errors) = num_errors {
+        if num_errors != 0 {
+            return Err(String::from("Error"));
         }
     }
 
     Ok(())
+}
+
+fn check_file(filename: PathBuf, suppress_output: bool) -> Result<(), usize> {
+    let mut file = File::open(filename.clone()).map_err(|e| {
+        println!("Failed opening file {}. {}", filename.display(), e);
+        1usize
+    })?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).map_err(|err| {
+        format!("Failed to read file {}\n {}", filename.display(), err);
+        1usize
+    })?;
+
+    let writer = StandardStream::stderr(ColorChoice::Always);
+    let config = codespan_reporting::term::Config::default();
+
+    println!("Checking {}", filename.display());
+    match analyze(&contents, &filename) {
+        Ok(_) => {
+            println!("OK");
+            Ok(())
+        }
+        Err(diagnostic) => {
+            let mut files = SimpleFiles::new();
+            files.add(filename.display().to_string(), contents);
+
+            let diagnostic = map_diagnostic(diagnostic);
+
+            if !suppress_output {
+                term::emit(&mut writer.lock(), &config, &files, &diagnostic).map_err(|err| {
+                    println!("Failed writing to terminal: {}", err);
+                    1usize
+                })?;
+            }
+            Err(1)
+        }
+    }
 }
 
 fn enumerate_files(path: PathBuf) -> Result<Vec<PathBuf>, String> {
