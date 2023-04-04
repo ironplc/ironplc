@@ -305,13 +305,12 @@ parser! {
       / ("BOOL#")? "FALSE" { Boolean::False }
     // B.1.2.2 Character strings
     rule character_string() -> Vec<char> = s:single_byte_character_string() / d:double_byte_character_string()
-    rule single_byte_character_string() -> Vec<char>  = "'" s:single_byte_character_representation()+ "'" { s }
-    rule double_byte_character_string() -> Vec<char> = "\"" s:double_byte_character_representation()+ "\"" { s }
+    rule single_byte_character_string() -> Vec<char>  = "'" s:single_byte_character_representation()* "'" { s }
+    rule double_byte_character_string() -> Vec<char> = "\"" s:double_byte_character_representation()* "\"" { s }
     // TODO escape characters
     rule single_byte_character_representation() -> char = common_character_representation()
     rule double_byte_character_representation() -> char = common_character_representation()
-    // TODO other printable characters
-    rule common_character_representation() -> char = c:['a'..='z' | 'A'..='Z'] { c }
+    rule common_character_representation() -> char = c:[' '..='!' | '#' | '%'..='&' | '('..='~'] { c }
 
     // B.1.2.3 Time literals
     // Omitted and subsumed into constant.
@@ -1149,13 +1148,20 @@ parser! {
       expr
     }
     rule unary_operator() -> UnaryOp = "-" {UnaryOp::Neg} / "NOT" {UnaryOp::Not}
-    rule primary_expression() -> ExprKind = constant:constant() {
-      ExprKind::Const(constant)
-    } / function:function_expression() {
-      function
-    } / variable:variable() {
-      ExprKind::Variable(variable)
-    }
+    rule primary_expression() -> ExprKind
+      = constant:constant() {
+          ExprKind::Const(constant)
+        }
+      // TODO enumerated value
+      / function:function_expression() {
+          function
+        }
+      / variable:variable() {
+        ExprKind::Variable(variable)
+      }
+      / "(" _ expression:expression() _ ")" {
+        expression
+      }
     rule function_expression() -> ExprKind = name:function_name() _ "(" _ params:param_assignment() ** (_ "," _) _ ")" {
       ExprKind::Function {
         name,
