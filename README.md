@@ -27,6 +27,17 @@ IronPLC is nowhere near those capabilities yet.
 Complete runtime for IEC 61131-3 entirely in safe Rust and following
 security best practices.
 
+### Milestones
+
+* ✅ Implement a parsing strategy for a single IEC 61131-3 structured text files
+* ✅ Implement a strategy for semantic analysis
+* ✅ Implement a strategy for reporting errors
+* ✅ Setup automated builds to produce high-quality weekly snapshots
+* IN PROGRESS Complete the parser so that all valid OSCAT files parse without error
+* NOT STARTED Implement language server protocol to integrate diagnostics with Visual Studio Code
+* NOT STARTED Build documentation website
+* NOT STARTED Implement a code formatter for structured text files
+
 ## Usage
 
 The current state of the project is it checks an IEC 61131-3 library for
