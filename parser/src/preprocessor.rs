@@ -25,9 +25,14 @@ pub fn remove_oscat_comment(source: String) -> String {
                 let prelude = &source[0..start];
                 let epilog = &source[end..source.len()];
 
+                // Count the number of newlines in the range so that we retain
+                // the line number
+                let lines = source[start..end].matches("\n").count();
+
                 let mut output = String::with_capacity(source.len());
                 output.push_str(prelude);
-                output.push_str(" ".repeat(end - start).as_str());
+                output.push_str(" ".repeat(end - start - lines).as_str());
+                output.push_str("\n".repeat(lines).as_str());
                 output.push_str(epilog);
                 return output;
             }

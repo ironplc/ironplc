@@ -703,10 +703,7 @@ parser! {
       }
       / sv:structured_variable() {
         // TODO this is clearly wrong
-        SymbolicVariableKind::Structured(vec![
-          sv.0,
-          sv.1,
-        ])
+        SymbolicVariableKind::Structured(StructuredVariable{ record: Box::new(sv.0), field: sv.1 })
       }
     #[cache_left_rec]
     rule array_variable() -> ArrayVariable = variable:subscripted_variable() _ subscripts:subscript_list() {
@@ -720,10 +717,10 @@ parser! {
     rule subscripted_variable() -> SymbolicVariableKind = name:variable_name() { SymbolicVariableKind::Named(NamedVariable{ name }) }
     rule subscript_list() -> Vec<ExprKind> = "[" _ list:subscript()++ (_ "," _) _ "]" { list }
     rule subscript() -> ExprKind = expression()
-    rule structured_variable() -> (Id, Id) = r:record_variable() "." f:field_selector() { (r, f)}
-    // TODO this is definitely wrong but it unblocks for now
-    // very likely need to make this a repeated item with ++
-    rule record_variable() -> Id = identifier()
+    #[cache_left_rec]
+    rule structured_variable() -> (SymbolicVariableKind, Id) = r:record_variable() "." f:field_selector() { (r, f) }
+    #[cache_left_rec]
+    rule record_variable() -> SymbolicVariableKind = symbolic_variable()
     rule field_selector() -> Id = identifier()
 
     // B.1.4.3 Declarations and initialization
@@ -1617,10 +1614,7 @@ END_VAR";
         let assign = "Cnt1 := CounterST0.OUT";
         let expected = Ok(StmtKind::assignment(
             Variable::named("Cnt1"),
-            ExprKind::Variable(Variable::Structured(vec![
-                Id::from("CounterST0"),
-                Id::from("OUT"),
-            ])),
+            ExprKind::Variable(Variable::structured("CounterST0", "OUT")),
         ));
         assert_eq!(plc_parser::assignment_statement(assign), expected)
     }

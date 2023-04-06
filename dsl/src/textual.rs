@@ -23,7 +23,7 @@ pub enum Variable {
     Array(ArrayVariable),
     // A structured variable that may be nested. This data type is definitely
     // incorrect because it doesn't support array types
-    Structured(Vec<Id>),
+    Structured(StructuredVariable),
 }
 
 impl From<SymbolicVariableKind> for Variable {
@@ -42,7 +42,7 @@ pub enum SymbolicVariableKind {
     Array(ArrayVariable),
     // A structured variable that may be nested. This data type is definitely
     // incorrect because it doesn't support array types
-    Structured(Vec<Id>),
+    Structured(StructuredVariable),
 }
 
 impl Variable {
@@ -50,6 +50,12 @@ impl Variable {
         Variable::Named(NamedVariable {
             name: Id::from(name),
         })
+    }
+
+    pub fn structured(record: &str, field: &str) -> Variable {
+        Variable::Structured(StructuredVariable { record: Box::new(SymbolicVariableKind::Named(NamedVariable {
+            name: Id::from(record),
+        })), field: Id::from(field) })
     }
 }
 
@@ -65,6 +71,12 @@ pub struct ArrayVariable {
     /// The ordered set of subscripts. These should be expressions that
     /// evaluate to an index.
     pub subscripts: Vec<ExprKind>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct StructuredVariable {
+    pub record: Box<SymbolicVariableKind>,
+    pub field: Id,
 }
 
 /// Function block invocation.
@@ -316,15 +328,15 @@ impl StmtKind {
         StmtKind::Assignment(Assignment { target, value })
     }
 
-    pub fn simple_assignment(target: &str, src: Vec<&str>) -> StmtKind {
-        let variable = match src.len() {
-            1 => Variable::named(src[0]),
-            _ => {
-                let src = src.into_iter().map(Id::from).collect::<Vec<Id>>();
-                Variable::Structured(src)
-            }
-        };
+    pub fn simple_assignment(target: &str, src: &str) -> StmtKind {
+        StmtKind::Assignment(Assignment {
+            target: Variable::named(target),
+            value: ExprKind::Variable(Variable::named(src)),
+        })
+    }
 
+    pub fn structured_assignment(target: &str, record: &str, field: &str) -> StmtKind {
+        let variable = Variable::Structured(StructuredVariable { record: Box::new(SymbolicVariableKind::Named(NamedVariable { name: Id::from(record) })), field: Id::from(field) });
         StmtKind::Assignment(Assignment {
             target: Variable::named(target),
             value: ExprKind::Variable(variable),
