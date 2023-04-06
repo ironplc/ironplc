@@ -22,6 +22,7 @@ use dsl::diagnostic::Label;
 use dsl::diagnostic::QualifiedPosition;
 use peg::parser;
 
+use crate::keyword::get_keyword;
 use crate::mapper::*;
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Id;
@@ -214,21 +215,8 @@ parser! {
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
     rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) comma() {v}
 
-    rule KEYWORD_ITEM() = i("ACTION") / i("END_ACTION") / i("ARRAY") / i("OF") / i("AT") / i("CASE")
-                     / i("ELSE") / i("END_CASE") / i("CONFIGURATION") / i("END_CONFIGURATION")
-                     / i("CONSTANT") / i("EN") / i("ENO") / i("EXIT") / i("FALSE") / i("F_EDGE")
-                     / i("FOR") / i("TO") / i("BY") / i("DO") / i("END_FOR") / i("FUNCTION") / i("END_FUNCTION")
-                     / i("FUNCTION_BLOCK") / i("END_FUNCTION_BLOCK") / i("IF") / i("THEN")
-                     / i("ELSIF") / i("ELSE") / "END_IF)" / i("INITIAL_STEP") / i("END_STEP")
-                     / i("NOT") / i("MOD") / i("AND") / i("XOR") / i("OR") / i("PROGRAM") / i("END_PROGRAM")
-                     / i("R_EDGE") / i("READ_ONLY") / i("READ_WRITE") / i("REPEAT") / i("UNTIL")
-                     / i("END_REPEAT") / i("RESOURCE") / i("END_RESOURCE") / i("RETAIN") / i("NON_RETAIN")
-                     / i("RETURN") / i("STEP") / i("END_STEP") / i("STRUCT") / i("END_STRUCT")
-                     / i("TASK") / i("TRANSITION") / i("FROM") / i("END_TRANSITION") / i("TRUE")
-                     / i("VAR") / i("END_VAR") / i("VAR_INPUT") / i("VAR_OUTPUT") / i("VAR_IN_OUT")
-                     / i("VAR_TEMP") / i("VAR_EXTERNAL") / i("VAR_ACCESS") / i("VAR_CONFIG")
-                     / i("VAR_GLOBAL") / i("WHILE") / i("END_WHILE") / i("WITH")
-                     / i("PRIORITY") / i("STRING") / i("WSTRING")
+    rule KEYWORD_ITEM() = input:$(['a'..='z' | 'A'..='Z']+)
+      {? get_keyword(input).map_or_else(|| Err("keyword"), |v| Ok(())) }
     rule ID_CHAR() = ['a'..='z' | '0'..='9' | 'A'..='Z' | '_']
     rule KEYWORD() = KEYWORD_ITEM() !ID_CHAR()
     rule STANDARD_FUNCTION_BLOCK_NAME() = i("END_VAR")

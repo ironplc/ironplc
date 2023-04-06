@@ -260,9 +260,9 @@ dependencies = [
 name = "ironplc-parser"
 version = "0.1.2"
 dependencies = [
- "codespan-reporting",
  "ironplc-dsl",
  "peg",
+ "phf",
  "time",
 ]
 
