@@ -3,6 +3,7 @@
 
 extern crate ironplc_dsl as dsl;
 
+mod keyword;
 mod mapper;
 mod parser;
 mod preprocessor;
