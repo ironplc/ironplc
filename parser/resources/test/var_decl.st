@@ -40,4 +40,9 @@ PROGRAM fb
         (* TODO Nested structures *)
     END_VAR
 
+    VAR
+		X :	REAL2;
+		Y :	REAL;
+	END_VAR
+
 END_PROGRAM
