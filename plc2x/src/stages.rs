@@ -204,10 +204,7 @@ mod tests {
                         ),
                         ElementKind::action(
                             "RESETCOUNTER_INLINE1",
-                            vec![StmtKind::simple_assignment(
-                                "Cnt",
-                                "ResetCounterValue",
-                            )],
+                            vec![StmtKind::simple_assignment("Cnt", "ResetCounterValue")],
                         ),
                         ElementKind::action(
                             "RESETCOUNTER_INLINE2",

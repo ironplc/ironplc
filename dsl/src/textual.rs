@@ -53,9 +53,12 @@ impl Variable {
     }
 
     pub fn structured(record: &str, field: &str) -> Variable {
-        Variable::Structured(StructuredVariable { record: Box::new(SymbolicVariableKind::Named(NamedVariable {
-            name: Id::from(record),
-        })), field: Id::from(field) })
+        Variable::Structured(StructuredVariable {
+            record: Box::new(SymbolicVariableKind::Named(NamedVariable {
+                name: Id::from(record),
+            })),
+            field: Id::from(field),
+        })
     }
 }
 
@@ -336,7 +339,12 @@ impl StmtKind {
     }
 
     pub fn structured_assignment(target: &str, record: &str, field: &str) -> StmtKind {
-        let variable = Variable::Structured(StructuredVariable { record: Box::new(SymbolicVariableKind::Named(NamedVariable { name: Id::from(record) })), field: Id::from(field) });
+        let variable = Variable::Structured(StructuredVariable {
+            record: Box::new(SymbolicVariableKind::Named(NamedVariable {
+                name: Id::from(record),
+            })),
+            field: Id::from(field),
+        });
         StmtKind::Assignment(Assignment {
             target: Variable::named(target),
             value: ExprKind::Variable(variable),

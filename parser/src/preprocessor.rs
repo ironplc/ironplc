@@ -12,6 +12,7 @@ use dsl::{core::FileId, diagnostic::Label};
 use ironplc_dsl::diagnostic::Diagnostic;
 
 pub fn preprocess(source: &str, file_id: &FileId) -> Result<String, Diagnostic> {
+    //print!("{}", String::from(source));
     let source = remove_oscat_comment(source.to_string());
     remove_standard_comment(&source, file_id)
 }
@@ -25,14 +26,19 @@ pub fn remove_oscat_comment(source: String) -> String {
                 let prelude = &source[0..start];
                 let epilog = &source[end..source.len()];
 
-                // Count the number of newlines in the range so that we retain
-                // the line number
-                let lines = source[start..end].matches("\n").count();
-
                 let mut output = String::with_capacity(source.len());
                 output.push_str(prelude);
-                output.push_str(" ".repeat(end - start - lines).as_str());
-                output.push_str("\n".repeat(lines).as_str());
+
+                // Replace the comment internally character-by-character
+                // so that we retain the exact same positions
+                for c in source[start..end].chars() {
+                    if c == '\n' {
+                        output.push('\n');
+                    } else {
+                        output.push(' ');
+                    }
+                }
+
                 output.push_str(epilog);
                 return output;
             }
@@ -59,7 +65,14 @@ pub fn remove_standard_comment(source: &str, file_id: &FileId) -> Result<String,
             } else {
                 last_is_comment_candidate = char == '*';
             }
-            output.push(' ');
+
+            // We want to retain new line characters so that
+            // line numbers remain the same.
+            if char == '\n' {
+                output.push('\n');
+            } else {
+                output.push(' ');
+            }
         } else if last_is_comment_candidate && char == '*' {
             // We have started a comment - there is a character written
             // that was actually the start of a comment so replace it
