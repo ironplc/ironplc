@@ -52,7 +52,7 @@ static KEYWORDS: Set<&'static str> = phf_set! {
     "RETAIN",
     "NON_RETAIN",
     "RETURN",
-    "STEP",
+    //"STEP",
     "STRUCT",
     "END_STRUCT",
     "TASK",

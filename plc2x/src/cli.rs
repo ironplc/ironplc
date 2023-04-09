@@ -35,7 +35,7 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
 
     if let Some(num_errors) = num_errors {
         if num_errors != 0 {
-            return Err(String::from("Error"));
+            return Err(format!("Number of errors: {}", num_errors));
         }
     }
 

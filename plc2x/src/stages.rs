@@ -204,14 +204,11 @@ mod tests {
                         ),
                         ElementKind::action(
                             "RESETCOUNTER_INLINE1",
-                            vec![StmtKind::simple_assignment(
-                                "Cnt",
-                                vec!["ResetCounterValue"],
-                            )],
+                            vec![StmtKind::simple_assignment("Cnt", "ResetCounterValue")],
                         ),
                         ElementKind::action(
                             "RESETCOUNTER_INLINE2",
-                            vec![StmtKind::simple_assignment("OUT", vec!["Cnt"])],
+                            vec![StmtKind::simple_assignment("OUT", "Cnt")],
                         ),
                         ElementKind::transition(
                             "ResetCounter",
@@ -243,7 +240,7 @@ mod tests {
                         ),
                         ElementKind::action(
                             "COUNT_INLINE4",
-                            vec![StmtKind::simple_assignment("OUT", vec!["Cnt"])],
+                            vec![StmtKind::simple_assignment("OUT", "Cnt")],
                         ),
                         ElementKind::transition(
                             "Count",
@@ -285,8 +282,8 @@ mod tests {
                     VarDecl::simple("_TMP_SEL7_OUT", "INT"),
                 ],
                 body: FunctionBlockBody::stmts(vec![
-                    StmtKind::simple_assignment("Cnt", vec!["_TMP_SEL7_OUT"]),
-                    StmtKind::simple_assignment("OUT", vec!["Cnt"]),
+                    StmtKind::simple_assignment("Cnt", "_TMP_SEL7_OUT"),
+                    StmtKind::simple_assignment("OUT", "Cnt"),
                 ]),
                 position: SourceLoc::default(),
             },
@@ -386,21 +383,21 @@ mod tests {
             ],
             body: FunctionBlockBody::stmts(vec![
                 StmtKind::fb_call_mapped("CounterST0", vec![("Reset", "Reset")]),
-                StmtKind::simple_assignment("Cnt1", vec!["CounterST0", "OUT"]),
+                StmtKind::structured_assignment("Cnt1", "CounterST0", "OUT"),
                 StmtKind::fb_assign(
                     "AverageVal",
                     vec!["Cnt1", "Cnt2", "Cnt3", "Cnt4", "Cnt5"],
                     "_TMP_AverageVal17_OUT",
                 ),
-                StmtKind::simple_assignment("AVCnt", vec!["_TMP_AverageVal17_OUT"]),
+                StmtKind::simple_assignment("AVCnt", "_TMP_AverageVal17_OUT"),
                 StmtKind::fb_call_mapped("CounterFBD0", vec![("Reset", "Reset")]),
-                StmtKind::simple_assignment("Cnt2", vec!["CounterFBD0", "OUT"]),
+                StmtKind::structured_assignment("Cnt2", "CounterFBD0", "OUT"),
                 StmtKind::fb_call_mapped("CounterSFC0", vec![("Reset", "Reset")]),
-                StmtKind::simple_assignment("Cnt3", vec!["CounterSFC0", "OUT"]),
+                StmtKind::structured_assignment("Cnt3", "CounterSFC0", "OUT"),
                 StmtKind::fb_call_mapped("CounterIL0", vec![("Reset", "Reset")]),
-                StmtKind::simple_assignment("Cnt4", vec!["CounterIL0", "OUT"]),
+                StmtKind::structured_assignment("Cnt4", "CounterIL0", "OUT"),
                 StmtKind::fb_call_mapped("CounterLD0", vec![("Reset", "Reset")]),
-                StmtKind::simple_assignment("Cnt5", vec!["CounterLD0", "Out"]),
+                StmtKind::structured_assignment("Cnt5", "CounterLD0", "Out"),
             ]),
         }));
         assert_eq!(
