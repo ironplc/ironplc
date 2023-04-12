@@ -1,0 +1,59 @@
+{
+  "name": "ironplc",
+  "displayName": "IronPLC",
+  "description": "",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.77.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "IronPLC",
+      "properties": {
+        "ironplc.path": {
+          "markdownDescription": "Overrides the discovery of ironplcc application (ironplcc.exe on Windows). If empty, then discovers IronPLC based on the path variable.",
+          "type": "string",
+          "default": "",
+          "editPresentation": "singlelineText"
+        }
+      }
+    },
+    "languages": [
+      {
+        "id": "61131-3",
+        "aliases": ["IEC 61131-3", "Structured Text"],
+        "extensions": [".st"],
+        "configuration": "./decl/61131-3-lang-configuration.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.77.0",
+    "@types/glob": "^8.1.0",
+    "@types/mocha": "^10.0.1",
+    "@types/node": "16.x",
+    "@typescript-eslint/eslint-plugin": "^5.53.0",
+    "@typescript-eslint/parser": "^5.53.0",
+    "eslint": "^8.34.0",
+    "glob": "^8.1.0",
+    "mocha": "^10.2.0",
+    "typescript": "^4.9.5",
+    "@vscode/test-electron": "^2.2.3"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^8.1.0"
+  }
+}
