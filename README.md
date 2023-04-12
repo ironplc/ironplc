@@ -1,7 +1,8 @@
 # IronPLC
 
-⚠ This project's capabilities are presently limited to a parser and
-semantic analyzer that are building blocks for a complete IEC 61131-3 runtime.
+⚠ This project's capabilities are limited to a parser, semantic analyzer, and
+Visual Studio Code Extension that are that are building blocks for a complete
+IEC 61131-3 runtime and development environment.
 
 IronPLC aims to be a SoftPLC written entirely in safe Rust for embedded
 devices running programs written in the IEC 61131-3 language.
@@ -20,12 +21,11 @@ PLC devices do this by implementing control algorithms that connect to sensors,
 transducers and actuators through analog/digital IO, industrial protocols such as
 I²C and Modbus, or even common internet protocol such as HTTP.
 
-IronPLC is nowhere near those capabilities yet.
-
 ## Mission
 
-Complete runtime for IEC 61131-3 entirely in safe Rust and following
-security best practices.
+Complete runtime and development environment for IEC 61131-3. The runtime aims
+to be written entirely in safe Rust to prevent security issues. The development
+environment aims to be available via Visual Studio Code.
 
 ### Milestones
 
@@ -40,11 +40,14 @@ security best practices.
 
 ## Usage
 
-The current state of the project is it checks an IEC 61131-3 library for
-syntactic and semantic correctness. The result is almost guaranteed to be
-incorrect except for the most basic of libraries. You've been warned.
+There are two components to IronPLC:
 
-### Install
+* `ironplcc`, a "compiler" that checks an IEC 61131-3 library for
+syntactic and semantic correctness
+* IronPLC Visual Studio Code Extension, an extension for Visual Studio code
+  to work with IEC 61131-3 files and `ironplcc`
+
+### Install the Compiler
 
 There exists an installer for Windows 10 and later.
 
@@ -58,95 +61,10 @@ from [Beremiz](https://beremiz.org/), for example:
 ironplcc.exe check plc2x\resources\test\first_steps.st
 ```
 
-### From Source
+### Install the Visual Studio Code Extension
 
-To run the checker, you need to install git, Rust and Cargo. Once you have
-those, follow the steps below to check a library for correctness.
-
-Get the code:
-
-```sh
-git clone https://github.com/garretfick/ironplc.git
-cd ironplc
-```
-
-Run the checker using Cargo, for example on a sample program generated from
-[Beremiz](https://beremiz.org/):
-
-```sh
-cargo run check plc2x\resources\test\first_steps.st
-```
-
-Alternatively, you can build the application then run the program directly:
-
-```sh
-cargo build
-.\target\debug\ironplcc.exe check plc2x\resources\test\first_steps.st
-```
-
-## Developing
-
-Compilers and runtimes are tricky to get right and hard to keep right. Use
-Cargo to run tests during development:
-
-```sh
-cargo test
-```
-
-### Running the Full Test Suite
-
-The `Cargo` test approach does not execute all tests. The full test suite
-is defined in GitHub actions workflow. You can run the full tests locally
-using [act](https://github.com/nektos/act) (requires Docker).
-
-Follow the steps described in the [act](https://github.com/nektos/act)
-repository to install `act`.
-
-```sh
-act --workflows ./.github/workflows/commit.yaml
-```
-
-### Debugging the Parser
-
-The PEG parser is difficult to debug without a little help. The steps below
-will help enormously in understanding and fixing what the parser is doing.
-
-Run tests with the `trace` feature enabled to get output on rule matching
-for any test that is failing:
-
-```sh
-cargo test --features trace
-```
-
-For even better debug support, use pegviz. First, build and install the pegviz
-application into your path.
-
-```sh
-git clone https://github.com/fasterthanlime/pegviz.git
-cd pegviz
-cargo install --force --path .
-```
-
-After installing pegviz, pipe output to pegviz for pretty printing of results,
-then open the generated file in a web browser.
-
-```sh
-cargo test --features trace | pegviz --output ./pegviz.html
-```
-
-## How It Works
-
-The project is split into 3 parts:
-
-* `dsl` defines relevant domain objects from the IEC 61131-3 language; it is
-   the intermediate set of objects from parsing and contains an abstract syntax
-   tree as one component (among many)
-* `parser` is tokenizes and parses an IEC 61131-3 text file into the `dsl`
-   objects
-* `plc2x` is the front-end for a source-to-source compiler; it assembles all
-   the pieces
-
-There is no strict definition of what goes where. Better rules would be nice.
+This part is a work in progress. Unfortunately there isn't yet a way to install
+the extension.
 
 ## Similar Projects
 

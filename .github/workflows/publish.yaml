@@ -56,6 +56,9 @@ jobs:
   build-win:
     name: Build Windows Installer
     needs: [release]
+    defaults:
+      run:
+        working-directory: ./compiler
     strategy:
       fail-fast: false
       matrix:
@@ -93,7 +96,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            ironplc-${{ matrix.name }}-windows.msi
+            compiler/ironplc-${{ matrix.name }}-windows.msi
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag_name: ${{ needs.release.outputs.tag }}
           fail_on_unmatched_files: true
