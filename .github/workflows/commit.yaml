@@ -1,9 +1,12 @@
 name: Build and Test
 on: [push]
 jobs:
-  tests:
-    name: Tests
+  ironplcc-tests:
+    name: ironplcc Tests
     runs-on:  ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: ./compiler
     strategy:
         matrix:
           os: [ubuntu-latest, windows-latest]
@@ -13,9 +16,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt, clippy
-      - uses: actions-rust-lang/rustfmt@v1
       - uses: taiki-e/install-action@cargo-llvm-cov
-
       - uses: actions/cache@v3
         with:
           path: |
@@ -37,9 +38,13 @@ jobs:
 
       - name: Coverage
         run: cargo llvm-cov --all-features --workspace --fail-under-lines 85 --show-missing-lines
-  windows-installer:
-    name: Windows Installer
+
+  ironplcc-windows-installer:
+    name: ironplcc Windows Installer
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ./compiler
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1

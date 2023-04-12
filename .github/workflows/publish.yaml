@@ -81,6 +81,7 @@ jobs:
         # Only runs the unit tests - we don't care here about formatting
         # or other things because we are building the release
         run: cargo test --all-features
+        working-directory: ./compiler
 
       - name: Install cargo-wix tool
         run: cargo install cargo-wix
@@ -88,6 +89,7 @@ jobs:
       # Assumes the wix toolkit is available.
       - name: Create installer
         run: cargo wix -v --nocapture -o ./ironplc-${{ matrix.name }}-windows.msi -p ironplcc
+        working-directory: ./compiler
 
       - name: Upload Windows Installer
         uses: softprops/action-gh-release@v1
@@ -97,6 +99,7 @@ jobs:
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag_name: ${{ needs.release.outputs.tag }}
           fail_on_unmatched_files: true
+        working-directory: ./compiler
 
   cleanup:
     name: Cleanup Old Development Releases
