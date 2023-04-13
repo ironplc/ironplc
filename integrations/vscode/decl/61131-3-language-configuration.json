@@ -1,0 +1,40 @@
+{
+    "comments": {
+        "blockComment": ["(*", "*)"]
+    },
+    "brackets": [
+        ["[", "]"],
+        ["(", ")"]
+    ],
+    "autoClosingPairs": [
+        { "open": "[", "close": "]" },
+        { "open": "(", "close": ")" },
+        { "open": "'", "close": "'", "notIn": ["string", "comment"] },
+        { "open": "\"", "close": "\"", "notIn": ["string"] },
+        { "open": "(*", "close": "*)", "notIn": ["string"] },
+        { "open": "ACTION", "close": "END_ACTION", "notIn": ["string", "comment"] },
+        { "open": "CASE", "close": "END_CASE", "notIn": ["string", "comment"] },
+        { "open": "CONFIGURATION", "close": "END_CONFIGURATION", "notIn": ["string", "comment"] },
+        { "open": "FOR", "close": "END_FOR", "notIn": ["string", "comment"] },
+        { "open": "FUNCTION", "close": "END_FUNCTION", "notIn": ["string", "comment"] },
+        { "open": "FUNCTION_BLOCK", "close": "END_FUNCTION_BLOCK", "notIn": ["string", "comment"] },
+        { "open": "IF", "close": "END_IF", "notIn": ["string", "comment"] },
+        { "open": "PROGRAM", "close": "END_PROGRAM", "notIn": ["string", "comment"] },
+        { "open": "REPEAT", "close": "END_REPEAT", "notIn": ["string", "comment"] },
+        { "open": "STRUCT", "close": "END_STRUCT", "notIn": ["string", "comment"] },
+        { "open": "VAR", "close": "END_VAR", "notIn": ["string", "comment"] },
+        { "open": "VAR_INPUT", "close": "END_VAR", "notIn": ["string", "comment"] },
+        { "open": "VAR_OUTPUT", "close": "END_VAR", "notIn": ["string", "comment"] },
+        { "open": "VAR_IN_OUT", "close": "END_VAR", "notIn": ["string", "comment"] },
+        { "open": "VAR_TEMP", "close": "END_VAR", "notIn": ["string", "comment"] },
+        { "open": "VAR_EXTERNAL", "close": "END_VAR", "notIn": ["string", "comment"] },
+        { "open": "VAR_ACCESS", "close": "END_VAR", "notIn": ["string", "comment"] },
+        { "open": "VAR_CONFIG", "close": "END_VAR", "notIn": ["string", "comment"] },
+        { "open": "VAR_GLOBAL", "close": "END_VAR", "notIn": ["string", "comment"] },
+        { "open": "WHILE", "close": "END_WHILE", "notIn": ["string", "comment"] }
+    ],
+    "colorizedBracketPairs": [
+        ["(", ")"],
+        ["[", "]"],
+    ]
+}
