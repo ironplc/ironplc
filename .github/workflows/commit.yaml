@@ -71,6 +71,7 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           cache: npm
+          cache-dependency-path: './integrations/vscode/package-lock.json'
 
       - name: Install X server components and Xvfb
         run: sudo apt update && sudo apt install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libdrm2 libgtk-3-0 libgbm1 libasound2 xvfb
