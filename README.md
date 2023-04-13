@@ -29,14 +29,18 @@ environment aims to be available via Visual Studio Code.
 
 ### Milestones
 
+Current objective is to release a minimum loveable product. The following
+milestones are the current plan to achieve that loveable product.
+
 * ✅ Implement a parsing strategy for a single IEC 61131-3 structured text files
 * ✅ Implement a strategy for semantic analysis
 * ✅ Implement a strategy for reporting errors
 * ✅ Setup automated builds to produce high-quality weekly snapshots
-* IN PROGRESS Complete the parser so that all valid OSCAT files parse without error
-* NOT STARTED Implement language server protocol to integrate diagnostics with Visual Studio Code
+* ✅ Parser progress so that most OSCAT files parse without error
+* IN PROGRESS Implement language server protocol to integrate diagnostics with Visual Studio Code
 * NOT STARTED Build documentation website
 * NOT STARTED Implement a code formatter for structured text files
+* NOT STARTED Parser completed so that all valid OSCAT files parse without error
 
 ## Usage
 
@@ -66,9 +70,14 @@ ironplcc.exe check plc2x\resources\test\first_steps.st
 This part is a work in progress. Unfortunately there isn't yet a way to install
 the extension.
 
+## Contributing and Developing
+
+Contributions are welcome. See [CONTRIBUTING.md](contributing.md) for details.
+
 ## Similar Projects
 
 * [RuSTy](https://github.com/PLC-lang/rusty) - Structured text compiler written in Rust. RuSTy is further along but the LGPL and LGPL licenses are difficult for industrial uses.
+* [Structured Text language Support](https://github.com/Serhioromano/vscode-st) - Structured text language support for Visual Studio Code.
 * [msr](https://github.com/slowtec/msr) - A Rust library for industrial automation.
 * [ethercat-rs](https://github.com/birkenfeld/ethercat-rs) - An experimental Rust automation toolbox using the IgH (Etherlab) EtherCAT master.
 * [rustmatic](https://github.com/NOP0/rustmatic) - Rustmatic is a thought experiment on creating a PLC-like environment in Rust.

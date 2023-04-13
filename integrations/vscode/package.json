@@ -28,7 +28,7 @@
         "id": "61131-3",
         "aliases": ["IEC 61131-3", "Structured Text"],
         "extensions": [".st"],
-        "configuration": "./decl/61131-3-lang-configuration.json"
+        "configuration": "./decl/61131-3-language-configuration.json"
       }
     ]
   },
@@ -38,7 +38,8 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "node ./out/test/runTest.js"
+    "test": "node ./out/test/runTest.js",
+    "release": "npm run compile && npm run lint && npm run test"
   },
   "devDependencies": {
     "@types/vscode": "^1.77.0",
