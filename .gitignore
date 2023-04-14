@@ -3,3 +3,4 @@
 pegviz.html
 *.msi
 **/.vscode-test/**
+*.vsix
