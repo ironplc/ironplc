@@ -12,6 +12,10 @@
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
+    "commands": [{
+      "command": "ironplc.analyzeFile",
+      "title": "IronPLC Analyze File"
+    }],
     "configuration": {
       "title": "IronPLC",
       "properties": {

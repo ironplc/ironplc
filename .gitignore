@@ -2,3 +2,4 @@
 **/target/**
 pegviz.html
 *.msi
+**/.vscode-test/**

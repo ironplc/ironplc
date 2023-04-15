@@ -18,7 +18,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
-	let disposable = vscode.commands.registerCommand('ironplc.helloWorld', () => {
+	let disposable = vscode.commands.registerCommand('ironplc.analyzeFile', () => {
 		// The code you place here will be executed every time your command is executed
 		// Display a message box to the user
 		vscode.window.showInformationMessage('Hello World from IronPLC!');
@@ -49,12 +49,7 @@ function startServer(context: vscode.ExtensionContext) {
 
 	// Options to control the language client
 	const clientOptions: LanguageClientOptions = {
-		// Register the server for plain text documents
-		documentSelector: [{ scheme: 'file', language: 'st', pattern: '*.st' }],
-		synchronize: {
-			// Notify the server about file changes to '.clientrc files contained in the workspace
-			fileEvents: vscode.workspace.createFileSystemWatcher('**/.clientrc')
-		}
+		documentSelector: [{ scheme: 'file', language: '61131-3' }]
 	};
 
 	// Create the language client and start the client.
@@ -64,6 +59,8 @@ function startServer(context: vscode.ExtensionContext) {
 		serverOptions,
 		clientOptions
 	);
+
+	client.start();
 }
 
 function findCompiler() {
@@ -81,9 +78,12 @@ function findCompiler() {
 		}
 	];
 
+	let triedLocations = [];
+
 	for (let trial of trialGenerator) {
 		const result = trial();
 		const testDir = result[0];
+		const typeType = result[1]
 		if (!testDir) {
 			// If this returns falsy, then the trial is not valid and we continue
 			continue;
@@ -91,20 +91,23 @@ function findCompiler() {
 
 		const testExe = path.join(testDir, 'ironplcc' + ext);
 		if (!existsSync(testExe)) {
+			triedLocations.push(typeType + ": " + testExe);
 			// The file name doesn't exist
 			continue;
 		}
 
-		console.log('Found IronPLC compiler using ' + result[1] + ' at "' + testExe + '"');
+		console.log('Found IronPLC compiler using ' + typeType + ' at "' + testExe + '"');
 		return testExe;
 	}
 
-	console.log('Did not find IronPLC compiler');
+	vscode.window.showErrorMessage('Unable to locate IronPLC compiler after searching ' + triedLocations + '. IronPLC is not installed or not configured.');
 	return undefined;
 }
 
 // This method is called when this extension is deactivated
 export function deactivate() : Thenable<void> | undefined {
+	console.log('Extension "ironplc" is deactivating!');
+
 	if (!client) {
 		return undefined;
 	}
