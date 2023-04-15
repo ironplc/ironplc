@@ -4,24 +4,34 @@ This component is the `ironplcc` compiler.
 
 ## Developing
 
-Compilers and runtimes are tricky to get right and hard to keep right. Use
-Cargo to run tests during development:
+Follow the steps in the sections below to setup and develop `ironplcc`.
+
+### Prerequisites
+
+You need to install git, Rust (stable) and Cargo. Get those from your preferred
+source.
+
+### Get the Code and Run a Test
+
+```sh
+git clone https://github.com/garretfick/ironplc.git
+cd ironplc/compiler
+```
+
+Run the checker using Cargo:
+
+```sh
+cargo run check plc2x\resources\test\first_steps.st
+```
+
+### Making Changes
+
+`ironplcc` has an large set of tests. Use Cargo to execute them:
 
 ```sh
 cargo test
-```
-
-### Running the Full Test Suite
-
-The `Cargo` test approach does not execute all tests. The full test suite
-is defined in GitHub actions workflow. You can run the full tests locally
-using [act](https://github.com/nektos/act) (requires Docker).
-
-Follow the steps described in the [act](https://github.com/nektos/act)
-repository to install `act`.
-
-```sh
-act --workflows ./.github/workflows/commit.yaml
+cargo fmt
+cargo clippy
 ```
 
 ### Debugging the Parser

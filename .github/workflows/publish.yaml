@@ -64,7 +64,6 @@ jobs:
       matrix:
         os: [ windows-latest ]
         name: [ release ]
-    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v3
@@ -101,9 +100,47 @@ jobs:
           tag_name: ${{ needs.release.outputs.tag }}
           fail_on_unmatched_files: true
 
+  build-vscode-extension:
+    name: Build Visual Studio Code Extension
+    needs: [release]
+    defaults:
+      run:
+        working-directory: ./integrations/vscode
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ windows-latest ]
+        name: [ release ]
+    
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          cache: npm
+          cache-dependency-path: './integrations/vscode/package-lock.json'
+      
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build and Test
+        run: xvfb-run -a npm run release
+        if: runner.os == 'Linux'
+      - name: Build and Test
+        run: npm run release
+        if: runner.os != 'Linux'
+
+      - name: Upload VSIX
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            integrations/vscode/ironplc-0.0.1.vsix
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag_name: ${{ needs.release.outputs.tag }}
+          fail_on_unmatched_files: true
+
   cleanup:
     name: Cleanup Old Development Releases
-    needs: [release, build-win]
+    needs: [release, build-win, build-vscode-extension]
     runs-on: ubuntu-latest
     steps:
       - uses: softprops/action-gh-release@v1
