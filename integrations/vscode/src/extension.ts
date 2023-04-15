@@ -83,7 +83,7 @@ function findCompiler() {
 	for (let trial of trialGenerator) {
 		const result = trial();
 		const testDir = result[0];
-		const typeType = result[1]
+		const typeType = result[1];
 		if (!testDir) {
 			// If this returns falsy, then the trial is not valid and we continue
 			continue;
