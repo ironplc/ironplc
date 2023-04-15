@@ -10,8 +10,9 @@ as a single repository that hosts all of components:
 * the compiler
 * the Visual Studio Code Extension
 
-See `CONTRIBUTING.md` in `compiler` and `integrations` for more information
-about how to develop each component.
+See [compiler/CONTRIBUTING.md](compiler/CONTRIBUTING.md) and
+[integrations/vscode/CONTRIBUTING.md](integrations/vscode/CONTRIBUTING.md) for
+information about how to develop each component.
 
 ## Developing
 

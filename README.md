@@ -90,7 +90,7 @@ Follow then steps below to check a single file from within Visual Studio Code
 
 ## Contributing
 
-Contributions are very welcome. See [CONTRIBUTING.md](contributing.md) for details.
+Contributions are very welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## Similar Projects
 
