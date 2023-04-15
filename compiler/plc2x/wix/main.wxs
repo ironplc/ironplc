@@ -100,6 +100,16 @@
                                 KeyPath='yes'/>
                         </Component>
                     </Directory>
+
+                    <Directory Id='Examples' Name='examples'>
+                        <Component Id='GettingStartedExample' Guid='*'>
+                            <File
+                                Id='getting_started'
+                                Name='getting_started.st'
+                                Source='..\examples\getting_started.st'
+                                KeyPath='yes'/>
+                        </Component>
+                    </Directory>
                 </Directory>
             </Directory>
         </Directory>
@@ -116,6 +126,7 @@
 
             <ComponentRef Id='License'/>
             <ComponentRef Id='Ironplcc'/>
+            <ComponentRef Id='GettingStartedExample'/>
 
             <Feature
                 Id='Environment'
