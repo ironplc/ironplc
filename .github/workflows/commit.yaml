@@ -29,15 +29,11 @@ jobs:
 
       # Do the format check first so because that is what is mostly likely to
       # be neglected.
-
-      - name: Standard Rust format check
-        run: cargo fmt --all -- --check
-
-      - name: Clippy format check
-        run: cargo clippy
-
-      - name: Rust Tests with Coverage
-        run: cargo llvm-cov --all-features --workspace --fail-under-lines 85 --show-missing-lines
+      - name: Rust tests
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy
+          cargo llvm-cov --all-features --workspace --fail-under-lines 85 --show-missing-lines
 
   ironplcc-windows-installer:
     name: ironplcc Windows Installer
