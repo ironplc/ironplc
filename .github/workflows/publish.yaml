@@ -56,6 +56,7 @@ jobs:
   build-win:
     name: Build Windows Installer
     needs: [release]
+    runs-on:  ${{ matrix.os }}
     defaults:
       run:
         working-directory: ./compiler
@@ -103,6 +104,7 @@ jobs:
   build-vscode-extension:
     name: Build Visual Studio Code Extension
     needs: [release]
+    runs-on:  ${{ matrix.os }}
     defaults:
       run:
         working-directory: ./integrations/vscode
