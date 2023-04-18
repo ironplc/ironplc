@@ -53,7 +53,7 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "node ./out/test/runTest.js",
-    "release": "npm run compile && npm run lint && npm run test && npx vsce package"
+    "release": "npm run compile && npm run lint && npm run test && npx vsce package --out ironplc-vscode-extension-release.vsix --pre-release"
   },
   "devDependencies": {
     "@types/glob": "^8.1.0",
