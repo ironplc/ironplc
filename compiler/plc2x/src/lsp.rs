@@ -127,29 +127,29 @@ impl LspServer {
 
     fn check_document(&self, uri: Url, version: i32, contents: String) {
         let diagnostic = analyze(contents.as_str(), &PathBuf::default()).err();
-        self.notify_analyze_result(uri, version, diagnostic);
+        self.notify_analyze_result(uri, version, contents, diagnostic);
     }
 
     fn notify_analyze_result(
         &self,
         uri: Url,
         version: i32,
+        contents: String,
         diagnostic: Option<ironplc_dsl::diagnostic::Diagnostic>,
     ) {
         self.send_notification::<PublishDiagnostics>(PublishDiagnosticsParams {
             uri,
-            diagnostics: diagnostic.map_or_else(Vec::new, |f| vec![map_diagnostic(f)]),
+            diagnostics: diagnostic.map_or_else(Vec::new, |f| vec![map_diagnostic(f, &contents)]),
             version: Some(version),
         });
     }
 }
 
-fn map_diagnostic(diagnostic: ironplc_dsl::diagnostic::Diagnostic) -> lsp_types::Diagnostic {
-    // TODO this ignores the position and doesn't include secondary information
-    let range = lsp_types::Range::new(
-        lsp_types::Position::new(0, 0),
-        lsp_types::Position::new(0, 0),
-    );
+fn map_diagnostic(
+    diagnostic: ironplc_dsl::diagnostic::Diagnostic,
+    contents: &str,
+) -> lsp_types::Diagnostic {
+    let range = map_label(diagnostic.primary, contents);
     lsp_types::Diagnostic {
         range,
         severity: Some(DiagnosticSeverity::ERROR),
@@ -160,5 +160,45 @@ fn map_diagnostic(diagnostic: ironplc_dsl::diagnostic::Diagnostic) -> lsp_types:
         related_information: None,
         tags: None,
         data: None,
+    }
+}
+
+fn map_label(label: ironplc_dsl::diagnostic::Label, contents: &str) -> lsp_types::Range {
+    // TODO this ignores the position and doesn't include secondary information
+
+    match label.location {
+        ironplc_dsl::diagnostic::Location::QualifiedPosition(qualified) => lsp_types::Range::new(
+            lsp_types::Position::new(qualified.line as u32, qualified.column as u32),
+            lsp_types::Position::new(qualified.line as u32, qualified.column as u32),
+        ),
+        ironplc_dsl::diagnostic::Location::OffsetRange(offset) => {
+            let mut start_line = 0;
+            let mut start_offset = 0;
+
+            for char in contents[0..offset.start].chars() {
+                if char == '\n' {
+                    start_line += 1;
+                    start_offset = 0;
+                } else {
+                    start_offset += 1;
+                }
+            }
+
+            let mut end_line = start_line;
+            let mut end_offset = start_offset;
+            for char in contents[offset.start..offset.start].chars() {
+                if char == '\n' {
+                    end_line += 1;
+                    end_offset = 0;
+                } else {
+                    end_offset += 1;
+                }
+            }
+
+            lsp_types::Range::new(
+                lsp_types::Position::new(start_line, start_offset),
+                lsp_types::Position::new(end_line, end_offset),
+            )
+        }
     }
 }

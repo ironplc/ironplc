@@ -79,7 +79,7 @@ Follow the steps below to install the Visual Studio Code Extension for IronPLC:
 
 1. Navigate to [IronPLC releases](https://github.com/garretfick/ironplc/releases)
 1. From the releases page, download the latest snapshot for your system, for
-   example `ironplc-vscode-extension-release-windows.vsix`
+   example `ironplc-vscode-extension-release.vsix`
 1. In Visual Studio Code, type `Ctrl+Shift+P`, then type `Install from VISX...` and choose the matching item
 1. In the dialog, choose the VISX file you downloaded earlier
 
