@@ -33,7 +33,7 @@ a first class environment.
 The project is progressing towards a minimum loveable product. The following
 milestones are the current plan to achieve that loveable product.
 
-* ✅ Implement a parsing strategy for a single IEC 61131-3 structured text files
+* ✅ Implement a parsing strategy for a single IEC 61131-3 structured text file
 * ✅ Implement a strategy for semantic analysis
 * ✅ Implement a strategy for reporting errors
 * ✅ Setup automated builds to produce high-quality weekly snapshots

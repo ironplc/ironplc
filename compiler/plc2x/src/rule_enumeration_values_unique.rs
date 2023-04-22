@@ -17,11 +17,11 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::{Id, SourcePosition},
+    core::{FileId, Id, SourcePosition},
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
-use std::{collections::HashSet, path::PathBuf};
+use std::collections::HashSet;
 
 pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     let mut visitor = RuleEnumerationValuesUnique {};
@@ -51,13 +51,13 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
                                     node.type_name, first
                                 ),
                                 Label::source_loc(
-                                    PathBuf::default(),
+                                    FileId::default(),
                                     first.position(),
                                     "First instance",
                                 ),
                             )
                             .with_secondary(Label::source_loc(
-                                PathBuf::default(),
+                                FileId::default(),
                                 current.position(),
                                 "Duplicate value",
                             )));
@@ -75,8 +75,6 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
 
     use crate::stages::parse;
@@ -88,7 +86,7 @@ TYPE
 LOGLEVEL : (CRITICAL, ERROR);
 END_TYPE";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok());
@@ -102,7 +100,7 @@ LOGLEVEL : (CRITICAL, ERROR);
 LOGLEVEL2 : LOGLEVEL;
 END_TYPE";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok());
@@ -115,7 +113,7 @@ TYPE
 LOGLEVEL : (CRITICAL, CRITICAL);
 END_TYPE";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err());

@@ -57,7 +57,7 @@ fn check_file(filename: PathBuf, suppress_output: bool) -> Result<(), usize> {
     let config = codespan_reporting::term::Config::default();
 
     println!("Checking {}", filename.display());
-    match analyze(&contents, &filename) {
+    match analyze(&contents, &String::from(filename.to_str().unwrap())) {
         Ok(_) => {
             println!("OK");
             Ok(())
@@ -147,6 +147,13 @@ mod tests {
     #[test]
     fn first_steps_when_valid_syntax_then_ok() {
         let paths = vec![resource_path("first_steps.st")];
+        let result = check(paths, true);
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    fn first_steps_dir_when_valid_syntax_then_ok() {
+        let paths = vec![resource_path("set")];
         let result = check(paths, true);
         assert!(result.is_ok())
     }
