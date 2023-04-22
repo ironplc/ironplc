@@ -1,9 +1,10 @@
+//! Common items useful for working with IEC 61131-3 elements but not
+//! part of the standard.
 use core::fmt;
 use std::ops::Range;
 use std::{cmp::Ordering, hash::Hash, hash::Hasher};
 
-use std::path::PathBuf;
-pub type FileId = PathBuf;
+pub type FileId = String;
 
 /// Location in a file of a language element instance.
 ///

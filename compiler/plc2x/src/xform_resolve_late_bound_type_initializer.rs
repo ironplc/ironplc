@@ -4,9 +4,7 @@
 //! The IEC 61131-3 syntax has some ambiguous types that are initially
 //! parsed into a placeholder. This transform replaces the placeholders
 //! with well-known types.
-use std::path::PathBuf;
-
-use ironplc_dsl::core::SourcePosition;
+use ironplc_dsl::core::{FileId, SourcePosition};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
@@ -77,13 +75,13 @@ impl SymbolTable<'_, Id, TypeDefinitionKind> {
                 "S0001",
                 "Duplicate definition name",
                 Label::source_loc(
-                    PathBuf::default(),
+                    FileId::default(),
                     to_add.position(),
                     format!("Duplicated definition {}", to_add),
                 ),
             )
             .with_secondary(Label::source_loc(
-                PathBuf::default(),
+                FileId::default(),
                 existing.0.position(),
                 "First definition",
             )));
@@ -167,7 +165,7 @@ impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
                         return Err(Diagnostic::new(
                             "E0001",
                             "Unknown type",
-                            Label::source_loc(PathBuf::default(), name.position(), "Variable type"),
+                            Label::source_loc(FileId::default(), name.position(), "Variable type"),
                         ));
                     }
                 }
@@ -179,12 +177,10 @@ impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::apply;
     use ironplc_dsl::{
         common::*,
-        core::{Id, SourceLoc},
+        core::{FileId, Id, SourceLoc},
     };
 
     #[test]
@@ -201,7 +197,7 @@ FUNCTION_BLOCK caller
     
 END_FUNCTION_BLOCK
         ";
-        let input = ironplc_parser::parse_program(program, &PathBuf::default()).unwrap();
+        let input = ironplc_parser::parse_program(program, &FileId::default()).unwrap();
         let result = apply(input).unwrap();
 
         let expected = Library {
@@ -240,7 +236,7 @@ FUNCTION_BLOCK caller
     
 END_FUNCTION_BLOCK
         ";
-        let input = ironplc_parser::parse_program(program, &PathBuf::default()).unwrap();
+        let input = ironplc_parser::parse_program(program, &FileId::default()).unwrap();
         let result = apply(input).unwrap();
 
         let expected = Library {
@@ -280,7 +276,7 @@ FUNCTION_BLOCK caller
     
 END_FUNCTION_BLOCK
         ";
-        let input = ironplc_parser::parse_program(program, &PathBuf::default()).unwrap();
+        let input = ironplc_parser::parse_program(program, &FileId::default()).unwrap();
         let result = apply(input).unwrap();
 
         let expected = Library {
@@ -327,7 +323,7 @@ FUNCTION_BLOCK caller
     
 END_FUNCTION_BLOCK
         ";
-        let input = ironplc_parser::parse_program(program, &PathBuf::default()).unwrap();
+        let input = ironplc_parser::parse_program(program, &FileId::default()).unwrap();
         let result = apply(input);
         assert!(result.is_err())
     }

@@ -33,7 +33,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::Id,
+    core::{FileId, Id},
     diagnostic::{Diagnostic, Label},
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
@@ -44,7 +44,7 @@ use petgraph::{
     algo::is_cyclic_directed,
     stable_graph::{NodeIndex, StableDiGraph},
 };
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 
 pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     // Walk to build a graph of POUs and their relationships
@@ -58,7 +58,7 @@ pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
             "S0005",
             "Library has a recursive cycle",
             // TODO wrong location
-            Label::offset(PathBuf::default(), 0..0, "Cycle"),
+            Label::offset(FileId::default(), 0..0, "Cycle"),
         ));
     }
 
@@ -152,7 +152,7 @@ impl Visitor<Diagnostic> for RulePousNoCycles {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use ironplc_dsl::core::FileId;
 
     use super::*;
 
@@ -168,7 +168,7 @@ mod tests {
 
         END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
         assert!(result.is_err());
     }
@@ -190,7 +190,7 @@ mod tests {
 
         END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
         assert!(result.is_ok());
     }
@@ -213,7 +213,7 @@ mod tests {
             Caller := FALSE;
         END_FUNCTION";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
         assert!(result.is_ok());
     }

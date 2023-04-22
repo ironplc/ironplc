@@ -28,10 +28,9 @@
 //! I don't know if it is possible to have an external
 //! reference where one part declares the value and another
 //! references the value (and still be constant).
-use std::path::PathBuf;
-
 use ironplc_dsl::{
     common::*,
+    core::FileId,
     diagnostic::{Diagnostic, Label},
     visitor::{visit_variable_declaration, Visitor},
 };
@@ -65,7 +64,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                                 "Variable is constant but does not define value {} ",
                                 node.name
                             ),
-                            Label::source_loc(PathBuf::default(), &node.position, "Variable"),
+                            Label::source_loc(FileId::default(), &node.position, "Variable"),
                         ));
                     }
                 },
@@ -79,7 +78,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                                 node.name
                             ),
                             Label::source_loc(
-                                PathBuf::default(),
+                                FileId::default(),
                                 &node.position,
                                 "Variable declaration",
                             ),
@@ -96,7 +95,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                                 node.name
                             ),
                             Label::source_loc(
-                                PathBuf::default(),
+                                FileId::default(),
                                 &node.position,
                                 "Variable declaration",
                             ),
@@ -114,7 +113,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                                     node.name
                                 ),
                                 Label::source_loc(
-                                    PathBuf::default(),
+                                    FileId::default(),
                                     &node.position,
                                     "Variable declaration",
                                 ),
@@ -139,7 +138,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
 
 #[cfg(test)]
 mod test {
-    use std::path::PathBuf;
+    use ironplc_dsl::core::FileId;
 
     use super::*;
 
@@ -155,7 +154,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -175,7 +174,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -191,7 +190,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -207,7 +206,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -227,7 +226,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -243,7 +242,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())

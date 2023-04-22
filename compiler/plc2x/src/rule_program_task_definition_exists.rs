@@ -14,11 +14,11 @@
 //! END_RESOURCE
 use ironplc_dsl::{
     common::*,
-    core::SourcePosition,
+    core::{FileId, SourcePosition},
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
-use std::{collections::HashSet, path::PathBuf};
+use std::collections::HashSet;
 
 pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     let mut visitor = RuleProgramTaskDefinitionExists::new();
@@ -57,7 +57,7 @@ impl Visitor<Diagnostic> for RuleProgramTaskDefinitionExists {
                             program.name, task_name
                         ),
                         Label::source_loc(
-                            PathBuf::default(),
+                            FileId::default(),
                             task_name.position(),
                             "Reference to task configuration",
                         ),
@@ -72,7 +72,7 @@ impl Visitor<Diagnostic> for RuleProgramTaskDefinitionExists {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use ironplc_dsl::core::FileId;
 
     use super::*;
 
@@ -87,7 +87,7 @@ mod tests {
             END_RESOURCE
         END_CONFIGURATION";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
         assert!(result.is_err());
     }
@@ -102,7 +102,7 @@ mod tests {
             END_RESOURCE
         END_CONFIGURATION";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
         assert!(result.is_ok());
     }

@@ -33,7 +33,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::Id,
+    core::{FileId, Id},
     diagnostic::{Diagnostic, Label},
     textual::*,
     visitor::{
@@ -41,7 +41,7 @@ use ironplc_dsl::{
         Visitor,
     },
 };
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 
 /// Returns the first variable matching the specified name and one of the
 /// variable types or `None` if the owner does not contain a matching
@@ -143,7 +143,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
                     "Function call {} mixes named (formal) and positional (non-format) input arguments",
                     function_block.name
                 ),
-                Label::source_loc(PathBuf::default(), &fb_call.position, "Function ")
+                Label::source_loc(FileId::default(), &fb_call.position, "Function ")
             ));
         }
 
@@ -161,8 +161,8 @@ impl<'a> RuleFunctionBlockUse<'a> {
                                 "Function invocation {} assigns named (formal) input that is not defined {}",
                                 function_block.name, name.name
                             ),
-                            Label::source_loc(PathBuf::default(), &fb_call.position, "Function block invocation")
-                        ).with_secondary(Label::source_loc(PathBuf::default(), &function_block.position, "Function block declaration")))
+                            Label::source_loc(FileId::default(), &fb_call.position, "Function block invocation")
+                        ).with_secondary(Label::source_loc(FileId::default(), &function_block.position, "Function block declaration")))
                     }
                 }
             }
@@ -179,7 +179,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
                         "Function invocation {} requires {} non-formal inputs but the invocation has {} formal inputs",
                         function_block.name, num_required_inputs, non_formal.len()
                     ),
-                    Label::source_loc(PathBuf::default(), &fb_call.position, "Function block invocation")
+                    Label::source_loc(FileId::default(), &fb_call.position, "Function block invocation")
                 ));
             }
         }
@@ -196,7 +196,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
                             "Function invocation {} assigns from {} (to {:?}) but {} is not an output variable of the function",
                             function_block.name, output.src, output.tgt, output.src
                         ),
-                        Label::source_loc(PathBuf::default(), &fb_call.position, "Function block invocation")
+                        Label::source_loc(FileId::default(), &fb_call.position, "Function block invocation")
                     ))
                 }
             }
@@ -275,7 +275,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
                     fb_call.var_name
                 ),
                 Label::source_loc(
-                    PathBuf::new(),
+                    FileId::new(),
                     &fb_call.position,
                     "Function block invocation",
                 ),
@@ -286,7 +286,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use ironplc_dsl::core::FileId;
 
     use super::*;
     use crate::stages::parse;
@@ -305,7 +305,7 @@ END_VAR
 FB_INSTANCE();
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -328,7 +328,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -351,7 +351,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE, FALSE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -367,7 +367,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -390,7 +390,7 @@ END_VAR
 FB_INSTANCE(TRUE, FALSE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -414,7 +414,7 @@ END_VAR
 FB_INSTANCE(OUT1 => LOCAL);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -437,7 +437,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE, IN2 := FALSE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -456,7 +456,7 @@ END_VAR
 FB_INSTANCE(BAR := TRUE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -479,7 +479,7 @@ END_VAR
 FB_INSTANCE(TRUE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -501,7 +501,7 @@ END_VAR
 FB_INSTANCE(TRUE, FALSE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -523,7 +523,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE, BAR := TRUE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -546,7 +546,7 @@ END_VAR
 FB_INSTANCE(OUT2 => LOCAL);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -568,7 +568,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE);
 END_PROGRAM";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())

@@ -6,6 +6,7 @@ extern crate ironplc_parser;
 
 pub mod cli;
 pub mod lsp;
+pub mod project;
 mod rule_decl_struct_element_unique_names;
 mod rule_decl_subrange_limits;
 mod rule_enumeration_values_unique;

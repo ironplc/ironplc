@@ -107,8 +107,6 @@ pub fn remove_standard_comment(source: &str, file_id: &FileId) -> Result<String,
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
 
     #[test]
@@ -120,7 +118,7 @@ mod tests {
             END_STRUCT;
         END_TYPE";
 
-        let output = preprocess(program, &PathBuf::new()).unwrap();
+        let output = preprocess(program, &FileId::default()).unwrap();
         assert_eq!(program, output.as_str());
     }
 
@@ -142,7 +140,7 @@ mod tests {
             END_STRUCT;
         END_TYPE";
 
-        let output = preprocess(program, &PathBuf::new()).unwrap();
+        let output = preprocess(program, &FileId::default()).unwrap();
         assert_eq!(expected, output.as_str());
     }
 
@@ -158,7 +156,7 @@ mod tests {
                                       
         END_TYPE";
 
-        let output = preprocess(program, &PathBuf::new()).unwrap();
+        let output = preprocess(program, &FileId::default()).unwrap();
         assert_eq!(expected, output.as_str());
     }
 
@@ -172,6 +170,6 @@ mod tests {
             END_STRUCT;
         END_TYPE";
 
-        assert!(preprocess(program, &PathBuf::new()).is_err());
+        assert!(preprocess(program, &FileId::default()).is_err());
     }
 }

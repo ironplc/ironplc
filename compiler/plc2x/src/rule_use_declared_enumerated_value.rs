@@ -30,14 +30,11 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::{Id, SourcePosition},
+    core::{FileId, Id, SourcePosition},
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-};
+use std::collections::{HashMap, HashSet};
 
 pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     // Collect the data type definitions from the library into a map so that
@@ -104,7 +101,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                         "S0001",
                         format!("Enumeration {name} is not declared"),
                         Label::source_loc(
-                            PathBuf::default(),
+                            FileId::default(),
                             name.position(),
                             "Enumeration reference",
                         ),
@@ -117,7 +114,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                 return Err(Diagnostic::new(
                     "S0001",
                     format!("Recursive enumeration for type {name}"),
-                    Label::source_loc(PathBuf::default(), name.position(), "Current enumeration"),
+                    Label::source_loc(FileId::default(), name.position(), "Current enumeration"),
                 ));
             }
         }
@@ -144,7 +141,7 @@ impl Visitor<Diagnostic> for RuleDeclaredEnumeratedValues<'_> {
                         value.value
                     ),
                     Label::source_loc(
-                        PathBuf::default(),
+                        FileId::default(),
                         value.position(),
                         "Expected value in enumeration",
                     ),
@@ -158,7 +155,7 @@ impl Visitor<Diagnostic> for RuleDeclaredEnumeratedValues<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use ironplc_dsl::core::FileId;
 
     use super::*;
 
@@ -177,7 +174,7 @@ LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err());
@@ -196,7 +193,7 @@ LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok());
@@ -217,7 +214,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok());

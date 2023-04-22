@@ -34,11 +34,11 @@
 //!   END_VAR
 //! END_FUNCTION_BLOCK
 //! ```
-use std::{collections::HashSet, path::PathBuf};
+use std::collections::HashSet;
 
 use ironplc_dsl::{
     common::*,
-    core::{Id, SourcePosition},
+    core::{FileId, Id, SourcePosition},
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -90,13 +90,13 @@ impl<'a> Visitor<Diagnostic> for RuleExternalGlobalConst<'a> {
                         node.name,
                     ),
                     Label::source_loc(
-                        PathBuf::default(),
+                        FileId::default(),
                         node.name.position(),
                         "Reference to global variable",
                     ),
                 )
                 .with_secondary(Label::source_loc(
-                    PathBuf::default(),
+                    FileId::default(),
                     global.position(),
                     "Constant global variable",
                 )));
@@ -109,8 +109,6 @@ impl<'a> Visitor<Diagnostic> for RuleExternalGlobalConst<'a> {
 
 #[cfg(test)]
 mod test {
-    use std::path::PathBuf;
-
     use super::*;
 
     use crate::stages::parse;
@@ -134,7 +132,7 @@ FUNCTION_BLOCK func
     END_VAR
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -161,7 +159,7 @@ FUNCTION_BLOCK func
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())

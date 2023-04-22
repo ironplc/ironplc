@@ -64,14 +64,13 @@ pub fn semantic(library: &Library) -> Result<(), Diagnostic> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use crate::stages::analyze;
     use crate::test_helpers;
 
     use super::parse;
 
     use ironplc_dsl::common::*;
+    use ironplc_dsl::core::FileId;
     use ironplc_dsl::core::Id;
     use ironplc_dsl::core::SourceLoc;
     use ironplc_dsl::sfc::*;
@@ -83,21 +82,21 @@ mod tests {
     #[test]
     fn analyze_when_first_steps_then_result_is_ok() {
         let src = read_resource("first_steps.st");
-        let res = analyze(&src, &PathBuf::default());
+        let res = analyze(&src, &FileId::default());
         assert!(res.is_ok())
     }
 
     #[test]
     fn analyze_when_first_steps_syntax_error_then_result_is_err() {
         let src = read_resource("first_steps_syntax_error.st");
-        let res = analyze(&src, &PathBuf::default());
+        let res = analyze(&src, &FileId::default());
         assert!(res.is_err())
     }
 
     #[test]
     fn analyze_when_first_steps_semantic_error_then_result_is_err() {
         let src = read_resource("first_steps_semantic_error.st");
-        let res = analyze(&src, &PathBuf::default());
+        let res = analyze(&src, &FileId::default());
         assert!(res.is_err())
     }
 
@@ -113,7 +112,7 @@ mod tests {
                 ),
             }),
         ));
-        assert_eq!(parse(src.as_str(), &PathBuf::default()).unwrap(), expected)
+        assert_eq!(parse(src.as_str(), &FileId::default()).unwrap(), expected)
     }
 
     #[test]
@@ -152,7 +151,7 @@ mod tests {
             },
         ));
         assert_eq!(
-            ironplc_parser::parse_program(src.as_str(), &PathBuf::default()).unwrap(),
+            ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap(),
             expected
         )
     }
@@ -253,7 +252,7 @@ mod tests {
             },
         ));
         assert_eq!(
-            ironplc_parser::parse_program(src.as_str(), &PathBuf::default()).unwrap(),
+            ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap(),
             expected
         )
     }
@@ -289,7 +288,7 @@ mod tests {
             },
         ));
         assert_eq!(
-            ironplc_parser::parse_program(src.as_str(), &PathBuf::default()).unwrap(),
+            ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap(),
             expected
         )
     }
@@ -348,7 +347,7 @@ mod tests {
                 ),
             )],
         }));
-        let program = ironplc_parser::parse_program(src.as_str(), &PathBuf::default()).unwrap();
+        let program = ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap();
         assert_eq!(program, expected)
     }
 
@@ -401,7 +400,7 @@ mod tests {
             ]),
         }));
         assert_eq!(
-            ironplc_parser::parse_program(src.as_str(), &PathBuf::default()).unwrap(),
+            ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap(),
             expected
         )
     }
@@ -440,7 +439,7 @@ mod tests {
             },
         ));
         assert_eq!(
-            ironplc_parser::parse_program(src.as_str(), &PathBuf::default()).unwrap(),
+            ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap(),
             expected
         )
     }

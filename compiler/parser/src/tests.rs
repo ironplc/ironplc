@@ -1,9 +1,11 @@
+//! Tests of parser.
 #[cfg(test)]
 mod test {
     use std::fs;
     use std::path::PathBuf;
 
     use dsl::common::Library;
+    use dsl::core::FileId;
     use dsl::diagnostic::Diagnostic;
 
     use crate::parse_program;
@@ -18,7 +20,7 @@ mod test {
 
     pub fn parse_resource(name: &'static str) -> Result<Library, Diagnostic> {
         let source = read_resource(name);
-        parse_program(&source, &PathBuf::new())
+        parse_program(&source, &FileId::default())
     }
 
     #[test]

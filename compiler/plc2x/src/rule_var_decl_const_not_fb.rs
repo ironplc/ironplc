@@ -17,11 +17,9 @@
 //!    END_VAR
 //! END_FUNCTION_BLOCK
 //! ```
-use std::path::PathBuf;
-
 use ironplc_dsl::{
     common::*,
-    core::SourcePosition,
+    core::{FileId, SourcePosition},
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -46,7 +44,7 @@ impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
                         fb.type_name
                     ),
                     Label::source_loc(
-                        PathBuf::default(),
+                        FileId::default(),
                         node.name.position(),
                         "Declaration of function block instance",
                     ),
@@ -60,7 +58,7 @@ impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use ironplc_dsl::core::FileId;
 
     use super::*;
 
@@ -80,7 +78,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -99,7 +97,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok())
