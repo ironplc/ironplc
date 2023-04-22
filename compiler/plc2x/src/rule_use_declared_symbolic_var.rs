@@ -26,11 +26,9 @@
 //!    TRIG := TRIG0;
 //! END_FUNCTION_BLOCK
 //! ```
-use std::path::PathBuf;
-
 use ironplc_dsl::{
     common::*,
-    core::{Id, SourcePosition},
+    core::{FileId, Id, SourcePosition},
     diagnostic::{Diagnostic, Label},
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
@@ -98,7 +96,7 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
                 "S0001",
                 format!("Variable {} not defined before used", node.name),
                 Label::source_loc(
-                    PathBuf::default(),
+                    FileId::default(),
                     node.name.position(),
                     "Undefined variable",
                 ),
@@ -109,8 +107,6 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
     use crate::stages::parse;
 
@@ -125,7 +121,7 @@ END_VAR
 TRIG := TRIG0;
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_err());
@@ -143,7 +139,7 @@ END_VAR
 TRIG := TRIG0;
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok());
@@ -161,7 +157,7 @@ END_VAR
 TRIG := TRIG0;
 END_FUNCTION";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok());
@@ -179,7 +175,7 @@ END_VAR
 TRIG := TRIG0;
 END_PROGRAM";
 
-        let library = parse(program, &PathBuf::default()).unwrap();
+        let library = parse(program, &FileId::default()).unwrap();
         let result = apply(&library);
 
         assert!(result.is_ok());

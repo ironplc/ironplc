@@ -1,37 +1,41 @@
 //! Implements the language server protocol for integration with an IDE such
 //! as Visual Studio Code.
-use std::path::PathBuf;
 
 use lsp_server::{Connection, ExtractError, Message};
 use lsp_types::{
     notification::{self, PublishDiagnostics},
-    DiagnosticSeverity, DidChangeTextDocumentParams, NumberOrString, PublishDiagnosticsParams,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    DiagnosticSeverity, NumberOrString, PublishDiagnosticsParams, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::stages::analyze;
+use crate::project::Project;
 
 // TODO give a real error
-pub fn start() -> Result<(), String> {
+pub fn start(project: Box<dyn Project>) -> Result<(), String> {
     let (connection, io_threads) = Connection::stdio();
+    let result = start_with_connection(connection, project);
 
+    // TODO remove the unwrap
+    io_threads.join().unwrap();
+
+    result
+}
+
+fn start_with_connection(connection: Connection, project: Box<dyn Project>) -> Result<(), String> {
     let server_capabilities = serde_json::to_value(LspServer::server_capabilities()).unwrap();
     connection
         .initialize(server_capabilities)
         .map_err(|e| e.to_string())?;
 
-    let server = LspServer::new(connection);
+    let server = LspServer::new(connection, project);
     server.main_loop()?;
-
-    // TODO remove the unwrap
-    io_threads.join().unwrap();
-
     Ok(())
 }
 
 struct LspServer {
     connection: Connection,
+    project: Box<dyn Project>,
 }
 
 impl LspServer {
@@ -46,8 +50,11 @@ impl LspServer {
         }
     }
 
-    fn new(connection: Connection) -> Self {
-        Self { connection }
+    fn new(connection: Connection, project: Box<dyn Project>) -> Self {
+        Self {
+            connection,
+            project,
+        }
     }
 
     /// The main event loop. The event loop receives messages from the other
@@ -82,7 +89,19 @@ impl LspServer {
     fn handle_notification(&self, notification: lsp_server::Notification) {
         let _notification =
             match Self::cast_notification::<notification::DidChangeTextDocument>(notification) {
-                Ok(params) => return self.on_did_change_text_document(params),
+                Ok(params) => {
+                    let contents = params.content_changes.into_iter().next().unwrap().text;
+                    let uri = params.text_document.uri;
+                    let version = params.text_document.version;
+
+                    let diagnostics = self.project.on_did_change_text_document(
+                        &String::from(uri.as_str()),
+                        contents.as_str(),
+                    );
+
+                    self.notify_analyze_result(uri, version, contents, diagnostics);
+                    return;
+                }
                 Err(notification) => notification,
             };
 
@@ -114,22 +133,6 @@ impl LspServer {
             .unwrap()
     }
 
-    fn on_did_change_text_document(&self, params: DidChangeTextDocumentParams) {
-        // The server capabilities asks for the full text in the message so
-        // use that data here.
-        let change = params.content_changes.into_iter().next().unwrap();
-        self.check_document(
-            params.text_document.uri,
-            params.text_document.version,
-            change.text,
-        );
-    }
-
-    fn check_document(&self, uri: Url, version: i32, contents: String) {
-        let diagnostic = analyze(contents.as_str(), &PathBuf::default()).err();
-        self.notify_analyze_result(uri, version, contents, diagnostic);
-    }
-
     fn notify_analyze_result(
         &self,
         uri: Url,
@@ -149,27 +152,27 @@ fn map_diagnostic(
     diagnostic: ironplc_dsl::diagnostic::Diagnostic,
     contents: &str,
 ) -> lsp_types::Diagnostic {
-    let range = map_label(diagnostic.primary, contents);
+    let range = map_label(&diagnostic.primary, contents);
     lsp_types::Diagnostic {
         range,
         severity: Some(DiagnosticSeverity::ERROR),
         code: Some(NumberOrString::String(diagnostic.code)),
         code_description: None,
         source: Some("ironplc".into()),
-        message: diagnostic.description,
+        message: format!("{}: {}", diagnostic.description, diagnostic.primary.message),
         related_information: None,
         tags: None,
         data: None,
     }
 }
 
-fn map_label(label: ironplc_dsl::diagnostic::Label, contents: &str) -> lsp_types::Range {
+fn map_label(label: &ironplc_dsl::diagnostic::Label, contents: &str) -> lsp_types::Range {
     // TODO this ignores the position and doesn't include secondary information
 
-    match label.location {
+    match &label.location {
         ironplc_dsl::diagnostic::Location::QualifiedPosition(qualified) => lsp_types::Range::new(
-            lsp_types::Position::new(qualified.line as u32, qualified.column as u32),
-            lsp_types::Position::new(qualified.line as u32, qualified.column as u32),
+            lsp_types::Position::new((qualified.line - 1) as u32, (qualified.column - 1) as u32),
+            lsp_types::Position::new((qualified.line - 1) as u32, (qualified.column - 1) as u32),
         ),
         ironplc_dsl::diagnostic::Location::OffsetRange(offset) => {
             let mut start_line = 0;
@@ -200,5 +203,202 @@ fn map_label(label: ironplc_dsl::diagnostic::Label, contents: &str) -> lsp_types
                 lsp_types::Position::new(end_line, end_offset),
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use core::time::Duration;
+    use ironplc_dsl::core::FileId;
+    use ironplc_dsl::diagnostic::{Diagnostic, Label};
+    use lsp_server::{Connection, Message, RequestId};
+    use lsp_server::{Notification, Response};
+    use lsp_types::notification;
+    use lsp_types::DidChangeTextDocumentParams;
+    use lsp_types::Url;
+    use lsp_types::VersionedTextDocumentIdentifier;
+    use lsp_types::{
+        request, ClientCapabilities, InitializeParams, InitializeResult, InitializedParams,
+        PublishDiagnosticsParams, TextDocumentContentChangeEvent,
+    };
+    use serde::de::DeserializeOwned;
+    use serde::Serialize;
+    use std::collections::HashMap;
+
+    use crate::project::Project;
+
+    use super::start_with_connection;
+
+    /// A test double for a real project. The mock returns expected responses
+    /// based on input parameters.
+    struct MockProject {}
+
+    impl Project for MockProject {
+        fn on_did_change_text_document(
+            &self,
+            _: &ironplc_dsl::core::FileId,
+            _: &str,
+        ) -> Option<Diagnostic> {
+            Some(
+                Diagnostic::new(
+                    "E0001",
+                    "Some error",
+                    Label::offset(FileId::default(), 0..0, "First location"),
+                )
+                .with_secondary(Label::offset(
+                    FileId::default(),
+                    1..1,
+                    "Second place",
+                )),
+            )
+        }
+    }
+
+    struct TestServer {
+        server_thread: Option<std::thread::JoinHandle<()>>,
+        client_connection: Connection,
+        request_id_counter: i32,
+
+        responses: HashMap<RequestId, Response>,
+        notifications: Vec<Notification>,
+    }
+
+    impl Drop for TestServer {
+        fn drop(&mut self) {
+            self.send_request::<request::Shutdown>(Default::default());
+            self.send_notification::<notification::Exit>(Default::default());
+
+            if let Some(server_thread) = self.server_thread.take() {
+                server_thread.join().unwrap();
+            }
+        }
+    }
+
+    impl TestServer {
+        fn new(project: Box<dyn Project + Send>) -> Self {
+            let (server_connection, client_connection) = Connection::memory();
+
+            let server_thread = std::thread::spawn(|| {
+                start_with_connection(server_connection, project).unwrap();
+            });
+
+            let mut server = Self {
+                server_thread: Some(server_thread),
+                client_connection,
+                request_id_counter: 0,
+                responses: HashMap::new(),
+                notifications: Vec::new(),
+            };
+
+            let init = InitializeParams {
+                process_id: None,
+                root_path: None,
+                root_uri: None,
+                initialization_options: None,
+                capabilities: ClientCapabilities {
+                    workspace: None,
+                    text_document: None,
+                    window: None,
+                    general: None,
+                    experimental: None,
+                },
+                trace: None,
+                workspace_folders: None,
+                client_info: None,
+                locale: None,
+            };
+
+            let initialize_id = server.send_request::<request::Initialize>(init);
+            server.receive_response::<InitializeResult>(initialize_id);
+
+            server.send_notification::<notification::Initialized>(InitializedParams {});
+
+            server
+        }
+
+        fn send_request<N>(&mut self, params: N::Params) -> RequestId
+        where
+            N: lsp_types::request::Request,
+            N::Params: Serialize,
+        {
+            self.request_id_counter += 1;
+            let message = lsp_server::Request::new(
+                RequestId::from(self.request_id_counter),
+                N::METHOD.to_string(),
+                params,
+            );
+            self.client_connection
+                .sender
+                .send(Message::Request(message))
+                .unwrap();
+            RequestId::from(self.request_id_counter)
+        }
+
+        /// Sends a message from the client, such as VSCode, to the server.
+        fn send_notification<N>(&mut self, params: N::Params)
+        where
+            N: lsp_types::notification::Notification,
+            N::Params: Serialize,
+        {
+            let message = lsp_server::Notification::new(N::METHOD.to_string(), params);
+            self.client_connection
+                .sender
+                .send(Message::Notification(message))
+                .unwrap();
+        }
+
+        fn receive(&mut self) {
+            let timeout = Duration::from_secs(60);
+            let message = self
+                .client_connection
+                .receiver
+                .recv_timeout(timeout)
+                .unwrap();
+
+            match message {
+                Message::Request(_) => panic!(),
+                Message::Response(response) => {
+                    let id = response.id.clone();
+                    self.responses.insert(id, response);
+                }
+                Message::Notification(notification) => {
+                    self.notifications.push(notification);
+                }
+            }
+        }
+
+        fn receive_response<T: DeserializeOwned>(&mut self, request_id: RequestId) -> T {
+            self.receive();
+            let response = self.responses.get(&request_id).expect("No request");
+            let value = response.result.clone().unwrap();
+            serde_json::from_value::<T>(value).unwrap()
+        }
+
+        fn receive_notification<T: DeserializeOwned>(&mut self) -> T {
+            self.receive();
+            let notification = self.notifications.pop().expect("Must have notification");
+            serde_json::from_value::<T>(notification.params).unwrap()
+        }
+    }
+
+    #[test]
+    fn text_document_changed_then_returns_diagnostics() {
+        let proj = Box::new(MockProject {});
+        let mut server = TestServer::new(proj);
+        server.send_notification::<notification::DidChangeTextDocument>(
+            DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: Url::parse("file://example.net/a/b.html").unwrap(),
+                    version: 1,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: String::from("this is some text"),
+                }],
+            },
+        );
+
+        server.receive_notification::<PublishDiagnosticsParams>();
     }
 }

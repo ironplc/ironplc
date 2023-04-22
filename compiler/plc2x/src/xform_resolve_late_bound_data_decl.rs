@@ -1,11 +1,10 @@
 use crate::symbol_graph::{SymbolGraph, SymbolNode};
-use ironplc_dsl::core::SourcePosition;
+use ironplc_dsl::core::{FileId, SourcePosition};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
 use ironplc_dsl::{common::*, core::Id};
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 #[derive(Clone)]
 enum LateResolvableTypeDecl {
@@ -94,10 +93,10 @@ impl TypeDeclResolver {
             Err(Diagnostic::new(
                 "S0001",
                 "Duplicate name",
-                Label::source_loc(PathBuf::default(), item.position(), "Duplicate declaration"),
+                Label::source_loc(FileId::default(), item.position(), "Duplicate declaration"),
             )
             .with_secondary(Label::source_loc(
-                PathBuf::default(),
+                FileId::default(),
                 existing.position(),
                 "First declaration",
             )))
@@ -201,10 +200,11 @@ impl Fold<Diagnostic> for DeclarationResolver {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::apply;
-    use ironplc_dsl::{common::*, core::Id};
+    use ironplc_dsl::{
+        common::*,
+        core::{FileId, Id},
+    };
 
     #[test]
     fn apply_when_ambiguous_enum_then_resolves_type() {
@@ -214,7 +214,7 @@ LEVEL : (CRITICAL) := CRITICAL;
 LEVEL_ALIAS : LEVEL;
 END_TYPE
         ";
-        let input = ironplc_parser::parse_program(program, &PathBuf::default()).unwrap();
+        let input = ironplc_parser::parse_program(program, &FileId::default()).unwrap();
         let library = apply(input).unwrap();
 
         let expected = Library {
@@ -252,7 +252,7 @@ LEVEL : (CRITICAL) := CRITICAL;
 LEVEL_ALIAS : LEVEL;
 END_TYPE
         ";
-        let input = ironplc_parser::parse_program(program, &PathBuf::default()).unwrap();
+        let input = ironplc_parser::parse_program(program, &FileId::default()).unwrap();
         let result = apply(input);
 
         assert!(result.is_err())
