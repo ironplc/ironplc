@@ -275,6 +275,7 @@ mod test {
     }
 
     impl TestServer {
+        #[allow(deprecated)]
         fn new(project: Box<dyn Project + Send>) -> Self {
             let (server_connection, client_connection) = Connection::memory();
 
