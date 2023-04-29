@@ -28,7 +28,7 @@
      id="namedview4588"
      showgrid="false"
      inkscape:zoom="3.8839656"
-     inkscape:cx="235.88625"
+     inkscape:cx="159.93295"
      inkscape:cy="120.59956"
      inkscape:window-x="-16"
      inkscape:window-y="-16"
@@ -162,91 +162,34 @@
       </cc:License>
     </rdf:RDF>
   </metadata>
-  <g
-     id="g868"
-     transform="matrix(0.67203126,0,0,0.61667045,-165.8781,33.785821)">
-    <g
-       transform="matrix(0.08346811,0,0,0.08346811,261.51821,-8.484653)"
-       id="layer1">
-      <g
-         id="g3906">
-        <path
-           style="fill:url(#linearGradient3921);stroke:#666666;stroke-width:1px;stroke-linejoin:bevel"
-           inkscape:connector-curvature="0"
-           d="M 334.06,305.62 280,317.38 c -9.2131,2.0018 -20,10.572 -20,20 v 26.188 l 74.062,-57.938 z"
-           id="path3082" />
-        <path
-           style="fill:url(#linearGradient3923)"
-           inkscape:connector-curvature="0"
-           d="m 220,644.09 -20,28.29 c 9.2885,-1.6164 20,-10.572 20,-20 v -8.2812 z"
-           id="path3075" />
-        <path
-           style="fill:#b3b3b3;stroke:#b3b3b3;stroke-width:1px;stroke-linejoin:bevel"
-           inkscape:connector-curvature="0"
-           d="M 82.39,693.52 333.81,402.72 398.71,391.43 200,672.36 Z"
-           id="path3052" />
-        <path
-           style="fill:#b3b3b3"
-           inkscape:connector-curvature="0"
-           d="m 333.81,160.03 -2.8219,2.8219 v 11.295 l 2.8219,2.8219 64.903,14.102 c 5.2,1.14 11.29,5.98 11.29,11.3 v 177.78 c 0,5.321 -6.0453,10.375 -11.287,11.287 l -64.903,11.295 -2.8219,2.8219 v 11.28 l 2.8219,2.8219 h 174.96 l 2.8219,-2.8219 v -11.28 l -2.8219,-2.8219 -64.903,-11.295 c -5.2422,-0.91227 -11.287,-5.9665 -11.287,-11.287 v -177.78 c 0,-5.321 6.0878,-10.158 11.287,-11.287 l 64.903,-14.102 2.8219,-2.8219 v -11.295 l -2.8219,-2.8219 z"
-           id="path2986-7" />
-        <path
-           style="fill:#666666;stroke:#666666;stroke-width:1px;stroke-linejoin:bevel"
-           inkscape:connector-curvature="0"
-           d="M 260,678.56 432.57,406.34 V 228.56 L 260,363.56 Z"
-           id="path3058" />
-        <path
-           style="fill:url(#linearGradient3925)"
-           inkscape:connector-curvature="0"
-           d="M 432.56,380.12 407.5,419.66 260,652.38 c 0,9.4281 10.712,18.384 20,20 l 1.7812,0.3125 145.84,-253.03 16.25,-28.219 c -1.3105,-0.22807 -2.6961,-0.72099 -4,-1.4062 -1.3039,-0.68526 -2.5417,-1.5724 -3.625,-2.5938 -1.0833,-1.0214 -2.0076,-2.1699 -2.6562,-3.4062 -0.32433,-0.61818 -0.57446,-1.257 -0.75,-1.9062 -0.17554,-0.64922 -0.28125,-1.3349 -0.28125,-2 z"
-           id="path3070" />
-        <path
-           style="fill:#cccccc;stroke:#cccccc;stroke-width:1px;stroke-linejoin:bevel"
-           inkscape:connector-curvature="0"
-           d="M 395,262.36 508.77,160.03 H 333.81 L 85,262.36 Z"
-           id="path3046" />
-        <path
-           style="fill:url(#linearGradient3927)"
-           inkscape:connector-curvature="0"
-           d="m 395,262.36 5,5 111.59,-104.51 c 0.0355,-1.6797 -1.171,-2.7967 -2.8219,-2.8219 z"
-           id="path3048" />
-        <path
-           style="fill:#4d4d4d;stroke:#4d4d4d;stroke-width:1px;stroke-linejoin:bevel"
-           inkscape:connector-curvature="0"
-           d="M 398.6,290.34 511.14,174.61 c 0.26108,-0.44487 0.37752,-0.55497 0.44951,-1.1072 v -10.65 l -111.59,104.51 z"
-           id="path3050" />
-        <path
-           style="fill:#b3b3b3;stroke:#b3b3b3;stroke-width:1px;stroke-linejoin:bevel"
-           inkscape:connector-curvature="0"
-           d="M 395,692.38 508.77,402.72 443.86,391.43 280,672.36 Z"
-           id="path3054" />
-        <path
-           style="fill:url(#linearGradient3929)"
-           inkscape:connector-curvature="0"
-           d="M 508.75,402.72 395,692.38 c 2.3221,0.40411 5,2.643 5,5 L 511.59,405.53 c 0.22737,-1.2563 -1.479,-2.6085 -2.8438,-2.8125 z"
-           id="path3056" />
-        <path
-           style="fill:#4d4d4d;stroke:#4d4d4d;stroke-width:1px;stroke-linejoin:bevel"
-           inkscape:connector-curvature="0"
-           d="M 399.68,718.86 511.59,416.83 V 405.55 L 400,697.38 Z"
-           id="path3060" />
-        <path
-           style="fill:#999999;stroke:#999999;stroke-linejoin:bevel"
-           inkscape:connector-curvature="0"
-           d="m 85,262.36 c -2.357,0 -4.9751,2.6431 -5,5 -0.0721,6.8161 0.14572,13.748 0,20.013 -0.05481,2.3564 2.6967,4.4995 5,5 l 115,24.987 c 9.2131,2.0018 20,10.572 20,20 v 315 c 0,9.4281 -10.712,18.384 -20,20 L 85,692.38 c -2.3221,0.40411 -5,2.643 -5,5 v 19.987 c 0,2.357 2.643,5 5,5 h 310 c 2.357,0 5,-2.643 5,-5 V 697.38 c 0,-2.357 -2.6779,-4.5959 -5,-5 L 280,672.36 c -9.2885,-1.6164 -20,-10.572 -20,-20 v -315 c 0,-9.4281 10.787,-17.998 20,-20 l 115,-24.98 c 2.3033,-0.50046 5,-2.643 5,-5 v -20.013 c 0,-2.357 -2.643,-5 -5,-5 z"
-           id="path2986" />
-      </g>
-    </g>
-    <text
-       id="text843"
-       y="49.543674"
-       x="305.61752"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:59.6546669px;line-height:1.25;font-family:'Bauhaus 93';-inkscape-font-specification:'Bauhaus 93, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1.49135602"
-       xml:space="preserve"><tspan
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:59.6546669px;font-family:'Bauhaus 93';-inkscape-font-specification:'Bauhaus 93, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;stroke-width:1.49135602"
-         y="49.543674"
-         x="305.61752"
-         id="tspan841"
-         sodipodi:role="line">ronPLC</tspan></text>
-  </g>
+  <text
+     xml:space="preserve"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:19.09866333px;line-height:1.25;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#a07272;fill-opacity:1;stroke:none;stroke-width:0.31060892"
+     x="22.293036"
+     y="85.206757"
+     id="text843-7"
+     transform="scale(1.3188133,0.75825744)"><tspan
+       sodipodi:role="line"
+       id="tspan841-65"
+       x="22.293036"
+       y="85.206757"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:19.09866333px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#a07272;fill-opacity:1;stroke-width:0.31060892"><tspan
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:19.09866333px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#a07272;fill-opacity:1;stroke-width:0.31060892"
+         id="tspan4573">IEC 61131 tools</tspan></tspan></text>
+  <text
+     xml:space="preserve"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:49.24616241px;line-height:1.25;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1.66134763"
+     x="30.892122"
+     y="44.273735"
+     id="text843-2"
+     transform="scale(0.92429933,1.0819006)"><tspan
+       sodipodi:role="line"
+       id="tspan841-6"
+       x="30.892122"
+       y="44.273735"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:49.24616241px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;stroke-width:1.66134763"><tspan
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:49.24616241px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#416693;fill-opacity:1;stroke-width:1.66134763"
+         id="tspan4573-7">IronPL</tspan><tspan
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:49.24616241px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#41669f;fill-opacity:0.94117647;stroke-width:1.66134763"
+         id="tspan4575-7">C</tspan></tspan></text>
 </svg>

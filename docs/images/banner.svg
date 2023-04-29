@@ -8,11 +8,11 @@
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    id="svg2"
-   viewBox="0 0 603.34005 603.34"
+   viewBox="0 0 140.21578 84.309566"
    version="1.1"
-   sodipodi:docname="Product.svg"
-   width="603.34003"
-   height="603.34003"
+   sodipodi:docname="banner.svg"
+   width="140.21577"
+   height="84.30957"
    inkscape:version="0.92.4 (5da689c313, 2019-01-14)">
   <sodipodi:namedview
      pagecolor="#ffffff"
@@ -27,13 +27,19 @@
      inkscape:window-height="1984"
      id="namedview4588"
      showgrid="false"
-     inkscape:zoom="1.3731892"
-     inkscape:cx="270.36596"
-     inkscape:cy="188.16392"
+     inkscape:zoom="10.985514"
+     inkscape:cx="120.51155"
+     inkscape:cy="32.913874"
      inkscape:window-x="-16"
      inkscape:window-y="-16"
      inkscape:window-maximized="1"
-     inkscape:current-layer="svg2" />
+     inkscape:current-layer="svg2"
+     inkscape:lockguides="true"
+     showguides="false"
+     fit-margin-top="10"
+     fit-margin-bottom="10"
+     fit-margin-right="10"
+     fit-margin-left="10" />
   <defs
      id="defs3">
     <linearGradient
@@ -42,7 +48,8 @@
        gradientUnits="userSpaceOnUse"
        y1="331.82999"
        x2="277.70001"
-       x1="291.57999">
+       x1="291.57999"
+       gradientTransform="matrix(0.08620547,0,0,0.07910401,-3.023208,2.6866925)">
       <stop
          id="stop3857"
          stop-color="#666"
@@ -58,7 +65,8 @@
        gradientUnits="userSpaceOnUse"
        y1="656.92999"
        x2="217.35001"
-       x1="211.60001">
+       x1="211.60001"
+       gradientTransform="matrix(0.08620547,0,0,0.07910401,-3.023208,2.6866925)">
       <stop
          id="stop3881"
          stop-color="#b3b3b3"
@@ -74,7 +82,8 @@
        gradientUnits="userSpaceOnUse"
        y1="538.12"
        x2="342.98001"
-       x1="354.89001">
+       x1="354.89001"
+       gradientTransform="matrix(0.08620547,0,0,0.07910401,-3.023208,2.6866925)">
       <stop
          id="stop3873"
          stop-color="#b3b3b3"
@@ -90,7 +99,8 @@
        gradientUnits="userSpaceOnUse"
        y1="258.04999"
        x2="404.38"
-       x1="401.10999">
+       x1="401.10999"
+       gradientTransform="matrix(0.08620547,0,0,0.07910401,-3.023208,2.6866925)">
       <stop
          id="stop3900"
          stop-color="#ccc"
@@ -106,7 +116,8 @@
        gradientUnits="userSpaceOnUse"
        y1="683.65002"
        x2="402.87"
-       x1="398.42999">
+       x1="398.42999"
+       gradientTransform="matrix(0.08620547,0,0,0.07910401,-3.023208,2.6866925)">
       <stop
          id="stop3892"
          stop-color="#b3b3b3"
@@ -132,7 +143,7 @@
             <dc:title>Openclipart</dc:title>
           </cc:Agent>
         </dc:publisher>
-        <dc:title>Girder</dc:title>
+        <dc:title></dc:title>
         <dc:date>2013-04-13T05:36:52</dc:date>
         <dc:description />
         <dc:source>https://openclipart.org/detail/176996/girder-by-jarda-176996</dc:source>
@@ -163,32 +174,32 @@
   </metadata>
   <text
      xml:space="preserve"
-     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:95.89139557px;line-height:1.25;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#a07272;fill-opacity:1;stroke:none;stroke-width:1.55951881"
-     x="19.979752"
-     y="565.91821"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:21.38914299px;line-height:1.25;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#a07272;fill-opacity:1;stroke:none;stroke-width:0.34785989"
+     x="6.1935334"
+     y="98.00045"
      id="text843"
      transform="scale(1.3188133,0.75825744)"><tspan
        sodipodi:role="line"
        id="tspan841"
-       x="19.979752"
-       y="565.91821"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:95.89139557px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#a07272;fill-opacity:1;stroke-width:1.55951881"><tspan
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:95.89139557px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#a07272;fill-opacity:1;stroke-width:1.55951881"
+       x="6.1935334"
+       y="98.00045"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:21.38914299px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#a07272;fill-opacity:1;stroke-width:0.34785989"><tspan
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:21.38914299px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#a07272;fill-opacity:1;stroke-width:0.34785989"
          id="tspan4573">IEC 61131 tools</tspan></tspan></text>
   <text
      xml:space="preserve"
-     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:247.25727844px;line-height:1.25;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:8.34136581"
-     x="23.907766"
-     y="319.08578"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:55.15219879px;line-height:1.25;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1.86059105"
+     x="7.8110747"
+     y="51.388107"
      id="text843-2"
-     transform="scale(0.92429933,1.0819006)"><tspan
+     transform="scale(0.92429932,1.0819006)"><tspan
        sodipodi:role="line"
        id="tspan841-6"
-       x="23.907766"
-       y="319.08578"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:247.25727844px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;stroke-width:8.34136581"><tspan
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:247.25727844px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#416693;fill-opacity:1;stroke-width:8.34136581"
+       x="7.8110747"
+       y="51.388107"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:55.15219879px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;stroke-width:1.86059105"><tspan
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:55.15219879px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#416693;fill-opacity:1;stroke-width:1.86059105"
          id="tspan4573-7">IronPL</tspan><tspan
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:247.25727844px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#41669f;fill-opacity:0.94117647;stroke-width:8.34136581"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:55.15219879px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#41669f;fill-opacity:0.94117647;stroke-width:1.86059105"
          id="tspan4575-7">C</tspan></tspan></text>
 </svg>

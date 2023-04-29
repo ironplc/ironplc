@@ -7,12 +7,11 @@ control, especially on GitHub.
 There are several components to IronPLC and you can think of this repository
 as a single repository that hosts all of components:
 
-* the compiler
-* the Visual Studio Code Extension
+* the [compiler](compiler/CONTRIBUTING.md)
+* the [Visual Studio Code Extension](integrations/vscode/CONTRIBUTING.md)
+* the [documentation website](docs/CONTRIBUTING.md)
 
-See [compiler/CONTRIBUTING.md](compiler/CONTRIBUTING.md) and
-[integrations/vscode/CONTRIBUTING.md](integrations/vscode/CONTRIBUTING.md) for
-information about how to develop each component.
+Follow the links above for information about how to develop each component.
 
 ## Developing
 
