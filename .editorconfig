@@ -1,0 +1,5 @@
+# Use LF as the line ending for all text files, including
+# on Windows platform.
+[*]
+end_of_line = lf
+insert_final_newline = true

@@ -88,3 +88,22 @@ jobs:
       - name: Build and Test
         run: npm run release
         if: runner.os != 'Linux'
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./docs
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python 3.x
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install doc dependencies
+        run: pip3 install furo sphinx-tabs pytz
+
+      - name: Build docs
+        run: sphinx-build -W -b html . _build
