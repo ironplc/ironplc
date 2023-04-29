@@ -4,3 +4,4 @@ pegviz.html
 *.msi
 **/.vscode-test/**
 *.vsix
+docs/_build/**

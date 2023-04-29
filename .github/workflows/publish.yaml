@@ -140,6 +140,36 @@ jobs:
           tag_name: ${{ needs.release.outputs.tag }}
           fail_on_unmatched_files: true
 
+  publish-website:
+    name: Build and Publish Website
+    # The website doesn't depend on these but we don't publish
+    # if those are failing so we depend on those.
+    needs: [build-win, build-vscode-extension]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./docs
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python 3.x
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install doc dependencies
+        run: pip3 install furo sphinx-tabs pytz
+
+      - name: Build docs
+        run: sphinx-build -W -b html . _build
+
+      - name: Copy Build to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          publish_branch: gh-pages
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: _build/
+          force_orphan: true
+
   cleanup:
     name: Cleanup Old Development Releases
     needs: [release, build-win, build-vscode-extension]
