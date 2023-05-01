@@ -167,12 +167,13 @@ jobs:
         with:
           publish_branch: gh-pages
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: _build/
+          # The action doesn't seem to respect the working directory
+          publish_dir: docs/_build
           force_orphan: true
 
   cleanup:
     name: Cleanup Old Development Releases
-    needs: [release, build-win, build-vscode-extension]
+    needs: [release, publish-website]
     runs-on: ubuntu-latest
     steps:
       - uses: softprops/action-gh-release@v1
