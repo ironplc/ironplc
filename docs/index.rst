@@ -21,4 +21,4 @@ For now, follow the steps in the :doc:`quickstart/index` guide to get started.
    :hidden:
 
    Quick start <quickstart/index>
-
+   Compiler <compiler/index>
