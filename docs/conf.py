@@ -69,7 +69,7 @@ html_theme_options = {
     ],
     "source_repository": "https://github.com/garretfick/ironplc/",
     "source_branch": "main",
-    "sidebar_hide_name": True
+    "source_directory": "docs/"
 }
 
-extensions = ['sphinx_tabs.tabs']
+extensions += ["sphinx_inline_tabs"]

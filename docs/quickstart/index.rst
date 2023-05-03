@@ -32,33 +32,32 @@ Installation
 
 Follow the steps below to install IronPLC.
 
-.. tabs::
-    .. tab:: Windows
+.. tab:: Windows
 
-        **Install IronPLC CLI**
+   **Install IronPLC CLI**
 
-        #. Download the latest IronPLC MSI installer,
-           :file:`ironplc-release-windows.msi`, from `IronPLC GitHub releases`_.
-        #. Run the MSI installer and follow the prompts to complete
-           installation of the CLI.
+   #. Download the latest IronPLC MSI installer,
+      :file:`ironplc-release-windows.msi`, from `IronPLC GitHub releases`_.
+   #. Run the MSI installer and follow the prompts to complete
+      installation of the CLI.
 
-        **Install IronPLC Visual Studio Code Extension**
+   **Install IronPLC Visual Studio Code Extension**
 
-        #. Download the latest IronPLC Visual Studio Code Extension,
-           :file:`ironplc-vscode-extension-release.vsix`, from
-           `IronPLC GitHub releases`_.
+   #. Download the latest IronPLC Visual Studio Code Extension,
+      :file:`ironplc-vscode-extension-release.vsix`, from
+      `IronPLC GitHub releases`_.
 
-        Run Visual Studio Code, then in Visual Studio Code:
+   Run Visual Studio Code, then in Visual Studio Code:
 
-        #. Go to the Extensions view by clicking on the Extensions icon in
-           :guilabel:`Activity Bar` on the side of VS Code or using the
-           View: Extensions command (:kbd:`Ctrl+Shift+X`).
-        #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
-        #. In the :guilabel:`Install from VISX` dialog, select the VISX file you downloaded earlier.
+   #. Go to the Extensions view by clicking on the Extensions icon in
+      :guilabel:`Activity Bar` on the side of VS Code or using the
+      View: Extensions command (:kbd:`Ctrl+Shift+X`).
+   #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
+   #. In the :guilabel:`Install from VISX` dialog, select the VISX file you downloaded earlier.
 
-    .. tab:: macOS
+.. tab:: macOS
 
-        Sorry, but not yet.
+   Sorry, but not yet.
 
 ------------
 Check a File
@@ -68,15 +67,14 @@ IronPLC CLI includes an example that you can use to validate the installation.
 
 Follow the steps below to check a file.
 
-.. tabs::
-    .. tab:: Windows
+.. tab:: Windows
 
-        #. In Visual Studio Code, select :menuselection:`File --> Open File...`.
-        #. In the :guilabel:`Open File` dialog, select
-           :file:`C:\Program Files\ironplc\examples\getting_started.st`
-    
-    .. tab:: macOS
+   #. In Visual Studio Code, select :menuselection:`File --> Open File...`.
+   #. In the :guilabel:`Open File` dialog, select
+      :file:`C:\Program Files\\ironplc\\examples\\getting_started.st`
 
-        Sorry, but not yet.
+.. tab:: macOS
+
+   Sorry, but not yet.
 
 .. _IronPLC GitHub releases: https://github.com/garretfick/ironplc/releases

@@ -157,10 +157,13 @@ jobs:
           python-version: '3.x'
 
       - name: Install doc dependencies
-        run: pip3 install furo sphinx-tabs pytz
+        run: pip3 install furo sphinx-inline-tabs pytz
 
       - name: Build docs
         run: sphinx-build -W -b html . _build
+      
+      - name: Create CNAME
+        run: echo www.ironplc.com > CNAME
 
       - name: Copy Build to gh-pages branch
         uses: peaceiris/actions-gh-pages@v3
