@@ -103,7 +103,7 @@ jobs:
           python-version: '3.x'
 
       - name: Install doc dependencies
-        run: pip3 install furo sphinx-tabs pytz
+        run: pip3 install furo sphinx-inline-tabs pytz
 
       - name: Build docs
         run: sphinx-build -W -b html . _build
