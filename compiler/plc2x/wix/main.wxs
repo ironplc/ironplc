@@ -99,6 +99,15 @@
                                 Source='$(var.CargoTargetBinDir)\ironplcc.exe'
                                 KeyPath='yes'/>
                         </Component>
+                        <Component Id="EnvironmentVars" 
+                            Guid="{bba707a8-db7e-4a72-8273-89e2cb6891d4}"  
+                            KeyPath="yes">
+                            <Environment Id="ironplcEnvironmentVar"  
+                                Name="IRONPLC" 
+                                Value="[Bin]" 
+                                Action="set" 
+                                System="yes" />
+                            </Component>
                     </Directory>
 
                     <Directory Id='Examples' Name='examples'>
@@ -127,6 +136,7 @@
             <ComponentRef Id='License'/>
             <ComponentRef Id='Ironplcc'/>
             <ComponentRef Id='GettingStartedExample'/>
+            <ComponentRef Id='EnvironmentVars'/>
 
             <Feature
                 Id='Environment'
@@ -144,7 +154,7 @@
         <Icon Id='ProductICO' SourceFile='plc2x\wix\Product.ico'/>
         <Property Id='ARPPRODUCTICON' Value='ProductICO' />
 
-        <Property Id='ARPHELPLINK' Value='https://github.com/garretfick/ironplc'/>
+        <Property Id='ARPHELPLINK' Value='https://www.ironplc.com'/>
         
         <UI>
             <UIRef Id='WixUI_FeatureTree'/>
