@@ -38,8 +38,9 @@ milestones are the current plan to achieve that loveable product.
 * ✅ Implement a strategy for reporting errors
 * ✅ Setup automated builds to produce high-quality weekly snapshots
 * ✅ Parser progress so that most OSCAT files parse without error
-* IN PROGRESS Implement language server protocol to integrate diagnostics with Visual Studio Code
-* NOT STARTED Build documentation website
+* ✅ Implement language server protocol to integrate diagnostics with Visual Studio Code
+* ✅ Build documentation website
+* IN PROGRESS Build macOS installer
 * NOT STARTED Implement a code formatter for structured text files
 * NOT STARTED Parser completed so that all valid OSCAT files parse without error
 
