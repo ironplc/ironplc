@@ -1,18 +1,34 @@
 set windows-shell := ["powershell.exe", "-c"]
 
-default: compile test lint
+default: compile lint
 
-validate:
+ci:
+  just compile
+  just lint
+  just test
+
+setup:
   npm install
 
 compile:
   npm run compile
 
 test:
-  npm run test
+  just _test-{{os()}}
+
+_test-windows:
+  num run test
+
+_test-macos:
+  num run test
+
+# Integration tests require Xvfb enabled environment for Linux, so use that to
+# run tests.
+_test-linux:
+  xvfb-run -a npm run test
 
 lint:
   npm run lint
 
-package:
-  npx vsce package --out ironplc-vscode-extension-release.vsix --pre-release
+package filename:
+  npx vsce package --out {{filename}} --pre-release

@@ -41,7 +41,8 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      # Assumes the wix toolkit is available.
+      # Assumes the wix toolkit is available. For the CI, the version number
+      # doesn't matter because we don't retain the installer
       - name: Create installer
         run: just package 0.0.0 installer.msi
 
@@ -69,15 +70,10 @@ jobs:
 
       - name: Install dependencies
         run: just setup
-      
-      # Integration tests require Xvfb enabled environment, so use that to
-      # run tests.
       - name: Build and Test
-        run: xvfb-run -a npm run release
-        if: runner.os == 'Linux'
-      - name: Build and Test
-        run: npm run release
-        if: runner.os != 'Linux'
+        run: just ci
+      - name: Create VSIX
+        run: just package ironplc-vscode-extension-release.vsix
 
   docs:
     name: Documentation

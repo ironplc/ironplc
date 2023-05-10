@@ -90,9 +90,6 @@ jobs:
       - name: Compiler CI checks
         run: just ci
 
-      - name: Install cargo-wix tool
-        run: cargo install cargo-wix
-
       # Assumes the wix toolkit is available.
       - name: Create installer
         run: just package ${{ needs.release.outputs.version }} ./ironplc-${{ matrix.name }}-windows.msi
@@ -129,12 +126,12 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Install dependencies
+        run: just setup
       - name: Build and Test
-        run: xvfb-run -a npm run release
-        if: runner.os == 'Linux'
-      - name: Build and Test
-        run: npm run release
-        if: runner.os != 'Linux'
+        run: just ci
+      - name: Create VSIX
+        run: just package ironplc-vscode-extension-release.vsix
 
       - name: Upload VSIX
         uses: softprops/action-gh-release@v1
