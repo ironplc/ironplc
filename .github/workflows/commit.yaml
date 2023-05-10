@@ -39,6 +39,7 @@ jobs:
         working-directory: ./compiler
     steps:
       - uses: actions/checkout@v3
+      - uses: taiki-e/install-action@just
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
       # Assumes the wix toolkit is available. For the CI, the version number
