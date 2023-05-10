@@ -90,9 +90,10 @@ jobs:
       - name: Compiler CI checks
         run: just ci
 
-      # Assumes the wix toolkit is available.
+      # Assumes the wix toolkit is available. Need to have a real version
+      # number
       - name: Create installer
-        run: just package ${{ needs.release.outputs.version }} ./ironplc-${{ matrix.name }}-windows.msi
+        run: just package 0.0.0.0 ./ironplc-${{ matrix.name }}-windows.msi
 
       - name: Upload Installer
         uses: softprops/action-gh-release@v1
