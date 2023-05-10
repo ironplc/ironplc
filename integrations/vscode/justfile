@@ -1,0 +1,18 @@
+set windows-shell := ["powershell.exe", "-c"]
+
+default: compile test lint
+
+validate:
+  npm install
+
+compile:
+  npm run compile
+
+test:
+  npm run test
+
+lint:
+  npm run lint
+
+package:
+  npx vsce package --out ironplc-vscode-extension-release.vsix --pre-release

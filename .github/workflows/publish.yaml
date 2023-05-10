@@ -24,6 +24,7 @@ jobs:
       release_id: ${{ steps.create_release.outputs.id }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       tag: ${{ steps.create_tag.outputs.tag }}
+      version: ${{ steps.create_tag.outputs.version }}
     
     steps:
       - uses: actions/checkout@v3
@@ -38,12 +39,16 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "schedule" ]]; then
             tag=v$(date +%Y%m%d.%H%M%S)
+            version=$(date +%Y%m%d.%H%M%S)
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             tag=${{ inputs.release_tag }}
+            version=${{ inputs.release_tag }}
           else
             tag=$(basename "${{ github.ref }}")
+            version=$(basename "${{ github.ref }}")
           fi
           echo "tag=$tag" >> $GITHUB_OUTPUT
+          echo "version=$version" >> $GITHUB_OUTPUT
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
@@ -68,8 +73,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+      - uses: taiki-e/install-action@just
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-
+        with:
+          components: rustfmt, clippy
       - uses: actions/cache@v3
         with:
           path: |
@@ -80,19 +87,17 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Rust tests
-        # Only runs the unit tests - we don't care here about formatting
-        # or other things because we are building the release
-        run: cargo test --all-features
+      - name: Compiler CI checks
+        run: just ci
 
       - name: Install cargo-wix tool
         run: cargo install cargo-wix
 
       # Assumes the wix toolkit is available.
       - name: Create installer
-        run: cargo wix -v --nocapture -o ./ironplc-${{ matrix.name }}-windows.msi -p ironplcc
+        run: just package ${{ needs.release.outputs.version }} ./ironplc-${{ matrix.name }}-windows.msi
 
-      - name: Upload Windows Installer
+      - name: Upload Installer
         uses: softprops/action-gh-release@v1
         with:
           files: |
@@ -151,19 +156,14 @@ jobs:
         working-directory: ./docs
     steps:
       - uses: actions/checkout@v3
+      - uses: taiki-e/install-action@just
       - name: Set up Python 3.x
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
 
-      - name: Install doc dependencies
-        run: pip3 install furo sphinx-inline-tabs pytz
-
       - name: Build docs
-        run: sphinx-build -W -b html . _build
-      
-      - name: Create CNAME
-        run: echo www.ironplc.com > CNAME
+        run: just ci
 
       - name: Copy Build to gh-pages branch
         uses: peaceiris/actions-gh-pages@v3
