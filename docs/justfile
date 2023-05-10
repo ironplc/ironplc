@@ -1,0 +1,12 @@
+set windows-shell := ["powershell.exe", "-c"]
+
+default: compile
+
+ci: setup compile
+
+setup:
+  pip3 install furo sphinx-inline-tabs pytz
+
+compile:
+  sphinx-build -W -b html . _build
+  echo "www.ironplc.com" > _build/CNAME

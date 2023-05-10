@@ -13,6 +13,7 @@ jobs:
         fail-fast: false
     steps:
       - uses: actions/checkout@v3
+      - uses: taiki-e/install-action@just
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt, clippy
@@ -27,17 +28,8 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      # Do the format check first so because that is what is mostly likely to
-      # be neglected.
-
-      - name: Standard Rust format check
-        run: cargo fmt --all -- --check
-
-      - name: Clippy format check
-        run: cargo clippy
-
-      - name: Rust Tests with Coverage
-        run: cargo llvm-cov --all-features --workspace --fail-under-lines 85 --show-missing-lines
+      - name: Compiler CI checks
+        run: just ci
 
   ironplcc-windows-installer:
     name: ironplcc Windows Installer
@@ -47,14 +39,13 @@ jobs:
         working-directory: ./compiler
     steps:
       - uses: actions/checkout@v3
+      - uses: taiki-e/install-action@just
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - name: Install cargo-wix tool
-        run: cargo install cargo-wix
-
-      # Assumes the wix toolkit is available.
+      # Assumes the wix toolkit is available. For the CI, the version number
+      # doesn't matter because we don't retain the installer
       - name: Create installer
-        run: cargo wix -v --nocapture -o . -p ironplcc
+        run: just package 0.0.0 installer.msi
 
   vscode-extension-tests:
     name: Visual Studio Code Extension Tests
@@ -68,6 +59,7 @@ jobs:
         fail-fast: false
     steps:
       - uses: actions/checkout@v3
+      - uses: taiki-e/install-action@just
       - uses: actions/setup-node@v3
         with:
           cache: npm
@@ -78,16 +70,11 @@ jobs:
         if: env.IRONPLC_INSTALL_DEPS != ''
 
       - name: Install dependencies
-        run: npm install
-      
-      # Integration tests require Xvfb enabled environment, so use that to
-      # run tests.
+        run: just setup
       - name: Build and Test
-        run: xvfb-run -a npm run release
-        if: runner.os == 'Linux'
-      - name: Build and Test
-        run: npm run release
-        if: runner.os != 'Linux'
+        run: just ci
+      - name: Create VSIX
+        run: just package ironplc-vscode-extension-release.vsix
 
   docs:
     name: Documentation
@@ -97,13 +84,11 @@ jobs:
         working-directory: ./docs
     steps:
       - uses: actions/checkout@v3
+      - uses: taiki-e/install-action@just
       - name: Set up Python 3.x
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
 
-      - name: Install doc dependencies
-        run: pip3 install furo sphinx-inline-tabs pytz
-
       - name: Build docs
-        run: sphinx-build -W -b html . _build
+        run: just ci

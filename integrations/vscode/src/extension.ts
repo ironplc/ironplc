@@ -78,7 +78,7 @@ function findCompiler() {
 		}
 	];
 
-	let triedLocations = [];
+	let triedLocations : string[] = [];
 
 	for (let trial of trialGenerator) {
 		const result = trial();

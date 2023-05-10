@@ -1,0 +1,34 @@
+set windows-shell := ["powershell.exe", "-c"]
+
+default: compile lint
+
+ci:
+  just compile
+  just lint
+  just test
+
+setup:
+  npm install
+
+compile:
+  npm run compile
+
+test:
+  just _test-{{os()}}
+
+_test-windows:
+  npm run test
+
+_test-macos:
+  npm run test
+
+# Integration tests require Xvfb enabled environment for Linux, so use that to
+# run tests.
+_test-linux:
+  xvfb-run -a npm run test
+
+lint:
+  npm run lint
+
+package filename:
+  npx vsce package --out {{filename}} --pre-release
