@@ -17,10 +17,10 @@ test:
   just _test-{{os()}}
 
 _test-windows:
-  num run test
+  npm run test
 
 _test-macos:
-  num run test
+  npm run test
 
 # Integration tests require Xvfb enabled environment for Linux, so use that to
 # run tests.
