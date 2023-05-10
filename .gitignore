@@ -2,6 +2,7 @@
 **/target/**
 pegviz.html
 *.msi
+*.wixobj
 **/.vscode-test/**
 *.vsix
 docs/_build/**
