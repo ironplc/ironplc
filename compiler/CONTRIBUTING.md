@@ -8,7 +8,8 @@ Follow the steps in the sections below to setup and develop `ironplcc`.
 
 ### Prerequisites
 
-You need to install git, Rust (stable) and Cargo. Get those from your preferred
+If you are using the Dev Container , then you have everything you need. 
+Otherwise, install git, just, Rust (stable) and Cargo. Get those from your preferred
 source.
 
 ### Get the Code and Run a Test
@@ -26,12 +27,12 @@ cargo run check plc2x\resources\test\first_steps.st
 
 ### Making Changes
 
-`ironplcc` has an large set of tests. Use Cargo to execute them:
+`ironplcc` has an large set of tests. Use `just` to execute them:
 
 ```sh
-cargo test
-cargo fmt
-cargo clippy
+just
+
+
 ```
 
 ### Debugging the Parser
