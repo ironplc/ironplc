@@ -15,20 +15,20 @@ _sanity-windows:
   cd docs; just compile
 
 _sanity-macos:
-  "CHECK: compile the IronPLC compiler"
+  echo "CHECK: compile the IronPLC compiler"
   cd compiler && just compile
-  "CHECK: compile VS code extension (does not include tests)"
-  cd integrations\vscode && just compile
-  "CHECK: compile the docs"
+  echo "CHECK: compile VS code extension (does not include tests)"
+  cd integrations/vscode && just compile
+  echo "CHECK: compile the docs"
   cd docs && just compile
 
 _sanity-linux:
-  "CHECK: compile the IronPLC compiler"
+  echo "CHECK: compile the IronPLC compiler"
   cd compiler && just compile
-  "CHECK: compile VS code extension (does not include tests)"
-  cd integrations\vscode ** just compile
-  "CHECK: compile the docs"
-  cd docs &&just compile
+  echo "CHECK: compile VS code extension (does not include tests)"
+  cd integrations/vscode ** just compile
+  echo "CHECK: compile the docs"
+  cd docs && just compile
 
 ci-commit-workflow:
   just _ci-commit-workflow-{{os()}}

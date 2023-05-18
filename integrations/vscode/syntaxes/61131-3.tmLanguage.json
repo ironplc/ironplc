@@ -1,0 +1,34 @@
+{
+    "scopeName": "source.61131-3",
+    "patterns": [{ "include": "#operators" }, {"include": "#controls"}],
+    "repository": {
+      "operators": {
+        "patterns": [
+            {
+                "name": "keyword.operator.comparison",
+                "match": "(?:<>|=)"
+            },
+            {
+                "name": "keyword.operator.eqv_expression",
+                "match": "(?:<|>|<=|>=)"
+            },
+            {
+                "name": "keyword.operator.add_expression",
+                "match": "(?:\\+|\\-)"
+            },
+            {
+                "name": "keyword.operator.multiply_operator",
+                "match": "(?:\\*|\\/|MOD)"
+            }
+        ]
+      },
+      "controls": {
+        "patterns": [
+            {
+                "name": "keyword.control.iteration",
+                "match": "\\b(?:BY|DO|FOR|REPEAT|TO|UNTIL|WHILE)\\b"
+            }
+        ]
+      }
+    }
+  }
