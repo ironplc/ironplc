@@ -44,6 +44,13 @@
         ],
         "configuration": "./decl/61131-3-language-configuration.json"
       }
+    ],
+    "grammars": [
+      {
+        "language": "61131-3",
+        "scopeName": "source.61131-3",
+        "path": "./syntaxes/61131-3.tmLanguage.json"
+      }
     ]
   },
   "scripts": {
@@ -52,8 +59,7 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "node ./out/test/runTest.js",
-    "release": "npm run compile && npm run lint && npm run test && npx vsce package --out ironplc-vscode-extension-release.vsix --pre-release"
+    "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
     "@types/glob": "^8.1.0",
