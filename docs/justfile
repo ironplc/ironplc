@@ -10,3 +10,7 @@ setup:
 compile:
   sphinx-build -W -b html . _build
   echo "www.ironplc.com" > _build/CNAME
+
+# Sets the version number for this component.
+version version:
+  # No-op. We don't currently track the version number

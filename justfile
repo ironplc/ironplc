@@ -42,3 +42,22 @@ _ci-commit-workflow-macos:
 
 _ci-commit-workflow-linux:
   act --workflows ./.github/workflows/commit.yaml
+
+# Sets the version number for all components. Must be a "bare" version number, such as 0.0.1 or 1.0.1.
+version version:
+  just _version-{{os()}} {{version}}
+
+_version-windows version:
+  cd compiler; just version {{version}}
+  cd integrations\vscode; just version {{version}}
+  cd docs; just version {{version}}
+
+_version-macos version:
+  cd compiler && just version {{version}}
+  cd integrations/vscode && just version {{version}}
+  cd docs && just version {{version}}
+
+_version-linux version:
+  cd compiler && just version {{version}}
+  cd integrations/vscode && just version {{version}}
+  cd docs && just version {{version}}

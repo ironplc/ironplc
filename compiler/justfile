@@ -3,6 +3,10 @@ set windows-shell := ["powershell.exe", "-c"]
 alias ci := default
 default: compile test lint
 
+setup:
+  cargo install llvm-cov
+  cargo install cargo-release
+
 compile:
   cargo build
 
@@ -13,6 +17,10 @@ test:
 lint:
   cargo clippy
   cargo fmt --all -- --check
+
+# Set the version number for this component.
+version version:
+  cargo release {{version}}
 
 # Creates the installer
 package version filename:
