@@ -2,17 +2,21 @@ set windows-shell := ["powershell.exe", "-c"]
 
 default: compile lint
 
+# The primary set of tasks for continuous integration validation.
 ci:
   just compile
   just lint
   just test
 
+# Setup required dependencies. Use this to bootstrap a new host.
 setup:
   npm install
 
+# Compile the application code. Because this is type script, this effectively validates the code.
 compile:
   npm run compile
 
+# Run integration tests.
 test:
   just _test-{{os()}}
 
@@ -27,8 +31,10 @@ _test-macos:
 _test-linux:
   xvfb-run -a npm run test
 
+# Check the code for compliance with style (lint) rules.
 lint:
   npm run lint
 
+# Build the VSIX package for this component.
 package filename:
   npx vsce package --out {{filename}} --pre-release
