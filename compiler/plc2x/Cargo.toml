@@ -1,11 +1,11 @@
 [package]
 name = "ironplcc"
-version = "0.1.1"
-authors = [ "Garret Fick" ]
-edition = "2021"
 description = "Compiler front-end for ironplc."
-repository = "https://github.com/garretfick/ironplc"
-license = "MIT"
+version = "0.1.2"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [badges]
 maintenance = { status = "experimental" }

@@ -1,11 +1,11 @@
 [package]
 name = "ironplc-dsl"
-version = "0.1.2"
-authors = [ "Garret Fick" ]
-edition = "2021"
 description = "Domain-specific language objects for IEC 61131 language elements."
-repository = "https://github.com/garretfick/ironplc"
-license = "MIT"
+version = "0.1.2"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [badges]
 maintenance = { status = "experimental" }
