@@ -1,11 +1,11 @@
 [package]
 name = "ironplc-parser"
-version = "0.1.2"
-authors = [ "Garret Fick" ]
-edition = "2021"
 description = "Parser for IEC 61131-3 language elements."
-repository = "https://github.com/garretfick/ironplc"
-license = "MIT"
+version = "0.1.4"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [badges]
 maintenance = { status = "experimental" }
@@ -16,7 +16,7 @@ trace = ["peg/trace"]
 [dependencies]
 time = "0.3.17"
 phf = { version = "0.11", features = ["macros"] }
-ironplc-dsl = { path = "../dsl", version = "0.1.2" }
+ironplc-dsl = { path = "../dsl", version = "0.1.4" }
 
 [dependencies.peg]
 version = "0.8.1"

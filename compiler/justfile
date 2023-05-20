@@ -3,6 +3,10 @@ set windows-shell := ["powershell.exe", "-c"]
 alias ci := default
 default: compile test lint
 
+setup:
+  cargo install llvm-cov
+  cargo install cargo-release
+
 compile:
   cargo build
 
@@ -14,17 +18,18 @@ lint:
   cargo clippy
   cargo fmt --all -- --check
 
+# Set the version number for this component.
+version version:
+  cargo release version {{version}} --execute --no-confirm
+
 # Creates the installer
 package version filename:
-  just _package-{{os()}} {{version}} {{filename}}
+  just _package-{{os_family()}} {{version}} {{filename}}
 
 _package-windows version filename:
   cargo build --release
   & "{{env_var('WIX')}}bin\candle.exe" -arch x64 -ext WixUtilExtension -dTargetVendor="pc" -dPlatform=x64 -dVersion="{{version}}" -dCargoTargetBinDir=target\release -o target\wix\main.wixobj wix\main.wxs
   & "{{env_var('WIX')}}bin\light.exe" -spdb -ext WixUIExtension -ext WixUtilExtension -cultures:en-US -out {{filename}} target\wix\main.wixobj
 
-_package-macos version filename:
-  echo "Not yet"
-
-_package-linux version filename:
+_package-unix version filename:
   echo "Not yet"

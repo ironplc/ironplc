@@ -1,11 +1,11 @@
 [package]
 name = "ironplcc"
-version = "0.1.1"
-authors = [ "Garret Fick" ]
-edition = "2021"
 description = "Compiler front-end for ironplc."
-repository = "https://github.com/garretfick/ironplc"
-license = "MIT"
+version = "0.1.4"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [badges]
 maintenance = { status = "experimental" }
@@ -14,8 +14,8 @@ maintenance = { status = "experimental" }
 trace = ["ironplc-parser/trace"]
 
 [dependencies]
-ironplc-parser = { path = "../parser", version = "0.1.2" }
-ironplc-dsl = { path = "../dsl", version = "0.1.2" }
+ironplc-parser = { path = "../parser", version = "0.1.4" }
+ironplc-dsl = { path = "../dsl", version = "0.1.4" }
 time = "0.3.17"
 phf = { version = "0.11", features = ["macros"] }
 petgraph = { version = "0.6.2" }
