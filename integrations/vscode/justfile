@@ -38,3 +38,7 @@ lint:
 # Build the VSIX package for this component.
 package filename:
   npx vsce package --out {{filename}} --pre-release
+
+# Sets the version number for this component.
+version version:
+  npm version {{version}}

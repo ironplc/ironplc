@@ -1,7 +1,12 @@
 [workspace]
-
 members = [
     "plc2x",
     "dsl",
     "parser"
 ]
+
+[workspace.package]
+edition = "2021"
+authors = [ "Garret Fick" ]
+license = "MIT"
+repository = "https://github.com/ironplc/ironplc"
