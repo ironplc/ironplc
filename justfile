@@ -3,61 +3,53 @@ set windows-shell := ["powershell.exe", "-c"]
 
 # A quick check of the development environment
 sanity:
-  just _sanity-{{os()}}
-  "SANITY PASSED"
+  @just _sanity-{{os_family()}}
+
 
 _sanity-windows:
-  "CHECK: compile the IronPLC compiler"
+  @"CHECK: compile the IronPLC compiler"
   cd compiler; just compile
-  "CHECK: compile VS code extension (does not include tests)"
+  @"CHECK: compile VS code extension (does not include tests)"
   cd integrations\vscode; just compile
-  "CHECK: compile the docs"
+  @"CHECK: compile the docs"
   cd docs; just compile
+  "SANITY PASSED"
 
-_sanity-macos:
-  echo "CHECK: compile the IronPLC compiler"
+_sanity-unix:
+  @echo "CHECK: compile the IronPLC compiler"
   cd compiler && just compile
-  echo "CHECK: compile VS code extension (does not include tests)"
+  @echo "CHECK: compile VS code extension (does not include tests)"
   cd integrations/vscode && just compile
-  echo "CHECK: compile the docs"
+  @echo "CHECK: compile the docs"
   cd docs && just compile
-
-_sanity-linux:
-  echo "CHECK: compile the IronPLC compiler"
-  cd compiler && just compile
-  echo "CHECK: compile VS code extension (does not include tests)"
-  cd integrations/vscode ** just compile
-  echo "CHECK: compile the docs"
-  cd docs && just compile
+  @echo "SANITY PASSED"
 
 ci-commit-workflow:
-  just _ci-commit-workflow-{{os()}}
+  @just _ci-commit-workflow-{{os_family()}}
   "TIP - this only ran the Linux tests"
 
 _ci-commit-workflow-windows:
   act --workflows ./.github/workflows/commit.yaml --env IRONPLC_INSTALL_DEPS=true
 
-_ci-commit-workflow-macos:
-  act --workflows ./.github/workflows/commit.yaml
-
-_ci-commit-workflow-linux:
+_ci-commit-workflow-unix:
   act --workflows ./.github/workflows/commit.yaml
 
 # Sets the version number for all components. Must be a "bare" version number, such as 0.0.1 or 1.0.1.
 version version:
-  just _version-{{os()}} {{version}}
+  @just _version-{{os_family()}} {{version}}
+
+publish-version version:
+  @just _version-{{os_family()}} {{version}}
+  @git add *
+  @git commit -m "Update version number to {{version}}"
+  @git tag {{version}}
 
 _version-windows version:
   cd compiler; just version {{version}}
   cd integrations\vscode; just version {{version}}
   cd docs; just version {{version}}
 
-_version-macos version:
-  cd compiler && just version {{version}}
-  cd integrations/vscode && just version {{version}}
-  cd docs && just version {{version}}
-
-_version-linux version:
+_version-unix version:
   cd compiler && just version {{version}}
   cd integrations/vscode && just version {{version}}
   cd docs && just version {{version}}
