@@ -65,7 +65,7 @@ jobs:
         env: 
           CI_COMMIT_MESSAGE: Continuous integration version increment
           CI_COMMIT_AUTHOR: Continuous Integration
-          CI_COMMIT_TAG: v${{ steps.create_tag.outputs.tag }}
+          CI_COMMIT_TAG: v${{ steps.versioning.outputs.version }}
         run: |
           git config --global user.name "${{ env.CI_COMMIT_AUTHOR }}"
           git config --global user.email "garretfick@users.noreply.github.com"
@@ -78,7 +78,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: v${{ steps.create_tag.outputs.tag }}
+          tag_name: v${{ steps.versioning.outputs.version }}
           draft: true
           prerelease: false
     
