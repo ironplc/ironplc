@@ -52,9 +52,10 @@ jobs:
         id: versioning
         uses: PaulHatch/semantic-version@v5.0.2
         with:
-          branch: main
           tag_prefix: "v"
-          format: "v${major}.${minor}.${patch}"
+          major_pattern: "(MAJOR)"
+          minor_pattern: "(MINOR)"
+          version_format: "${major}.${minor}.${patch}-prerelease${increment}"
 
       - name: Apply version
         run: just publish-version ${{ steps.versioning.outputs.version }}
