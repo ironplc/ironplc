@@ -41,6 +41,7 @@ version version:
 
 # Used by the publishing workflow. Sets the version number and then creates a commit with the updated version.
 publish-version version:
+  cargo install cargo-release
   @just _version-{{os_family()}} {{version}}
   @git add *
   @git commit -m "Update version number to {{version}}"
