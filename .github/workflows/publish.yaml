@@ -9,12 +9,11 @@
 #    4. Cleanup Github release
 
 on:
-  push:
-    tags:        
-      - '*'
+  # Automatically create a release every Monday at 19:00
   schedule:
-      # Automatically create a release every Monday at 19:00
       - cron: '0 19 * * 1'
+  # Allow triggering directly
+  workflow_dispatch:
 
 name: Publish IronPLC Releases
 
