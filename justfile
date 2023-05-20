@@ -37,16 +37,9 @@ _ci-commit-workflow-unix:
 
 # Sets the version number for all components. Must be a "bare" version number, such as 0.0.1 or 1.0.1.
 version version:
+  # We need this specific package to do the update
+  @cargo install cargo-release
   @just _version-{{os_family()}} {{version}}
-
-# Used by the publishing workflow. Sets the version number and then creates a commit with the updated version.
-publish-version version:
-  cargo install cargo-release
-  @just _version-{{os_family()}} {{version}}
-  @git add *
-  @git commit -m "Update version number to {{version}}"
-  @git tag v{{version}}
-  @git push --tags
 
 _version-windows version:
   cd compiler; just version {{version}}
