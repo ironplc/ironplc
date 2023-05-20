@@ -19,7 +19,7 @@ name: Publish IronPLC Releases
 
 jobs:
   release:
-    name: Create GitHub Release
+    name: Create Version and Release
     # Only needs to run on one platform because this is defining
     # the container for the release rather than building the artifacts
     runs-on: ubuntu-latest
@@ -55,7 +55,8 @@ jobs:
           tag_prefix: "v"
           major_pattern: "(MAJOR)"
           minor_pattern: "(MINOR)"
-          version_format: "${major}.${minor}.${patch}-prerelease${increment}"
+          version_format: "${major}.${minor}.${patch}"
+          enable_prerelease_mode: false
 
       - name: Apply version
         run: just publish-version ${{ steps.versioning.outputs.version }}
