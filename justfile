@@ -46,6 +46,7 @@ publish-version version:
   @git add *
   @git commit -m "Update version number to {{version}}"
   @git tag v{{version}}
+  @git push --tags
 
 _version-windows version:
   cd compiler; just version {{version}}
