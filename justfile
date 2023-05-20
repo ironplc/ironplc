@@ -24,6 +24,7 @@ _sanity-unix:
   cd docs && just compile
   @echo "SANITY PASSED"
 
+# Simulate the workflow that runs to validate a commit (as best as is possible via Docker)
 ci-commit-workflow:
   @just _ci-commit-workflow-{{os_family()}}
   "TIP - this only ran the Linux tests"
@@ -38,11 +39,12 @@ _ci-commit-workflow-unix:
 version version:
   @just _version-{{os_family()}} {{version}}
 
+# Used by the publishing workflow. Sets the version number and then creates a commit with the updated version.
 publish-version version:
   @just _version-{{os_family()}} {{version}}
   @git add *
   @git commit -m "Update version number to {{version}}"
-  @git tag {{version}}
+  @git tag v{{version}}
 
 _version-windows version:
   cd compiler; just version {{version}}

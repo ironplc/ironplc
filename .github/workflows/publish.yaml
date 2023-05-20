@@ -1,3 +1,13 @@
+# Defines a weekly build for the project. Each week (or a trigger)
+# releases a new version, incrementing the current version number.
+#
+# The essential strategy is:
+#    1. Determine the next semantic version number
+#    2. Update the code, create a commit with the version number, create a
+#       Github release
+#    3. Build the artifacts using the tag as the starting point
+#    4. Cleanup Github release
+
 on:
   push:
     tags:        
@@ -5,11 +15,6 @@ on:
   schedule:
       # Automatically create a release every Monday at 19:00
       - cron: '0 19 * * 1'
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        required: true
-        type: string
 
 name: Publish IronPLC Releases
 
@@ -23,38 +28,38 @@ jobs:
     outputs:
       release_id: ${{ steps.create_release.outputs.id }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
-      tag: ${{ steps.create_tag.outputs.tag }}
-      version: ${{ steps.create_tag.outputs.version }}
+      # The tag that is the github release
+      github_release_tag: v${{ steps.versioning.outputs.version }}
+      # The tag in the git repository
+      commit_tag: v${{ steps.versioning.outputs.version }}
+      # The version number of components
+      version: ${{ steps.versioning.outputs.version }}
     
     steps:
+      # Checkout the repository with all tags so that versioning can find
+      # the prior release.
+      - uses: taiki-e/install-action@just
       - uses: actions/checkout@v3
-        if: github.event_name == 'schedule'
-      - uses: actions/checkout@v3
-        if: github.event_name == 'workflow_dispatch'
-      
-      # The tag depends on whether the this ran because a tag was creates
-      # of it this was a scheduled release.
-      - name: Create Tag
-        id: create_tag
-        run: |
-          if [[ "${{ github.event_name }}" == "schedule" ]]; then
-            tag=v$(date +%Y%m%d.%H%M%S)
-            version=$(date +%Y%m%d.%H%M%S)
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            tag=${{ inputs.release_tag }}
-            version=${{ inputs.release_tag }}
-          else
-            tag=$(basename "${{ github.ref }}")
-            version=$(basename "${{ github.ref }}")
-          fi
-          echo "tag=$tag" >> $GITHUB_OUTPUT
-          echo "version=$version" >> $GITHUB_OUTPUT
+        with:
+          fetch-depth: 0
+
+      - name: Determine version number
+        id: versioning
+        uses: PaulHatch/semantic-version@v5.0.2
+        with:
+          branch: main
+          tag_prefix: "v"
+          format: "v${major}.${minor}.${patch}"
+
+      - name: Apply version
+        run: just publish-version ${{ steps.versioning.outputs.version }}
+
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: ${{ steps.create_tag.outputs.tag }}
+          tag_name: v${{ steps.create_tag.outputs.tag }}
           draft: true
           prerelease: false
     
@@ -72,7 +77,10 @@ jobs:
         name: [ release ]
 
     steps:
+      # Checkout the tag that is the release.
       - uses: actions/checkout@v3
+        with:
+          ref: ${{ needs.release.outputs.commit_tag }}
       - uses: taiki-e/install-action@just
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -101,7 +109,7 @@ jobs:
           files: |
             compiler/ironplc-${{ matrix.name }}-windows.msi
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: ${{ needs.release.outputs.tag }}
+          tag_name: ${{ needs.release.outputs.github_release_tag }}
           fail_on_unmatched_files: true
 
   build-vscode-extension:
@@ -119,15 +127,14 @@ jobs:
     
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: ${{ needs.release.outputs.commit_tag }}
       - uses: taiki-e/install-action@just
       - uses: actions/setup-node@v3
         with:
           cache: npm
           cache-dependency-path: './integrations/vscode/package-lock.json'
       
-      - name: Install dependencies
-        run: npm install
-
       - name: Install dependencies
         run: just setup
       - name: Build and Test
@@ -141,7 +148,7 @@ jobs:
           files: |
             integrations/vscode/ironplc-vscode-extension-release.vsix
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: ${{ needs.release.outputs.tag }}
+          tag_name: ${{ needs.release.outputs.github_release_tag }}
           fail_on_unmatched_files: true
 
   publish-website:
@@ -155,6 +162,8 @@ jobs:
         working-directory: ./docs
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: ${{ needs.release.outputs.commit_tag }}
       - uses: taiki-e/install-action@just
       - name: Set up Python 3.x
         uses: actions/setup-python@v4
@@ -181,11 +190,11 @@ jobs:
       - uses: softprops/action-gh-release@v1
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: ${{ needs.release.outputs.tag }}
+          tag_name: ${{ needs.release.outputs.github_release_tag }}
           draft: false
       - uses: eregon/keep-last-n-releases@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          n: 3
+          n: 52
           remove_tags_without_release: true
