@@ -24,6 +24,7 @@ _sanity-unix:
   cd docs && just compile
   @echo "SANITY PASSED"
 
+# Simulate the workflow that runs to validate a commit (as best as is possible via Docker)
 ci-commit-workflow:
   @just _ci-commit-workflow-{{os_family()}}
   "TIP - this only ran the Linux tests"
@@ -36,13 +37,9 @@ _ci-commit-workflow-unix:
 
 # Sets the version number for all components. Must be a "bare" version number, such as 0.0.1 or 1.0.1.
 version version:
+  # We need this specific package to do the update
+  @cargo install cargo-release
   @just _version-{{os_family()}} {{version}}
-
-publish-version version:
-  @just _version-{{os_family()}} {{version}}
-  @git add *
-  @git commit -m "Update version number to {{version}}"
-  @git tag {{version}}
 
 _version-windows version:
   cd compiler; just version {{version}}
