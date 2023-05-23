@@ -56,7 +56,7 @@ jobs:
           major_pattern: "(MAJOR)"
           minor_pattern: "(MINOR)"
           version_format: "${major}.${minor}.${patch}"
-          enable_prerelease_mode: false
+          bump_each_commit: true
 
       - name: Update Version Number in Code
         run: just version ${{ steps.versioning.outputs.version }}
