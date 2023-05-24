@@ -2,12 +2,12 @@
    :align: center
 
 IronPLC is the beginning of a development environment for IEC 61131-3. Today, IronPLC
-integrates into Visual Studio Code and provides tools to work with IEC  61131-3 files:
+integrates into Visual Studio Code and provides tools to work with IEC 61131-3 files:
 
 * auto-completion
 * syntax and semantic checks
 
-IronPLC aims to be a SoftPLC written entirely in safe Rust for embedded devices
+IronPLC aims to be a MIT licensed SoftPLC written entirely in safe Rust for embedded devices
 running programs written in the IEC 61131-3 language, but it isn't there yet. 
 IronPLC has some pretty big limitations and is not going to replace your
 existing development environment any time soon. Even so, we'd love if you give
