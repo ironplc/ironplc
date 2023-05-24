@@ -1,5 +1,7 @@
 # Configuration file for the Sphinx documentation builder.
 
+import codecs
+
 # -- Project information -----------------------------------------------------
 
 project = 'IronPLC'
@@ -72,7 +74,15 @@ html_theme_options = {
     "source_directory": "docs/"
 }
 
-version = "0.13.1"
+with open("VERSION", "rb") as fp:
+    encoded_text = fp.read()
+    bom = codecs.BOM_UTF16_LE
+    assert encoded_text.startswith(bom)
+    encoded_text = encoded_text[len(bom):]
+    decoded_text = encoded_text.decode('utf-16le')  
+    
+    version = str(decoded_text).strip()
+
 extlinks = {'download_artifact': ('https://github.com/ironplc/ironplc/releases/download/v' + version + '/%s',
                       '%s')}
 
