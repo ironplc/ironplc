@@ -13,4 +13,4 @@ compile:
 
 # Sets the version number for this component.
 version version:
-  # No-op. We don't currently track the version number
+  echo "{{version}}" > VERSION

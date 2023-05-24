@@ -72,4 +72,9 @@ html_theme_options = {
     "source_directory": "docs/"
 }
 
-extensions += ["sphinx_inline_tabs"]
+version = "0.13.1"
+extlinks = {'download_artifact': ('https://github.com/ironplc/ironplc/releases/download/v' + version + '/%s',
+                      '%s')}
+
+extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks"]
+

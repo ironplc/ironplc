@@ -12,12 +12,6 @@ IronPLC is supported on the following platforms:
 
 - Windows (x64)
 
-.. note::
-   IronPLC is an early prototype that has lots of limitations. There are 
-   weekly releases (labeled by date), and you should choose the latest release
-   beause releases require passing a through test suite. That said, it is
-   an early prototype, and there are lots of rough edges.
-
 -------------
 Prerequisites
 -------------
@@ -36,15 +30,15 @@ Follow the steps below to install IronPLC.
 
    **Install IronPLC CLI**
 
-   #. Download the latest IronPLC MSI installer,
-      :file:`ironplc-release-windows.msi`, from `IronPLC GitHub releases`_.
+   #. Download the latest IronPLC MSI installer :download_artifact:`ironplc-release-windows.msi`
+      from `IronPLC GitHub releases`_.
    #. Run the MSI installer and follow the prompts to complete
       installation of the CLI.
 
    **Install IronPLC Visual Studio Code Extension**
 
-   #. Download the latest IronPLC Visual Studio Code Extension,
-      :file:`ironplc-vscode-extension-release.vsix`, from
+   #. Download the latest IronPLC Visual Studio Code Extension
+      :download_artifact:`ironplc-vscode-extension-release.vsix` from
       `IronPLC GitHub releases`_.
 
    Run Visual Studio Code, then in Visual Studio Code:
@@ -77,4 +71,4 @@ Follow the steps below to check a file.
 
    Sorry, but not yet.
 
-.. _IronPLC GitHub releases: https://github.com/garretfick/ironplc/releases
+.. _IronPLC GitHub releases: https://github.com/garretfick/ironplc/releases/
