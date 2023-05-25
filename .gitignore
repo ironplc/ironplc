@@ -6,3 +6,4 @@ pegviz.html
 **/.vscode-test/**
 *.vsix
 docs/_build/**
+/node_modules/**
