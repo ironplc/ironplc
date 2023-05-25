@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y rustc cargo nodejs npm python3-sphinx p
 RUN pip3 install furo sphinx-inline-tabs
 
 # Install just, a task runner
-RUN cargo install --root /usr/local just cargo-release llvm-conv
+RUN cargo install --root /usr/local just cargo-release cargo-llvm-cov
 
 # Install typecript for the VS code extension
-RUN npm install -g typescript
+RUN npm install -g typescript@4.9.5 vscode
