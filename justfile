@@ -5,7 +5,6 @@ set windows-shell := ["powershell.exe", "-c"]
 sanity:
   @just _sanity-{{os_family()}}
 
-
 _sanity-windows:
   @"CHECK: compile the IronPLC compiler"
   cd compiler; just compile

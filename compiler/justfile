@@ -22,7 +22,7 @@ lint:
 version version:
   cargo release version {{version}} --execute --no-confirm
 
-# Creates the installer
+# Creates the installer or package (as appropriate for platform)
 package version filename:
   just _package-{{os_family()}} {{version}} {{filename}}
 
@@ -30,6 +30,9 @@ _package-windows version filename:
   cargo build --release
   & "{{env_var('WIX')}}bin\candle.exe" -arch x64 -ext WixUtilExtension -dTargetVendor="pc" -dPlatform=x64 -dVersion="{{version}}" -dCargoTargetBinDir=target\release -o target\wix\main.wixobj wix\main.wxs
   & "{{env_var('WIX')}}bin\light.exe" -spdb -ext WixUIExtension -ext WixUtilExtension -cultures:en-US -out {{filename}} target\wix\main.wixobj
+  & Get-FileHash -Path "{{filename}}" -Algorithm SHA512 | Select-Object -ExpandProperty Hash | Out-File {{filename}}.sha256
 
 _package-unix version filename:
-  echo "Not yet"
+  cargo build --release
+  tar -czvf {{filename}} target/release/ironplcc
+  sha256sum {{filename}} > {{filename}}.sha256
