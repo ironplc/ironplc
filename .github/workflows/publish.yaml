@@ -157,6 +157,7 @@ jobs:
         with:
           cache: npm
           cache-dependency-path: './integrations/vscode/package-lock.json'
+          node-version: 'lts/Hydrogen'
       
       - name: Install dependencies
         run: just setup
