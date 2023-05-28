@@ -7,3 +7,5 @@ pegviz.html
 *.vsix
 docs/_build/**
 /node_modules/**
+*.sha256
+*.tar.gz

@@ -92,8 +92,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ windows-latest ]
-        name: [ release ]
+        include:
+          - os: windows-latest
+            artifact: ironplc-release-windows.msi
+          - os: ubuntu-latest
+            artifact: ironplcc-x86_64-unknown-linux-musl.tar.gz
+          - os: macos-latest
+            artifact: ironplcc-x86_64-apple-darwin.tar.gz
 
     steps:
       # Checkout the tag that is the release.
@@ -105,29 +110,20 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Compiler CI checks
         run: just ci
 
-      # Assumes the wix toolkit is available. Need to have a real version
-      # number
+      # Assumes a number of packages are installed on the host
       - name: Create installer
-        run: just package 0.0.0.0 ./ironplc-${{ matrix.name }}-windows.msi
+        run: just package ${{ needs.release.outputs.version }} ${{ matrix.artifact }}
 
       - name: Upload Installer
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            compiler/ironplc-${{ matrix.name }}-windows.msi
+            compiler/${{ matrix.artifact }}
+            compiler/${{ matrix.artifact }}.sha256
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag_name: ${{ needs.release.outputs.github_release_tag }}
           fail_on_unmatched_files: true
