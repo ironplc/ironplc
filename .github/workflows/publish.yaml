@@ -28,11 +28,11 @@ jobs:
       release_id: ${{ steps.create_release.outputs.id }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       # The tag that is the github release
-      github_release_tag: v${{ steps.versioning.outputs.version }}
+      github_release_tag: ${{ steps.versioning.outputs.next }}
       # The tag in the git repository
-      commit_tag: v${{ steps.versioning.outputs.version }}
+      commit_tag: ${{ steps.versioning.outputs.next }}
       # The version number of components
-      version: ${{ steps.versioning.outputs.version }}
+      version: ${{ steps.versioning.outputs.nextStrict }}
     
     steps:
       # Checkout the repository with all tags so that versioning can find
@@ -53,22 +53,19 @@ jobs:
 
       - name: Determine version number
         id: versioning
-        uses: PaulHatch/semantic-version@v5.0.2
+        uses: ietf-tools/semver-action@v1
         with:
-          tag_prefix: "v"
-          major_pattern: "(MAJOR)"
-          minor_pattern: "(MINOR)"
-          version_format: "${major}.${minor}.${patch}"
-          bump_each_commit: true
+          token: ${{ github.token }}
+          branch: main
 
       - name: Update Version Number in Code
-        run: just version ${{ steps.versioning.outputs.version }}
+        run: just version ${{ steps.versioning.outputs.nextStrict }}
 
       - name: Git commit and push for revision bump
         env: 
           CI_COMMIT_MESSAGE: Continuous integration version increment
           CI_COMMIT_AUTHOR: Continuous Integration
-          CI_COMMIT_TAG: v${{ steps.versioning.outputs.version }}
+          CI_COMMIT_TAG: ${{ steps.versioning.outputs.next }}
         run: |
           git config --global user.name "${{ env.CI_COMMIT_AUTHOR }}"
           git config --global user.email "garretfick@users.noreply.github.com"
@@ -81,7 +78,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: v${{ steps.versioning.outputs.version }}
+          tag_name: ${{ steps.versioning.outputs.next }}
           draft: true
           prerelease: false
     
