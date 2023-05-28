@@ -1,5 +1,14 @@
 name: Build and Test
-on: [pull_request]
+on:
+  pull_request:
+    branches:    
+      - main
+  push:
+    branches:
+      - main
+  # Allow triggering directly
+  workflow_dispatch:
+
 jobs:
   ironplcc-tests:
     name: ironplcc Tests
