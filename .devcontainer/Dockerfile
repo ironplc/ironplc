@@ -1,12 +1,30 @@
-FROM mcr.microsoft.com/devcontainers/base:ubuntu
+# Use the typescript image because Typescript is the most challenging to setup.
+FROM mcr.microsoft.com/devcontainers/typescript-node:18
+
 # Install the Rust tools for the computer, Python and Sphinx for documentation
-RUN apt-get update && apt-get install -y rustc cargo nodejs npm python3-sphinx python3-pip
+RUN apt-get update
+RUN apt-get install -y python3-sphinx python3-pip curl
 
 # Install required Sphinx extensions for the documentation
 RUN pip3 install furo sphinx-inline-tabs
 
-# Install just, a task runner
-RUN cargo install --root /usr/local just cargo-release cargo-llvm-cov
+# Install Rust. This installs "globally" which is highly discouraged
+# but we claim this is Ok because in this container we only have one user.
+RUN export RUSTUP_HOME=/usr/local &&\
+    export CARGO_HOME=/usr/local &&\
+    curl https://sh.rustup.rs -sSf | sh -s -- -y
+
+# Install the Rust-based tools. This is a bit risky because we use stable, and
+# at the time of writing, stable updated every 6 weeks, so this doesn't
+# guarantee the same version, but it does mean that we stay recent when the
+# container is rebuilt (the same is generally true for most packages since we
+# don't specify versions).
+RUN rustup default stable
+RUN cargo install --root /usr/local just
+RUN cargo install --root /usr/local cargo-release
+RUN cargo install --root /usr/local cargo-llvm-cov
 
 # Install typecript for the VS code extension
 RUN npm install -g typescript@4.9.5 vscode
+
+RUN su node && rustup default stable
