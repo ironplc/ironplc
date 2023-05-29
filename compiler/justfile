@@ -24,7 +24,7 @@ version version:
 
 # Creates the installer or package (as appropriate for platform)
 package version filename:
-  just _package-{{os_family()}} {{version}} {{filename}}
+  just _package-{{os_()}} {{version}} {{filename}}
 
 _package-windows version filename:
   cargo build --release
@@ -35,7 +35,12 @@ _package-windows version filename:
   # compatible PowerShell instance.
   powershell -noprofile -command '$env:PSModulePath = \"$PSHOME/Modules\"; Get-FileHash -Path "{{filename}}" -Algorithm SHA512 | Select-Object -ExpandProperty Hash | Out-File {{filename}}.sha256'
 
-_package-unix version filename:
+_package-macos version filename:
+  cargo build --release
+  tar -czvf {{filename}} target/release/ironplcc
+  shasum -a 256 {{filename}} > {{filename}}.sha256
+
+_package-linux version filename:
   cargo build --release
   tar -czvf {{filename}} target/release/ironplcc
   sha256sum {{filename}} > {{filename}}.sha256
