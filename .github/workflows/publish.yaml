@@ -28,11 +28,11 @@ jobs:
       release_id: ${{ steps.create_release.outputs.id }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       # The tag that is the github release
-      github_release_tag: ${{ steps.versioning.outputs.next }}
+      github_release_tag: v${{ steps.versioning.outputs.patch }}
       # The tag in the git repository
-      commit_tag: ${{ steps.versioning.outputs.next }}
+      commit_tag: v${{ steps.versioning.outputs.patch }}
       # The version number of components
-      version: ${{ steps.versioning.outputs.nextStrict }}
+      version: ${{ steps.versioning.outputs.patch }}
     
     steps:
       # Checkout the repository with all tags so that versioning can find
@@ -51,21 +51,23 @@ jobs:
         run: |
           git pull --tags
 
-      - name: Determine version number
+      - name: 'Get Previous tag'
+        id: previoustag
+        uses: "WyriHaximus/github-action-get-previous-tag@v1"
+      - name: 'Get next minor version'
         id: versioning
-        uses: ietf-tools/semver-action@v1
+        uses: "WyriHaximus/github-action-next-semvers@v1"
         with:
-          token: ${{ github.token }}
-          branch: main
+          version: ${{ steps.previoustag.outputs.tag }}
 
       - name: Update Version Number in Code
-        run: just version ${{ steps.versioning.outputs.nextStrict }}
+        run: just version ${{ steps.versioning.outputs.patch }}
 
       - name: Git commit and push for revision bump
         env: 
           CI_COMMIT_MESSAGE: Continuous integration version increment
           CI_COMMIT_AUTHOR: Continuous Integration
-          CI_COMMIT_TAG: ${{ steps.versioning.outputs.next }}
+          CI_COMMIT_TAG: v${{ steps.versioning.outputs.patch }}
         run: |
           git config --global user.name "${{ env.CI_COMMIT_AUTHOR }}"
           git config --global user.email "garretfick@users.noreply.github.com"
@@ -78,7 +80,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: ${{ steps.versioning.outputs.next }}
+          tag_name: v${{ steps.versioning.outputs.patch }}
           draft: true
           prerelease: false
     

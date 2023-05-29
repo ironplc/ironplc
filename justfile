@@ -34,6 +34,17 @@ _ci-commit-workflow-windows:
 _ci-commit-workflow-unix:
   act --workflows ./.github/workflows/commit.yaml
 
+# Simulate the workflow that runs to validate a commit (as best as is possible via Docker)
+ci-publish-workflow:
+  @just _ci-publish-workflow-{{os_family()}}
+  "TIP - this only ran the Linux tests"
+
+_ci-publish-workflow-windows:
+  act workflow_dispatch --workflows .\.github\workflows\publish.yaml --env IRONPLC_INSTALL_DEPS=true --verbose
+
+_ci-publish-workflow-unix:
+  act workflow_dispatch --workflows ./.github/workflows/publish.yaml --verbose
+
 # Sets the version number for all components. Must be a "bare" version number, such as 0.0.1 or 1.0.1.
 version version:
   # We need this specific package to do the update
