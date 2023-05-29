@@ -73,6 +73,7 @@ jobs:
           git config --global user.email "garretfick@users.noreply.github.com"
           git commit -a -m "${{ env.CI_COMMIT_MESSAGE }}"
           git tag -a "${{ env.CI_COMMIT_TAG }}" -m "Create tagged release ${{ env.CI_COMMIT_TAG }}"
+          git push
           git push --tags
 
       - name: Create Github Release
