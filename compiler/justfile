@@ -24,7 +24,7 @@ version version:
 
 # Creates the installer or package (as appropriate for platform)
 package version filename:
-  just _package-{{os_()}} {{version}} {{filename}}
+  just _package-{{os()}} {{version}} {{filename}}
 
 _package-windows version filename:
   cargo build --release
