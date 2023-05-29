@@ -1,7 +1,7 @@
 [package]
 name = "ironplc-dsl"
 description = "Domain-specific language objects for IEC 61131 language elements."
-version = "0.1.4"
+version = "0.13.10"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
