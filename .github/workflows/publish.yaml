@@ -47,6 +47,11 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
+          # This is a workaround for branch protections. In general, we want to
+          # protect branches from changes, but we'll take the publish as special
+          # becuase we need to create a new version number. This allows making
+          # changes to the repository without removing the branch protections.
+          token: ${{secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN}}
       - name: Git tags
         run: |
           git pull --tags
@@ -85,8 +90,8 @@ jobs:
           draft: true
           prerelease: false
     
-  build-win:
-    name: Build Windows Installer
+  build-platform-package:
+    name: Build Platform Package
     needs: [release]
     runs-on:  ${{ matrix.os }}
     defaults:
@@ -97,11 +102,11 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact: ironplc-release-windows.msi
+            artifact: ironplc-x86_64-windows.msi
           - os: ubuntu-latest
-            artifact: ironplcc-x86_64-unknown-linux-musl.tar.gz
+            artifact: ironplcc-x86_64-linux-musl.tar.gz
           - os: macos-latest
-            artifact: ironplcc-x86_64-apple-darwin.tar.gz
+            artifact: ironplcc-x86_64-macos.tar.gz
 
     steps:
       # Checkout the tag that is the release.
@@ -130,10 +135,13 @@ jobs:
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag_name: ${{ needs.release.outputs.github_release_tag }}
           fail_on_unmatched_files: true
+          draft: true
 
   build-vscode-extension:
     name: Build Visual Studio Code Extension
-    needs: [release]
+    # This depends on platform packages only so that this one can mark the
+    # release as not a draft.
+    needs: [release, build-platform-package]
     runs-on:  ${{ matrix.os }}
     defaults:
       run:
@@ -160,13 +168,13 @@ jobs:
       - name: Build and Test
         run: just ci
       - name: Create VSIX
-        run: just package ironplc-vscode-extension-release.vsix
+        run: just package ironplc-vscode-extension.vsix
 
       - name: Upload VSIX
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            integrations/vscode/ironplc-vscode-extension-release.vsix
+            integrations/vscode/ironplc-vscode-extension.vsix
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag_name: ${{ needs.release.outputs.github_release_tag }}
           fail_on_unmatched_files: true
@@ -175,7 +183,7 @@ jobs:
     name: Build and Publish Website
     # The website doesn't depend on these but we don't publish
     # if those are failing so we depend on those.
-    needs: [build-win, build-vscode-extension]
+    needs: [build-platform-package, build-vscode-extension]
     runs-on: ubuntu-latest
     defaults:
       run:
