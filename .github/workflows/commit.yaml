@@ -40,8 +40,8 @@ jobs:
       - name: Compiler CI checks
         run: just ci
 
-  ironplcc-windows-installer:
-    name: ironplcc Windows Installer
+  build-platform-package:
+    name: Build Platform Package
     runs-on: windows-latest
     defaults:
       run:
