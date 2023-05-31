@@ -76,10 +76,12 @@ html_theme_options = {
 
 with open("VERSION", "rb") as fp:
     encoded_text = fp.read()
-    bom = codecs.BOM_UTF16_LE
-    assert encoded_text.startswith(bom)
-    encoded_text = encoded_text[len(bom):]
-    decoded_text = encoded_text.decode('utf-16le')  
+
+    if encoded_text.startswith(codecs.BOM_UTF16_LE):
+        encoded_text = encoded_text[len(codecs.BOM_UTF16_LE):]
+        decoded_text = encoded_text.decode('utf-16le')
+    else:
+        decoded_text = encoded_text.decode('utf-8')
     
     version = str(decoded_text).strip()
 

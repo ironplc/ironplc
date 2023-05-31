@@ -31,8 +31,6 @@ cargo run check plc2x\resources\test\first_steps.st
 
 ```sh
 just
-
-
 ```
 
 ### Debugging the Parser

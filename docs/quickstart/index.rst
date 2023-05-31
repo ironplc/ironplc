@@ -30,7 +30,7 @@ Follow the steps below to install IronPLC.
 
    **Install IronPLC CLI**
 
-   #. Download the latest IronPLC MSI installer :download_artifact:`ironplc-release-windows.msi`
+   #. Download the latest IronPLC MSI installer :download_artifact:`ironplcc-x86_64-windows.msi`
       from `IronPLC GitHub releases`_.
    #. Run the MSI installer and follow the prompts to complete
       installation of the CLI.
@@ -38,7 +38,7 @@ Follow the steps below to install IronPLC.
    **Install IronPLC Visual Studio Code Extension**
 
    #. Download the latest IronPLC Visual Studio Code Extension
-      :download_artifact:`ironplc-vscode-extension-release.vsix` from
+      :download_artifact:`ironplc-vscode-extension.vsix` from
       `IronPLC GitHub releases`_.
 
    Run Visual Studio Code, then in Visual Studio Code:
