@@ -178,6 +178,7 @@ jobs:
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag_name: ${{ needs.release.outputs.github_release_tag }}
           fail_on_unmatched_files: true
+          draft: true
 
   publish-website:
     name: Build and Publish Website
