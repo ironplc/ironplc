@@ -183,7 +183,7 @@ jobs:
     name: Build and Publish Website
     # The website doesn't depend on these but we don't publish
     # if those are failing so we depend on those.
-    needs: [build-platform-package, build-vscode-extension]
+    needs: [release, build-platform-package, build-vscode-extension]
     runs-on: ubuntu-latest
     defaults:
       run:
