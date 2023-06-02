@@ -102,7 +102,7 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact: ironplc-x86_64-windows.msi
+            artifact: ironplcc-x86_64-windows.msi
           - os: ubuntu-latest
             artifact: ironplcc-x86_64-linux-musl.tar.gz
           - os: macos-latest
@@ -216,11 +216,11 @@ jobs:
     needs: [release, publish-website]
     runs-on: ubuntu-latest
     steps:
-      - uses: softprops/action-gh-release@v1
-        with:
-          token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: ${{ needs.release.outputs.github_release_tag }}
-          draft: false
+      #- uses: softprops/action-gh-release@v1
+      #  with:
+      #    token: "${{ secrets.GITHUB_TOKEN }}"
+      #    tag_name: ${{ needs.release.outputs.github_release_tag }}
+      #    draft: false
       - uses: eregon/keep-last-n-releases@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
