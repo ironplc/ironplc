@@ -17,7 +17,7 @@ on:
     inputs:
       dryrun:
         type: boolean
-        description: 'True to not create the release'
+        description: 'If set, run as a dry run and do not create the release artifacts'
         default: true
 
 name: Publish IronPLC Releases
@@ -87,7 +87,6 @@ jobs:
           git push
           git push --tags
         
-
       - name: Create Github Release
         if: ${{ !inputs.dryrun }}
         id: create_release
@@ -237,7 +236,7 @@ jobs:
           publish_dir: docs/_build
           force_orphan: true
 
-  publish:
+  publish-release:
     name: Finalize Release
     needs: [release, publish-website]
     runs-on: ubuntu-latest
@@ -254,7 +253,7 @@ jobs:
         uses: irongut/EditRelease@v1.2.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          id: ${{ needs.release.outputs.github_release_tag }}
+          id: ${{ steps.create_release.outputs.id }}
           draft: false
     
       - name: Cleanup Drafts and Old Release
@@ -265,3 +264,37 @@ jobs:
         with:
           n: 52
           remove_tags_without_release: true
+
+  publish-homebrew:
+    name: Publish Homebrew Tap
+    needs: [release, publish-release]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./compiler
+    steps:
+      - uses: actions/checkout@v3
+        if: ${{ !inputs.dryrun }}
+        with:
+          ref: ${{ needs.release.outputs.commit_tag }}
+      - uses: actions/checkout@v3
+        if: ${{ inputs.dryrun }}
+
+      - uses: taiki-e/install-action@just
+
+      - name: Build docs
+        run: just publish ${{ needs.release.outputs.version }}
+
+      - name: Copy to Homebrew Tap Repository
+        if: ${{ !inputs.dryrun }}
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          publish_branch: main
+          external_repository: ironplc/homebrew-brew
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # The action doesn't seem to respect the working directory
+          publish_dir: target/homebrew
+          force_orphan: true
+
+
+      
