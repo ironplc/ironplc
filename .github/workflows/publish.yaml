@@ -14,6 +14,11 @@ on:
       - cron: '0 19 * * 1'
   # Allow triggering directly
   workflow_dispatch:
+    inputs:
+      dryrun:
+        type: boolean
+        description: 'True to not create the release'
+        default: true
 
 name: Publish IronPLC Releases
 
@@ -30,7 +35,7 @@ jobs:
       # The tag that is the github release
       github_release_tag: v${{ steps.versioning.outputs.patch }}
       # The tag in the git repository
-      commit_tag: v${{ steps.versioning.outputs.patch }}
+      commit_tag: ${{ inputs.commit || steps.versioning.outputs.v_patch }}
       # The version number of components
       version: ${{ steps.versioning.outputs.patch }}
     
@@ -69,6 +74,7 @@ jobs:
         run: just version ${{ steps.versioning.outputs.patch }}
 
       - name: Git commit and push for revision bump
+        if: ${{ !inputs.dryrun }}
         env: 
           CI_COMMIT_MESSAGE: Continuous integration version increment
           CI_COMMIT_AUTHOR: Continuous Integration
@@ -80,8 +86,10 @@ jobs:
           git tag -a "${{ env.CI_COMMIT_TAG }}" -m "Create tagged release ${{ env.CI_COMMIT_TAG }}"
           git push
           git push --tags
+        
 
       - name: Create Github Release
+        if: ${{ !inputs.dryrun }}
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
@@ -89,10 +97,61 @@ jobs:
           tag_name: v${{ steps.versioning.outputs.patch }}
           draft: true
           prerelease: false
+
+  build-vscode-extension:
+    name: Build Visual Studio Code Extension
+    # This depends on platform packages only so that this one can mark the
+    # release as not a draft.
+    needs: [release]
+    runs-on:  ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: ./integrations/vscode
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest ]
+        name: [ release ]
+    
+    steps:
+      - uses: actions/checkout@v3
+        if: ${{ !inputs.dryrun }}
+        with:
+          ref: ${{ needs.release.outputs.commit_tag }}
+      - uses: actions/checkout@v3
+        if: ${{ inputs.dryrun }}
+      - uses: taiki-e/install-action@just
+      - uses: actions/setup-node@v3
+        with:
+          cache: npm
+          cache-dependency-path: './integrations/vscode/package-lock.json'
+          node-version: 'lts/Hydrogen'
+
+      - name: Install X server components and Xvfb
+        run: sudo apt update && sudo apt install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libdrm2 libgtk-3-0 libgbm1 libasound2 xvfb
+        if: env.IRONPLC_INSTALL_DEPS != ''
+
+      - name: Install dependencies
+        run: just setup
+      - name: Build and Test
+        run: just ci
+      - name: Create VSIX
+        run: just package ironplc-vscode-extension.vsix
+
+      - name: Upload VSIX
+        if: ${{ !inputs.dryrun }}
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            integrations/vscode/ironplc-vscode-extension.vsix
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag_name: ${{ needs.release.outputs.github_release_tag }}
+          fail_on_unmatched_files: true
+          draft: true
     
   build-platform-package:
     name: Build Platform Package
-    needs: [release]
+    needs: [release, build-vscode-extension]
     runs-on:  ${{ matrix.os }}
     defaults:
       run:
@@ -109,10 +168,15 @@ jobs:
             artifact: ironplcc-x86_64-macos.tar.gz
 
     steps:
-      # Checkout the tag that is the release.
+      # Checkout the code. If we are creating a release, then checkout
+      # the release tag. Otherwise just checkout the latest code.
       - uses: actions/checkout@v3
+        if: ${{ !inputs.dryrun }}
         with:
           ref: ${{ needs.release.outputs.commit_tag }}
+      - uses: actions/checkout@v3
+        if: ${{ inputs.dryrun }}
+
       - uses: taiki-e/install-action@just
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -127,6 +191,7 @@ jobs:
         run: just package ${{ needs.release.outputs.version }} ${{ matrix.artifact }}
 
       - name: Upload Installer
+        if: ${{ !inputs.dryrun }}
         uses: softprops/action-gh-release@v1
         with:
           files: |
@@ -136,50 +201,7 @@ jobs:
           tag_name: ${{ needs.release.outputs.github_release_tag }}
           fail_on_unmatched_files: true
           draft: true
-
-  build-vscode-extension:
-    name: Build Visual Studio Code Extension
-    # This depends on platform packages only so that this one can mark the
-    # release as not a draft.
-    needs: [release, build-platform-package]
-    runs-on:  ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: ./integrations/vscode
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ windows-latest ]
-        name: [ release ]
-    
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          ref: ${{ needs.release.outputs.commit_tag }}
-      - uses: taiki-e/install-action@just
-      - uses: actions/setup-node@v3
-        with:
-          cache: npm
-          cache-dependency-path: './integrations/vscode/package-lock.json'
-          node-version: 'lts/Hydrogen'
-      
-      - name: Install dependencies
-        run: just setup
-      - name: Build and Test
-        run: just ci
-      - name: Create VSIX
-        run: just package ironplc-vscode-extension.vsix
-
-      - name: Upload VSIX
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            integrations/vscode/ironplc-vscode-extension.vsix
-          token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: ${{ needs.release.outputs.github_release_tag }}
-          fail_on_unmatched_files: true
-          draft: true
-
+  
   publish-website:
     name: Build and Publish Website
     # The website doesn't depend on these but we don't publish
@@ -191,8 +213,11 @@ jobs:
         working-directory: ./docs
     steps:
       - uses: actions/checkout@v3
+        if: ${{ !inputs.dryrun }}
         with:
           ref: ${{ needs.release.outputs.commit_tag }}
+      - uses: actions/checkout@v3
+        if: ${{ inputs.dryrun }}
       - uses: taiki-e/install-action@just
       - name: Set up Python 3.x
         uses: actions/setup-python@v4
@@ -203,6 +228,7 @@ jobs:
         run: just ci
 
       - name: Copy Build to gh-pages branch
+        if: ${{ !inputs.dryrun }}
         uses: peaceiris/actions-gh-pages@v3
         with:
           publish_branch: gh-pages
@@ -211,17 +237,20 @@ jobs:
           publish_dir: docs/_build
           force_orphan: true
 
-  cleanup:
-    name: Cleanup Old Development Releases
+  publish:
+    name: Finalize Release
     needs: [release, publish-website]
     runs-on: ubuntu-latest
     steps:
-      #- uses: softprops/action-gh-release@v1
-      #  with:
-      #    token: "${{ secrets.GITHUB_TOKEN }}"
-      #    tag_name: ${{ needs.release.outputs.github_release_tag }}
-      #    draft: false
-      - uses: eregon/keep-last-n-releases@v1
+      - uses: softprops/action-gh-release@v1
+        if: ${{ !inputs.dryrun }}
+        with:
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag_name: ${{ needs.release.outputs.github_release_tag }}
+          draft: false
+      - name: Cleanup Drafts and Old Release
+        if: ${{ !inputs.dryrun }}
+        uses: eregon/keep-last-n-releases@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
