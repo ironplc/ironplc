@@ -8,7 +8,7 @@ setup:
   pip3 install furo sphinx-inline-tabs pytz
 
 compile:
-  sphinx-build -W -b html . _build
+  sphinx-build -W -n -b html . _build
   echo "www.ironplc.com" > _build/CNAME
 
 # Sets the version number for this component.

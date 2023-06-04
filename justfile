@@ -37,10 +37,10 @@ _ci-commit-workflow-unix:
 # Simulate the workflow that runs to validate a commit (as best as is possible via Docker)
 ci-publish-workflow:
   @just _ci-publish-workflow-{{os_family()}}
-  "TIP - this only ran the Linux tests"
+  @"TIP - this only ran the Linux tests"
 
 _ci-publish-workflow-windows:
-  act workflow_dispatch --workflows .\.github\workflows\publish.yaml --env IRONPLC_INSTALL_DEPS=true --verbose
+  act workflow_dispatch --workflows .\.github\workflows\publish.yaml --env IRONPLC_INSTALL_DEPS=true
 
 _ci-publish-workflow-unix:
   act workflow_dispatch --workflows ./.github/workflows/publish.yaml --verbose
