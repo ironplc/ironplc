@@ -45,8 +45,11 @@ _package-linux version filename:
   tar -czvf {{filename}} target/release/ironplcc
   sha256sum {{filename}} > {{filename}}.sha256
 
-# Builds the Homebrew repository.
+# Builds the Homebrew repository to release for Mac and Linux
 publish $VERSION $MACFILENAME $LINUXFILENAME:
+  # Use actual releases in order to build the Homebrew tap.
+  # The advantage of using a real release is that we are guaranteed that the
+  # files are accessible and do not publish a new release if the release failed.
   curl -LO --fail https://github.com/ironplc/ironplc/releases/download/v{{VERSION}}/{{MACFILENAME}}.sha256 --output {{MACFILENAME}}.sha256
   curl -LO --fail https://github.com/ironplc/ironplc/releases/download/v{{VERSION}}/{{LINUXFILENAME}}.sha256 --output {{LINUXFILENAME}}.sha256
   rm -rf target/homebrew
