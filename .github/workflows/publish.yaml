@@ -248,6 +248,15 @@ jobs:
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag_name: ${{ needs.release.outputs.github_release_tag }}
           draft: false
+
+      - name: Publish release
+        if: ${{ !inputs.dryrun }}
+        uses: irongut/EditRelease@v1.2.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          id: ${{ needs.release.outputs.github_release_tag }}
+          draft: false
+    
       - name: Cleanup Drafts and Old Release
         if: ${{ !inputs.dryrun }}
         uses: eregon/keep-last-n-releases@v1
