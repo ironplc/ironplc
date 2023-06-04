@@ -44,3 +44,12 @@ _package-linux version filename:
   cargo build --release
   tar -czvf {{filename}} target/release/ironplcc
   sha256sum {{filename}} > {{filename}}.sha256
+
+publish $VERSION $MACFILENAME $LINUXFILENAME:
+  curl https://github.com/ironplc/ironplc/releases/download/v{{VERSION}}/{{MACFILENAME}}.sha256 --output {{MACFILENAME}}.sha256
+  curl https://github.com/ironplc/ironplc/releases/download/v{{VERSION}}/{{LINUXFILENAME}}.sha256 --output {{LINUXFILENAME}}.sha256
+  echo `cat {{MACFILENAME}}.sha256`
+  rm -rf target/homebrew
+  mkdir -p target
+  cp -r homebrew target
+  MACSHA256=`cat {{MACFILENAME}}.sha256` && envsubst < homebrew/Formula/ironplc.rb > target/homebrew/Formula/ironplc.rb
