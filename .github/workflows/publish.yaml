@@ -30,12 +30,12 @@ jobs:
     runs-on: ubuntu-latest
     
     outputs:
+      # The identifier for the Github release
       release_id: ${{ steps.create_release.outputs.id }}
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-      # The tag that is the github release
+      # The tag that is the Github release
       github_release_tag: v${{ steps.versioning.outputs.patch }}
       # The tag in the git repository
-      commit_tag: ${{ inputs.commit || steps.versioning.outputs.v_patch }}
+      commit_tag: v${{ steps.versioning.outputs.v_patch }}
       # The version number of components
       version: ${{ steps.versioning.outputs.patch }}
     
@@ -61,16 +61,20 @@ jobs:
         run: |
           git pull --tags
 
-      - name: 'Get Previous tag'
+      - name: 'Get Previous Tag (the last release)'
         id: previoustag
         uses: "WyriHaximus/github-action-get-previous-tag@v1"
-      - name: 'Get next minor version'
+
+      # If we are not doing a dry run, then we want to get the next version
+      # number and then set that in the code
+      - name: 'Determine next release version'
+        if: ${{ !inputs.dryrun }}
         id: versioning
         uses: "WyriHaximus/github-action-next-semvers@v1"
         with:
           version: ${{ steps.previoustag.outputs.tag }}
-
       - name: Update Version Number in Code
+        if: ${{ !inputs.dryrun }}
         run: just version ${{ steps.versioning.outputs.patch }}
 
       - name: Git commit and push for revision bump
@@ -275,8 +279,8 @@ jobs:
 
       - uses: taiki-e/install-action@just
 
-      - name: Build docs
-        run: just publish ${{ needs.release.outputs.version }}
+      - name: Build Homebrew repository
+        run: just publish ${{ needs.release.outputs.version }} ironplcc-x86_64-macos.tar.gz ironplcc-x86_64-linux-musl.tar.gz
 
       - name: Copy to Homebrew Tap Repository
         if: ${{ !inputs.dryrun }}
