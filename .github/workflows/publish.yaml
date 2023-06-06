@@ -294,7 +294,7 @@ jobs:
           external_repository: ironplc/homebrew-brew
           personal_token: ${{secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN}}
           # The action doesn't seem to respect the working directory
-          publish_dir: target/homebrew
+          publish_dir: compiler/target/homebrew
           force_orphan: true
 
 
