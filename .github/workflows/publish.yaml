@@ -117,11 +117,13 @@ jobs:
         name: [ release ]
     
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout tag ${{ needs.release.outputs.commit_tag }}
+        uses: actions/checkout@v3
         if: ${{ !inputs.dryrun }}
         with:
           ref: ${{ needs.release.outputs.commit_tag }}
-      - uses: actions/checkout@v3
+      - name: Checkout HEAD
+        uses: actions/checkout@v3
         if: ${{ inputs.dryrun }}
       - uses: taiki-e/install-action@just
       - uses: actions/setup-node@v3
@@ -173,11 +175,13 @@ jobs:
     steps:
       # Checkout the code. If we are creating a release, then checkout
       # the release tag. Otherwise just checkout the latest code.
-      - uses: actions/checkout@v3
+      - name: Checkout tag ${{ needs.release.outputs.commit_tag }}
+        uses: actions/checkout@v3
         if: ${{ !inputs.dryrun }}
         with:
           ref: ${{ needs.release.outputs.commit_tag }}
-      - uses: actions/checkout@v3
+      - name: Checkout HEAD
+        uses: actions/checkout@v3
         if: ${{ inputs.dryrun }}
 
       - uses: taiki-e/install-action@just
@@ -288,7 +292,7 @@ jobs:
         with:
           publish_branch: main
           external_repository: ironplc/homebrew-brew
-          github_token: ${{secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN}}
+          personal_token: ${{secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN}}
           # The action doesn't seem to respect the working directory
           publish_dir: target/homebrew
           force_orphan: true
