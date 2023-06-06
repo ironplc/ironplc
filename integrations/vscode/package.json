@@ -2,7 +2,7 @@
   "name": "ironplc",
   "displayName": "IronPLC",
   "description": "",
-  "version": "0.13.24",
+  "version": "0.13.25",
   "engines": {
     "vscode": "^1.75.0"
   },
