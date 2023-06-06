@@ -288,7 +288,7 @@ jobs:
         with:
           publish_branch: main
           external_repository: ironplc/homebrew-brew
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN}}
           # The action doesn't seem to respect the working directory
           publish_dir: target/homebrew
           force_orphan: true
