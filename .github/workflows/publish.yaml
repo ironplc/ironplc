@@ -35,7 +35,7 @@ jobs:
       # The tag that is the Github release
       github_release_tag: v${{ steps.versioning.outputs.patch }}
       # The tag in the git repository
-      commit_tag: v${{ steps.versioning.outputs.v_patch }}
+      commit_tag: ${{ steps.versioning.outputs.v_patch }}
       # The version number of components
       version: ${{ steps.versioning.outputs.patch }}
     
