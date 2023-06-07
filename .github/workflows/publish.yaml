@@ -242,7 +242,8 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # The action doesn't seem to respect the working directory
           publish_dir: docs/_build
-          force_orphan: true
+          force_orphan: false
+          allow_empty_commit: false
 
   publish-release:
     name: Finalize Release
@@ -295,7 +296,8 @@ jobs:
           personal_token: ${{secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN}}
           # The action doesn't seem to respect the working directory
           publish_dir: compiler/target/homebrew
-          force_orphan: true
+          force_orphan: false
+          allow_empty_commit: false
 
 
       
