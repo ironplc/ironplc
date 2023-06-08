@@ -40,54 +40,14 @@ milestones are the current plan to achieve that loveable product.
 * ✅ Parser progress so that most OSCAT files parse without error
 * ✅ Implement language server protocol to integrate diagnostics with Visual Studio Code
 * ✅ Build documentation website
-* IN PROGRESS Build macOS installer
+* ✅ Build macOS installer
 * NOT STARTED Implement a code formatter for structured text files
 * NOT STARTED Parser completed so that all valid OSCAT files parse without error
 
 ## Usage
 
-There are two components to IronPLC:
-
-* the `ironplcc` compiler prototype that check IEC 61131-3 libraries for
-syntactic and semantic correctness
-* the IronPLC Visual Studio Code Extension that integrates `ironplcc` and IEC 61131-3 language into Visual Studio Code
-
-Follow the steps below to setup these components on Windows 10.
-
-### Install the `ironplcc` Compiler
-
-Follow the steps below to install the IronPLC compiler:
-
-1. Navigate to [IronPLC releases](https://github.com/garretfick/ironplc/releases)
-1. From the releases page, download the latest snapshot for your system, for
-   example `ironplc-release-windows.msi`
-1. Run the downloaded installer
-
-Follow the steps below to check a single file:
-
-1. Open the Windows **Start** menu, then type **Windows PowerShell** and launch
-   the PowerShell App (or a terminal of your choice)
-1. Input the following in the terminal window, then press `Enter`:
-   ```ironplcc check 'C:\Program Files\ironplc\examples\getting_started.st'```
-
-The program completes indicating that the file is a valid IEC 61131-3 file.
-
-### Install the Visual Studio Code Extension
-
-This part is a work in progress.
-
-Follow the steps below to install the Visual Studio Code Extension for IronPLC:
-
-1. Navigate to [IronPLC releases](https://github.com/garretfick/ironplc/releases)
-1. From the releases page, download the latest snapshot for your system, for
-   example `ironplc-vscode-extension-release.vsix`
-1. In Visual Studio Code, type `Ctrl+Shift+P`, then type `Install from VISX...` and choose the matching item
-1. In the dialog, choose the VISX file you downloaded earlier
-
-Follow then steps below to check a single file from within Visual Studio Code
-
-1. In Visual Studio Code, choose **File » Open File...**
-1. In the **Open File** dialog, choose `C:\Program Files\ironplc\examples\getting_started.st`, then choose **Open**
+Go to [ironplc.com](ironplc.com) and follow the instructions
+to get started.
 
 ## Contributing
 
