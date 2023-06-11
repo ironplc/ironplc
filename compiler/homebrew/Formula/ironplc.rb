@@ -13,7 +13,7 @@
 # 
 # The formula assumes releases are from the GitHub ironplc/ironplc repository
 # and that releases are prefixed with "v".
-class IronPlc < Formula
+class Ironplc < Formula
     version "${VERSION}"
     desc "IronPLC Compiler"
     homepage "https://www.ironplc.com"
