@@ -75,6 +75,10 @@ function findCompiler() {
 		() => {
 			// Try to get from environment variable
 			return [process.env.IRONPLC, 'environment'];
+		},
+		() => {
+			const homebrewDir = process.platform !== 'win32' ? '/usr/local/bin' : undefined;
+			return [homebrewDir, 'homebrew'];
 		}
 	];
 
