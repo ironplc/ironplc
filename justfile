@@ -9,7 +9,7 @@ _sanity-windows:
   @"CHECK: compile the IronPLC compiler"
   cd compiler; just compile
   @"CHECK: compile VS code extension (does not include tests)"
-  cd integrations\vscode; just compile
+  cd integrations\vscode; just setup; just compile
   @"CHECK: compile the docs"
   cd docs; just compile
   "SANITY PASSED"
@@ -18,7 +18,7 @@ _sanity-unix:
   @echo "CHECK: compile the IronPLC compiler"
   cd compiler && just compile
   @echo "CHECK: compile VS code extension (does not include tests)"
-  cd integrations/vscode && just compile
+  cd integrations/vscode && just setup && just compile
   @echo "CHECK: compile the docs"
   cd docs && just compile
   @echo "SANITY PASSED"

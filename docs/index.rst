@@ -14,7 +14,11 @@ existing development environment any time soon. Even so, we'd love if you give
 it a try, let us know what you think, fix a bug, or even become a regular
 contributor. IronPLC is MIT licensed and we aim to keep it that way.
 
-For now, follow the steps in the :doc:`quickstart/index` guide to get started.
+============================
+How to I start with IronPLC?
+============================
+
+Follow the steps in the :doc:`quickstart/index` guide to get started.
 
 .. toctree::
    :maxdepth: 1
