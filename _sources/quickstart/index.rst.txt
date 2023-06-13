@@ -11,6 +11,7 @@ so you journey will be quick. In this chapter, we'll discuss:
 IronPLC is supported on the following platforms:
 
 - Windows (x64)
+- macOS
 
 -------------
 Prerequisites
