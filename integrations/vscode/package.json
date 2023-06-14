@@ -1,13 +1,15 @@
 {
   "name": "ironplc",
   "displayName": "IronPLC",
-  "description": "",
+  "publisher": "garretfick",
+  "description": "IntelliSense for IEC 61131-3",
   "version": "0.13.31",
+  "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0"
   },
   "categories": [
-    "Other"
+    "Programming Languages"
   ],
   "repository": {
     "type": "git",

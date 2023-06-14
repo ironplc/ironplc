@@ -77,7 +77,7 @@ function findCompiler() {
 			return [process.env.IRONPLC, 'environment'];
 		},
 		() => {
-			const homebrewDir = process.platform !== 'win32' ? '/usr/local/bin' : undefined;
+			const homebrewDir = process.platform === 'darwin' ? '/opt/homebrew/bin' : undefined;
 			return [homebrewDir, 'homebrew'];
 		}
 	];
