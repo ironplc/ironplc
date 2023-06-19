@@ -11,17 +11,17 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::project::Project;
 
-// TODO give a real error
+/// Start the LSP server with the specified project as the context.
 pub fn start(project: Box<dyn Project>) -> Result<(), String> {
     let (connection, io_threads) = Connection::stdio();
     let result = start_with_connection(connection, project);
 
-    // TODO remove the unwrap
-    io_threads.join().unwrap();
+    io_threads.join().map_err(|e| e.to_string())?;
 
     result
 }
 
+/// Start the LSP server using the connection for communication.
 fn start_with_connection(connection: Connection, project: Box<dyn Project>) -> Result<(), String> {
     let server_capabilities = serde_json::to_value(LspServer::server_capabilities()).unwrap();
     connection
@@ -148,6 +148,7 @@ impl LspServer {
     }
 }
 
+/// Convert diagnostic type into the LSP diagnostic type.
 fn map_diagnostic(
     diagnostic: ironplc_dsl::diagnostic::Diagnostic,
     contents: &str,
@@ -166,9 +167,8 @@ fn map_diagnostic(
     }
 }
 
+/// Convert the diagnostic label into the LSP range type.
 fn map_label(label: &ironplc_dsl::diagnostic::Label, contents: &str) -> lsp_types::Range {
-    // TODO this ignores the position and doesn't include secondary information
-
     match &label.location {
         ironplc_dsl::diagnostic::Location::QualifiedPosition(qualified) => lsp_types::Range::new(
             lsp_types::Position::new((qualified.line - 1) as u32, (qualified.column - 1) as u32),
