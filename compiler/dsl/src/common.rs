@@ -1009,7 +1009,6 @@ pub struct ArrayInitialValueAssignment {
 pub enum LibraryElement {
     DataTypeDeclaration(DataTypeDeclarationKind),
     FunctionDeclaration(FunctionDeclaration),
-    // TODO
     FunctionBlockDeclaration(FunctionBlockDeclaration),
     ProgramDeclaration(ProgramDeclaration),
     ConfigurationDeclaration(ConfigurationDeclaration),

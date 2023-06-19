@@ -259,6 +259,7 @@ parser! {
     rule signed_integer() -> SignedInteger = start:position!() n:signed_integer__string() end:position!() { SignedInteger::new(n, SourceLoc::range(start, end)) }
     // TODO handle the sign
     rule integer__string() -> &'input str = n:$(['0'..='9']("_"? ['0'..='9'])*) { n }
+    rule integer__string_simplified() -> String = n:integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit()).collect() }
     rule integer() -> Integer = start:position!() n:integer__string() end:position!() { Integer::new(n, SourceLoc::range(start, end)) }
     rule binary_integer_prefix() -> () = "2#" ()
     rule binary_integer() -> Integer = start:position!() binary_integer_prefix() n:$(['0'..='1']("_"? ['0'..='1'])*) end:position!() { Integer::binary(n, SourceLoc::range(start, end)) }
@@ -325,9 +326,8 @@ parser! {
       / s:seconds() { s }
     rule days() -> Duration = f:fixed_point() "d" { to_duration(f, 3600.0 * 24.0) } / i:integer() "d" "_"? h:hours() { h + to_duration(i.try_into().unwrap(), 3600.0 * 24.0) }
 
-    rule fixed_point() -> f32 = i:integer() ("." integer())? {
-      // TODO This drops the fraction, but I don't know how to keep it. May need one big regex in the worse case.
-      i.try_into().unwrap()
+    rule fixed_point() -> f32 = i:integer__string_simplified() f:("." f:integer__string_simplified() { f })? {?
+      format!("{}.{}", i, f.unwrap_or_default()).parse::<f32>().map_err(|e| "f32")
     }
     rule hours() -> Duration = f:fixed_point() "h" { to_duration(f, 3600.0) } / i:integer() "h" "_"? m:minutes() { m + to_duration(i.try_into().unwrap(), 3600.0) }
     rule minutes() -> Duration = f:fixed_point() "m" { to_duration(f, 60.0) } / i:integer() "m" "_"? m:seconds() { m + to_duration(i.try_into().unwrap(), 60.0) }
