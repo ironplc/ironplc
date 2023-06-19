@@ -108,6 +108,20 @@ impl Label {
             message: message.into(),
         }
     }
+
+    /// A "position" that a file in it's entirety rather that a particular
+    /// line number.
+    pub fn file(file_id: impl Into<FileId>, message: impl Into<String>) -> Self {
+        Self {
+            location: Location::QualifiedPosition(QualifiedPosition {
+                column: 0,
+                line: 0,
+                offset: 0,
+            }),
+            file_id: file_id.into(),
+            message: message.into(),
+        }
+    }
 }
 
 /// A diagnostic. Diagnostic have a code that is indicative of the category,
