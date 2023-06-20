@@ -92,18 +92,9 @@ impl TryFrom<Integer> for f64 {
     }
 }
 
-impl TryFrom<Integer> for f32 {
-    type Error = TryFromIntegerError;
-    fn try_from(value: Integer) -> Result<f32, Self::Error> {
-        let res: Result<u32, _> = value.value.try_into();
-        let val = res.map_err(|e| TryFromIntegerError {})?;
-
-        let res: Result<f64, _> = val.try_into();
-        let val = res.map_err(|e| TryFromIntegerError {})?;
-
-        // TODO how to do this
-        let val: f32 = val as f32;
-        Ok(val)
+impl From<Integer> for f32 {
+    fn from(value: Integer) -> f32 {
+        value.value as f32
     }
 }
 
