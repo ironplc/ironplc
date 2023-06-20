@@ -324,15 +324,15 @@ parser! {
       / h:hours() { h }
       / m:minutes() { m }
       / s:seconds() { s }
-    rule days() -> Duration = f:fixed_point() "d" { to_duration(f, 3600.0 * 24.0) } / i:integer() "d" "_"? h:hours() { h + to_duration(i.try_into().unwrap(), 3600.0 * 24.0) }
+    rule days() -> Duration = days:fixed_point() "d" { DurationUnit::Days.fp(days) } / days:integer() "d" "_"? hours:hours() { hours + DurationUnit::Days.int(days) }
 
     rule fixed_point() -> f32 = i:integer__string_simplified() f:("." f:integer__string_simplified() { f })? {?
       format!("{}.{}", i, f.unwrap_or_default()).parse::<f32>().map_err(|e| "f32")
     }
-    rule hours() -> Duration = f:fixed_point() "h" { to_duration(f, 3600.0) } / i:integer() "h" "_"? m:minutes() { m + to_duration(i.try_into().unwrap(), 3600.0) }
-    rule minutes() -> Duration = f:fixed_point() "m" { to_duration(f, 60.0) } / i:integer() "m" "_"? m:seconds() { m + to_duration(i.try_into().unwrap(), 60.0) }
-    rule seconds() -> Duration = f:fixed_point() "s" { to_duration(f, 1.0) } / i:integer() "s" "_"? m:milliseconds() { m + to_duration(i.try_into().unwrap(), 1.0) }
-    rule milliseconds() -> Duration = f:fixed_point() "ms" { to_duration(f, 0.001) }
+    rule hours() -> Duration = hours:fixed_point() "h" { DurationUnit::Hours.fp(hours) } / hours:integer() "h" "_"? min:minutes() { min + DurationUnit::Hours.int(hours) }
+    rule minutes() -> Duration = min:fixed_point() "m" { DurationUnit::Minutes.fp(min) } / mins:integer() "m" "_"? sec:seconds() { sec + DurationUnit::Minutes.int(mins) }
+    rule seconds() -> Duration = secs:fixed_point() "s" { DurationUnit::Seconds.fp(secs) } / sec:integer() "s" "_"? ms:milliseconds() { ms + DurationUnit::Seconds.int(sec) }
+    rule milliseconds() -> Duration = ms:fixed_point() "ms" { DurationUnit::Milliseconds.fp(ms) }
 
     // 1.2.3.2 Time of day and date
     rule time_of_day() -> Time = (kw("TOD") / kw("TIME_OF_DAY")) "#" d:daytime() { d }
@@ -1081,7 +1081,7 @@ parser! {
         _ => panic!("Only supporting Duration types for now"),
       }
      }
-    rule task_initialization_priority() -> u32 = kw("PRIORITY") _ ":=" _ i:integer() { i.value.try_into().unwrap() }
+    rule task_initialization_priority() -> u32 = kw("PRIORITY") _ ":=" _ i:integer() {? i.value.try_into().map_err(|e| "priority") }
     // TODO there are more here, but only supporting Constant for now
     pub rule data_source() -> Constant = constant:constant() { constant }
     // TODO more options here
