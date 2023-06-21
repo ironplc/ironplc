@@ -256,6 +256,7 @@ parser! {
     // numeric_literal omitted because it only appears in constant so we do not need to create a type for it
     rule integer_literal() -> IntegerLiteral = data_type:(t:integer_type_name() "#" {t})? value:(bi:binary_integer() { bi.into() } / oi:octal_integer() { oi.into() } / hi:hex_integer() { hi.into() } / si:signed_integer() { si }) { IntegerLiteral { value, data_type } }
     rule signed_integer__string() -> &'input str = n:$(['+' | '-']?['0'..='9']("_"? ['0'..='9'])*) { n }
+    rule signed_integer__string_simplified() -> String = n:signed_integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit() || *c == '-' || *c == '+').collect() }
     rule signed_integer() -> SignedInteger = start:position!() n:signed_integer__string() end:position!() { SignedInteger::new(n, SourceLoc::range(start, end)) }
     // TODO handle the sign
     rule integer__string() -> &'input str = n:$(['0'..='9']("_"? ['0'..='9'])*) { n }
@@ -267,22 +268,20 @@ parser! {
     rule octal_integer() -> Integer = start:position!() octal_integer_prefix() n:$(['0'..='7']("_"? ['0'..='7'])*) end:position!() { Integer::octal(n, SourceLoc::range(start, end)) }
     rule hex_integer_prefix() -> () = "16#" ()
     rule hex_integer() -> Integer = start:position!() hex_integer_prefix() n:$(['0'..='9' | 'A'..='F']("_"? ['0'..='9' | 'A'..='F'])*) end:position!() { Integer::hex(n, SourceLoc::range(start, end)) }
-    rule real_literal() -> Float = tn:(t:real_type_name() "#" {t})? whole:signed_integer__string() "." fraction:integer__string() exp:exponent()? {
+    rule real_literal() -> Float = tn:(t:real_type_name() "#" {t})? whole:signed_integer__string_simplified() "." fraction:integer__string_simplified() exp:exponent()? {?
       // Create the value from concatenating the parts so that it is trivial
       // to existing parsers.
-      let whole: String = whole.chars().filter(|c| c.is_ascii_digit()).collect();
-      let fraction: String = fraction.chars().filter(|c| c.is_ascii_digit()).collect();
-      let mut value = (whole + "." + &fraction).parse::<f64>().unwrap();
+      let mut value = (whole + "." + &fraction).parse::<f64>().map_err(|e| "real")?;
 
       if let Some(exp) = exp {
-        let exp = f64::powf(exp.try_into().unwrap(), 10.0);
+        let exp = f64::powf(exp.try_into().map_err(|e| "exp")?, 10.0);
         value *= exp;
       }
 
-      Float {
+      Ok(Float {
         value,
         data_type: tn,
-      }
+      })
     }
     rule exponent() -> SignedInteger = ("E" / "e") si:signed_integer() { si }
     // bit_string_literal_type is not a rule in the specification but helps write simpler code
@@ -336,21 +335,18 @@ parser! {
 
     // 1.2.3.2 Time of day and date
     rule time_of_day() -> Time = (kw("TOD") / kw("TIME_OF_DAY")) "#" d:daytime() { d }
-    rule daytime() -> Time = h:day_hour() ":" m:day_minute() ":" s:day_second() {
-      // TODO error handling
-      Time::from_hms(h.try_into().unwrap(), m.try_into().unwrap(), s.try_into().unwrap()).unwrap()
+    rule daytime() -> Time = h:day_hour() ":" m:day_minute() ":" s:day_second() {?
+      Time::from_hms(h.try_into().map_err(|e| "hour")?, m.try_into().map_err(|e| "min")?, s.try_into().map_err(|e| "sec")?).map_err(|e| "time")
     }
     rule day_hour() -> Integer = i:integer() { i }
     rule day_minute() -> Integer = i:integer() { i }
     rule day_second() -> Integer = i:integer() { i }
     rule date() -> Date = (kw("DATE") / "D" / "d") "#" d:date_literal() { d }
-    rule date_literal() -> Date = y:year() "-" m:month() "-" d:day() {
+    rule date_literal() -> Date = y:year() "-" m:month() "-" d:day() {?
       let y = y.value;
-      // TODO error handling
-      let m = Month::try_from(<dsl::common::Integer as TryInto<u8>>::try_into(m).unwrap()).unwrap();
+      let m = Month::try_from(<dsl::common::Integer as TryInto<u8>>::try_into(m).map_err(|e| "month")?).map_err(|e| "month")?;
       let d = d.value;
-      // TODO error handling
-      Date::from_calendar_date(y.try_into().unwrap(), m, d.try_into().unwrap()).unwrap()
+      Date::from_calendar_date(y.try_into().map_err(|e| "year")?, m, d.try_into().map_err(|e| "date")?).map_err(|e| "date")
     }
     rule year() -> Integer = i:integer() { i }
     rule month() -> Integer = i:integer() { i }
