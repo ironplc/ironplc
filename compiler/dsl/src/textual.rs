@@ -159,7 +159,7 @@ impl ExprKind {
 
     pub fn integer_literal(value: &str) -> ExprKind {
         ExprKind::Const(Constant::IntegerLiteral(IntegerLiteral {
-            value: SignedInteger::new(value, SourceLoc::default()),
+            value: SignedInteger::new(value, SourceLoc::default()).unwrap(),
             data_type: None,
         }))
     }
