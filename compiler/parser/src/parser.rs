@@ -263,11 +263,11 @@ parser! {
     rule integer__string_simplified() -> String = n:integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit()).collect() }
     rule integer() -> Integer = start:position!() n:integer__string() end:position!() { Integer::new(n, SourceLoc::range(start, end)) }
     rule binary_integer_prefix() -> () = "2#" ()
-    rule binary_integer() -> Integer = start:position!() binary_integer_prefix() n:$(['0'..='1']("_"? ['0'..='1'])*) end:position!() { Integer::binary(n, SourceLoc::range(start, end)) }
+    rule binary_integer() -> Integer = start:position!() binary_integer_prefix() n:$(['0'..='1']("_"? ['0'..='1'])*) end:position!() {? Integer::binary(n, SourceLoc::range(start, end)) }
     rule octal_integer_prefix() -> () = "8#" ()
-    rule octal_integer() -> Integer = start:position!() octal_integer_prefix() n:$(['0'..='7']("_"? ['0'..='7'])*) end:position!() { Integer::octal(n, SourceLoc::range(start, end)) }
+    rule octal_integer() -> Integer = start:position!() octal_integer_prefix() n:$(['0'..='7']("_"? ['0'..='7'])*) end:position!() {? Integer::octal(n, SourceLoc::range(start, end)) }
     rule hex_integer_prefix() -> () = "16#" ()
-    rule hex_integer() -> Integer = start:position!() hex_integer_prefix() n:$(['0'..='9' | 'A'..='F']("_"? ['0'..='9' | 'A'..='F'])*) end:position!() { Integer::hex(n, SourceLoc::range(start, end)) }
+    rule hex_integer() -> Integer = start:position!() hex_integer_prefix() n:$(['0'..='9' | 'A'..='F']("_"? ['0'..='9' | 'A'..='F'])*) end:position!() {? Integer::hex(n, SourceLoc::range(start, end)) }
     rule real_literal() -> Float = tn:(t:real_type_name() "#" {t})? whole:signed_integer__string_simplified() "." fraction:integer__string_simplified() exp:exponent()? {?
       // Create the value from concatenating the parts so that it is trivial
       // to existing parsers.
@@ -672,17 +672,18 @@ parser! {
         size: SizePrefix::Unspecified,
         address: vec![],
       }
-    } / "%" l:location_prefix() s:size_prefix()? addr:integer() ++ "." {
+    } / "%" l:location_prefix() s:size_prefix()? addr:integer() ++ "." {?
       let size = s.unwrap_or(SizePrefix::Nil);
-      let addr = addr.iter().map(|part|
-        part.value.try_into().unwrap()
-      ).collect();
+      let mut addresses = Vec::new();
+      for part in addr.iter() {
+        addresses.push(part.value.try_into().map_err(|e| "address")?);
+      }
 
-      AddressAssignment {
+      Ok(AddressAssignment {
         location: l,
         size,
-        address: addr,
-      }
+        address: addresses,
+      })
     }
     rule location_prefix() -> LocationPrefix =
       ("I" / "i") { LocationPrefix::I }
@@ -1007,15 +1008,20 @@ parser! {
       / kw("P1") { ActionQualifier::PR }
       / kw("P0") { ActionQualifier::PF }
     rule indicator_name() -> Id = variable_name()
-    rule transition() -> ElementKind = kw("TRANSITION") _ name:transition_name()? _ priority:("(" _ kw("PRIORITY") _ ":=" _ p:integer() _ ")" {p})? _ kw("FROM") _ from:steps() _ kw("TO") _ to:steps() _ condition:transition_condition() _ kw("END_TRANSITION") {
-      ElementKind::Transition(Transition {
+    rule transition() -> ElementKind = kw("TRANSITION") _ name:transition_name()? _ priority:("(" _ kw("PRIORITY") _ ":=" _ p:integer() _ ")" {p})? _ kw("FROM") _ from:steps() _ kw("TO") _ to:steps() _ condition:transition_condition() _ kw("END_TRANSITION") {?
+      let mut prio : Option<u32> = None;
+      if let Some(p) = priority {
+          let p = p.value.try_into().map_err(|e| "priority")?;
+          prio = Some(p);
+      }
+      Ok(ElementKind::Transition(Transition {
         name,
-        priority: priority.map(|p| p.value.try_into().unwrap()),
+        priority: prio,
         from,
         to,
         condition,
-      }
-    )}
+      }))
+    }
     rule transition_name() -> Id = identifier()
     rule steps() -> Vec<Id> = name:step_name() {
       vec![name]
