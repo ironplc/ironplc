@@ -108,25 +108,25 @@ impl Integer {
             .unwrap()
     }
 
-    pub fn hex(a: &str, position: SourceLoc) -> Integer {
+    pub fn hex(a: &str, position: SourceLoc) -> Result<Integer, &'static str> {
         let without_underscore: String = a.chars().filter(|c| c.is_ascii_hexdigit()).collect();
         u128::from_str_radix(without_underscore.as_str(), 16)
             .map(|value| Integer { position, value })
-            .unwrap()
+            .map_err(|e| "hex")
     }
 
-    pub fn octal(a: &str, position: SourceLoc) -> Integer {
+    pub fn octal(a: &str, position: SourceLoc) -> Result<Integer, &'static str> {
         let without_underscore: String = a.chars().filter(|c| matches!(c, '0'..='7')).collect();
         u128::from_str_radix(without_underscore.as_str(), 8)
             .map(|value| Integer { position, value })
-            .unwrap()
+            .map_err(|e| "octal")
     }
 
-    pub fn binary(a: &str, position: SourceLoc) -> Integer {
+    pub fn binary(a: &str, position: SourceLoc) -> Result<Integer, &'static str> {
         let without_underscore: String = a.chars().filter(|c| matches!(c, '0'..='1')).collect();
         u128::from_str_radix(without_underscore.as_str(), 2)
             .map(|value| Integer { position, value })
-            .unwrap()
+            .map_err(|e| "binary")
     }
 }
 
