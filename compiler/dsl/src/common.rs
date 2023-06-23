@@ -29,11 +29,11 @@ pub enum Constant {
 }
 
 impl Constant {
-    pub fn integer_literal(value: &str) -> Self {
-        Self::IntegerLiteral(IntegerLiteral {
-            value: SignedInteger::new(value, SourceLoc::default()),
+    pub fn integer_literal(value: &str) -> Result<Self, &'static str> {
+        Ok(Self::IntegerLiteral(IntegerLiteral {
+            value: SignedInteger::new(value, SourceLoc::default())?,
             data_type: None,
-        })
+        }))
     }
 }
 
@@ -99,30 +99,30 @@ impl From<Integer> for f32 {
 }
 
 impl Integer {
-    pub fn new(a: &str, position: SourceLoc) -> Integer {
+    pub fn new(a: &str, position: SourceLoc) -> Result<Self, &'static str> {
         let without_underscore: String = a.chars().filter(|c| c.is_ascii_digit()).collect();
         without_underscore
             .as_str()
             .parse::<u128>()
             .map(|value| Integer { position, value })
-            .unwrap()
+            .map_err(|e| "dec")
     }
 
-    pub fn hex(a: &str, position: SourceLoc) -> Result<Integer, &'static str> {
+    pub fn hex(a: &str, position: SourceLoc) -> Result<Self, &'static str> {
         let without_underscore: String = a.chars().filter(|c| c.is_ascii_hexdigit()).collect();
         u128::from_str_radix(without_underscore.as_str(), 16)
             .map(|value| Integer { position, value })
             .map_err(|e| "hex")
     }
 
-    pub fn octal(a: &str, position: SourceLoc) -> Result<Integer, &'static str> {
+    pub fn octal(a: &str, position: SourceLoc) -> Result<Self, &'static str> {
         let without_underscore: String = a.chars().filter(|c| matches!(c, '0'..='7')).collect();
         u128::from_str_radix(without_underscore.as_str(), 8)
             .map(|value| Integer { position, value })
             .map_err(|e| "octal")
     }
 
-    pub fn binary(a: &str, position: SourceLoc) -> Result<Integer, &'static str> {
+    pub fn binary(a: &str, position: SourceLoc) -> Result<Self, &'static str> {
         let without_underscore: String = a.chars().filter(|c| matches!(c, '0'..='1')).collect();
         u128::from_str_radix(without_underscore.as_str(), 2)
             .map(|value| Integer { position, value })
@@ -143,20 +143,20 @@ pub struct SignedInteger {
 }
 
 impl SignedInteger {
-    pub fn new(a: &str, position: SourceLoc) -> SignedInteger {
+    pub fn new(a: &str, position: SourceLoc) -> Result<Self, &'static str> {
         match a.chars().next() {
-            Some('+') => SignedInteger {
-                value: Integer::new(a.get(1..).unwrap(), position),
+            Some('+') => Ok(Self {
+                value: Integer::new(a.get(1..).unwrap(), position)?,
                 is_neg: false,
-            },
-            Some('-') => SignedInteger {
-                value: Integer::new(a.get(1..).unwrap(), position),
+            }),
+            Some('-') => Ok(Self {
+                value: Integer::new(a.get(1..).unwrap(), position)?,
                 is_neg: true,
-            },
-            _ => SignedInteger {
-                value: Integer::new(a, position),
+            }),
+            _ => Ok(Self {
+                value: Integer::new(a, position)?,
                 is_neg: false,
-            },
+            }),
         }
     }
 }

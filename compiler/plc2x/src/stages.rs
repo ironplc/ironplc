@@ -417,7 +417,7 @@ mod tests {
                     qualifier: DeclarationQualifier::Constant,
                     initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
                         type_name: Id::from("INT"),
-                        initial_value: Some(Constant::integer_literal("17")),
+                        initial_value: Some(Constant::integer_literal("17").unwrap()),
                     }),
                     position: SourceLoc::default(),
                 }],
