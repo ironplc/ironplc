@@ -23,7 +23,8 @@ pub fn start(project: Box<dyn Project>) -> Result<(), String> {
 
 /// Start the LSP server using the connection for communication.
 fn start_with_connection(connection: Connection, project: Box<dyn Project>) -> Result<(), String> {
-    let server_capabilities = serde_json::to_value(LspServer::server_capabilities()).map_err(|e| e.to_string())?;
+    let server_capabilities =
+        serde_json::to_value(LspServer::server_capabilities()).map_err(|e| e.to_string())?;
     connection
         .initialize(server_capabilities)
         .map_err(|e| e.to_string())?;
