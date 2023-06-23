@@ -257,11 +257,11 @@ parser! {
     rule integer_literal() -> IntegerLiteral = data_type:(t:integer_type_name() "#" {t})? value:(bi:binary_integer() { bi.into() } / oi:octal_integer() { oi.into() } / hi:hex_integer() { hi.into() } / si:signed_integer() { si }) { IntegerLiteral { value, data_type } }
     rule signed_integer__string() -> &'input str = n:$(['+' | '-']?['0'..='9']("_"? ['0'..='9'])*) { n }
     rule signed_integer__string_simplified() -> String = n:signed_integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit() || *c == '-' || *c == '+').collect() }
-    rule signed_integer() -> SignedInteger = start:position!() n:signed_integer__string() end:position!() { SignedInteger::new(n, SourceLoc::range(start, end)) }
+    rule signed_integer() -> SignedInteger = start:position!() n:signed_integer__string() end:position!() {? SignedInteger::new(n, SourceLoc::range(start, end)) }
     // TODO handle the sign
     rule integer__string() -> &'input str = n:$(['0'..='9']("_"? ['0'..='9'])*) { n }
     rule integer__string_simplified() -> String = n:integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit()).collect() }
-    rule integer() -> Integer = start:position!() n:integer__string() end:position!() { Integer::new(n, SourceLoc::range(start, end)) }
+    rule integer() -> Integer = start:position!() n:integer__string() end:position!() {? Integer::new(n, SourceLoc::range(start, end)) }
     rule binary_integer_prefix() -> () = "2#" ()
     rule binary_integer() -> Integer = start:position!() binary_integer_prefix() n:$(['0'..='1']("_"? ['0'..='1'])*) end:position!() {? Integer::binary(n, SourceLoc::range(start, end)) }
     rule octal_integer_prefix() -> () = "8#" ()
@@ -1424,7 +1424,10 @@ END_VAR";
             name: Id::from("ResetCounterValue"),
             var_type: VariableType::Global,
             qualifier: DeclarationQualifier::Constant,
-            initializer: InitialValueAssignmentKind::simple("INT", Constant::integer_literal("17")),
+            initializer: InitialValueAssignmentKind::simple(
+                "INT",
+                Constant::integer_literal("17").unwrap(),
+            ),
             position: SourceLoc::default(),
         }];
         assert_eq!(
