@@ -43,7 +43,7 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
 }
 
 fn check_file(filename: &Path, suppress_output: bool) -> Result<(), usize> {
-    let mut file = File::open(&filename).map_err(|e| {
+    let mut file = File::open(filename).map_err(|e| {
         println!("Failed opening file {}. {}", filename.display(), e);
         1usize
     })?;
