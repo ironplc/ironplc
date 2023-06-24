@@ -11,8 +11,8 @@ use codespan_reporting::{
 use std::{
     fs::{metadata, read_dir, File},
     io::Read,
-    ops::Range,
-    path::PathBuf,
+    ops::{Deref, Range},
+    path::{Path, PathBuf},
 };
 
 use crate::stages::analyze;
@@ -21,7 +21,7 @@ use crate::stages::analyze;
 pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
     let mut files: Vec<PathBuf> = vec![];
     for path in paths {
-        match enumerate_files(path) {
+        match enumerate_files(&path) {
             Ok(mut paths) => files.append(&mut paths),
             Err(err) => return Err(err),
         }
@@ -29,7 +29,7 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
 
     let num_errors = files
         .into_iter()
-        .map(|path| check_file(path, suppress_output))
+        .map(|path| check_file(path.as_path(), suppress_output))
         .map(|res| res.map_or(1, |_r| 0))
         .reduce(|acc, val| acc + val);
 
@@ -42,8 +42,8 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
     Ok(())
 }
 
-fn check_file(filename: PathBuf, suppress_output: bool) -> Result<(), usize> {
-    let mut file = File::open(filename.clone()).map_err(|e| {
+fn check_file(filename: &Path, suppress_output: bool) -> Result<(), usize> {
+    let mut file = File::open(&filename).map_err(|e| {
         println!("Failed opening file {}. {}", filename.display(), e);
         1usize
     })?;
@@ -57,7 +57,7 @@ fn check_file(filename: PathBuf, suppress_output: bool) -> Result<(), usize> {
     let config = codespan_reporting::term::Config::default();
 
     println!("Checking {}", filename.display());
-    match analyze(&contents, &String::from(filename.to_str().unwrap())) {
+    match analyze(&contents, &String::from(filename.to_string_lossy().deref())) {
         Ok(_) => {
             println!("OK");
             Ok(())
@@ -79,8 +79,8 @@ fn check_file(filename: PathBuf, suppress_output: bool) -> Result<(), usize> {
     }
 }
 
-fn enumerate_files(path: PathBuf) -> Result<Vec<PathBuf>, String> {
-    let metadata = metadata(path.as_path()).map_err(|e| e.to_string())?;
+fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, String> {
+    let metadata = metadata(path).map_err(|e| e.to_string())?;
     if metadata.is_dir() {
         let paths = read_dir(path).map_err(|e| e.to_string())?;
         let paths: Vec<PathBuf> = paths
@@ -93,7 +93,7 @@ fn enumerate_files(path: PathBuf) -> Result<Vec<PathBuf>, String> {
         return Ok(paths);
     }
     if metadata.is_file() {
-        return Ok(vec![path]);
+        return Ok(vec![path.to_path_buf()]);
     }
     if metadata.is_symlink() {
         panic!("Sorry. Symlinks are not supported.")
