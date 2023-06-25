@@ -145,14 +145,20 @@ pub struct SignedInteger {
 impl SignedInteger {
     pub fn new(a: &str, position: SourceLoc) -> Result<Self, &'static str> {
         match a.chars().next() {
-            Some('+') => Ok(Self {
-                value: Integer::new(a.get(1..).unwrap(), position)?,
-                is_neg: false,
-            }),
-            Some('-') => Ok(Self {
-                value: Integer::new(a.get(1..).unwrap(), position)?,
-                is_neg: true,
-            }),
+            Some('+') => {
+                let whole = a.get(1..).ok_or("int")?;
+                Ok(Self {
+                    value: Integer::new(whole, position)?,
+                    is_neg: false,
+                })
+            },
+            Some('-') => {
+                let whole = a.get(1..).ok_or("int")?;
+                Ok(Self {
+                    value: Integer::new(whole, position)?,
+                    is_neg: true,
+                })
+            },
             _ => Ok(Self {
                 value: Integer::new(a, position)?,
                 is_neg: false,
