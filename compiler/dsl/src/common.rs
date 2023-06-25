@@ -151,14 +151,14 @@ impl SignedInteger {
                     value: Integer::new(whole, position)?,
                     is_neg: false,
                 })
-            },
+            }
             Some('-') => {
                 let whole = a.get(1..).ok_or("int")?;
                 Ok(Self {
                     value: Integer::new(whole, position)?,
                     is_neg: true,
                 })
-            },
+            }
             _ => Ok(Self {
                 value: Integer::new(a, position)?,
                 is_neg: false,
