@@ -1,5 +1,5 @@
 {
-    "scopeName": "source.61131-3",
+    "scopeName": "source.61131-3-st",
     "patterns": [{ "include": "#operators" }, {"include": "#controls"}],
     "repository": {
       "operators": {

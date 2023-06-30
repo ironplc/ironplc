@@ -18,13 +18,18 @@ export function activate(context: vscode.ExtensionContext) {
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
-	let disposable = vscode.commands.registerCommand('ironplc.analyzeFile', () => {
+	context.subscriptions.push(vscode.commands.registerCommand('ironplc.analyzeFile', () => {
 		// The code you place here will be executed every time your command is executed
 		// Display a message box to the user
 		vscode.window.showInformationMessage('Hello World from IronPLC!');
-	});
+	}));
 
-	context.subscriptions.push(disposable);
+  	context.subscriptions.push(vscode.commands.registerCommand("ironplc.createNewStructuredTextFile", () => {
+		vscode.workspace.openTextDocument({ language: "61131-3-st"}).then(newFile => {
+			vscode.window.showTextDocument(newFile);
+		});
+	}));
+
 	startServer(context);
 
 	console.log('Extension "ironplc" is active!');	
@@ -49,7 +54,7 @@ function startServer(context: vscode.ExtensionContext) {
 
 	// Options to control the language client
 	const clientOptions: LanguageClientOptions = {
-		documentSelector: [{ scheme: 'file', language: '61131-3' }]
+		documentSelector: [{ scheme: 'file', language: '61131-3-st' }]
 	};
 
 	// Create the language client and start the client.
