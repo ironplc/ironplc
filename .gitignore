@@ -9,3 +9,5 @@ docs/_build/**
 /node_modules/**
 *.sha256
 *.tar.gz
+.DS_Store
+.vscode/

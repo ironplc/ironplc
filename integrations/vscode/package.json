@@ -22,9 +22,25 @@
     "commands": [
       {
         "command": "ironplc.analyzeFile",
-        "title": "IronPLC Analyze File"
+        "title": "IronPLC Analyze File",
+        "category": "IronPLC"
+      },
+      {
+        "command": "ironplc.createNewStructuredTextFile",
+        "title": "New Structured Text File",
+        "shortTitle": "Structured Text File",
+        "category": "IronPLC"
       }
     ],
+    "menus": {
+        "file/newFile": [
+          {
+              "command": "ironplc.createNewStructuredTextFile",
+              "group": "file",
+              "when": "!virtualWorkspace"
+          }
+        ]
+      },
     "configuration": {
       "title": "IronPLC",
       "properties": {
@@ -38,7 +54,7 @@
     },
     "languages": [
       {
-        "id": "61131-3",
+        "id": "61131-3-st",
         "aliases": [
           "IEC 61131-3",
           "Structured Text"
@@ -46,14 +62,14 @@
         "extensions": [
           ".st"
         ],
-        "configuration": "./decl/61131-3-language-configuration.json"
+        "configuration": "./decl/61131-3-st-language-configuration.json"
       }
     ],
     "grammars": [
       {
-        "language": "61131-3",
-        "scopeName": "source.61131-3",
-        "path": "./syntaxes/61131-3.tmLanguage.json"
+        "language": "61131-3-st",
+        "scopeName": "source.61131-3-st",
+        "path": "./syntaxes/61131-3-st.tmLanguage.json"
       }
     ]
   },

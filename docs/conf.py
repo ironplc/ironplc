@@ -88,5 +88,6 @@ with open("VERSION", "rb") as fp:
 extlinks = {'download_artifact': ('https://github.com/ironplc/ironplc/releases/download/v' + version + '/%s',
                       '%s')}
 
-extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks"]
+extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks", "sphinx.ext.autosectionlabel"]
 
+autosectionlabel_prefix_document = True
