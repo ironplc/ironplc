@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Compiler Reference" href="../compiler/index.html" /><link rel="prev" title="How to I start with IronPLC?" href="../index.html" />
+<link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Installation" href="installation.html" /><link rel="prev" title="How to I start with IronPLC?" href="../index.html" />
 
     <!-- Generated with Sphinx 7.0.1 and Furo 2023.05.20 -->
         <title>Quick start - IronPLC documentation</title>
@@ -150,7 +150,7 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
         <div class="visually-hidden">Toggle table of contents sidebar</div>
         <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
       </label>
@@ -171,7 +171,11 @@
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <ul class="current">
-<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Quick start</a></li>
+<li class="toctree-l1 current has-children current-page"><a class="current reference internal" href="#">Quick start</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of Quick start</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="helloworld.html">Hello, World!</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../compiler/index.html">Compiler</a></li>
 </ul>
 
@@ -209,7 +213,7 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
             <div class="visually-hidden">Toggle table of contents sidebar</div>
             <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
           </label>
@@ -223,85 +227,8 @@ so you journey will be quick. In this chapter, we’ll discuss:</p>
 <li><p>Installing IronPLC</p></li>
 <li><p>Writing a program and checking syntax</p></li>
 </ul>
-<p>IronPLC is supported on the following platforms:</p>
-<ul class="simple">
-<li><p>Windows (x64)</p></li>
-<li><p>macOS</p></li>
-</ul>
-<section id="prerequisites">
-<h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Permalink to this heading">#</a></h2>
-<p>The first step is to install Visual Studio Code. Go to
-<a class="reference external" href="https://code.visualstudio.com/">Visual Studio Code</a> then follow the steps
-for your platform.</p>
-</section>
-<section id="installation">
-<h2>Installation<a class="headerlink" href="#installation" title="Permalink to this heading">#</a></h2>
-<p>Follow the steps below to install IronPLC.</p>
-<div class="tab-set docutils container">
-<input checked="True" class="tab-input" id="tab-set--0-input--1" name="tab-set--0" type="radio"><label class="tab-label" for="tab-set--0-input--1">Windows</label><div class="tab-content docutils container">
-<p><strong>Install IronPLC CLI</strong></p>
-<ol class="arabic simple">
-<li><p>Download the latest IronPLC MSI installer <a class="reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.13.34/ironplcc-x86_64-windows.msi">ironplcc-x86_64-windows.msi</a>
-from <a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>.</p></li>
-<li><p>Run the MSI installer and follow the prompts to complete
-installation of the CLI.</p></li>
-</ol>
-<p><strong>Install IronPLC Visual Studio Code Extension</strong></p>
-<ol class="arabic simple">
-<li><p>Download the latest IronPLC Visual Studio Code Extension
-<a class="reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.13.34/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a> from
-<a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>.</p></li>
-</ol>
-<p>Run Visual Studio Code, then in Visual Studio Code:</p>
-<ol class="arabic simple">
-<li><p>Go to the Extensions view by clicking on the Extensions icon in
-<span class="guilabel">Activity Bar</span> on the side of VS Code or using the
-View: Extensions command (<kbd class="kbd compound docutils literal notranslate"><kbd class="kbd docutils literal notranslate">Ctrl</kbd>+<kbd class="kbd docutils literal notranslate">Shift</kbd>+<kbd class="kbd docutils literal notranslate">X</kbd></kbd>).</p></li>
-<li><p>In the Extensions view, select <span class="menuselection">… (View and More Actions) ‣ Install from VSIX…</span> button.</p></li>
-<li><p>In the <span class="guilabel">Install from VISX</span> dialog, select the VISX file you downloaded earlier.</p></li>
-</ol>
+<div class="toctree-wrapper compound">
 </div>
-<input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio"><label class="tab-label" for="tab-set--0-input--2">macOS</label><div class="tab-content docutils container">
-<p><strong>Install IronPLC CLI</strong></p>
-<ol class="arabic simple">
-<li><p>Go to <a class="reference external" href="https://brew.sh/">Homebrew</a> then follow the instructions to
-install Homebrew.</p></li>
-<li><p>In a Terminal, enter <strong class="program">brew tap ironplc/tap</strong>, then enter <strong class="program">brew install ironplc</strong>.</p></li>
-</ol>
-<p><strong>Install IronPLC Visual Studio Code Extension</strong></p>
-<ol class="arabic simple">
-<li><p>Download the latest IronPLC Visual Studio Code Extension
-<a class="reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.13.34/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a> from
-<a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>.</p></li>
-</ol>
-<p>Run Visual Studio Code, then in Visual Studio Code:</p>
-<ol class="arabic simple">
-<li><p>Go to the Extensions view by clicking on the Extensions icon in
-<span class="guilabel">Activity Bar</span> on the side of VS Code or using the
-View: Extensions command (<kbd class="kbd compound docutils literal notranslate"><kbd class="kbd docutils literal notranslate">⌘</kbd>+<kbd class="kbd docutils literal notranslate">Shift</kbd>+<kbd class="kbd docutils literal notranslate">X</kbd></kbd>).</p></li>
-<li><p>In the Extensions view, select <span class="menuselection">… (View and More Actions) ‣ Install from VSIX…</span> button.</p></li>
-<li><p>In the dialog, select the VISX file you downloaded earlier.</p></li>
-</ol>
-</div>
-</div>
-</section>
-<section id="check-a-file">
-<h2>Check a File<a class="headerlink" href="#check-a-file" title="Permalink to this heading">#</a></h2>
-<p>IronPLC CLI includes an example that you can use to validate the installation.</p>
-<p>Follow the steps below to check a file.</p>
-<div class="tab-set docutils container">
-<input checked="True" class="tab-input" id="tab-set--1-input--1" name="tab-set--1" type="radio"><label class="tab-label" for="tab-set--1-input--1">Windows</label><div class="tab-content docutils container">
-<ol class="arabic simple">
-<li><p>In Visual Studio Code, select <span class="menuselection">File ‣ Open File…</span>.</p></li>
-<li><p>In the <span class="guilabel">Open File</span> dialog, select
-<code class="file docutils literal notranslate"><span class="pre">C:Program</span> <span class="pre">Files\ironplc\examples\getting_started.st</span></code></p></li>
-</ol>
-</div>
-<input class="tab-input" id="tab-set--1-input--2" name="tab-set--1" type="radio"><label class="tab-label" for="tab-set--1-input--2">macOS</label><div class="tab-content docutils container">
-<p>Sorry, but not yet.</p>
-</div>
-</div>
-</section>
 </section>
 
         </article>
@@ -309,12 +236,12 @@ View: Extensions command (<kbd class="kbd compound docutils literal notranslate"
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="../compiler/index.html">
+          <a class="next-page" href="installation.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Compiler Reference</div>
+                <div class="title">Installation</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -354,29 +281,8 @@ View: Extensions command (<kbd class="kbd compound docutils literal notranslate"
         
       </footer>
     </div>
-    <aside class="toc-drawer">
+    <aside class="toc-drawer no-toc">
       
-      
-      <div class="toc-sticky toc-scroll">
-        <div class="toc-title-container">
-          <span class="toc-title">
-            On this page
-          </span>
-        </div>
-        <div class="toc-tree-container">
-          <div class="toc-tree">
-            <ul>
-<li><a class="reference internal" href="#">Quick start</a><ul>
-<li><a class="reference internal" href="#prerequisites">Prerequisites</a></li>
-<li><a class="reference internal" href="#installation">Installation</a></li>
-<li><a class="reference internal" href="#check-a-file">Check a File</a></li>
-</ul>
-</li>
-</ul>
-
-          </div>
-        </div>
-      </div>
       
       
     </aside>
