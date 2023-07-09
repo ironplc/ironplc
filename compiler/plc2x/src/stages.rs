@@ -116,6 +116,13 @@ mod tests {
     }
 
     #[test]
+    fn analyze_2() {
+        let src = read_resource("main.st");
+        let res = analyze(&src, &FileId::default());
+        assert!(res.is_ok())
+    }
+
+    #[test]
     fn parse_when_first_steps_function_block_logger_then_test_apply_when_names_correct_then_passes()
     {
         let src = read_resource("first_steps_function_block_logger.st");
@@ -167,7 +174,7 @@ mod tests {
                     VarDecl::simple("OUT", "INT").with_type(VariableType::Output),
                     VarDecl::simple("Cnt", "INT"),
                     VarDecl {
-                        name: Id::from("ResetCounterValue"),
+                        identifier: VariableIdentifier::new_symbol("ResetCounterValue"),
                         var_type: VariableType::External,
                         qualifier: DeclarationQualifier::Constant,
                         initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
@@ -268,7 +275,7 @@ mod tests {
                     VarDecl::simple("OUT", "INT").with_type(VariableType::Output),
                     VarDecl::simple("Cnt", "INT"),
                     VarDecl {
-                        name: Id::from("ResetCounterValue"),
+                        identifier: VariableIdentifier::new_symbol("ResetCounterValue"),
                         var_type: VariableType::External,
                         qualifier: DeclarationQualifier::Constant,
                         initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
@@ -306,7 +313,7 @@ mod tests {
                 VarDecl::simple("Cnt4", "INT").with_type(VariableType::Input),
                 VarDecl::simple("Cnt5", "INT").with_type(VariableType::Input),
                 VarDecl {
-                    name: Id::from("InputsNumber"),
+                    identifier: VariableIdentifier::new_symbol("InputsNumber"),
                     var_type: VariableType::Var,
                     qualifier: DeclarationQualifier::Unspecified,
                     initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
@@ -412,7 +419,7 @@ mod tests {
             ConfigurationDeclaration {
                 name: Id::from("config"),
                 global_var: vec![VarDecl {
-                    name: Id::from("ResetCounterValue"),
+                    identifier: VariableIdentifier::new_symbol("ResetCounterValue"),
                     var_type: VariableType::Global,
                     qualifier: DeclarationQualifier::Constant,
                     initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {

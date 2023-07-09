@@ -79,7 +79,7 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
     }
 
     fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
-        self.add(&node.name, DummyNode {});
+        self.add_if(node.identifier.id(), DummyNode {});
         visit_variable_declaration(self, node)
     }
 

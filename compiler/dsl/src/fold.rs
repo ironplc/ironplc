@@ -73,7 +73,7 @@ pub trait Fold<E> {
     /// See section 2.4.3.
     fn fold_variable_declaration(&mut self, node: VarDecl) -> Result<VarDecl, E> {
         Ok(VarDecl {
-            name: node.name.clone(),
+            identifier: node.identifier,
             var_type: node.var_type,
             qualifier: node.qualifier,
             initializer: Foldable::fold(node.initializer, self)?,

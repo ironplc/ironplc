@@ -27,4 +27,4 @@ RUN cargo install --root /usr/local cargo-llvm-cov
 # Install typecript for the VS code extension
 RUN npm install -g typescript@4.9.5 vscode
 
-RUN su node && rustup default stable
+RUN sudo --user=node rustup default stable

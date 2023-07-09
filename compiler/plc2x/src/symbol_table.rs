@@ -119,6 +119,13 @@ impl<'a, K: Key, V: 'a> SymbolTable<'a, K, V> {
         }
     }
 
+    pub fn add_if(&mut self, name: Option<&K>, value: V) -> Option<V> {
+        match name {
+            Some(n) => self.add(n, value),
+            None => None,
+        }
+    }
+
     /// Tries to add the key to the scope with the specified value.
     ///
     /// If the table does not have this key present in scope, None is returned.

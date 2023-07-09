@@ -74,6 +74,7 @@ html_theme_options = {
     "source_directory": "docs/"
 }
 
+# Gets the version number by reading from the VERSION file in this folder
 with open("VERSION", "rb") as fp:
     encoded_text = fp.read()
 
@@ -87,6 +88,10 @@ with open("VERSION", "rb") as fp:
 
 extlinks = {'download_artifact': ('https://github.com/ironplc/ironplc/releases/download/v' + version + '/%s',
                       '%s')}
+
+rst_prolog = """.. attention::
+    These docs are a bit ambitious. The steps described are accurate but IronPLC cannot yet run programs.
+"""
 
 extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks", "sphinx.ext.autosectionlabel"]
 
