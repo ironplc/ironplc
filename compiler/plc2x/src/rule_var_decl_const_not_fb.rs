@@ -45,7 +45,7 @@ impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
                     ),
                     Label::source_loc(
                         FileId::default(),
-                        node.name.position(),
+                        node.identifier.position(),
                         "Declaration of function block instance",
                     ),
                 ));
