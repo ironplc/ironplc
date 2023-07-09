@@ -3,7 +3,7 @@
   "displayName": "IronPLC",
   "publisher": "garretfick",
   "description": "IntelliSense for IEC 61131-3",
-  "version": "0.13.34",
+  "version": "0.13.35",
   "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0"
@@ -33,14 +33,14 @@
       }
     ],
     "menus": {
-        "file/newFile": [
-          {
-              "command": "ironplc.createNewStructuredTextFile",
-              "group": "file",
-              "when": "!virtualWorkspace"
-          }
-        ]
-      },
+      "file/newFile": [
+        {
+          "command": "ironplc.createNewStructuredTextFile",
+          "group": "file",
+          "when": "!virtualWorkspace"
+        }
+      ]
+    },
     "configuration": {
       "title": "IronPLC",
       "properties": {
