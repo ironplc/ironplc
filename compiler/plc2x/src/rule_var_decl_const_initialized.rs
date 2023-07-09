@@ -62,7 +62,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                             "S0001",
                             format!(
                                 "Variable is constant but does not define value {} ",
-                                node.name
+                                node.identifier
                             ),
                             Label::source_loc(FileId::default(), &node.position, "Variable"),
                         ));
@@ -75,7 +75,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                             "S0001",
                             format!(
                                 "Variable is constant but does not define value {} ",
-                                node.name
+                                node.identifier
                             ),
                             Label::source_loc(
                                 FileId::default(),
@@ -92,7 +92,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                             "S0002",
                             format!(
                                 "Variable is constant but does not define value {} ",
-                                node.name
+                                node.identifier
                             ),
                             Label::source_loc(
                                 FileId::default(),
@@ -110,7 +110,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                                 "S0003",
                                 format!(
                                     "Variable is constant but does not define value {} ",
-                                    node.name
+                                    node.identifier
                                 ),
                                 Label::source_loc(
                                     FileId::default(),

@@ -66,7 +66,12 @@ impl<'a> Visitor<Diagnostic> for FindGlobalConstVars<'a> {
     type Value = ();
     fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         if node.qualifier == DeclarationQualifier::Constant {
-            self.global_consts.insert(node.name.clone());
+            match &node.identifier {
+                VariableIdentifier::Symbol(name) => {
+                    self.global_consts.insert(name.clone());
+                }
+                VariableIdentifier::Direct(_, _) => todo!(),
+            }
         }
         Ok(())
     }
@@ -82,24 +87,26 @@ impl<'a> Visitor<Diagnostic> for RuleExternalGlobalConst<'a> {
         if node.var_type == VariableType::External
             && node.qualifier != DeclarationQualifier::Constant
         {
-            if let Some(global) = self.global_consts.get(&node.name) {
-                return Err(Diagnostic::new(
-                    "S0001",
-                    format!(
-                        "External var {} is global constant and must be declared constant",
-                        node.name,
-                    ),
-                    Label::source_loc(
+            if let Some(name) = node.identifier.id() {
+                if let Some(global) = self.global_consts.get(name) {
+                    return Err(Diagnostic::new(
+                        "S0001",
+                        format!(
+                            "External var {} is global constant and must be declared constant",
+                            node.identifier,
+                        ),
+                        Label::source_loc(
+                            FileId::default(),
+                            node.identifier.position(),
+                            "Reference to global variable",
+                        ),
+                    )
+                    .with_secondary(Label::source_loc(
                         FileId::default(),
-                        node.name.position(),
-                        "Reference to global variable",
-                    ),
-                )
-                .with_secondary(Label::source_loc(
-                    FileId::default(),
-                    global.position(),
-                    "Constant global variable",
-                )));
+                        global.position(),
+                        "Constant global variable",
+                    )));
+                }
             }
         }
 

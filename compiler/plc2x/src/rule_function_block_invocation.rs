@@ -54,7 +54,10 @@ fn find<'a>(
     owner
         .variables()
         .iter()
-        .find(|item| item.name.eq(name) && types.contains(&item.var_type))
+        .find(|item| match item.identifier.id() {
+            Some(n) => n.eq(name) && types.contains(&item.var_type),
+            None => false,
+        })
 }
 
 fn count_input_type(owner: &dyn HasVariables) -> usize {
@@ -244,8 +247,9 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
 
     fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         if let InitialValueAssignmentKind::FunctionBlock(fbi) = &node.initializer {
-            self.var_to_fb
-                .insert(node.name.clone(), fbi.type_name.clone());
+            if let Some(id) = node.identifier.id() {
+                self.var_to_fb.insert(id.clone(), fbi.type_name.clone());
+            }
         }
         Ok(())
     }

@@ -2,7 +2,7 @@
 //!
 //! See section 2.
 use core::str::FromStr;
-use std::fmt;
+use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 use std::num::TryFromIntError;
 use time::Duration;
@@ -650,7 +650,8 @@ pub trait HasVariables {
 /// See section 2.4.3.
 #[derive(Debug, PartialEq, Clone)]
 pub struct VarDecl {
-    pub name: Id,
+    // Not all variable types have a "name", so the name is part of the type.
+    pub identifier: VariableIdentifier,
     pub var_type: VariableType,
     pub qualifier: DeclarationQualifier,
     pub initializer: InitialValueAssignmentKind,
@@ -662,7 +663,7 @@ impl VarDecl {
     /// The declaration has type `VAR` and no qualifier.
     pub fn simple(name: &str, type_name: &str) -> Self {
         Self {
-            name: Id::from(name),
+            identifier: VariableIdentifier::new_symbol(name),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::simple_uninitialized(type_name),
@@ -677,7 +678,7 @@ impl VarDecl {
         loc: SourceLoc,
     ) -> Self {
         Self {
-            name: Id::from(name),
+            identifier: VariableIdentifier::new_symbol(name),
             var_type,
             qualifier,
             initializer: InitialValueAssignmentKind::String(StringInitializer {
@@ -693,7 +694,7 @@ impl VarDecl {
     /// The declaration has type `VAR` and no qualifier.
     pub fn uninitialized_enumerated(name: &str, type_name: &str) -> Self {
         VarDecl {
-            name: Id::from(name),
+            identifier: VariableIdentifier::new_symbol(name),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::EnumeratedType(
@@ -710,7 +711,7 @@ impl VarDecl {
     /// The declaration has type `VAR` and no qualifier.
     pub fn enumerated(name: &str, type_name: &str, initial_value: &str) -> Self {
         VarDecl {
-            name: Id::from(name),
+            identifier: VariableIdentifier::new_symbol(name),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::EnumeratedType(
@@ -731,7 +732,7 @@ impl VarDecl {
     /// The declaration has type `VAR` and no qualifier.
     pub fn function_block(name: &str, type_name: &str) -> Self {
         VarDecl {
-            name: Id::from(name),
+            identifier: VariableIdentifier::new_symbol(name),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::FunctionBlock(
@@ -746,7 +747,7 @@ impl VarDecl {
     /// Creates a variable declaration for a structure.
     pub fn structure(name: &str, type_name: &str) -> Self {
         VarDecl {
-            name: Id::from(name),
+            identifier: VariableIdentifier::new_symbol(name),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::Structure(
@@ -766,7 +767,7 @@ impl VarDecl {
     /// a placeholder that is later resolved once all types are known.
     pub fn late_bound(name: &str, type_name: &str) -> Self {
         VarDecl {
-            name: Id::from(name),
+            identifier: VariableIdentifier::new_symbol(name),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::LateResolvedType(Id::from(type_name)),
@@ -794,6 +795,9 @@ impl VarDecl {
 /// implementation treats the groups as labels on individual variables; in
 /// effect, there are no groups.
 ///
+/// The variable type owns the name of a variable because the type
+/// defines whether a name is required.
+///
 /// See section 2.4.3.
 #[derive(Debug, PartialEq, Clone)]
 pub enum VariableType {
@@ -819,8 +823,55 @@ pub enum VariableType {
     Global,
     /// Configurations for communication channels.
     Access,
-    /// TODO is this really a type or just a variation on the set fields?
-    Located,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum VariableIdentifier {
+    Symbol(Id),
+    Direct(Option<Id>, AddressAssignment),
+}
+
+impl VariableIdentifier {
+    pub fn new_symbol(name: &str) -> Self {
+        VariableIdentifier::Symbol(Id::from(name))
+    }
+    pub fn new_direct(name: Option<Id>, location: AddressAssignment) -> Self {
+        VariableIdentifier::Direct(name, location)
+    }
+
+    pub fn id(&self) -> Option<&Id> {
+        match self {
+            VariableIdentifier::Symbol(name) => Option::Some(name),
+            VariableIdentifier::Direct(name, _) => match name {
+                Some(n) => Some(n),
+                None => None,
+            },
+        }
+    }
+}
+
+impl SourcePosition for VariableIdentifier {
+    fn position(&self) -> &SourceLoc {
+        match self {
+            VariableIdentifier::Symbol(name) => name.position(),
+            VariableIdentifier::Direct(name, location) => location.position(),
+        }
+    }
+}
+
+impl Display for VariableIdentifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VariableIdentifier::Symbol(name) => name.fmt(f),
+            VariableIdentifier::Direct(name, address) => {
+                if let Some(n) = name {
+                    n.fmt(f)
+                } else {
+                    address.fmt(f)
+                }
+            }
+        }
+    }
 }
 
 /// Qualifier types for definitions.
@@ -843,14 +894,6 @@ pub enum DeclarationQualifier {
     NonRetain,
 }
 
-pub struct LocatedVarDecl {
-    pub name: Option<Id>,
-    pub qualifier: DeclarationQualifier,
-    pub location: AddressAssignment,
-    pub initializer: InitialValueAssignmentKind,
-    pub position: SourceLoc,
-}
-
 /// Location assignment for a variable.
 ///
 /// See section 2.4.3.1.
@@ -859,6 +902,7 @@ pub struct AddressAssignment {
     pub location: LocationPrefix,
     pub size: SizePrefix,
     pub address: Vec<u32>,
+    pub position: SourceLoc,
 }
 
 impl fmt::Debug for AddressAssignment {
@@ -876,6 +920,12 @@ impl fmt::Display for AddressAssignment {
             .field("location", &self.location)
             .field("size", &self.size)
             .finish()
+    }
+}
+
+impl SourcePosition for AddressAssignment {
+    fn position(&self) -> &SourceLoc {
+        &self.position
     }
 }
 

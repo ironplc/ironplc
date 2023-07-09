@@ -72,7 +72,7 @@ enum VarDeclarations {
     // input_output_declarations
     Inouts(Vec<VarDecl>),
     // located_var_declarations
-    Located(Vec<LocatedVarDecl>),
+    Located(Vec<VarDecl>),
     // var_declarations
     Var(Vec<VarDecl>),
     // external_declarations
@@ -86,9 +86,8 @@ enum VarDeclarations {
 impl VarDeclarations {
     // Given multiple sets of declarations, unzip them into types of
     // declarations.
-    pub fn unzip(mut decls: Vec<VarDeclarations>) -> (Vec<VarDecl>, Vec<LocatedVarDecl>) {
+    pub fn unzip(mut decls: Vec<VarDeclarations>) -> Vec<VarDecl> {
         let mut vars = Vec::new();
-        let mut located = Vec::new();
 
         for decl in decls.drain(..) {
             match decl {
@@ -102,7 +101,7 @@ impl VarDeclarations {
                     vars.append(&mut inouts);
                 }
                 VarDeclarations::Located(mut l) => {
-                    located.append(&mut l);
+                    vars.append(&mut l);
                 }
                 VarDeclarations::Var(mut v) => {
                     vars.append(&mut v);
@@ -121,7 +120,7 @@ impl VarDeclarations {
             }
         }
 
-        (vars, located)
+        vars
     }
 
     pub fn map(
@@ -156,29 +155,12 @@ impl VarDeclarations {
                     .unwrap_or(DeclarationQualifier::Unspecified);
 
                 VarDecl {
-                    name: declaration.name,
+                    identifier: VariableIdentifier::Symbol(declaration.name),
                     var_type: var_type.clone(),
                     qualifier,
                     initializer: declaration.initializer,
                     position: declaration.position,
                 }
-            })
-            .collect()
-    }
-
-    pub fn map_located(
-        declarations: Vec<LocatedVarDecl>,
-        qualifier: Option<DeclarationQualifier>,
-    ) -> Vec<LocatedVarDecl> {
-        declarations
-            .into_iter()
-            .map(|declaration| {
-                let qualifier = qualifier
-                    .clone()
-                    .unwrap_or(DeclarationQualifier::Unspecified);
-                let mut declaration = declaration;
-                declaration.qualifier = qualifier;
-                declaration
             })
             .collect()
     }
@@ -666,13 +648,14 @@ parser! {
     rule variable_name() -> Id = identifier()
 
     // B.1.4.1 Directly represented variables
-    pub rule direct_variable() -> AddressAssignment = "%" l:location_prefix() "*" {
+    pub rule direct_variable() -> AddressAssignment = start:position!() "%" l:location_prefix() "*" end:position!() {
       AddressAssignment {
         location: l,
         size: SizePrefix::Unspecified,
         address: vec![],
+        position: SourceLoc::range(start, end)
       }
-    } / "%" l:location_prefix() s:size_prefix()? addr:integer() ++ "." {?
+    } / start:position!() "%" l:location_prefix() s:size_prefix()? addr:integer() ++ "." end:position!() {?
       let size = s.unwrap_or(SizePrefix::Nil);
       let mut addresses = Vec::new();
       for part in addr.iter() {
@@ -683,6 +666,7 @@ parser! {
         location: l,
         size,
         address: addresses,
+        position: SourceLoc::range(start, end)
       })
     }
     rule location_prefix() -> LocationPrefix =
@@ -797,13 +781,14 @@ parser! {
     }
     rule located_var_declarations() -> VarDeclarations = kw("VAR") _ qualifier:(kw("CONSTANT") { DeclarationQualifier::Constant } / kw("RETAIN") {DeclarationQualifier::Retain} / kw("NON_RETAIN") {DeclarationQualifier::NonRetain})? _ declarations:semisep(<located_var_decl()>) _ kw("END_VAR") {
       let qualifier = qualifier.or(Some(DeclarationQualifier::Unspecified));
-      VarDeclarations::Located(VarDeclarations::map_located(declarations, qualifier))
+      VarDeclarations::Located(VarDeclarations::map(declarations, qualifier))
     }
-    rule located_var_decl() -> LocatedVarDecl = start:position!() name:variable_name()? _ location:location() _ ":" _ initializer:located_var_spec_init() end:position!() {
-      LocatedVarDecl {
-        name,
+    rule located_var_decl() -> VarDecl = start:position!() name:variable_name()? _ location:location() _ ":" _ initializer:located_var_spec_init() end:position!() {
+      VarDecl {
+        identifier: VariableIdentifier::new_direct(name, location),
+        // TODO Is the type always var?
+        var_type: VariableType::Var,
         qualifier: DeclarationQualifier::Unspecified,
-        location,
         initializer,
         position: SourceLoc::range(start, end),
       }
@@ -821,7 +806,7 @@ parser! {
     }
     rule external_declaration() -> VarDecl = start:position!() name:global_var_name() _ ":" _ spec:external_declaration_spec() end:position!() {
       VarDecl {
-        name,
+        identifier: VariableIdentifier::Symbol(name),
         var_type: VariableType::External,
         qualifier: DeclarationQualifier::Unspecified,
         initializer: spec,
@@ -846,7 +831,7 @@ parser! {
       vs.0.into_iter().map(|name| {
         let init = initializer.clone().unwrap_or(InitialValueAssignmentKind::None);
         VarDecl {
-          name,
+          identifier: VariableIdentifier::Symbol(name),
           var_type: VariableType::Global,
           qualifier: DeclarationQualifier::Unspecified,
           // TODO this is clearly wrong
@@ -906,7 +891,7 @@ parser! {
     rule standard_function_name() -> Id = identifier()
     rule derived_function_name() -> Id = identifier()
     rule function_declaration() -> FunctionDeclaration = kw("FUNCTION") _  name:derived_function_name() _ ":" _ rt:(et:elementary_type_name() { et.into() } / dt:derived_type_name() { dt }) _ var_decls:(io:io_var_declarations() / func:function_var_decls()) ** _ _ body:function_body() _ kw("END_FUNCTION") {
-      let (variables, located) = VarDeclarations::unzip(var_decls);
+      let variables = VarDeclarations::unzip(var_decls);
       FunctionDeclaration {
         name,
         return_type: rt,
@@ -930,11 +915,10 @@ parser! {
     rule derived_function_block_name() -> Id = !STANDARD_FUNCTION_BLOCK_NAME() i:identifier() { i }
     // TODO add variable declarations
     rule function_block_declaration() -> FunctionBlockDeclaration = start:position!() kw("FUNCTION_BLOCK") _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other }) ** _ _ body:function_block_body() _ kw("END_FUNCTION_BLOCK") end:position!() {
-      let (variables, located) = VarDeclarations::unzip(decls);
+      let variables = VarDeclarations::unzip(decls);
       FunctionBlockDeclaration {
         name,
         variables,
-        // TODO located?
         body,
         position: SourceLoc::range(start, end),
       }
@@ -954,7 +938,7 @@ parser! {
     // B.1.5.3 Program declaration
     rule program_type_name() -> Id = i:identifier() { i }
     pub rule program_declaration() ->  ProgramDeclaration = kw("PROGRAM") _ p:program_type_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other } / located:located_var_declarations() { located }) ** _ _ body:function_block_body() _ kw("END_PROGRAM") {
-      let (variables, located) = VarDeclarations::unzip(decls);
+      let variables = VarDeclarations::unzip(decls);
       ProgramDeclaration {
         type_name: p,
         variables,
@@ -1274,14 +1258,14 @@ mod test {
       END_VAR";
         let vars = vec![
             VarDecl {
-                name: Id::from("TRIG"),
+                identifier: VariableIdentifier::new_symbol("TRIG"),
                 var_type: VariableType::Input,
                 qualifier: DeclarationQualifier::Unspecified,
                 initializer: InitialValueAssignmentKind::simple_uninitialized("BOOL"),
                 position: SourceLoc::default(),
             },
             VarDecl {
-                name: Id::from("MSG"),
+                identifier: VariableIdentifier::new_symbol("MSG"),
                 var_type: VariableType::Input,
                 qualifier: DeclarationQualifier::Unspecified,
                 initializer: InitialValueAssignmentKind::String(StringInitializer {
@@ -1301,7 +1285,7 @@ mod test {
 LEVEL : LOGLEVEL := INFO;
 END_VAR";
         let expected = Ok(vec![VarDecl {
-            name: Id::from("LEVEL"),
+            identifier: VariableIdentifier::new_symbol("LEVEL"),
             var_type: VariableType::Input,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::EnumeratedType(
@@ -1323,14 +1307,14 @@ END_VAR";
       END_VAR";
         let vars = vec![
             VarDecl {
-                name: Id::from("TRIG"),
+                identifier: VariableIdentifier::new_symbol("TRIG"),
                 var_type: VariableType::Output,
                 qualifier: DeclarationQualifier::Unspecified,
                 initializer: InitialValueAssignmentKind::simple_uninitialized("BOOL"),
                 position: SourceLoc::default(),
             },
             VarDecl {
-                name: Id::from("MSG"),
+                identifier: VariableIdentifier::new_symbol("MSG"),
                 var_type: VariableType::Output,
                 qualifier: DeclarationQualifier::Unspecified,
                 initializer: InitialValueAssignmentKind::String(StringInitializer {
@@ -1402,6 +1386,7 @@ END_VAR";
             location: LocationPrefix::I,
             size: SizePrefix::X,
             address,
+            position: SourceLoc::default(),
         };
         assert_eq!(plc_parser::direct_variable("%IX1"), Ok(var))
     }
@@ -1413,6 +1398,7 @@ END_VAR";
             location: LocationPrefix::I,
             size: SizePrefix::X,
             address,
+            position: SourceLoc::default(),
         };
         assert_eq!(plc_parser::location("AT %IX1"), Ok(var))
     }
@@ -1421,7 +1407,7 @@ END_VAR";
     fn var_global() {
         // TODO assign the right values
         let reset = vec![VarDecl {
-            name: Id::from("ResetCounterValue"),
+            identifier: VariableIdentifier::new_symbol("ResetCounterValue"),
             var_type: VariableType::Global,
             qualifier: DeclarationQualifier::Constant,
             initializer: InitialValueAssignmentKind::simple(
