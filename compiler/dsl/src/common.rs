@@ -825,21 +825,38 @@ pub enum VariableType {
     Access,
 }
 
+/// Ways of identifying variable data objects.
+///
+/// See section 2.4.1.1.
 #[derive(Debug, PartialEq, Clone)]
 pub enum VariableIdentifier {
+    /// A variable data object that is referenced by a symbol. This is
+    /// typical reference type common in most programming languages.
     Symbol(Id),
+
+    /// A variable data object that is "directly" mapped to a hardware
+    /// address. These variables are typically used for I/O.
+    ///
+    /// Directly represented variables have an address and an optional
+    /// symbolic identifier.
     Direct(Option<Id>, AddressAssignment),
 }
 
 impl VariableIdentifier {
+    /// Create a new symbolic variable identifier.
     pub fn new_symbol(name: &str) -> Self {
         VariableIdentifier::Symbol(Id::from(name))
     }
+
+    /// Create a new direct variable identifier.
     pub fn new_direct(name: Option<Id>, location: AddressAssignment) -> Self {
         VariableIdentifier::Direct(name, location)
     }
 
-    pub fn id(&self) -> Option<&Id> {
+    /// Return the symbolic identifier if there is one.
+    ///
+    /// Direct representations have an optional symbolic identifier.
+    pub fn symbolic_id(&self) -> Option<&Id> {
         match self {
             VariableIdentifier::Symbol(name) => Option::Some(name),
             VariableIdentifier::Direct(name, _) => match name {

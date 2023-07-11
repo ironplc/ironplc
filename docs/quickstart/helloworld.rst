@@ -9,8 +9,8 @@ by writing a "Hello, World" program to display that text.
 Don't worry if you haven't learned another programming language
 and haven't written a "Hello, World" program. IEC 61131-3 is different.
 
-IEC 61131-3 is specifically designed for real-time
-automation controllers that often do not have display. Simply put, there is
+IEC 61131-3 is specifically designed for real-time automation controllers
+that often do not have a display. In other words, there is
 often no place to display "Hello, World". Other options, such as creating
 a file are also unusual.
 
@@ -30,8 +30,8 @@ then enable the buzzer.
 
 .. note::
 
-   It is possible to design a simpler door bell system. The purpose of this
-   system is to illustrate how to use IEC 61131-3.
+   It is possible to design a simpler door bell system. This is a more complex
+   example designed to illustrate how to use IEC 61131-3.
 
 -------------------------------------
 Create a Program with Structured Text

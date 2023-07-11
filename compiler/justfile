@@ -14,6 +14,12 @@ test:
   cargo test --all-targets
   cargo llvm-cov --all-features --workspace --fail-under-lines 85 --show-missing-lines
 
+# Fix linting errors.
+format:
+  cargo clippy
+  cargo fmt --all
+
+# Check for linting errors.
 lint:
   cargo clippy
   cargo fmt --all -- --check
