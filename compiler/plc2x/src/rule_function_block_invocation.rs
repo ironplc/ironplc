@@ -54,7 +54,7 @@ fn find<'a>(
     owner
         .variables()
         .iter()
-        .find(|item| match item.identifier.id() {
+        .find(|item| match item.identifier.symbolic_id() {
             Some(n) => n.eq(name) && types.contains(&item.var_type),
             None => false,
         })
@@ -247,7 +247,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
 
     fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         if let InitialValueAssignmentKind::FunctionBlock(fbi) = &node.initializer {
-            if let Some(id) = node.identifier.id() {
+            if let Some(id) = node.identifier.symbolic_id() {
                 self.var_to_fb.insert(id.clone(), fbi.type_name.clone());
             }
         }

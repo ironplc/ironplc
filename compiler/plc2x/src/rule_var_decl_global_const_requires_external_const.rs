@@ -87,7 +87,7 @@ impl<'a> Visitor<Diagnostic> for RuleExternalGlobalConst<'a> {
         if node.var_type == VariableType::External
             && node.qualifier != DeclarationQualifier::Constant
         {
-            if let Some(name) = node.identifier.id() {
+            if let Some(name) = node.identifier.symbolic_id() {
                 if let Some(global) = self.global_consts.get(name) {
                     return Err(Diagnostic::new(
                         "S0001",
