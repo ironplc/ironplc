@@ -1,9 +1,9 @@
 # Use the typescript image because Typescript is the most challenging to setup.
 FROM mcr.microsoft.com/devcontainers/typescript-node:18
 
-# Install the Rust tools for the computer, Python and Sphinx for documentation
+# Install the Python and Sphinx for documentation
 RUN apt-get update
-RUN apt-get install -y python3-sphinx python3-pip curl
+RUN apt-get install -y python3-sphinx python3-pip curl xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libdrm2 libgtk-3-0 libgbm1 libasound2
 
 # Install required Sphinx extensions for the documentation
 RUN pip3 install furo sphinx-inline-tabs
@@ -25,6 +25,6 @@ RUN cargo install --root /usr/local cargo-release
 RUN cargo install --root /usr/local cargo-llvm-cov
 
 # Install typecript for the VS code extension
-RUN npm install -g typescript@4.9.5 vscode
+RUN npm install -g typescript@5.1.6 vscode
 
 RUN sudo --user=node rustup default stable
