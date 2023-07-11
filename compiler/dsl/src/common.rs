@@ -826,7 +826,7 @@ pub enum VariableType {
 }
 
 /// Ways of identifying variable data objects.
-/// 
+///
 /// See section 2.4.1.1.
 #[derive(Debug, PartialEq, Clone)]
 pub enum VariableIdentifier {
@@ -836,7 +836,7 @@ pub enum VariableIdentifier {
 
     /// A variable data object that is "directly" mapped to a hardware
     /// address. These variables are typically used for I/O.
-    /// 
+    ///
     /// Directly represented variables have an address and an optional
     /// symbolic identifier.
     Direct(Option<Id>, AddressAssignment),
@@ -854,7 +854,7 @@ impl VariableIdentifier {
     }
 
     /// Return the symbolic identifier if there is one.
-    /// 
+    ///
     /// Direct representations have an optional symbolic identifier.
     pub fn symbolic_id(&self) -> Option<&Id> {
         match self {
