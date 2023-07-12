@@ -30,6 +30,11 @@
         "title": "New Structured Text File",
         "shortTitle": "Structured Text File",
         "category": "IronPLC"
+      },
+      {
+        "command": "ironplc.extensionDiagnostics",
+        "title": "Extension Diagnostics",
+        "category": "IronPLC"
       }
     ],
     "menus": {
@@ -74,7 +79,11 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run esbuild-base -- --minify",
+    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "esbuild": "npm run esbuild-base -- --sourcemap",
+    "esbuild-watch": "npm run esbuild-base -- --sourcemap --watch",
+    "test-compile": "tsc -p ./",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
@@ -89,11 +98,12 @@
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "@vscode/test-electron": "^2.2.3",
+    "@vscode/vsce": "^2.19.0",
+    "esbuild": "^0.18.11",
     "eslint": "^8.40.0",
     "glob": "^10.2.0",
     "mocha": "^10.2.0",
-    "typescript": "5.1.6",
-    "@vscode/vsce": "^2.19.0"
+    "typescript": "5.1.6"
   },
   "dependencies": {
     "vscode-languageclient": "^8.1.0"
