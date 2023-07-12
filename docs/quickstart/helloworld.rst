@@ -43,24 +43,26 @@ Run Visual Studio Code, then in Visual Studio Code:
 #. In the :guilabel:`New File...` dialog, choose the :menuselection:`Structured Text File` option.
 #. Enter the code in :ref:`Hello World <helloworld>` into the :guilabel:`Editor`.
 
-.. code-block::
-   :caption: Hello World
-   :name: helloworld
+   .. code-block::
+      :caption: Hello World
+      :name: helloworld
 
-   PROGRAM main
-      VAR
-         Button AT %IX1: BOOL;
-         Buzzer AT %QX1: BOOL;
-      END_VAR
+      PROGRAM main
+         VAR
+            Button AT %IX1: BOOL;
+            Buzzer AT %QX1: BOOL;
+         END_VAR
 
-      Buzzer := NOT Button;
+         Buzzer := NOT Button;
 
-   END_PROGRAM
+      END_PROGRAM
 
-   CONFIGURATION config
-      RESOURCE res ON PLC
-         TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
-         PROGRAM plc_task_instance WITH plc_task : main;
-      END_RESOURCE
-   END_CONFIGURATION
+      CONFIGURATION config
+         RESOURCE res ON PLC
+            TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+            PROGRAM plc_task_instance WITH plc_task : main;
+         END_RESOURCE
+      END_CONFIGURATION
+
+#. Save the file with the name :file:`main.st`.
 

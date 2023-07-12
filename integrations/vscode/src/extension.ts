@@ -10,6 +10,7 @@ import {
 } from 'vscode-languageclient/node';
 
 let client: LanguageClient | undefined;
+let application: Executable | undefined;
 
 // This method is called when this extension is activated.
 export function activate(context: vscode.ExtensionContext) {
@@ -22,6 +23,11 @@ export function activate(context: vscode.ExtensionContext) {
 		// The code you place here will be executed every time your command is executed
 		// Display a message box to the user
 		vscode.window.showInformationMessage('Hello World from IronPLC!');
+	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand('ironplc.extensionDiagnostics', () => {
+		const message = "Compiler path: " + application?.command;
+		vscode.window.showInformationMessage(message);
 	}));
 
   	context.subscriptions.push(vscode.commands.registerCommand("ironplc.createNewStructuredTextFile", () => {
@@ -41,7 +47,7 @@ function startServer(context: vscode.ExtensionContext) {
 		return;
 	}
 
-	const application: Executable = {
+	application = {
 		command: compilerFilePath,
 		transport: TransportKind.stdio,
 		args: ['lsp'],
@@ -120,5 +126,6 @@ export function deactivate() : Thenable<void> | undefined {
 	if (!client) {
 		return undefined;
 	}
+	application = undefined;
 	return client.stop();
 }
