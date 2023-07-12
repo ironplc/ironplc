@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Compiler Reference" href="../compiler/index.html" /><link rel="prev" title="Installation" href="installation.html" />
+<link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Update" href="update.html" /><link rel="prev" title="Installation" href="installation.html" />
 
     <!-- Generated with Sphinx 7.0.1 and Furo 2023.05.20 -->
         <title>Hello, World! - IronPLC documentation</title>
@@ -174,6 +174,7 @@
 <li class="toctree-l1 current has-children"><a class="reference internal" href="index.html">Quick start</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of Quick start</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Hello, World!</a></li>
+<li class="toctree-l2"><a class="reference internal" href="update.html">Update</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../compiler/index.html">Compiler</a></li>
@@ -230,8 +231,8 @@
 by writing a “Hello, World” program to display that text.
 Don’t worry if you haven’t learned another programming language
 and haven’t written a “Hello, World” program. IEC 61131-3 is different.</p>
-<p>IEC 61131-3 is specifically designed for real-time
-automation controllers that often do not have display. Simply put, there is
+<p>IEC 61131-3 is specifically designed for real-time automation controllers
+that often do not have a display. In other words, there is
 often no place to display “Hello, World”. Other options, such as creating
 a file are also unusual.</p>
 <p>A “Hello, World” program in IEC 61131-3 is quite a bit different.</p>
@@ -245,18 +246,17 @@ To do that, we use a controller to check the button state and if pressed
 then enable the buzzer.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>It is possible to design a simpler door bell system. The purpose of this
-system is to illustrate how to use IEC 61131-3.</p>
+<p>It is possible to design a simpler door bell system. This is a more complex
+example designed to illustrate how to use IEC 61131-3.</p>
 </div>
 </section>
 <section id="create-a-program-with-structured-text">
 <h2>Create a Program with Structured Text<a class="headerlink" href="#create-a-program-with-structured-text" title="Permalink to this heading">#</a></h2>
 <p>Run Visual Studio Code, then in Visual Studio Code:</p>
-<ol class="arabic simple">
+<ol class="arabic">
 <li><p>In the main menu, choose select <span class="menuselection">File ‣ New File…</span>.</p></li>
 <li><p>In the <span class="guilabel">New File…</span> dialog, choose the <span class="menuselection">Structured Text File</span> option.</p></li>
-<li><p>Enter the code in <a class="reference internal" href="#helloworld"><span class="std std-ref">Hello World</span></a> into the <span class="guilabel">Editor</span>.</p></li>
-</ol>
+<li><p>Enter the code in <a class="reference internal" href="#helloworld"><span class="std std-ref">Hello World</span></a> into the <span class="guilabel">Editor</span>.</p>
 <div class="literal-block-wrapper docutils container" id="helloworld">
 <div class="code-block-caption"><span class="caption-text">Hello World</span><a class="headerlink" href="#helloworld" title="Permalink to this code">#</a></div>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
@@ -278,6 +278,9 @@ system is to illustrate how to use IEC 61131-3.</p>
 </pre></div>
 </div>
 </div>
+</li>
+<li><p>Save the file with the name <code class="file docutils literal notranslate"><span class="pre">main.st</span></code>.</p></li>
+</ol>
 </section>
 </section>
 
@@ -286,12 +289,12 @@ system is to illustrate how to use IEC 61131-3.</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="../compiler/index.html">
+          <a class="next-page" href="update.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Compiler Reference</div>
+                <div class="title">Update</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>

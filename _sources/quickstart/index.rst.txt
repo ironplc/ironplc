@@ -14,4 +14,5 @@ so you journey will be quick. In this chapter, we'll discuss:
 
    Installation <installation>
    Hello, World! <helloworld>
+   Update <update>
 
