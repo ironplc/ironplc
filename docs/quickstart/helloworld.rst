@@ -7,14 +7,12 @@ Now that you've installed IronPLC, it's time to write a first program.
 If you've ever learned another programming language, you likely started
 by writing a "Hello, World" program to display that text.
 Don't worry if you haven't learned another programming language
-and haven't written a "Hello, World" program. IEC 61131-3 is different.
+or haven't written a "Hello, World" program. An IEC 61131-3 program is different.
 
-IEC 61131-3 is specifically designed for real-time automation controllers
+IEC 61131-3 is designed for real-time automation controllers
 that often do not have a display. In other words, there is
-often no place to display "Hello, World". Other options, such as creating
+often no place to show "Hello, World". Other options, such as creating
 a file are also unusual.
-
-A "Hello, World" program in IEC 61131-3 is quite a bit different.
 
 -------------------------------
 The Sense-Control-Actuate Cycle
@@ -22,8 +20,13 @@ The Sense-Control-Actuate Cycle
 
 Controllers normally operate as part of a sense-control-actuate cycle.
 We'll start with a simple example to illustrate the idea: a door bell system.
-
 Our door bell system contains a button (the sensor) and a buzzer (the actuator).
+
+.. figure:: button-buzzer.svg
+   :width: 200
+   
+   Pressing the button triggers the buzzer.
+
 We desire that the buzzer makes noise when the button is pressed.
 To do that, we use a controller to check the button state and if pressed
 then enable the buzzer.
