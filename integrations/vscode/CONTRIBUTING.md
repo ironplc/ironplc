@@ -27,7 +27,7 @@ You will frequently need to make changes to both this Visual Studio Code
 Extension and IronPLC.
 
 1. Build a local version of `ironplcc`.
-1. In the **[Extension Development Host]** window, choose **File » Preferences » Settings**.
+1. In the **[Extension Development Host]** window, select **File » Preferences » Settings**.
 1. In the **Settings** document, search for **ironplc**.
 1. Set the value of **Ironplc: Path** to the directory containing `ironplcc`.
 
