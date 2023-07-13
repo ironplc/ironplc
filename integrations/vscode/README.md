@@ -13,7 +13,8 @@ IEC 61131-3 runtime and development environment.
 
 ## Requirements
 
-You need to separately install the IronPLC compiler to use syntax checking.
+You need to separately install the IronPLC compiler to use syntax checking. Visit
+[IronPLC](https://www.ironplc.com) for installation instructions.
 
 ## Extension Settings
 

@@ -39,8 +39,8 @@ Create a Program with Structured Text
 
 Run Visual Studio Code, then in Visual Studio Code:
 
-#. In the main menu, choose select :menuselection:`File --> New File...`.
-#. In the :guilabel:`New File...` dialog, choose the :menuselection:`Structured Text File` option.
+#. In the main menu, select :menuselection:`File --> New File...`.
+#. In the :guilabel:`New File...` dialog, select the :menuselection:`Structured Text File` option.
 #. Enter the code in :ref:`Hello World <helloworld>` into the :guilabel:`Editor`.
 
    .. code-block::
@@ -66,3 +66,33 @@ Run Visual Studio Code, then in Visual Studio Code:
 
 #. Save the file with the name :file:`main.st`.
 
+-----------------------------------
+Anatomy of the Hello, World Program
+-----------------------------------
+
+Let's review this program. IEC 61131-3 applications are structured from blocks
+called Program Organization Units (POUs). The :code:`PROGRAM` is a top level block and
+similar to the "main" function in other languages. The piece indicated by
+
+.. code-block::
+   :name: main
+
+   PROGRAM main
+
+   END_PROGRAM
+
+defines a :code:`PROGRAM` identified by the name :code:`main`.
+
+Unlike the "main" function in other languages, a program does not run by default.
+We need to tell the PLC runtime how we want to run the program. The piece indicated by
+
+.. code-block::
+   :name: config
+
+   CONFIGURATION config
+      
+   END_CONFIGURATION
+
+defines how we want the program to run. The configuration declares we want to execute
+the :code:`main` program once every 100 ms. as the highest priority task. This task 
+executed on the hardware element named :code:`res`.

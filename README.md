@@ -46,7 +46,7 @@ milestones are the current plan to achieve that loveable product.
 
 ## Usage
 
-Go to [ironplc.com](ironplc.com) and follow the instructions
+Go to [ironplc.com](https://www.ironplc.com) and follow the instructions
 to get started.
 
 ## Contributing
