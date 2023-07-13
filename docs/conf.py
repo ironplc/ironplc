@@ -93,6 +93,6 @@ rst_prolog = """.. attention::
     These docs are a bit ambitious. The steps described are accurate but IronPLC cannot yet run programs.
 """
 
-extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks", "sphinx.ext.autosectionlabel"]
+extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks", "sphinx.ext.autosectionlabel", "sphinx_copybutton"]
 
 autosectionlabel_prefix_document = True
