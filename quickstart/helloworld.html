@@ -230,18 +230,23 @@
 <p>If you’ve ever learned another programming language, you likely started
 by writing a “Hello, World” program to display that text.
 Don’t worry if you haven’t learned another programming language
-and haven’t written a “Hello, World” program. IEC 61131-3 is different.</p>
-<p>IEC 61131-3 is specifically designed for real-time automation controllers
+or haven’t written a “Hello, World” program. An IEC 61131-3 program is different.</p>
+<p>IEC 61131-3 is designed for real-time automation controllers
 that often do not have a display. In other words, there is
-often no place to display “Hello, World”. Other options, such as creating
+often no place to show “Hello, World”. Other options, such as creating
 a file are also unusual.</p>
-<p>A “Hello, World” program in IEC 61131-3 is quite a bit different.</p>
 <section id="the-sense-control-actuate-cycle">
 <h2>The Sense-Control-Actuate Cycle<a class="headerlink" href="#the-sense-control-actuate-cycle" title="Permalink to this heading">#</a></h2>
 <p>Controllers normally operate as part of a sense-control-actuate cycle.
-We’ll start with a simple example to illustrate the idea: a door bell system.</p>
-<p>Our door bell system contains a button (the sensor) and a buzzer (the actuator).
-We desire that the buzzer makes noise when the button is pressed.
+We’ll start with a simple example to illustrate the idea: a door bell system.
+Our door bell system contains a button (the sensor) and a buzzer (the actuator).</p>
+<figure class="align-default" id="id1">
+<a class="reference internal image-reference" href="../_images/button-buzzer.svg"><img alt="../_images/button-buzzer.svg" src="../_images/button-buzzer.svg" width="200" /></a>
+<figcaption>
+<p><span class="caption-text">Pressing the button triggers the buzzer.</span><a class="headerlink" href="#id1" title="Permalink to this image">#</a></p>
+</figcaption>
+</figure>
+<p>We desire that the buzzer makes noise when the button is pressed.
 To do that, we use a controller to check the button state and if pressed
 then enable the buzzer.</p>
 <div class="admonition note">
@@ -254,8 +259,8 @@ example designed to illustrate how to use IEC 61131-3.</p>
 <h2>Create a Program with Structured Text<a class="headerlink" href="#create-a-program-with-structured-text" title="Permalink to this heading">#</a></h2>
 <p>Run Visual Studio Code, then in Visual Studio Code:</p>
 <ol class="arabic">
-<li><p>In the main menu, choose select <span class="menuselection">File ‣ New File…</span>.</p></li>
-<li><p>In the <span class="guilabel">New File…</span> dialog, choose the <span class="menuselection">Structured Text File</span> option.</p></li>
+<li><p>In the main menu, select <span class="menuselection">File ‣ New File…</span>.</p></li>
+<li><p>In the <span class="guilabel">New File…</span> dialog, select the <span class="menuselection">Structured Text File</span> option.</p></li>
 <li><p>Enter the code in <a class="reference internal" href="#helloworld"><span class="std std-ref">Hello World</span></a> into the <span class="guilabel">Editor</span>.</p>
 <div class="literal-block-wrapper docutils container" id="helloworld">
 <div class="code-block-caption"><span class="caption-text">Hello World</span><a class="headerlink" href="#helloworld" title="Permalink to this code">#</a></div>
@@ -281,6 +286,28 @@ example designed to illustrate how to use IEC 61131-3.</p>
 </li>
 <li><p>Save the file with the name <code class="file docutils literal notranslate"><span class="pre">main.st</span></code>.</p></li>
 </ol>
+</section>
+<section id="anatomy-of-the-hello-world-program">
+<h2>Anatomy of the Hello, World Program<a class="headerlink" href="#anatomy-of-the-hello-world-program" title="Permalink to this heading">#</a></h2>
+<p>Let’s review this program. IEC 61131-3 applications are structured from blocks
+called Program Organization Units (POUs). The <code class="code docutils literal notranslate"><span class="pre">PROGRAM</span></code> is a top level block and
+similar to the “main” function in other languages. The piece indicated by</p>
+<div class="highlight-default notranslate" id="main"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>defines a <code class="code docutils literal notranslate"><span class="pre">PROGRAM</span></code> identified by the name <code class="code docutils literal notranslate"><span class="pre">main</span></code>.</p>
+<p>Unlike the “main” function in other languages, a program does not run by default.
+We need to tell the PLC runtime how we want to run the program. The piece indicated by</p>
+<div class="highlight-default notranslate" id="config"><div class="highlight"><pre><span></span><span class="n">CONFIGURATION</span> <span class="n">config</span>
+
+<span class="n">END_CONFIGURATION</span>
+</pre></div>
+</div>
+<p>defines how we want the program to run. The configuration declares we want to execute
+the <code class="code docutils literal notranslate"><span class="pre">main</span></code> program once every 100 ms. as the highest priority task. This task
+executed on the hardware element named <code class="code docutils literal notranslate"><span class="pre">res</span></code>.</p>
 </section>
 </section>
 
@@ -349,6 +376,7 @@ example designed to illustrate how to use IEC 61131-3.</p>
 <li><a class="reference internal" href="#">Hello, World!</a><ul>
 <li><a class="reference internal" href="#the-sense-control-actuate-cycle">The Sense-Control-Actuate Cycle</a></li>
 <li><a class="reference internal" href="#create-a-program-with-structured-text">Create a Program with Structured Text</a></li>
+<li><a class="reference internal" href="#anatomy-of-the-hello-world-program">Anatomy of the Hello, World Program</a></li>
 </ul>
 </li>
 </ul>
