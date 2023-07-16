@@ -2,7 +2,8 @@
 members = [
     "plc2x",
     "dsl",
-    "parser"
+    "parser",
+    "problems"
 ]
 
 [workspace.package]
