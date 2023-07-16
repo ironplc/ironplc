@@ -2,10 +2,10 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as path from 'path';
 
-const IRONPLC_EXTENSION_ID = 'garretfick.ironplc';
-
 suite('Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Start all tests.');
+
+	teardown(closeActiveWindows);
 
 	test('ironplc.reateNewStructuredTextFile sets 61131-3-st as language ID', async () => {
 		await vscode.commands.executeCommand('ironplc.createNewStructuredTextFile');
@@ -39,4 +39,24 @@ suite('Extension Test Suite', () => {
 function testResourcePath(fileName: string): string {
 	const testRootDir = path.join(__dirname, '..', '..', '..');
 	return path.join(testRootDir, 'src', 'test', 'resources', fileName);
+}
+
+async function closeActiveWindows(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+        // Attempt to fix #1301.
+        // Lets not waste too much time.
+        const timer = setTimeout(() => {
+            reject(new Error("Command 'workbench.action.closeAllEditors' timed out"));
+        }, 15000);
+        vscode.commands.executeCommand('workbench.action.closeAllEditors').then(
+            () => {
+                clearTimeout(timer);
+                resolve();
+            },
+            (ex) => {
+                clearTimeout(timer);
+                reject(ex);
+            },
+        );
+    });
 }
