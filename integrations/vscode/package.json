@@ -21,11 +21,6 @@
   "contributes": {
     "commands": [
       {
-        "command": "ironplc.analyzeFile",
-        "title": "IronPLC Analyze File",
-        "category": "IronPLC"
-      },
-      {
         "command": "ironplc.createNewStructuredTextFile",
         "title": "New Structured Text File",
         "shortTitle": "Structured Text File",
