@@ -1,15 +1,42 @@
 import * as assert from 'assert';
-
-// You can import and use all API from the 'vscode' module
-// as well as import your extension to test it
 import * as vscode from 'vscode';
-// import * as myExtension from '../../extension';
+import * as path from 'path';
+
+const IRONPLC_EXTENSION_ID = 'garretfick.ironplc';
 
 suite('Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Start all tests.');
 
-	test('Sample test', () => {
-		assert.strictEqual(-1, [1, 2, 3].indexOf(5));
-		assert.strictEqual(-1, [1, 2, 3].indexOf(0));
+	test('ironplc.reateNewStructuredTextFile sets 61131-3-st as language ID', async () => {
+		await vscode.commands.executeCommand('ironplc.createNewStructuredTextFile');
+		const stFile = (vscode.window.activeTextEditor!.document as any | undefined);
+		const languageId = stFile.languageId;
+
+		assert.equal(languageId, '61131-3-st');
+	});
+
+	test('detects ST extension as 61131-3-st', async () => {
+		const filePath = testResourcePath('valid.st');
+		const textDocument = await vscode.workspace.openTextDocument(filePath);
+		await vscode.window.showTextDocument(textDocument);
+		const stFile = (vscode.window.activeTextEditor!.document as any | undefined);
+		const languageId = stFile.languageId;
+
+		assert.equal(languageId, '61131-3-st');
+	});
+
+	test('does not detect non-ST extension as 61131-3-st', async () => {
+		const filePath = testResourcePath('invalid-ext.notst');
+		const textDocument = await vscode.workspace.openTextDocument(filePath);
+		await vscode.window.showTextDocument(textDocument);
+		const stFile = (vscode.window.activeTextEditor!.document as any | undefined);
+		const languageId = stFile.languageId;
+
+		assert.notEqual(languageId, '61131-3-st');
 	});
 });
+
+function testResourcePath(fileName: string): string {
+	const testRootDir = path.join(__dirname, '..', '..', '..');
+	return path.join(testRootDir, 'src', 'test', 'resources', fileName);
+}
