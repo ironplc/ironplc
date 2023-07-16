@@ -30,8 +30,8 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.showInformationMessage(message);
 	}));
 
-  	context.subscriptions.push(vscode.commands.registerCommand("ironplc.createNewStructuredTextFile", () => {
-		vscode.workspace.openTextDocument({ language: "61131-3-st"}).then(newFile => {
+  	context.subscriptions.push(vscode.commands.registerCommand("ironplc.createNewStructuredTextFile", async () => {
+		await vscode.workspace.openTextDocument({ language: "61131-3-st"}).then(newFile => {
 			vscode.window.showTextDocument(newFile);
 		});
 	}));
