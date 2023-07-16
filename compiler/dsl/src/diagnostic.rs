@@ -8,6 +8,8 @@
 
 use std::ops::Range;
 
+use ironplc_problems::Problem;
+
 use crate::core::{FileId, SourceLoc};
 
 /// A position marker that has both line and offset information.
@@ -145,6 +147,15 @@ impl Diagnostic {
         Self {
             code: code.into(),
             description: description.into(),
+            primary,
+            secondary: vec![],
+        }
+    }
+
+    pub fn problem(problem: Problem, primary: Label) -> Self {
+        Self {
+            code: problem.code().to_string(),
+            description: problem.message().to_string(),
             primary,
             secondary: vec![],
         }

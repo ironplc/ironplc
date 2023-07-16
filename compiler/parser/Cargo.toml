@@ -17,6 +17,7 @@ trace = ["peg/trace"]
 time = "0.3.17"
 phf = { version = "0.11", features = ["macros"] }
 ironplc-dsl = { path = "../dsl", version = "0.13.38" }
+ironplc-problems = { path = "../problems", version = "0.13.38" }
 
 [dependencies.peg]
 version = "0.8.1"

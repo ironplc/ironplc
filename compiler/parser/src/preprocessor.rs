@@ -10,9 +10,9 @@
 
 use dsl::{core::FileId, diagnostic::Label};
 use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_problems::Problem;
 
 pub fn preprocess(source: &str, file_id: &FileId) -> Result<String, Diagnostic> {
-    //print!("{}", String::from(source));
     let source = remove_oscat_comment(source.to_string());
     remove_standard_comment(&source, file_id)
 }
@@ -92,9 +92,8 @@ pub fn remove_standard_comment(source: &str, file_id: &FileId) -> Result<String,
     // By the very end, we should no longer be in a comment. If we are, that's
     // an error
     if in_comment {
-        return Err(Diagnostic::new(
-            "P0001",
-            "Syntax error",
+        return Err(Diagnostic::problem(
+            Problem::OpenComment,
             Label::offset(
                 file_id.clone(),
                 source.len()..source.len(),

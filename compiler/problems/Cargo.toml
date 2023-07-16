@@ -1,0 +1,14 @@
+[package]
+name = "ironplc-problems"
+description = "Generated problem messages."
+version = "0.13.38"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[badges]
+maintenance = { status = "experimental" }
+
+[build-dependencies]
+csv = "1.2"

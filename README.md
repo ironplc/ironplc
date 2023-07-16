@@ -41,7 +41,6 @@ milestones are the current plan to achieve that loveable product.
 * ✅ Implement language server protocol to integrate diagnostics with Visual Studio Code
 * ✅ Build documentation website
 * ✅ Build macOS installer
-* NOT STARTED Implement a code formatter for structured text files
 * NOT STARTED Parser completed so that all valid OSCAT files parse without error
 
 ## Usage
