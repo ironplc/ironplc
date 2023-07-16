@@ -16,15 +16,6 @@ let application: Executable | undefined;
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Extension "ironplc" is activating!');
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	context.subscriptions.push(vscode.commands.registerCommand('ironplc.analyzeFile', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from IronPLC!');
-	}));
-
 	context.subscriptions.push(vscode.commands.registerCommand('ironplc.extensionDiagnostics', () => {
 		const message = "Compiler path: " + application?.command;
 		vscode.window.showInformationMessage(message);
