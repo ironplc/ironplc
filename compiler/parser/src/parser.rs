@@ -20,6 +20,7 @@ use dsl::core::SourceLoc;
 use dsl::diagnostic::Diagnostic;
 use dsl::diagnostic::Label;
 use dsl::diagnostic::QualifiedPosition;
+use ironplc_problems::Problem;
 use peg::parser;
 
 use crate::keyword::get_keyword;
@@ -36,9 +37,8 @@ use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 pub fn parse_library(source: &str, file_id: &FileId) -> Result<Vec<LibraryElement>, Diagnostic> {
     plc_parser::library(source).map_err(|e| {
         let expected = Vec::from_iter(e.expected.tokens()).join(", ");
-        Diagnostic::new(
-            "P0002",
-            "Syntax error",
+        Diagnostic::problem(
+            Problem::SyntaxError,
             Label::qualified(
                 file_id.clone(),
                 QualifiedPosition::new(e.location.line, e.location.column, e.location.offset),
