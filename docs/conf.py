@@ -1,13 +1,14 @@
 # Configuration file for the Sphinx documentation builder.
 
 import codecs
+from sys import path
+from os.path import abspath
 
 # -- Project information -----------------------------------------------------
 
 project = 'IronPLC'
 copyright = '2023, Garret Fick'
 author = 'Garret Fick'
-
 
 # -- General configuration ---------------------------------------------------
 
@@ -74,6 +75,12 @@ html_theme_options = {
     "source_directory": "docs/"
 }
 
+rst_prolog = """.. attention::
+    These docs are a bit ambitious. The steps described are accurate but IronPLC cannot yet run programs.
+"""
+
+# -- Version configuration ---------------------------------------------------
+
 # Gets the version number by reading from the VERSION file in this folder
 with open("VERSION", "rb") as fp:
     encoded_text = fp.read()
@@ -86,13 +93,12 @@ with open("VERSION", "rb") as fp:
     
     version = str(decoded_text).strip()
 
+# -- Extensions configuration ---------------------------------------------------
+
+path.append(abspath("./extensions"))
+
 extlinks = {'download_artifact': ('https://github.com/ironplc/ironplc/releases/download/v' + version + '/%s',
                       '%s')}
-
-rst_prolog = """.. attention::
-    These docs are a bit ambitious. The steps described are accurate but IronPLC cannot yet run programs.
-"""
-
-extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks", "sphinx.ext.autosectionlabel", "sphinx_copybutton"]
+extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks", "sphinx.ext.autosectionlabel", "sphinx_copybutton", "ironplc_problemcode"]
 
 autosectionlabel_prefix_document = True
