@@ -42,3 +42,7 @@ package filename:
 # Sets the version number for this component.
 version version:
   npm version {{version}}
+
+# Updates dependencies to latest version (or at least tries to)
+update:
+  npm update

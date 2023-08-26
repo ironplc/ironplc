@@ -60,3 +60,8 @@ _version-unix version:
   cd compiler && just version {{version}}
   cd integrations/vscode && just version {{version}}
   cd docs && just version {{version}}
+
+# Updates dependencies to latest versions
+update:
+  cd compiler && just update
+  cd integrations/vscode && just update
