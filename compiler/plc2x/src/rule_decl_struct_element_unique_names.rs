@@ -28,6 +28,7 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
+use ironplc_problems::Problem;
 use std::collections::HashSet;
 
 pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
@@ -50,18 +51,16 @@ impl Visitor<Diagnostic> for RuleStructElementNamesUnique {
             let seen = element_names.get(&element.name);
             match seen {
                 Some(first) => {
-                    return Err(Diagnostic::new(
-                        "S0001",
-                        format!(
-                            "Structure {} has duplicated element name {}",
-                            node.type_name, element.name
-                        ),
+                    return Err(Diagnostic::problem(
+                        Problem::StructureDuplicatedElement,
                         Label::source_loc(
                             FileId::default(),
                             node.type_name.position(),
                             "Structure",
                         ),
                     )
+                    .with_described("structure", &node.type_name.to_string())
+                    .with_described("element", &element.name.to_string())
                     .with_secondary(Label::source_loc(
                         FileId::default(),
                         first.position(),
