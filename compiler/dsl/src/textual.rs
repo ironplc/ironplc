@@ -36,6 +36,17 @@ impl From<SymbolicVariableKind> for Variable {
     }
 }
 
+impl fmt::Display for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Variable::AddressAssignment(assignment) => f.write_fmt(format_args!("{}", assignment)),
+            Variable::Named(named) => f.write_fmt(format_args!("{}", named)),
+            Variable::Array(array) => f.write_fmt(format_args!("{}", array)),
+            Variable::Structured(structured) => f.write_fmt(format_args!("{}", structured)),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum SymbolicVariableKind {
     Named(NamedVariable),
@@ -43,6 +54,18 @@ pub enum SymbolicVariableKind {
     // A structured variable that may be nested. This data type is definitely
     // incorrect because it doesn't support array types
     Structured(StructuredVariable),
+}
+
+impl fmt::Display for SymbolicVariableKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SymbolicVariableKind::Named(named) => f.write_fmt(format_args!("{}", named)),
+            SymbolicVariableKind::Array(array) => f.write_fmt(format_args!("{}", array)),
+            SymbolicVariableKind::Structured(structured) => {
+                f.write_fmt(format_args!("{}", structured))
+            }
+        }
+    }
 }
 
 impl Variable {
@@ -67,6 +90,12 @@ pub struct NamedVariable {
     pub name: Id,
 }
 
+impl fmt::Display for NamedVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{}", self.name))
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct ArrayVariable {
     /// The variable that is being accessed by subscript (the array).
@@ -76,10 +105,23 @@ pub struct ArrayVariable {
     pub subscripts: Vec<ExprKind>,
 }
 
+impl fmt::Display for ArrayVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // TODO format this
+        f.write_fmt(format_args!("{} {:?}", self.variable, self.subscripts))
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct StructuredVariable {
     pub record: Box<SymbolicVariableKind>,
     pub field: Id,
+}
+
+impl fmt::Display for StructuredVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{} {}", self.record.as_ref(), self.field))
+    }
 }
 
 /// Function block invocation.

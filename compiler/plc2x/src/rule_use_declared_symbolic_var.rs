@@ -35,6 +35,7 @@ use ironplc_dsl::{
         visit_variable_declaration, Visitor,
     },
 };
+use ironplc_problems::Problem;
 
 use crate::symbol_table::{self, Key, SymbolTable};
 
@@ -92,15 +93,15 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
                 // We found the variable being referred to
                 Ok(())
             }
-            None => Err(Diagnostic::new(
-                "S0001",
-                format!("Variable {} not defined before used", node.name),
+            None => Err(Diagnostic::problem(
+                Problem::VariableUndefined,
                 Label::source_loc(
                     FileId::default(),
                     node.name.position(),
                     "Undefined variable",
                 ),
-            )),
+            )
+            .with_context_id("variable", &node.name)),
         }
     }
 }

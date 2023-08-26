@@ -48,8 +48,8 @@ impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
                     "Expected smaller value",
                 ),
             )
-            .with_described("minimum", &node.start.to_string())
-            .with_described("maximum", &node.end.to_string())
+            .with_context("minimum", &node.start.to_string())
+            .with_context("maximum", &node.end.to_string())
             .with_secondary(Label::source_loc(
                 FileId::default(),
                 &node.end.value.position,

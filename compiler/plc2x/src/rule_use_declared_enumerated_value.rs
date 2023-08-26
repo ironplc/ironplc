@@ -34,6 +34,7 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
+use ironplc_problems::Problem;
 use std::collections::{HashMap, HashSet};
 
 pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
@@ -97,25 +98,25 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                     }
                 }
                 None => {
-                    return Err(Diagnostic::new(
-                        "S0001",
-                        format!("Enumeration {name} is not declared"),
+                    return Err(Diagnostic::problem(
+                        Problem::EnumNotDeclared,
                         Label::source_loc(
                             FileId::default(),
                             name.position(),
                             "Enumeration reference",
                         ),
-                    ))
+                    )
+                    .with_context_id("name", name))
                 }
             }
 
             // Check that our next name is new and we haven't seen it before
             if seen_names.contains(name) {
-                return Err(Diagnostic::new(
-                    "S0001",
-                    format!("Recursive enumeration for type {name}"),
+                return Err(Diagnostic::problem(
+                    Problem::EnumRecursive,
                     Label::source_loc(FileId::default(), name.position(), "Current enumeration"),
-                ));
+                )
+                .with_context_id("type", name));
             }
         }
     }
@@ -134,18 +135,15 @@ impl Visitor<Diagnostic> for RuleDeclaredEnumeratedValues<'_> {
             // and we don't have declared appropriate comparison between things
             // that are known but partially declared
             if !defined_values.contains(value) {
-                return Err(Diagnostic::new(
-                    "S0001",
-                    format!(
-                        "Enumeration uses value {} which is not defined in the enumeration",
-                        value.value
-                    ),
+                return Err(Diagnostic::problem(
+                    Problem::EnumValueNotDefined,
                     Label::source_loc(
                         FileId::default(),
                         value.position(),
                         "Expected value in enumeration",
                     ),
-                ));
+                )
+                .with_context_id("value", &value.value));
             }
         }
 

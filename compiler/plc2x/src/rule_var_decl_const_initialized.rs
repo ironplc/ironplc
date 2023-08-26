@@ -34,6 +34,7 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
     visitor::{visit_variable_declaration, Visitor},
 };
+use ironplc_problems::Problem;
 
 pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     let mut visitor = RuleConstantVarsInitialized {};
@@ -58,66 +59,54 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                 InitialValueAssignmentKind::Simple(si) => match si.initial_value {
                     Some(_) => {}
                     None => {
-                        return Err(Diagnostic::new(
-                            "S0001",
-                            format!(
-                                "Variable is constant but does not define value {} ",
-                                node.identifier
-                            ),
+                        return Err(Diagnostic::problem(
+                            Problem::ConstantMustHaveInitializer,
                             Label::source_loc(FileId::default(), &node.position, "Variable"),
-                        ));
+                        )
+                        .with_context("variable", &node.identifier.to_string()));
                     }
                 },
                 InitialValueAssignmentKind::String(str) => match str.initial_value {
                     Some(_) => {}
                     None => {
-                        return Err(Diagnostic::new(
-                            "S0001",
-                            format!(
-                                "Variable is constant but does not define value {} ",
-                                node.identifier
-                            ),
+                        return Err(Diagnostic::problem(
+                            Problem::ConstantMustHaveInitializer,
                             Label::source_loc(
                                 FileId::default(),
                                 &node.position,
                                 "Variable declaration",
                             ),
-                        ));
+                        )
+                        .with_context("variable", &node.identifier.to_string()));
                     }
                 },
                 InitialValueAssignmentKind::EnumeratedValues(spec) => match spec.initial_value {
                     Some(_) => {}
                     None => {
-                        return Err(Diagnostic::new(
-                            "S0002",
-                            format!(
-                                "Variable is constant but does not define value {} ",
-                                node.identifier
-                            ),
+                        return Err(Diagnostic::problem(
+                            Problem::ConstantMustHaveInitializer,
                             Label::source_loc(
                                 FileId::default(),
                                 &node.position,
                                 "Variable declaration",
                             ),
-                        ));
+                        )
+                        .with_context("variable", &node.identifier.to_string()));
                     }
                 },
                 InitialValueAssignmentKind::EnumeratedType(type_init) => {
                     match type_init.initial_value {
                         Some(_) => {}
                         None => {
-                            return Err(Diagnostic::new(
-                                "S0003",
-                                format!(
-                                    "Variable is constant but does not define value {} ",
-                                    node.identifier
-                                ),
+                            return Err(Diagnostic::problem(
+                                Problem::ConstantMustHaveInitializer,
                                 Label::source_loc(
                                     FileId::default(),
                                     &node.position,
                                     "Variable declaration",
                                 ),
-                            ))
+                            )
+                            .with_context("variable", &node.identifier.to_string()))
                         }
                     }
                 }

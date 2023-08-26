@@ -4,6 +4,7 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
 use ironplc_dsl::{common::*, core::Id};
+use ironplc_problems::Problem;
 use std::collections::HashMap;
 
 #[derive(Clone)]
@@ -90,9 +91,8 @@ impl TypeDeclResolver {
                 .get_node(item)
                 .map(|kv| kv.0)
                 .expect("Expected key");
-            Err(Diagnostic::new(
-                "S0001",
-                "Duplicate name",
+            Err(Diagnostic::problem(
+                Problem::DeclarationNameDuplicated,
                 Label::source_loc(FileId::default(), item.position(), "Duplicate declaration"),
             )
             .with_secondary(Label::source_loc(

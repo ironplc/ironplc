@@ -59,8 +59,8 @@ impl Visitor<Diagnostic> for RuleStructElementNamesUnique {
                             "Structure",
                         ),
                     )
-                    .with_described("structure", &node.type_name.to_string())
-                    .with_described("element", &element.name.to_string())
+                    .with_context_id("structure", &node.type_name)
+                    .with_context_id("element", &element.name)
                     .with_secondary(Label::source_loc(
                         FileId::default(),
                         first.position(),

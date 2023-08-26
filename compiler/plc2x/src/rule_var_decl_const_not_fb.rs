@@ -23,6 +23,7 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
+use ironplc_problems::Problem;
 
 pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     let mut visitor = RuleVarDeclConstIsNotFunctionBlock {};
@@ -37,18 +38,15 @@ impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
     fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<(), Diagnostic> {
         if node.qualifier == DeclarationQualifier::Constant {
             if let InitialValueAssignmentKind::FunctionBlock(fb) = &node.initializer {
-                return Err(Diagnostic::new(
-                    "S0001",
-                    format!(
-                        "CONSTANT qualifier is not permitted for function block instance type {}",
-                        fb.type_name
-                    ),
+                return Err(Diagnostic::problem(
+                    Problem::FunctionBlockNotConstant,
                     Label::source_loc(
                         FileId::default(),
                         node.identifier.position(),
                         "Declaration of function block instance",
                     ),
-                ));
+                )
+                .with_context_id("function block", &fb.type_name));
             }
         }
 

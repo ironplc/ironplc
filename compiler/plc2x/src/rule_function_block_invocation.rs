@@ -145,7 +145,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
                 Problem::FunctionCallMixedArgTypes,
                 Label::source_loc(FileId::default(), &fb_call.position, "Function "),
             )
-            .with_described("function", &function_block.name.to_string()));
+            .with_context_id("function", &function_block.name));
         }
 
         // Check that the names and types match. Unassigned values are
@@ -164,8 +164,8 @@ impl<'a> RuleFunctionBlockUse<'a> {
                                 "Function block invocation",
                             ),
                         )
-                        .with_described("invocation", &function_block.name.to_string())
-                        .with_described("undefined input", &name.name.to_string())
+                        .with_context_id("invocation", &function_block.name)
+                        .with_context_id("undefined input", &name.name)
                         .with_secondary(Label::source_loc(
                             FileId::default(),
                             &function_block.position,
@@ -189,9 +189,9 @@ impl<'a> RuleFunctionBlockUse<'a> {
                         "Function block invocation",
                     ),
                 )
-                .with_described("invocation", &function_block.name.to_string())
-                .with_described("required", &format!("{}", num_required_inputs))
-                .with_described("actual", &format!("{}", non_formal.len())));
+                .with_context_id("invocation", &function_block.name)
+                .with_context("required", &format!("{}", num_required_inputs))
+                .with_context("actual", &format!("{}", non_formal.len())));
             }
         }
 
@@ -199,16 +199,19 @@ impl<'a> RuleFunctionBlockUse<'a> {
         // output parameter names
         for output in outputs {
             match find_output_type(function_block, &output.src) {
-                Some(_) => {},
+                Some(_) => {}
                 None => {
-                    return Err(Diagnostic::new(
-                        "S0001",
-                        format!(
-                            "Function invocation {} assigns from {} (to {:?}) but {} is not an output variable of the function",
-                            function_block.name, output.src, output.tgt, output.src
+                    return Err(Diagnostic::problem(
+                        Problem::FunctionInvocationUndefinedOutput,
+                        Label::source_loc(
+                            FileId::default(),
+                            &fb_call.position,
+                            "Function block invocation",
                         ),
-                        Label::source_loc(FileId::default(), &fb_call.position, "Function block invocation")
-                    ))
+                    )
+                    .with_context_id("invocation", &function_block.name)
+                    .with_context_id("source", &output.src)
+                    .with_context("target", &output.tgt.to_string()))
                 }
             }
         }
@@ -280,18 +283,15 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
                     }
                 }
             }
-            None => Err(Diagnostic::new(
-                "S0001",
-                format!(
-                    "Function block invocation {} do not refer to a variable in scope",
-                    fb_call.var_name
-                ),
+            None => Err(Diagnostic::problem(
+                Problem::FunctionBlockNotInScope,
                 Label::source_loc(
                     FileId::new(),
                     &fb_call.position,
                     "Function block invocation",
                 ),
-            )),
+            )
+            .with_context_id("invocation", &fb_call.var_name)),
         }
     }
 }

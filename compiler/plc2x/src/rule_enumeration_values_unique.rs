@@ -53,8 +53,8 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
                                     "First instance",
                                 ),
                             )
-                            .with_described("declaration", &node.type_name.to_string())
-                            .with_described("duplicate value", &first.to_string())
+                            .with_context_id("declaration", &node.type_name)
+                            .with_context_id("duplicate value", first)
                             .with_secondary(Label::source_loc(
                                 FileId::default(),
                                 current.position(),

@@ -9,6 +9,7 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
 use ironplc_dsl::{common::*, core::Id};
+use ironplc_problems::Problem;
 use phf::{phf_set, Set};
 
 use crate::symbol_table::SymbolTable;
@@ -71,9 +72,8 @@ pub fn apply(lib: Library) -> Result<Library, Diagnostic> {
 impl SymbolTable<'_, Id, TypeDefinitionKind> {
     fn add_if_new(&mut self, to_add: &Id, kind: TypeDefinitionKind) -> Result<(), Diagnostic> {
         if let Some(existing) = self.try_add(to_add, kind) {
-            return Err(Diagnostic::new(
-                "S0001",
-                "Duplicate definition name",
+            return Err(Diagnostic::problem(
+                Problem::DefinitionNameDuplicated,
                 Label::source_loc(
                     FileId::default(),
                     to_add.position(),
@@ -162,11 +162,11 @@ impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
                         )),
                     },
                     None => {
-                        return Err(Diagnostic::new(
-                            "E0001",
-                            "Unknown type",
+                        return Err(Diagnostic::problem(
+                            Problem::UndeclaredUnknownType,
                             Label::source_loc(FileId::default(), name.position(), "Variable type"),
-                        ));
+                        )
+                        .with_context_id("identifier", &name));
                     }
                 }
             }
