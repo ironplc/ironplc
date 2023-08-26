@@ -62,3 +62,7 @@ publish $VERSION $MACFILENAME $LINUXFILENAME:
   mkdir -p target
   cp -r homebrew target
   export MACSHA256=`cat {{MACFILENAME}}.sha256 | cut -f 1 -d " "` && export LINUXSHA256=`cat {{LINUXFILENAME}}.sha256 | cut -f 1 -d " "` && envsubst < homebrew/Formula/ironplc.rb > target/homebrew/Formula/ironplc.rb
+
+# Updates dependencies to latest version (or at least tries)
+update:
+  cargo update

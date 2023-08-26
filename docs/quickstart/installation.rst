@@ -66,4 +66,9 @@ Follow the steps below to install IronPLC.
    #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
    #. In the dialog, select the VISX file you downloaded earlier.
 
+.. tab:: Linux
+
+   The weekly builds do include a homebrew tap for Linux but the tap is not
+   tested other than to validate that it compiles.
+
 .. _IronPLC GitHub releases: https://github.com/ironplc/ironplc/releases/
