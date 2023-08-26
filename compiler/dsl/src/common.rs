@@ -237,6 +237,16 @@ impl fmt::Display for SignedInteger {
     }
 }
 
+impl From<SignedInteger> for String {
+    fn from(value: SignedInteger) -> Self {
+        if value.is_neg {
+            format!("-{}", value)
+        } else {
+            format!("{}", value)
+        }
+    }
+}
+
 /// A signed integer literal with a optional type name.
 ///
 /// See section 2.2.1.

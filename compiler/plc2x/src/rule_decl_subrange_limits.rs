@@ -23,6 +23,7 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
+use ironplc_problems::Problem;
 
 pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     let mut visitor = RuleDeclSubrangeLimits {};
@@ -39,18 +40,16 @@ impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
         let maximum: i128 = node.end.clone().try_into().expect("Value in range i128");
 
         if minimum >= maximum {
-            return Err(Diagnostic::new(
-                "S0004",
-                format!(
-                    "Subrange declaration minimum value {} is not less than the maximum {}",
-                    node.start, node.end
-                ),
+            return Err(Diagnostic::problem(
+                Problem::SubrangeMinStrictlyLessMax,
                 Label::source_loc(
                     FileId::default(),
                     &node.start.value.position,
                     "Expected smaller value",
                 ),
             )
+            .with_described("minimum", &node.start.to_string())
+            .with_described("maximum", &node.end.to_string())
             .with_secondary(Label::source_loc(
                 FileId::default(),
                 &node.end.value.position,

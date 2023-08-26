@@ -74,6 +74,10 @@ impl Id {
     pub fn lower_case(&self) -> &String {
         &self.lower_case
     }
+
+    pub fn original(&self) -> &String {
+        &self.original
+    }
 }
 
 impl Clone for Id {
