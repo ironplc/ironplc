@@ -41,6 +41,7 @@ use ironplc_dsl::{
         Visitor,
     },
 };
+use ironplc_problems::Problem;
 use std::collections::HashMap;
 
 /// Returns the first variable matching the specified name and one of the
@@ -140,14 +141,11 @@ impl<'a> RuleFunctionBlockUse<'a> {
         // Don't allow a mixture so assert that either named is empty or
         // positional is empty
         if !formal.is_empty() && !non_formal.is_empty() {
-            return Err(Diagnostic::new(
-                "S0001",
-                format!(
-                    "Function call {} mixes named (formal) and positional (non-format) input arguments",
-                    function_block.name
-                ),
-                Label::source_loc(FileId::default(), &fb_call.position, "Function ")
-            ));
+            return Err(Diagnostic::problem(
+                Problem::FunctionCallMixedArgTypes,
+                Label::source_loc(FileId::default(), &fb_call.position, "Function "),
+            )
+            .with_described("function", &function_block.name.to_string()));
         }
 
         // Check that the names and types match. Unassigned values are
@@ -158,14 +156,21 @@ impl<'a> RuleFunctionBlockUse<'a> {
                 match find_input_type(function_block, &name.name) {
                     Some(_) => {}
                     None => {
-                        return Err(Diagnostic::new(
-                            "S0001",
-                            format!(
-                                "Function invocation {} assigns named (formal) input that is not defined {}",
-                                function_block.name, name.name
+                        return Err(Diagnostic::problem(
+                            Problem::FunctionInvocationMissingInput,
+                            Label::source_loc(
+                                FileId::default(),
+                                &fb_call.position,
+                                "Function block invocation",
                             ),
-                            Label::source_loc(FileId::default(), &fb_call.position, "Function block invocation")
-                        ).with_secondary(Label::source_loc(FileId::default(), &function_block.position, "Function block declaration")))
+                        )
+                        .with_described("invocation", &function_block.name.to_string())
+                        .with_described("undefined input", &name.name.to_string())
+                        .with_secondary(Label::source_loc(
+                            FileId::default(),
+                            &function_block.position,
+                            "Function block declaration",
+                        )))
                     }
                 }
             }
@@ -176,14 +181,17 @@ impl<'a> RuleFunctionBlockUse<'a> {
         if !non_formal.is_empty() {
             let num_required_inputs = count_input_type(function_block);
             if non_formal.len() != num_required_inputs {
-                return Err(Diagnostic::new(
-                    "S0001",
-                    format!(
-                        "Function invocation {} requires {} non-formal inputs but the invocation has {} formal inputs",
-                        function_block.name, num_required_inputs, non_formal.len()
+                return Err(Diagnostic::problem(
+                    Problem::FunctionInvocationRequiresFormal,
+                    Label::source_loc(
+                        FileId::default(),
+                        &fb_call.position,
+                        "Function block invocation",
                     ),
-                    Label::source_loc(FileId::default(), &fb_call.position, "Function block invocation")
-                ));
+                )
+                .with_described("invocation", &function_block.name.to_string())
+                .with_described("required", &format!("{}", num_required_inputs))
+                .with_described("actual", &format!("{}", non_formal.len())));
             }
         }
 

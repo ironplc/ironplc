@@ -362,6 +362,7 @@ dependencies = [
  "fixedbitset",
  "ironplc-dsl",
  "ironplc-parser",
+ "ironplc-problems",
  "lsp-server",
  "lsp-types",
  "petgraph",

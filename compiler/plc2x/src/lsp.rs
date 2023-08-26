@@ -154,6 +154,7 @@ fn map_diagnostic(
     diagnostic: ironplc_dsl::diagnostic::Diagnostic,
     contents: &str,
 ) -> lsp_types::Diagnostic {
+    let description = diagnostic.description();
     let range = map_label(&diagnostic.primary, contents);
     lsp_types::Diagnostic {
         range,
@@ -161,7 +162,7 @@ fn map_diagnostic(
         code: Some(NumberOrString::String(diagnostic.code)),
         code_description: None,
         source: Some("ironplc".into()),
-        message: format!("{}: {}", diagnostic.description, diagnostic.primary.message),
+        message: format!("{}: {}", description, diagnostic.primary.message),
         related_information: None,
         tags: None,
         data: None,

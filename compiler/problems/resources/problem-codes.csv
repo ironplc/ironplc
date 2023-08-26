@@ -1,3 +1,9 @@
 Code,Name,Message
 P0001,OpenComment,End of file before comment closed
 P0002,SyntaxError,Syntax error
+P0003,StructureDuplicatedElement,Structure has more than one element with name
+P0004,SubrangeMinStrictlyLessMax,Subrange declaration minimum value is not less than the maximum
+P0005,EnumTypeDeclDuplicateItem,Enumeration type declaration has duplicated value
+P0006,FunctionCallMixedArgTypes,Function call mixes named (formal) and positional (non-format) input arguments
+P0007,FunctionInvocationMissingInput,Function invocation assigns named (formal) input that is not defined
+P0008,FunctionInvocationRequiresFormal,Function invocation requires non-formal inputs but the invocation has formal inputs

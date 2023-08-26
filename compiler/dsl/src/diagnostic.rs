@@ -133,10 +133,13 @@ pub struct Diagnostic {
     /// A normally unique value describing the type of diagnostic.
     pub code: String,
 
-    pub description: String,
+    description: String,
 
     /// The primary or first diagnostic.
     pub primary: Label,
+
+    /// Additional descriptions to the constant description.
+    pub described: Vec<String>,
 
     /// Additional information about the diagnostic.
     pub secondary: Vec<Label>,
@@ -148,6 +151,7 @@ impl Diagnostic {
             code: code.into(),
             description: description.into(),
             primary,
+            described: vec![],
             secondary: vec![],
         }
     }
@@ -157,12 +161,28 @@ impl Diagnostic {
             code: problem.code().to_string(),
             description: problem.message().to_string(),
             primary,
+            described: vec![],
             secondary: vec![],
         }
+    }
+
+    pub fn with_described(mut self, description: &str, item: &String) -> Self {
+        self.described.push(format!("{}={}", description, item));
+        self
     }
 
     pub fn with_secondary(mut self, label: Label) -> Self {
         self.secondary.push(label);
         self
+    }
+
+    /// Returns the description for the diagnostic. This may add in other
+    /// data in addition that is part of the diagnostic.
+    pub fn description(&self) -> String {
+        if self.described.is_empty() {
+            self.description.clone()
+        } else {
+            format!("{} ({})", self.description, self.described.join(", "))
+        }
     }
 }

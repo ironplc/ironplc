@@ -21,6 +21,7 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
+use ironplc_problems::Problem;
 use std::collections::HashSet;
 
 pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
@@ -44,18 +45,16 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
                     let seen = seen_values.get(&current.value);
                     match seen {
                         Some(first) => {
-                            return Err(Diagnostic::new(
-                                "S0004",
-                                format!(
-                                    "Enumeration type declaration {} has duplicated value {}",
-                                    node.type_name, first
-                                ),
+                            return Err(Diagnostic::problem(
+                                Problem::EnumTypeDeclDuplicateItem,
                                 Label::source_loc(
                                     FileId::default(),
                                     first.position(),
                                     "First instance",
                                 ),
                             )
+                            .with_described("declaration", &node.type_name.to_string())
+                            .with_described("duplicate value", &first.to_string())
                             .with_secondary(Label::source_loc(
                                 FileId::default(),
                                 current.position(),

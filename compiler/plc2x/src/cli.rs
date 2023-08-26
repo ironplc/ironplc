@@ -116,6 +116,8 @@ fn map_label(label: ironplc_dsl::diagnostic::Label, style: LabelStyle) -> Label<
 }
 
 fn map_diagnostic(diagnostic: ironplc_dsl::diagnostic::Diagnostic) -> Diagnostic<usize> {
+    let description = diagnostic.description();
+
     // Set the primary labels
     let mut labels = vec![map_label(diagnostic.primary, LabelStyle::Primary)];
 
@@ -129,7 +131,7 @@ fn map_diagnostic(diagnostic: ironplc_dsl::diagnostic::Diagnostic) -> Diagnostic
 
     Diagnostic::new(Severity::Error)
         .with_code(diagnostic.code)
-        .with_message(diagnostic.description)
+        .with_message(description)
         .with_labels(labels)
 }
 
