@@ -42,6 +42,7 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
+use ironplc_problems::Problem;
 
 pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     let mut global_consts = HashSet::new();
@@ -89,18 +90,15 @@ impl<'a> Visitor<Diagnostic> for RuleExternalGlobalConst<'a> {
         {
             if let Some(name) = node.identifier.symbolic_id() {
                 if let Some(global) = self.global_consts.get(name) {
-                    return Err(Diagnostic::new(
-                        "S0001",
-                        format!(
-                            "External var {} is global constant and must be declared constant",
-                            node.identifier,
-                        ),
+                    return Err(Diagnostic::problem(
+                        Problem::VariableMustBeConst,
                         Label::source_loc(
                             FileId::default(),
                             node.identifier.position(),
                             "Reference to global variable",
                         ),
                     )
+                    .with_context("variable", &node.identifier.to_string())
                     .with_secondary(Label::source_loc(
                         FileId::default(),
                         global.position(),

@@ -213,6 +213,7 @@ mod test {
     use core::time::Duration;
     use ironplc_dsl::core::FileId;
     use ironplc_dsl::diagnostic::{Diagnostic, Label};
+    use ironplc_problems::Problem;
     use lsp_server::{Connection, Message, RequestId};
     use lsp_server::{Notification, Response};
     use lsp_types::notification;
@@ -242,9 +243,9 @@ mod test {
             _: &str,
         ) -> Option<Diagnostic> {
             Some(
-                Diagnostic::new(
-                    "E0001",
-                    "Some error",
+                Diagnostic::problem(
+                    // Just an arbitrary error
+                    Problem::OpenComment,
                     Label::offset(FileId::default(), 0..0, "First location"),
                 )
                 .with_secondary(Label::offset(

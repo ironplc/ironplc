@@ -18,6 +18,7 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
+use ironplc_problems::Problem;
 use std::collections::HashSet;
 
 pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
@@ -50,18 +51,16 @@ impl Visitor<Diagnostic> for RuleProgramTaskDefinitionExists {
         for program in &node.programs {
             if let Some(task_name) = &program.task_name {
                 if !task_names.contains(&task_name) {
-                    return Err(Diagnostic::new(
-                        "S0001",
-                        format!(
-                            "Program {} task configuration reference not defined {}",
-                            program.name, task_name
-                        ),
+                    return Err(Diagnostic::problem(
+                        Problem::ProgramMissingTaskConfig,
                         Label::source_loc(
                             FileId::default(),
                             task_name.position(),
                             "Reference to task configuration",
                         ),
-                    ));
+                    )
+                    .with_context_id("program", &program.name)
+                    .with_context_id("task name", task_name));
                 }
             }
         }

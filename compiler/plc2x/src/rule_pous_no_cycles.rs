@@ -40,6 +40,7 @@ use ironplc_dsl::{
         Visitor,
     },
 };
+use ironplc_problems::Problem;
 use petgraph::{
     algo::is_cyclic_directed,
     stable_graph::{NodeIndex, StableDiGraph},
@@ -54,9 +55,8 @@ pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     // Check if there are cycles in the graph.
     // TODO report what the cycle is
     if is_cyclic_directed(&visitor.graph) {
-        return Err(Diagnostic::new(
-            "S0005",
-            "Library has a recursive cycle",
+        return Err(Diagnostic::problem(
+            Problem::RecursiveCycle,
             // TODO wrong location
             Label::offset(FileId::default(), 0..0, "Cycle"),
         ));

@@ -7,3 +7,17 @@ P0005,EnumTypeDeclDuplicateItem,Enumeration type declaration has duplicated valu
 P0006,FunctionCallMixedArgTypes,Function call mixes named (formal) and positional (non-format) input arguments
 P0007,FunctionInvocationMissingInput,Function invocation assigns named (formal) input that is not defined
 P0008,FunctionInvocationRequiresFormal,Function invocation requires non-formal inputs but the invocation has formal inputs
+P0009,FunctionInvocationUndefinedOutput,Function invocation assigns output that is not an output variable of the function
+P0010,RecursiveCycle,Library has a recursive cycle
+P0011,ProgramMissingTaskConfig,Program task configuration reference not defined
+P0012,EnumNotDeclared,Enumeration is not declared
+P0013,EnumRecursive,Recursive enumeration for type
+P0014,EnumValueNotDefined,Enumeration uses value that is not defined in the enumeration
+P0015,VariableUndefined,Variable not defined before used
+P0016,ConstantMustHaveInitializer,Variable is constant but does not define value
+P0017,FunctionBlockNotConstant,CONSTANT qualifier is not permitted for function block instance type
+P0018,VariableMustBeConst,External var is global constant and must be declared constant
+P0019,DeclarationNameDuplicated,Declaration name is duplicated
+P0020,DefinitionNameDuplicated,Definition name is duplicated
+P0021,FunctionBlockNotInScope,Function block invocation is not a variable in scope
+P0022,UndeclaredUnknownType,Unknown type

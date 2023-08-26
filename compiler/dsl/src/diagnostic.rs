@@ -10,7 +10,7 @@ use std::ops::Range;
 
 use ironplc_problems::Problem;
 
-use crate::core::{FileId, SourceLoc};
+use crate::core::{FileId, Id, SourceLoc};
 
 /// A position marker that has both line and offset information.
 #[derive(Debug)]
@@ -146,16 +146,6 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
-    pub fn new(code: impl Into<String>, description: impl Into<String>, primary: Label) -> Self {
-        Self {
-            code: code.into(),
-            description: description.into(),
-            primary,
-            described: vec![],
-            secondary: vec![],
-        }
-    }
-
     pub fn problem(problem: Problem, primary: Label) -> Self {
         Self {
             code: problem.code().to_string(),
@@ -166,7 +156,24 @@ impl Diagnostic {
         }
     }
 
-    pub fn with_described(mut self, description: &str, item: &String) -> Self {
+    /// Adds to the problem description (primary text) additional context
+    /// about the problem.
+    ///
+    /// This is similar to adding primary and second items except that this
+    /// forms part of the main description and does not need to be related to
+    /// a position in a source file.
+    pub fn with_context(mut self, description: &str, item: &String) -> Self {
+        self.described.push(format!("{}={}", description, item));
+        self
+    }
+
+    /// Adds to the problem description (primary text) additional context
+    /// about the problem.
+    ///
+    /// This is similar to adding primary and second items except that this
+    /// forms part of the main description and does not need to be related to
+    /// a position in a source file.
+    pub fn with_context_id(mut self, description: &str, item: &Id) -> Self {
         self.described.push(format!("{}={}", description, item));
         self
     }
