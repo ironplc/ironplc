@@ -2,6 +2,7 @@ set windows-shell := ["powershell.exe", "-c"]
 
 default: compile
 
+# Runs the continuous integration steps
 ci: setup compile
 
 setup:
@@ -14,3 +15,7 @@ compile:
 # Sets the version number for this component.
 version version:
   echo "{{version}}" > VERSION
+
+# Removes built files
+clean:
+  rm -r _build
