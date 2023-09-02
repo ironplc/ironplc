@@ -33,12 +33,16 @@
 
 use crate::common::*;
 use crate::core::Id;
+use crate::diagnostic::Diagnostic;
 use crate::sfc::*;
 use crate::textual::*;
 
 /// Defines a way to recurse into an object in the AST or DSL.
 pub trait Acceptor {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E>;
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E>;
 }
 
 /// Recurses into a vec of objects.
@@ -46,7 +50,10 @@ impl<X> Acceptor for Vec<X>
 where
     X: Acceptor,
 {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self.iter().map(|x| x.accept(visitor)).find(|r| r.is_err()) {
             Some(err) => {
                 // At least one of the items returned an error, so
@@ -66,7 +73,10 @@ impl<X> Acceptor for Option<X>
 where
     X: Acceptor,
 {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self.as_ref() {
             Some(x) => x.accept(visitor),
             None => Ok(V::Value::default()),
@@ -76,7 +86,7 @@ where
 
 /// Defines a visitor for the object tree. The default visitor recursively
 /// walks to visit items in the tree.
-pub trait Visitor<E> {
+pub trait Visitor<E: std::convert::From<Diagnostic>> {
     /// Value produced by this visitor when the result is not an error.
     ///
     /// The returned value is usually not meaningful because no guarantee
@@ -385,7 +395,7 @@ pub trait Visitor<E> {
     }
 }
 
-pub fn visit_configuration_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_configuration_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &ConfigurationDeclaration,
 ) -> Result<V::Value, E> {
@@ -393,7 +403,7 @@ pub fn visit_configuration_declaration<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(&node.resource_decl, v)
 }
 
-pub fn visit_resource_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_resource_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &ResourceDeclaration,
 ) -> Result<V::Value, E> {
@@ -402,21 +412,21 @@ pub fn visit_resource_declaration<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(&node.programs, v)
 }
 
-pub fn visit_variable_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_variable_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &VarDecl,
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.initializer, v)
 }
 
-pub fn visit_enum_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_enum_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &EnumerationDeclaration,
 ) -> Result<V::Value, E> {
     v.visit_enumerated_spec_init(&node.spec_init)
 }
 
-pub fn visit_enumerated_spec_init<V: Visitor<E> + ?Sized, E>(
+pub fn visit_enumerated_spec_init<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &EnumeratedSpecificationInit,
 ) -> Result<V::Value, E> {
@@ -428,7 +438,7 @@ pub fn visit_enumerated_spec_init<V: Visitor<E> + ?Sized, E>(
 }
 
 // 2.3.3.1
-pub fn visit_subrange_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_subrange_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &SubrangeDeclaration,
 ) -> Result<V::Value, E> {
@@ -439,14 +449,14 @@ pub fn visit_subrange_declaration<V: Visitor<E> + ?Sized, E>(
     )
 }
 
-pub fn visit_simple_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_simple_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &SimpleDeclaration,
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.spec_and_init, v)
 }
 
-pub fn visit_array_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_array_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &ArrayDeclaration,
 ) -> Result<V::Value, E> {
@@ -454,56 +464,56 @@ pub fn visit_array_declaration<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(&node.init, v)
 }
 
-pub fn visit_subrange_specification<V: Visitor<E> + ?Sized, E>(
+pub fn visit_subrange_specification<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &SubrangeSpecification,
 ) -> Result<V::Value, E> {
     v.visit_subrange(&node.subrange)
 }
 
-pub fn visit_structure_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_structure_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &StructureDeclaration,
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.elements, v)
 }
 
-pub fn visit_structure_element_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_structure_element_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &StructureElementDeclaration,
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.init, v)
 }
 
-pub fn visit_structure_initialization_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_structure_initialization_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &StructureInitializationDeclaration,
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.elements_init, v)
 }
 
-pub fn visit_structure_element_init<V: Visitor<E> + ?Sized, E>(
+pub fn visit_structure_element_init<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &StructureElementInit,
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.init, v)
 }
 
-pub fn visit_string_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_string_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &StringDeclaration,
 ) -> Result<V::Value, E> {
     Ok(V::Value::default())
 }
 
-pub fn visit_late_bound_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_late_bound_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &LateBoundDeclaration,
 ) -> Result<V::Value, E> {
     Ok(V::Value::default())
 }
 
-pub fn visit_function_block_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_function_block_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &FunctionBlockDeclaration,
 ) -> Result<V::Value, E> {
@@ -511,7 +521,7 @@ pub fn visit_function_block_declaration<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(&node.body, v)
 }
 
-pub fn visit_program_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_program_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &ProgramDeclaration,
 ) -> Result<V::Value, E> {
@@ -519,7 +529,7 @@ pub fn visit_program_declaration<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(&node.body, v)
 }
 
-pub fn visit_function_declaration<V: Visitor<E> + ?Sized, E>(
+pub fn visit_function_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &FunctionDeclaration,
 ) -> Result<V::Value, E> {
@@ -527,19 +537,25 @@ pub fn visit_function_declaration<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(&node.body, v)
 }
 
-pub fn visit_if<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &If) -> Result<V::Value, E> {
+pub fn visit_if<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &If,
+) -> Result<V::Value, E> {
     Acceptor::accept(&node.expr, v)?;
     Acceptor::accept(&node.body, v)?;
     Acceptor::accept(&node.else_body, v)
 }
 
-pub fn visit_case<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &Case) -> Result<V::Value, E> {
+pub fn visit_case<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &Case,
+) -> Result<V::Value, E> {
     Acceptor::accept(&node.selector, v)?;
     Acceptor::accept(&node.statement_groups, v)?;
     Acceptor::accept(&node.else_body, v)
 }
 
-pub fn visit_case_statement_group<V: Visitor<E> + ?Sized, E>(
+pub fn visit_case_statement_group<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &CaseStatementGroup,
 ) -> Result<V::Value, E> {
@@ -547,7 +563,7 @@ pub fn visit_case_statement_group<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(&node.statements, v)
 }
 
-pub fn visit_array_variable<V: Visitor<E> + ?Sized, E>(
+pub fn visit_array_variable<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &ArrayVariable,
 ) -> Result<V::Value, E> {
@@ -555,7 +571,7 @@ pub fn visit_array_variable<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(&node.subscripts, v)
 }
 
-pub fn visit_compare<V: Visitor<E> + ?Sized, E>(
+pub fn visit_compare<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &CompareExpr,
 ) -> Result<V::Value, E> {
@@ -563,7 +579,7 @@ pub fn visit_compare<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(&node.right, v)
 }
 
-pub fn visit_binary_op<V: Visitor<E> + ?Sized, E>(
+pub fn visit_binary_op<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &BinaryExpr,
 ) -> Result<V::Value, E> {
@@ -571,7 +587,7 @@ pub fn visit_binary_op<V: Visitor<E> + ?Sized, E>(
     Acceptor::accept(&node.right, v)
 }
 
-pub fn visit_unary_op<V: Visitor<E> + ?Sized, E>(
+pub fn visit_unary_op<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &UnaryExpr,
 ) -> Result<V::Value, E> {
@@ -579,14 +595,14 @@ pub fn visit_unary_op<V: Visitor<E> + ?Sized, E>(
 }
 
 // 2.4.3.2
-pub fn visit_simple_initializer<V: Visitor<E> + ?Sized, E>(
+pub fn visit_simple_initializer<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &SimpleInitializer,
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.initial_value, v)
 }
 
-pub fn visit_array_initializer<V: Visitor<E> + ?Sized, E>(
+pub fn visit_array_initializer<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &ArrayInitialValueAssignment,
 ) -> Result<V::Value, E> {
@@ -595,13 +611,16 @@ pub fn visit_array_initializer<V: Visitor<E> + ?Sized, E>(
 }
 
 // 2.6.2
-pub fn visit_network<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &Network) -> Result<V::Value, E> {
+pub fn visit_network<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &Network,
+) -> Result<V::Value, E> {
     v.visit_step(&node.initial_step)?;
     Acceptor::accept(&node.elements, v)
 }
 
 // 2.6.3
-pub fn visit_transition<V: Visitor<E> + ?Sized, E>(
+pub fn visit_transition<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &Transition,
 ) -> Result<V::Value, E> {
@@ -609,17 +628,23 @@ pub fn visit_transition<V: Visitor<E> + ?Sized, E>(
 }
 
 // 2.6.3
-pub fn visit_action<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &Action) -> Result<V::Value, E> {
+pub fn visit_action<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &Action,
+) -> Result<V::Value, E> {
     Acceptor::accept(&node.body, v)
 }
 
 // 3.2.3
-pub fn visit_fb_call<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &FbCall) -> Result<V::Value, E> {
+pub fn visit_fb_call<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &FbCall,
+) -> Result<V::Value, E> {
     Acceptor::accept(&node.params, v)
 }
 
 // 3.2.3
-pub fn visit_positional_input<V: Visitor<E> + ?Sized, E>(
+pub fn visit_positional_input<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &PositionalInput,
 ) -> Result<V::Value, E> {
@@ -627,7 +652,7 @@ pub fn visit_positional_input<V: Visitor<E> + ?Sized, E>(
 }
 
 // 3.2.3
-pub fn visit_named_input<V: Visitor<E> + ?Sized, E>(
+pub fn visit_named_input<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &NamedInput,
 ) -> Result<V::Value, E> {
@@ -635,12 +660,18 @@ pub fn visit_named_input<V: Visitor<E> + ?Sized, E>(
 }
 
 // 3.2.3
-pub fn visit_output<V: Visitor<E> + ?Sized, E>(v: &mut V, node: &Output) -> Result<V::Value, E> {
+pub fn visit_output<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &Output,
+) -> Result<V::Value, E> {
     Acceptor::accept(&node.tgt, v)
 }
 
 impl Acceptor for LibraryElement {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self {
             LibraryElement::ConfigurationDeclaration(config) => {
                 visitor.visit_configuration_declaration(config)
@@ -662,25 +693,37 @@ impl Acceptor for LibraryElement {
 }
 
 impl Acceptor for ResourceDeclaration {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         visitor.visit_resource_declaration(self)
     }
 }
 
 impl Acceptor for VarDecl {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         visitor.visit_variable_declaration(self)
     }
 }
 
 impl Acceptor for EnumerationDeclaration {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         visitor.visit_enum_declaration(self)
     }
 }
 
 impl Acceptor for DataTypeDeclarationKind {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self {
             DataTypeDeclarationKind::Enumeration(e) => visitor.visit_enum_declaration(e),
             DataTypeDeclarationKind::Subrange(sr) => visitor.visit_subrange_declaration(sr),
@@ -699,33 +742,51 @@ impl Acceptor for DataTypeDeclarationKind {
 }
 
 impl Acceptor for EnumeratedSpecificationKind {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         // TODO I don't know if we need to visit these items
         Ok(V::Value::default())
     }
 }
 
 impl Acceptor for ArrayInitialElementKind {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self {
-            ArrayInitialElementKind::Constant(_) => todo!(),
-            ArrayInitialElementKind::EnumValue(_) => todo!(),
-            ArrayInitialElementKind::Repeated(_, _) => todo!(),
+            ArrayInitialElementKind::Constant(_) => {
+                Err(Into::<E>::into(Diagnostic::todo(file!(), line!())))
+            }
+            ArrayInitialElementKind::EnumValue(_) => {
+                Err(Into::<E>::into(Diagnostic::todo(file!(), line!())))
+            }
+            ArrayInitialElementKind::Repeated(_, _) => {
+                Err(Into::<E>::into(Diagnostic::todo(file!(), line!())))
+            }
         }
     }
 }
 
 impl Acceptor for ArraySpecificationKind {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self {
-            ArraySpecificationKind::Type(_) => todo!(),
-            ArraySpecificationKind::Subranges(_, _) => todo!(),
+            ArraySpecificationKind::Type(_) => Err(Into::<E>::into(Diagnostic::todo(file!(), line!()))),
+            ArraySpecificationKind::Subranges(_, _) => Err(Into::<E>::into(Diagnostic::todo(file!(), line!()))),
         }
     }
 }
 
 impl Acceptor for InitialValueAssignmentKind {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self {
             InitialValueAssignmentKind::None => Ok(V::Value::default()),
             InitialValueAssignmentKind::Simple(si) => visitor.visit_simple_initializer(si),
@@ -753,24 +814,33 @@ impl Acceptor for InitialValueAssignmentKind {
 }
 
 impl Acceptor for StructureElementInit {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         visitor.visit_structure_element_init(self)
     }
 }
 
 impl Acceptor for StructInitialValueAssignmentKind {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self {
             StructInitialValueAssignmentKind::Constant(c) => Acceptor::accept(c, visitor),
-            StructInitialValueAssignmentKind::EnumeratedValue(_) => todo!(),
-            StructInitialValueAssignmentKind::Array(_) => todo!(),
-            StructInitialValueAssignmentKind::Structure(_) => todo!(),
+            StructInitialValueAssignmentKind::EnumeratedValue(_) => Err(Into::<E>::into(Diagnostic::todo(file!(), line!()))),
+            StructInitialValueAssignmentKind::Array(_) => tErr(Into::<E>::into(Diagnostic::todo(file!(), line!()))),
+            StructInitialValueAssignmentKind::Structure(_) => Err(Into::<E>::into(Diagnostic::todo(file!(), line!()))),
         }
     }
 }
 
 impl Acceptor for ExprKind {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self {
             ExprKind::Compare(compare) => visitor.visit_compare(compare.as_ref()),
             ExprKind::BinaryOp(binary) => visitor.visit_binary_op(binary.as_ref()),
@@ -787,7 +857,10 @@ impl Acceptor for ExprKind {
 }
 
 impl Acceptor for Constant {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self {
             // TODO visit the values
             Constant::IntegerLiteral(node) => Ok(V::Value::default()),
@@ -804,7 +877,10 @@ impl Acceptor for Constant {
 }
 
 impl Acceptor for FunctionBlockBody {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self {
             FunctionBlockBody::Sfc(network) => visitor.visit_sfc(network),
             FunctionBlockBody::Statements(stmts) => visitor.visit_statements(stmts),
@@ -815,7 +891,10 @@ impl Acceptor for FunctionBlockBody {
 }
 
 impl Acceptor for StmtKind {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self {
             StmtKind::Assignment(node) => visitor.visit_assignment(node),
             StmtKind::FbCall(node) => visitor.visit_fb_call(node),
@@ -832,13 +911,19 @@ impl Acceptor for StmtKind {
 }
 
 impl Acceptor for CaseStatementGroup {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         visitor.visit_case_statement_group(self)
     }
 }
 
 impl Acceptor for CaseSelection {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self {
             CaseSelection::Subrange(sr) => visitor.visit_subrange(sr),
             CaseSelection::SignedInteger(si) => visitor.visit_signed_integer(si),
@@ -849,20 +934,29 @@ impl Acceptor for CaseSelection {
 
 // 2.6.2
 impl Acceptor for Network {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         visitor.visit_network(self)
     }
 }
 
 // 2.6.2
 impl Acceptor for ElementKind {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         Ok(V::Value::default())
     }
 }
 
 impl Acceptor for Variable {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self {
             Variable::AddressAssignment(var) => visitor.visit_address_assignment(var),
             Variable::Named(var) => visitor.visit_named_variable(var),
@@ -873,19 +967,25 @@ impl Acceptor for Variable {
 }
 
 impl Acceptor for SymbolicVariableKind {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self {
             SymbolicVariableKind::Named(var) => visitor.visit_named_variable(var),
             SymbolicVariableKind::Array(var) => visitor.visit_array_variable(var),
             SymbolicVariableKind::Structured(_) => {
-                todo!()
+                Err(Into::<E>::into(Diagnostic::todo(file!(), line!())))
             }
         }
     }
 }
 
 impl Acceptor for ParamAssignmentKind {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self {
             ParamAssignmentKind::PositionalInput(node) => visitor.visit_positional_input(node),
             ParamAssignmentKind::NamedInput(node) => visitor.visit_named_input(node),
@@ -895,27 +995,39 @@ impl Acceptor for ParamAssignmentKind {
 }
 
 impl Acceptor for TaskConfiguration {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         visitor.visit_task_configuration(self)
     }
 }
 
 impl Acceptor for ProgramConfiguration {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         visitor.visit_program_configuration(self)
     }
 }
 
 // 2.3.3.1
 impl Acceptor for StructureElementDeclaration {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         visitor.visit_structure_element_declaration(self)
     }
 }
 
 // 2.3.3.1
 impl Acceptor for SubrangeSpecificationKind {
-    fn accept<V: Visitor<E> + ?Sized, E>(&self, visitor: &mut V) -> Result<V::Value, E> {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
         match self {
             SubrangeSpecificationKind::Specification(node) => {
                 visitor.visit_subrange_specification(node)
@@ -944,22 +1056,22 @@ mod test {
         }
     }
 
-    impl Visitor<Error> for Descender {
+    impl Visitor<()> for Descender {
         type Value = ();
 
-        fn visit_address_assignment(&mut self, variable: &AddressAssignment) -> Result<(), Error> {
+        fn visit_address_assignment(&mut self, variable: &AddressAssignment) -> Result<(), ()> {
             let mut dst = &mut self.names;
             dst.push_back(variable.to_string());
             Ok(())
         }
 
-        fn visit_named_variable(&mut self, var: &NamedVariable) -> Result<(), Error> {
+        fn visit_named_variable(&mut self, var: &NamedVariable) -> Result<(), ()> {
             let mut dst = &mut self.names;
             dst.push_back(var.name.to_string());
             Ok(())
         }
 
-        fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<(), Error> {
+        fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<(), ()> {
             let mut dst = &mut self.names;
             dst.push_back(fb_call.var_name.to_string());
             Ok(())
