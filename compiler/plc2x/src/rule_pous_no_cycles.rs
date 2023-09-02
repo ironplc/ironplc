@@ -143,7 +143,7 @@ impl Visitor<Diagnostic> for RulePousNoCycles {
                 let to = self.add_node(&init.type_name);
                 self.graph.add_edge(from, to, ());
             }
-            None => todo!(),
+            None => return Err(Diagnostic::todo(file!(), line!())),
         }
 
         Ok(())

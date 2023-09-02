@@ -21,3 +21,4 @@ P0019,DeclarationNameDuplicated,Declaration name is duplicated
 P0020,DefinitionNameDuplicated,Definition name is duplicated
 P0021,FunctionBlockNotInScope,Function block invocation is not a variable in scope
 P0022,UndeclaredUnknownType,Unknown type
+P9999,NotImplemented,Capability is not implemented (yet!)
