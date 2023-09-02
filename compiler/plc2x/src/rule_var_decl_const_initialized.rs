@@ -55,7 +55,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
 
         match node.qualifier {
             DeclarationQualifier::Constant => match &node.initializer {
-                InitialValueAssignmentKind::None => todo!(),
+                InitialValueAssignmentKind::None => return Err(Diagnostic::todo(file!(), line!())),
                 InitialValueAssignmentKind::Simple(si) => match si.initial_value {
                     Some(_) => {}
                     None => {
@@ -110,12 +110,23 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                         }
                     }
                 }
-                InitialValueAssignmentKind::FunctionBlock(_) => todo!(),
-                InitialValueAssignmentKind::Subrange(_) => todo!(),
-                InitialValueAssignmentKind::Structure(_) => todo!(),
-                InitialValueAssignmentKind::Array(_) => todo!(),
-                InitialValueAssignmentKind::LateResolvedType(_) => todo!(),
+                InitialValueAssignmentKind::FunctionBlock(_) => {
+                    return Err(Diagnostic::todo(file!(), line!()))
+                }
+                InitialValueAssignmentKind::Subrange(_) => {
+                    return Err(Diagnostic::todo(file!(), line!()))
+                }
+                InitialValueAssignmentKind::Structure(_) => {
+                    return Err(Diagnostic::todo(file!(), line!()))
+                }
+                InitialValueAssignmentKind::Array(_) => {
+                    return Err(Diagnostic::todo(file!(), line!()))
+                }
+                InitialValueAssignmentKind::LateResolvedType(_) => {
+                    return Err(Diagnostic::todo(file!(), line!()))
+                }
             },
+            // Do not care about the following qualifiers
             DeclarationQualifier::Unspecified => {}
             DeclarationQualifier::Retain => {}
             DeclarationQualifier::NonRetain => {}
