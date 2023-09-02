@@ -32,7 +32,7 @@ pub fn apply(lib: Library) -> Result<Library, Diagnostic> {
                 Some(id) => {
                     resolved_types.insert(id.clone(), root.1.clone());
                 }
-                None => todo!(),
+                None => return Err(Diagnostic::todo(file!(), line!())),
             }
         }
     }
@@ -187,11 +187,15 @@ impl Fold<Diagnostic> for DeclarationResolver {
                             },
                         ))
                     }
-                    LateResolvableTypeDecl::LateBound => todo!("Unable to resolve type"),
-                    LateResolvableTypeDecl::Unspecified => todo!("Unable to resolve type"),
+                    LateResolvableTypeDecl::LateBound => {
+                        return Err(Diagnostic::todo(file!(), line!()))
+                    }
+                    LateResolvableTypeDecl::Unspecified => {
+                        return Err(Diagnostic::todo(file!(), line!()))
+                    }
                 }
             } else {
-                todo!("Unable to resolve type")
+                return Err(Diagnostic::todo(file!(), line!()));
             }
         }
         Ok(node)

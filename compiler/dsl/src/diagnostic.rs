@@ -10,7 +10,7 @@ use std::ops::Range;
 
 use ironplc_problems::Problem;
 
-use crate::core::{FileId, Id, SourceLoc};
+use crate::core::{FileId, Id, SourceLoc, SourcePosition};
 
 /// A position marker that has both line and offset information.
 #[derive(Debug)]
@@ -146,6 +146,10 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
+    /// Creates a diagnostic from the problem code and with the specified label.
+    ///
+    /// The label associates the problem to a particular instance in IEC 61131-3 source
+    /// file.
     pub fn problem(problem: Problem, primary: Label) -> Self {
         Self {
             code: problem.code().to_string(),
@@ -154,6 +158,39 @@ impl Diagnostic {
             described: vec![],
             secondary: vec![],
         }
+    }
+
+    /// Creates a "todo" diagnostic associated with a file and line in the Rust
+    /// source code.
+    ///
+    /// Unlike other uses of problem, the location in this is related to the compiler
+    /// rather than the IEC 61131-3 source.
+    pub fn todo(file: &str, line: u32) -> Self {
+        Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::source_loc(
+                FileId::default(),
+                &SourceLoc::default(),
+                format!("Not implemented at {}#L{}", file, line),
+            ),
+        )
+    }
+
+    /// Creates a "todo" diagnostic associated with a file and line in the Rust
+    /// source code. Also provides a location in IEC 61131-3 associated with the
+    /// todo (but is not necessarily the origin).
+    ///
+    /// Unlike other uses of problem, the location in this is related to the compiler
+    /// rather than the IEC 61131-3 source.
+    pub fn todo_with_id(id: &Id, file: &str, line: u32) -> Self {
+        Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::source_loc(
+                FileId::default(),
+                id.position(),
+                format!("Not implemented at {}#L{}", file, line),
+            ),
+        )
     }
 
     /// Adds to the problem description (primary text) additional context
