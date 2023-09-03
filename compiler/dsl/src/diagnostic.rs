@@ -234,6 +234,5 @@ impl Diagnostic {
 impl From<Diagnostic> for () {
     fn from(value: Diagnostic) -> Self {
         // Just drop the diagnostic!
-        ()
     }
 }

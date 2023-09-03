@@ -776,8 +776,12 @@ impl Acceptor for ArraySpecificationKind {
         visitor: &mut V,
     ) -> Result<V::Value, E> {
         match self {
-            ArraySpecificationKind::Type(_) => Err(Into::<E>::into(Diagnostic::todo(file!(), line!()))),
-            ArraySpecificationKind::Subranges(_, _) => Err(Into::<E>::into(Diagnostic::todo(file!(), line!()))),
+            ArraySpecificationKind::Type(_) => {
+                Err(Into::<E>::into(Diagnostic::todo(file!(), line!())))
+            }
+            ArraySpecificationKind::Subranges(_, _) => {
+                Err(Into::<E>::into(Diagnostic::todo(file!(), line!())))
+            }
         }
     }
 }
@@ -829,9 +833,15 @@ impl Acceptor for StructInitialValueAssignmentKind {
     ) -> Result<V::Value, E> {
         match self {
             StructInitialValueAssignmentKind::Constant(c) => Acceptor::accept(c, visitor),
-            StructInitialValueAssignmentKind::EnumeratedValue(_) => Err(Into::<E>::into(Diagnostic::todo(file!(), line!()))),
-            StructInitialValueAssignmentKind::Array(_) => tErr(Into::<E>::into(Diagnostic::todo(file!(), line!()))),
-            StructInitialValueAssignmentKind::Structure(_) => Err(Into::<E>::into(Diagnostic::todo(file!(), line!()))),
+            StructInitialValueAssignmentKind::EnumeratedValue(_) => {
+                Err(Into::<E>::into(Diagnostic::todo(file!(), line!())))
+            }
+            StructInitialValueAssignmentKind::Array(_) => {
+                Err(Into::<E>::into(Diagnostic::todo(file!(), line!())))
+            }
+            StructInitialValueAssignmentKind::Structure(_) => {
+                Err(Into::<E>::into(Diagnostic::todo(file!(), line!())))
+            }
         }
     }
 }
