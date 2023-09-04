@@ -74,15 +74,15 @@ endtoend-smoke version compilerfilename extensionfilename:
 
 _endtoend-smoke-windows version compilerfilename extensionfilename:
   # Get and install the compiler
-  curl -LO --fail https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{compilerfilename}} -o ironplcc.msi
+  curl -L --fail https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{compilerfilename}} -o ironplcc.msi
   msiexec /i ironplcc.msi /quiet
 
   # Get and install VS Code
-  curl -LO --fail https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user -o vscode.msi
+  curl -L --fail https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user -o vscode.msi
   msiexec /i vscode.msi /quiet
 
   # Get and install the VS code extension
-  curl -LO --fail https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{extensionfilename}} -o ironplc.vsix
+  curl -L --fail https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{extensionfilename}} -o ironplc.vsix
   code --install-extension ironplc.vsix
 
   # Open an example file that is part of the compiler - this is a hard coded path
