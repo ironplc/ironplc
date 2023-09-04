@@ -1,0 +1,19 @@
+on:
+  # Allow triggering directly
+  workflow_dispatch:
+    inputs:
+      version:
+        type: string
+        description: 'The version number to test with'
+
+name: IronPLC End to End Test
+
+jobs:
+  endtoend:
+    runs-on: windows-latest
+
+    steps:
+      - uses: taiki-e/install-action@just
+
+      - name: End to end test
+        run: just endtoend-smoke {{ inputs.version }} ironplcc-x86_64-windows.msi  ironplc-vscode-extension.vsix 
