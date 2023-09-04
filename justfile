@@ -2,26 +2,26 @@
 set windows-shell := ["powershell.exe", "-c"]
 
 # A quick check of the development environment
-sanity:
-  @just _sanity-{{os_family()}}
+devenv-smoke:
+  @just _devenv-smoke-{{os_family()}}
 
-_sanity-windows:
+_devenv-smoke-windows:
   @"CHECK: compile the IronPLC compiler"
   cd compiler; just compile
   @"CHECK: compile VS code extension (does not include tests)"
   cd integrations\vscode; just setup; just compile
   @"CHECK: compile the docs"
   cd docs; just compile
-  "SANITY PASSED"
+  "SMOKE PASSED"
 
-_sanity-unix:
+_devenv-smoke-unix:
   @echo "CHECK: compile the IronPLC compiler"
   cd compiler && just compile
   @echo "CHECK: compile VS code extension (does not include tests)"
   cd integrations/vscode && just setup && just compile
   @echo "CHECK: compile the docs"
   cd docs && just compile
-  @echo "SANITY PASSED"
+  @echo "SMOKE PASSED"
 
 # Simulate the workflow that runs to validate a commit (as best as is possible via Docker)
 ci-commit-workflow:
@@ -65,3 +65,31 @@ _version-unix version:
 update:
   cd compiler && just update
   cd integrations/vscode && just update
+
+# End to end "smoke" test.
+endtoend-smoke version compilerfilename extensionfilename:
+  # There are two parts to IronPLC - the compiler and the extension
+  # This test ensures that they actually work together (out of the box)
+  @just _endtoend-smoke-{{os_family()}} {{version}} {{compilerfilename}} {{extensionfilename}}
+
+_endtoend-smoke-windows version compilerfilename extensionfilename:
+  # Get and install the compiler
+  curl -LO --fail https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{compilerfilename}} -o ironplcc.msi
+  msiexec /i ironplcc.msi /quiet
+
+  # Get and install VS Code
+  curl -LO --fail https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user -o vscode.msi
+  msiexec /i vscode.msi /quiet
+
+  # Get and install the VS code extension
+  curl -LO --fail https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{extensionfilename}} -o ironplc.vsix
+  code --install-extension ironplc.vsix
+
+  # Open an example file that is part of the compiler - this is a hard coded path
+  # but that's also the point. We expect the installer to install here by default
+  # so that the extension will find the compiler by default.
+  code C:\Program Files\ironplcc\examples\getting_started.st
+
+_endtoend-smoke-unix:
+  @echo "endtoend-smoke is not implemented for Unix family"
+  exit 1

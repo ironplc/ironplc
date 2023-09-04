@@ -39,7 +39,7 @@ Then follow these steps to check that you have a working environment:
    the following to run some tests:
 
    ```sh
-   just sanity
+   just devenv-smoke
    ```
 
    💡 Running directly on your local machine (as opposed to the
@@ -48,7 +48,7 @@ Then follow these steps to check that you have a working environment:
    When the task completes, you will see
 
    ```sh
-   "SANITY PASSED"
+   "SMOKE PASSED"
    ```
 
    indicating you have a mostly (or perhaps 100%) working environment.
