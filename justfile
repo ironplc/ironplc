@@ -78,7 +78,7 @@ _endtoend-smoke-windows version compilerfilename extensionfilename:
   msiexec /i ironplcc.msi /quiet
 
   # Get and install VS Code
-  Invoke-WebRequest -Uri  https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user -OutFile vscode.msi
+  Invoke-WebRequest -Uri  "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user" -OutFile vscode.msi
   msiexec /i vscode.msi /quiet
 
   # Get and install the VS code extension

@@ -4,7 +4,7 @@ on:
     inputs:
       version:
         type: string
-        description: 'The version number to test with'
+        description: 'The version number to test with (without the "v" prefix)'
 
 name: IronPLC End to End Test
 
