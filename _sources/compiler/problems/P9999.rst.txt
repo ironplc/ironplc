@@ -4,3 +4,15 @@ P9999
 
 .. problem-summary:: P9999
 
+Analyzing the IEC 61131-3 source failed because the source contains elements
+that are not supported by this compiler. The elements are probably valid.
+
+Because the compiler does not support the elements, the solution normally
+requires adding support for the elements to the IronPLC compiler.
+
+* avoid the particular elements (this is usually not feasible)
+* verify that you have the latest version of the IronPLC compiler
+* report the issue to `IronPLC GitHub issues`_.
+  
+.. _IronPLC GitHub issues: https://github.com/ironplc/ironplc/issues/new?template=todo_report.md
+
