@@ -79,16 +79,16 @@ _endtoend-smoke-windows version compilerfilename extensionfilename:
 
   # Get and install VS Code
   Invoke-WebRequest -Uri  "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user" -OutFile vscode.exe
-  Start-Process vscode.exe /VERYSILENT /NORESTART /MERGETASKS=!runcode | Wait-Process -Timeout 60
+  Start-Process vscode.exe -ArgumentList "/VERYSILENT /NORESTART /MERGETASKS=!runcode" -PassThru | Wait-Process -Timeout 60
 
   # Get and install the VS code extension
   Invoke-WebRequest -Uri  https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{extensionfilename}} -OutFile ironplc.vsix
-  Start-Process "{{env_var('LOCALAPPDATA')}}\Programs\Microsoft VS Code\bin\code.exe" --install-extension ironplc.vsix | Wait-Process -Timeout 60
+  Start-Process -ArgumentList "`"{{env_var('LOCALAPPDATA')}}\Programs\Microsoft VS Code\bin\code.exe`" --install-extension ironplc.vsix" -PassThru | Wait-Process -Timeout 60
 
   # Open an example file that is part of the compiler - this is a hard coded path
   # but that's also the point. We expect the installer to install here by default
   # so that the extension will find the compiler by default.
-  Start-Process "{{env_var('LOCALAPPDATA')}}\Programs\Microsoft VS Code\bin\code.exe" "C:\Program Files\ironplcc\examples\getting_started.st" -PassThru | Wait-Process -Timeout 60
+  Start-Process -ArgumentList "`"{{env_var('LOCALAPPDATA')}}\Programs\Microsoft VS Code\bin\code.exe`" `"C:\Program Files\ironplcc\examples\getting_started.st`"" -PassThru | Wait-Process -Timeout 60
 
 _endtoend-smoke-unix:
   @echo "endtoend-smoke is not implemented for Unix family"
