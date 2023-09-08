@@ -89,7 +89,7 @@ _endtoend-smoke-windows version compilerfilename extensionfilename:
   # Expands to a folder called "extension"
   Expand-Archive ironplc.vsix
   # Move the folder 
-  Move-Item extension "{{env_var('USERPROFILE')}}\.vscode\extensions\garretfick.ironplc-{{version}}"
+  Move-Item ironplc\extension "{{env_var('USERPROFILE')}}\.vscode\extensions\garretfick.ironplc-{{version}}"
   # List extensions to show it is installed
   Start-Process "`"{{env_var('LOCALAPPDATA')}}\Programs\Microsoft VS Code\code.exe`"" -ArgumentList "--list-extensions" -PassThru | Wait-Process -Timeout 60
 
