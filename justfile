@@ -78,18 +78,18 @@ _endtoend-smoke-windows version compilerfilename extensionfilename:
   Start-Process msiexec -ArgumentList "/i ironplcc.msi /quiet" -PassThru | Wait-Process -Timeout 60
 
   # Get and install VS Code
-  Invoke-WebRequest -Uri  "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user" -OutFile vscode.exe
+  Invoke-WebRequest -Uri "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user" -OutFile vscode.exe
   Start-Process vscode.exe -ArgumentList "/VERYSILENT /NORESTART /MERGETASKS=!runcode" -PassThru | Wait-Process -Timeout 600
 
   # Get and install the VS code extension
-  Invoke-WebRequest -Uri  https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{extensionfilename}} -OutFile ironplc.vsix
+  Invoke-WebRequest -Uri https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{extensionfilename}} -OutFile ironplc.vsix
   #Start-Process "`"{{env_var('LOCALAPPDATA')}}\Programs\Microsoft VS Code\code.exe`"" -ArgumentList "--install-extension ironplc.vsix" -PassThru | Wait-Process -Timeout 120
   # VS code does have a command line to install an extension, but after
   # many tries, I think it is broken, so instead, just install directly
   # Expands to a folder called "extension"
   Expand-Archive ironplc.vsix
   # Move the folder 
-  Move-Item extension `"{{env_var('USERPROFILE')}}\.vscode\extensions\garretfick.ironplc-{{version}}`""
+  Move-Item extension "{{env_var('USERPROFILE')}}\.vscode\extensions\garretfick.ironplc-{{version}}"
   # List extensions to show it is installed
   Start-Process "`"{{env_var('LOCALAPPDATA')}}\Programs\Microsoft VS Code\code.exe`"" -ArgumentList "--list-extensions" -PassThru | Wait-Process -Timeout 60
 
