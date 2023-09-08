@@ -86,17 +86,19 @@ _endtoend-smoke-windows version compilerfilename extensionfilename:
   #Start-Process "`"{{env_var('LOCALAPPDATA')}}\Programs\Microsoft VS Code\code.exe`"" -ArgumentList "--install-extension ironplc.vsix" -PassThru | Wait-Process -Timeout 120
   # VS code does have a command line to install an extension, but after
   # many tries, I think it is broken, so instead, just install directly
-  # Expands to a folder called "extension"
+  # Expands to a folder called "ironplc\extension"
   Expand-Archive ironplc.vsix
   # Move the folder 
   Move-Item ironplc\extension "{{env_var('USERPROFILE')}}\.vscode\extensions\garretfick.ironplc-{{version}}"
-  # List extensions to show it is installed
-  Start-Process "`"{{env_var('LOCALAPPDATA')}}\Programs\Microsoft VS Code\code.exe`"" -ArgumentList "--list-extensions" -PassThru | Wait-Process -Timeout 60
+
+  # Create the settings.json with the configuration to enable debug
+  New-Item "{{env_var('USERPROFILE')}}\Code\User\settings.json"
+  Set-Content "{{env_var('USERPROFILE')}}\Code\User\settings.json" '{ "ironplc.debug": true }'
 
   # Open an example file that is part of the compiler - this is a hard coded path
   # but that's also the point. We expect the installer to install here by default
   # so that the extension will find the compiler by default.
-  #Start-Process "`"{{env_var('LOCALAPPDATA')}}\Programs\Microsoft VS Code\code.exe`"" -ArgumentList "`"C:\Program Files\ironplcc\examples\getting_started.st`""
+  Start-Process "`"{{env_var('LOCALAPPDATA')}}\Programs\Microsoft VS Code\code.exe`"" -ArgumentList "`"C:\Program Files\ironplcc\examples\getting_started.st`""
 
 _endtoend-smoke-unix:
   @echo "endtoend-smoke is not implemented for Unix family"
