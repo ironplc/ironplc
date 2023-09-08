@@ -92,7 +92,7 @@ _endtoend-smoke-windows version compilerfilename extensionfilename:
   Move-Item ironplc\extension "{{env_var('USERPROFILE')}}\.vscode\extensions\garretfick.ironplc-{{version}}"
 
   # Create the settings.json with the configuration to enable debug
-  New-Item "{{env_var('USERPROFILE')}}\Code\User\settings.json"
+  New-Item "{{env_var('USERPROFILE')}}\Code\User\settings.json" -Force
   Set-Content "{{env_var('USERPROFILE')}}\Code\User\settings.json" '{ "ironplc.debug": true }'
 
   # Open an example file that is part of the compiler - this is a hard coded path
