@@ -3,12 +3,17 @@ use std::path::PathBuf;
 use clap::Parser;
 
 use ironplcc::cli;
+use ironplcc::logger;
 use ironplcc::lsp;
 use ironplcc::project::Project;
 
 #[derive(Parser, Debug)]
 #[command(name = "ironplcc", about = "IronPLC compiler")]
 struct Args {
+    /// Turn on verbose logging.
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    verbose: u8,
+
     #[command(subcommand)]
     action: Action,
 }
@@ -29,6 +34,8 @@ impl Project for Proj {}
 
 pub fn main() -> Result<(), String> {
     let args = Args::parse();
+
+    logger::configure(args.verbose)?;
 
     match args.action {
         Action::Lsp { stdio: _ } => {
