@@ -1,6 +1,7 @@
 //! Implements the language server protocol for integration with an IDE such
 //! as Visual Studio Code.
 
+use log::trace;
 use lsp_server::{Connection, ExtractError, Message};
 use lsp_types::{
     notification::{self, PublishDiagnostics},
@@ -91,6 +92,7 @@ impl LspServer {
         let _notification =
             match Self::cast_notification::<notification::DidChangeTextDocument>(notification) {
                 Ok(params) => {
+                    trace!("DidChangeTextDocument {}", params.text_document.uri);
                     let contents = params.content_changes.into_iter().next().unwrap().text;
                     let uri = params.text_document.uri;
                     let version = params.text_document.version;

@@ -38,10 +38,14 @@ function startServer(context: vscode.ExtensionContext) {
 		return;
 	}
 
+	const config = vscode.workspace.getConfiguration('ironplc');
+	const compilerArguments = config.get<string|undefined>('compilerArguments');
+	const args = compilerArguments?.match(/('(\\'|[^'])*'|"(\\"|[^"])*"|\/(\\\/|[^\/])*\/|(\\ |[^ ])+|[\w-]+)/g) || [];
+
 	application = {
 		command: compilerFilePath,
 		transport: TransportKind.stdio,
-		args: ['lsp'],
+		args: ['lsp'].concat(args),
 		options: {
 			env: ['RUST_LOG=lsp_server=debug']
 		}
@@ -71,7 +75,7 @@ function findCompiler() {
 	const trialGenerator = [
 		() => {
 			// Try to get from configuration
-			const config = vscode.workspace.getConfiguration("ironplc");
+			const config = vscode.workspace.getConfiguration('ironplc');
 			return [config.get<string|undefined>('path'), 'configuration'];
 		},
 		() => {

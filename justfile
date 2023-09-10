@@ -74,21 +74,36 @@ endtoend-smoke version compilerfilename extensionfilename:
 
 _endtoend-smoke-windows version compilerfilename extensionfilename:
   # Get and install the compiler
-  curl -LO --fail https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{compilerfilename}} -o ironplcc.msi
-  msiexec /i ironplcc.msi /quiet
+  Invoke-WebRequest -Uri https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{compilerfilename}} -OutFile ironplcc.msi
+  Start-Process msiexec -ArgumentList "/i ironplcc.msi /quiet" -PassThru | Wait-Process -Timeout 60
 
   # Get and install VS Code
-  curl -LO --fail https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user -o vscode.msi
-  msiexec /i vscode.msi /quiet
+  Invoke-WebRequest -Uri "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user" -OutFile vscode.exe
+  Start-Process vscode.exe -ArgumentList "/VERYSILENT /NORESTART /MERGETASKS=!runcode" -PassThru | Wait-Process -Timeout 600
 
   # Get and install the VS code extension
-  curl -LO --fail https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{extensionfilename}} -o ironplc.vsix
-  code --install-extension ironplc.vsix
+  Invoke-WebRequest -Uri https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{extensionfilename}} -OutFile ironplc.vsix
+  #Start-Process "`"{{env_var('LOCALAPPDATA')}}\Programs\Microsoft VS Code\code.exe`"" -ArgumentList "--install-extension ironplc.vsix" -PassThru | Wait-Process -Timeout 120
+  # VS code does have a command line to install an extension, but after
+  # many tries, I think it is broken, so instead, just install directly
+  # Expands to a folder called "ironplc\extension"
+  Expand-Archive ironplc.vsix
+  # Move the folder 
+  Move-Item ironplc\extension "{{env_var('USERPROFILE')}}\.vscode\extensions\garretfick.ironplc-{{version}}"
+
+  # Create the settings.json with the configuration to enable trace level logging (that's the 4 -v's)
+  New-Item "{{env_var('USERPROFILE')}}\Code\User\settings.json" -Force
+  Set-Content "{{env_var('USERPROFILE')}}\Code\User\settings.json" '{ "ironplc.compilerArguments": "-v -v -v -v" }'
 
   # Open an example file that is part of the compiler - this is a hard coded path
   # but that's also the point. We expect the installer to install here by default
   # so that the extension will find the compiler by default.
-  code C:\Program Files\ironplcc\examples\getting_started.st
+  Start-Process "`"{{env_var('LOCALAPPDATA')}}\Programs\Microsoft VS Code\code.exe`"" -ArgumentList "`"C:\Program Files\ironplcc\examples\getting_started.st`""
+
+  # Check that the log file was created (indicating that VS Code correctly started the
+  # ironplcc language server). This path is a well-known path
+  Start-Sleep -s 30
+  Test-Path "`"C:\Users\{{env_var('USERNAME')}}\AppData\Local\Temp\ironplcc\ironplcc.log`"" -PathType Leaf
 
 _endtoend-smoke-unix:
   @echo "endtoend-smoke is not implemented for Unix family"

@@ -49,6 +49,12 @@
           "type": "string",
           "default": "",
           "editPresentation": "singlelineText"
+        },
+        "ironplc.compilerArguments": {
+          "markdownDescription": "Compiler arguments for the language server provider. See ironplcc (ironplcc.exe on Windows) for expected values. The 'lsp' argument is added by default.",
+          "type": "string",
+          "default": "",
+          "editPresentation": "singlelineText"
         }
       }
     },

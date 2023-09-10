@@ -2,6 +2,7 @@
 src/**
 .gitignore
 CONTRIBUTING.md
+justfile
 **/tsconfig.json
 **/.eslintrc.json
 **/*.map

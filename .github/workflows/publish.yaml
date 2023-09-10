@@ -54,7 +54,7 @@ jobs:
           fetch-depth: 0
           # This is a workaround for branch protections. In general, we want to
           # protect branches from changes, but we'll take the publish as special
-          # becuase we need to create a new version number. This allows making
+          # because we need to create a new version number. This allows making
           # changes to the repository without removing the branch protections.
           token: ${{secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN}}
       - name: Git tags
