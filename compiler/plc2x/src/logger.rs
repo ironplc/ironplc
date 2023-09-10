@@ -5,7 +5,7 @@ use std::io::Write;
 use std::{env, fs};
 
 /// Configures the log with the specified verbosity.
-/// 
+///
 /// Higher verbosity results in additional log messages
 /// up to a maximum verbosity level.
 pub fn configure(verbosity: u8) -> Result<(), String> {
