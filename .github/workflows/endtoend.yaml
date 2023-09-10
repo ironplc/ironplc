@@ -4,7 +4,7 @@ on:
     inputs:
       version:
         type: string
-        description: 'The version number to test with'
+        description: 'The version number to test with (without the "v" prefix)'
 
 name: IronPLC End to End Test
 
@@ -14,6 +14,7 @@ jobs:
 
     steps:
       - uses: taiki-e/install-action@just
+      - uses: actions/checkout@v3
 
       - name: End to end test
         run: just endtoend-smoke ${{ inputs.version }} ironplcc-x86_64-windows.msi  ironplc-vscode-extension.vsix 
