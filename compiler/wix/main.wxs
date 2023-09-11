@@ -70,12 +70,12 @@
         <Directory Id='TARGETDIR' Name='SourceDir'>
             <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
                 <Directory Id='APPLICATIONFOLDER' Name='ironplc'>
-                    <Component Id='License' Guid='*'>
+                    <Component Id='License' Guid='8778f1da-4b25-478b-859f-1370d412ec17'>
                         <File
                             Id='LicenseFile'
                             Name='LICENSE'
                             Source='plc2x\LICENSE'
-                            KeyPath='no'/>
+                            KeyPath='yes'/>
                     </Component>
                     
                     <Directory Id='Bin' Name='bin'>
@@ -89,12 +89,12 @@
                                 Action='set'
                                 System='no'/>
                         </Component>
-                        <Component Id='Ironplcc' Guid='*'>
+                        <Component Id='Ironplcc' Guid='0424576c-6e36-4d1e-809a-5559f283de72'>
                             <File
                                 Id='ironplcc'
                                 Name='ironplcc.exe'
                                 Source='$(var.CargoTargetBinDir)\ironplcc.exe'
-                                KeyPath='no'/>
+                                KeyPath='yes'/>
                         </Component>
                         <Component Id="EnvironmentVars" 
                             Guid="{bba707a8-db7e-4a72-8273-89e2cb6891d4}"  
@@ -108,12 +108,12 @@
                     </Directory>
 
                     <Directory Id='Examples' Name='examples'>
-                        <Component Id='GettingStartedExample' Guid='*'>
+                        <Component Id='GettingStartedExample' Guid='8b91f217-b41b-423d-a7d0-6404238065a8'>
                             <File
                                 Id='getting_started'
                                 Name='getting_started.st'
                                 Source='..\examples\getting_started.st'
-                                KeyPath="no"/>
+                                KeyPath="yes"/>
                         </Component>
                     </Directory>
                 </Directory>
