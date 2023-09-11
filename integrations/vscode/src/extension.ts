@@ -83,6 +83,7 @@ function findCompiler() {
 			return [process.env.IRONPLC, 'environment'];
 		},
 		() => {
+			// Mac well known directory
 			const homebrewDir = process.platform === 'darwin' ? '/opt/homebrew/bin' : undefined;
 			return [homebrewDir, 'homebrew'];
 		}
