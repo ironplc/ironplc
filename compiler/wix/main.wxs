@@ -75,7 +75,7 @@
                             Id='LicenseFile'
                             Name='LICENSE'
                             Source='plc2x\LICENSE'
-                            KeyPath='yes'/>
+                            KeyPath='no'/>
                     </Component>
                     
                     <Directory Id='Bin' Name='bin'>
@@ -94,7 +94,7 @@
                                 Id='ironplcc'
                                 Name='ironplcc.exe'
                                 Source='$(var.CargoTargetBinDir)\ironplcc.exe'
-                                KeyPath='yes'/>
+                                KeyPath='no'/>
                         </Component>
                         <Component Id="EnvironmentVars" 
                             Guid="{bba707a8-db7e-4a72-8273-89e2cb6891d4}"  
@@ -113,7 +113,7 @@
                                 Id='getting_started'
                                 Name='getting_started.st'
                                 Source='..\examples\getting_started.st'
-                                KeyPath="yes"/>
+                                KeyPath="no"/>
                         </Component>
                     </Directory>
                 </Directory>
