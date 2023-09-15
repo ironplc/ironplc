@@ -69,7 +69,7 @@ Section "-hidden app"
     File "..\target\release\ironplcc" 
 
     SetOutPath "$INSTDIR\examples"
-    File "..\examples\getting_started.st 
+    File "..\..\examples\getting_started.st"
 
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\ironplcc.exe" "" $INSTDIR
 
