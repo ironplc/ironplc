@@ -74,8 +74,8 @@ endtoend-smoke version compilerfilename extensionfilename:
 
 _endtoend-smoke-windows version compilerfilename extensionfilename:
   # Get and install the compiler
-  Invoke-WebRequest -Uri https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{compilerfilename}} -OutFile ironplcc.msi
-  Start-Process msiexec -ArgumentList "/i ironplcc.msi /quiet" -PassThru | Wait-Process -Timeout 60
+  Invoke-WebRequest -Uri https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{compilerfilename}} -OutFile ironplcc.exe
+  Start-Process ironplcc.exe -ArgumentList "/S" -PassThru | Wait-Process -Timeout 60
 
   # Get and install VS Code
   Invoke-WebRequest -Uri "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user" -OutFile vscode.exe

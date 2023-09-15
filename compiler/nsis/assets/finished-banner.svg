@@ -1,19 +1,22 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   xmlns:dc="http://purl.org/dc/elements/1.1/"
-   xmlns:cc="http://creativecommons.org/ns#"
-   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-   xmlns:svg="http://www.w3.org/2000/svg"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    id="svg2"
-   viewBox="0 0 493.00002 57.999997"
+   viewBox="0 0 164.00001 313.99998"
    version="1.1"
-   sodipodi:docname="Banner.svg"
-   width="493"
-   height="58"
-   inkscape:version="0.92.4 (5da689c313, 2019-01-14)">
+   sodipodi:docname="finished-banner.svg"
+   width="164"
+   height="314"
+   inkscape:version="1.2.2 (b0a84865, 2022-12-01)"
+   inkscape:export-filename="finished-banner.png"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
   <sodipodi:namedview
      pagecolor="#ffffff"
      bordercolor="#666666"
@@ -23,18 +26,21 @@
      guidetolerance="10"
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
-     inkscape:window-width="3840"
-     inkscape:window-height="1984"
+     inkscape:window-width="1342"
+     inkscape:window-height="673"
      id="namedview4588"
      showgrid="false"
-     inkscape:zoom="3.8839656"
-     inkscape:cx="212.58429"
-     inkscape:cy="74.405232"
-     inkscape:window-x="-16"
-     inkscape:window-y="-16"
-     inkscape:window-maximized="1"
+     inkscape:zoom="2.3257336"
+     inkscape:cx="35.042707"
+     inkscape:cy="98.24857"
+     inkscape:window-x="0"
+     inkscape:window-y="34"
+     inkscape:window-maximized="0"
      inkscape:current-layer="svg2"
-     inkscape:lockguides="true" />
+     inkscape:lockguides="true"
+     inkscape:showpageshadow="2"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1" />
   <defs
      id="defs3">
     <linearGradient
@@ -133,7 +139,6 @@
             <dc:title>Openclipart</dc:title>
           </cc:Agent>
         </dc:publisher>
-        <dc:title></dc:title>
         <dc:date>2013-04-13T05:36:52</dc:date>
         <dc:description />
         <dc:source>https://openclipart.org/detail/176996/girder-by-jarda-176996</dc:source>
@@ -164,32 +169,32 @@
   </metadata>
   <text
      xml:space="preserve"
-     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:12.33904839px;line-height:1.25;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#a07272;fill-opacity:1;stroke:none;stroke-width:0.20067471"
-     x="351.0932"
-     y="60.986427"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:27.0436px;line-height:1.25;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#a07272;fill-opacity:1;stroke:none;stroke-width:0.439823"
+     x="4.0865397"
+     y="114.4641"
      id="text843-1"
      transform="scale(1.1893526,0.84079356)"><tspan
        sodipodi:role="line"
        id="tspan841-9"
-       x="351.0932"
-       y="60.986427"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:12.33904839px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#a07272;fill-opacity:1;stroke-width:0.20067471"><tspan
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:12.33904839px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#a07272;fill-opacity:1;stroke-width:0.20067471"
+       x="4.0865397"
+       y="114.4641"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:27.0436px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#a07272;fill-opacity:1;stroke-width:0.439823"><tspan
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:27.0436px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#a07272;fill-opacity:1;stroke-width:0.439823"
          id="tspan4573">IEC 61131 tools</tspan></tspan></text>
   <text
      xml:space="preserve"
-     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:31.81640625px;line-height:1.25;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1.07334471"
-     x="500.3566"
-     y="32.76487"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:69.7325px;line-height:1.25;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:2.35246"
+     x="4.5334306"
+     y="58.354252"
      id="text843-2"
      transform="scale(0.8335659,1.1996652)"><tspan
        sodipodi:role="line"
        id="tspan841-6"
-       x="500.3566"
-       y="32.76487"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:31.81640625px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;stroke-width:1.07334471"><tspan
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:31.81640625px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#416693;fill-opacity:1;stroke-width:1.07334471"
+       x="4.5334306"
+       y="58.354252"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:69.7325px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;stroke-width:2.35246"><tspan
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:69.7325px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#416693;fill-opacity:1;stroke-width:2.35246"
          id="tspan4573-7">IronPL</tspan><tspan
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:31.81640625px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#41669f;fill-opacity:0.94117647;stroke-width:1.07334471"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:condensed;font-size:69.7325px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB, Condensed';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#41669f;fill-opacity:0.941176;stroke-width:2.35246"
          id="tspan4575-7">C</tspan></tspan></text>
 </svg>

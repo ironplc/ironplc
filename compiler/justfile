@@ -32,10 +32,13 @@ version version:
 package version filename:
   just _package-{{os()}} {{version}} {{filename}}
 
+# Creates the installer for Windows (overriding the current OS).
+package-windows version filename:
+  just _package-windows {{version}} {{filename}}  
+
 _package-windows version filename:
   cargo build --release
-  & "{{env_var('WIX')}}bin\candle.exe" -arch x64 -ext WixUtilExtension -dTargetVendor="pc" -dPlatform=x64 -dVersion="{{version}}" -dCargoTargetBinDir=target\release -o target\wix\main.wixobj wix\main.wxs
-  & "{{env_var('WIX')}}bin\light.exe" -spdb -ext WixUIExtension -ext WixUtilExtension -cultures:en-US -out {{filename}} target\wix\main.wixobj
+  makensis -DOUTFILE=../{{filename}} -DVERSION={{version}} nsis/setup.nsi 
   # Some versions of Windows do something funky with the path so that
   # Get-FileHash is not available. The prefix makes sure we run with a
   # compatible PowerShell instance.

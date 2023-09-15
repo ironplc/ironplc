@@ -166,7 +166,7 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact: ironplcc-x86_64-windows.msi
+            artifact: ironplcc-x86_64-windows.exe
           - os: ubuntu-latest
             artifact: ironplcc-x86_64-linux-musl.tar.gz
           - os: macos-latest

@@ -18,7 +18,7 @@ Follow the steps below to update IronPLC.
    #. In search on the taskbar, enter :guilabel:`Control Panel` and select it from the results.
    #. Select :menuselection:`Programs --> Programs and Features`.
    #. Right-click (or press and hold) on :guilabel:`IronPLC` and select :guilabel:`Uninstall/Change`. Then follow the directions on the screen.
-   #. Download the latest IronPLC MSI installer :download_artifact:`ironplcc-x86_64-windows.msi`
+   #. Download the latest IronPLC MSI installer :download_artifact:`ironplcc-x86_64-windows.exe`
       from `IronPLC GitHub releases`_.
    #. Run the MSI installer and follow the prompts to complete
       installation of the CLI.
