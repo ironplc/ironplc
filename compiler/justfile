@@ -38,11 +38,11 @@ package-windows version filename:
 
 _package-windows version filename:
   cargo build --release
-  makensis -DOUTFILE={{filename}} -DVERSION={{version}} nsis/setup.nsi 
+  makensis -DOUTFILE="{{filename}}" -DVERSION={{version}} nsis/setup.nsi 
   # Some versions of Windows do something funky with the path so that
   # Get-FileHash is not available. The prefix makes sure we run with a
   # compatible PowerShell instance.
-  powershell -noprofile -command '$env:PSModulePath = \"$PSHOME/Modules\"; Get-FileHash -Path "{{filename}}" -Algorithm SHA512 | Select-Object -ExpandProperty Hash | Out-File {{filename}}.sha256'
+  pwsh -noprofile -command '$env:PSModulePath = \"$PSHOME/Modules\"; Get-FileHash -Path "{{filename}}" -Algorithm SHA512 | Select-Object -ExpandProperty Hash | Out-File {{filename}}.sha256'
 
 _package-macos version filename:
   cargo build --release
