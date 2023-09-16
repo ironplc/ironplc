@@ -41,7 +41,7 @@ jobs:
         run: just ci
 
   build-platform-package:
-    name: Build Platform Package
+    name: Build Windows Platform Installer
     runs-on: windows-latest
     defaults:
       run:
@@ -51,10 +51,14 @@ jobs:
       - uses: taiki-e/install-action@just
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      # Assumes the wix toolkit is available. For the CI, the version number
-      # doesn't matter because we don't retain the installer
+      # For the CI, the version number doesn't matter because we don't retain the installer
       - name: Create installer
-        run: just package 0.0.0 installer.exe
+        run: just package 0.0.0 ironplcc-x86_64-windows.exe
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v3
+        with:
+          path: ironplcc-x86_64-windows.exe
 
   vscode-extension-tests:
     name: Visual Studio Code Extension Tests
@@ -85,6 +89,11 @@ jobs:
         run: just ci
       - name: Create VSIX
         run: just package ironplc-vscode-extension-release.vsix
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v3
+        with:
+          path: ironplc-vscode-extension-release.vsix
 
   docs:
     name: Documentation
