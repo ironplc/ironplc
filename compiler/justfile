@@ -32,10 +32,6 @@ version version:
 package version filename:
   just _package-{{os()}} {{version}} {{filename}}
 
-# Creates the installer for Windows (overriding the current OS).
-package-windows version filename:
-  just _package-windows {{version}} {{filename}}  
-
 _package-windows version filename:
   cargo build --release
 

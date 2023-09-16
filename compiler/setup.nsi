@@ -66,7 +66,7 @@ Section "-hidden app"
     File "..\LICENSE" 
 
     SetOutPath "$INSTDIR\bin"
-    File "target\release\ironplcc" 
+    File "target\release\ironplcc.exe" 
 
     SetOutPath "$INSTDIR\examples"
     File "..\examples\getting_started.st"
