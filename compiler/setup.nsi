@@ -79,7 +79,7 @@ Section "Program files (Required)"
     SetOutPath "$INSTDIR\examples"
     File "..\examples\getting_started.st"
 
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}" "" $INSTDIR
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}" "" $INSTDIR\bin\${APPFILE}
 
     WriteRegStr HKCU "Software\${NAME}" "" $INSTDIR
     WriteUninstaller "$INSTDIR\Uninstall.exe"
