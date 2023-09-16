@@ -54,7 +54,7 @@ jobs:
       # Assumes the wix toolkit is available. For the CI, the version number
       # doesn't matter because we don't retain the installer
       - name: Create installer
-        run: just package 0.0.0 installer.msi
+        run: just package 0.0.0 installer.exe
 
   vscode-extension-tests:
     name: Visual Studio Code Extension Tests
