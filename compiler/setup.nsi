@@ -5,18 +5,26 @@
 !include "logiclib.nsh"
 
 ;--------------------------------
-; Command line requirements
+; Command line options
+
 !ifndef VERSION
 !error "VERSION not defined. Requires -DVERSION=<0.0.0>"
 !endif
 !ifndef OUTFILE
 !error "OUTFILE not defined. Requires -DOUTFILE=<FILENAME.EXE>"
 !endif
+!ifndef EXTENSION
+; Normally the extension is .exe, but when building dummy tests on
+; Linux, the extension is empty. This produces a valid installer
+; containing an application that cannot run.
+!define EXTENSION ".exe"
+!endif
 
 ;--------------------------------
 ; Custom defines
+
 !define NAME "IronPLC Compiler"
-!define APPFILE "ironplcc.exe"
+!define APPFILE "ironplcc${EXTENSION}"
 !define SLUG "${NAME} v${VERSION}"
 
 ;--------------------------------
@@ -24,7 +32,7 @@
 
 Name "${NAME}"
 OutFile "${OUTFILE}"
-InstallDir "$PROGRAMFILES\${NAME}"
+InstallDir "$LocalAppData\Programs\${NAME}"
 InstallDirRegKey HKCU "Software\${NAME}" ""
 RequestExecutionLevel user
 ManifestSupportedOS all
@@ -59,19 +67,19 @@ ManifestSupportedOS all
 ;--------------------------------
 ; Section - Install App
 
-Section "-hidden app"
+Section "Program files (Required)"
     SectionIn RO
 
     SetOutPath "$INSTDIR"
     File "..\LICENSE" 
 
     SetOutPath "$INSTDIR\bin"
-    File "target\release\ironplcc.exe" 
+    File "target\release\${APPFILE}" 
 
     SetOutPath "$INSTDIR\examples"
     File "..\examples\getting_started.st"
 
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\ironplcc.exe" "" $INSTDIR
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}" "" $INSTDIR
 
     WriteRegStr HKCU "Software\${NAME}" "" $INSTDIR
     WriteUninstaller "$INSTDIR\Uninstall.exe"
