@@ -32,6 +32,14 @@ version version:
 package version filename:
   just _package-{{os()}} {{version}} {{filename}}
 
+# Creates a "Windows installer" running from Linux. Only useful to testing.
+package-windows-on-linux version filename:
+  cargo build --release
+
+  # When building on Linux, we expect an empty extension
+  makensis -DOUTFILE="{{filename}}" -DVERSION="{{version}}" -DEXTENSION="" "setup.nsi"
+
+
 _package-windows version filename:
   cargo build --release
 

@@ -90,6 +90,9 @@ _endtoend-smoke-windows version compilerfilename extensionfilename:
   Expand-Archive ironplc.vsix
   # Move the folder 
   Move-Item ironplc\extension "{{env_var('USERPROFILE')}}\.vscode\extensions\garretfick.ironplc-{{version}}"
+  # Create the extensions.json file that references this extension
+  New-Item "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json" -Force
+  Set-Content "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json" '[{"identifier":{"id": "garretfick.ironplc","uuid": "45c7da46-279f-4f88-916b-7db00ac976b3"},"version": "{{version}}","location": {"$mid": 1,"path": "/c:/Users/{{env_var('USERPROFILE')}}/.vscode/extensions/garretfick.ironplc-{{version}}","scheme": "file"},"relativeLocation": "garretfick.ironplc-{{version}}","metadata": {"id": "45c7da46-279f-4f88-916b-7db00ac976b3","publisherId": "45c7da46-279f-4f88-916b-7db00ac976b3","publisherDisplayName": "garretfick","targetPlatform": "undefined","isApplicationScoped": false,"updated": true,"isPreReleaseVersion": false,"installedTimestamp": 1671902506751,"preRelease": false}}]'
 
   # Create the settings.json with the configuration to enable trace level logging (that's the 4 -v's)
   New-Item "{{env_var('USERPROFILE')}}\Code\User\settings.json" -Force
