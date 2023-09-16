@@ -83,4 +83,15 @@ Section "Program files (Required)"
 
     WriteRegStr HKCU "Software\${NAME}" "" $INSTDIR
     WriteUninstaller "$INSTDIR\Uninstall.exe"
+
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NAME}" \
+                 "DisplayName" "${NAME}"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NAME}" \
+                 "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
+SectionEnd
+
+Section "Uninstall"
+    RMDir /r /REBOOTOK $INSTDIR
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}"
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NAME}"
 SectionEnd
