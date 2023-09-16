@@ -33,8 +33,8 @@ ManifestSupportedOS all
 ; UI
   
 !define MUI_HEADERIMAGE
-!define MUI_WELCOMEFINISHPAGE_BITMAP "assets\finished-banner.bmp"
-!define MUI_HEADERIMAGE_BITMAP "assets\banner.bmp"
+!define MUI_WELCOMEFINISHPAGE_BITMAP "nsis\assets\finished-banner.bmp"
+!define MUI_HEADERIMAGE_BITMAP "nsis\assets\banner.bmp"
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "${SLUG} Setup"
 
@@ -43,7 +43,7 @@ ManifestSupportedOS all
   
 ; Installer pages
 !insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_LICENSE "..\..\LICENSE"
+!insertmacro MUI_PAGE_LICENSE "..\LICENSE"
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
@@ -63,13 +63,13 @@ Section "-hidden app"
     SectionIn RO
 
     SetOutPath "$INSTDIR"
-    File "..\..\LICENSE" 
+    File "..\LICENSE" 
 
     SetOutPath "$INSTDIR\bin"
-    File "..\target\release\ironplcc" 
+    File "target\release\ironplcc" 
 
     SetOutPath "$INSTDIR\examples"
-    File "..\..\examples\getting_started.st"
+    File "..\examples\getting_started.st"
 
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\ironplcc.exe" "" $INSTDIR
 
