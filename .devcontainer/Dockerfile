@@ -3,7 +3,7 @@ FROM mcr.microsoft.com/devcontainers/typescript-node:18
 
 # Install the Python and Sphinx for documentation
 RUN apt-get update
-RUN apt-get install -y python3-sphinx python3-pip curl xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libdrm2 libgtk-3-0 libgbm1 libasound2
+RUN apt-get install -y python3-sphinx python3-pip curl xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libdrm2 libgtk-3-0 libgbm1 libasound2 nsis
 
 # Install required Sphinx extensions for the documentation
 RUN pip3 install furo sphinx-inline-tabs
