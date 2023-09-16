@@ -1,7 +1,7 @@
 [package]
 name = "ironplcc"
 description = "Compiler front-end for ironplc."
-version = "0.13.49"
+version = "0.13.50"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -14,9 +14,9 @@ maintenance = { status = "experimental" }
 trace = ["ironplc-parser/trace"]
 
 [dependencies]
-ironplc-parser = { path = "../parser", version = "0.13.49" }
-ironplc-dsl = { path = "../dsl", version = "0.13.49" }
-ironplc-problems = { path = "../problems", version = "0.13.49" }
+ironplc-parser = { path = "../parser", version = "0.13.50" }
+ironplc-dsl = { path = "../dsl", version = "0.13.50" }
+ironplc-problems = { path = "../problems", version = "0.13.50" }
 
 time = "0.3.17"
 phf = { version = "0.11", features = ["macros"] }

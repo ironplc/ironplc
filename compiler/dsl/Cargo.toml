@@ -1,7 +1,7 @@
 [package]
 name = "ironplc-dsl"
 description = "Domain-specific language objects for IEC 61131 language elements."
-version = "0.13.49"
+version = "0.13.50"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -12,5 +12,5 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 time = "0.3.17"
-ironplc-problems = { path = "../problems", version = "0.13.49" }
+ironplc-problems = { path = "../problems", version = "0.13.50" }
 
