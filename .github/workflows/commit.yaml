@@ -58,7 +58,7 @@ jobs:
       - name: Upload installer artifact
         uses: actions/upload-artifact@v3
         with:
-          path: ironplcc-x86_64-windows.exe
+          path: ./compiler/ironplcc-x86_64-windows.exe
 
   vscode-extension-tests:
     name: Visual Studio Code Extension Tests
@@ -93,7 +93,7 @@ jobs:
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v3
         with:
-          path: ironplc-vscode-extension-release.vsix
+          path: ./integrations/vscode/ironplc-vscode-extension-release.vsix
 
   docs:
     name: Documentation
