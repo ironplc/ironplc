@@ -23,6 +23,9 @@
 ;--------------------------------
 ; Custom defines
 
+; This affects the registry key that is how integrations
+; find the path to the compiler. Don't change this without
+; considering integrations.
 !define NAME "IronPLC Compiler"
 !define APPFILE "ironplcc${EXTENSION}"
 !define SLUG "${NAME} v${VERSION}"
@@ -32,6 +35,10 @@
 
 Name "${NAME}"
 OutFile "${OUTFILE}"
+; INSTDIR is set as:
+; [1] /D command line
+; [2] The InstallDirRegKey default value
+; [3] The InstallDir directory
 InstallDir "$LocalAppData\Programs\${NAME}"
 InstallDirRegKey HKCU "Software\${NAME}" ""
 RequestExecutionLevel user
@@ -80,6 +87,7 @@ Section "Program files"
     File "..\examples\getting_started.st"
 
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}" "" $INSTDIR\bin\${APPFILE}
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}" "Path" $INSTDIR\bin
 
     WriteRegStr HKCU "Software\${NAME}" "" $INSTDIR
     WriteUninstaller "$INSTDIR\Uninstall.exe"
