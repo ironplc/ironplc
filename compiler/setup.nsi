@@ -67,7 +67,7 @@ ManifestSupportedOS all
 ;--------------------------------
 ; Section - Install App
 
-Section "Program files (Required)"
+Section "Program files"
     SectionIn RO
 
     SetOutPath "$INSTDIR"
