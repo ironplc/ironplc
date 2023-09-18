@@ -23,6 +23,9 @@
 ;--------------------------------
 ; Custom defines
 
+; This affects the registry key that is how integrations
+; find the path to the compiler. Don't change this without
+; considering integrations.
 !define NAME "IronPLC Compiler"
 !define APPFILE "ironplcc${EXTENSION}"
 !define SLUG "${NAME} v${VERSION}"
@@ -32,6 +35,10 @@
 
 Name "${NAME}"
 OutFile "${OUTFILE}"
+; INSTDIR is set as:
+; [1] /D command line
+; [2] The InstallDirRegKey default value
+; [3] The InstallDir directory
 InstallDir "$LocalAppData\Programs\${NAME}"
 InstallDirRegKey HKCU "Software\${NAME}" ""
 RequestExecutionLevel user
@@ -67,7 +74,7 @@ ManifestSupportedOS all
 ;--------------------------------
 ; Section - Install App
 
-Section "Program files (Required)"
+Section "Program files"
     SectionIn RO
 
     SetOutPath "$INSTDIR"
@@ -79,8 +86,20 @@ Section "Program files (Required)"
     SetOutPath "$INSTDIR\examples"
     File "..\examples\getting_started.st"
 
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}" "" $INSTDIR
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}" "" $INSTDIR\bin\${APPFILE}
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}" "Path" $INSTDIR\bin
 
     WriteRegStr HKCU "Software\${NAME}" "" $INSTDIR
     WriteUninstaller "$INSTDIR\Uninstall.exe"
+
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NAME}" \
+                 "DisplayName" "${NAME}"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NAME}" \
+                 "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
+SectionEnd
+
+Section "Uninstall"
+    RMDir /r /REBOOTOK $INSTDIR
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}"
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NAME}"
 SectionEnd

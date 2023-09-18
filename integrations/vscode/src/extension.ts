@@ -79,13 +79,24 @@ function findCompiler() {
 			return [config.get<string|undefined>('path'), 'configuration'];
 		},
 		() => {
-			// Try to get from environment variable
+			// Try to get from environment variable. Not generally set.
 			return [process.env.IRONPLC, 'environment'];
 		},
 		() => {
 			// Mac well known directory
 			const homebrewDir = process.platform === 'darwin' ? '/opt/homebrew/bin' : undefined;
 			return [homebrewDir, 'homebrew'];
+		},
+		() => {
+			// Windows user-install well-known path
+			const name = 'localappdata';
+			const localAppData = process.env.LOCALAPPDATA;
+			
+			if (process.platform !== 'win32' || !localAppData) {
+				return [undefined, name];
+			}
+			const winAppDataDir = path.join(localAppData, 'Programs', 'IronPLC Compiler', 'bin');
+			return [winAppDataDir, name];
 		}
 	];
 
