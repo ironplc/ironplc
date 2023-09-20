@@ -29,8 +29,8 @@ version version:
   cargo release version {{version}} --execute --no-confirm
 
 # Creates the installer or package (as appropriate for platform)
-package version filename:
-  just _package-{{os()}} {{version}} {{filename}}
+package version filename target:
+  just _package-{{os()}} {{version}} {{filename}} {{target}}
 
 # Creates a "Windows installer" running from Linux. Only useful to testing.
 package-windows-on-linux version filename:
@@ -40,8 +40,8 @@ package-windows-on-linux version filename:
   makensis -DOUTFILE="{{filename}}" -DVERSION="{{version}}" -DEXTENSION="" "setup.nsi"
 
 
-_package-windows version filename:
-  cargo build --release
+_package-windows version filename target:
+  cargo build --release --target {{target}}
 
   # makensis will write to the directory with the NSI file or the absolute path
   # provided. It is pretty difficult to do this with justfile.
@@ -51,13 +51,13 @@ _package-windows version filename:
   # compatible PowerShell instance.
   pwsh -noprofile -command '$env:PSModulePath = \"$PSHOME/Modules\"; Get-FileHash -Path "{{filename}}" -Algorithm SHA512 | Select-Object -ExpandProperty Hash | Out-File {{filename}}.sha256'
 
-_package-macos version filename:
-  cargo build --release
+_package-macos version filename target:
+  cargo build --release --target {{target}}
   tar -czvf {{filename}} --directory=target/release ironplcc
   shasum -a 256 {{filename}} > {{filename}}.sha256
 
-_package-linux version filename:
-  cargo build --release
+_package-linux version filename target:
+  cargo build --release --target {{target}}
   tar -czvf {{filename}} --directory=target/release ironplcc
   sha256sum {{filename}} > {{filename}}.sha256
 

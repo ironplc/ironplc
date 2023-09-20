@@ -99,7 +99,13 @@ Section "Program files"
 SectionEnd
 
 Section "Uninstall"
+    ; Remove the directory with the uninstaller after restart as necessary
     RMDir /r /REBOOTOK $INSTDIR
+
+    ; Remove the App Path and uninstaller information
     DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}"
     DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NAME}"
+
+    ; Remove the registry key that defines the install path
+    DeleteRegKey HKCU "Software\${NAME}"
 SectionEnd
