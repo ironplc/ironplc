@@ -41,23 +41,23 @@ package-windows-on-linux version filename:
 
 
 _package-windows version filename target:
-  cargo build --release --target {{target}}
+  cargo build --release --target {{target}} --target-dir .\target\release
 
   # makensis will write to the directory with the NSI file or the absolute path
   # provided. It is pretty difficult to do this with justfile.
-  makensis -DOUTFILE="{{filename}}" -DVERSION="{{version}}" "setup.nsi"
+  makensis -DARTIFACTSDIR=".\target\release" -DOUTFILE="{{filename}}" -DVERSION="{{version}}" "setup.nsi"
   # Some versions of Windows do something funky with the path so that
   # Get-FileHash is not available. The prefix makes sure we run with a
   # compatible PowerShell instance.
   pwsh -noprofile -command '$env:PSModulePath = \"$PSHOME/Modules\"; Get-FileHash -Path "{{filename}}" -Algorithm SHA512 | Select-Object -ExpandProperty Hash | Out-File {{filename}}.sha256'
 
 _package-macos version filename target:
-  cargo build --release --target {{target}}
+  cargo build --release --target {{target}} --target-dir ./target/release
   tar -czvf {{filename}} --directory=target/release ironplcc
   shasum -a 256 {{filename}} > {{filename}}.sha256
 
 _package-linux version filename target:
-  cargo build --release --target {{target}}
+  cargo build --release --target {{target}} --target-dir ./target/release
   tar -czvf {{filename}} --directory=target/release ironplcc
   sha256sum {{filename}} > {{filename}}.sha256
 
