@@ -34,14 +34,14 @@ package version filename target:
 
 # Creates a "Windows installer" running from Linux. Only useful to testing.
 package-windows-on-linux version filename:
-  cargo build --release
+  cargo build --release --target x86_64-pc-windows-gnu --target-dir ./target/release
 
   # When building on Linux, we expect an empty extension
   makensis -DOUTFILE="{{filename}}" -DVERSION="{{version}}" -DEXTENSION="" "setup.nsi"
 
 
 _package-windows version filename target:
-  cargo build --release --target {{target}} --target-dir .\target\release
+  cargo build --release --target {{target}} --target-dir ".\target\release"
 
   # makensis will write to the directory with the NSI file or the absolute path
   # provided. It is pretty difficult to do this with justfile.
