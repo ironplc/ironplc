@@ -167,10 +167,19 @@ jobs:
         include:
           - os: windows-latest
             artifact: ironplcc-x86_64-windows.exe
+            rust_target: x86_64-pc-windows-msvc
+          - os: windows-latest
+            artifact: ironplcc-aarch64-windows.exe
+            rust_target: aarch64-pc-windows-msvc
           - os: ubuntu-latest
             artifact: ironplcc-x86_64-linux-musl.tar.gz
+            rust_target: x86_64-unknown-linux-musl
           - os: macos-latest
             artifact: ironplcc-x86_64-macos.tar.gz
+            rust_target: x86_64-apple-darwin
+          - os: macos-latest
+            artifact: ironplcc-aarch64-macos.tar.gz
+            rust_target: aarch64-apple-darwin
 
     steps:
       # Checkout the code. If we are creating a release, then checkout
@@ -188,6 +197,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt, clippy
+          target: ${{ matrix.rust_target }}
       - uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Compiler CI checks
@@ -195,7 +205,7 @@ jobs:
 
       # Assumes a number of packages are installed on the host
       - name: Create installer
-        run: just package ${{ needs.release.outputs.version }} ${{ matrix.artifact }}
+        run: just package ${{ needs.release.outputs.version }} ${{ matrix.artifact }} ${{ matrix.rust_target }}
 
       - name: Upload Installer
         if: ${{ !inputs.dryrun }}

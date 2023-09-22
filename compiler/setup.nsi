@@ -13,6 +13,9 @@
 !ifndef OUTFILE
 !error "OUTFILE not defined. Requires -DOUTFILE=<FILENAME.EXE>"
 !endif
+!ifndef ARTIFACTSDIR
+!error "ARTIFACTSDIR not defined. Requires -DARTIFACTSDIR=<DIRECTORY>"
+!endif
 !ifndef EXTENSION
 ; Normally the extension is .exe, but when building dummy tests on
 ; Linux, the extension is empty. This produces a valid installer
@@ -81,7 +84,7 @@ Section "Program files"
     File "..\LICENSE" 
 
     SetOutPath "$INSTDIR\bin"
-    File "target\release\${APPFILE}" 
+    File "${ARTIFACTSDIR}\${APPFILE}" 
 
     SetOutPath "$INSTDIR\examples"
     File "..\examples\getting_started.st"
@@ -99,7 +102,13 @@ Section "Program files"
 SectionEnd
 
 Section "Uninstall"
+    ; Remove the directory with the uninstaller after restart as necessary
     RMDir /r /REBOOTOK $INSTDIR
+
+    ; Remove the App Path and uninstaller information
     DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}"
     DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NAME}"
+
+    ; Remove the registry key that defines the install path
+    DeleteRegKey HKCU "Software\${NAME}"
 SectionEnd

@@ -46,19 +46,31 @@ jobs:
     defaults:
       run:
         working-directory: ./compiler
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: ironplcc-x86_64-windows.exe
+            rust_target: x86_64-pc-windows-msvc
+          - os: windows-latest
+            artifact: ironplcc-aarch64-windows.exe
+            rust_target: aarch64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v3
       - uses: taiki-e/install-action@just
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: ${{ matrix.rust_target }}
 
       # For the CI, the version number doesn't matter because we don't retain the installer
       - name: Create installer
-        run: just package 0.0.0 ironplcc-x86_64-windows.exe
+        run: just package 0.0.0 ${{ matrix.artifact }} ${{ matrix.rust_target }}
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v3
         with:
-          path: ./compiler/ironplcc-x86_64-windows.exe
+          path: ./compiler/${{ matrix.artifact }}
 
   vscode-extension-tests:
     name: Visual Studio Code Extension Tests
