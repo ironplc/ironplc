@@ -86,7 +86,7 @@ test ext_name version:
 endtoend-smoke version compilerfilename extensionfilename ext_name:
   # There are two parts to IronPLC - the compiler and the extension
   # This test ensures that they actually work together (out of the box)
-  @just _endtoend-smoke-{{os_family()}} {{version}} {{compilerfilename}} {{extensionfilename}}
+  @just _endtoend-smoke-{{os_family()}} {{version}} {{compilerfilename}} {{extensionfilename}} {{ext_name}}
 
 _endtoend-smoke-windows version compilerfilename extensionfilename ext_name:
   # Get and install the compiler
