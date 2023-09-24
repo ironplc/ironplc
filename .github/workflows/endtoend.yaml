@@ -17,4 +17,4 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: End to end test
-        run: just endtoend-smoke ${{ inputs.version }} ironplcc-x86_64-windows.exe  ironplc-vscode-extension.vsix 
+        run: just endtoend-smoke ${{ inputs.version }} ironplcc-x86_64-windows.exe ironplc-vscode-extension.vsix garretfick.ironplc
