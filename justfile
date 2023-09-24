@@ -66,13 +66,29 @@ update:
   cd compiler && just update
   cd integrations/vscode && just update
 
+e2e_fspath := env_var('USERPROFILE') + "\\.vscode\\extensions\\"
+e2e_external := "file:///" + replace(replace(e2e_fspath, "\\", "/"), ":", "%3A")
+e2e_path := "/" + replace(e2e_fspath, "\\", "/")
+
+
+test ext_name version:
+  #!/usr/bin/env sh
+  t2='[{"identifier":{"id":"{{ext_name}}"},"version":"{{version}}","location":{"$mid":1,"fsPath":"{{e2e_fspath}}{{ext_name}}-{{version}}","_sep":1,"external":"{{e2e_external}}{{ext_name}}-{{version}}","path":"{{e2e_path}}{{ext_name}}-{{version}}","scheme":"file"},"relativeLocation":"{{ext_name}}-{{version}}","metadata":{"installedTimestamp":1695013253133}}]'
+  echo "$t2"
+
+#e2e_fspath := env_var('USERPROFILE')
+# "\.vscode\extensions\garretfick.ironplc-0.13.52"
+
+#echo:
+#  echo {{e2e_fspath}}
+
 # End to end "smoke" test.
-endtoend-smoke version compilerfilename extensionfilename:
+endtoend-smoke version compilerfilename extensionfilename ext_name:
   # There are two parts to IronPLC - the compiler and the extension
   # This test ensures that they actually work together (out of the box)
   @just _endtoend-smoke-{{os_family()}} {{version}} {{compilerfilename}} {{extensionfilename}}
 
-_endtoend-smoke-windows version compilerfilename extensionfilename:
+_endtoend-smoke-windows version compilerfilename extensionfilename ext_name:
   # Get and install the compiler
   Invoke-WebRequest -Uri https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{compilerfilename}} -OutFile ironplcc.exe
   Start-Process ironplcc.exe -ArgumentList "/S" -PassThru | Wait-Process -Timeout 60
@@ -89,14 +105,17 @@ _endtoend-smoke-windows version compilerfilename extensionfilename:
   # Expands to a folder called "ironplc\extension"
   Expand-Archive ironplc.vsix
   # Move the folder 
-  Move-Item ironplc\extension "{{env_var('USERPROFILE')}}\.vscode\extensions\garretfick.ironplc-{{version}}"
+  Move-Item ironplc\extension "{{env_var('USERPROFILE')}}\.vscode\extensions\{{ext_name}}-{{version}}"
+  Get-ChildItem "{{env_var('USERPROFILE')}}\.vscode\extensions\{{ext_name}}-{{version}}"
   # Create the extensions.json file that references this extension
   New-Item "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json" -Force
-  Set-Content "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json" '[{"identifier":{"id": "garretfick.ironplc","uuid": "45c7da46-279f-4f88-916b-7db00ac976b3"},"version": "{{version}}","location": {"$mid": 1,"path": "/c:/Users/{{env_var('USERPROFILE')}}/.vscode/extensions/garretfick.ironplc-{{version}}","scheme": "file"},"relativeLocation": "garretfick.ironplc-{{version}}","metadata": {"id": "45c7da46-279f-4f88-916b-7db00ac976b3","publisherId": "45c7da46-279f-4f88-916b-7db00ac976b3","publisherDisplayName": "garretfick","targetPlatform": "undefined","isApplicationScoped": false,"updated": true,"isPreReleaseVersion": false,"installedTimestamp": 1671902506751,"preRelease": false}}]'
+  Set-Content "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json" '[{"identifier":{"id":"{{ext_name}}"},"version":"{{version}}","location":{"$mid":1,"fsPath":"{{e2e_fspath}}{{ext_name}}-{{version}}","_sep":1,"external":"{{e2e_external}}{{ext_name}}-{{version}}","path":"{{e2e_path}}{{ext_name}}-{{version}}","scheme":"file"},"relativeLocation":"{{ext_name}}-{{version}}","metadata":{"installedTimestamp":1695013253133}}]'
+  Get-Content -Path "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json"
 
   # Create the settings.json with the configuration to enable trace level logging (that's the 4 -v's)
   New-Item "{{env_var('USERPROFILE')}}\Code\User\settings.json" -Force
   Set-Content "{{env_var('USERPROFILE')}}\Code\User\settings.json" '{ "ironplc.compilerArguments": "-v -v -v -v" }'
+  Get-Content "{{env_var('USERPROFILE')}}\Code\User\settings.json"
 
   # Open an example file that is part of the compiler - this is a hard coded path
   # but that's also the point. We expect the installer to install here by default
