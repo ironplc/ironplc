@@ -25,8 +25,12 @@ Follow the steps below to install IronPLC.
 
    **Install IronPLC CLI**
 
-   #. Download the latest IronPLC installer :download_artifact:`ironplcc-x86_64-windows.exe`
-      from `IronPLC GitHub releases`_.
+   #. Download the latest IronPLC installer from `IronPLC GitHub releases`_:
+   
+      * x64 :download_artifact:`ironplcc-x86_64-windows.exe`
+
+      * Arm64 :download_artifact:`ironplcc-aarch64-windows.exe`
+
    #. Run the installer and follow the prompts to complete
       installation of the CLI.
 
