@@ -3,7 +3,7 @@
   "displayName": "IronPLC",
   "publisher": "garretfick",
   "description": "IntelliSense for IEC 61131-3",
-  "version": "0.13.52",
+  "version": "0.13.53",
   "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0"
