@@ -100,7 +100,7 @@ Section "Program files"
 
     WriteRegStr HKCU "${REGPATH_UNINSTSUBKEY}" "DisplayName" "${NAME}"
     WriteRegStr HKCU "${REGPATH_UNINSTSUBKEY}" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
-    WriteRegStr HKCU "${REGPATH_UNINSTSUBKEY}" "DisplayIcon" "$INSTDIR\bin\${APPFILE},0"
+    WriteRegStr HKCU "${REGPATH_UNINSTSUBKEY}" "DisplayIcon" "$INSTDIR\bin\uninstall.exe,0"
 SectionEnd
 
 Section "Uninstall"
