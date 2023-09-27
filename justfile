@@ -70,10 +70,11 @@ update:
 e2e_fspath := env_var_or_default('USERPROFILE', '') + "\\.vscode\\extensions\\"
 e2e_external := "file:///" + replace(replace(e2e_fspath, "\\", "/"), ":", "%3A")
 e2e_path := "/" + replace(e2e_fspath, "\\", "/")
+e2e_fspathesc := replace(e2e_fspath, "\\", "\\\\")
 
 test ext_name version:
   #!/usr/bin/env sh
-  t2='[{"identifier":{"id":"{{ext_name}}"},"version":"{{version}}","location":{"$mid":1,"fsPath":"{{e2e_fspath}}{{ext_name}}-{{version}}","_sep":1,"external":"{{e2e_external}}{{ext_name}}-{{version}}","path":"{{e2e_path}}{{ext_name}}-{{version}}","scheme":"file"},"relativeLocation":"{{ext_name}}-{{version}}","metadata":{"installedTimestamp":1695013253133}}]'
+  t2='[{"identifier":{"id":"{{ext_name}}"},"version":"{{version}}","location":{"$mid":1,"fsPath":"{{e2e_fspathesc}}{{ext_name}}-{{version}}","_sep":1,"external":"{{e2e_external}}{{ext_name}}-{{version}}","path":"{{e2e_path}}{{ext_name}}-{{version}}","scheme":"file"},"relativeLocation":"{{ext_name}}-{{version}}","metadata":{"installedTimestamp":1695013253133}}]'
   echo "$t2"
 
 #e2e_fspath := env_var('USERPROFILE')
