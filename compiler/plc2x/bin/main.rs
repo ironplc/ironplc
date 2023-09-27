@@ -7,8 +7,6 @@ use ironplcc::logger;
 use ironplcc::lsp;
 use ironplcc::project::Project;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
-
 #[derive(Parser, Debug)]
 #[command(name = "ironplcc", about = "IronPLC compiler")]
 struct Args {
@@ -29,7 +27,6 @@ enum Action {
         #[arg(long)]
         stdio: bool,
     },
-    Version,
 }
 
 struct Proj {}
@@ -46,9 +43,5 @@ pub fn main() -> Result<(), String> {
             lsp::start(proj)
         }
         Action::Check { files } => cli::check(files, false),
-        Action::Version => {
-            println!("ironplcc version {}", VERSION);
-            Ok(())
-        }
     }
 }

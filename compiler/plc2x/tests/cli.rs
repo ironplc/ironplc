@@ -60,16 +60,3 @@ fn check_when_semantic_error_file_then_err() -> Result<(), Box<dyn std::error::E
 
     Ok(())
 }
-
-#[test]
-fn version_then_ok() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("ironplcc")?;
-
-    cmd.arg("version");
-
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::starts_with("ironplcc version "));
-
-    Ok(())
-}
