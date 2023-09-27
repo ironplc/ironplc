@@ -32,6 +32,8 @@
 !define NAME "IronPLC Compiler"
 !define APPFILE "ironplcc${EXTENSION}"
 !define SLUG "${NAME} v${VERSION}"
+!define REGPATH_APPPATHSUBKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}"
+!define REGPATH_UNINSTSUBKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NAME}"
 
 ;--------------------------------
 ; General
@@ -55,6 +57,8 @@ ManifestSupportedOS all
 !define MUI_HEADERIMAGE_BITMAP "nsis\assets\banner.bmp"
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "${SLUG} Setup"
+!define MUI_ICON "nsis\assets\logo.ico"
+!define MUI_UNICON "nsis\assets\logo.ico"
 
 ;--------------------------------
 ; Pages
@@ -62,7 +66,6 @@ ManifestSupportedOS all
 ; Installer pages
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "..\LICENSE"
-!insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
@@ -89,16 +92,15 @@ Section "Program files"
     SetOutPath "$INSTDIR\examples"
     File "..\examples\getting_started.st"
 
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}" "" $INSTDIR\bin\${APPFILE}
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}" "Path" $INSTDIR\bin
+    WriteRegStr HKCU "${REGPATH_APPPATHSUBKEY}" "" $INSTDIR\bin\${APPFILE}
+    WriteRegStr HKCU "${REGPATH_APPPATHSUBKEY}" "Path" $INSTDIR\bin
 
     WriteRegStr HKCU "Software\${NAME}" "" $INSTDIR
     WriteUninstaller "$INSTDIR\Uninstall.exe"
 
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NAME}" \
-                 "DisplayName" "${NAME}"
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NAME}" \
-                 "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
+    WriteRegStr HKCU "${REGPATH_UNINSTSUBKEY}" "DisplayName" "${NAME}"
+    WriteRegStr HKCU "${REGPATH_UNINSTSUBKEY}" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
+    WriteRegStr HKCU "${REGPATH_UNINSTSUBKEY}" "DisplayIcon" "$INSTDIR\bin\uninstall.exe,0"
 SectionEnd
 
 Section "Uninstall"
@@ -106,8 +108,8 @@ Section "Uninstall"
     RMDir /r /REBOOTOK $INSTDIR
 
     ; Remove the App Path and uninstaller information
-    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}"
-    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NAME}"
+    DeleteRegKey HKCU "${REGPATH_APPPATHSUBKEY}"
+    DeleteRegKey HKCU "${REGPATH_UNINSTSUBKEY}"
 
     ; Remove the registry key that defines the install path
     DeleteRegKey HKCU "Software\${NAME}"
