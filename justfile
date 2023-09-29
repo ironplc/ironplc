@@ -108,9 +108,9 @@ _endtoend-smoke-windows version compilerfilename extensionfilename ext_name:
   Get-Content -Path "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json"
 
   # Create the settings.json with the configuration to enable trace level logging (that's the 4 -v's)
-  New-Item "{{env_var('USERPROFILE')}}\Code\User\settings.json" -Force
-  Set-Content "{{env_var('USERPROFILE')}}\Code\User\settings.json" '{ "ironplc.compilerArguments": "-v -v -v -v" }'
-  Get-Content "{{env_var('USERPROFILE')}}\Code\User\settings.json"
+  New-Item "{{env_var('APPDATA')}}\Code\User\settings.json" -Force
+  Set-Content "{{env_var('APPDATA')}}\Code\User\settings.json" '{ "security.workspace.trust.enabled": false, "ironplc.compilerArguments": "-v -v -v -v" }'
+  Get-Content "{{env_var('APPDATA')}}\Code\User\settings.json"
 
   # Open an example file that is part of the compiler - this is a hard coded path
   # but that's also the point. We expect the installer to install here by default
