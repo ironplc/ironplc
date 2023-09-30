@@ -70,18 +70,9 @@ update:
 e2e_fspath := env_var_or_default('USERPROFILE', '') + "\\.vscode\\extensions\\"
 e2e_external := "file:///" + replace(replace(e2e_fspath, "\\", "/"), ":", "%3A")
 e2e_path := "/" + replace(e2e_fspath, "\\", "/")
-e2e_fspathesc := replace(e2e_fspath, "\\", "\\\\")
-
-test ext_name version:
-  #!/usr/bin/env sh
-  t2='[{"identifier":{"id":"{{ext_name}}"},"version":"{{version}}","location":{"$mid":1,"fsPath":"{{e2e_fspathesc}}{{ext_name}}-{{version}}","_sep":1,"external":"{{e2e_external}}{{ext_name}}-{{version}}","path":"{{e2e_path}}{{ext_name}}-{{version}}","scheme":"file"},"relativeLocation":"{{ext_name}}-{{version}}","metadata":{"installedTimestamp":1695013253133}}]'
-  echo "$t2"
-
-#e2e_fspath := env_var('USERPROFILE')
-# "\.vscode\extensions\garretfick.ironplc-0.13.52"
-
-#echo:
-#  echo {{e2e_fspath}}
+# I'm pretty sure justfile doesn't handle multiple \\ correctly, and that's
+# what is needed for valid JSON - so do in two steps.
+e2e_fspathesc := replace(e2e_fspath, "\\", "*")
 
 # End to end "smoke" test.
 endtoend-smoke version compilerfilename extensionfilename ext_name:
@@ -113,13 +104,13 @@ _endtoend-smoke-windows version compilerfilename extensionfilename ext_name:
   Get-ChildItem "{{env_var('USERPROFILE')}}\.vscode\extensions\{{ext_name}}-{{version}}"
   # Create the extensions.json file that references this extension
   New-Item "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json" -Force
-  Set-Content "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json" '[{"identifier":{"id":"{{ext_name}}"},"version":"{{version}}","location":{"$mid":1,"fsPath":"{{e2e_fspath}}{{ext_name}}-{{version}}","_sep":1,"external":"{{e2e_external}}{{ext_name}}-{{version}}","path":"{{e2e_path}}{{ext_name}}-{{version}}","scheme":"file"},"relativeLocation":"{{ext_name}}-{{version}}","metadata":{"installedTimestamp":1695013253133}}]'
+  '[{"identifier":{"id":"{{ext_name}}"},"version":"{{version}}","location":{"$mid":1,"fsPath":"{{e2e_fspathesc}}{{ext_name}}-{{version}}","_sep":1,"external":"{{e2e_external}}{{ext_name}}-{{version}}","path":"{{e2e_path}}{{ext_name}}-{{version}}","scheme":"file"},"relativeLocation":"{{ext_name}}-{{version}}","metadata":{"installedTimestamp":1695013253133}}]'.replace('*', '\\') | Set-Content "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json"
   Get-Content -Path "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json"
 
   # Create the settings.json with the configuration to enable trace level logging (that's the 4 -v's)
-  New-Item "{{env_var('USERPROFILE')}}\Code\User\settings.json" -Force
-  Set-Content "{{env_var('USERPROFILE')}}\Code\User\settings.json" '{ "ironplc.compilerArguments": "-v -v -v -v" }'
-  Get-Content "{{env_var('USERPROFILE')}}\Code\User\settings.json"
+  New-Item "{{env_var('APPDATA')}}\Code\User\settings.json" -Force
+  Set-Content "{{env_var('APPDATA')}}\Code\User\settings.json" '{ "security.workspace.trust.enabled": false, "ironplc.logLevel": "TRACE" }'
+  Get-Content "{{env_var('APPDATA')}}\Code\User\settings.json"
 
   # Open an example file that is part of the compiler - this is a hard coded path
   # but that's also the point. We expect the installer to install here by default
@@ -130,7 +121,9 @@ _endtoend-smoke-windows version compilerfilename extensionfilename ext_name:
   # Check that the log file was created (indicating that VS Code correctly started the
   # ironplcc language server). This path is a well-known path
   Start-Sleep -s 30
-  Test-Path "`"{{env_var('LOCALAPPDATA')}}\Temp\ironplcc\ironplcc.log`"" -PathType Leaf
+  Get-ChildItem "{{env_var('LOCALAPPDATA')}}\Temp\"
+  Get-ChildItem "{{env_var('LOCALAPPDATA')}}\Temp\ironplcc"
+  Test-Path "{{env_var('LOCALAPPDATA')}}\Temp\ironplcc\ironplcc.log" -PathType Leaf
 
 _endtoend-smoke-unix:
   @echo "endtoend-smoke is not implemented for Unix family"
