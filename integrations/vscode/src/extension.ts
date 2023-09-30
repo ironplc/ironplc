@@ -12,6 +12,14 @@ import {
 let client: LanguageClient | undefined;
 let application: Executable | undefined;
 
+const VERBOSITY = new Map<string, string[]>([
+	["ERROR", []],
+	["WARN", ["-v"]],
+	["INFO", ["-v", "-v"]],
+	["DEBUG", ["-v", "-v", "-v"]],
+	["TRACE", ["-v", "-v", "-v", "-v"]],
+]);
+
 // This method is called when this extension is activated.
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Extension "ironplc" is activating!');
@@ -39,13 +47,16 @@ function startServer(context: vscode.ExtensionContext) {
 	}
 
 	const config = vscode.workspace.getConfiguration('ironplc');
-	const compilerArguments = config.get<string|undefined>('compilerArguments');
-	const args = compilerArguments?.match(/('(\\'|[^'])*'|"(\\"|[^"])*"|\/(\\\/|[^\/])*\/|(\\ |[^ ])+|[\w-]+)/g) || [];
+	const logLevel = config.get<string>('logLevel', 'ERROR');
+	const logVerbosity = VERBOSITY.get(logLevel) || [];
+
+	const args = logVerbosity.concat(['lsp']);
+	console.log('Extension "ironplc" starting with args' + args);
 
 	application = {
 		command: compilerFilePath,
 		transport: TransportKind.stdio,
-		args: ['lsp'].concat(args),
+		args: args,
 		options: {
 			env: ['RUST_LOG=lsp_server=debug']
 		}
