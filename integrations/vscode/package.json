@@ -50,11 +50,11 @@
           "default": "",
           "editPresentation": "singlelineText"
         },
-        "ironplc.compilerArguments": {
-          "markdownDescription": "Compiler arguments for the language server provider. See ironplcc (ironplcc.exe on Windows) for expected values. The 'lsp' argument is added by default.",
+        "ironplc.logLevel": {
+          "markdownDescription": "Log level for the language server provider.",
           "type": "string",
-          "default": "",
-          "editPresentation": "singlelineText"
+          "default": "ERROR",
+          "enum": ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"]
         }
       }
     },

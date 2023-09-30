@@ -109,7 +109,7 @@ _endtoend-smoke-windows version compilerfilename extensionfilename ext_name:
 
   # Create the settings.json with the configuration to enable trace level logging (that's the 4 -v's)
   New-Item "{{env_var('APPDATA')}}\Code\User\settings.json" -Force
-  Set-Content "{{env_var('APPDATA')}}\Code\User\settings.json" '{ "security.workspace.trust.enabled": false, "ironplc.compilerArguments": "-v -v -v -v" }'
+  Set-Content "{{env_var('APPDATA')}}\Code\User\settings.json" '{ "security.workspace.trust.enabled": false, "ironplc.logLevel": "TRACE" }'
   Get-Content "{{env_var('APPDATA')}}\Code\User\settings.json"
 
   # Open an example file that is part of the compiler - this is a hard coded path
@@ -123,7 +123,7 @@ _endtoend-smoke-windows version compilerfilename extensionfilename ext_name:
   Start-Sleep -s 30
   Get-ChildItem "{{env_var('LOCALAPPDATA')}}\Temp\"
   Get-ChildItem "{{env_var('LOCALAPPDATA')}}\Temp\ironplcc"
-  Test-Path "`"{{env_var('LOCALAPPDATA')}}\Temp\ironplcc\ironplcc.log`"" -PathType Leaf
+  Test-Path "{{env_var('LOCALAPPDATA')}}\Temp\ironplcc\ironplcc.log" -PathType Leaf
 
 _endtoend-smoke-unix:
   @echo "endtoend-smoke is not implemented for Unix family"
