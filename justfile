@@ -121,6 +121,8 @@ _endtoend-smoke-windows version compilerfilename extensionfilename ext_name:
   # Check that the log file was created (indicating that VS Code correctly started the
   # ironplcc language server). This path is a well-known path
   Start-Sleep -s 30
+  Get-ChildItem "{{env_var('LOCALAPPDATA')}}\Temp\"
+  Get-ChildItem "{{env_var('LOCALAPPDATA')}}\Temp\ironplcc"
   Test-Path "`"{{env_var('LOCALAPPDATA')}}\Temp\ironplcc\ironplcc.log`"" -PathType Leaf
 
 _endtoend-smoke-unix:
