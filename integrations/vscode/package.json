@@ -3,7 +3,7 @@
   "displayName": "IronPLC",
   "publisher": "garretfick",
   "description": "IntelliSense for IEC 61131-3",
-  "version": "0.13.53",
+  "version": "0.13.54",
   "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0"
@@ -54,7 +54,13 @@
           "markdownDescription": "Log level for the language server provider.",
           "type": "string",
           "default": "ERROR",
-          "enum": ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"]
+          "enum": [
+            "ERROR",
+            "WARN",
+            "INFO",
+            "DEBUG",
+            "TRACE"
+          ]
         }
       }
     },
