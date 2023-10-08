@@ -6,7 +6,8 @@
 #    2. Update the code, create a commit with the version number, create a
 #       Github release
 #    3. Build the artifacts using the tag as the starting point
-#    4. Cleanup Github release
+#    4.
+#    5. Cleanup Github release
 
 on:
   # Automatically create a release every Monday at 19:00
@@ -222,7 +223,7 @@ jobs:
   smoke-test:
     name: End to End Smoke Test
     needs: [release, build-platform-package, build-vscode-extension]
-    uses: ./.github/workflows/endtoend.yml
+    uses: ./.github/workflows/endtoend.yaml
     with:
       version: ${{ needs.release.outputs.version }}
       ironplcc-installer-x86_64-windows-filename: "ironplcc-x86_64-windows.exe"
