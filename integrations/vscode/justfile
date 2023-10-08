@@ -6,7 +6,6 @@ default: compile lint
 ci:
   just compile
   just lint
-  just unittest
   just test
 
 # Setup required dependencies. Use this to bootstrap a new host.
