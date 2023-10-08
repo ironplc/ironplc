@@ -34,9 +34,9 @@ jobs:
       release_id: ${{ steps.create_release.outputs.id }}
       # The tag that is the Github release
       github_release_tag: v${{ steps.versioning.outputs.patch }}
-      # The tag in the git repository
+      # The tag in the git repository (e.g. v1.0.0)
       commit_tag: ${{ steps.versioning.outputs.v_patch }}
-      # The version number of components
+      # The version number of components (e.g. 1.0.0)
       version: ${{ steps.versioning.outputs.patch }}
     
     steps:
@@ -218,12 +218,22 @@ jobs:
           tag_name: ${{ needs.release.outputs.github_release_tag }}
           fail_on_unmatched_files: true
           draft: true
+
+  smoke-test:
+    name: End to End Smoke Test
+    needs: [release, build-platform-package, build-vscode-extension]
+    uses: ./.github/workflows/endtoend.yml
+    with:
+      version: ${{ needs.release.outputs.version }}
+      ironplcc-installer-x86_64-windows-filename: "ironplcc-x86_64-windows.exe"
+      ironplc-vscode-extension-filename: "ironplc-vscode-extension.vsix"
+      ironplc-vscode-extension-name: "garretfick.ironplc"
   
   publish-website:
     name: Build and Publish Website
     # The website doesn't depend on these but we don't publish
     # if those are failing so we depend on those.
-    needs: [release, build-platform-package, build-vscode-extension]
+    needs: [release, build-platform-package, build-vscode-extension, smoke-test]
     runs-on: ubuntu-latest
     defaults:
       run:
