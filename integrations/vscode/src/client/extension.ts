@@ -2,32 +2,15 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { existsSync } from 'fs';
 import {
-	Executable,
 	LanguageClient,
-	LanguageClientOptions,
-	ServerOptions,
-	TransportKind
 } from 'vscode-languageclient/node';
+import { createClient } from './lsp';
 
 let client: LanguageClient | undefined;
-let application: Executable | undefined;
-
-const VERBOSITY = new Map<string, string[]>([
-	["ERROR", []],
-	["WARN", ["-v"]],
-	["INFO", ["-v", "-v"]],
-	["DEBUG", ["-v", "-v", "-v"]],
-	["TRACE", ["-v", "-v", "-v", "-v"]],
-]);
 
 // This method is called when this extension is activated.
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Extension "ironplc" is activating!');
-
-	context.subscriptions.push(vscode.commands.registerCommand('ironplc.extensionDiagnostics', () => {
-		const message = "Compiler path: " + application?.command;
-		vscode.window.showInformationMessage(message);
-	}));
 
   	context.subscriptions.push(vscode.commands.registerCommand("ironplc.createNewStructuredTextFile", async () => {
 		await vscode.workspace.openTextDocument({ language: "61131-3-st"}).then(newFile => {
@@ -35,49 +18,20 @@ export function activate(context: vscode.ExtensionContext) {
 		});
 	}));
 
-	startServer(context);
-
-	console.log('Extension "ironplc" is active!');	
-}
-
-function startServer(context: vscode.ExtensionContext) {
 	const compilerFilePath = findCompiler();
 	if (!compilerFilePath) {
 		return;
 	}
-
 	const config = vscode.workspace.getConfiguration('ironplc');
-	const logLevel = config.get<string>('logLevel', 'ERROR');
-	const logVerbosity = VERBOSITY.get(logLevel) || [];
 
-	const args = logVerbosity.concat(['lsp']);
-	console.log('Extension "ironplc" starting with args' + args);
+	client = createClient(compilerFilePath, config);
 
-	application = {
-		command: compilerFilePath,
-		transport: TransportKind.stdio,
-		args: args,
-		options: {
-			env: ['RUST_LOG=lsp_server=debug']
-		}
-	};
-
-	const serverOptions: ServerOptions = application;
-
-	// Options to control the language client
-	const clientOptions: LanguageClientOptions = {
-		documentSelector: [{ scheme: 'file', language: '61131-3-st' }]
-	};
-
-	// Create the language client and start the client.
-	client = new LanguageClient(
-		'ironplc',
-		'IronPLC',
-		serverOptions,
-		clientOptions
-	);
-
-	client.start();
+	if (client) {
+		client.start();
+		console.log('Extension "ironplc" is active!');
+	} else {
+		console.error('Extension "ironplc" is NOT active!');
+	}
 }
 
 function findCompiler() {
@@ -144,6 +98,5 @@ export function deactivate() : Thenable<void> | undefined {
 	if (!client) {
 		return undefined;
 	}
-	application = undefined;
 	return client.stop();
 }

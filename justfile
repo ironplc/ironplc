@@ -75,26 +75,31 @@ e2e_path := "/" + replace(e2e_fspath, "\\", "/")
 e2e_fspathesc := replace(e2e_fspath, "\\", "*")
 
 # End to end "smoke" test.
+[windows]
 endtoend-smoke version compilerfilename extensionfilename ext_name:
   # There are two parts to IronPLC - the compiler and the extension
-  # This test ensures that they actually work together (out of the box)
-  @just _endtoend-smoke-{{os_family()}} {{version}} {{compilerfilename}} {{extensionfilename}} {{ext_name}}
+  # This test ensures that theyactually work together (out of the box)
+  @just _endtoend-smoke-download {{version}} {{compilerfilename}} {{extensionfilename}} {{ext_name}}
+  @just _endtoend-smoke-test {{version}} {{compilerfilename}} {{extensionfilename}} {{ext_name}}
 
-_endtoend-smoke-windows version compilerfilename extensionfilename ext_name:
-  # Get and install the compiler
+[windows]
+endtoend-smoke-download version compilerfilename extensionfilename ext_name:
   Invoke-WebRequest -Uri https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{compilerfilename}} -OutFile ironplcc.exe
+  Invoke-WebRequest -Uri "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user" -OutFile vscode.exe
+  Invoke-WebRequest -Uri https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{extensionfilename}} -OutFile ironplc.vsix
+
+[windows]
+endtoend-smoke-test version compilerfilename extensionfilename ext_name:
+  # Install the compiler
   Start-Process ironplcc.exe -ArgumentList "/S" -PassThru | Wait-Process -Timeout 60
 
   # Do a simple check that the application is runnable
   &"{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\bin\ironplcc.exe" "help"
 
-  # Get and install VS Code
-  Invoke-WebRequest -Uri "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user" -OutFile vscode.exe
+  # Install VS Code
   Start-Process vscode.exe -ArgumentList "/VERYSILENT /NORESTART /MERGETASKS=!runcode" -PassThru | Wait-Process -Timeout 600
 
-  # Get and install the VS code extension
-  Invoke-WebRequest -Uri https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{extensionfilename}} -OutFile ironplc.vsix
-  #Start-Process "`"{{env_var('LOCALAPPDATA')}}\Programs\Microsoft VS Code\code.exe`"" -ArgumentList "--install-extension ironplc.vsix" -PassThru | Wait-Process -Timeout 120
+  # Install the VS code extension
   # VS code does have a command line to install an extension, but after
   # many tries, I think it is broken, so instead, just install directly
   # Expands to a folder called "ironplc\extension"

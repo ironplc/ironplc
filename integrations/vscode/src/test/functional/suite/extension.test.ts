@@ -37,8 +37,8 @@ suite('Extension Test Suite', () => {
 });
 
 function testResourcePath(fileName: string): string {
-	const testRootDir = path.join(__dirname, '..', '..', '..');
-	return path.join(testRootDir, 'src', 'test', 'resources', fileName);
+	const testRootDir = path.join(__dirname, '..', '..', '..', '..');
+	return path.join(testRootDir, 'src', 'test', 'functional', 'resources', fileName);
 }
 
 async function closeActiveWindows(): Promise<void> {
