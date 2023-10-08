@@ -128,7 +128,7 @@ endtoend-smoke-test version compilerfilename extensionfilename ext_name:
   Start-Sleep -s 30
   Get-ChildItem "{{env_var('LOCALAPPDATA')}}\Temp\"
   Get-ChildItem "{{env_var('LOCALAPPDATA')}}\Temp\ironplcc"
-  Test-Path "{{env_var('LOCALAPPDATA')}}\Temp\ironplcc\ironplcc.log" -PathType Leaf
+  IF (Test-Path "{{env_var('LOCALAPPDATA')}}\Temp\ironplcc\ironplcc.log" -PathType Leaf) { exit 0 } ELSE { exit 1 }
 
 _endtoend-smoke-unix:
   @echo "endtoend-smoke is not implemented for Unix family"
