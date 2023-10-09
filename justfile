@@ -79,8 +79,8 @@ e2e_fspathesc := replace(e2e_fspath, "\\", "*")
 endtoend-smoke version compilerfilename extensionfilename ext_name:
   # There are two parts to IronPLC - the compiler and the extension
   # This test ensures that theyactually work together (out of the box)
-  @just _endtoend-smoke-download {{version}} {{compilerfilename}} {{extensionfilename}} {{ext_name}}
-  @just _endtoend-smoke-test {{version}} {{compilerfilename}} {{extensionfilename}} {{ext_name}}
+  @just endtoend-smoke-download {{version}} {{compilerfilename}} {{extensionfilename}} {{ext_name}}
+  @just endtoend-smoke-test {{version}} {{compilerfilename}} {{extensionfilename}} {{ext_name}}
 
 [windows]
 endtoend-smoke-download version compilerfilename extensionfilename ext_name:
@@ -128,7 +128,7 @@ endtoend-smoke-test version compilerfilename extensionfilename ext_name:
   Start-Sleep -s 30
   Get-ChildItem "{{env_var('LOCALAPPDATA')}}\Temp\"
   Get-ChildItem "{{env_var('LOCALAPPDATA')}}\Temp\ironplcc"
-  Test-Path "{{env_var('LOCALAPPDATA')}}\Temp\ironplcc\ironplcc.log" -PathType Leaf
+  IF (Test-Path "{{env_var('LOCALAPPDATA')}}\Temp\ironplcc\ironplcc.log" -PathType Leaf) { exit 0 } ELSE { exit 1 }
 
 _endtoend-smoke-unix:
   @echo "endtoend-smoke is not implemented for Unix family"
