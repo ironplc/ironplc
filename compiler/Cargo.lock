@@ -349,7 +349,7 @@ dependencies = [
 
 [[package]]
 name = "ironplc-dsl"
-version = "0.13.54"
+version = "0.14.0"
 dependencies = [
  "ironplc-problems",
  "time",
@@ -357,7 +357,7 @@ dependencies = [
 
 [[package]]
 name = "ironplc-parser"
-version = "0.13.54"
+version = "0.14.0"
 dependencies = [
  "ironplc-dsl",
  "ironplc-problems",
@@ -368,14 +368,14 @@ dependencies = [
 
 [[package]]
 name = "ironplc-problems"
-version = "0.13.54"
+version = "0.14.0"
 dependencies = [
  "csv",
 ]
 
 [[package]]
 name = "ironplcc"
-version = "0.13.54"
+version = "0.14.0"
 dependencies = [
  "assert_cmd",
  "clap",
