@@ -1,13 +1,13 @@
-# Defines a weekly build for the project. Each week (or a trigger)
-# releases a new version, incrementing the current version number.
+# Defines a weekly build for the project. Each week (or when triggered)
+# create a new release (having a new release number).
 #
 # The essential strategy is:
 #    1. Determine the next semantic version number
 #    2. Update the code, create a commit with the version number, create a
 #       Github release
 #    3. Build the artifacts using the tag as the starting point
-#    4.
-#    5. Cleanup Github release
+#    4. Check that everything actually works together
+#    5. Publish the changes and clean up old artifacts
 
 on:
   # Automatically create a release every Monday at 19:00
@@ -25,7 +25,7 @@ name: Publish IronPLC Releases
 
 jobs:
   release:
-    name: Create Version and Release
+    name: Create Version Numbers and GitHub Release for the Artifacts
     # Only needs to run on one platform because this is defining
     # the container for the release rather than building the artifacts
     runs-on: ubuntu-latest
@@ -34,11 +34,11 @@ jobs:
       # The identifier for the Github release
       release_id: ${{ steps.create_release.outputs.id }}
       # The tag that is the Github release
-      github_release_tag: v${{ steps.versioning.outputs.patch }}
+      github_release_tag: v${{ steps.versioning.outputs.minor || '0.0.0' }}
       # The tag in the git repository (e.g. v1.0.0)
-      commit_tag: ${{ steps.versioning.outputs.v_patch }}
+      commit_tag: ${{ steps.versioning.outputs.v_minor || 'HEAD' }}
       # The version number of components (e.g. 1.0.0)
-      version: ${{ steps.versioning.outputs.patch }}
+      version: ${{ steps.versioning.outputs.minor || '0.0.0' }}
     
     steps:
       # Checkout the repository with all tags so that versioning can find
@@ -62,28 +62,28 @@ jobs:
         run: |
           git pull --tags
 
-      - name: 'Get Previous Tag (the last release)'
+      - name: Get Previous Tag (the last release)
         id: previoustag
         uses: "WyriHaximus/github-action-get-previous-tag@v1"
 
       # If we are not doing a dry run, then we want to get the next version
       # number and then set that in the code
-      - name: 'Determine next release version'
+      - name: Determine next release version
         if: ${{ !inputs.dryrun }}
         id: versioning
         uses: "WyriHaximus/github-action-next-semvers@v1"
         with:
           version: ${{ steps.previoustag.outputs.tag }}
-      - name: Update Version Number in Code
+      - name: Update version number in the repository
         if: ${{ !inputs.dryrun }}
-        run: just version ${{ steps.versioning.outputs.patch }}
+        run: just version ${{ steps.versioning.outputs.minor }}
 
-      - name: Git commit and push for revision bump
+      - name: Create Git commit with new version and push for revision bump
         if: ${{ !inputs.dryrun }}
         env: 
           CI_COMMIT_MESSAGE: Continuous integration version increment
           CI_COMMIT_AUTHOR: Continuous Integration
-          CI_COMMIT_TAG: v${{ steps.versioning.outputs.patch }}
+          CI_COMMIT_TAG: v${{ steps.versioning.outputs.minor }}
         run: |
           git config --global user.name "${{ env.CI_COMMIT_AUTHOR }}"
           git config --global user.email "garretfick@users.noreply.github.com"
@@ -98,7 +98,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: v${{ steps.versioning.outputs.patch }}
+          tag_name: v${{ steps.versioning.outputs.minor }}
           draft: true
           prerelease: false
 
@@ -156,7 +156,7 @@ jobs:
           draft: true
     
   build-platform-package:
-    name: Build Platform Package
+    name: Build Compiler and Associated Installers
     needs: [release, build-vscode-extension]
     runs-on:  ${{ matrix.os }}
     defaults:
@@ -222,6 +222,9 @@ jobs:
 
   smoke-test:
     name: End to End Smoke Test
+    # Install the components on a real machine and verify that they
+    # all work together. If this passes, we have a good consistent
+    # build.
     needs: [release, build-platform-package, build-vscode-extension]
     uses: ./.github/workflows/endtoend.yaml
     with:
