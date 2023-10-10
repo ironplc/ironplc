@@ -62,6 +62,7 @@ on:
 
 jobs:
   endtoend:
+    name: End to end test
     runs-on: windows-latest
 
     steps:
