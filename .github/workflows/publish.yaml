@@ -31,8 +31,10 @@ jobs:
     runs-on: ubuntu-latest
     
     outputs:
-      # The identifier for the Github release
+      # The identifier for the Github release - a unique number
       release_id: ${{ steps.create_release.outputs.id }}
+      # The identifier to download artifacts from - e.g. untagged-ab4d5eb608ce1d11c289
+      prerelease_download_id: ${{ steps.download_tag.outputs.id }}
       # The tag that is the Github release
       github_release_tag: v${{ steps.versioning.outputs.minor || '0.0.0' }}
       # The tag in the git repository (e.g. v1.0.0)
@@ -101,6 +103,16 @@ jobs:
           tag_name: v${{ steps.versioning.outputs.minor }}
           draft: true
           prerelease: false
+
+      # The URL is something like https://github.com/ironplc/ironplc/releases/tag/untagged-ab4d5eb608ce1d11c289
+      # and we want the last component of the URL.
+      - name: Get GitHub Release ID
+        if: ${{ !inputs.dryrun }}
+        id: download_tag
+        run: |
+          url="${{steps.create_release.outputs.url}}"
+          id=$(echo $url | rev | cut -d/ -f1 | rev)
+          echo "id=$id" >> $GITHUB_OUTPUT
 
   build-vscode-extension:
     name: Build Visual Studio Code Extension
@@ -229,6 +241,7 @@ jobs:
     uses: ./.github/workflows/endtoend.yaml
     with:
       version: ${{ needs.release.outputs.version }}
+      download-tag: ${{ needs.release.outputs.prerelease_download_id }}
       ironplcc-installer-x86_64-windows-filename: "ironplcc-x86_64-windows.exe"
       ironplc-vscode-extension-filename: "ironplc-vscode-extension.vsix"
       ironplc-vscode-extension-name: "garretfick.ironplc"
