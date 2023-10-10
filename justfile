@@ -76,20 +76,25 @@ e2e_fspathesc := replace(e2e_fspath, "\\", "*")
 
 # End to end "smoke" test.
 [windows]
-endtoend-smoke version compilerfilename extensionfilename ext_name:
+endtoend-smoke version downloadtag compilerfilename extensionfilename ext_name:
   # There are two parts to IronPLC - the compiler and the extension
-  # This test ensures that theyactually work together (out of the box)
-  @just endtoend-smoke-download {{version}} {{compilerfilename}} {{extensionfilename}} {{ext_name}}
-  @just endtoend-smoke-test {{version}} {{compilerfilename}} {{extensionfilename}} {{ext_name}}
+  # This test ensures that they actually work together (out of the box)
+  #
+  # version is a semantic version number, such as "0.1.1"
+  # downloadtag is the tag to download from GitHub releases. The tag may be 
+  #             untagged-ab4d5eb608ce1d11c289 or a version with the prefix such
+  #             as "v0.1.1"
+  @just endtoend-smoke-download {{downloadtag}} {{compilerfilename}} {{extensionfilename}}
+  @just endtoend-smoke-test {{version}} {{ext_name}}
 
 [windows]
-endtoend-smoke-download version compilerfilename extensionfilename ext_name:
-  Invoke-WebRequest -Uri https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{compilerfilename}} -OutFile ironplcc.exe
+endtoend-smoke-download downloadtag compilerfilename extensionfilename ext_name:
+  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/{{downloadtag}}/{{compilerfilename}}"" -OutFile ironplcc.exe
   Invoke-WebRequest -Uri "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user" -OutFile vscode.exe
-  Invoke-WebRequest -Uri https://github.com/ironplc/ironplc/releases/download/v{{version}}/{{extensionfilename}} -OutFile ironplc.vsix
+  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/{{downloadtag}}/{{extensionfilename}}"" -OutFile ironplc.vsix
 
 [windows]
-endtoend-smoke-test version compilerfilename extensionfilename ext_name:
+endtoend-smoke-test version ext_name:
   # Install the compiler
   Start-Process ironplcc.exe -ArgumentList "/S" -PassThru | Wait-Process -Timeout 60
 
