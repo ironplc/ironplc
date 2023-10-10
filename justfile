@@ -89,9 +89,9 @@ endtoend-smoke version downloadtag compilerfilename extensionfilename ext_name:
 
 [windows]
 endtoend-smoke-download downloadtag compilerfilename extensionfilename:
-  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/{{downloadtag}}/{{compilerfilename}}"" -OutFile ironplcc.exe
+  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/{{downloadtag}}/{{compilerfilename}}" -OutFile ironplcc.exe
   Invoke-WebRequest -Uri "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user" -OutFile vscode.exe
-  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/{{downloadtag}}/{{extensionfilename}}"" -OutFile ironplc.vsix
+  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/{{downloadtag}}/{{extensionfilename}}" -OutFile ironplc.vsix
 
 [windows]
 endtoend-smoke-test version ext_name:
