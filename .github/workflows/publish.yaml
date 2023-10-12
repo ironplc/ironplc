@@ -232,16 +232,31 @@ jobs:
           fail_on_unmatched_files: true
           draft: true
 
+  publish-prerelease:
+    name: Mark as Prerelease
+    # In order to do a smoke test, we need a public accessible release
+    needs: [release, build-platform-package, build-vscode-extension]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish pre-release
+        if: ${{ !inputs.dryrun }}
+        uses: irongut/EditRelease@v1.2.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          id: ${{ needs.release.outputs.release_id }}
+          prerelease: true
+          draft: false
+
   smoke-test:
     name: End to End Smoke Test
     # Install the components on a real machine and verify that they
     # all work together. If this passes, we have a good consistent
     # build.
-    needs: [release, build-platform-package, build-vscode-extension]
+    needs: [release, publish-prerelease]
     uses: ./.github/workflows/endtoend.yaml
     with:
       version: ${{ needs.release.outputs.version }}
-      download-tag: ${{ needs.release.outputs.prerelease_download_id }}
+      download-tag: ${{ needs.release.outputs.version }}
       ironplcc-installer-x86_64-windows-filename: "ironplcc-x86_64-windows.exe"
       ironplc-vscode-extension-filename: "ironplc-vscode-extension.vsix"
       ironplc-vscode-extension-name: "garretfick.ironplc"
@@ -250,7 +265,7 @@ jobs:
     name: Build and Publish Website
     # The website doesn't depend on these but we don't publish
     # if those are failing so we depend on those.
-    needs: [release, build-platform-package, build-vscode-extension, smoke-test]
+    needs: [release, smoke-test]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -293,7 +308,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           id: ${{ needs.release.outputs.release_id }}
-          draft: false
+          prerelease: false
     
       - name: Cleanup Drafts and Old Release
         if: ${{ !inputs.dryrun }}
