@@ -256,7 +256,7 @@ jobs:
     uses: ./.github/workflows/endtoend.yaml
     with:
       version: ${{ needs.release.outputs.version }}
-      download-tag: ${{ needs.release.outputs.version }}
+      download-tag: v${{ needs.release.outputs.version }}
       ironplcc-installer-x86_64-windows-filename: "ironplcc-x86_64-windows.exe"
       ironplc-vscode-extension-filename: "ironplc-vscode-extension.vsix"
       ironplc-vscode-extension-name: "garretfick.ironplc"
