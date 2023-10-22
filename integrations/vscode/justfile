@@ -21,15 +21,15 @@ test:
   just _test-{{os()}}
 
 _test-windows:
-  npm run test:functional
+  npm run test
 
 _test-macos:
-  npm run test:functional
+  npm run test
 
 # Integration tests require Xvfb enabled environment for Linux, so use that to
 # run tests.
 _test-linux:
-  xvfb-run -a npm run test:functional
+  xvfb-run -a npm run test
 
 # Check the code for compliance with style (lint) rules.
 lint:
