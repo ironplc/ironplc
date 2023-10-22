@@ -7,4 +7,3 @@ justfile
 **/.eslintrc.json
 **/*.map
 **/*.ts
-node_modules/
