@@ -6,20 +6,30 @@ IronPLC brings IEC 61131-3 support to Visual Studio Code.
 Visual Studio Code Extension that are that are building blocks for a complete
 IEC 61131-3 runtime and development environment.
 
+## Quick Start
+
+* **Step 1.** [Install the IronPLC compiler and Visual Studio Code extension](https://www.ironplc.com/quickstart/installation.html)
+on your system.
+* **Step 2.** Open or create an IEC 61131-3 file and start coding.
+
+## Useful commands
+
+Open the Command Palette (Command+Shift+P on macOS and Ctrl+Shift+P
+on Windows) and type in one of the following commands:
+
+| **Command** | **Description** |
+|-------------|-----------------|
+| `New Structured Text File` | Create a new IEC 61131-3 structured text file. |
+
 ## Features
 
 * Automatic closing of brackets and keywords
-* Syntax checking
-
-## Requirements
-
-You need to separately install the IronPLC compiler to use syntax checking. Visit
-[IronPLC](https://www.ironplc.com) for installation instructions.
+* Syntax highlighting (limited)
+* Syntax checking (limited)
 
 ## Extension Settings
 
-* `ironplc.path` to configure the path to the IronPLC compiler.
-
-## Known Issues
-
-Too many to list. This is project is presently an experiment.
+| **Setting**     | **Description**       |
+|-----------------|-----------------------|
+| `ironplc.path`  | The path to the IronPLC compiler. |
+| `ironplc.logLevel` | The log level for the IronPLC compiler. |

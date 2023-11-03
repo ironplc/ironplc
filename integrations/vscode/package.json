@@ -1,16 +1,21 @@
 {
   "name": "ironplc",
   "displayName": "IronPLC",
-  "publisher": "garretfick",
-  "description": "IntelliSense for IEC 61131-3",
+  "publisher": "ironplc",
+  "description": "IronPLC is the beginning of a development environment for IEC 61131-3.",
   "version": "0.21.0",
   "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0"
   },
+  "license": "MIT",
+  "author": {
+    "name": "Garret Fick"
+  },
   "categories": [
     "Programming Languages"
   ],
+  "homepage": "https://www.ironplc.com",
   "repository": {
     "type": "git",
     "url": "http://github.com/garretfick/ironplc.git",
