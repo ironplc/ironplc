@@ -105,13 +105,16 @@ endtoend-smoke-test version ext_name:
   Start-Process vscode.exe -ArgumentList "/VERYSILENT /NORESTART /MERGETASKS=!runcode" -PassThru | Wait-Process -Timeout 600
 
   # Install the VS code extension
+  
   # VS code does have a command line to install an extension, but after
   # many tries, I think it is broken, so instead, just install directly
   # Expands to a folder called "ironplc\extension"
   Expand-Archive ironplc.vsix
   # Move the folder 
+  New-Item -ItemType Directory -Force -Path "{{env_var('USERPROFILE')}}\.vscode\extensions\"
   Move-Item ironplc\extension "{{env_var('USERPROFILE')}}\.vscode\extensions\{{ext_name}}-{{version}}"
   Get-ChildItem "{{env_var('USERPROFILE')}}\.vscode\extensions\{{ext_name}}-{{version}}"
+
   # Create the extensions.json file that references this extension
   New-Item "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json" -Force
   '[{"identifier":{"id":"{{ext_name}}"},"version":"{{version}}","location":{"$mid":1,"fsPath":"{{e2e_fspathesc}}{{ext_name}}-{{version}}","_sep":1,"external":"{{e2e_external}}{{ext_name}}-{{version}}","path":"{{e2e_path}}{{ext_name}}-{{version}}","scheme":"file"},"relativeLocation":"{{ext_name}}-{{version}}","metadata":{"installedTimestamp":1695013253133}}]'.replace('*', '\\') | Set-Content "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json"

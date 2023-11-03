@@ -120,6 +120,8 @@ jobs:
     # release as not a draft.
     needs: [release]
     runs-on:  ${{ matrix.os }}
+    outputs:
+      vsix_path: ${{ steps.packageExtension.outputs.vsixPath }}
     defaults:
       run:
         working-directory: ./integrations/vscode
@@ -156,7 +158,7 @@ jobs:
       - name: Create VSIX
         run: just package ironplc-vscode-extension.vsix
 
-      - name: Upload VSIX
+      - name: Upload VSIX to release
         if: ${{ !inputs.dryrun }}
         uses: softprops/action-gh-release@v1
         with:
@@ -166,6 +168,13 @@ jobs:
           tag_name: ${{ needs.release.outputs.github_release_tag }}
           fail_on_unmatched_files: true
           draft: true
+
+      - name: Upload VSIX to build artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: vscode-extension
+          path: ./integrations/vscode/ironplc-vscode-extension-release.vsix
+
     
   build-platform-package:
     name: Build Compiler and Associated Installers
@@ -309,6 +318,19 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           id: ${{ needs.release.outputs.release_id }}
           prerelease: false
+
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: vscode-extension
+          path: ${{ steps.build-vscode-extension.outputs.vsix_path }}
+
+      - name: Publish to Visual Studio Marketplace
+        uses: HaaLeo/publish-vscode-extension@v1
+        with:
+          pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
+          extensionFile: ${{ needs.build-vscode-extension.outputs.vsix_path }}
+          registryUrl: https://marketplace.visualstudio.com
     
       - name: Cleanup Drafts and Old Release
         if: ${{ !inputs.dryrun }}
