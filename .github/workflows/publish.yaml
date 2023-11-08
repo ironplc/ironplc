@@ -173,8 +173,8 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: vscode-extension
-          path: ./integrations/vscode/ironplc-vscode-extension-release.vsix
-
+          path: ./integrations/vscode/ironplc-vscode-extension.vsix
+          if-no-files-found: error 
     
   build-platform-package:
     name: Build Compiler and Associated Installers
