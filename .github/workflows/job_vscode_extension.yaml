@@ -1,0 +1,94 @@
+name: VS Code Extension
+on:
+  # Allow triggering directly
+  workflow_dispatch:
+    inputs:
+      commit-tag:
+        required: false
+        type: string
+        description: 'If not empty, then run for the specified tag'
+      gh-release-tag:
+        required: false
+        type: string
+        default: ""
+        description: 'The Github Release tag to publish to (empty value disables publishing)'
+      artifact-name:
+        required: false
+        type: string
+        default: ""
+        description: 'The name of the VSIX artifact to create (empty value disables publishing)'
+
+  
+  # Allow using this workflow from another workflow
+  workflow_call:
+    inputs:
+      commit-tag:
+        required: false
+        type: string
+        description: 'If not empty, then run for the specified tag'
+      gh-release-tag:
+        required: false
+        type: string
+        description: 'The Github Release tag to publish to'
+      artifact-name:
+        required: false
+        type: string
+        description: 'The name of the VSIX artifact to create'
+
+jobs:
+  vscode-extension:
+    name: Visual Studio Code Extension Job
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ../integrations/vscode
+    steps:
+      # Fetch input artifacts and code
+      - name: Checkout tag ${{ inputs.commit-tag }}
+        uses: actions/checkout@v4
+        if: ${{ inputs.commit-tag != ""}}
+        with:
+          ref: ${{ inputs.commit-tag  }}
+      - name: Checkout HEAD
+        uses: actions/checkout@v4
+        if: ${{ inputs.commit-tag == "" }}
+
+      # Configure the execution environment
+      - uses: taiki-e/install-action@just
+      - uses: actions/setup-node@v3
+        with:
+          cache: npm
+          cache-dependency-path: package-lock.json
+          node-version: 'lts/Hydrogen'
+      # Applies when using act to run locally
+      - name: Install X server components and Xvfb
+        run: sudo apt update && sudo apt install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libdrm2 libgtk-3-0 libgbm1 libasound2 xvfb
+        if: env.IRONPLC_INSTALL_DEPS != ''
+
+      # Execute build recipes
+      - name: Install dependencies
+        run: just setup
+      - name: Build and Test
+        run: just ci
+      - name: Create VSIX package
+        run: just package ironplc-vscode-extension.vsix
+
+      # Save artifacts
+      - name: Upload VSIX to GitHub Release
+        if: ${{ inputs.gh-release-tag != "" }}
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            integrations/vscode/ironplc-vscode-extension.vsix
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag_name: ${{ inputs.gh-release-tag }}
+          fail_on_unmatched_files: true
+          draft: true
+
+      - name: Upload VSIX to build artifact
+        if: ${{ inputs.artifact-name != "" }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ inputs.artifact-name != "" }}
+          path: integrations/vscode/ironplc-vscode-extension.vsix
+          if-no-files-found: error 

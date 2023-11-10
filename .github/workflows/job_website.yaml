@@ -1,0 +1,67 @@
+name: Website
+on:
+  # Allow triggering directly
+  workflow_dispatch:
+    inputs:
+      publish:
+        required: true
+        type: boolean
+        default: false
+        description: 'If set true, then publish the website'
+      commit-tag:
+        required: false
+        type: string
+        description: 'If not empty, then run for the specified tag'
+  
+  # Allow using this workflow from another workflow
+  workflow_call:
+    inputs:
+      publish:
+        required: true
+        type: boolean
+        description: 'If set true, then publish the website'
+      commit-tag:
+        required: false
+        type: string
+        description: 'If not empty, then run for the specified tag'
+
+jobs:
+  docs:
+    name: Documentation Job
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./docs
+    steps:
+      # Fetch input artifacts and code
+      - name: Checkout tag ${{ inputs.commit-tag }}
+        uses: actions/checkout@v4
+        if: ${{ inputs.commit-tag != "" }}
+        with:
+          ref: ${{ inputs.commit-tag  }}
+      - name: Checkout HEAD
+        uses: actions/checkout@v4
+        if: ${{ inputs.commit-tag == "" }}
+
+      # Configure the execution environment
+      - uses: taiki-e/install-action@just
+      - name: Set up Python 3.x
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      # Execute build recipes
+      - name: Build docs
+        run: just ci
+
+      # Save artifacts
+      - name: Publish by Copying Build to gh-pages branch
+        if: ${{ inputs.publish }}
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          publish_branch: gh-pages
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # The action doesn't seem to respect the working directory
+          publish_dir: docs/_build
+          force_orphan: false
+          allow_empty_commit: false

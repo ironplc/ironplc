@@ -1,4 +1,4 @@
-name: IronPLC End to End Smoke Test
+name: End to End Smoke Test
 
 on:
   # Allow triggering directly
@@ -62,12 +62,17 @@ on:
 
 jobs:
   endtoend:
-    name: End to end test
+    name: End to End Smoke Test Job
     runs-on: windows-latest
 
     steps:
-      - uses: taiki-e/install-action@just
-      - uses: actions/checkout@v3
+      # Fetch input artifacts and code
+      - name: Checkout HEAD
+        uses: actions/checkout@v3
 
+      # Configure the execution environment
+      - uses: taiki-e/install-action@just
+
+      # Execute build recipes
       - name: End to end test
         run: just endtoend-smoke ${{ inputs.version }} ${{ inputs.download-tag }} ${{ inputs.ironplcc-installer-x86_64-windows-filename }} ${{ inputs.ironplc-vscode-extension-filename }} ${{ inputs.ironplc-vscode-extension-name }}
