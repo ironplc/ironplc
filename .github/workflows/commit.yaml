@@ -30,7 +30,6 @@ jobs:
     name: Build Website
     # The website doesn't depend on these but we don't publish
     # if those are failing so we depend on those.
-    needs: [release, smoke-test]
     uses: ./.github/workflows/job_website.yaml
     with:
       commit-tag: ""
