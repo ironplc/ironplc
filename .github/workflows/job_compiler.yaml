@@ -86,7 +86,7 @@ jobs:
       - name: Compiler CI checks
         run: just ci
       - name: Create installer package
-        run: just package ${{ inputs..version }} ${{ matrix.artifact }} ${{ matrix.rust_target }}
+        run: just package ${{ inputs.version }} ${{ matrix.artifact }} ${{ matrix.rust_target }}
 
       # Save artifacts
       - name: Upload Compiler Installer to GitHub Release
