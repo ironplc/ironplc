@@ -13,7 +13,7 @@ on:
         default: ""
         description: 'The Github Release tag to publish to (empty value disables publishing)'
       version:
-        requires: false
+        required: false
         type: string
         default: "0.0.0"
         description: "The version number, such as 1.2.3"
@@ -31,7 +31,7 @@ on:
         default: ""
         description: 'The Github Release tag to publish to (empty value disables publishing)'
       version:
-        requires: false
+        required: false
         type: string
         default: ""
         description: "The version number, such as 1.2.3"
