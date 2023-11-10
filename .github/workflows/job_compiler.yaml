@@ -38,7 +38,6 @@ on:
 
 jobs:
   name: Build Compiler and Associated Installers
-    needs: [release]
     runs-on:  ${{ matrix.os }}
     defaults:
       run:
