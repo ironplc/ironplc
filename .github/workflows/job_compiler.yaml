@@ -67,12 +67,12 @@ jobs:
       # Fetch input artifacts and code
       - name: Checkout tag ${{ inputs.commit-tag }}
         uses: actions/checkout@v4
-        if: ${{ inputs.commit-tag != ""}}
+        if: ${{ inputs.commit-tag}}
         with:
           ref: ${{ inputs.commit-tag  }}
       - name: Checkout HEAD
         uses: actions/checkout@v4
-        if: ${{ inputs.commit-tag == "" }}
+        if: ${{ !inputs.commit-tag }}
 
       # Configure the execution environment
       - uses: taiki-e/install-action@just
@@ -90,7 +90,7 @@ jobs:
 
       # Save artifacts
       - name: Upload Compiler Installer to GitHub Release
-        if: ${{ inputs.gh-release-tag != "" }}
+        if: ${{ inputs.gh-release-tag }}
         uses: softprops/action-gh-release@v1
         with:
           files: |
