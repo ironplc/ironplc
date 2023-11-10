@@ -37,7 +37,8 @@ on:
         description: "The version number, such as 1.2.3"
 
 jobs:
-  name: Build Compiler and Associated Installers
+  compiler:
+    name: Build Compiler and Associated Installers
     runs-on:  ${{ matrix.os }}
     defaults:
       run:
