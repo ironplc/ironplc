@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ../integrations/vscode
+        working-directory: ./integrations/vscode
     steps:
       # Fetch input artifacts and code
       - name: Checkout tag ${{ inputs.commit-tag }}
@@ -58,7 +58,7 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: './integrations/vscode/package-lock.json'
           node-version: 'lts/Hydrogen'
       # Applies when using act to run locally
       - name: Install X server components and Xvfb
