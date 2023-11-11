@@ -11,115 +11,26 @@ on:
 
 jobs:
   ironplcc-tests:
-    name: ironplcc Tests
-    runs-on:  ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: ./compiler
-    strategy:
-        matrix:
-          os: [ubuntu-latest, windows-latest, macos-latest]
-        fail-fast: false
-    steps:
-      - uses: actions/checkout@v3
-      - uses: taiki-e/install-action@just
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt, clippy
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    name: Build IronPLC Compiler
+    uses: ./.github/workflows/job_compiler.yaml
+    with:
+      commit-tag: ""
+      gh-release-tag: ""
+      version: "0.0.0"
 
-      - name: Compiler CI checks
-        run: just ci
-
-  build-platform-package:
-    name: Build Windows Platform Installer
-    runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: ./compiler
-    strategy:
-      fail-fast: true
-      matrix:
-        include:
-          - os: windows-latest
-            artifact: ironplcc-x86_64-windows.exe
-            rust_target: x86_64-pc-windows-msvc
-          - os: windows-latest
-            artifact: ironplcc-aarch64-windows.exe
-            rust_target: aarch64-pc-windows-msvc
-    steps:
-      - uses: actions/checkout@v3
-      - uses: taiki-e/install-action@just
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: ${{ matrix.rust_target }}
-
-      # For the CI, the version number doesn't matter because we don't retain the installer
-      - name: Create installer
-        run: just package 0.0.0 ${{ matrix.artifact }} ${{ matrix.rust_target }}
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v3
-        with:
-          path: ./compiler/${{ matrix.artifact }}
-
-  vscode-extension-tests:
-    name: Visual Studio Code Extension Tests
-    runs-on:  ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: ./integrations/vscode
-    strategy:
-        matrix:
-          os: [ubuntu-latest, windows-latest, macos-latest]
-        fail-fast: false
-    steps:
-      - uses: actions/checkout@v3
-      - uses: taiki-e/install-action@just
-      - uses: actions/setup-node@v3
-        with:
-          cache: npm
-          cache-dependency-path: './integrations/vscode/package-lock.json'
-          node-version: 'lts/Hydrogen'
-
-      - name: Install X server components and Xvfb
-        run: sudo apt update && sudo apt install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libdrm2 libgtk-3-0 libgbm1 libasound2 xvfb
-        if: env.IRONPLC_INSTALL_DEPS != ''
-
-      - name: Install dependencies
-        run: just setup
-      - name: Build and Test
-        run: just ci
-      - name: Create VSIX
-        run: just package ironplc-vscode-extension-release.vsix
-
-      - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v3
-        with:
-          path: ./integrations/vscode/ironplc-vscode-extension-release.vsix
+  vscode-extension:
+    name: Build Visual Studio Code Extension
+    uses: ./.github/workflows/job_vscode_extension.yaml
+    with:
+      commit-tag: ""
+      gh-release-tag: ""
+      artifact-name: vscode-extension
 
   docs:
-    name: Documentation
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./docs
-    steps:
-      - uses: actions/checkout@v3
-      - uses: taiki-e/install-action@just
-      - name: Set up Python 3.x
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
-
-      - name: Build docs
-        run: just ci
+    name: Build Website
+    # The website doesn't depend on these but we don't publish
+    # if those are failing so we depend on those.
+    uses: ./.github/workflows/job_website.yaml
+    with:
+      commit-tag: ""
+      publish: false
