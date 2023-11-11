@@ -33,13 +33,11 @@ jobs:
     
     outputs:
       # The identifier for the Github release - a unique number
-      release_id: ${{ steps.create_release.outputs.id }}
-      # The identifier to download artifacts from - e.g. untagged-ab4d5eb608ce1d11c289
-      prerelease_download_id: ${{ steps.download_tag.outputs.id }}
+      gh-release-id: ${{ steps.create_release.outputs.id }}
       # The tag that is the Github release
-      github_release_tag: v${{ steps.versioning.outputs.minor || '0.0.0' }}
+      gh-release-tag: v${{ steps.versioning.outputs.minor || '0.0.0' }}
       # The tag in the git repository (e.g. v1.0.0)
-      commit_tag: ${{ steps.versioning.outputs.v_minor || 'HEAD' }}
+      commit-tag: ${{ steps.versioning.outputs.v_minor || 'HEAD' }}
       # The version number of components (e.g. 1.0.0)
       version: ${{ steps.versioning.outputs.minor || '0.0.0' }}
     
@@ -53,7 +51,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: actions/setup-node@v3
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           # This is a workaround for branch protections. In general, we want to
@@ -120,8 +118,8 @@ jobs:
     needs: [release]
     uses: ./.github/workflows/job_vscode_extension.yaml
     with:
-      commit-tag: ${{ needs.release.outputs.commit_tag }}
-      gh-release-tag: ${{ needs.release.outputs.github_release_tag }}
+      commit-tag: ${{ needs.release.outputs.commit-tag }}
+      gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
       artifact-name: vscode-extension
     
   build-platform-package:
@@ -129,8 +127,8 @@ jobs:
     needs: [release]
     uses: ./.github/workflows/job_compiler.yaml
     with:
-      commit-tag: ""
-      gh-release-tag: ""
+      commit-tag: ${{ needs.release.outputs.commit-tag }}
+      gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
       version: ${{ needs.release.outputs.version }}
 
   publish-prerelease:
@@ -138,14 +136,14 @@ jobs:
     # In order to do a smoke test, we need a public accessible release
     needs: [release, build-platform-package, build-vscode-extension]
     runs-on: ubuntu-latest
+    if: ${{ !inputs.dryrun }}
     steps:
       # Save artifacts
       - name: Label GitHub Release as pre-release
-        if: ${{ !inputs.dryrun }}
         uses: irongut/EditRelease@v1.2.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          id: ${{ needs.release.outputs.release_id }}
+          id: ${{ needs.release.outputs.gh-release-id }}
           prerelease: true
           draft: false
 
@@ -156,6 +154,7 @@ jobs:
     # build.
     needs: [release, publish-prerelease]
     uses: ./.github/workflows/job_endtoend.yaml
+    if: ${{ !inputs.dryrun }}
     with:
       version: ${{ needs.release.outputs.version }}
       download-tag: v${{ needs.release.outputs.version }}
@@ -169,9 +168,10 @@ jobs:
     # if those are failing so we depend on those.
     needs: [release, smoke-test]
     uses: ./.github/workflows/job_website.yaml
+    if: ${{ !inputs.dryrun }}
     with:
       publish: true
-      commit-tag: ${{ needs.release.outputs.commit_tag }}
+      commit-tag: ${{ needs.release.outputs.commit-tag }}
 
   publish-release:
     name: Publish Release
@@ -183,10 +183,10 @@ jobs:
     steps:
       # Fetch input artifacts and code
       - name: Download VSIX Build Artifact
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: vscode-extension
-          path: ${{ steps.build-vscode-extension.outputs.vsix_path }}
+          path: vscode-extension.vsix
       
       # Configure the execution environment
       - uses: taiki-e/install-action@just
@@ -197,14 +197,16 @@ jobs:
 
       # Execute build recipes
       - name: Publish VS Code Extension to Marketplace
-        run: just publish ${{ needs.build-vscode-extension.outputs.vsix_path }} ${{ secrets.VS_MARKETPLACE_TOKEN }}
+        if: ${{ !inputs.dryrun }}
+        run: just publish vscode-extension.vsix ${{ secrets.VS_MARKETPLACE_TOKEN }}
 
+      # Save artifacts
       - name: Publish GitHub Release
         if: ${{ !inputs.dryrun }}
         uses: irongut/EditRelease@v1.2.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          id: ${{ needs.release.outputs.release_id }}
+          id: ${{ needs.release.outputs.gh-release-id }}
           prerelease: false
 
   publish-homebrew:
@@ -216,11 +218,11 @@ jobs:
         working-directory: ./compiler
     steps:
       # Fetch input artifacts and code
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         if: ${{ !inputs.dryrun }}
         with:
-          ref: ${{ needs.release.outputs.commit_tag }}
-      - uses: actions/checkout@v3
+          ref: ${{ needs.release.outputs.commit-tag }}
+      - uses: actions/checkout@v4
         if: ${{ inputs.dryrun }}
 
       # Configure the execution environment
@@ -230,6 +232,7 @@ jobs:
       - name: Build Homebrew repository
         run: just publish ${{ needs.release.outputs.version }} ironplcc-x86_64-macos.tar.gz ironplcc-x86_64-linux-musl.tar.gz
 
+      # Save artifacts
       - name: Copy to Homebrew Tap Repository
         if: ${{ !inputs.dryrun }}
         uses: peaceiris/actions-gh-pages@v3
