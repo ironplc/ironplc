@@ -45,8 +45,8 @@ Follow the steps below to install IronPLC.
    #. Go to the Extensions view by clicking on the Extensions icon in
       :guilabel:`Activity Bar` on the side of VS Code or using the
       View: Extensions command (:kbd:`Ctrl+Shift+X`).
-   #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
-   #. In the :guilabel:`Install from VISX` dialog, select the VISX file you downloaded earlier.
+   #. In the Extensions view, enter :samp:`IronPLC` in the search box.
+   #. In the Extensions view for the IronPLC item, choose :guilabel:`Install`.
 
 .. tab:: macOS
 
@@ -67,8 +67,8 @@ Follow the steps below to install IronPLC.
    #. Go to the Extensions view by clicking on the Extensions icon in
       :guilabel:`Activity Bar` on the side of VS Code or using the
       View: Extensions command (:kbd:`⌘+Shift+X`).
-   #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
-   #. In the dialog, select the VISX file you downloaded earlier.
+   #. In the Extensions view, enter :samp:`IronPLC` in the search box.
+   #. In the Extensions view for the IronPLC item, choose :guilabel:`Install`.
 
 .. tab:: Linux
 
