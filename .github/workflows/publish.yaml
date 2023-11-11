@@ -7,7 +7,8 @@
 #       Github release
 #    3. Build the artifacts using the tag as the starting point
 #    4. Check that everything actually works together
-#    5. Publish the changes and clean up old artifacts
+#    5. Publish the changes
+#    6. clean up old artifacts
 
 on:
   # Automatically create a release every Monday at 19:00
@@ -32,13 +33,11 @@ jobs:
     
     outputs:
       # The identifier for the Github release - a unique number
-      release_id: ${{ steps.create_release.outputs.id }}
-      # The identifier to download artifacts from - e.g. untagged-ab4d5eb608ce1d11c289
-      prerelease_download_id: ${{ steps.download_tag.outputs.id }}
+      gh-release-id: ${{ steps.create_release.outputs.id }}
       # The tag that is the Github release
-      github_release_tag: v${{ steps.versioning.outputs.minor || '0.0.0' }}
+      gh-release-tag: v${{ steps.versioning.outputs.minor || '0.0.0' }}
       # The tag in the git repository (e.g. v1.0.0)
-      commit_tag: ${{ steps.versioning.outputs.v_minor || 'HEAD' }}
+      commit-tag: ${{ steps.versioning.outputs.v_minor || 'HEAD' }}
       # The version number of components (e.g. 1.0.0)
       version: ${{ steps.versioning.outputs.minor || '0.0.0' }}
     
@@ -52,7 +51,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: actions/setup-node@v3
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           # This is a workaround for branch protections. In general, we want to
@@ -116,143 +115,35 @@ jobs:
 
   build-vscode-extension:
     name: Build Visual Studio Code Extension
-    # This depends on platform packages only so that this one can mark the
-    # release as not a draft.
     needs: [release]
-    runs-on:  ${{ matrix.os }}
-    outputs:
-      vsix_path: ${{ steps.packageExtension.outputs.vsixPath }}
-    defaults:
-      run:
-        working-directory: ./integrations/vscode
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ ubuntu-latest ]
-        name: [ release ]
-    
-    steps:
-      - name: Checkout tag ${{ needs.release.outputs.commit_tag }}
-        uses: actions/checkout@v3
-        if: ${{ !inputs.dryrun }}
-        with:
-          ref: ${{ needs.release.outputs.commit_tag }}
-      - name: Checkout HEAD
-        uses: actions/checkout@v3
-        if: ${{ inputs.dryrun }}
-      - uses: taiki-e/install-action@just
-      - uses: actions/setup-node@v3
-        with:
-          cache: npm
-          cache-dependency-path: './integrations/vscode/package-lock.json'
-          node-version: 'lts/Hydrogen'
-
-      - name: Install X server components and Xvfb
-        run: sudo apt update && sudo apt install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libdrm2 libgtk-3-0 libgbm1 libasound2 xvfb
-        if: env.IRONPLC_INSTALL_DEPS != ''
-
-      - name: Install dependencies
-        run: just setup
-      - name: Build and Test
-        run: just ci
-      - name: Create VSIX
-        run: just package ironplc-vscode-extension.vsix
-
-      - name: Upload VSIX to release
-        if: ${{ !inputs.dryrun }}
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            integrations/vscode/ironplc-vscode-extension.vsix
-          token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: ${{ needs.release.outputs.github_release_tag }}
-          fail_on_unmatched_files: true
-          draft: true
-
-      - name: Upload VSIX to build artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: vscode-extension
-          path: ./integrations/vscode/ironplc-vscode-extension.vsix
-          if-no-files-found: error 
+    uses: ./.github/workflows/job_vscode_extension.yaml
+    with:
+      commit-tag: ${{ needs.release.outputs.commit-tag }}
+      gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
+      artifact-name: vscode-extension
     
   build-platform-package:
     name: Build Compiler and Associated Installers
-    needs: [release, build-vscode-extension]
-    runs-on:  ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: ./compiler
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            artifact: ironplcc-x86_64-windows.exe
-            rust_target: x86_64-pc-windows-msvc
-          - os: windows-latest
-            artifact: ironplcc-aarch64-windows.exe
-            rust_target: aarch64-pc-windows-msvc
-          - os: ubuntu-latest
-            artifact: ironplcc-x86_64-linux-musl.tar.gz
-            rust_target: x86_64-unknown-linux-musl
-          - os: macos-latest
-            artifact: ironplcc-x86_64-macos.tar.gz
-            rust_target: x86_64-apple-darwin
-          - os: macos-latest
-            artifact: ironplcc-aarch64-macos.tar.gz
-            rust_target: aarch64-apple-darwin
-
-    steps:
-      # Checkout the code. If we are creating a release, then checkout
-      # the release tag. Otherwise just checkout the latest code.
-      - name: Checkout tag ${{ needs.release.outputs.commit_tag }}
-        uses: actions/checkout@v3
-        if: ${{ !inputs.dryrun }}
-        with:
-          ref: ${{ needs.release.outputs.commit_tag }}
-      - name: Checkout HEAD
-        uses: actions/checkout@v3
-        if: ${{ inputs.dryrun }}
-
-      - uses: taiki-e/install-action@just
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt, clippy
-          target: ${{ matrix.rust_target }}
-      - uses: taiki-e/install-action@cargo-llvm-cov
-
-      - name: Compiler CI checks
-        run: just ci
-
-      # Assumes a number of packages are installed on the host
-      - name: Create installer
-        run: just package ${{ needs.release.outputs.version }} ${{ matrix.artifact }} ${{ matrix.rust_target }}
-
-      - name: Upload Installer
-        if: ${{ !inputs.dryrun }}
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            compiler/${{ matrix.artifact }}
-            compiler/${{ matrix.artifact }}.sha256
-          token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: ${{ needs.release.outputs.github_release_tag }}
-          fail_on_unmatched_files: true
-          draft: true
+    needs: [release]
+    uses: ./.github/workflows/job_compiler.yaml
+    with:
+      commit-tag: ${{ needs.release.outputs.commit-tag }}
+      gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
+      version: ${{ needs.release.outputs.version }}
 
   publish-prerelease:
-    name: Mark as Prerelease
+    name: Label GitHub Release as Prerelease
     # In order to do a smoke test, we need a public accessible release
     needs: [release, build-platform-package, build-vscode-extension]
     runs-on: ubuntu-latest
+    if: ${{ !inputs.dryrun }}
     steps:
-      - name: Publish pre-release
-        if: ${{ !inputs.dryrun }}
+      # Save artifacts
+      - name: Label GitHub Release as pre-release
         uses: irongut/EditRelease@v1.2.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          id: ${{ needs.release.outputs.release_id }}
+          id: ${{ needs.release.outputs.gh-release-id }}
           prerelease: true
           draft: false
 
@@ -262,7 +153,8 @@ jobs:
     # all work together. If this passes, we have a good consistent
     # build.
     needs: [release, publish-prerelease]
-    uses: ./.github/workflows/endtoend.yaml
+    uses: ./.github/workflows/job_endtoend.yaml
+    if: ${{ !inputs.dryrun }}
     with:
       version: ${{ needs.release.outputs.version }}
       download-tag: v${{ needs.release.outputs.version }}
@@ -275,71 +167,47 @@ jobs:
     # The website doesn't depend on these but we don't publish
     # if those are failing so we depend on those.
     needs: [release, smoke-test]
+    uses: ./.github/workflows/job_website.yaml
+    if: ${{ !inputs.dryrun }}
+    with:
+      publish: true
+      commit-tag: ${{ needs.release.outputs.commit-tag }}
+
+  publish-release:
+    name: Publish Release
+    needs: [release, publish-website]
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./docs
     steps:
-      - uses: actions/checkout@v3
-        if: ${{ !inputs.dryrun }}
+      # Fetch input artifacts and code
+      - name: Download VSIX Build Artifact
+        uses: actions/download-artifact@v3
         with:
-          ref: ${{ needs.release.outputs.commit_tag }}
-      - uses: actions/checkout@v3
-        if: ${{ inputs.dryrun }}
+          name: vscode-extension
+          path: vscode-extension.vsix
+      
+      # Configure the execution environment
       - uses: taiki-e/install-action@just
-      - name: Set up Python 3.x
-        uses: actions/setup-python@v4
+      - uses: actions/setup-node@v3
         with:
-          python-version: '3.x'
+          cache: npm
+          node-version: 'lts/Hydrogen'
 
-      - name: Build docs
-        run: just ci
-
-      - name: Copy Build to gh-pages branch
+      # Execute build recipes
+      - name: Publish VS Code Extension to Marketplace
         if: ${{ !inputs.dryrun }}
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          publish_branch: gh-pages
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          # The action doesn't seem to respect the working directory
-          publish_dir: docs/_build
-          force_orphan: false
-          allow_empty_commit: false
+        run: just publish vscode-extension.vsix ${{ secrets.VS_MARKETPLACE_TOKEN }}
 
-  publish-release:
-    name: Finalize Release
-    needs: [release, publish-website]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Publish release
+      # Save artifacts
+      - name: Publish GitHub Release
         if: ${{ !inputs.dryrun }}
         uses: irongut/EditRelease@v1.2.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          id: ${{ needs.release.outputs.release_id }}
+          id: ${{ needs.release.outputs.gh-release-id }}
           prerelease: false
-
-      - name: Download Build Artifact
-        uses: actions/download-artifact@v2
-        with:
-          name: vscode-extension
-          path: ${{ steps.build-vscode-extension.outputs.vsix_path }}
-
-      - name: Publish to Visual Studio Marketplace
-        uses: HaaLeo/publish-vscode-extension@v1
-        with:
-          pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
-          extensionFile: ${{ needs.build-vscode-extension.outputs.vsix_path }}
-          registryUrl: https://marketplace.visualstudio.com
-    
-      - name: Cleanup Drafts and Old Release
-        if: ${{ !inputs.dryrun }}
-        uses: eregon/keep-last-n-releases@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          n: 52
-          remove_tags_without_release: true
 
   publish-homebrew:
     name: Publish Homebrew Tap
@@ -349,18 +217,22 @@ jobs:
       run:
         working-directory: ./compiler
     steps:
-      - uses: actions/checkout@v3
+      # Fetch input artifacts and code
+      - uses: actions/checkout@v4
         if: ${{ !inputs.dryrun }}
         with:
-          ref: ${{ needs.release.outputs.commit_tag }}
-      - uses: actions/checkout@v3
+          ref: ${{ needs.release.outputs.commit-tag }}
+      - uses: actions/checkout@v4
         if: ${{ inputs.dryrun }}
 
+      # Configure the execution environment
       - uses: taiki-e/install-action@just
 
+      # Execute build recipes
       - name: Build Homebrew repository
         run: just publish ${{ needs.release.outputs.version }} ironplcc-x86_64-macos.tar.gz ironplcc-x86_64-linux-musl.tar.gz
 
+      # Save artifacts
       - name: Copy to Homebrew Tap Repository
         if: ${{ !inputs.dryrun }}
         uses: peaceiris/actions-gh-pages@v3
@@ -372,6 +244,21 @@ jobs:
           publish_dir: compiler/target/homebrew
           force_orphan: false
           allow_empty_commit: false
+
+  cleanup:
+    name: Cleanup Old Artifacts
+    needs: [publish-homebrew]
+    runs-on: ubuntu-latest
+    steps:
+      # Execute build recipes
+      - name: Cleanup Drafts and Old Release
+        if: ${{ !inputs.dryrun }}
+        uses: eregon/keep-last-n-releases@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          n: 52
+          remove_tags_without_release: true
 
 
       

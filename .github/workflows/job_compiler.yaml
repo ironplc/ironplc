@@ -1,0 +1,102 @@
+name: IronPLC Compiler
+on:
+  # Allow triggering directly
+  workflow_dispatch:
+    inputs:
+      commit-tag:
+        required: false
+        type: string
+        description: 'If not empty, then run for the specified tag'
+      gh-release-tag:
+        required: false
+        type: string
+        default: ""
+        description: 'The Github Release tag to publish to (empty value disables publishing)'
+      version:
+        required: false
+        type: string
+        default: "0.0.0"
+        description: "The version number, such as 1.2.3"
+  
+  # Allow using this workflow from another workflow
+  workflow_call:
+    inputs:
+      commit-tag:
+        required: false
+        type: string
+        description: 'If not empty, then run for the specified tag'
+      gh-release-tag:
+        required: false
+        type: string
+        default: ""
+        description: 'The Github Release tag to publish to (empty value disables publishing)'
+      version:
+        required: false
+        type: string
+        default: ""
+        description: "The version number, such as 1.2.3"
+
+jobs:
+  compiler:
+    name: Build Compiler and Associated Installers
+    runs-on:  ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: ./compiler
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: ironplcc-x86_64-windows.exe
+            rust_target: x86_64-pc-windows-msvc
+          - os: windows-latest
+            artifact: ironplcc-aarch64-windows.exe
+            rust_target: aarch64-pc-windows-msvc
+          - os: ubuntu-latest
+            artifact: ironplcc-x86_64-linux-musl.tar.gz
+            rust_target: x86_64-unknown-linux-musl
+          - os: macos-latest
+            artifact: ironplcc-x86_64-macos.tar.gz
+            rust_target: x86_64-apple-darwin
+          - os: macos-latest
+            artifact: ironplcc-aarch64-macos.tar.gz
+            rust_target: aarch64-apple-darwin
+
+    steps:
+      # Fetch input artifacts and code
+      - name: Checkout tag ${{ inputs.commit-tag }}
+        uses: actions/checkout@v4
+        if: ${{ inputs.commit-tag }}
+        with:
+          ref: ${{ inputs.commit-tag  }}
+      - name: Checkout HEAD
+        uses: actions/checkout@v4
+        if: ${{ !inputs.commit-tag }}
+
+      # Configure the execution environment
+      - uses: taiki-e/install-action@just
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+          target: ${{ matrix.rust_target }}
+      - uses: taiki-e/install-action@cargo-llvm-cov
+
+      # Execute build recipes
+      - name: Compiler CI checks
+        run: just ci
+      - name: Create installer package
+        run: just package ${{ inputs.version }} ${{ matrix.artifact }} ${{ matrix.rust_target }}
+
+      # Save artifacts
+      - name: Upload Compiler Installer to GitHub Release
+        if: ${{ inputs.gh-release-tag }}
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            compiler/${{ matrix.artifact }}
+            compiler/${{ matrix.artifact }}.sha256
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag_name: ${{ inputs.gh-release-tag }}
+          fail_on_unmatched_files: true
+          draft: true

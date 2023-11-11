@@ -46,3 +46,10 @@ version version:
 # Updates dependencies to latest version (or at least tries to)
 update:
   npm update
+
+# Publishes a VSIX archive to the Visual Studio Marketplace
+publish vsixfilename $VSCE_PAT:
+  # vsixfilename: The name of the VSIX archive to publish. 
+  #
+  # VSCE_PAT: The personal access token for publishing
+  vsce publish --pre-release --packagePath {{vsixfilename}}
