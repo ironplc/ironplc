@@ -4,12 +4,12 @@ on:
   # Allow triggering directly
   workflow_dispatch:
     inputs:
-      version:
+      compiler-version:
         required: true
         type: string
-        description: 'The version number to test with (without the "v" prefix)'
+        description: 'Usually the version number to test with (without the "v" prefix)'
 
-      download-tag:
+      vscode-extension-version:
         required: true
         type: string
         description: 'Usually the version number to test with (without the "v" prefix)'
@@ -30,17 +30,17 @@ on:
         required: true
         type: string
         description: "The identifier for the Visual Studio Code extension"
-        default: "garretfick.ironplc"
+        default: "ironplc.ironplc"
 
   # Allow using this workflow from another workflow
   workflow_call:
     inputs:
-      version:
+      compiler-version:
         required: true
         type: string
-        description: 'The version number to test with (without the "v" prefix)'
+        description: 'Usually the version number to test with (without the "v" prefix)'
 
-      download-tag:
+      vscode-extension-version:
         required: true
         type: string
         description: 'Usually the version number to test with (without the "v" prefix)'
@@ -75,4 +75,4 @@ jobs:
 
       # Execute build recipes
       - name: End to end test
-        run: just endtoend-smoke ${{ inputs.version }} ${{ inputs.download-tag }} ${{ inputs.ironplcc-installer-x86_64-windows-filename }} ${{ inputs.ironplc-vscode-extension-filename }} ${{ inputs.ironplc-vscode-extension-name }}
+        run: just endtoend-smoke ${{ inputs.compiler-version }} ${{ inputs.vscode-extension-version }} ${{ inputs.ironplcc-installer-x86_64-windows-filename }} ${{ inputs.ironplc-vscode-extension-filename }} ${{ inputs.ironplc-vscode-extension-name }}

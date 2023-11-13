@@ -49,19 +49,19 @@ jobs:
         include:
           - os: windows-latest
             artifact: ironplcc-x86_64-windows.exe
-            rust_target: x86_64-pc-windows-msvc
+            rust-target: x86_64-pc-windows-msvc
           - os: windows-latest
             artifact: ironplcc-aarch64-windows.exe
-            rust_target: aarch64-pc-windows-msvc
+            rust-target: aarch64-pc-windows-msvc
           - os: ubuntu-latest
             artifact: ironplcc-x86_64-linux-musl.tar.gz
-            rust_target: x86_64-unknown-linux-musl
+            rust-target: x86_64-unknown-linux-musl
           - os: macos-latest
             artifact: ironplcc-x86_64-macos.tar.gz
-            rust_target: x86_64-apple-darwin
+            rust-target: x86_64-apple-darwin
           - os: macos-latest
             artifact: ironplcc-aarch64-macos.tar.gz
-            rust_target: aarch64-apple-darwin
+            rust-target: aarch64-apple-darwin
 
     steps:
       # Fetch input artifacts and code
@@ -79,14 +79,14 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt, clippy
-          target: ${{ matrix.rust_target }}
+          target: ${{ matrix.rust-target }}
       - uses: taiki-e/install-action@cargo-llvm-cov
 
       # Execute build recipes
       - name: Compiler CI checks
         run: just ci
       - name: Create installer package
-        run: just package ${{ inputs.version }} ${{ matrix.artifact }} ${{ matrix.rust_target }}
+        run: just package ${{ inputs.version }} ${{ matrix.artifact }} ${{ matrix.rust-target }}
 
       # Save artifacts
       - name: Upload Compiler Installer to GitHub Release

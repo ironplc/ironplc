@@ -18,6 +18,10 @@ const VERBOSITY = new Map<string, string[]>([
 
 let client: LanguageClient | undefined;
 
+function openProblemInBrowser(code: string) {
+	vscode.env.openExternal(vscode.Uri.parse('https://ironcplc.com/integrations/vscode/problems/' + code));
+}
+
 // This method is called when this extension is activated.
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Extension "ironplc" is activating!');
@@ -122,7 +126,7 @@ function findCompiler() {
 
 		const testExe = path.join(testDir, 'ironplcc' + ext);
 		if (!existsSync(testExe)) {
-			triedLocations.push(typeType + ": " + testExe);
+			triedLocations.push(typeType + ': (' + testExe + ')');
 			// The file name doesn't exist
 			continue;
 		}
@@ -131,7 +135,10 @@ function findCompiler() {
 		return testExe;
 	}
 
-	vscode.window.showErrorMessage('Unable to locate IronPLC compiler after searching ' + triedLocations + '. IronPLC is not installed or not configured.');
+	vscode.window.showErrorMessage('Unable to locate IronPLC compiler. Tried ' + triedLocations + '. IronPLC is not installed or not configured.', 'Open Online Help')
+		.then(item => {
+			openProblemInBrowser('E0001');
+		});
 	return undefined;
 }
 
