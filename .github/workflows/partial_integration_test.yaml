@@ -1,5 +1,4 @@
 name: End to End Smoke Test
-
 on:
   # Allow triggering directly
   workflow_dispatch:

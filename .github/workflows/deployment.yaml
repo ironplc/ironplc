@@ -34,7 +34,7 @@ jobs:
   build-vscode-extension:
     name: Build Visual Studio Code Extension
     needs: [release]
-    uses: ./.github/workflows/job_vscode_extension.yaml
+    uses: ./.github/workflows/partial_vscode_extension.yaml
     with:
       commit-tag: ${{ needs.release.outputs.commit-tag }}
       gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
@@ -43,7 +43,7 @@ jobs:
   build-platform-package:
     name: Build Compiler and Associated Installers
     needs: [release]
-    uses: ./.github/workflows/job_compiler.yaml
+    uses: ./.github/workflows/partial_compiler.yaml
     with:
       commit-tag: ${{ needs.release.outputs.commit-tag }}
       gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
@@ -85,7 +85,7 @@ jobs:
     # The website doesn't depend on these but we don't publish
     # if those are failing so we depend on those.
     needs: [release, smoke-test]
-    uses: ./.github/workflows/job_website.yaml
+    uses: ./.github/workflows/partial_website.yaml
     if: ${{ !inputs.dryrun }}
     with:
       publish: true
