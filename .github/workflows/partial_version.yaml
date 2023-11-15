@@ -1,0 +1,130 @@
+name: Version
+on:
+  # Allow triggering directly
+  workflow_dispatch:
+    inputs:
+      commit-tag:
+        required: false
+        type: string
+        description: 'If not empty, then run for the specified tag'
+      gh-release-tag:
+        required: false
+        type: string
+        default: ""
+        description: 'The Github Release tag to publish to (empty value disables publishing)'
+      version:
+        required: false
+        type: string
+        default: "0.0.0"
+        description: "The version number, such as 1.2.3"
+  
+  # Allow using this workflow from another workflow
+  workflow_call:
+    inputs:
+      dryrun:
+        type: boolean
+        description: 'If set, run as a dry run and do not create the release artifacts'
+        default: true
+    outputs:
+      gh-release-id:
+        description: The identifier for the Github release - a unique number
+        value: ${{ jobs.release.outputs.gh-release-id }}
+      gh-release-tag:
+        description: The tag that is the Github release
+        value: ${{ jobs.release.outputs.gh-release-tag }}
+      commit-tag:
+        description: The tag in the git repository (e.g. v1.0.0)
+        value: ${{ jobs.release.outputs.commit-tag }}
+      version:
+        description: The version number of components (e.g. 1.0.0)
+        value: ${{ jobs.release.outputs.version }}
+
+jobs:
+    release:
+        name: Create Version Numbers and GitHub Release for the Artifacts
+        # Only needs to run on one platform because this is defining
+        # the container for the release rather than building the artifacts
+        runs-on: ubuntu-latest
+        
+        outputs:
+          # The identifier for the Github release - a unique number
+          gh-release-id: ${{ steps.create_release.outputs.id }}
+          # The tag that is the Github release
+          gh-release-tag: v${{ steps.versioning.outputs.minor || '0.0.0' }}
+          # The tag in the git repository (e.g. v1.0.0)
+          commit-tag: ${{ steps.versioning.outputs.v_minor || 'HEAD' }}
+          # The version number of components (e.g. 1.0.0)
+          version: ${{ steps.versioning.outputs.minor || '0.0.0' }}
+        
+        steps:
+          # Checkout the repository with all tags so that versioning can find
+          # the prior release.
+          - uses: taiki-e/install-action@just
+    
+          # We use environment tools to setup the version number, so these
+          # need to be present.
+          - uses: actions-rust-lang/setup-rust-toolchain@v1
+          - uses: actions/setup-node@v3
+    
+          - uses: actions/checkout@v4
+            with:
+              fetch-depth: 0
+              # This is a workaround for branch protections. In general, we want to
+              # protect branches from changes, but we'll take the publish as special
+              # because we need to create a new version number. This allows making
+              # changes to the repository without removing the branch protections.
+              token: ${{secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN}}
+          - name: Git tags
+            run: |
+              git pull --tags
+    
+          - name: Get Previous Tag (the last release)
+            id: previoustag
+            uses: "WyriHaximus/github-action-get-previous-tag@v1"
+    
+          # If we are not doing a dry run, then we want to get the next version
+          # number and then set that in the code
+          - name: Determine next release version
+            if: ${{ !inputs.dryrun }}
+            id: versioning
+            uses: "WyriHaximus/github-action-next-semvers@v1"
+            with:
+              version: ${{ steps.previoustag.outputs.tag }}
+          - name: Update version number in the repository
+            if: ${{ !inputs.dryrun }}
+            run: just version ${{ steps.versioning.outputs.minor }}
+    
+          - name: Create Git commit with new version and push for revision bump
+            if: ${{ !inputs.dryrun }}
+            env: 
+              CI_COMMIT_MESSAGE: Continuous integration version increment
+              CI_COMMIT_AUTHOR: Continuous Integration
+              CI_COMMIT_TAG: v${{ steps.versioning.outputs.minor }}
+            run: |
+              git config --global user.name "${{ env.CI_COMMIT_AUTHOR }}"
+              git config --global user.email "garretfick@users.noreply.github.com"
+              git commit -a -m "${{ env.CI_COMMIT_MESSAGE }}"
+              git tag -a "${{ env.CI_COMMIT_TAG }}" -m "Create tagged release ${{ env.CI_COMMIT_TAG }}"
+              git push
+              git push --tags
+            
+          - name: Create Github Release
+            if: ${{ !inputs.dryrun }}
+            id: create_release
+            uses: softprops/action-gh-release@v1
+            with:
+              token: "${{ secrets.GITHUB_TOKEN }}"
+              tag_name: v${{ steps.versioning.outputs.minor }}
+              draft: true
+              prerelease: false
+    
+          # The URL is something like https://github.com/ironplc/ironplc/releases/tag/untagged-ab4d5eb608ce1d11c289
+          # and we want the last component of the URL.
+          - name: Get GitHub Release ID
+            if: ${{ !inputs.dryrun }}
+            id: download_tag
+            run: |
+              url="${{steps.create_release.outputs.url}}"
+              id=$(echo $url | rev | cut -d/ -f1 | rev)
+              echo "id=$id" >> $GITHUB_OUTPUT
+    
