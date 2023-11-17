@@ -64,7 +64,7 @@ jobs:
             rust_target: aarch64-apple-darwin
 
     steps:
-      # Fetch input artifacts and code
+      # Checkout the repository/fetch input artifacts
       - name: Checkout tag ${{ inputs.commit-tag }}
         uses: actions/checkout@v4
         if: ${{ inputs.commit-tag }}
@@ -82,13 +82,28 @@ jobs:
           target: ${{ matrix.rust_target }}
       - uses: taiki-e/install-action@cargo-llvm-cov
 
-      # Execute build recipes
-      - name: Compiler CI checks
-        run: just ci
+      # Execute build recipe
+      - name: Build the compiler
+        run: just build-and-test
       - name: Create installer package
         run: just package ${{ inputs.version }} ${{ matrix.artifact }} ${{ matrix.rust_target }}
 
-      # Save artifacts
+      # Save output artifacts
+      - name: Upload compiler installer to build artifacts
+        if: ${{ inputs.gh-release-tag }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.artifact }}
+          path: compiler/${{ matrix.artifact }}
+          if-no-files-found: error
+
+      - name: Upload Compiler Installer SHA256 to Build Artifacts
+        if: ${{ inputs.gh-release-tag }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.artifact }}.sha256
+          path: compiler/${{ matrix.artifact }}.sha256
+          if-no-files-found: error
       - name: Upload Compiler Installer to GitHub Release
         if: ${{ inputs.gh-release-tag }}
         uses: softprops/action-gh-release@v1
