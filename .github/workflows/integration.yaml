@@ -1,4 +1,4 @@
-name: Build and Test
+name: IronPLC Integration
 on:
   pull_request:
     branches:    
@@ -12,7 +12,7 @@ on:
 jobs:
   ironplcc-tests:
     name: Build IronPLC Compiler
-    uses: ./.github/workflows/job_compiler.yaml
+    uses: ./.github/workflows/partial_compiler.yaml
     with:
       commit-tag: ""
       gh-release-tag: ""
@@ -20,7 +20,7 @@ jobs:
 
   vscode-extension:
     name: Build Visual Studio Code Extension
-    uses: ./.github/workflows/job_vscode_extension.yaml
+    uses: ./.github/workflows/partial_vscode_extension.yaml
     with:
       commit-tag: ""
       gh-release-tag: ""
@@ -30,7 +30,7 @@ jobs:
     name: Build Website
     # The website doesn't depend on these but we don't publish
     # if those are failing so we depend on those.
-    uses: ./.github/workflows/job_website.yaml
+    uses: ./.github/workflows/partial_website.yaml
     with:
       commit-tag: ""
       publish: false
