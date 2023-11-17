@@ -84,7 +84,7 @@ jobs:
 
       # Execute build recipe
       - name: Build the compiler
-        run: just build-and-test
+        run: just ci
       - name: Create installer package
         run: just package ${{ inputs.version }} ${{ matrix.artifact }} ${{ matrix.rust_target }}
 
