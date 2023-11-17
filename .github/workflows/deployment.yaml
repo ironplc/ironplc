@@ -22,101 +22,19 @@ on:
         description: 'If set, run as a dry run and do not create the release artifacts'
         default: true
 
-name: Publish IronPLC Releases
+name: IronPLC Deployment
 
 jobs:
   release:
     name: Create Version Numbers and GitHub Release for the Artifacts
-    # Only needs to run on one platform because this is defining
-    # the container for the release rather than building the artifacts
-    runs-on: ubuntu-latest
-    
-    outputs:
-      # The identifier for the Github release - a unique number
-      gh-release-id: ${{ steps.create_release.outputs.id }}
-      # The tag that is the Github release
-      gh-release-tag: v${{ steps.versioning.outputs.minor || '0.0.0' }}
-      # The tag in the git repository (e.g. v1.0.0)
-      commit-tag: ${{ steps.versioning.outputs.v_minor || 'HEAD' }}
-      # The version number of components (e.g. 1.0.0)
-      version: ${{ steps.versioning.outputs.minor || '0.0.0' }}
-    
-    steps:
-      # Checkout the repository with all tags so that versioning can find
-      # the prior release.
-      - uses: taiki-e/install-action@just
-
-      # We use environment tools to setup the version number, so these
-      # need to be present.
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - uses: actions/setup-node@v3
-
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          # This is a workaround for branch protections. In general, we want to
-          # protect branches from changes, but we'll take the publish as special
-          # because we need to create a new version number. This allows making
-          # changes to the repository without removing the branch protections.
-          token: ${{secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN}}
-      - name: Git tags
-        run: |
-          git pull --tags
-
-      - name: Get Previous Tag (the last release)
-        id: previoustag
-        uses: "WyriHaximus/github-action-get-previous-tag@v1"
-
-      # If we are not doing a dry run, then we want to get the next version
-      # number and then set that in the code
-      - name: Determine next release version
-        if: ${{ !inputs.dryrun }}
-        id: versioning
-        uses: "WyriHaximus/github-action-next-semvers@v1"
-        with:
-          version: ${{ steps.previoustag.outputs.tag }}
-      - name: Update version number in the repository
-        if: ${{ !inputs.dryrun }}
-        run: just version ${{ steps.versioning.outputs.minor }}
-
-      - name: Create Git commit with new version and push for revision bump
-        if: ${{ !inputs.dryrun }}
-        env: 
-          CI_COMMIT_MESSAGE: Continuous integration version increment
-          CI_COMMIT_AUTHOR: Continuous Integration
-          CI_COMMIT_TAG: v${{ steps.versioning.outputs.minor }}
-        run: |
-          git config --global user.name "${{ env.CI_COMMIT_AUTHOR }}"
-          git config --global user.email "garretfick@users.noreply.github.com"
-          git commit -a -m "${{ env.CI_COMMIT_MESSAGE }}"
-          git tag -a "${{ env.CI_COMMIT_TAG }}" -m "Create tagged release ${{ env.CI_COMMIT_TAG }}"
-          git push
-          git push --tags
-        
-      - name: Create Github Release
-        if: ${{ !inputs.dryrun }}
-        id: create_release
-        uses: softprops/action-gh-release@v1
-        with:
-          token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: v${{ steps.versioning.outputs.minor }}
-          draft: true
-          prerelease: false
-
-      # The URL is something like https://github.com/ironplc/ironplc/releases/tag/untagged-ab4d5eb608ce1d11c289
-      # and we want the last component of the URL.
-      - name: Get GitHub Release ID
-        if: ${{ !inputs.dryrun }}
-        id: download_tag
-        run: |
-          url="${{steps.create_release.outputs.url}}"
-          id=$(echo $url | rev | cut -d/ -f1 | rev)
-          echo "id=$id" >> $GITHUB_OUTPUT
+    uses: ./.github/workflows/partial_version.yaml
+    with:
+      dryrun: ${{ inputs.dryrun }}
 
   build-vscode-extension:
     name: Build Visual Studio Code Extension
     needs: [release]
-    uses: ./.github/workflows/job_vscode_extension.yaml
+    uses: ./.github/workflows/partial_vscode_extension.yaml
     with:
       commit-tag: ${{ needs.release.outputs.commit-tag }}
       gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
@@ -125,7 +43,7 @@ jobs:
   build-platform-package:
     name: Build Compiler and Associated Installers
     needs: [release]
-    uses: ./.github/workflows/job_compiler.yaml
+    uses: ./.github/workflows/partial_compiler.yaml
     with:
       commit-tag: ${{ needs.release.outputs.commit-tag }}
       gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
@@ -153,7 +71,7 @@ jobs:
     # all work together. If this passes, we have a good consistent
     # build.
     needs: [release, publish-prerelease]
-    uses: ./.github/workflows/job_endtoend.yaml
+    uses: ./.github/workflows/partial_integration_test.yaml
     if: ${{ !inputs.dryrun }}
     with:
       version: ${{ needs.release.outputs.version }}
@@ -167,7 +85,7 @@ jobs:
     # The website doesn't depend on these but we don't publish
     # if those are failing so we depend on those.
     needs: [release, smoke-test]
-    uses: ./.github/workflows/job_website.yaml
+    uses: ./.github/workflows/partial_website.yaml
     if: ${{ !inputs.dryrun }}
     with:
       publish: true
