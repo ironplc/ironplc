@@ -96,7 +96,7 @@ _version-unix version:
 
 commit-version authorname authoremail version:
   git config --global user.name "{{authorname}}"
-  git config --global user.email "{{email}}"
+  git config --global user.email "{{authoremail}}"
   git commit -a -m "Create version {{version}}"
   git tag -a "v{{version}}" -m "Create tagged release v{{version}}"
 
