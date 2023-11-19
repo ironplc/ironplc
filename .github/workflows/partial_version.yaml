@@ -25,6 +25,11 @@ on:
         type: boolean
         description: 'If set, run as a dry run and do not create the release artifacts'
         default: true
+        
+    secrets:
+      IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN:
+        required: true
+
     outputs:
       gh-release-id:
         description: The identifier for the Github release - a unique number
