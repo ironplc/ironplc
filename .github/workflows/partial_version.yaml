@@ -57,7 +57,7 @@ jobs:
           # The tag that is the Github release
           gh-release-tag: v${{ steps.nextversion.outputs.version || '0.0.0' }}
           # The tag in the git repository (e.g. v1.0.0)
-          commit-tag: ${{ steps.nextversion.outputs.version && format('v{0}', steps.nextversion.outputs.version) || 'HEAD' }}
+          commit-tag: ${{ steps.nextversion.outputs.version && format('v{0}', steps.nextversion.outputs.version) || '' }}
           # The version number of components (e.g. 1.0.0)
           version: ${{ steps.nextversion.outputs.version || '0.0.0' }}
         
