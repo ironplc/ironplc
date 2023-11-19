@@ -48,13 +48,13 @@ jobs:
         
         outputs:
           # The identifier for the Github release - a unique number
-          gh-release-id: ${{ steps.create_release.outputs.id }}
+          gh-release-id: ${{ steps.create-release.outputs.id }}
           # The tag that is the Github release
-          gh-release-tag: v${{ steps.nexttag.outputs.minor || '0.0.0' }}
+          gh-release-tag: v${{ steps.nextversion.outputs.version || '0.0.0' }}
           # The tag in the git repository (e.g. v1.0.0)
-          commit-tag: ${{ steps.nexttag.outputs.v_minor || 'HEAD' }}
+          commit-tag: ${{ steps.nextversion.outputs.version && format('v{0}', steps.nextversion.outputs.version) || 'HEAD' }}
           # The version number of components (e.g. 1.0.0)
-          version: ${{ steps.nexttag.outputs.minor || '0.0.0' }}
+          version: ${{ steps.nextversion.outputs.version || '0.0.0' }}
         
         steps:
           # Checkout the repository including the tags
@@ -73,47 +73,34 @@ jobs:
           # Configure the execution environment
           - uses: taiki-e/install-action@just
           - uses: actions-rust-lang/setup-rust-toolchain@v1
-          - uses: actions/setup-node@v3
-    
+          - uses: actions/setup-node@v4
+
           # Execute build recipe
-          - name: Get Previous Tag (the last release)
-            id: previoustag
-            uses: "WyriHaximus/github-action-get-previous-tag@v1"
-    
-          # If we are not doing a dry run, then we want to get the next version
-          # number and then set that in the code
-          - name: Determine next release version
+          - name: Get the next version number
             if: ${{ !inputs.dryrun }}
-            id: nexttag
-            uses: "WyriHaximus/github-action-next-semvers@v1"
-            with:
-              version: ${{ steps.previoustag.outputs.tag }}
+            id: nextversion
+            run: echo "version=$(just get-next-version minor)\n" >> $GITHUB_OUTPUT
           - name: Update version number in the repository
             if: ${{ !inputs.dryrun }}
-            run: just version ${{ steps.nexttag.outputs.minor }}
+            run: just version ${{ steps.nextversion.outputs.version }}
+          - name: Commit version number to repository
+            if: ${{ !inputs.dryrun }}
+            run: just commit-version "Continuous Integration" "garretfick@users.noreply.github.com" ${{ steps.nextversion.outputs.version }}
     
           # Save output artifacts
-          - name: Create Git commit with new version and push for revision bump
+          - name: Push commit to the repository
             if: ${{ !inputs.dryrun }}
-            env: 
-              CI_COMMIT_MESSAGE: Continuous integration version increment
-              CI_COMMIT_AUTHOR: Continuous Integration
-              CI_COMMIT_TAG: v${{ steps.nexttag.outputs.minor }}
             run: |
-              git config --global user.name "${{ env.CI_COMMIT_AUTHOR }}"
-              git config --global user.email "garretfick@users.noreply.github.com"
-              git commit -a -m "${{ env.CI_COMMIT_MESSAGE }}"
-              git tag -a "${{ env.CI_COMMIT_TAG }}" -m "Create tagged release ${{ env.CI_COMMIT_TAG }}"
               git push
               git push --tags
             
           - name: Create Github Release
             if: ${{ !inputs.dryrun }}
-            id: create_release
+            id: create-release
             uses: softprops/action-gh-release@v1
             with:
               token: "${{ secrets.GITHUB_TOKEN }}"
-              tag_name: v${{ steps.nexttag.outputs.minor }}
+              tag_name: v${{ steps.nextversion.outputs.minor }}
               draft: true
               prerelease: false
     
