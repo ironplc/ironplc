@@ -99,9 +99,17 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./docs
+        working-directory: ./integrations/vscode
     steps:
-      # Fetch input artifacts and code
+      # Checkout the repository/fetch input artifacts
+      - name: Checkout tag ${{ needs.release.outputs.commit-tag }}
+        uses: actions/checkout@v4
+        if: ${{ needs.release.outputs.commit-tag }}
+        with:
+          ref: ${{ needs.release.outputs.commit-tag  }}
+      - name: Checkout HEAD
+        uses: actions/checkout@v4
+        if: ${{ !needs.release.outputs.commit-tag }}
       - name: Download VSIX Build Artifact
         uses: actions/download-artifact@v3
         with:
