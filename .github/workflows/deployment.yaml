@@ -119,9 +119,6 @@ jobs:
       # Configure the execution environment
       - uses: taiki-e/install-action@just
       - uses: actions/setup-node@v4
-        with:
-          cache: npm
-          node-version: 'lts/Hydrogen'
 
       # Execute build recipes
       - name: Publish VS Code Extension to Marketplace
