@@ -55,9 +55,9 @@ jobs:
           # The identifier for the Github release - a unique number
           gh-release-id: ${{ steps.create-release.outputs.id }}
           # The tag that is the Github release
-          gh-release-tag:  ${{ steps.nextversion.outputs.version && format('v{0}', steps.nextversion.outputs.version) || '' }}
+          gh-release-tag:  ${{ !inputs.dryrun && format('v{0}', steps.nextversion.outputs.version) || '' }}
           # The tag in the git repository (e.g. v1.0.0)
-          commit-tag: ${{ steps.nextversion.outputs.version && format('v{0}', steps.nextversion.outputs.version) || '' }}
+          commit-tag: ${{ !inputs.dryrun && format('v{0}', steps.nextversion.outputs.version) || '' }}
           # The version number of components (e.g. 1.0.0)
           version: ${{ steps.nextversion.outputs.version || '0.0.0' }}
         
@@ -82,11 +82,9 @@ jobs:
 
           # Execute build recipe
           - name: Get the next version number
-            if: ${{ !inputs.dryrun }}
             id: nextversion
             run: echo "version=$(just get-next-version minor)" >> $GITHUB_OUTPUT
           - name: Update version number in the repository
-            if: ${{ !inputs.dryrun }}
             run: just version ${{ steps.nextversion.outputs.version }}
           - name: Commit version number to repository
             if: ${{ !inputs.dryrun }}

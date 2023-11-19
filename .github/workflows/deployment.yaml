@@ -88,9 +88,8 @@ jobs:
     # if those are failing so we depend on those.
     needs: [release, smoke-test]
     uses: ./.github/workflows/partial_website.yaml
-    if: ${{ !inputs.dryrun }}
     with:
-      publish: true
+      publish: ${{ !inputs.dryrun }}
       commit-tag: ${{ needs.release.outputs.commit-tag }}
 
   publish-release:
