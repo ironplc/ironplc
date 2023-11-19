@@ -45,6 +45,39 @@ _ci-publish-workflow-windows:
 _ci-publish-workflow-unix:
   act workflow_dispatch --workflows ./.github/workflows/publish.yaml --verbose
 
+get-next-version type:
+  #! /bin/bash
+  RE='[^0-9]*\([0-9]*\)[.]\([0-9]*\)[.]\([0-9]*\)\([0-9A-Za-z-]*\)'
+
+  step="{{type}}"
+  if [ -z "{{type}}" ]
+  then
+    step=patch
+  fi
+
+  base=$(git tag 2>/dev/null| tail -n 1)
+
+  MAJOR=`echo $base | sed -e "s#$RE#\1#"`
+  MINOR=`echo $base | sed -e "s#$RE#\2#"`
+  PATCH=`echo $base | sed -e "s#$RE#\3#"`
+
+  case "$step" in
+    major)
+      let MAJOR+=1
+      let MINOR=0
+      let PATCH=0
+      ;;
+    minor)
+      let MINOR+=1
+      let PATCH=0
+      ;;
+    patch)
+      let PATCH+=1
+      ;;
+  esac
+
+  echo "$MAJOR.$MINOR.$PATCH"
+
 # Sets the version number for all components. Must be a "bare" version number, such as 0.0.1 or 1.0.1.
 version version:
   # We need this specific package to do the update
@@ -60,6 +93,12 @@ _version-unix version:
   cd compiler && just version {{version}}
   cd integrations/vscode && just version {{version}}
   cd docs && just version {{version}}
+
+commit-version authorname authoremail version:
+  git config --global user.name "{{authorname}}"
+  git config --global user.email "{{email}}"
+  git commit -a -m "Create version {{version}}"
+  git tag -a "v{{version}}" -m "Create tagged release v{{version}}"
 
 # Updates dependencies to latest versions
 update:
