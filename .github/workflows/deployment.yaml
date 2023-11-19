@@ -30,6 +30,8 @@ jobs:
     uses: ./.github/workflows/partial_version.yaml
     with:
       dryrun: ${{ inputs.dryrun }}
+    secrets:
+      IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN: ${{ secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN }}
 
   build-vscode-extension:
     name: Build Visual Studio Code Extension
