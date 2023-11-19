@@ -85,11 +85,13 @@ version version:
   @just _version-{{os_family()}} {{version}}
 
 _version-windows version:
+  @"Set version number to {{version}}"
   cd compiler; just version {{version}}
   cd integrations\vscode; just version {{version}}
   cd docs; just version {{version}}
 
 _version-unix version:
+  @echo "Set version number to {{version}}"
   cd compiler && just version {{version}}
   cd integrations/vscode && just version {{version}}
   cd docs && just version {{version}}
