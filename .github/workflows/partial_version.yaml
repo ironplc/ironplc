@@ -84,7 +84,7 @@ jobs:
           - name: Get the next version number
             if: ${{ !inputs.dryrun }}
             id: nextversion
-            run: echo "version=$(just get-next-version minor)\n" >> $GITHUB_OUTPUT
+            run: echo "version=$(just get-next-version minor)" >> $GITHUB_OUTPUT
           - name: Update version number in the repository
             if: ${{ !inputs.dryrun }}
             run: just version ${{ steps.nextversion.outputs.version }}
