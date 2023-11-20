@@ -120,6 +120,8 @@ jobs:
       - uses: actions/setup-node@v4
 
       # Execute build recipes
+      - name: Install dependencies
+        run: just setup
       - name: Publish VS Code Extension to Marketplace
         if: ${{ !inputs.dryrun }}
         run: just publish vscode-extension.vsix ${{ secrets.VS_MARKETPLACE_TOKEN }}
