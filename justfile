@@ -117,25 +117,27 @@ e2e_fspathesc := replace(e2e_fspath, "\\", "*")
 
 # End to end "smoke" test.
 [windows]
-endtoend-smoke version downloadtag compilerfilename extensionfilename ext_name:
+endtoend-smoke compiler-version compilerfilename extension-version extensionfilename extension-name:
   # There are two parts to IronPLC - the compiler and the extension
-  # This test ensures that they actually work together (out of the box)
+  # This test ensures that they actually work together (out of the box).
+  # The test supports different versions of the extension and compiler to
+  # check for compatibility between versions.
   #
-  # version is a semantic version number, such as "0.1.1"
-  # downloadtag is the tag to download from GitHub releases. The tag may be 
-  #             untagged-ab4d5eb608ce1d11c289 or a version with the prefix such
-  #             as "v0.1.1"
-  @just endtoend-smoke-download {{downloadtag}} {{compilerfilename}} {{extensionfilename}}
-  @just endtoend-smoke-test {{version}} {{ext_name}}
+  # extension-version: a semantic version number, such as "0.1.1"
+  # compiler-version: a semantic version number, such as "0.1.1"
+  # compilerfilename: the name of the compiler file in GitHub Releases
+  # compilerfilename: the name of the compiler file in GitHub Releases
+  @just endtoend-smoke-download v{{compiler-version}} {{compilerfilename}} v{{extension-version}} {{extensionfilename}}
+  @just endtoend-smoke-test {{extension-version}} {{compiler-version}} {{extension-name}}
 
 [windows]
-endtoend-smoke-download downloadtag compilerfilename extensionfilename:
-  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/{{downloadtag}}/{{compilerfilename}}" -OutFile ironplcc.exe
+endtoend-smoke-download compiler-release-tag compilerfilename extension-release-tag extensionfilename:
+  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/{{compiler-release-tag}}/{{compilerfilename}}" -OutFile ironplcc.exe
   Invoke-WebRequest -Uri "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user" -OutFile vscode.exe
-  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/{{downloadtag}}/{{extensionfilename}}" -OutFile ironplc.vsix
+  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/{{extension-release-tag}}/{{extensionfilename}}" -OutFile ironplc.vsix
 
 [windows]
-endtoend-smoke-test version ext_name:
+endtoend-smoke-test compiler-version extension-version extension-name:
   # Install the compiler
   Start-Process ironplcc.exe -ArgumentList "/S" -PassThru | Wait-Process -Timeout 60
 
@@ -153,12 +155,12 @@ endtoend-smoke-test version ext_name:
   Expand-Archive ironplc.vsix
   # Move the folder 
   New-Item -ItemType Directory -Force -Path "{{env_var('USERPROFILE')}}\.vscode\extensions\"
-  Move-Item ironplc\extension "{{env_var('USERPROFILE')}}\.vscode\extensions\{{ext_name}}-{{version}}"
-  Get-ChildItem "{{env_var('USERPROFILE')}}\.vscode\extensions\{{ext_name}}-{{version}}"
+  Move-Item ironplc\extension "{{env_var('USERPROFILE')}}\.vscode\extensions\{{extension-name}}-{{extension-version}}"
+  Get-ChildItem "{{env_var('USERPROFILE')}}\.vscode\extensions\{{extension-name}}-{{extension-version}}"
 
   # Create the extensions.json file that references this extension
   New-Item "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json" -Force
-  '[{"identifier":{"id":"{{ext_name}}"},"version":"{{version}}","location":{"$mid":1,"fsPath":"{{e2e_fspathesc}}{{ext_name}}-{{version}}","_sep":1,"external":"{{e2e_external}}{{ext_name}}-{{version}}","path":"{{e2e_path}}{{ext_name}}-{{version}}","scheme":"file"},"relativeLocation":"{{ext_name}}-{{version}}","metadata":{"installedTimestamp":1695013253133}}]'.replace('*', '\\') | Set-Content "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json"
+  '[{"identifier":{"id":"{{extension-name}}"},"version":"{{extension-version}}","location":{"$mid":1,"fsPath":"{{e2e_fspathesc}}{{extension-name}}-{{extension-version}}","_sep":1,"external":"{{e2e_external}}{{extension-name}}-{{extension-version}}","path":"{{e2e_path}}{{extension-name}}-{{extension-version}}","scheme":"file"},"relativeLocation":"{{extension-name}}-{{extension-version}}","metadata":{"installedTimestamp":1695013253133}}]'.replace('*', '\\') | Set-Content "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json"
   Get-Content -Path "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json"
 
   # Create the settings.json with the configuration to enable trace level logging (that's the 4 -v's)

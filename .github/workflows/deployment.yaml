@@ -19,8 +19,12 @@ on:
     inputs:
       dryrun:
         type: boolean
-        description: 'If set, run as a dry run and do not create the release artifacts'
+        description: If set, run as a dry run and do not create the release artifacts
         default: true
+      dryrun-test-version-override:
+        type: string
+        description: If set, a version number for end to end tests (instead of creating a new version for testing)
+        default: ''
 
 name: IronPLC Deployment
 
@@ -74,10 +78,10 @@ jobs:
     # build.
     needs: [release, publish-prerelease]
     uses: ./.github/workflows/partial_integration_test.yaml
-    if: ${{ !inputs.dryrun }}
+    if: ${{ !inputs.dryrun || inputs.dryrun-test-version-override }}
     with:
-      version: ${{ needs.release.outputs.version }}
-      download-tag: v${{ needs.release.outputs.version }}
+      extension-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override }}
+      compiler-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override  }}
       ironplcc-installer-x86_64-windows-filename: "ironplcc-x86_64-windows.exe"
       ironplc-vscode-extension-filename: "ironplc-vscode-extension.vsix"
       ironplc-vscode-extension-name: "garretfick.ironplc"
@@ -113,7 +117,7 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: vscode-extension
-          path: vscode-extension.vsix
+          path: ./integrations/vscode/vscode-extension.vsix
       
       # Configure the execution environment
       - uses: taiki-e/install-action@just
