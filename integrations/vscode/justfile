@@ -52,4 +52,4 @@ publish vsixfilename $VSCE_PAT:
   # vsixfilename: The name of the VSIX archive to publish. 
   #
   # VSCE_PAT: The personal access token for publishing
-  vsce publish --pre-release --packagePath {{vsixfilename}}
+  npx vsce publish --packagePath {{vsixfilename}} --pre-release 
