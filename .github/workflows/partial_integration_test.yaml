@@ -3,12 +3,12 @@ on:
   # Allow triggering directly
   workflow_dispatch:
     inputs:
-      version:
+      extension-version:
         required: true
         type: string
         description: 'The version number to test with (without the "v" prefix)'
 
-      download-tag:
+      compiler-version:
         required: true
         type: string
         description: 'Usually the version number to test with (without the "v" prefix)'
@@ -34,12 +34,12 @@ on:
   # Allow using this workflow from another workflow
   workflow_call:
     inputs:
-      version:
+      extension-version:
         required: true
         type: string
         description: 'The version number to test with (without the "v" prefix)'
 
-      download-tag:
+      compiler-version:
         required: true
         type: string
         description: 'Usually the version number to test with (without the "v" prefix)'
@@ -74,4 +74,4 @@ jobs:
 
       # Execute build recipes
       - name: End to end test
-        run: just endtoend-smoke ${{ inputs.version }} ${{ inputs.download-tag }} ${{ inputs.ironplcc-installer-x86_64-windows-filename }} ${{ inputs.ironplc-vscode-extension-filename }} ${{ inputs.ironplc-vscode-extension-name }}
+        run: just endtoend-smoke ${{ inputs.compiler-version }} ${{ inputs.ironplcc-installer-x86_64-windows-filename }} ${{ inputs.extension-version }} ${{ inputs.ironplc-vscode-extension-filename }} ${{ inputs.ironplc-vscode-extension-name }}
