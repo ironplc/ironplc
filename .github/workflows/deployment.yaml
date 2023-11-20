@@ -19,11 +19,11 @@ on:
     inputs:
       dryrun:
         type: boolean
-        description: If set, run as a dry run and do not create the release artifacts
+        description: 'If set, run as a dry run and do not create the release artifacts'
         default: true
       dryrun-test-version-override:
         type: string
-        description: If set, a version number for end to end tests (instead of creating a new version for testing)
+        description: 'If set, provide a version number for end to end tests (instead of creating a new version for testing)'
         default: ''
 
 name: IronPLC Deployment
