@@ -44,7 +44,7 @@ jobs:
     with:
       commit-tag: ${{ needs.release.outputs.commit-tag }}
       gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
-      artifact-name: vscode-extension
+      artifact-name: ironplc-vscode-extension.vsix
     
   build-platform-package:
     name: Build Compiler and Associated Installers
@@ -116,8 +116,8 @@ jobs:
       - name: Download VSIX Build Artifact
         uses: actions/download-artifact@v3
         with:
-          name: vscode-extension
-          path: ./integrations/vscode/vscode-extension.vsix
+          name: ironplc-vscode-extension.vsix
+          path: ./integrations/vscode
       
       # Configure the execution environment
       - uses: taiki-e/install-action@just
@@ -128,7 +128,7 @@ jobs:
         run: just setup
       - name: Publish VS Code Extension to Marketplace
         if: ${{ !inputs.dryrun }}
-        run: just publish vscode-extension.vsix ${{ secrets.VS_MARKETPLACE_TOKEN }}
+        run: just publish ironplc-vscode-extension.vsix ${{ secrets.VS_MARKETPLACE_TOKEN }}
 
       # Save artifacts
       - name: Publish GitHub Release
