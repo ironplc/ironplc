@@ -1,0 +1,10 @@
+=====
+E0001
+=====
+
+.. problem-summary:: E0001
+
+The IronPLC Visual Studio Code Extension failed to locate the IronPLC Compiler.
+The IronPLC Compiler may not be installed.
+
+Verify that you have installed the IronPLC Compiler.

@@ -18,7 +18,7 @@
   "homepage": "https://www.ironplc.com",
   "repository": {
     "type": "git",
-    "url": "http://github.com/garretfick/ironplc.git",
+    "url": "http://github.com/ironplc/ironplc.git",
     "directory": "integrations/vscode"
   },
   "activationEvents": [],

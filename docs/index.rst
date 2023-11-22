@@ -26,3 +26,4 @@ Follow the steps in the :doc:`quickstart/index` guide to get started.
 
    Quick start <quickstart/index>
    Compiler <compiler/index>
+   Visual Studio Code Extension <vscode/index>

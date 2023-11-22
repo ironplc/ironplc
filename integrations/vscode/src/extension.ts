@@ -18,9 +18,13 @@ const VERBOSITY = new Map<string, string[]>([
 
 let client: LanguageClient | undefined;
 
+function openProblemInBrowser(code: string) {
+	vscode.env.openExternal(vscode.Uri.parse('https://www.ironplc.com/vscode/problems/' + code + '.html'));
+}
+
 // This method is called when this extension is activated.
 export function activate(context: vscode.ExtensionContext) {
-	console.log('Extension "ironplc" is activating!');
+	console.debug('Extension "ironplc" is activating!');
 
   	context.subscriptions.push(vscode.commands.registerCommand("ironplc.createNewStructuredTextFile", async () => {
 		await vscode.workspace.openTextDocument({ language: "61131-3-st"}).then(newFile => {
@@ -38,7 +42,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	if (client) {
 		client.start();
-		console.log('Extension "ironplc" is active!');
+		console.debug('Extension "ironplc" is active!');
 	} else {
 		console.error('Extension "ironplc" is NOT active!');
 	}
@@ -49,7 +53,7 @@ function createClient(compilerFilePath: string, config: vscode.WorkspaceConfigur
 	const logVerbosity = VERBOSITY.get(logLevel) || [];
 
 	const args = logVerbosity.concat(['lsp']);
-	console.log('Extension "ironplc" starting with args' + args);
+	console.debug('Extension "ironplc" starting with args: ' + args);
 
 	const application = {
 		command: compilerFilePath,
@@ -122,7 +126,7 @@ function findCompiler() {
 
 		const testExe = path.join(testDir, 'ironplcc' + ext);
 		if (!existsSync(testExe)) {
-			triedLocations.push(typeType + ": " + testExe);
+			triedLocations.push(typeType + ': (' + testExe + ')');
 			// The file name doesn't exist
 			continue;
 		}
@@ -131,7 +135,10 @@ function findCompiler() {
 		return testExe;
 	}
 
-	vscode.window.showErrorMessage('Unable to locate IronPLC compiler after searching ' + triedLocations + '. IronPLC is not installed or not configured.');
+	vscode.window.showErrorMessage('E0001 - Unable to locate IronPLC compiler. Tried ' + triedLocations.join(', ') + '. IronPLC is not installed or not configured.', 'Open Online Help')
+		.then(item => {
+			openProblemInBrowser('E0001');
+		});
 	return undefined;
 }
 

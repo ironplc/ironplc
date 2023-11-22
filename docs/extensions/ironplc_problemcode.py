@@ -11,24 +11,32 @@ from os.path import join
 
 # Check that for each problem code that the compiler can emit that we have a file
 # for that code and create a variable with the message text.
-help_topics = set([v.split('.')[0] for v in listdir(join('compiler', 'problems'))])
+compiler_help_topics = set([v.split('.')[0] for v in listdir(join('compiler', 'problems'))])
+extension_help_topics = set([v.split('.')[0] for v in listdir(join('vscode', 'problems'))])
+help_topics = compiler_help_topics.union(extension_help_topics)
 problem_infos = dict()
 
 class ProblemCode:
     def __init__(self, message):
         self.message = message
 
-with open(join('..', 'compiler', 'problems', 'resources', 'problem-codes.csv')) as fp:
-    problem_codes = csv.reader(fp)
-    # Skip the header
-    next(problem_codes)
+definitions = [
+    join('..', 'compiler', 'problems', 'resources', 'problem-codes.csv'),
+    join('..', 'integrations', 'vscode', 'resources', 'problem-codes.csv')
+]
 
-    for row in problem_codes:
-        code = row[0]
-        if code not in help_topics:
-            print('Missing help topic for ' + code)
-            exit(1)
-        problem_infos[code] = ProblemCode(row[2])
+for definition in definitions:
+    with open(definition) as fp:
+        problem_codes = csv.reader(fp)
+        # Skip the header
+        next(problem_codes)
+
+        for row in problem_codes:
+            code = row[0]
+            if code not in help_topics:
+                print('Missing help topic for ' + code)
+                exit(1)
+            problem_infos[code] = ProblemCode(row[2])
 
 class ProblemSummary(Directive):
     required_arguments = 1
