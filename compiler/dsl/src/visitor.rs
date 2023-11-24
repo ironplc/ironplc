@@ -11,6 +11,7 @@
 //!
 //! ```
 //! use ironplc_dsl::common::FunctionDeclaration;
+//! use ironplc_dsl::diagnostic::Diagnostic;
 //! use ironplc_dsl::visitor::{ Visitor, visit_function_declaration };
 //!
 //! struct Dummy {}
@@ -18,10 +19,10 @@
 //!   fn do_work() {}
 //! }
 //!
-//! impl Visitor<String> for Dummy {
+//! impl Visitor<Diagnostic> for Dummy {
 //!     type Value = ();
 //!
-//!     fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<Self::Value, String> {
+//!     fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<Self::Value, Diagnostic> {
 //!         // Do something custom before visiting the FunctionDeclaration node
 //!         Dummy::do_work();
 //!

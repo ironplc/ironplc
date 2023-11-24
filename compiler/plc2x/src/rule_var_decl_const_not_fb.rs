@@ -19,7 +19,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::{FileId, SourcePosition},
+    core::SourcePosition,
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -41,7 +41,6 @@ impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
                 return Err(Diagnostic::problem(
                     Problem::FunctionBlockNotConstant,
                     Label::source_loc(
-                        FileId::default(),
                         node.identifier.position(),
                         "Declaration of function block instance",
                     ),

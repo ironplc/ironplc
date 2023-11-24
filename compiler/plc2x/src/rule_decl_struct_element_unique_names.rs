@@ -53,21 +53,12 @@ impl Visitor<Diagnostic> for RuleStructElementNamesUnique {
                 Some(first) => {
                     return Err(Diagnostic::problem(
                         Problem::StructureDuplicatedElement,
-                        Label::source_loc(
-                            FileId::default(),
-                            node.type_name.position(),
-                            "Structure",
-                        ),
+                        Label::source_loc(node.type_name.position(), "Structure"),
                     )
                     .with_context_id("structure", &node.type_name)
                     .with_context_id("element", &element.name)
+                    .with_secondary(Label::source_loc(first.position(), "First use of name"))
                     .with_secondary(Label::source_loc(
-                        FileId::default(),
-                        first.position(),
-                        "First use of name",
-                    ))
-                    .with_secondary(Label::source_loc(
-                        FileId::default(),
                         element.name.position(),
                         "Second use of name",
                     )));

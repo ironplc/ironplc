@@ -22,6 +22,7 @@ mod rule_var_decl_global_const_requires_external_const;
 mod stages;
 mod symbol_graph;
 mod symbol_table;
+mod xform_assign_file_id;
 mod xform_resolve_late_bound_data_decl;
 mod xform_resolve_late_bound_type_initializer;
 

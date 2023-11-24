@@ -17,7 +17,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::{FileId, Id, SourcePosition},
+    core::{Id, SourcePosition},
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -47,16 +47,11 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
                         Some(first) => {
                             return Err(Diagnostic::problem(
                                 Problem::EnumTypeDeclDuplicateItem,
-                                Label::source_loc(
-                                    FileId::default(),
-                                    first.position(),
-                                    "First instance",
-                                ),
+                                Label::source_loc(first.position(), "First instance"),
                             )
                             .with_context_id("declaration", &node.type_name)
                             .with_context_id("duplicate value", first)
                             .with_secondary(Label::source_loc(
-                                FileId::default(),
                                 current.position(),
                                 "Duplicate value",
                             )));
@@ -74,6 +69,8 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
 
 #[cfg(test)]
 mod tests {
+    use ironplc_dsl::core::FileId;
+
     use super::*;
 
     use crate::stages::parse;

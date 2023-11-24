@@ -14,7 +14,7 @@
 //! END_RESOURCE
 use ironplc_dsl::{
     common::*,
-    core::{FileId, SourcePosition},
+    core::SourcePosition,
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -53,11 +53,7 @@ impl Visitor<Diagnostic> for RuleProgramTaskDefinitionExists {
                 if !task_names.contains(&task_name) {
                     return Err(Diagnostic::problem(
                         Problem::ProgramMissingTaskConfig,
-                        Label::source_loc(
-                            FileId::default(),
-                            task_name.position(),
-                            "Reference to task configuration",
-                        ),
+                        Label::source_loc(task_name.position(), "Reference to task configuration"),
                     )
                     .with_context_id("program", &program.name)
                     .with_context_id("task name", task_name));

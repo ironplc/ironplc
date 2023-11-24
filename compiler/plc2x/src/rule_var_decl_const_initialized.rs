@@ -30,7 +30,6 @@
 //! references the value (and still be constant).
 use ironplc_dsl::{
     common::*,
-    core::FileId,
     diagnostic::{Diagnostic, Label},
     visitor::{visit_variable_declaration, Visitor},
 };
@@ -61,7 +60,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                     None => {
                         return Err(Diagnostic::problem(
                             Problem::ConstantMustHaveInitializer,
-                            Label::source_loc(FileId::default(), &node.position, "Variable"),
+                            Label::source_loc(&node.position, "Variable"),
                         )
                         .with_context("variable", &node.identifier.to_string()));
                     }
@@ -71,11 +70,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                     None => {
                         return Err(Diagnostic::problem(
                             Problem::ConstantMustHaveInitializer,
-                            Label::source_loc(
-                                FileId::default(),
-                                &node.position,
-                                "Variable declaration",
-                            ),
+                            Label::source_loc(&node.position, "Variable declaration"),
                         )
                         .with_context("variable", &node.identifier.to_string()));
                     }
@@ -85,11 +80,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                     None => {
                         return Err(Diagnostic::problem(
                             Problem::ConstantMustHaveInitializer,
-                            Label::source_loc(
-                                FileId::default(),
-                                &node.position,
-                                "Variable declaration",
-                            ),
+                            Label::source_loc(&node.position, "Variable declaration"),
                         )
                         .with_context("variable", &node.identifier.to_string()));
                     }
@@ -100,11 +91,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                         None => {
                             return Err(Diagnostic::problem(
                                 Problem::ConstantMustHaveInitializer,
-                                Label::source_loc(
-                                    FileId::default(),
-                                    &node.position,
-                                    "Variable declaration",
-                                ),
+                                Label::source_loc(&node.position, "Variable declaration"),
                             )
                             .with_context("variable", &node.identifier.to_string()))
                         }

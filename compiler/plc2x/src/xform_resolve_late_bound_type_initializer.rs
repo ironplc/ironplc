@@ -4,7 +4,7 @@
 //! The IEC 61131-3 syntax has some ambiguous types that are initially
 //! parsed into a placeholder. This transform replaces the placeholders
 //! with well-known types.
-use ironplc_dsl::core::{FileId, SourcePosition};
+use ironplc_dsl::core::SourcePosition;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
@@ -75,16 +75,11 @@ impl SymbolTable<'_, Id, TypeDefinitionKind> {
             return Err(Diagnostic::problem(
                 Problem::DefinitionNameDuplicated,
                 Label::source_loc(
-                    FileId::default(),
                     to_add.position(),
                     format!("Duplicated definition {}", to_add),
                 ),
             )
-            .with_secondary(Label::source_loc(
-                FileId::default(),
-                existing.0.position(),
-                "First definition",
-            )));
+            .with_secondary(Label::source_loc(existing.0.position(), "First definition")));
         }
 
         Ok(())
@@ -164,7 +159,7 @@ impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
                     None => {
                         return Err(Diagnostic::problem(
                             Problem::UndeclaredUnknownType,
-                            Label::source_loc(FileId::default(), name.position(), "Variable type"),
+                            Label::source_loc(name.position(), "Variable type"),
                         )
                         .with_context_id("identifier", &name));
                     }

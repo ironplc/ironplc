@@ -28,7 +28,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::{FileId, Id, SourcePosition},
+    core::{Id, SourcePosition},
     diagnostic::{Diagnostic, Label},
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
@@ -95,11 +95,7 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
             }
             None => Err(Diagnostic::problem(
                 Problem::VariableUndefined,
-                Label::source_loc(
-                    FileId::default(),
-                    node.name.position(),
-                    "Undefined variable",
-                ),
+                Label::source_loc(node.name.position(), "Undefined variable"),
             )
             .with_context_id("variable", &node.name)),
         }
@@ -108,6 +104,8 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
 
 #[cfg(test)]
 mod tests {
+    use ironplc_dsl::core::FileId;
+
     use super::*;
     use crate::stages::parse;
 

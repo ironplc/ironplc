@@ -1,5 +1,5 @@
 use crate::symbol_graph::{SymbolGraph, SymbolNode};
-use ironplc_dsl::core::{FileId, SourcePosition};
+use ironplc_dsl::core::SourcePosition;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
@@ -93,13 +93,9 @@ impl TypeDeclResolver {
                 .expect("Expected key");
             Err(Diagnostic::problem(
                 Problem::DeclarationNameDuplicated,
-                Label::source_loc(FileId::default(), item.position(), "Duplicate declaration"),
+                Label::source_loc(item.position(), "Duplicate declaration"),
             )
-            .with_secondary(Label::source_loc(
-                FileId::default(),
-                existing.position(),
-                "First declaration",
-            )))
+            .with_secondary(Label::source_loc(existing.position(), "First declaration")))
         }
     }
 }
