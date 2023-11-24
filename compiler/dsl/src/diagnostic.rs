@@ -96,17 +96,13 @@ impl Label {
         }
     }
 
-    pub fn source_loc(
-        file_id: impl Into<FileId>,
-        source_loc: &SourceLoc,
-        message: impl Into<String>,
-    ) -> Self {
+    pub fn source_loc(source_loc: &SourceLoc, message: impl Into<String>) -> Self {
         Self {
             location: Location::OffsetRange(OffsetRange {
                 start: source_loc.start,
                 end: source_loc.end,
             }),
-            file_id: file_id.into(),
+            file_id: source_loc.file_id.clone(),
             message: message.into(),
         }
     }
@@ -169,7 +165,6 @@ impl Diagnostic {
         Diagnostic::problem(
             Problem::NotImplemented,
             Label::source_loc(
-                FileId::default(),
                 &SourceLoc::default(),
                 format!("Not implemented at {}#L{}", file, line),
             ),
@@ -186,7 +181,6 @@ impl Diagnostic {
         Diagnostic::problem(
             Problem::NotImplemented,
             Label::source_loc(
-                FileId::default(),
                 id.position(),
                 format!("Not implemented at {}#L{}", file, line),
             ),

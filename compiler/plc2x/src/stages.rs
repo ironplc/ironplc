@@ -9,8 +9,8 @@ use crate::{
     rule_enumeration_values_unique, rule_function_block_invocation, rule_pous_no_cycles,
     rule_program_task_definition_exists, rule_use_declared_enumerated_value,
     rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
-    rule_var_decl_global_const_requires_external_const, xform_resolve_late_bound_data_decl,
-    xform_resolve_late_bound_type_initializer,
+    rule_var_decl_global_const_requires_external_const, xform_assign_file_id,
+    xform_resolve_late_bound_data_decl, xform_resolve_late_bound_type_initializer,
 };
 
 pub fn analyze(contents: &str, file_id: &FileId) -> Result<(), Diagnostic> {
@@ -32,6 +32,7 @@ pub fn parse(source: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
     // the type-specific declarations. This just simplifies
     // code generation because we know the type of every declaration
     // exactly
+    let library = xform_assign_file_id::apply(library, file_id)?;
     let library = xform_resolve_late_bound_data_decl::apply(library)?;
     xform_resolve_late_bound_type_initializer::apply(library)
 }

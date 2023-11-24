@@ -1,10 +1,40 @@
 //! Common items useful for working with IEC 61131-3 elements but not
 //! part of the standard.
 use core::fmt;
-use std::ops::Range;
+use std::ops::{Deref, Range};
+use std::path::Path;
 use std::{cmp::Ordering, hash::Hash, hash::Hasher};
 
-pub type FileId = String;
+/// FileId is an identifier for a file (may be local or remote).
+///
+/// FileId is normally useful in the context of source positions
+/// where a source position is in a file.
+#[derive(Clone, Debug)]
+pub struct FileId(String);
+
+impl FileId {
+    /// Creates an empty file identifier.
+    pub fn new() -> Self {
+        FileId::default()
+    }
+
+    /// Creates a file identifier from the path.
+    pub fn from_path(path: &Path) -> Self {
+        FileId(String::from(path.to_string_lossy().deref()))
+    }
+
+    /// Creates a file identifier from the slice. The slice
+    /// is normally the file path.
+    pub fn from_str(path: &str) -> Self {
+        FileId(String::from(path))
+    }
+}
+
+impl Default for FileId {
+    fn default() -> Self {
+        FileId(String::from(""))
+    }
+}
 
 /// Location in a file of a language element instance.
 ///
@@ -13,11 +43,24 @@ pub type FileId = String;
 pub struct SourceLoc {
     pub start: usize,
     pub end: usize,
+    pub file_id: FileId,
 }
 
 impl SourceLoc {
     pub fn range(start: usize, end: usize) -> SourceLoc {
-        SourceLoc { start, end }
+        SourceLoc {
+            start,
+            end,
+            file_id: FileId::default(),
+        }
+    }
+
+    pub fn with_file_id(&self, file_id: &FileId) -> Self {
+        SourceLoc {
+            start: self.start,
+            end: self.end,
+            file_id: file_id.clone(),
+        }
     }
 }
 

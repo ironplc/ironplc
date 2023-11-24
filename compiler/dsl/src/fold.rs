@@ -12,7 +12,7 @@ use crate::textual::*;
 
 // Defines an object as being able to be folded. That is, return a new
 // folded version of itself.
-pub(crate) trait Foldable {
+pub trait Foldable {
     type Mapped;
     fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E>;
 }
