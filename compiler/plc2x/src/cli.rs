@@ -8,10 +8,11 @@ use codespan_reporting::{
         termcolor::{ColorChoice, StandardStream},
     },
 };
+use ironplc_dsl::core::FileId;
 use std::{
     fs::{metadata, read_dir, File},
     io::Read,
-    ops::{Deref, Range},
+    ops::Range,
     path::{Path, PathBuf},
 };
 
@@ -57,7 +58,7 @@ fn check_file(filename: &Path, suppress_output: bool) -> Result<(), usize> {
     let config = codespan_reporting::term::Config::default();
 
     println!("Checking {}", filename.display());
-    match analyze(&contents, &String::from(filename.to_string_lossy().deref())) {
+    match analyze(&contents, &FileId::from_path(filename)) {
         Ok(_) => {
             println!("OK");
             Ok(())

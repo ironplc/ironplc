@@ -1,6 +1,7 @@
 //! Implements the language server protocol for integration with an IDE such
 //! as Visual Studio Code.
 
+use ironplc_dsl::core::FileId;
 use log::trace;
 use lsp_server::{Connection, ExtractError, Message};
 use lsp_types::{
@@ -98,7 +99,7 @@ impl LspServer {
                     let version = params.text_document.version;
 
                     let diagnostics = self.project.on_did_change_text_document(
-                        &String::from(uri.as_str()),
+                        &FileId::from_string(uri.as_str()),
                         contents.as_str(),
                     );
 

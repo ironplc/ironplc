@@ -38,7 +38,7 @@ use std::collections::HashSet;
 
 use ironplc_dsl::{
     common::*,
-    core::{FileId, Id, SourcePosition},
+    core::{Id, SourcePosition},
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -93,14 +93,12 @@ impl<'a> Visitor<Diagnostic> for RuleExternalGlobalConst<'a> {
                     return Err(Diagnostic::problem(
                         Problem::VariableMustBeConst,
                         Label::source_loc(
-                            FileId::default(),
                             node.identifier.position(),
                             "Reference to global variable",
                         ),
                     )
                     .with_context("variable", &node.identifier.to_string())
                     .with_secondary(Label::source_loc(
-                        FileId::default(),
                         global.position(),
                         "Constant global variable",
                     )));
@@ -114,6 +112,8 @@ impl<'a> Visitor<Diagnostic> for RuleExternalGlobalConst<'a> {
 
 #[cfg(test)]
 mod test {
+    use ironplc_dsl::core::FileId;
+
     use super::*;
 
     use crate::stages::parse;

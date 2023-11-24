@@ -19,7 +19,6 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::FileId,
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -42,16 +41,11 @@ impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
         if minimum >= maximum {
             return Err(Diagnostic::problem(
                 Problem::SubrangeMinStrictlyLessMax,
-                Label::source_loc(
-                    FileId::default(),
-                    &node.start.value.position,
-                    "Expected smaller value",
-                ),
+                Label::source_loc(&node.start.value.position, "Expected smaller value"),
             )
             .with_context("minimum", &node.start.to_string())
             .with_context("maximum", &node.end.to_string())
             .with_secondary(Label::source_loc(
-                FileId::default(),
                 &node.end.value.position,
                 "Expected greater value",
             )));
@@ -62,6 +56,8 @@ impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
 
 #[cfg(test)]
 mod tests {
+    use ironplc_dsl::core::FileId;
+
     use super::*;
 
     use crate::stages::parse;
