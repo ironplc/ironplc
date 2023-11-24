@@ -99,7 +99,7 @@ impl LspServer {
                     let version = params.text_document.version;
 
                     let diagnostics = self.project.on_did_change_text_document(
-                        &FileId::from_str(uri.as_str()),
+                        &FileId::from_string(uri.as_str()),
                         contents.as_str(),
                     );
 

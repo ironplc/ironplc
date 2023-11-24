@@ -3,13 +3,14 @@
 use core::fmt;
 use std::ops::{Deref, Range};
 use std::path::Path;
+use std::str::FromStr;
 use std::{cmp::Ordering, hash::Hash, hash::Hasher};
 
 /// FileId is an identifier for a file (may be local or remote).
 ///
 /// FileId is normally useful in the context of source positions
 /// where a source position is in a file.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct FileId(String);
 
 impl FileId {
@@ -25,14 +26,8 @@ impl FileId {
 
     /// Creates a file identifier from the slice. The slice
     /// is normally the file path.
-    pub fn from_str(path: &str) -> Self {
+    pub fn from_string(path: &str) -> Self {
         FileId(String::from(path))
-    }
-}
-
-impl Default for FileId {
-    fn default() -> Self {
-        FileId(String::from(""))
     }
 }
 
