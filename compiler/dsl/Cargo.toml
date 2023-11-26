@@ -13,4 +13,5 @@ maintenance = { status = "experimental" }
 [dependencies]
 time = "0.3.17"
 ironplc-problems = { path = "../problems", version = "0.34.0" }
+paste = "1.0"
 

@@ -34,7 +34,10 @@ struct RuleEnumerationValuesUnique {}
 impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
     type Value = ();
 
-    fn visit_enum_declaration(&mut self, node: &EnumerationDeclaration) -> Result<(), Diagnostic> {
+    fn visit_enumeration_declaration(
+        &mut self,
+        node: &EnumerationDeclaration,
+    ) -> Result<(), Diagnostic> {
         match &node.spec_init.spec {
             EnumeratedSpecificationKind::TypeName(_) => Ok(()),
             EnumeratedSpecificationKind::Values(spec) => {

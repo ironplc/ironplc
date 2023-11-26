@@ -8,18 +8,39 @@
 //! for the struct. The implement fold_* functions from the trait to
 //! customize the behavior.
 use crate::common::*;
+use crate::core::Id;
 use crate::textual::*;
+use paste::paste;
+
+/// Defines a macro for the Fold struct that dispatches folding
+/// to a function. In other words, creates a function of the form:
+///
+/// ```ignore
+/// fn visit_type_name<E>(&mut self, node: TypeName) -> Result<Fold::Value, E> {
+///    visit_type_name(self, node)
+/// }
+/// ```
+macro_rules! dispatch
+{
+    ($struct_name:ident) => {
+        paste! {
+            fn [<fold_ $struct_name:snake >](&mut self, node: $struct_name) -> Result<$struct_name, E> {
+                [< fold_ $struct_name:snake >](self, node)
+            }
+        }
+    };
+}
 
 // Defines an object as being able to be folded. That is, return a new
 // folded version of itself.
-pub trait Foldable {
+pub trait Folder {
     type Mapped;
     fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E>;
 }
 
-impl<X> Foldable for Vec<X>
+impl<X> Folder for Vec<X>
 where
-    X: Foldable,
+    X: Folder,
 {
     type Mapped = Vec<X::Mapped>;
     fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
@@ -27,12 +48,27 @@ where
     }
 }
 
+impl<X> Folder for Option<X>
+where
+    X: Folder,
+{
+    type Mapped = Option<X::Mapped>;
+    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
+        self.map(|x| x.fold(folder)).transpose()
+    }
+}
+
 pub trait Fold<E> {
-    fn fold(&mut self, node: Library) -> Result<Library, E> {
+    fn fold_library(&mut self, node: Library) -> Result<Library, E> {
         Ok(Library {
-            elements: Foldable::fold(node.elements, self)?,
+            elements: Folder::fold(node.elements, self)?,
         })
     }
+    // 2.1.2.
+    fn fold_identifier(&mut self, node: Id) -> Result<Id, E> {
+        Ok(node)
+    }
+
     fn fold_library_element_declaration(
         &mut self,
         node: LibraryElement,
@@ -76,7 +112,7 @@ pub trait Fold<E> {
             identifier: node.identifier,
             var_type: node.var_type,
             qualifier: node.qualifier,
-            initializer: Foldable::fold(node.initializer, self)?,
+            initializer: Folder::fold(node.initializer, self)?,
             position: node.position,
         })
     }
@@ -108,7 +144,7 @@ pub trait Fold<E> {
         Ok(FunctionDeclaration {
             name: node.name.clone(),
             return_type: node.return_type,
-            variables: Foldable::fold(node.variables, self)?,
+            variables: Folder::fold(node.variables, self)?,
             body: node.body,
         })
     }
@@ -122,7 +158,7 @@ pub trait Fold<E> {
     ) -> Result<FunctionBlockDeclaration, E> {
         Ok(FunctionBlockDeclaration {
             name: node.name,
-            variables: Foldable::fold(node.variables, self)?,
+            variables: Folder::fold(node.variables, self)?,
             body: node.body,
             position: node.position,
         })
@@ -137,36 +173,143 @@ pub trait Fold<E> {
     ) -> Result<ProgramDeclaration, E> {
         Ok(ProgramDeclaration {
             type_name: node.type_name,
-            variables: Foldable::fold(node.variables, self)?,
+            variables: Folder::fold(node.variables, self)?,
             body: node.body,
         })
     }
+
+    dispatch!(ResourceDeclaration);
+    dispatch!(ProgramConfiguration);
+    // 2.7.2
+    dispatch!(ConfigurationDeclaration);
+    dispatch!(TaskConfiguration);
 }
 
-impl Foldable for LibraryElement {
-    type Mapped = LibraryElement;
+fn fold_resource_declaration<F: Fold<E> + ?Sized, E>(
+    f: &mut F,
+    node: ResourceDeclaration,
+) -> Result<ResourceDeclaration, E> {
+    Ok(ResourceDeclaration {
+        name: f.fold_identifier(node.name)?,
+        resource: f.fold_identifier(node.resource)?,
+        global_vars: Folder::fold(node.global_vars, f)?,
+        tasks: Folder::fold(node.tasks, f)?,
+        programs: Folder::fold(node.programs, f)?,
+    })
+}
+
+fn fold_program_configuration<F: Fold<E> + ?Sized, E>(
+    f: &mut F,
+    node: ProgramConfiguration,
+) -> Result<ProgramConfiguration, E> {
+    Ok(ProgramConfiguration {
+        name: f.fold_identifier(node.name)?,
+        task_name: Folder::fold(node.task_name, f)?,
+        type_name: f.fold_identifier(node.type_name)?,
+    })
+}
+
+fn fold_configuration_declaration<F: Fold<E> + ?Sized, E>(
+    f: &mut F,
+    node: ConfigurationDeclaration,
+) -> Result<ConfigurationDeclaration, E> {
+    Ok(ConfigurationDeclaration {
+        name: f.fold_identifier(node.name)?,
+        global_var: Folder::fold(node.global_var, f)?,
+        resource_decl: Folder::fold(node.resource_decl, f)?,
+    })
+}
+
+fn fold_task_configuration<F: Fold<E> + ?Sized, E>(
+    f: &mut F,
+    node: TaskConfiguration,
+) -> Result<TaskConfiguration, E> {
+    Ok(TaskConfiguration {
+        name: f.fold_identifier(node.name)?,
+        priority: node.priority,
+        interval: node.interval,
+    })
+}
+
+impl Folder for Id {
+    type Mapped = Id;
     fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        folder.fold_library_element_declaration(self)
+        folder.fold_identifier(self)
     }
 }
 
-impl Foldable for VarDecl {
+impl Folder for LibraryElement {
+    type Mapped = LibraryElement;
+    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
+        match self {
+            LibraryElement::DataTypeDeclaration(data_type) => {
+                Ok(LibraryElement::DataTypeDeclaration(
+                    folder.fold_data_type_declaration_kind(data_type)?,
+                ))
+            }
+            LibraryElement::FunctionBlockDeclaration(function_block_decl) => {
+                Ok(LibraryElement::FunctionBlockDeclaration(
+                    folder.fold_function_block_declaration(function_block_decl)?,
+                ))
+            }
+            LibraryElement::FunctionDeclaration(function_decl) => {
+                Ok(LibraryElement::FunctionDeclaration(
+                    folder.fold_function_declaration(function_decl)?,
+                ))
+            }
+            LibraryElement::ProgramDeclaration(program_decl) => Ok(
+                LibraryElement::ProgramDeclaration(folder.fold_program_declaration(program_decl)?),
+            ),
+            LibraryElement::ConfigurationDeclaration(config_decl) => {
+                Ok(LibraryElement::ConfigurationDeclaration(
+                    folder.fold_configuration_declaration(config_decl)?,
+                ))
+            }
+        }
+    }
+}
+
+impl Folder for VarDecl {
     type Mapped = VarDecl;
     fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
         folder.fold_variable_declaration(self)
     }
 }
 
-impl Foldable for InitialValueAssignmentKind {
+impl Folder for InitialValueAssignmentKind {
     type Mapped = InitialValueAssignmentKind;
     fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
         folder.fold_initial_value_assignment(self)
     }
 }
 
-impl Foldable for AddressAssignment {
+impl Folder for AddressAssignment {
     type Mapped = AddressAssignment;
     fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
         folder.fold_address_assignment(self)
+    }
+}
+
+/// See section 2.7.1.
+impl Folder for ResourceDeclaration {
+    type Mapped = ResourceDeclaration;
+    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
+        folder.fold_resource_declaration(self)
+    }
+}
+
+/// See section 2.7.1.
+impl Folder for ProgramConfiguration {
+    type Mapped = ProgramConfiguration;
+    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
+        folder.fold_program_configuration(self)
+    }
+}
+
+/// See section 2.7.2.
+impl Folder for TaskConfiguration {
+    type Mapped = TaskConfiguration;
+    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
+        folder.fold_task_configuration(self)
     }
 }

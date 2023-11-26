@@ -41,7 +41,7 @@ pub fn apply(lib: Library) -> Result<Library, Diagnostic> {
     let mut resolver = DeclarationResolver {
         ids_to_types: resolved_types,
     };
-    resolver.fold(lib)
+    resolver.fold_library(lib)
 }
 
 struct TypeDeclResolver {
@@ -111,7 +111,7 @@ impl Visitor<Diagnostic> for TypeDeclResolver {
         Ok(())
     }
 
-    fn visit_enum_declaration(
+    fn visit_enumeration_declaration(
         &mut self,
         node: &EnumerationDeclaration,
     ) -> Result<Self::Value, Diagnostic> {

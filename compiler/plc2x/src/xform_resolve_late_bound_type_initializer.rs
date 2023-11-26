@@ -66,7 +66,7 @@ pub fn apply(lib: Library) -> Result<Library, Diagnostic> {
 
     // Set the types for each item.
     let mut resolver = TypeResolver { types: id_to_type };
-    resolver.fold(lib)
+    resolver.fold_library(lib)
 }
 
 impl SymbolTable<'_, Id, TypeDefinitionKind> {
@@ -89,7 +89,10 @@ impl SymbolTable<'_, Id, TypeDefinitionKind> {
 impl<'a> Visitor<Diagnostic> for SymbolTable<'a, Id, TypeDefinitionKind> {
     type Value = ();
 
-    fn visit_enum_declaration(&mut self, node: &EnumerationDeclaration) -> Result<(), Diagnostic> {
+    fn visit_enumeration_declaration(
+        &mut self,
+        node: &EnumerationDeclaration,
+    ) -> Result<(), Diagnostic> {
         self.add_if_new(&node.type_name, TypeDefinitionKind::Enumeration)
     }
     fn visit_function_block_declaration(
