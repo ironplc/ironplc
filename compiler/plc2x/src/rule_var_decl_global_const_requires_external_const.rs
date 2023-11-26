@@ -65,7 +65,7 @@ struct FindGlobalConstVars<'a> {
 }
 impl<'a> Visitor<Diagnostic> for FindGlobalConstVars<'a> {
     type Value = ();
-    fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         if node.qualifier == DeclarationQualifier::Constant {
             match &node.identifier {
                 VariableIdentifier::Symbol(name) => {
@@ -84,7 +84,7 @@ struct RuleExternalGlobalConst<'a> {
 impl<'a> Visitor<Diagnostic> for RuleExternalGlobalConst<'a> {
     type Value = ();
 
-    fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         if node.var_type == VariableType::External
             && node.qualifier != DeclarationQualifier::Constant
         {

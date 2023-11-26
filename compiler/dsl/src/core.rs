@@ -88,9 +88,9 @@ pub trait SourcePosition {
 ///
 /// See section 2.1.2.
 pub struct Id {
-    original: String,
-    lower_case: String,
-    position: SourceLoc,
+    pub original: String,
+    pub lower_case: String,
+    pub position: SourceLoc,
 }
 
 impl Id {
