@@ -37,6 +37,50 @@ use crate::core::Id;
 use crate::diagnostic::Diagnostic;
 use crate::sfc::*;
 use crate::textual::*;
+use paste::paste;
+
+/// Defines a macro for the `Visitor` trait that dispatches visiting
+/// to a function. In other words, creates a function of the form:
+///
+/// ```ignore
+///
+/// fn visit_type_name(&mut self, node: &TypeName) -> Result<Self::Value, E> {
+///    visit_type_name(self, node)
+/// }
+/// ```
+///
+///  The visitor generally dispatches to a dedicated function so that
+/// implementations can re-use the behavior.
+macro_rules! dispatch {
+    ($struct_name:ident) => {
+        paste! {
+            fn [<visit_ $struct_name:snake >](&mut self, node: &$struct_name) -> Result<Self::Value, E> {
+                [< visit_ $struct_name:snake >](self, &node)
+            }
+        }
+    };
+}
+
+/// Defines a macro for the `Visitor` trait that returns `Ok`.
+/// In other words, creates a function of the form:
+///
+/// ```ignore
+/// fn visit_type_name(&mut self, node: &TypeName) -> Result<Self::Value, E> {
+///    Ok(Self::Value::default())
+/// }
+/// ```
+///
+///  The visitor generally dispatches to a dedicated function so that
+/// implementations can re-use the behavior.
+macro_rules! leaf {
+    ($struct_name:ident) => {
+        paste! {
+            fn [<visit_ $struct_name:snake >](&mut self, node: &$struct_name) -> Result<Self::Value, E> {
+                Ok(Self::Value::default())
+            }
+        }
+    };
+}
 
 /// Defines a way to recurse into an object in the AST or DSL.
 pub trait Acceptor {
@@ -98,302 +142,167 @@ pub trait Visitor<E: std::convert::From<Diagnostic>> {
         Acceptor::accept(&node.elements, self)
     }
 
-    fn visit_signed_integer(&mut self, node: &SignedInteger) -> Result<Self::Value, E> {
-        Ok(Self::Value::default())
-    }
+    // Declarations from Core
 
     // 2.1.2.
-    fn visit_identifier(&mut self, node: &Id) -> Result<Self::Value, E> {
-        Ok(Self::Value::default())
-    }
+    leaf!(Id);
+
+    // Declarations from Common
+
+    // TODO Constants
+    leaf!(SignedInteger);
 
     // 2.3.3.1
-    fn visit_enum_declaration(&mut self, node: &EnumerationDeclaration) -> Result<Self::Value, E> {
-        visit_enum_declaration(self, node)
-    }
+    dispatch!(LateBoundDeclaration);
 
     // 2.3.3.1
-    fn visit_enumerated_value(&mut self, node: &EnumeratedValue) -> Result<Self::Value, E> {
-        Ok(Self::Value::default())
-    }
+    dispatch!(EnumerationDeclaration);
+
+    // 2.4.3.2
+    leaf!(EnumeratedSpecificationInit);
+
+    // 2.4.3.2
+    leaf!(EnumeratedSpecificationValues);
 
     // 2.3.3.1
-    fn visit_subrange_declaration(&mut self, node: &SubrangeDeclaration) -> Result<Self::Value, E> {
-        visit_subrange_declaration(self, node)
-    }
+    leaf!(EnumeratedValue);
 
     // 2.3.3.1
-    fn visit_simple_declaration(&mut self, node: &SimpleDeclaration) -> Result<Self::Value, E> {
-        visit_simple_declaration(self, node)
-    }
+    dispatch!(SubrangeDeclaration);
 
     // 2.3.3.1
-    fn visit_array_declaration(&mut self, node: &ArrayDeclaration) -> Result<Self::Value, E> {
-        visit_array_declaration(self, node)
-    }
+    dispatch!(SubrangeSpecification);
 
     // 2.3.3.1
-    fn visit_structure_declaration(
-        &mut self,
-        node: &StructureDeclaration,
-    ) -> Result<Self::Value, E> {
-        visit_structure_declaration(self, node)
-    }
+    dispatch!(SimpleDeclaration);
 
     // 2.3.3.1
-    fn visit_structure_element_declaration(
-        &mut self,
-        node: &StructureElementDeclaration,
-    ) -> Result<Self::Value, E> {
-        visit_structure_element_declaration(self, node)
-    }
+    dispatch!(ArrayDeclaration);
 
     // 2.3.3.1
-    fn visit_structure_initialization_declaration(
-        &mut self,
-        node: &StructureInitializationDeclaration,
-    ) -> Result<Self::Value, E> {
-        visit_structure_initialization_declaration(self, node)
-    }
+    dispatch!(StructureDeclaration);
 
     // 2.3.3.1
-    fn visit_structure_element_init(
-        &mut self,
-        node: &StructureElementInit,
-    ) -> Result<Self::Value, E> {
-        visit_structure_element_init(self, node)
-    }
+    dispatch!(StructureElementDeclaration);
 
     // 2.3.3.1
-    fn visit_string_declaration(&mut self, node: &StringDeclaration) -> Result<Self::Value, E> {
-        visit_string_declaration(self, node)
-    }
+    dispatch!(StructureInitializationDeclaration);
 
     // 2.3.3.1
-    fn visit_subrange_specification(
-        &mut self,
-        node: &SubrangeSpecification,
-    ) -> Result<Self::Value, E> {
-        visit_subrange_specification(self, node)
-    }
+    dispatch!(StructureElementInit);
 
     // 2.3.3.1
-    fn visit_late_bound_declaration(
-        &mut self,
-        node: &LateBoundDeclaration,
-    ) -> Result<Self::Value, E> {
-        visit_late_bound_declaration(self, node)
-    }
+    dispatch!(StringDeclaration);
 
     // 2.4.2.1
-    fn visit_subrange(&mut self, init: &Subrange) -> Result<Self::Value, E> {
-        Ok(Self::Value::default())
-    }
+    leaf!(Subrange);
 
     // 2.4.3
-    fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<Self::Value, E> {
-        visit_variable_declaration(self, node)
-    }
+    dispatch!(VarDecl);
 
     // 2.4.3.1
-    fn visit_address_assignment(&mut self, node: &AddressAssignment) -> Result<Self::Value, E> {
-        // leaf node - no children
-        Ok(Self::Value::default())
-    }
+    leaf!(AddressAssignment);
+
+    // 2.4.3.2
+    dispatch!(SimpleInitializer);
 
     // 2.4.3.1 and 2.4.3.2
-    fn visit_string_initializer(&mut self, node: &StringInitializer) -> Result<Self::Value, E> {
-        // leaf node - no children
-        Ok(Self::Value::default())
-    }
+    leaf!(StringInitializer);
 
     // 2.4.3.2
-    fn visit_simple_initializer(&mut self, node: &SimpleInitializer) -> Result<Self::Value, E> {
-        visit_simple_initializer(self, node)
-    }
+    leaf!(EnumeratedValuesInitializer);
 
     // 2.4.3.2
-    fn visit_enumerated_type_initializer(
-        &mut self,
-        node: &EnumeratedInitialValueAssignment,
-    ) -> Result<Self::Value, E> {
-        // leaf node - no children
-        Ok(Self::Value::default())
-    }
+    leaf!(FunctionBlockInitialValueAssignment);
 
-    // 2.4.3.2
-    fn visit_enumerated_values_initializer(
-        &mut self,
-        node: &EnumeratedValuesInitializer,
-    ) -> Result<Self::Value, E> {
-        // leaf node - no children
-        Ok(Self::Value::default())
-    }
+    // 2.4.3.2.
+    dispatch!(ArrayInitialValueAssignment);
 
-    // 2.4.3.2
-    fn visit_function_block_type_initializer(
-        &mut self,
-        init: &FunctionBlockInitialValueAssignment,
-    ) -> Result<Self::Value, E> {
-        // leaf node - no children
-        Ok(Self::Value::default())
-    }
-
-    // 2.4.3.2
-    fn visit_enumerated_spec_init(
-        &mut self,
-        node: &EnumeratedSpecificationInit,
-    ) -> Result<Self::Value, E> {
-        visit_enumerated_spec_init(self, node)
-    }
-
-    // 2.4.3.2. #6
-    fn visit_array_initializer(
-        &mut self,
-        node: &ArrayInitialValueAssignment,
-    ) -> Result<Self::Value, E> {
-        visit_array_initializer(self, node)
-    }
+    // 2.4.3.2 (TODO - where?)
+    dispatch!(EnumeratedInitialValueAssignment);
 
     // 2.5.1
-    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<Self::Value, E> {
-        visit_function_declaration(self, node)
-    }
+    dispatch!(FunctionDeclaration);
 
     // 2.5.2
-    fn visit_function_block_declaration(
-        &mut self,
-        node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, E> {
-        visit_function_block_declaration(self, node)
-    }
+    dispatch!(FunctionBlockDeclaration);
 
     // 2.5.3
-    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<Self::Value, E> {
-        visit_program_declaration(self, node)
-    }
+    dispatch!(ProgramDeclaration);
 
     // 2.6
-    fn visit_sfc(&mut self, node: &Sfc) -> Result<Self::Value, E> {
-        Acceptor::accept(&node.networks, self)
-    }
+    dispatch!(Sfc);
 
     // 2.6
-    fn visit_network(&mut self, node: &Network) -> Result<Self::Value, E> {
-        visit_network(self, node)
-    }
+    dispatch!(Network);
 
     // 2.6.2
-    fn visit_step(&mut self, node: &Step) -> Result<Self::Value, E> {
-        // leaf node - no children
-        Ok(Self::Value::default())
-    }
+    leaf!(Step);
 
     // 2.6.3
-    fn visit_transition(&mut self, node: &Transition) -> Result<Self::Value, E> {
-        visit_transition(self, node)
-    }
+    dispatch!(Transition);
 
     // 2.6.4
-    fn visit_action(&mut self, node: &Action) -> Result<Self::Value, E> {
-        visit_action(self, node)
-    }
+    dispatch!(Action);
 
     // 2.7.1
-    fn visit_resource_declaration(&mut self, node: &ResourceDeclaration) -> Result<Self::Value, E> {
-        visit_resource_declaration(self, node)
-    }
+    dispatch!(ResourceDeclaration);
 
     // 2.7.1
-    fn visit_program_configuration(
-        &mut self,
-        node: &ProgramConfiguration,
-    ) -> Result<Self::Value, E> {
-        Ok(Self::Value::default())
-    }
+    dispatch!(ProgramConfiguration);
 
     // 2.7.2
-    fn visit_configuration_declaration(
-        &mut self,
-        node: &ConfigurationDeclaration,
-    ) -> Result<Self::Value, E> {
-        visit_configuration_declaration(self, node)
-    }
+    dispatch!(ConfigurationDeclaration);
 
     // 2.7.2
-    fn visit_task_configuration(&mut self, node: &TaskConfiguration) -> Result<Self::Value, E> {
-        Ok(Self::Value::default())
-    }
+    leaf!(TaskConfiguration);
 
     // 3
-    fn visit_statements(&mut self, node: &Statements) -> Result<Self::Value, E> {
-        Acceptor::accept(&node.body, self)
-    }
+    dispatch!(Statements);
 
     // 3.2.3
-    fn visit_fb_call(&mut self, node: &FbCall) -> Result<Self::Value, E> {
-        visit_fb_call(self, node)
-    }
+    dispatch!(FbCall);
 
     // 3.2.3
-    fn visit_positional_input(&mut self, node: &PositionalInput) -> Result<Self::Value, E> {
-        visit_positional_input(self, node)
-    }
+    dispatch!(PositionalInput);
 
     // 3.2.3
-    fn visit_named_input(&mut self, node: &NamedInput) -> Result<Self::Value, E> {
-        visit_named_input(self, node)
-    }
+    dispatch!(NamedInput);
 
     // 3.2.3
-    fn visit_output(&mut self, node: &Output) -> Result<Self::Value, E> {
-        visit_output(self, node)
-    }
+    dispatch!(Output);
 
     // 3.3.1
-    fn visit_compare(&mut self, node: &CompareExpr) -> Result<Self::Value, E> {
-        visit_compare(self, node)
-    }
+    dispatch!(CompareExpr);
 
     // 3.3.1
-    fn visit_binary_op(&mut self, node: &BinaryExpr) -> Result<Self::Value, E> {
-        visit_binary_op(self, node)
-    }
+    dispatch!(BinaryExpr);
 
     // 3.3.1
-    fn visit_unary_op(&mut self, node: &UnaryExpr) -> Result<Self::Value, E> {
-        visit_unary_op(self, node)
-    }
+    dispatch!(UnaryExpr);
 
     // 3.3.2.1
-    fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, E> {
-        Acceptor::accept(&node.target, self)
-    }
+    dispatch!(Assignment);
 
     // 3.3.2.3
-    fn visit_if(&mut self, node: &If) -> Result<Self::Value, E> {
-        visit_if(self, node)
-    }
+    dispatch!(If);
 
     // 3.3.2.3
-    fn visit_case(&mut self, node: &Case) -> Result<Self::Value, E> {
-        visit_case(self, node)
-    }
+    dispatch!(Case);
 
     // 3.3.2.3
-    fn visit_case_statement_group(&mut self, node: &CaseStatementGroup) -> Result<Self::Value, E> {
-        visit_case_statement_group(self, node)
-    }
+    dispatch!(CaseStatementGroup);
 
-    fn visit_named_variable(&mut self, node: &NamedVariable) -> Result<Self::Value, E> {
-        // leaf node - no children
-        Ok(Self::Value::default())
-    }
+    leaf!(NamedVariable);
 
-    fn visit_array_variable(&mut self, node: &ArrayVariable) -> Result<Self::Value, E> {
-        // leaf node - no children
-        visit_array_variable(self, node)
-    }
+    dispatch!(ArrayVariable);
+}
+
+pub fn visit_program_configuration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &ProgramConfiguration,
+) -> Result<V::Value, E> {
+    Ok(V::Value::default())
 }
 
 pub fn visit_configuration_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
@@ -413,21 +322,21 @@ pub fn visit_resource_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     Acceptor::accept(&node.programs, v)
 }
 
-pub fn visit_variable_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+pub fn visit_var_decl<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &VarDecl,
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.initializer, v)
 }
 
-pub fn visit_enum_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+pub fn visit_enumeration_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &EnumerationDeclaration,
 ) -> Result<V::Value, E> {
-    v.visit_enumerated_spec_init(&node.spec_init)
+    v.visit_enumerated_specification_init(&node.spec_init)
 }
 
-pub fn visit_enumerated_spec_init<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+pub fn visit_enumerated_specification_init<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &EnumeratedSpecificationInit,
 ) -> Result<V::Value, E> {
@@ -538,6 +447,14 @@ pub fn visit_function_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     Acceptor::accept(&node.body, v)
 }
 
+pub fn visit_assignment<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &Assignment,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.target, v)?;
+    Acceptor::accept(&node.value, v)
+}
+
 pub fn visit_if<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &If,
@@ -572,7 +489,7 @@ pub fn visit_array_variable<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     Acceptor::accept(&node.subscripts, v)
 }
 
-pub fn visit_compare<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+pub fn visit_compare_expr<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &CompareExpr,
 ) -> Result<V::Value, E> {
@@ -580,7 +497,7 @@ pub fn visit_compare<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     Acceptor::accept(&node.right, v)
 }
 
-pub fn visit_binary_op<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+pub fn visit_binary_expr<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &BinaryExpr,
 ) -> Result<V::Value, E> {
@@ -588,7 +505,7 @@ pub fn visit_binary_op<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     Acceptor::accept(&node.right, v)
 }
 
-pub fn visit_unary_op<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+pub fn visit_unary_expr<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &UnaryExpr,
 ) -> Result<V::Value, E> {
@@ -603,12 +520,28 @@ pub fn visit_simple_initializer<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     Acceptor::accept(&node.initial_value, v)
 }
 
-pub fn visit_array_initializer<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+// 2.4.3.2
+pub fn visit_enumerated_initial_value_assignment<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &EnumeratedInitialValueAssignment,
+) -> Result<V::Value, E> {
+    v.visit_id(&node.type_name)?;
+    Acceptor::accept(&node.initial_value, v)
+}
+
+pub fn visit_array_initial_value_assignment<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &ArrayInitialValueAssignment,
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.spec, v)?;
     Acceptor::accept(&node.initial_values, v)
+}
+
+pub fn visit_sfc<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &Sfc,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.networks, v)
 }
 
 // 2.6.2
@@ -632,6 +565,13 @@ pub fn visit_transition<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
 pub fn visit_action<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &Action,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.body, v)
+}
+
+pub fn visit_statements<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &Statements,
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.body, v)
 }
@@ -707,7 +647,7 @@ impl Acceptor for VarDecl {
         &self,
         visitor: &mut V,
     ) -> Result<V::Value, E> {
-        visitor.visit_variable_declaration(self)
+        visitor.visit_var_decl(self)
     }
 }
 
@@ -716,7 +656,7 @@ impl Acceptor for EnumerationDeclaration {
         &self,
         visitor: &mut V,
     ) -> Result<V::Value, E> {
-        visitor.visit_enum_declaration(self)
+        visitor.visit_enumeration_declaration(self)
     }
 }
 
@@ -726,7 +666,7 @@ impl Acceptor for DataTypeDeclarationKind {
         visitor: &mut V,
     ) -> Result<V::Value, E> {
         match self {
-            DataTypeDeclarationKind::Enumeration(e) => visitor.visit_enum_declaration(e),
+            DataTypeDeclarationKind::Enumeration(e) => visitor.visit_enumeration_declaration(e),
             DataTypeDeclarationKind::Subrange(sr) => visitor.visit_subrange_declaration(sr),
             DataTypeDeclarationKind::Simple(simple) => visitor.visit_simple_declaration(simple),
             DataTypeDeclarationKind::Array(a) => visitor.visit_array_declaration(a),
@@ -800,17 +740,17 @@ impl Acceptor for InitialValueAssignmentKind {
                 visitor.visit_enumerated_values_initializer(ev)
             }
             InitialValueAssignmentKind::EnumeratedType(et) => {
-                visitor.visit_enumerated_type_initializer(et)
+                visitor.visit_enumerated_initial_value_assignment(et)
             }
             InitialValueAssignmentKind::FunctionBlock(fbi) => {
-                visitor.visit_function_block_type_initializer(fbi)
+                visitor.visit_function_block_initial_value_assignment(fbi)
             }
             InitialValueAssignmentKind::Subrange(node) => Acceptor::accept(node, visitor),
             InitialValueAssignmentKind::Structure(si) => {
                 visitor.visit_structure_initialization_declaration(si)
             }
             InitialValueAssignmentKind::Array(array_init) => {
-                visitor.visit_array_initializer(array_init)
+                visitor.visit_array_initial_value_assignment(array_init)
             }
             InitialValueAssignmentKind::LateResolvedType(_) => Ok(V::Value::default()),
         }
@@ -853,9 +793,9 @@ impl Acceptor for ExprKind {
         visitor: &mut V,
     ) -> Result<V::Value, E> {
         match self {
-            ExprKind::Compare(compare) => visitor.visit_compare(compare.as_ref()),
-            ExprKind::BinaryOp(binary) => visitor.visit_binary_op(binary.as_ref()),
-            ExprKind::UnaryOp(unary) => visitor.visit_unary_op(unary.as_ref()),
+            ExprKind::Compare(compare) => visitor.visit_compare_expr(compare.as_ref()),
+            ExprKind::BinaryOp(binary) => visitor.visit_binary_expr(binary.as_ref()),
+            ExprKind::UnaryOp(unary) => visitor.visit_unary_expr(unary.as_ref()),
             ExprKind::Const(node) => Acceptor::accept(node, visitor),
             ExprKind::Expression(_) => Ok(V::Value::default()),
             ExprKind::Variable(variable) => Acceptor::accept(variable, visitor),
@@ -1023,6 +963,16 @@ impl Acceptor for ProgramConfiguration {
     }
 }
 
+/// See section 2.3.3.1.
+impl Acceptor for EnumeratedValue {
+    fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+        &self,
+        visitor: &mut V,
+    ) -> Result<V::Value, E> {
+        visitor.visit_enumerated_value(self)
+    }
+}
+
 // 2.3.3.1
 impl Acceptor for StructureElementDeclaration {
     fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
@@ -1043,7 +993,7 @@ impl Acceptor for SubrangeSpecificationKind {
             SubrangeSpecificationKind::Specification(node) => {
                 visitor.visit_subrange_specification(node)
             }
-            SubrangeSpecificationKind::Type(node) => visitor.visit_identifier(node),
+            SubrangeSpecificationKind::Type(node) => visitor.visit_id(node),
         }
     }
 }

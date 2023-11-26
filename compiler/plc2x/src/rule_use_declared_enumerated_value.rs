@@ -121,7 +121,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
 impl Visitor<Diagnostic> for RuleDeclaredEnumeratedValues<'_> {
     type Value = ();
 
-    fn visit_enumerated_type_initializer(
+    fn visit_enumerated_initial_value_assignment(
         &mut self,
         init: &EnumeratedInitialValueAssignment,
     ) -> Result<Self::Value, Diagnostic> {

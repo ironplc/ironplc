@@ -4,8 +4,8 @@ alias ci := default
 default: compile test lint
 
 setup:
-  cargo install llvm-cov
   cargo install cargo-release
+  cargo install cargo-llvm-cov
 
 compile:
   cargo build

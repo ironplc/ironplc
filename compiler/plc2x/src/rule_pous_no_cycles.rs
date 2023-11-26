@@ -132,7 +132,7 @@ impl Visitor<Diagnostic> for RulePousNoCycles {
         res
     }
 
-    fn visit_function_block_type_initializer(
+    fn visit_function_block_initial_value_assignment(
         &mut self,
         init: &FunctionBlockInitialValueAssignment,
     ) -> Result<Self::Value, Diagnostic> {

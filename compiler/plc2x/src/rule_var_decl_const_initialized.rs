@@ -31,7 +31,7 @@
 use ironplc_dsl::{
     common::*,
     diagnostic::{Diagnostic, Label},
-    visitor::{visit_variable_declaration, Visitor},
+    visitor::{visit_var_decl, Visitor},
 };
 use ironplc_problems::Problem;
 
@@ -45,11 +45,11 @@ struct RuleConstantVarsInitialized {}
 impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
     type Value = ();
 
-    fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<(), Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Diagnostic> {
         if node.var_type == VariableType::External {
             // If the variable type is external, than it must be initialized
             // somewhere else and therefore we do not need to check here.
-            return visit_variable_declaration(self, node);
+            return visit_var_decl(self, node);
         }
 
         match node.qualifier {
@@ -119,7 +119,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
             DeclarationQualifier::NonRetain => {}
         }
 
-        visit_variable_declaration(self, node)
+        visit_var_decl(self, node)
     }
 }
 

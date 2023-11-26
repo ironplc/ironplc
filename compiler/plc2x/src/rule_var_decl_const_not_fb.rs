@@ -35,7 +35,7 @@ struct RuleVarDeclConstIsNotFunctionBlock {}
 impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
     type Value = ();
 
-    fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<(), Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Diagnostic> {
         if node.qualifier == DeclarationQualifier::Constant {
             if let InitialValueAssignmentKind::FunctionBlock(fb) = &node.initializer {
                 return Err(Diagnostic::problem(

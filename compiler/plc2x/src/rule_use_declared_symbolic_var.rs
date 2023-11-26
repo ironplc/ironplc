@@ -32,7 +32,7 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
     visitor::{
         visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
-        visit_variable_declaration, Visitor,
+        visit_var_decl, Visitor,
     },
 };
 use ironplc_problems::Problem;
@@ -79,9 +79,9 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
         ret
     }
 
-    fn visit_variable_declaration(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         self.add_if(node.identifier.symbolic_id(), DummyNode {});
-        visit_variable_declaration(self, node)
+        visit_var_decl(self, node)
     }
 
     fn visit_named_variable(
