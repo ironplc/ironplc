@@ -1,9 +1,17 @@
 //! Provides definitions specific to sequential function chart (SFC) elements.
 //!
-//! See section 2.
+//! See section 2 (especially 2.6).
 use crate::common::*;
 use crate::core::Id;
 use crate::textual::*;
+
+/// Sequential function chart.
+///
+/// See section 2.6.
+#[derive(Debug, PartialEq, Clone)]
+pub struct Sfc {
+    pub networks: Vec<Network>,
+}
 
 /// Grouping of related items that represent and a complete SFC.
 ///

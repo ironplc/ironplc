@@ -8,7 +8,9 @@
 //! for the struct. The implement fold_* functions from the trait to
 //! customize the behavior.
 use crate::common::*;
+use crate::configuration::*;
 use crate::core::Id;
+use crate::sfc::*;
 use crate::textual::*;
 use paste::paste;
 
@@ -26,6 +28,17 @@ macro_rules! dispatch
         paste! {
             fn [<fold_ $struct_name:snake >](&mut self, node: $struct_name) -> Result<$struct_name, E> {
                 [< fold_ $struct_name:snake >](self, node)
+            }
+        }
+    };
+}
+
+macro_rules! leaf
+{
+    ($struct_name:ident) => {
+        paste! {
+            fn [<fold_ $struct_name:snake >](&mut self, node: $struct_name) -> Result<$struct_name, E> {
+                Ok(node)
             }
         }
     };
@@ -65,7 +78,7 @@ pub trait Fold<E> {
         })
     }
     // 2.1.2.
-    fn fold_identifier(&mut self, node: Id) -> Result<Id, E> {
+    fn fold_id(&mut self, node: Id) -> Result<Id, E> {
         Ok(node)
     }
 
@@ -167,22 +180,60 @@ pub trait Fold<E> {
     /// Fold program declarations.
     ///
     /// See section 2.5.3.
-    fn fold_program_declaration(
-        &mut self,
-        node: ProgramDeclaration,
-    ) -> Result<ProgramDeclaration, E> {
-        Ok(ProgramDeclaration {
-            type_name: node.type_name,
-            variables: Folder::fold(node.variables, self)?,
-            body: node.body,
-        })
-    }
+    dispatch!(ProgramDeclaration);
 
+    dispatch!(Sfc);
+
+    dispatch!(Network);
+
+    leaf!(Step);
+
+    leaf!(Transition);
+
+    leaf!(Action);
+
+    // 2.7.1
     dispatch!(ResourceDeclaration);
+    // 2.7.1
     dispatch!(ProgramConfiguration);
     // 2.7.2
     dispatch!(ConfigurationDeclaration);
+    // 2.7.2
     dispatch!(TaskConfiguration);
+
+    dispatch!(Statements);
+
+    leaf!(Assignment);
+    leaf!(FbCall);
+    leaf!(If);
+    leaf!(Case);
+    leaf!(For);
+    leaf!(While);
+    leaf!(Repeat);
+}
+
+fn fold_program_declaration<F: Fold<E> + ?Sized, E>(
+    f: &mut F,
+    node: ProgramDeclaration,
+) -> Result<ProgramDeclaration, E> {
+    Ok(ProgramDeclaration {
+        type_name: f.fold_id(node.type_name)?,
+        variables: Folder::fold(node.variables, f)?,
+        body: Folder::fold(node.body, f)?,
+    })
+}
+
+fn fold_sfc<F: Fold<E> + ?Sized, E>(f: &mut F, node: Sfc) -> Result<Sfc, E> {
+    Ok(Sfc {
+        networks: Folder::fold(node.networks, f)?,
+    })
+}
+
+fn fold_network<F: Fold<E> + ?Sized, E>(f: &mut F, node: Network) -> Result<Network, E> {
+    Ok(Network {
+        initial_step: f.fold_step(node.initial_step)?,
+        elements: Folder::fold(node.elements, f)?,
+    })
 }
 
 fn fold_resource_declaration<F: Fold<E> + ?Sized, E>(
@@ -190,8 +241,8 @@ fn fold_resource_declaration<F: Fold<E> + ?Sized, E>(
     node: ResourceDeclaration,
 ) -> Result<ResourceDeclaration, E> {
     Ok(ResourceDeclaration {
-        name: f.fold_identifier(node.name)?,
-        resource: f.fold_identifier(node.resource)?,
+        name: f.fold_id(node.name)?,
+        resource: f.fold_id(node.resource)?,
         global_vars: Folder::fold(node.global_vars, f)?,
         tasks: Folder::fold(node.tasks, f)?,
         programs: Folder::fold(node.programs, f)?,
@@ -203,9 +254,9 @@ fn fold_program_configuration<F: Fold<E> + ?Sized, E>(
     node: ProgramConfiguration,
 ) -> Result<ProgramConfiguration, E> {
     Ok(ProgramConfiguration {
-        name: f.fold_identifier(node.name)?,
+        name: f.fold_id(node.name)?,
         task_name: Folder::fold(node.task_name, f)?,
-        type_name: f.fold_identifier(node.type_name)?,
+        type_name: f.fold_id(node.type_name)?,
     })
 }
 
@@ -214,7 +265,7 @@ fn fold_configuration_declaration<F: Fold<E> + ?Sized, E>(
     node: ConfigurationDeclaration,
 ) -> Result<ConfigurationDeclaration, E> {
     Ok(ConfigurationDeclaration {
-        name: f.fold_identifier(node.name)?,
+        name: f.fold_id(node.name)?,
         global_var: Folder::fold(node.global_var, f)?,
         resource_decl: Folder::fold(node.resource_decl, f)?,
     })
@@ -225,16 +276,22 @@ fn fold_task_configuration<F: Fold<E> + ?Sized, E>(
     node: TaskConfiguration,
 ) -> Result<TaskConfiguration, E> {
     Ok(TaskConfiguration {
-        name: f.fold_identifier(node.name)?,
+        name: f.fold_id(node.name)?,
         priority: node.priority,
         interval: node.interval,
+    })
+}
+
+fn fold_statements<F: Fold<E> + ?Sized, E>(f: &mut F, node: Statements) -> Result<Statements, E> {
+    Ok(Statements {
+        body: Folder::fold(node.body, f)?,
     })
 }
 
 impl Folder for Id {
     type Mapped = Id;
     fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        folder.fold_identifier(self)
+        folder.fold_id(self)
     }
 }
 
@@ -311,5 +368,59 @@ impl Folder for TaskConfiguration {
     type Mapped = TaskConfiguration;
     fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
         folder.fold_task_configuration(self)
+    }
+}
+
+impl Folder for FunctionBlockBody {
+    type Mapped = FunctionBlockBody;
+    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
+        match self {
+            FunctionBlockBody::Sfc(network) => {
+                Ok(FunctionBlockBody::Sfc(folder.fold_sfc(network)?))
+            }
+            FunctionBlockBody::Statements(stmts) => Ok(FunctionBlockBody::Statements(
+                folder.fold_statements(stmts)?,
+            )),
+            // TODO it isn't clear if visiting this is necessary
+            FunctionBlockBody::Empty() => Ok(FunctionBlockBody::Empty()),
+        }
+    }
+}
+
+impl Folder for Network {
+    type Mapped = Network;
+    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
+        folder.fold_network(self)
+    }
+}
+
+impl Folder for ElementKind {
+    type Mapped = ElementKind;
+    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
+        match self {
+            ElementKind::Step(step) => Ok(ElementKind::Step(folder.fold_step(step)?)),
+            ElementKind::Transition(transition) => {
+                Ok(ElementKind::Transition(folder.fold_transition(transition)?))
+            }
+            ElementKind::Action(action) => Ok(ElementKind::Action(folder.fold_action(action)?)),
+        }
+    }
+}
+
+impl Folder for StmtKind {
+    type Mapped = StmtKind;
+    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
+        match self {
+            StmtKind::Assignment(node) => Ok(StmtKind::Assignment(folder.fold_assignment(node)?)),
+            StmtKind::FbCall(node) => Ok(StmtKind::FbCall(folder.fold_fb_call(node)?)),
+            StmtKind::If(node) => Ok(StmtKind::If(folder.fold_if(node)?)),
+            StmtKind::Case(node) => Ok(StmtKind::Case(folder.fold_case(node)?)),
+            // TODO this
+            StmtKind::For(node) => Ok(StmtKind::For(folder.fold_for(node)?)),
+            StmtKind::While(node) => Ok(StmtKind::While(folder.fold_while(node)?)),
+            StmtKind::Repeat(node) => Ok(StmtKind::Repeat(folder.fold_repeat(node)?)),
+            StmtKind::Return => Ok(StmtKind::Return),
+            StmtKind::Exit => Ok(StmtKind::Exit),
+        }
     }
 }

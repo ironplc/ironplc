@@ -4,6 +4,8 @@
 #[allow(unused)]
 pub mod common;
 #[allow(unused)]
+pub mod configuration;
+#[allow(unused)]
 pub mod core;
 #[allow(unused)]
 pub mod diagnostic;

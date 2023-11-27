@@ -71,6 +71,7 @@ mod tests {
     use super::parse;
 
     use ironplc_dsl::common::*;
+    use ironplc_dsl::configuration::*;
     use ironplc_dsl::core::FileId;
     use ironplc_dsl::core::Id;
     use ironplc_dsl::core::SourceLoc;

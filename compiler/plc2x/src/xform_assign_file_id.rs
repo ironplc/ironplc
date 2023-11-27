@@ -18,7 +18,7 @@ struct TransformFileId<'a> {
 }
 
 impl<'a> Fold<Diagnostic> for TransformFileId<'a> {
-    fn fold_identifier(&mut self, node: Id) -> Result<Id, Diagnostic> {
+    fn fold_id(&mut self, node: Id) -> Result<Id, Diagnostic> {
         Ok(Id {
             original: node.original,
             lower_case: node.lower_case,

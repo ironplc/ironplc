@@ -26,6 +26,7 @@ use peg::parser;
 use crate::keyword::get_keyword;
 use crate::mapper::*;
 use ironplc_dsl::common::*;
+use ironplc_dsl::configuration::*;
 use ironplc_dsl::core::Id;
 use ironplc_dsl::sfc::*;
 use ironplc_dsl::textual::*;
