@@ -14,6 +14,7 @@
 //! END_RESOURCE
 use ironplc_dsl::{
     common::*,
+    configuration::ResourceDeclaration,
     core::SourcePosition,
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,

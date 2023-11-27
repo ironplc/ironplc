@@ -33,6 +33,7 @@
 //! ```
 
 use crate::common::*;
+use crate::configuration::*;
 use crate::core::Id;
 use crate::diagnostic::Diagnostic;
 use crate::sfc::*;
@@ -230,6 +231,8 @@ pub trait Visitor<E: std::convert::From<Diagnostic>> {
     // 2.5.3
     dispatch!(ProgramDeclaration);
 
+    // Declarations from Sfc
+
     // 2.6
     dispatch!(Sfc);
 
@@ -245,6 +248,8 @@ pub trait Visitor<E: std::convert::From<Diagnostic>> {
     // 2.6.4
     dispatch!(Action);
 
+    // Declarations from Configuration
+
     // 2.7.1
     dispatch!(ResourceDeclaration);
 
@@ -256,6 +261,8 @@ pub trait Visitor<E: std::convert::From<Diagnostic>> {
 
     // 2.7.2
     leaf!(TaskConfiguration);
+
+    // Declarations from Textual
 
     // 3
     dispatch!(Statements);
@@ -298,35 +305,11 @@ pub trait Visitor<E: std::convert::From<Diagnostic>> {
     dispatch!(ArrayVariable);
 }
 
-pub fn visit_program_configuration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+pub fn visit_late_bound_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
-    node: &ProgramConfiguration,
+    node: &LateBoundDeclaration,
 ) -> Result<V::Value, E> {
     Ok(V::Value::default())
-}
-
-pub fn visit_configuration_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &ConfigurationDeclaration,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.global_var, v)?;
-    Acceptor::accept(&node.resource_decl, v)
-}
-
-pub fn visit_resource_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &ResourceDeclaration,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.global_vars, v)?;
-    Acceptor::accept(&node.tasks, v)?;
-    Acceptor::accept(&node.programs, v)
-}
-
-pub fn visit_var_decl<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &VarDecl,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.initializer, v)
 }
 
 pub fn visit_enumeration_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
@@ -359,6 +342,13 @@ pub fn visit_subrange_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     )
 }
 
+pub fn visit_subrange_specification<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &SubrangeSpecification,
+) -> Result<V::Value, E> {
+    v.visit_subrange(&node.subrange)
+}
+
 pub fn visit_simple_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &SimpleDeclaration,
@@ -372,13 +362,6 @@ pub fn visit_array_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
 ) -> Result<V::Value, E> {
     Acceptor::accept(&node.spec, v)?;
     Acceptor::accept(&node.init, v)
-}
-
-pub fn visit_subrange_specification<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &SubrangeSpecification,
-) -> Result<V::Value, E> {
-    v.visit_subrange(&node.subrange)
 }
 
 pub fn visit_structure_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
@@ -416,11 +399,44 @@ pub fn visit_string_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     Ok(V::Value::default())
 }
 
-pub fn visit_late_bound_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+pub fn visit_var_decl<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
-    node: &LateBoundDeclaration,
+    node: &VarDecl,
 ) -> Result<V::Value, E> {
-    Ok(V::Value::default())
+    Acceptor::accept(&node.initializer, v)
+}
+
+// 2.4.3.2
+pub fn visit_simple_initializer<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &SimpleInitializer,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.initial_value, v)
+}
+
+pub fn visit_array_initial_value_assignment<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &ArrayInitialValueAssignment,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.spec, v)?;
+    Acceptor::accept(&node.initial_values, v)
+}
+
+// 2.4.3.2
+pub fn visit_enumerated_initial_value_assignment<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &EnumeratedInitialValueAssignment,
+) -> Result<V::Value, E> {
+    v.visit_id(&node.type_name)?;
+    Acceptor::accept(&node.initial_value, v)
+}
+
+pub fn visit_function_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &FunctionDeclaration,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.variables, v)?;
+    Acceptor::accept(&node.body, v)
 }
 
 pub fn visit_function_block_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
@@ -439,12 +455,122 @@ pub fn visit_program_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     Acceptor::accept(&node.body, v)
 }
 
-pub fn visit_function_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+pub fn visit_sfc<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
-    node: &FunctionDeclaration,
+    node: &Sfc,
 ) -> Result<V::Value, E> {
-    Acceptor::accept(&node.variables, v)?;
+    Acceptor::accept(&node.networks, v)
+}
+
+// 2.6.2
+pub fn visit_network<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &Network,
+) -> Result<V::Value, E> {
+    v.visit_step(&node.initial_step)?;
+    Acceptor::accept(&node.elements, v)
+}
+
+// 2.6.3
+pub fn visit_transition<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &Transition,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.condition, v)
+}
+
+// 2.6.3
+pub fn visit_action<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &Action,
+) -> Result<V::Value, E> {
     Acceptor::accept(&node.body, v)
+}
+
+pub fn visit_resource_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &ResourceDeclaration,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.global_vars, v)?;
+    Acceptor::accept(&node.tasks, v)?;
+    Acceptor::accept(&node.programs, v)
+}
+
+pub fn visit_program_configuration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &ProgramConfiguration,
+) -> Result<V::Value, E> {
+    Ok(V::Value::default())
+}
+
+pub fn visit_configuration_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &ConfigurationDeclaration,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.global_var, v)?;
+    Acceptor::accept(&node.resource_decl, v)
+}
+
+pub fn visit_statements<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &Statements,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.body, v)
+}
+
+// 3.2.3
+pub fn visit_fb_call<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &FbCall,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.params, v)
+}
+
+// 3.2.3
+pub fn visit_positional_input<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &PositionalInput,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.expr, v)
+}
+
+// 3.2.3
+pub fn visit_named_input<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &NamedInput,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.expr, v)
+}
+
+// 3.2.3
+pub fn visit_output<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &Output,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.tgt, v)
+}
+
+pub fn visit_compare_expr<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &CompareExpr,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.left, v)?;
+    Acceptor::accept(&node.right, v)
+}
+
+pub fn visit_binary_expr<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &BinaryExpr,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.left, v)?;
+    Acceptor::accept(&node.right, v)
+}
+
+pub fn visit_unary_expr<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &UnaryExpr,
+) -> Result<V::Value, E> {
+    Acceptor::accept(&node.term, v)
 }
 
 pub fn visit_assignment<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
@@ -487,125 +613,6 @@ pub fn visit_array_variable<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
 ) -> Result<V::Value, E> {
     Acceptor::accept(node.variable.as_ref(), v)?;
     Acceptor::accept(&node.subscripts, v)
-}
-
-pub fn visit_compare_expr<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &CompareExpr,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.left, v)?;
-    Acceptor::accept(&node.right, v)
-}
-
-pub fn visit_binary_expr<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &BinaryExpr,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.left, v)?;
-    Acceptor::accept(&node.right, v)
-}
-
-pub fn visit_unary_expr<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &UnaryExpr,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.term, v)
-}
-
-// 2.4.3.2
-pub fn visit_simple_initializer<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &SimpleInitializer,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.initial_value, v)
-}
-
-// 2.4.3.2
-pub fn visit_enumerated_initial_value_assignment<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &EnumeratedInitialValueAssignment,
-) -> Result<V::Value, E> {
-    v.visit_id(&node.type_name)?;
-    Acceptor::accept(&node.initial_value, v)
-}
-
-pub fn visit_array_initial_value_assignment<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &ArrayInitialValueAssignment,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.spec, v)?;
-    Acceptor::accept(&node.initial_values, v)
-}
-
-pub fn visit_sfc<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &Sfc,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.networks, v)
-}
-
-// 2.6.2
-pub fn visit_network<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &Network,
-) -> Result<V::Value, E> {
-    v.visit_step(&node.initial_step)?;
-    Acceptor::accept(&node.elements, v)
-}
-
-// 2.6.3
-pub fn visit_transition<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &Transition,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.condition, v)
-}
-
-// 2.6.3
-pub fn visit_action<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &Action,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.body, v)
-}
-
-pub fn visit_statements<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &Statements,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.body, v)
-}
-
-// 3.2.3
-pub fn visit_fb_call<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &FbCall,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.params, v)
-}
-
-// 3.2.3
-pub fn visit_positional_input<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &PositionalInput,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.expr, v)
-}
-
-// 3.2.3
-pub fn visit_named_input<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &NamedInput,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.expr, v)
-}
-
-// 3.2.3
-pub fn visit_output<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
-    v: &mut V,
-    node: &Output,
-) -> Result<V::Value, E> {
-    Acceptor::accept(&node.tgt, v)
 }
 
 impl Acceptor for LibraryElement {
