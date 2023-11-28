@@ -200,16 +200,16 @@ END_FUNCTION_BLOCK
 
         let expected = Library {
             elements: vec![
-                LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
+                LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
                     name: Id::from("called"),
                     variables: vec![],
-                    body: FunctionBlockBody::empty(),
+                    body: FunctionBlockBodyKind::empty(),
                     position: SourceLoc::default(),
                 }),
-                LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
+                LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
                     name: Id::from("caller"),
                     variables: vec![VarDecl::function_block("fb_var", "called")],
-                    body: FunctionBlockBody::empty(),
+                    body: FunctionBlockBodyKind::empty(),
                     position: SourceLoc::default(),
                 }),
             ],
@@ -239,7 +239,7 @@ END_FUNCTION_BLOCK
 
         let expected = Library {
             elements: vec![
-                LibraryElement::DataTypeDeclaration(DataTypeDeclarationKind::Structure(
+                LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Structure(
                     StructureDeclaration {
                         type_name: Id::from("the_struct"),
                         elements: vec![StructureElementDeclaration {
@@ -248,10 +248,10 @@ END_FUNCTION_BLOCK
                         }],
                     },
                 )),
-                LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
+                LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
                     name: Id::from("caller"),
                     variables: vec![VarDecl::structure("the_var", "the_struct")],
-                    body: FunctionBlockBody::empty(),
+                    body: FunctionBlockBodyKind::empty(),
                     position: SourceLoc::default(),
                 }),
             ],
@@ -279,7 +279,7 @@ END_FUNCTION_BLOCK
 
         let expected = Library {
             elements: vec![
-                LibraryElement::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
+                LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
                     EnumerationDeclaration {
                         type_name: Id::from("values"),
                         spec_init: EnumeratedSpecificationInit {
@@ -290,10 +290,10 @@ END_FUNCTION_BLOCK
                         },
                     },
                 )),
-                LibraryElement::FunctionBlockDeclaration(FunctionBlockDeclaration {
+                LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
                     name: Id::from("caller"),
                     variables: vec![VarDecl::uninitialized_enumerated("the_var", "values")],
-                    body: FunctionBlockBody::empty(),
+                    body: FunctionBlockBodyKind::empty(),
                     position: SourceLoc::default(),
                 }),
             ],

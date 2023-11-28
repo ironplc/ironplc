@@ -219,7 +219,7 @@ END_TYPE
 
         let expected = Library {
             elements: vec![
-                LibraryElement::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
+                LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
                     EnumerationDeclaration {
                         type_name: Id::from("LEVEL"),
                         spec_init: EnumeratedSpecificationInit::values_and_default(
@@ -228,7 +228,7 @@ END_TYPE
                         ),
                     },
                 )),
-                LibraryElement::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
+                LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
                     EnumerationDeclaration {
                         type_name: Id::from("LEVEL_ALIAS"),
                         spec_init: EnumeratedSpecificationInit {

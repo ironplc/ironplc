@@ -21,7 +21,7 @@ pub fn resource_path(name: &'static str) -> PathBuf {
 }
 
 #[cfg(test)]
-pub fn new_library(element: LibraryElement) -> Library {
+pub fn new_library(element: LibraryElementKind) -> Library {
     Library {
         elements: vec![element],
     }
