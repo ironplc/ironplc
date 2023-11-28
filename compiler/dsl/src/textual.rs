@@ -430,7 +430,7 @@ pub struct Case {
 /// See section 3.3.2.3.
 #[derive(Debug, PartialEq, Clone)]
 pub struct CaseStatementGroup {
-    pub selectors: Vec<CaseSelection>,
+    pub selectors: Vec<CaseSelectionKind>,
     pub statements: Vec<StmtKind>,
 }
 
@@ -438,7 +438,7 @@ pub struct CaseStatementGroup {
 ///
 /// See section 3.3.2.3.
 #[derive(Debug, PartialEq, Clone)]
-pub enum CaseSelection {
+pub enum CaseSelectionKind {
     Subrange(Subrange),
     SignedInteger(SignedInteger),
     EnumeratedValue(EnumeratedValue),

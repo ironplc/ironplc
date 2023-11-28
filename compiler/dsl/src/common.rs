@@ -1081,7 +1081,7 @@ pub struct ArrayInitialValueAssignment {
 /// The library element flattens data type declaration blocks so that each
 /// enumeration is for a single data type declaration.
 #[derive(Debug, PartialEq)]
-pub enum LibraryElement {
+pub enum LibraryElementKind {
     DataTypeDeclaration(DataTypeDeclarationKind),
     FunctionDeclaration(FunctionDeclaration),
     FunctionBlockDeclaration(FunctionBlockDeclaration),
@@ -1121,7 +1121,7 @@ impl HasVariables for FunctionDeclaration {
 pub struct FunctionBlockDeclaration {
     pub name: Id,
     pub variables: Vec<VarDecl>,
-    pub body: FunctionBlockBody,
+    pub body: FunctionBlockBodyKind,
     pub position: SourceLoc,
 }
 
@@ -1143,7 +1143,7 @@ pub struct ProgramDeclaration {
     pub variables: Vec<VarDecl>,
     // TODO located variables
     // TODO other stuff here
-    pub body: FunctionBlockBody,
+    pub body: FunctionBlockBodyKind,
 }
 
 impl HasVariables for ProgramDeclaration {
@@ -1157,7 +1157,7 @@ impl HasVariables for ProgramDeclaration {
 ///
 /// See section 2.5.2.
 #[derive(Debug, PartialEq, Clone)]
-pub enum FunctionBlockBody {
+pub enum FunctionBlockBodyKind {
     Sfc(Sfc),
     Statements(Statements),
     /// A function block that has no body (and is therefore no known type).
@@ -1167,20 +1167,20 @@ pub enum FunctionBlockBody {
     Empty(),
 }
 
-impl FunctionBlockBody {
+impl FunctionBlockBodyKind {
     /// Creates a function body that is composed of statements.
-    pub fn stmts(stmts: Vec<StmtKind>) -> FunctionBlockBody {
-        FunctionBlockBody::Statements(Statements { body: stmts })
+    pub fn stmts(stmts: Vec<StmtKind>) -> FunctionBlockBodyKind {
+        FunctionBlockBodyKind::Statements(Statements { body: stmts })
     }
 
     /// Creates a function body that is composed of a sequential function block.
-    pub fn sfc(networks: Vec<Network>) -> FunctionBlockBody {
-        FunctionBlockBody::Sfc(Sfc { networks })
+    pub fn sfc(networks: Vec<Network>) -> FunctionBlockBodyKind {
+        FunctionBlockBodyKind::Sfc(Sfc { networks })
     }
 
     /// Creates an empty function body.
-    pub fn empty() -> FunctionBlockBody {
-        FunctionBlockBody::Empty()
+    pub fn empty() -> FunctionBlockBodyKind {
+        FunctionBlockBodyKind::Empty()
     }
 }
 
@@ -1188,11 +1188,11 @@ impl FunctionBlockBody {
 /// typically represented as a file resource.
 #[derive(Debug, PartialEq)]
 pub struct Library {
-    pub elements: Vec<LibraryElement>,
+    pub elements: Vec<LibraryElementKind>,
 }
 
 impl Library {
-    pub fn new(elements: Vec<LibraryElement>) -> Self {
+    pub fn new(elements: Vec<LibraryElementKind>) -> Self {
         Library { elements }
     }
 }

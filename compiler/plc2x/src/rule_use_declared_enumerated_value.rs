@@ -42,8 +42,9 @@ pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     // we can quickly look up invocations
     let mut enum_defs = HashMap::new();
     for elem in lib.elements.iter() {
-        if let LibraryElement::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(enum_dec)) =
-            elem
+        if let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
+            enum_dec,
+        )) = elem
         {
             enum_defs.insert(enum_dec.type_name.clone(), enum_dec);
         }
