@@ -36,7 +36,7 @@ impl ElementKind {
     pub fn action(name: &str, body: Vec<StmtKind>) -> ElementKind {
         ElementKind::Action(Action {
             name: Id::from(name),
-            body: FunctionBlockBody::Statements(Statements { body }),
+            body: FunctionBlockBodyKind::Statements(Statements { body }),
         })
     }
 
@@ -85,7 +85,7 @@ pub struct Transition {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Action {
     pub name: Id,
-    pub body: FunctionBlockBody,
+    pub body: FunctionBlockBodyKind,
 }
 
 /// Action qualifiers defined for each step/action association.

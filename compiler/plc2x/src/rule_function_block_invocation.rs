@@ -89,7 +89,7 @@ pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     // we can quickly look up invocations
     let mut function_blocks = HashMap::new();
     for x in lib.elements.iter() {
-        if let LibraryElement::FunctionBlockDeclaration(fb) = x {
+        if let LibraryElementKind::FunctionBlockDeclaration(fb) = x {
             function_blocks.insert(fb.name.clone(), fb);
         }
     }

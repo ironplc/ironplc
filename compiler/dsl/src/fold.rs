@@ -9,7 +9,7 @@
 //! customize the behavior.
 use crate::common::*;
 use crate::configuration::*;
-use crate::core::Id;
+use crate::core::*;
 use crate::sfc::*;
 use crate::textual::*;
 use paste::paste;
@@ -77,6 +77,9 @@ pub trait Fold<E> {
             elements: Folder::fold(node.elements, self)?,
         })
     }
+
+    dispatch!(SourceLoc);
+
     // 2.1.2.
     fn fold_id(&mut self, node: Id) -> Result<Id, E> {
         Ok(node)
@@ -84,25 +87,29 @@ pub trait Fold<E> {
 
     fn fold_library_element_declaration(
         &mut self,
-        node: LibraryElement,
-    ) -> Result<LibraryElement, E> {
+        node: LibraryElementKind,
+    ) -> Result<LibraryElementKind, E> {
         match node {
-            LibraryElement::DataTypeDeclaration(data_type) => {
-                Ok(LibraryElement::DataTypeDeclaration(
+            LibraryElementKind::DataTypeDeclaration(data_type) => {
+                Ok(LibraryElementKind::DataTypeDeclaration(
                     self.fold_data_type_declaration_kind(data_type)?,
                 ))
             }
-            LibraryElement::FunctionBlockDeclaration(function_block_decl) => {
-                Ok(LibraryElement::FunctionBlockDeclaration(
+            LibraryElementKind::FunctionBlockDeclaration(function_block_decl) => {
+                Ok(LibraryElementKind::FunctionBlockDeclaration(
                     self.fold_function_block_declaration(function_block_decl)?,
                 ))
             }
-            LibraryElement::FunctionDeclaration(function_decl) => Ok(
-                LibraryElement::FunctionDeclaration(self.fold_function_declaration(function_decl)?),
-            ),
-            LibraryElement::ProgramDeclaration(program_decl) => Ok(
-                LibraryElement::ProgramDeclaration(self.fold_program_declaration(program_decl)?),
-            ),
+            LibraryElementKind::FunctionDeclaration(function_decl) => {
+                Ok(LibraryElementKind::FunctionDeclaration(
+                    self.fold_function_declaration(function_decl)?,
+                ))
+            }
+            LibraryElementKind::ProgramDeclaration(program_decl) => {
+                Ok(LibraryElementKind::ProgramDeclaration(
+                    self.fold_program_declaration(program_decl)?,
+                ))
+            }
             _ => Ok(node),
         }
     }
@@ -212,6 +219,14 @@ pub trait Fold<E> {
     leaf!(Repeat);
 }
 
+fn fold_source_loc<F: Fold<E> + ?Sized, E>(f: &mut F, node: SourceLoc) -> Result<SourceLoc, E> {
+    Ok(SourceLoc {
+        start: node.start,
+        end: node.end,
+        file_id: node.file_id,
+    })
+}
+
 fn fold_program_declaration<F: Fold<E> + ?Sized, E>(
     f: &mut F,
     node: ProgramDeclaration,
@@ -295,30 +310,32 @@ impl Folder for Id {
     }
 }
 
-impl Folder for LibraryElement {
-    type Mapped = LibraryElement;
+impl Folder for LibraryElementKind {
+    type Mapped = LibraryElementKind;
     fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
         match self {
-            LibraryElement::DataTypeDeclaration(data_type) => {
-                Ok(LibraryElement::DataTypeDeclaration(
+            LibraryElementKind::DataTypeDeclaration(data_type) => {
+                Ok(LibraryElementKind::DataTypeDeclaration(
                     folder.fold_data_type_declaration_kind(data_type)?,
                 ))
             }
-            LibraryElement::FunctionBlockDeclaration(function_block_decl) => {
-                Ok(LibraryElement::FunctionBlockDeclaration(
+            LibraryElementKind::FunctionBlockDeclaration(function_block_decl) => {
+                Ok(LibraryElementKind::FunctionBlockDeclaration(
                     folder.fold_function_block_declaration(function_block_decl)?,
                 ))
             }
-            LibraryElement::FunctionDeclaration(function_decl) => {
-                Ok(LibraryElement::FunctionDeclaration(
+            LibraryElementKind::FunctionDeclaration(function_decl) => {
+                Ok(LibraryElementKind::FunctionDeclaration(
                     folder.fold_function_declaration(function_decl)?,
                 ))
             }
-            LibraryElement::ProgramDeclaration(program_decl) => Ok(
-                LibraryElement::ProgramDeclaration(folder.fold_program_declaration(program_decl)?),
-            ),
-            LibraryElement::ConfigurationDeclaration(config_decl) => {
-                Ok(LibraryElement::ConfigurationDeclaration(
+            LibraryElementKind::ProgramDeclaration(program_decl) => {
+                Ok(LibraryElementKind::ProgramDeclaration(
+                    folder.fold_program_declaration(program_decl)?,
+                ))
+            }
+            LibraryElementKind::ConfigurationDeclaration(config_decl) => {
+                Ok(LibraryElementKind::ConfigurationDeclaration(
                     folder.fold_configuration_declaration(config_decl)?,
                 ))
             }
@@ -371,18 +388,18 @@ impl Folder for TaskConfiguration {
     }
 }
 
-impl Folder for FunctionBlockBody {
-    type Mapped = FunctionBlockBody;
+impl Folder for FunctionBlockBodyKind {
+    type Mapped = FunctionBlockBodyKind;
     fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
         match self {
-            FunctionBlockBody::Sfc(network) => {
-                Ok(FunctionBlockBody::Sfc(folder.fold_sfc(network)?))
+            FunctionBlockBodyKind::Sfc(network) => {
+                Ok(FunctionBlockBodyKind::Sfc(folder.fold_sfc(network)?))
             }
-            FunctionBlockBody::Statements(stmts) => Ok(FunctionBlockBody::Statements(
+            FunctionBlockBodyKind::Statements(stmts) => Ok(FunctionBlockBodyKind::Statements(
                 folder.fold_statements(stmts)?,
             )),
             // TODO it isn't clear if visiting this is necessary
-            FunctionBlockBody::Empty() => Ok(FunctionBlockBody::Empty()),
+            FunctionBlockBodyKind::Empty() => Ok(FunctionBlockBodyKind::Empty()),
         }
     }
 }

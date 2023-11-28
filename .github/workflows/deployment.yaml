@@ -33,7 +33,7 @@ jobs:
     name: Create Version Numbers and GitHub Release for the Artifacts
     uses: ./.github/workflows/partial_version.yaml
     with:
-      dryrun: ${{ inputs.dryrun }}
+      dryrun: ${{ !!inputs.dryrun }}
     secrets:
       IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN: ${{ secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN }}
 

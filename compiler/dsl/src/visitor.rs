@@ -309,7 +309,8 @@ pub fn visit_late_bound_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>
     v: &mut V,
     node: &LateBoundDeclaration,
 ) -> Result<V::Value, E> {
-    Ok(V::Value::default())
+    v.visit_id(&node.data_type_name)?;
+    v.visit_id(&node.base_type_name)
 }
 
 pub fn visit_enumeration_declaration<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
@@ -615,25 +616,25 @@ pub fn visit_array_variable<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     Acceptor::accept(&node.subscripts, v)
 }
 
-impl Acceptor for LibraryElement {
+impl Acceptor for LibraryElementKind {
     fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
         &self,
         visitor: &mut V,
     ) -> Result<V::Value, E> {
         match self {
-            LibraryElement::ConfigurationDeclaration(config) => {
+            LibraryElementKind::ConfigurationDeclaration(config) => {
                 visitor.visit_configuration_declaration(config)
             }
-            LibraryElement::DataTypeDeclaration(data_type_decl) => {
+            LibraryElementKind::DataTypeDeclaration(data_type_decl) => {
                 Acceptor::accept(data_type_decl, visitor)
             }
-            LibraryElement::FunctionBlockDeclaration(func_block_decl) => {
+            LibraryElementKind::FunctionBlockDeclaration(func_block_decl) => {
                 visitor.visit_function_block_declaration(func_block_decl)
             }
-            LibraryElement::FunctionDeclaration(func_decl) => {
+            LibraryElementKind::FunctionDeclaration(func_decl) => {
                 visitor.visit_function_declaration(func_decl)
             }
-            LibraryElement::ProgramDeclaration(prog_decl) => {
+            LibraryElementKind::ProgramDeclaration(prog_decl) => {
                 visitor.visit_program_declaration(prog_decl)
             }
         }
@@ -834,16 +835,16 @@ impl Acceptor for Constant {
     }
 }
 
-impl Acceptor for FunctionBlockBody {
+impl Acceptor for FunctionBlockBodyKind {
     fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
         &self,
         visitor: &mut V,
     ) -> Result<V::Value, E> {
         match self {
-            FunctionBlockBody::Sfc(network) => visitor.visit_sfc(network),
-            FunctionBlockBody::Statements(stmts) => visitor.visit_statements(stmts),
+            FunctionBlockBodyKind::Sfc(network) => visitor.visit_sfc(network),
+            FunctionBlockBodyKind::Statements(stmts) => visitor.visit_statements(stmts),
             // TODO it isn't clear if visiting this is necessary
-            FunctionBlockBody::Empty() => Ok(V::Value::default()),
+            FunctionBlockBodyKind::Empty() => Ok(V::Value::default()),
         }
     }
 }
@@ -877,15 +878,15 @@ impl Acceptor for CaseStatementGroup {
     }
 }
 
-impl Acceptor for CaseSelection {
+impl Acceptor for CaseSelectionKind {
     fn accept<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
         &self,
         visitor: &mut V,
     ) -> Result<V::Value, E> {
         match self {
-            CaseSelection::Subrange(sr) => visitor.visit_subrange(sr),
-            CaseSelection::SignedInteger(si) => visitor.visit_signed_integer(si),
-            CaseSelection::EnumeratedValue(ev) => visitor.visit_enumerated_value(ev),
+            CaseSelectionKind::Subrange(sr) => visitor.visit_subrange(sr),
+            CaseSelectionKind::SignedInteger(si) => visitor.visit_signed_integer(si),
+            CaseSelectionKind::EnumeratedValue(ev) => visitor.visit_enumerated_value(ev),
         }
     }
 }
@@ -1049,10 +1050,10 @@ mod test {
     #[test]
     fn walk_when_has_symbolic_variable_then_visits_variable() {
         let library = Library {
-            elements: vec![LibraryElement::ProgramDeclaration(ProgramDeclaration {
+            elements: vec![LibraryElementKind::ProgramDeclaration(ProgramDeclaration {
                 type_name: Id::from("plc_prg"),
                 variables: vec![VarDecl::simple("Reset", "BOOL").with_type(VariableType::Input)],
-                body: FunctionBlockBody::stmts(vec![StmtKind::fb_assign(
+                body: FunctionBlockBodyKind::stmts(vec![StmtKind::fb_assign(
                     "AverageVal",
                     vec!["Cnt1", "Cnt2"],
                     "_TMP_AverageVal17_OUT",

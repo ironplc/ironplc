@@ -35,7 +35,10 @@ use ironplc_dsl::textual::*;
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
 /// Parses a IEC 61131-3 library into object form.
-pub fn parse_library(source: &str, file_id: &FileId) -> Result<Vec<LibraryElement>, Diagnostic> {
+pub fn parse_library(
+    source: &str,
+    file_id: &FileId,
+) -> Result<Vec<LibraryElementKind>, Diagnostic> {
     plc_parser::library(source).map_err(|e| {
         let expected = Vec::from_iter(e.expected.tokens()).join(", ");
         Diagnostic::problem(
@@ -208,16 +211,16 @@ parser! {
     rule KEYWORD() = KEYWORD_ITEM() !ID_CHAR()
     rule STANDARD_FUNCTION_BLOCK_NAME() = kw("END_VAR")
 
-    pub rule library() -> Vec<LibraryElement> = traced(<library__impl()>)
-    pub rule library__impl() -> Vec<LibraryElement> = _ decls:library_element_declaration() ** _ _ { decls.into_iter().flatten().collect() }
+    pub rule library() -> Vec<LibraryElementKind> = traced(<library__impl()>)
+    pub rule library__impl() -> Vec<LibraryElementKind> = _ decls:library_element_declaration() ** _ _ { decls.into_iter().flatten().collect() }
 
     // B.0 Programming model
-    rule library_element_declaration() -> Vec<LibraryElement> =
-      data_types:data_type_declaration() { data_types.into_iter().map(LibraryElement::DataTypeDeclaration).collect() }
-      / fbd:function_block_declaration() { vec![LibraryElement::FunctionBlockDeclaration(fbd)] }
-      / fd:function_declaration() { vec![LibraryElement::FunctionDeclaration(fd)] }
-      / pd:program_declaration() { vec![LibraryElement::ProgramDeclaration(pd)] }
-      / cd:configuration_declaration() { vec![LibraryElement::ConfigurationDeclaration(cd)] }
+    rule library_element_declaration() -> Vec<LibraryElementKind> =
+      data_types:data_type_declaration() { data_types.into_iter().map(LibraryElementKind::DataTypeDeclaration).collect() }
+      / fbd:function_block_declaration() { vec![LibraryElementKind::FunctionBlockDeclaration(fbd)] }
+      / fd:function_declaration() { vec![LibraryElementKind::FunctionDeclaration(fd)] }
+      / pd:program_declaration() { vec![LibraryElementKind::ProgramDeclaration(pd)] }
+      / cd:configuration_declaration() { vec![LibraryElementKind::ConfigurationDeclaration(cd)] }
 
     // B.1.1 Letters, digits and identifier
     //rule digit() -> &'input str = $(['0'..='9'])
@@ -934,7 +937,7 @@ parser! {
       let qualifier = Option::Some(DeclarationQualifier::NonRetain);
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
-    rule function_block_body() -> FunctionBlockBody = networks:sequential_function_chart() { FunctionBlockBody::sfc(networks) } / statements:statement_list() { FunctionBlockBody::stmts(statements) } / _ { FunctionBlockBody::empty( )}
+    rule function_block_body() -> FunctionBlockBodyKind = networks:sequential_function_chart() { FunctionBlockBodyKind::sfc(networks) } / statements:statement_list() { FunctionBlockBodyKind::stmts(statements) } / _ { FunctionBlockBodyKind::empty( )}
 
     // B.1.5.3 Program declaration
     rule program_type_name() -> Id = i:identifier() { i }
@@ -1212,8 +1215,8 @@ parser! {
         statements,
       }
     }
-    rule case_list() -> Vec<CaseSelection> = cases_list:case_list_element() ++ (_ "," _) { cases_list }
-    rule case_list_element() -> CaseSelection = sr:subrange() {CaseSelection::Subrange(sr)} / si:signed_integer() {CaseSelection::SignedInteger(si)} / ev:enumerated_value() {CaseSelection::EnumeratedValue(ev)}
+    rule case_list() -> Vec<CaseSelectionKind> = cases_list:case_list_element() ++ (_ "," _) { cases_list }
+    rule case_list_element() -> CaseSelectionKind = sr:subrange() {CaseSelectionKind::Subrange(sr)} / si:signed_integer() {CaseSelectionKind::SignedInteger(si)} / ev:enumerated_value() {CaseSelectionKind::EnumeratedValue(ev)}
 
     // B.3.2.4 Iteration statements
     rule iteration_statement() -> StmtKind = f:for_statement() {StmtKind::For(f)} / w:while_statement() {StmtKind::While(w)} / r:repeat_statement() {StmtKind::Repeat(r)} / exit_statement()
