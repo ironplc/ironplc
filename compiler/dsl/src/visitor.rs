@@ -27,7 +27,7 @@
 //!         Dummy::do_work();
 //!
 //!         // Continue the recursion
-//!         visit_function_declaration(self, node)
+//!         visit_function_declaration(self, &node)
 //!     }
 //! }
 //! ```
@@ -166,6 +166,9 @@ macro_rules! acceptor_impl {
 
 /// Defines a visitor for the object tree. The default visitor recursively
 /// walks to visit items in the tree.
+/// 
+/// Functions in the visitor are named based snake-case variant of the element
+/// name. For example, the `Id` element's visitor function is `visit_id`.
 pub trait Visitor<E: std::convert::From<Diagnostic>> {
     /// Value produced by this visitor when the result is not an error.
     ///
@@ -187,7 +190,7 @@ pub trait Visitor<E: std::convert::From<Diagnostic>> {
     // TODO Constants
     leaf!(SignedInteger);
 
-    dispatch!(Constant);
+    dispatch!(ConstantKind);
 
     // 2.3.3.1
     dispatch!(DataTypeDeclarationKind);
@@ -273,6 +276,8 @@ pub trait Visitor<E: std::convert::From<Diagnostic>> {
 
     dispatch!(EnumeratedInitialValueAssignment);
 
+    dispatch!(VariableIdentifier);
+
     dispatch!(LibraryElementKind);
 
     // 2.5.1
@@ -355,6 +360,8 @@ pub trait Visitor<E: std::convert::From<Diagnostic>> {
     // 3.3.1
     dispatch!(UnaryExpr);
 
+    dispatch!(Function);
+
     dispatch!(ExprKind);
 
     // 3.3.2.1
@@ -372,26 +379,32 @@ pub trait Visitor<E: std::convert::From<Diagnostic>> {
     // 3.3.2.3
     dispatch!(CaseSelectionKind);
 
+    dispatch!(For);
+
+    dispatch!(While);
+
+    dispatch!(Repeat);
+
     leaf!(NamedVariable);
 
     dispatch!(ArrayVariable);
 }
 
-pub fn visit_constant<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+pub fn visit_constant_kind<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
-    node: &Constant,
+    node: &ConstantKind,
 ) -> Result<V::Value, E> {
     match node {
         // TODO visit the values
-        Constant::IntegerLiteral(node) => Ok(V::Value::default()),
-        Constant::RealLiteral(node) => Ok(V::Value::default()),
-        Constant::CharacterString() => Ok(V::Value::default()),
-        Constant::Duration(node) => Ok(V::Value::default()),
-        Constant::TimeOfDay() => Ok(V::Value::default()),
-        Constant::Date() => Ok(V::Value::default()),
-        Constant::DateAndTime() => Ok(V::Value::default()),
-        Constant::Boolean(node) => Ok(V::Value::default()),
-        Constant::BitStringLiteral(node) => Ok(V::Value::default()),
+        ConstantKind::IntegerLiteral(node) => Ok(V::Value::default()),
+        ConstantKind::RealLiteral(node) => Ok(V::Value::default()),
+        ConstantKind::CharacterString() => Ok(V::Value::default()),
+        ConstantKind::Duration(node) => Ok(V::Value::default()),
+        ConstantKind::TimeOfDay() => Ok(V::Value::default()),
+        ConstantKind::Date() => Ok(V::Value::default()),
+        ConstantKind::DateAndTime() => Ok(V::Value::default()),
+        ConstantKind::Boolean(node) => Ok(V::Value::default()),
+        ConstantKind::BitStringLiteral(node) => Ok(V::Value::default()),
     }
 }
 
@@ -494,14 +507,15 @@ pub fn visit_array_initial_element_kind<V: Visitor<E> + ?Sized, E: From<Diagnost
     node: &ArrayInitialElementKind,
 ) -> Result<V::Value, E> {
     match node {
-        ArrayInitialElementKind::Constant(_) => {
-            Err(Into::<E>::into(Diagnostic::todo(file!(), line!())))
+        ArrayInitialElementKind::Constant(node) => {
+            v.visit_constant_kind(node)
         }
-        ArrayInitialElementKind::EnumValue(_) => {
-            Err(Into::<E>::into(Diagnostic::todo(file!(), line!())))
+        ArrayInitialElementKind::EnumValue(node) => {
+            v.visit_enumerated_value(node)
         }
-        ArrayInitialElementKind::Repeated(_, _) => {
-            Err(Into::<E>::into(Diagnostic::todo(file!(), line!())))
+        ArrayInitialElementKind::Repeated(_, init) => {
+            // TODO visit the int
+            Acceptor::accept(init.as_ref(), v)
         }
     }
 }
@@ -571,7 +585,7 @@ pub fn visit_struct_initial_value_assignment_kind<V: Visitor<E> + ?Sized, E: Fro
     node: &StructInitialValueAssignmentKind,
 ) -> Result<V::Value, E> {
     match node {
-        StructInitialValueAssignmentKind::Constant(node) => v.visit_constant(node),
+        StructInitialValueAssignmentKind::Constant(node) => v.visit_constant_kind(node),
         StructInitialValueAssignmentKind::EnumeratedValue(_) => {
             Err(Into::<E>::into(Diagnostic::todo(file!(), line!())))
         }
@@ -598,9 +612,10 @@ pub fn visit_array_specification_kind<V: Visitor<E> + ?Sized, E: From<Diagnostic
     node: &ArraySpecificationKind,
 ) -> Result<V::Value, E> {
     match node {
-        ArraySpecificationKind::Type(_) => Err(Into::<E>::into(Diagnostic::todo(file!(), line!()))),
-        ArraySpecificationKind::Subranges(_, _) => {
-            Err(Into::<E>::into(Diagnostic::todo(file!(), line!())))
+        ArraySpecificationKind::Type(node) => v.visit_id(node),
+        ArraySpecificationKind::Subranges(subranges, node) => {
+            v.visit_id(node)?;
+            Acceptor::accept(subranges, v)
         }
     }
 }
@@ -610,6 +625,7 @@ pub fn visit_var_decl<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     node: &VarDecl,
 ) -> Result<V::Value, E> {
     // TODO there are children here
+    v.visit_variable_identifier(&node.identifier)?;
     v.visit_initial_value_assignment_kind(&node.initializer)
 }
 
@@ -646,6 +662,19 @@ pub fn visit_enumerated_initial_value_assignment<V: Visitor<E> + ?Sized, E: From
 ) -> Result<V::Value, E> {
     v.visit_id(&node.type_name)?;
     Acceptor::accept(&node.initial_value, v)
+}
+
+pub fn visit_variable_identifier<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &VariableIdentifier,
+) -> Result<V::Value, E> {
+    match node {
+        VariableIdentifier::Symbol(node) => v.visit_id(node),
+        VariableIdentifier::Direct(node, assignment) => {
+            Acceptor::accept(node, v)?;
+            v.visit_address_assignment(assignment)
+        },
+    }
 }
 
 pub fn visit_library_element_kind<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
@@ -695,7 +724,6 @@ pub fn visit_function_block_body_kind<V: Visitor<E> + ?Sized, E: From<Diagnostic
     match node {
         FunctionBlockBodyKind::Sfc(network) => v.visit_sfc(network),
         FunctionBlockBodyKind::Statements(stmts) => v.visit_statements(stmts),
-        // TODO it isn't clear if visiting this is necessary
         FunctionBlockBodyKind::Empty() => Ok(V::Value::default()),
     }
 }
@@ -872,10 +900,9 @@ pub fn visit_stmt_kind<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
         StmtKind::FbCall(node) => v.visit_fb_call(node),
         StmtKind::If(node) => v.visit_if(node),
         StmtKind::Case(node) => v.visit_case(node),
-        // TODO this
-        StmtKind::For(_) => Ok(V::Value::default()),
-        StmtKind::While(_) => Ok(V::Value::default()),
-        StmtKind::Repeat(_) => Ok(V::Value::default()),
+        StmtKind::For(node) => v.visit_for(node),
+        StmtKind::While(node) => v.visit_while(node),
+        StmtKind::Repeat(node) => v.visit_repeat(node),
         StmtKind::Return => Ok(V::Value::default()),
         StmtKind::Exit => Ok(V::Value::default()),
     }
@@ -904,22 +931,26 @@ pub fn visit_unary_expr<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v.visit_expr_kind(&node.term)
 }
 
+pub fn visit_function<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &Function,
+) -> Result<V::Value, E> {
+    v.visit_id(&node.name)?;
+    Acceptor::accept(&node.param_assignment, v)
+}
+
 pub fn visit_expr_kind<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &ExprKind,
 ) -> Result<V::Value, E> {
     match node {
-        // TODO
-        ExprKind::Compare(compare) => v.visit_compare_expr(compare.as_ref()),
-        ExprKind::BinaryOp(binary) => v.visit_binary_expr(binary.as_ref()),
-        ExprKind::UnaryOp(unary) => v.visit_unary_expr(unary.as_ref()),
-        ExprKind::Const(node) => v.visit_constant(node),
-        ExprKind::Expression(_) => Ok(V::Value::default()),
+        ExprKind::Compare(node) => v.visit_compare_expr(node.as_ref()),
+        ExprKind::BinaryOp(node) => v.visit_binary_expr(node.as_ref()),
+        ExprKind::UnaryOp(node) => v.visit_unary_expr(node.as_ref()),
+        ExprKind::Const(node) => v.visit_constant_kind(node),
+        ExprKind::Expression(node) => v.visit_expr_kind(node.as_ref()),
         ExprKind::Variable(node) => v.visit_variable(node),
-        ExprKind::Function {
-            name,
-            param_assignment,
-        } => Ok(V::Value::default()),
+        ExprKind::Function(node) => v.visit_function(node),
     }
 }
 
@@ -969,6 +1000,33 @@ pub fn visit_case_selection_kind<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     }
 }
 
+pub fn visit_for<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &For,
+) -> Result<V::Value, E> {
+    v.visit_id(&node.control)?;
+    v.visit_expr_kind(&node.from)?;
+    v.visit_expr_kind(&node.to)?;
+    Acceptor::accept(&node.step, v)?;
+    Acceptor::accept(&node.body, v)
+}
+
+pub fn visit_while<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &While,
+) -> Result<V::Value, E> {
+    v.visit_expr_kind(&node.condition)?;
+    Acceptor::accept(&node.body, v)
+}
+
+pub fn visit_repeat<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
+    v: &mut V,
+    node: &Repeat,
+) -> Result<V::Value, E> {
+    v.visit_expr_kind(&node.until)?;
+    Acceptor::accept(&node.body, v)
+}
+
 pub fn visit_array_variable<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
     v: &mut V,
     node: &ArrayVariable,
@@ -978,13 +1036,14 @@ pub fn visit_array_variable<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
 }
 
 acceptor_impl!(Id);
-acceptor_impl!(Constant);
+acceptor_impl!(ConstantKind);
 
 acceptor_impl!(LibraryElementKind);
 acceptor_impl!(DataTypeDeclarationKind);
 acceptor_impl!(EnumeratedValue);
 acceptor_impl!(StructureElementDeclaration);
 acceptor_impl!(StructureElementInit);
+acceptor_impl!(Subrange);
 acceptor_impl!(VarDecl);
 acceptor_impl!(Network);
 acceptor_impl!(ElementKind);
@@ -1059,6 +1118,6 @@ mod test {
 
         descender.walk(&library);
 
-        assert_eq!(1, descender.names.len())
+        assert_eq!(3, descender.names.len())
     }
 }

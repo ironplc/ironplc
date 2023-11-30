@@ -2,7 +2,7 @@
 //!
 //! See section 3.
 use crate::common::{
-    AddressAssignment, Constant, EnumeratedValue, IntegerLiteral, SignedInteger, Subrange,
+    AddressAssignment, ConstantKind, EnumeratedValue, IntegerLiteral, SignedInteger, Subrange,
 };
 use crate::core::{Id, SourceLoc};
 use std::cmp::Ordering;
@@ -167,6 +167,12 @@ pub struct UnaryExpr {
     pub term: ExprKind,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Function {
+    pub name: Id,
+    pub param_assignment: Vec<ParamAssignmentKind>,
+}
+
 /// Expression that yields a value derived from the input(s) to the expression.
 #[derive(Debug, PartialEq, Clone)]
 pub enum ExprKind {
@@ -174,12 +180,9 @@ pub enum ExprKind {
     BinaryOp(Box<BinaryExpr>),
     UnaryOp(Box<UnaryExpr>),
     Expression(Box<ExprKind>),
-    Const(Constant),
+    Const(ConstantKind),
     Variable(Variable),
-    Function {
-        name: Id,
-        param_assignment: Vec<ParamAssignmentKind>,
-    },
+    Function(Function),
 }
 
 impl ExprKind {
@@ -200,7 +203,7 @@ impl ExprKind {
     }
 
     pub fn integer_literal(value: &str) -> ExprKind {
-        ExprKind::Const(Constant::IntegerLiteral(IntegerLiteral {
+        ExprKind::Const(ConstantKind::IntegerLiteral(IntegerLiteral {
             value: SignedInteger::new(value, SourceLoc::default()).unwrap(),
             data_type: None,
         }))
@@ -348,10 +351,10 @@ impl StmtKind {
 
         StmtKind::assignment(
             Variable::named(output),
-            ExprKind::Function {
+            ExprKind::Function(Function {
                 name: Id::from(fb_name),
                 param_assignment: assignments,
-            },
+            }),
         )
     }
     pub fn fb_call_mapped(fb_name: &str, inputs: Vec<(&str, &str)>) -> StmtKind {
