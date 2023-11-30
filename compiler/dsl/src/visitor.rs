@@ -166,7 +166,7 @@ macro_rules! acceptor_impl {
 
 /// Defines a visitor for the object tree. The default visitor recursively
 /// walks to visit items in the tree.
-/// 
+///
 /// Functions in the visitor are named based snake-case variant of the element
 /// name. For example, the `Id` element's visitor function is `visit_id`.
 pub trait Visitor<E: std::convert::From<Diagnostic>> {
@@ -507,12 +507,8 @@ pub fn visit_array_initial_element_kind<V: Visitor<E> + ?Sized, E: From<Diagnost
     node: &ArrayInitialElementKind,
 ) -> Result<V::Value, E> {
     match node {
-        ArrayInitialElementKind::Constant(node) => {
-            v.visit_constant_kind(node)
-        }
-        ArrayInitialElementKind::EnumValue(node) => {
-            v.visit_enumerated_value(node)
-        }
+        ArrayInitialElementKind::Constant(node) => v.visit_constant_kind(node),
+        ArrayInitialElementKind::EnumValue(node) => v.visit_enumerated_value(node),
         ArrayInitialElementKind::Repeated(_, init) => {
             // TODO visit the int
             Acceptor::accept(init.as_ref(), v)
@@ -673,7 +669,7 @@ pub fn visit_variable_identifier<V: Visitor<E> + ?Sized, E: From<Diagnostic>>(
         VariableIdentifier::Direct(node, assignment) => {
             Acceptor::accept(node, v)?;
             v.visit_address_assignment(assignment)
-        },
+        }
     }
 }
 
