@@ -321,7 +321,7 @@ mod tests {
                         qualifier: DeclarationQualifier::Unspecified,
                         initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
                             type_name: Id::from("REAL"),
-                            initial_value: Some(Constant::RealLiteral(Float {
+                            initial_value: Some(ConstantKind::RealLiteral(Float {
                                 value: 5.1,
                                 data_type: None,
                             })),
@@ -333,7 +333,7 @@ mod tests {
                     Variable::named("AverageVal"),
                     ExprKind::binary(
                         Operator::Div,
-                        ExprKind::Function {
+                        ExprKind::Function(Function {
                             name: Id::from("INT_TO_REAL"),
                             param_assignment: vec![ParamAssignmentKind::positional(
                                 ExprKind::binary(
@@ -354,7 +354,7 @@ mod tests {
                                     ExprKind::named_variable("Cnt5"),
                                 ),
                             )],
-                        },
+                        }),
                         ExprKind::named_variable("InputsNumber"),
                     ),
                 )],
@@ -430,7 +430,7 @@ mod tests {
                     qualifier: DeclarationQualifier::Constant,
                     initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
                         type_name: Id::from("INT"),
-                        initial_value: Some(Constant::integer_literal("17").unwrap()),
+                        initial_value: Some(ConstantKind::integer_literal("17").unwrap()),
                     }),
                     position: SourceLoc::default(),
                 }],
