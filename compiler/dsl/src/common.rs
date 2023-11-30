@@ -16,7 +16,7 @@ use crate::textual::*;
 ///
 /// See section 2.2.
 #[derive(PartialEq, Clone, Debug)]
-pub enum Constant {
+pub enum ConstantKind {
     // TODO these need values
     IntegerLiteral(IntegerLiteral),
     RealLiteral(Float),
@@ -29,7 +29,7 @@ pub enum Constant {
     BitStringLiteral(BitStringLiteral),
 }
 
-impl Constant {
+impl ConstantKind {
     pub fn integer_literal(value: &str) -> Result<Self, &'static str> {
         Ok(Self::IntegerLiteral(IntegerLiteral {
             value: SignedInteger::new(value, SourceLoc::default())?,
@@ -527,8 +527,9 @@ pub struct ArrayDeclaration {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ArrayInitialElementKind {
-    Constant(Constant),
+    Constant(ConstantKind),
     EnumValue(EnumeratedValue),
+    // TODO Make this an object?
     Repeated(Integer, Box<Option<ArrayInitialElementKind>>),
 }
 
@@ -636,6 +637,7 @@ pub enum SizePrefix {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ArraySpecificationKind {
     Type(Id),
+    // TODO make an object for this?
     Subranges(Vec<Subrange>, Id),
 }
 
@@ -850,6 +852,7 @@ pub enum VariableIdentifier {
     ///
     /// Directly represented variables have an address and an optional
     /// symbolic identifier.
+    /// TODO create an object for this item?
     Direct(Option<Id>, AddressAssignment),
 }
 
@@ -995,7 +998,7 @@ impl InitialValueAssignmentKind {
     }
 
     /// Creates an initial value from the initializer.
-    pub fn simple(type_name: &str, value: Constant) -> Self {
+    pub fn simple(type_name: &str, value: ConstantKind) -> Self {
         InitialValueAssignmentKind::Simple(SimpleInitializer {
             type_name: Id::from(type_name),
             initial_value: Some(value),
@@ -1025,7 +1028,7 @@ impl InitialValueAssignmentKind {
 /// See section 2.4.3.2.
 #[derive(PartialEq, Clone, Debug)]
 pub enum StructInitialValueAssignmentKind {
-    Constant(Constant),
+    Constant(ConstantKind),
     EnumeratedValue(EnumeratedValue),
     Array(Vec<ArrayInitialElementKind>),
     Structure(Vec<StructureElementInit>),
@@ -1040,7 +1043,7 @@ pub struct EnumeratedInitialValueAssignment {
 #[derive(PartialEq, Clone, Debug)]
 pub struct SimpleInitializer {
     pub type_name: Id,
-    pub initial_value: Option<Constant>,
+    pub initial_value: Option<ConstantKind>,
 }
 
 /// Provides the initialization of a string variable declaration.

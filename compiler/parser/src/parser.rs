@@ -227,16 +227,16 @@ parser! {
     rule identifier() -> Id = start:position!() !KEYWORD() i:$(['a'..='z' | '0'..='9' | 'A'..='Z' | '_']+) end:position!() { Id::from(i).with_position(SourceLoc::range(start, end)) }
 
     // B.1.2 Constants
-    rule constant() -> Constant =
-        real:real_literal() { Constant::RealLiteral(real) }
-        / integer:integer_literal() { Constant::IntegerLiteral(integer) }
-        / c:character_string() { Constant::CharacterString() }
-        / duration:duration() { Constant::Duration(duration) }
-        / t:time_of_day() { Constant::TimeOfDay() }
-        / d:date() { Constant::Date() }
-        / date_time:date_and_time() { Constant::DateAndTime() }
-        / bit_string:bit_string_literal() { Constant::BitStringLiteral(bit_string) }
-        / boolean:boolean_literal() { Constant::Boolean(boolean) }
+    rule constant() -> ConstantKind =
+        real:real_literal() { ConstantKind::RealLiteral(real) }
+        / integer:integer_literal() { ConstantKind::IntegerLiteral(integer) }
+        / c:character_string() { ConstantKind::CharacterString() }
+        / duration:duration() { ConstantKind::Duration(duration) }
+        / t:time_of_day() { ConstantKind::TimeOfDay() }
+        / d:date() { ConstantKind::Date() }
+        / date_time:date_and_time() { ConstantKind::DateAndTime() }
+        / bit_string:bit_string_literal() { ConstantKind::BitStringLiteral(bit_string) }
+        / boolean:boolean_literal() { ConstantKind::Boolean(boolean) }
 
     // B.1.2.1 Numeric literals
     // numeric_literal omitted because it only appears in constant so we do not need to create a type for it
@@ -1067,13 +1067,13 @@ parser! {
     rule task_initialization_interval() -> Duration = kw("INTERVAL") _ ":=" _ source:data_source() _ "," {
       // TODO The interval may not necessarily be a duration, but for now, only support Duration types
       match source {
-        Constant::Duration(duration) => duration,
+        ConstantKind::Duration(duration) => duration,
         _ => panic!("Only supporting Duration types for now"),
       }
      }
     rule task_initialization_priority() -> u32 = kw("PRIORITY") _ ":=" _ i:integer() {? i.value.try_into().map_err(|e| "priority") }
     // TODO there are more here, but only supporting Constant for now
-    pub rule data_source() -> Constant = constant:constant() { constant }
+    pub rule data_source() -> ConstantKind = constant:constant() { constant }
     // TODO more options here
     //pub rule data_source() -> &'input str =
     pub rule program_configuration() -> ProgramConfiguration = kw("PROGRAM") _ name:program_name() task_name:( _ kw("WITH") _ t:task_name() { t })? _ ":" _ pt:program_type_name() (_ "(" _ c:prog_conf_element() ** (_ "," _) _ ")")? {
@@ -1152,10 +1152,10 @@ parser! {
         expression
       }
     rule function_expression() -> ExprKind = name:function_name() _ "(" _ params:param_assignment() ** (_ "," _) _ ")" {
-      ExprKind::Function {
+      ExprKind::Function(Function {
         name,
         param_assignment: params
-      }
+      })
     }
 
     // B.3.2 Statements
@@ -1416,7 +1416,7 @@ END_VAR";
             qualifier: DeclarationQualifier::Constant,
             initializer: InitialValueAssignmentKind::simple(
                 "INT",
-                Constant::integer_literal("17").unwrap(),
+                ConstantKind::integer_literal("17").unwrap(),
             ),
             position: SourceLoc::default(),
         }];
