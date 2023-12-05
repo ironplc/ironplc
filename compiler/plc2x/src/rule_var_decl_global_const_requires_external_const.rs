@@ -71,7 +71,7 @@ impl<'a> Visitor<Diagnostic> for FindGlobalConstVars<'a> {
                 VariableIdentifier::Symbol(name) => {
                     self.global_consts.insert(name.clone());
                 }
-                VariableIdentifier::Direct(_, _) => return Err(Diagnostic::todo(file!(), line!())),
+                VariableIdentifier::Direct(_) => return Err(Diagnostic::todo(file!(), line!())),
             }
         }
         Ok(())

@@ -230,11 +230,11 @@ parser! {
     rule constant() -> ConstantKind =
         real:real_literal() { ConstantKind::RealLiteral(real) }
         / integer:integer_literal() { ConstantKind::IntegerLiteral(integer) }
-        / c:character_string() { ConstantKind::CharacterString() }
+        / c:character_string() { ConstantKind::CharacterString }
         / duration:duration() { ConstantKind::Duration(duration) }
-        / t:time_of_day() { ConstantKind::TimeOfDay() }
-        / d:date() { ConstantKind::Date() }
-        / date_time:date_and_time() { ConstantKind::DateAndTime() }
+        / t:time_of_day() { ConstantKind::TimeOfDay }
+        / d:date() { ConstantKind::Date }
+        / date_time:date_and_time() { ConstantKind::DateAndTime }
         / bit_string:bit_string_literal() { ConstantKind::BitStringLiteral(bit_string) }
         / boolean:boolean_literal() { ConstantKind::Boolean(boolean) }
 
@@ -488,7 +488,7 @@ parser! {
       }
     }
     rule array_specification() -> ArraySpecificationKind = kw("ARRAY") _ "[" _ ranges:subrange() ** (_ "," _ ) _ "]" _ kw("OF") _ type_name:non_generic_type_name() {
-      ArraySpecificationKind::Subranges(ranges, type_name)
+      ArraySpecificationKind::Subranges(ArraySubranges { ranges, type_name } )
     }
     // TODO
     // type_name:array_type_name() {
@@ -1194,7 +1194,7 @@ parser! {
     }
     // B.3.2.3 Selection statements
     rule selection_statement() -> StmtKind = if_statement() / case_statement()
-    rule if_statement() -> StmtKind = kw("IF") _ expr:expression() _ kw("THEN") _ body:statement_list()? _ else_ifs:(kw("ELSIF") expr:expression() _ kw("THEN") _ body:statement_list() {(expr, body)}) ** _ _ else_body:("ELSE" _ e:statement_list() { e })? _ "END_IF" {
+    rule if_statement() -> StmtKind = kw("IF") _ expr:expression() _ kw("THEN") _ body:statement_list()? _ else_ifs:(kw("ELSIF") expr:expression() _ kw("THEN") _ body:statement_list() {ElseIf{expr, body}}) ** _ _ else_body:("ELSE" _ e:statement_list() { e })? _ "END_IF" {
       StmtKind::If(If {
         expr,
         body: body.unwrap_or_default(),

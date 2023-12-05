@@ -16,7 +16,7 @@ test:
 
 # Fix linting errors.
 format:
-  cargo clippy
+  cargo clippy --fix
   cargo fmt --all
 
 # Check for linting errors.
@@ -76,3 +76,6 @@ publish $VERSION $MACFILENAME $LINUXFILENAME:
 # Updates dependencies to latest version (or at least tries)
 update:
   cargo update
+
+expand:
+  cd dsl-macro-derive && cargo rustc --profile=check -- -Zunpretty=expanded

@@ -35,10 +35,7 @@ use ironplc_dsl::{
     common::*,
     core::{FileId, Id},
     diagnostic::{Diagnostic, Label},
-    visitor::{
-        visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
-        Visitor,
-    },
+    visitor::Visitor,
 };
 use ironplc_problems::Problem;
 use petgraph::{
@@ -107,7 +104,7 @@ impl Visitor<Diagnostic> for RulePousNoCycles {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.name.clone());
-        let res = visit_function_block_declaration(self, node);
+        let res = node.recurse_visit(self);
         self.current_from = None;
         res
     }
@@ -117,7 +114,7 @@ impl Visitor<Diagnostic> for RulePousNoCycles {
         node: &FunctionDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.name.clone());
-        let res = visit_function_declaration(self, node);
+        let res = node.recurse_visit(self);
         self.current_from = None;
         res
     }
@@ -127,7 +124,7 @@ impl Visitor<Diagnostic> for RulePousNoCycles {
         node: &ProgramDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.type_name.clone());
-        let res = visit_program_declaration(self, node);
+        let res = node.recurse_visit(self);
         self.current_from = None;
         res
     }

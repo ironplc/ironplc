@@ -36,10 +36,7 @@ use ironplc_dsl::{
     core::Id,
     diagnostic::{Diagnostic, Label},
     textual::*,
-    visitor::{
-        visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
-        Visitor,
-    },
+    visitor::Visitor,
 };
 use ironplc_problems::Problem;
 use std::collections::HashMap;
@@ -214,7 +211,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
         &mut self,
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        let res = visit_function_block_declaration(self, node);
+        let res = node.recurse_visit(self);
 
         // Remove all items from var init decl since we have left this context
         self.var_to_fb.clear();
@@ -225,7 +222,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
         &mut self,
         node: &FunctionDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        let res = visit_function_declaration(self, node);
+        let res = node.recurse_visit(self);
 
         // Remove all items from var init decl since we have left this context
         self.var_to_fb.clear();
@@ -236,7 +233,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
         &mut self,
         node: &ProgramDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        let res = visit_program_declaration(self, node);
+        let res = node.recurse_visit(self);
 
         // Remove all items from var init decl since we have left this context
         self.var_to_fb.clear();
