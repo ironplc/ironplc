@@ -1,7 +1,35 @@
+//! Provides a derive macro that implements recursive visit and
+//! fold operations onto structs and enumerations.
+
+//! This derive macro make several assumptions about the the
+//! visit/fold structs and language elements:
+
+//! 1. for the visit struct, for each type, there exist a method
+//!    with the prototype `visit_type_name`
+//! 2. for the fold struct, for each type, there exist a method
+//!    with the prototype `visit_type_name`
+//! 3. fields in a struct use at most one container type (one
+//!    Box, Option, Vec)
+//! 4. variants in a struct are either unity or have a single
+//!    item (no tuples)
+
+//! Satisfying the above, this macro generates appropriate
+//! visit and fold functions to recursively walk the syntax tree
+//! for each item within a struct and each variant in an enumeration.
+
+//! Any item that should be not walked must be marked with the
+//! attribute:
+
+//! `
+//! #[derive(ignore)]
+//! `
+
+//! I am unaware of a way to enforce the assumptions other
+//! than at build time.
 use convert_case::{Case, Casing};
 use proc_macro::TokenStream;
 use quote::quote;
-use syn;
+
 use syn::parse_macro_input;
 use syn::spanned::Spanned;
 use syn::Attribute;
@@ -33,14 +61,14 @@ pub fn recurse_macro_derive(input: TokenStream) -> TokenStream {
     };
 
     match res {
-        Ok(r) => r.into(),
+        Ok(r) => r,
         Err(err) => {
-            //eprintln!("{:#?}", &ast);
-            panic!("Error {}", err.to_string())
+            panic!("Error: {}", err)
         }
     }
 }
 
+/// Returns a stream of tokens that implement recursive visit and fold for an enumeration.
 fn expand_enum(name: &Ident, data_enum: &DataEnum) -> Result<TokenStream> {
     // Generate the matcher and dispatch for each variant
     let matchers: Result<Vec<proc_macro2::TokenStream>> = data_enum
@@ -63,7 +91,8 @@ fn expand_enum(name: &Ident, data_enum: &DataEnum) -> Result<TokenStream> {
             let method_name = syn::Ident::new(&method_name, name.span());
 
             match variant_contained_type.1 {
-                DeclaredType::Option => todo!(),
+                // So far there are no enumerations with an Option value, thus not implemented
+                DeclaredType::Option => unimplemented!(),
                 DeclaredType::Vec => {
                     Ok(quote! {
                         #name::#variant_name(nodes) => {
@@ -109,29 +138,26 @@ fn expand_enum(name: &Ident, data_enum: &DataEnum) -> Result<TokenStream> {
     Ok(gen.into())
 }
 
+/// Returns a stream of tokens that implement recursive visit and fold for a struct.
 fn expand_struct(name: &Ident, fields: &FieldsNamed) -> Result<TokenStream> {
     // Filter out all fields that are marked as do not included
     let included_fields: Result<Vec<&Field>> = fields
         .named
         .iter()
-        .filter_map(|f| {
-            match is_ignored(&f.attrs) {
-                Ok(ignored) => {
-                    if ignored {
-                        return None;
-                    }
-                    return Some(Ok(f));
+        .filter_map(|f| match is_ignored(&f.attrs) {
+            Ok(ignored) => {
+                if ignored {
+                    return None;
                 }
-                Err(err) => {
-                    return Some(Err(err));
-                }
-            };
+                Some(Ok(f))
+            }
+            Err(err) => Some(Err(err)),
         })
         .collect();
     let included_fields = included_fields?;
 
     // Generate the dispatch methods for each of the items in the type.
-    let methods = included_fields.iter().filter_map(|f| {
+    let methods = included_fields.iter().map(|f| {
         let name = &f.ident;
 
         let ty = &f.ty;
@@ -141,16 +167,14 @@ fn expand_struct(name: &Ident, fields: &FieldsNamed) -> Result<TokenStream> {
         let method_name = syn::Ident::new(&method_name, name.span());
 
         match ty_ident.1 {
-            DeclaredType::Option => {
-                return Some(quote! {
-                    self.#name.as_ref().map_or_else(
-                        || Ok(V::Value::default()),
-                        |val| v.#method_name(val),
-                    )?
-                })
-            }
+            DeclaredType::Option => quote! {
+                self.#name.as_ref().map_or_else(
+                    || Ok(V::Value::default()),
+                    |val| v.#method_name(val),
+                )?
+            },
             DeclaredType::Vec => {
-                return Some(quote! {
+                quote! {
                     match self.#name.iter().map(|x| v.#method_name(x)).find(|r| r.is_err()) {
                         Some(err) => {
                             // At least one of the items returned an error, so
@@ -162,19 +186,15 @@ fn expand_struct(name: &Ident, fields: &FieldsNamed) -> Result<TokenStream> {
                             Ok(V::Value::default())
                         }
                     }?
-                });
+                }
             }
-            DeclaredType::Box => {
-                return Some(quote! {
-                    v.#method_name(&self.#name.as_ref())?
-                });
-            }
-            DeclaredType::Simple => {
-                return Some(quote! {
-                    v.#method_name(&self.#name)?
-                });
-            }
-        };
+            DeclaredType::Box => quote! {
+                v.#method_name(&self.#name.as_ref())?
+            },
+            DeclaredType::Simple => quote! {
+                v.#method_name(&self.#name)?
+            },
+        }
     });
 
     // Create the recurse implementation method for the type.
@@ -193,11 +213,14 @@ fn expand_struct(name: &Ident, fields: &FieldsNamed) -> Result<TokenStream> {
     Ok(gen.into())
 }
 
+/// Defines the types of containers objects.
+/// The containing object determines how we recurse into each field.
 enum DeclaredType {
     Option,
     Vec,
-    Simple,
     Box,
+    // No container
+    Simple,
 }
 
 /// Returns the name of the visitor method for the provided type.
@@ -248,9 +271,12 @@ fn extract_type_ident_from_path(ty: &syn::Type) -> (&syn::Type, DeclaredType) {
         return (ident, DeclaredType::Box);
     }
 
-    return (ty, DeclaredType::Simple);
+    (ty, DeclaredType::Simple)
 }
 
+/// Returns the type within a container or returns `None` when the type hierarchy
+/// does not match the container type of interest.
+/// Adapted from https://stackoverflow.com/questions/55271857/how-can-i-get-the-t-from-an-optiont-when-using-syn
 fn extract_type_from_container<'a>(
     ty: &'a syn::Type,
     container_ty: Vec<&str>,
@@ -272,7 +298,7 @@ fn extract_type_from_container<'a>(
             acc
         });
         tys.into_iter()
-            .find(|s| &idents_of_path == *s)
+            .find(|s| idents_of_path == **s)
             .and_then(|_| path.segments.last())
     }
 
@@ -292,6 +318,7 @@ fn extract_type_from_container<'a>(
         })
 }
 
+/// Returns the type identifier from the fields (from an enumeration).
 fn extract_type_ident_from_fields(fields: &Fields) -> Result<(&syn::Type, DeclaredType)> {
     match fields {
         Fields::Unnamed(unnamed_fields) => {

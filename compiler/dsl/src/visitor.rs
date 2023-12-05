@@ -46,7 +46,7 @@ use paste::paste;
 /// ```ignore
 ///
 /// fn visit_type_name(&mut self, node: &TypeName) -> Result<Self::Value, E> {
-///    visit_type_name(self, node)
+///    TypeName::recurse_visit(self, node)
 /// }
 /// ```
 ///
