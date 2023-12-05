@@ -399,7 +399,7 @@ impl Folder for FunctionBlockBodyKind {
                 folder.fold_statements(stmts)?,
             )),
             // TODO it isn't clear if visiting this is necessary
-            FunctionBlockBodyKind::Empty() => Ok(FunctionBlockBodyKind::Empty()),
+            FunctionBlockBodyKind::Empty => Ok(FunctionBlockBodyKind::Empty),
         }
     }
 }

@@ -1,0 +1,23 @@
+[package]
+name = "dsl-macro-derive"
+version = "0.36.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+proc-macro = true
+
+[[test]]
+name = "tests"
+path = "tests/main.rs"
+
+[dev-dependencies]
+trybuild = "1.0"
+
+[dependencies]
+syn = { version = "2.0", features = ["extra-traits", "derive"]}
+quote = "1.0"
+proc-macro2 = "1.0"
+convert_case = "0.6.0"

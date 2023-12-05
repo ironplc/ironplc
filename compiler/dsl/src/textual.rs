@@ -8,15 +8,18 @@ use crate::core::{Id, SourceLoc};
 use std::cmp::Ordering;
 use std::fmt;
 
+use crate::visitor::Visitor;
+use dsl_macro_derive::Recurse;
+
 /// A body of a function bock (one of the possible types).
 ///
 /// See section 3.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct Statements {
     pub body: Vec<StmtKind>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum Variable {
     AddressAssignment(AddressAssignment),
     Named(NamedVariable),
@@ -47,7 +50,7 @@ impl fmt::Display for Variable {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum SymbolicVariableKind {
     Named(NamedVariable),
     Array(ArrayVariable),
@@ -85,7 +88,7 @@ impl Variable {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct NamedVariable {
     pub name: Id,
 }
@@ -96,7 +99,7 @@ impl fmt::Display for NamedVariable {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct ArrayVariable {
     /// The variable that is being accessed by subscript (the array).
     pub variable: Box<SymbolicVariableKind>,
@@ -112,7 +115,7 @@ impl fmt::Display for ArrayVariable {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct StructuredVariable {
     pub record: Box<SymbolicVariableKind>,
     pub field: Id,
@@ -127,7 +130,7 @@ impl fmt::Display for StructuredVariable {
 /// Function block invocation.
 ///
 /// See section 3.2.3.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct FbCall {
     /// Name of the variable that is associated with the function block
     /// call.
@@ -139,8 +142,9 @@ pub struct FbCall {
 /// A binary expression that produces a Boolean result by comparing operands.
 ///
 /// See section 3.3.1.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Recurse)]
 pub struct CompareExpr {
+    #[recurse(ignore)]
     pub op: CompareOp,
     pub left: ExprKind,
     pub right: ExprKind,
@@ -150,8 +154,9 @@ pub struct CompareExpr {
 /// two operands.
 ///
 /// See section 3.3.1.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Recurse)]
 pub struct BinaryExpr {
+    #[recurse(ignore)]
     pub op: Operator,
     pub left: ExprKind,
     pub right: ExprKind,
@@ -161,20 +166,21 @@ pub struct BinaryExpr {
 /// transforming the operand.
 ///
 /// See section 3.3.1.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Recurse)]
 pub struct UnaryExpr {
+    #[recurse(ignore)]
     pub op: UnaryOp,
     pub term: ExprKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Recurse)]
 pub struct Function {
     pub name: Id,
     pub param_assignment: Vec<ParamAssignmentKind>,
 }
 
 /// Expression that yields a value derived from the input(s) to the expression.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum ExprKind {
     Compare(Box<CompareExpr>),
     BinaryOp(Box<BinaryExpr>),
@@ -215,7 +221,7 @@ impl ExprKind {
 /// as a non-formal input.
 ///
 /// See section 3.2.3.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct PositionalInput {
     pub expr: ExprKind,
 }
@@ -225,7 +231,7 @@ pub struct PositionalInput {
 /// a formal input.
 ///
 /// See section 3.2.3.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct NamedInput {
     pub name: Id,
     pub expr: ExprKind,
@@ -234,14 +240,15 @@ pub struct NamedInput {
 /// Output argument captured from a function or function block invocation.
 ///
 /// See section 3.2.3.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct Output {
+    #[recurse(ignore)]
     pub not: bool,
     pub src: Id,
     pub tgt: Variable,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum ParamAssignmentKind {
     PositionalInput(PositionalInput),
     NamedInput(NamedInput),
@@ -303,7 +310,7 @@ pub enum UnaryOp {
 /// Statements.
 ///
 /// See section 3.3.2.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum StmtKind {
     Assignment(Assignment),
     // Function and function block control
@@ -315,8 +322,10 @@ pub enum StmtKind {
     For(For),
     While(While),
     Repeat(Repeat),
+    #[recurse(ignore)]
     Return,
     // Exit statement.
+    #[recurse(ignore)]
     Exit,
 }
 
@@ -400,7 +409,7 @@ impl StmtKind {
 /// Assigns a variable as the evaluation of an expression.
 ///
 /// See section 3.3.2.1.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct Assignment {
     pub target: Variable,
     pub value: ExprKind,
@@ -409,18 +418,24 @@ pub struct Assignment {
 /// If selection statement.
 ///
 /// See section 3.3.2.3.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct If {
     pub expr: ExprKind,
     pub body: Vec<StmtKind>,
-    pub else_ifs: Vec<(ExprKind, Vec<StmtKind>)>,
+    pub else_ifs: Vec<ElseIf>,
     pub else_body: Vec<StmtKind>,
+}
+
+#[derive(Debug, PartialEq, Clone, Recurse)]
+pub struct ElseIf {
+    pub expr: ExprKind,
+    pub body: Vec<StmtKind>,
 }
 
 /// Case selection statement.
 ///
 /// See section 3.3.2.3.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct Case {
     /// An expression, the result of which is used to select a particular case.
     pub selector: ExprKind,
@@ -431,7 +446,7 @@ pub struct Case {
 /// A group of statements that can be selected within a case.
 ///
 /// See section 3.3.2.3.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct CaseStatementGroup {
     pub selectors: Vec<CaseSelectionKind>,
     pub statements: Vec<StmtKind>,
@@ -440,7 +455,7 @@ pub struct CaseStatementGroup {
 /// A particular value that selects a case statement group.
 ///
 /// See section 3.3.2.3.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum CaseSelectionKind {
     Subrange(Subrange),
     SignedInteger(SignedInteger),
@@ -450,7 +465,7 @@ pub enum CaseSelectionKind {
 /// The for loop statement.
 ///
 /// See section 3.3.2.4.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct For {
     /// The variable that is assigned and contains the value for each loop iteration.
     pub control: Id,
@@ -463,7 +478,7 @@ pub struct For {
 /// The while loop statement.
 ///
 /// See section 3.3.2.4.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct While {
     pub condition: ExprKind,
     pub body: Vec<StmtKind>,
@@ -472,7 +487,7 @@ pub struct While {
 /// The repeat loop statement.
 ///
 /// See section 3.3.2.4.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct Repeat {
     pub until: ExprKind,
     pub body: Vec<StmtKind>,

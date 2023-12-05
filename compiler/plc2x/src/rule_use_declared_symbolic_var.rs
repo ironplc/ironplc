@@ -30,10 +30,7 @@ use ironplc_dsl::{
     common::*,
     core::{Id, SourcePosition},
     diagnostic::{Diagnostic, Label},
-    visitor::{
-        visit_function_block_declaration, visit_function_declaration, visit_program_declaration,
-        visit_var_decl, Visitor,
-    },
+    visitor::Visitor,
 };
 use ironplc_problems::Problem;
 
@@ -55,7 +52,7 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
         self.enter();
 
         self.add(&node.name, DummyNode {});
-        let ret = visit_function_declaration(self, node);
+        let ret = node.recurse_visit(self);
         self.exit();
         ret
     }
@@ -63,7 +60,7 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
     fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Diagnostic> {
         self.enter();
         self.add(&node.type_name, DummyNode {});
-        let ret = visit_program_declaration(self, node);
+        let ret = node.recurse_visit(self);
         self.exit();
         ret
     }
@@ -74,14 +71,14 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
     ) -> Result<(), Diagnostic> {
         self.enter();
         self.add(&node.name, DummyNode {});
-        let ret = visit_function_block_declaration(self, node);
+        let ret = node.recurse_visit(self);
         self.exit();
         ret
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         self.add_if(node.identifier.symbolic_id(), DummyNode {});
-        visit_var_decl(self, node)
+        node.recurse_visit(self)
     }
 
     fn visit_named_variable(
