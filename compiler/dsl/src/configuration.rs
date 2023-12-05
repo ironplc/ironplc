@@ -8,10 +8,13 @@ use crate::{
     core::Id,
 };
 
+use crate::visitor::Visitor;
+use dsl_macro_derive::Recurse;
+
 /// Resource assigns tasks to a particular CPU.
 ///
 /// See section 2.7.1.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub struct ResourceDeclaration {
     /// Symbolic name for a CPU
     pub name: Id,
@@ -39,7 +42,7 @@ impl HasVariables for ResourceDeclaration {
 /// Program configurations.
 ///
 /// See section 2.7.1.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub struct ProgramConfiguration {
     pub name: Id,
     pub task_name: Option<Id>,
@@ -49,7 +52,7 @@ pub struct ProgramConfiguration {
 /// Configuration declaration,
 ///
 /// See section 2.7.1.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub struct ConfigurationDeclaration {
     pub name: Id,
     pub global_var: Vec<VarDecl>,
@@ -65,10 +68,12 @@ impl HasVariables for ConfigurationDeclaration {
 /// Task configuration.
 ///
 /// See section 2.7.2.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub struct TaskConfiguration {
     pub name: Id,
+    #[recurse(ignore)]
     pub priority: u32,
     // TODO this might not be optional
+    #[recurse(ignore)]
     pub interval: Option<Duration>,
 }

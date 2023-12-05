@@ -6,6 +6,9 @@ use std::path::Path;
 use std::str::FromStr;
 use std::{cmp::Ordering, hash::Hash, hash::Hasher};
 
+use crate::visitor::Visitor;
+use dsl_macro_derive::Recurse;
+
 /// FileId is an identifier for a file (may be local or remote).
 ///
 /// FileId is normally useful in the context of source positions
@@ -87,8 +90,11 @@ pub trait SourcePosition {
 /// and can use containers as appropriate.
 ///
 /// See section 2.1.2.
+#[derive(Recurse)]
 pub struct Id {
+    #[recurse(ignore)]
     pub original: String,
+    #[recurse(ignore)]
     pub lower_case: String,
     pub position: SourceLoc,
 }

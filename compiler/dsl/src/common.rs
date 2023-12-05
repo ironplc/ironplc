@@ -7,10 +7,13 @@ use std::hash::{Hash, Hasher};
 use std::num::TryFromIntError;
 use time::Duration;
 
+use dsl_macro_derive::Recurse;
+
 use crate::configuration::ConfigurationDeclaration;
 use crate::core::{Id, SourceLoc, SourcePosition};
 use crate::sfc::{Network, Sfc};
 use crate::textual::*;
+use crate::visitor::Visitor;
 
 /// Container for elementary constants.
 ///
@@ -20,11 +23,11 @@ pub enum ConstantKind {
     // TODO these need values
     IntegerLiteral(IntegerLiteral),
     RealLiteral(Float),
-    CharacterString(),
+    CharacterString,
     Duration(Duration),
-    TimeOfDay(),
-    Date(),
-    DateAndTime(),
+    TimeOfDay,
+    Date,
+    DateAndTime,
     Boolean(Boolean),
     BitStringLiteral(BitStringLiteral),
 }
@@ -50,11 +53,12 @@ pub enum Boolean {
 
 /// Integer liberal. The representation is of the largest possible integer
 /// and later bound to smaller types depend on context.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Recurse)]
 pub struct Integer {
     pub position: SourceLoc,
     /// The value in the maximum possible size. An integer is inherently
     /// an unsigned value.
+    #[recurse(ignore)]
     pub value: u128,
 }
 
@@ -137,9 +141,10 @@ impl fmt::Display for Integer {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Recurse)]
 pub struct SignedInteger {
     pub value: Integer,
+    #[recurse(ignore)]
     pub is_neg: bool,
 }
 
@@ -331,7 +336,7 @@ impl From<ElementaryTypeName> for Id {
 /// Kinds of derived data types.
 ///
 /// See section 2.3.3.1
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 #[allow(clippy::large_enum_variant)]
 pub enum DataTypeDeclarationKind {
     /// Derived data type the restricts permitted values from a set of identifiers.
@@ -356,7 +361,7 @@ pub enum DataTypeDeclarationKind {
 /// * enumeration
 /// * structure
 /// * simple
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub struct LateBoundDeclaration {
     /// The type name of this declaration. Other library elements
     /// refer to this this type with this name.
@@ -368,8 +373,18 @@ pub struct LateBoundDeclaration {
     pub base_type_name: Id,
 }
 
+/*impl LateBoundDeclaration {
+    pub fn visit_late_bound_declaration<V: Visitor<E> + ?Sized, E>(
+        node: &LateBoundDeclaration,
+        v: &mut V,
+    ) -> Result<V::Value, E> {
+        v.visit_id(&node.data_type_name)?;
+        v.visit_id(&node.base_type_name)
+    }
+}*/
+
 /// See section 2.3.3.1.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub struct EnumerationDeclaration {
     pub type_name: Id,
     // TODO need to understand when the context name matters in the definition
@@ -379,7 +394,7 @@ pub struct EnumerationDeclaration {
 /// The specification of an enumeration with a possible default value.
 ///
 /// See section 2.3.3.1.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub struct EnumeratedSpecificationInit {
     pub spec: EnumeratedSpecificationKind,
     pub default: Option<EnumeratedValue>,
@@ -398,7 +413,7 @@ impl EnumeratedSpecificationInit {
 }
 
 /// See section 2.3.3.1.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub enum EnumeratedSpecificationKind {
     /// Enumeration declaration that renames another enumeration.
     TypeName(Id),
@@ -434,7 +449,7 @@ impl EnumeratedSpecificationKind {
 }
 
 /// See section 2.3.3.1.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub struct EnumeratedSpecificationValues {
     pub values: Vec<EnumeratedValue>,
     pub position: SourceLoc,
@@ -446,7 +461,7 @@ pub struct EnumeratedSpecificationValues {
 /// ambiguous.)
 ///
 /// See section 2.3.3.1.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct EnumeratedValue {
     pub type_name: Option<Id>,
     pub value: Id,
@@ -479,7 +494,7 @@ impl SourcePosition for EnumeratedValue {
 /// specified values, that is, `[minimum, maximum]`.
 ///
 /// See section 2.3.3.1.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub struct SubrangeDeclaration {
     pub type_name: Id,
     pub spec: SubrangeSpecificationKind,
@@ -490,7 +505,7 @@ pub struct SubrangeDeclaration {
 /// or by specializing another type.
 ///
 /// See section 2.3.3.1.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum SubrangeSpecificationKind {
     Specification(SubrangeSpecification),
     Type(Id),
@@ -500,10 +515,11 @@ pub enum SubrangeSpecificationKind {
 /// type to a subset of the integer range.
 ///
 /// See section 2.3.3.1.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct SubrangeSpecification {
     /// The parent type that is being restricted.
     /// TODO how can this be restricted to integer type names?
+    #[recurse(ignore)]
     pub type_name: ElementaryTypeName,
     pub subrange: Subrange,
 }
@@ -511,31 +527,47 @@ pub struct SubrangeSpecification {
 /// The specification for a simple declared type.
 ///
 /// See section 2.3.3.1.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct SimpleDeclaration {
     pub type_name: Id,
     pub spec_and_init: InitialValueAssignmentKind,
 }
 
 /// Derived data type that
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub struct ArrayDeclaration {
     pub type_name: Id,
     pub spec: ArraySpecificationKind,
     pub init: Vec<ArrayInitialElementKind>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Recurse)]
 pub enum ArrayInitialElementKind {
     Constant(ConstantKind),
     EnumValue(EnumeratedValue),
     // TODO Make this an object?
-    Repeated(Integer, Box<Option<ArrayInitialElementKind>>),
+    Repeated(Repeated),
 }
 
 impl ArrayInitialElementKind {
     pub fn repeated(size: Integer, init: Option<ArrayInitialElementKind>) -> Self {
-        ArrayInitialElementKind::Repeated(size, Box::new(init))
+        ArrayInitialElementKind::Repeated(Repeated {
+            size,
+            init: Box::new(init),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Repeated {
+    pub size: Integer,
+    pub init: Box<Option<ArrayInitialElementKind>>,
+}
+
+impl Repeated {
+    pub fn recurse_visit<V: Visitor<E> + ?Sized, E>(&self, v: &mut V) -> Result<V::Value, E> {
+        v.visit_integer(&self.size)
+        // TODO
     }
 }
 
@@ -544,7 +576,7 @@ impl ArrayInitialElementKind {
 /// may be nested but must not contain an instance of itself.
 ///
 /// See section 2.3.3.1.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub struct StructureDeclaration {
     /// The name of the structure.
     pub type_name: Id,
@@ -555,14 +587,14 @@ pub struct StructureDeclaration {
 /// Declares an element contained within a structure.
 ///
 /// See section 2.3.3.1.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub struct StructureElementDeclaration {
     pub name: Id,
     pub init: InitialValueAssignmentKind,
 }
 
 /// See section 2.3.3.1.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct StructureInitializationDeclaration {
     pub type_name: Id,
     pub elements_init: Vec<StructureElementInit>,
@@ -571,7 +603,7 @@ pub struct StructureInitializationDeclaration {
 /// Initializes a particular element in a structured type.
 ///
 /// See section 2.3.3.1.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct StructureElementInit {
     /// The name of the element in the structure to initialize.
     pub name: Id,
@@ -589,12 +621,14 @@ pub enum StringKind {
 /// Declares a string type with restricted length.
 ///
 /// See section 2.3.3.1.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub struct StringDeclaration {
     pub type_name: Id,
     pub length: Integer,
     /// The size of a single 'character'
+    #[recurse(ignore)]
     pub width: StringKind,
+    #[recurse(ignore)]
     pub init: Option<String>,
 }
 
@@ -634,17 +668,22 @@ pub enum SizePrefix {
 }
 
 /// Array specification defines a size/shape of an array.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Recurse)]
 pub enum ArraySpecificationKind {
     Type(Id),
-    // TODO make an object for this?
-    Subranges(Vec<Subrange>, Id),
+    Subranges(ArraySubranges),
+}
+
+#[derive(Debug, Clone, PartialEq, Recurse)]
+pub struct ArraySubranges {
+    pub ranges: Vec<Subrange>,
+    pub type_name: Id,
 }
 
 /// Subrange of an array.
 ///
 /// See section 2.4.2.1.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Recurse)]
 pub struct Subrange {
     pub start: SignedInteger,
     pub end: SignedInteger,
@@ -661,11 +700,13 @@ pub trait HasVariables {
 /// Declaration (that does not permit a location).
 ///
 /// See section 2.4.3.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct VarDecl {
     // Not all variable types have a "name", so the name is part of the type.
     pub identifier: VariableIdentifier,
+    #[recurse(ignore)]
     pub var_type: VariableType,
+    #[recurse(ignore)]
     pub qualifier: DeclarationQualifier,
     pub initializer: InitialValueAssignmentKind,
     pub position: SourceLoc,
@@ -841,7 +882,7 @@ pub enum VariableType {
 /// Ways of identifying variable data objects.
 ///
 /// See section 2.4.1.1.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum VariableIdentifier {
     /// A variable data object that is referenced by a symbol. This is
     /// typical reference type common in most programming languages.
@@ -853,7 +894,7 @@ pub enum VariableIdentifier {
     /// Directly represented variables have an address and an optional
     /// symbolic identifier.
     /// TODO create an object for this item?
-    Direct(Option<Id>, AddressAssignment),
+    Direct(DirectVariableIdentifier),
 }
 
 impl VariableIdentifier {
@@ -864,7 +905,11 @@ impl VariableIdentifier {
 
     /// Create a new direct variable identifier.
     pub fn new_direct(name: Option<Id>, location: AddressAssignment) -> Self {
-        VariableIdentifier::Direct(name, location)
+        VariableIdentifier::Direct(DirectVariableIdentifier {
+            name,
+            address_assignment: location,
+            source_loc: SourceLoc::default(),
+        })
     }
 
     /// Return the symbolic identifier if there is one.
@@ -873,7 +918,7 @@ impl VariableIdentifier {
     pub fn symbolic_id(&self) -> Option<&Id> {
         match self {
             VariableIdentifier::Symbol(name) => Option::Some(name),
-            VariableIdentifier::Direct(name, _) => match name {
+            VariableIdentifier::Direct(direct) => match &direct.name {
                 Some(n) => Some(n),
                 None => None,
             },
@@ -885,7 +930,7 @@ impl SourcePosition for VariableIdentifier {
     fn position(&self) -> &SourceLoc {
         match self {
             VariableIdentifier::Symbol(name) => name.position(),
-            VariableIdentifier::Direct(name, location) => location.position(),
+            VariableIdentifier::Direct(direct) => &direct.source_loc,
         }
     }
 }
@@ -894,15 +939,22 @@ impl Display for VariableIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             VariableIdentifier::Symbol(name) => name.fmt(f),
-            VariableIdentifier::Direct(name, address) => {
-                if let Some(n) = name {
+            VariableIdentifier::Direct(direct) => {
+                if let Some(n) = &direct.name {
                     n.fmt(f)
                 } else {
-                    address.fmt(f)
+                    direct.address_assignment.fmt(f)
                 }
             }
         }
     }
+}
+
+#[derive(Debug, PartialEq, Clone, Recurse)]
+pub struct DirectVariableIdentifier {
+    pub name: Option<Id>,
+    pub address_assignment: AddressAssignment,
+    pub source_loc: SourceLoc,
 }
 
 /// Qualifier types for definitions.
@@ -928,10 +980,13 @@ pub enum DeclarationQualifier {
 /// Location assignment for a variable.
 ///
 /// See section 2.4.3.1.
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Recurse)]
 pub struct AddressAssignment {
+    #[recurse(ignore)]
     pub location: LocationPrefix,
+    #[recurse(ignore)]
     pub size: SizePrefix,
+    #[recurse(ignore)]
     pub address: Vec<u32>,
     pub position: SourceLoc,
 }
@@ -968,12 +1023,13 @@ impl SourcePosition for AddressAssignment {
 /// variable.
 ///
 /// See section 2.4.3.2.
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Recurse)]
 pub enum InitialValueAssignmentKind {
     /// Represents no type initializer.
     ///
     /// Some types allow no initializer and this avoids nesting of the
     /// enumeration with an Option enumeration.
+    #[recurse(ignore)]
     None,
     Simple(SimpleInitializer),
     String(StringInitializer),
@@ -1026,7 +1082,7 @@ impl InitialValueAssignmentKind {
 /// initialization is required.
 ///
 /// See section 2.4.3.2.
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Recurse)]
 pub enum StructInitialValueAssignmentKind {
     Constant(ConstantKind),
     EnumeratedValue(EnumeratedValue),
@@ -1034,13 +1090,13 @@ pub enum StructInitialValueAssignmentKind {
     Structure(Vec<StructureElementInit>),
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Recurse)]
 pub struct EnumeratedInitialValueAssignment {
     pub type_name: Id,
     pub initial_value: Option<EnumeratedValue>,
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Recurse)]
 pub struct SimpleInitializer {
     pub type_name: Id,
     pub initial_value: Option<ConstantKind>,
@@ -1049,30 +1105,32 @@ pub struct SimpleInitializer {
 /// Provides the initialization of a string variable declaration.
 ///
 /// See sections 2.4.3.1 and 2.4.3.2.
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Recurse)]
 pub struct StringInitializer {
     /// Maximum length of the string.
     pub length: Option<Integer>,
     /// The size of a single 'character'
+    #[recurse(ignore)]
     pub width: StringKind,
     /// Default value of the string. If not specified, then
     /// the default value is the empty string.
+    #[recurse(ignore)]
     pub initial_value: Option<Vec<char>>,
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Recurse)]
 pub struct EnumeratedValuesInitializer {
     pub values: Vec<EnumeratedValue>,
     pub initial_value: Option<EnumeratedValue>,
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Recurse)]
 pub struct FunctionBlockInitialValueAssignment {
     pub type_name: Id,
 }
 
 /// See section 2.4.3.2. #6
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Recurse)]
 pub struct ArrayInitialValueAssignment {
     pub spec: ArraySpecificationKind,
     pub initial_values: Vec<ArrayInitialElementKind>,
@@ -1083,7 +1141,7 @@ pub struct ArrayInitialValueAssignment {
 ///
 /// The library element flattens data type declaration blocks so that each
 /// enumeration is for a single data type declaration.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub enum LibraryElementKind {
     DataTypeDeclaration(DataTypeDeclarationKind),
     FunctionDeclaration(FunctionDeclaration),
@@ -1099,7 +1157,7 @@ pub enum LibraryElementKind {
 /// return value and bound variables.
 ///
 /// See section 2.5.1.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct FunctionDeclaration {
     pub name: Id,
     pub return_type: Id,
@@ -1120,7 +1178,7 @@ impl HasVariables for FunctionDeclaration {
 /// and variables retain values between invocations.
 ///
 /// See section 2.5.2.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct FunctionBlockDeclaration {
     pub name: Id,
     pub variables: Vec<VarDecl>,
@@ -1140,7 +1198,7 @@ impl HasVariables for FunctionBlockDeclaration {
 /// or control objective.
 ///
 /// See section 2.5.3.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub struct ProgramDeclaration {
     pub type_name: Id,
     pub variables: Vec<VarDecl>,
@@ -1159,7 +1217,7 @@ impl HasVariables for ProgramDeclaration {
 /// function block.
 ///
 /// See section 2.5.2.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum FunctionBlockBodyKind {
     Sfc(Sfc),
     Statements(Statements),
@@ -1167,7 +1225,8 @@ pub enum FunctionBlockBodyKind {
     ///
     /// This type is not strictly valid, but highly useful and can be detected
     /// with a semantic rule.
-    Empty(),
+    #[recurse(ignore)]
+    Empty,
 }
 
 impl FunctionBlockBodyKind {
@@ -1183,13 +1242,13 @@ impl FunctionBlockBodyKind {
 
     /// Creates an empty function body.
     pub fn empty() -> FunctionBlockBodyKind {
-        FunctionBlockBodyKind::Empty()
+        FunctionBlockBodyKind::Empty
     }
 }
 
 /// Container for a library that contains top-level elements. Libraries are
 /// typically represented as a file resource.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Recurse)]
 pub struct Library {
     pub elements: Vec<LibraryElementKind>,
 }

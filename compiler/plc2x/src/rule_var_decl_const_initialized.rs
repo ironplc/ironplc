@@ -31,7 +31,7 @@
 use ironplc_dsl::{
     common::*,
     diagnostic::{Diagnostic, Label},
-    visitor::{visit_var_decl, Visitor},
+    visitor::Visitor,
 };
 use ironplc_problems::Problem;
 
@@ -49,7 +49,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
         if node.var_type == VariableType::External {
             // If the variable type is external, than it must be initialized
             // somewhere else and therefore we do not need to check here.
-            return visit_var_decl(self, node);
+            return node.recurse_visit(self);
         }
 
         match node.qualifier {
@@ -119,7 +119,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
             DeclarationQualifier::NonRetain => {}
         }
 
-        visit_var_decl(self, node)
+        node.recurse_visit(self)
     }
 }
 
