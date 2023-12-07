@@ -5,6 +5,7 @@ use crate::common::*;
 use crate::core::Id;
 use crate::textual::*;
 
+use crate::fold::Fold;
 use crate::visitor::Visitor;
 use dsl_macro_derive::Recurse;
 

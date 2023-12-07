@@ -5,12 +5,14 @@ use core::str::FromStr;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 use std::num::TryFromIntError;
+use std::ops::Deref;
 use time::Duration;
 
 use dsl_macro_derive::Recurse;
 
 use crate::configuration::ConfigurationDeclaration;
 use crate::core::{Id, SourceLoc, SourcePosition};
+use crate::fold::Fold;
 use crate::sfc::{Network, Sfc};
 use crate::textual::*;
 use crate::visitor::Visitor;
@@ -567,6 +569,16 @@ pub struct Repeated {
 impl Repeated {
     pub fn recurse_visit<V: Visitor<E> + ?Sized, E>(&self, v: &mut V) -> Result<V::Value, E> {
         v.visit_integer(&self.size)
+        // TODO
+    }
+}
+
+impl Repeated {
+    pub fn recurse_fold<F: Fold<E> + ?Sized, E>(self, f: &mut F) -> Result<Repeated, E> {
+        Ok(Repeated {
+            size: f.fold_integer(self.size)?,
+            init: self.init,
+        })
         // TODO
     }
 }

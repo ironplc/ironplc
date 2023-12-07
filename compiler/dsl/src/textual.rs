@@ -7,7 +7,9 @@ use crate::common::{
 use crate::core::{Id, SourceLoc};
 use std::cmp::Ordering;
 use std::fmt;
+use std::ops::Deref;
 
+use crate::fold::Fold;
 use crate::visitor::Visitor;
 use dsl_macro_derive::Recurse;
 
