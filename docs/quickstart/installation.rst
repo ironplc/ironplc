@@ -36,10 +36,6 @@ Follow the steps below to install IronPLC.
 
    **Install IronPLC Visual Studio Code Extension**
 
-   #. Download the latest IronPLC Visual Studio Code Extension
-      :download_artifact:`ironplc-vscode-extension.vsix` from
-      `IronPLC GitHub releases`_.
-
    Run Visual Studio Code, then in Visual Studio Code:
 
    #. Go to the Extensions view by clicking on the Extensions icon in
@@ -57,10 +53,6 @@ Follow the steps below to install IronPLC.
    #. In a Terminal, enter :program:`brew tap ironplc/tap`, then enter :program:`brew install ironplc`.
 
    **Install IronPLC Visual Studio Code Extension**
-
-   #. Download the latest IronPLC Visual Studio Code Extension
-      :download_artifact:`ironplc-vscode-extension.vsix` from
-      `IronPLC GitHub releases`_.
 
    Run Visual Studio Code, then in Visual Studio Code:
 
