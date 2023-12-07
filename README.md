@@ -31,15 +31,12 @@ a first class environment.
 The project is progressing towards a minimum loveable product. The following
 milestones are the current plan to achieve that loveable product.
 
-* ✅ Implement a parsing strategy for a single IEC 61131-3 structured text file
-* ✅ Implement a strategy for semantic analysis
-* ✅ Implement a strategy for reporting errors
-* ✅ Setup automated builds to produce high-quality weekly snapshots
-* ✅ Parser progress so that most OSCAT files parse without error
-* ✅ Implement language server protocol to integrate diagnostics with Visual Studio Code
+* ✅ Implement a parser for a single IEC 61131-3 structured text file
+* ✅ Implement a Visual Studio Code Extension that uses the parser
+* ✅ Build Windows and macOS installers
+* ✅ Setup weekly automated deployments
 * ✅ Build documentation website
-* ✅ Build macOS installer
-* NOT STARTED Parser completed so that all valid OSCAT files parse without error
+* Build a "standard" library
 
 ## Usage
 
