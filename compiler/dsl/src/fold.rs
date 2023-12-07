@@ -27,7 +27,7 @@ macro_rules! dispatch
     ($struct_name:ident) => {
         paste! {
             fn [<fold_ $struct_name:snake >](&mut self, node: $struct_name) -> Result<$struct_name, E> {
-                [< fold_ $struct_name:snake >](self, node)
+                $struct_name::recurse_fold(node, self)
             }
         }
     };
@@ -44,400 +44,233 @@ macro_rules! leaf
     };
 }
 
-// Defines an object as being able to be folded. That is, return a new
-// folded version of itself.
-pub trait Folder {
-    type Mapped;
-    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E>;
-}
-
-impl<X> Folder for Vec<X>
-where
-    X: Folder,
-{
-    type Mapped = Vec<X::Mapped>;
-    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        self.into_iter().map(|x| x.fold(folder)).collect()
-    }
-}
-
-impl<X> Folder for Option<X>
-where
-    X: Folder,
-{
-    type Mapped = Option<X::Mapped>;
-    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        self.map(|x| x.fold(folder)).transpose()
-    }
-}
-
 pub trait Fold<E> {
     fn fold_library(&mut self, node: Library) -> Result<Library, E> {
-        Ok(Library {
-            elements: Folder::fold(node.elements, self)?,
-        })
+        node.recurse_fold(self)
     }
 
-    dispatch!(SourceLoc);
+    // Declarations from Core
+
+    leaf!(SourceLoc);
 
     // 2.1.2.
-    fn fold_id(&mut self, node: Id) -> Result<Id, E> {
-        Ok(node)
-    }
+    dispatch!(Id);
 
-    fn fold_library_element_declaration(
-        &mut self,
-        node: LibraryElementKind,
-    ) -> Result<LibraryElementKind, E> {
-        match node {
-            LibraryElementKind::DataTypeDeclaration(data_type) => {
-                Ok(LibraryElementKind::DataTypeDeclaration(
-                    self.fold_data_type_declaration_kind(data_type)?,
-                ))
-            }
-            LibraryElementKind::FunctionBlockDeclaration(function_block_decl) => {
-                Ok(LibraryElementKind::FunctionBlockDeclaration(
-                    self.fold_function_block_declaration(function_block_decl)?,
-                ))
-            }
-            LibraryElementKind::FunctionDeclaration(function_decl) => {
-                Ok(LibraryElementKind::FunctionDeclaration(
-                    self.fold_function_declaration(function_decl)?,
-                ))
-            }
-            LibraryElementKind::ProgramDeclaration(program_decl) => {
-                Ok(LibraryElementKind::ProgramDeclaration(
-                    self.fold_program_declaration(program_decl)?,
-                ))
-            }
-            _ => Ok(node),
-        }
-    }
+    // Declarations from Common
 
-    /// Fold data type declarations.
-    ///
-    /// See section 2.4.3.
-    fn fold_data_type_declaration_kind(
-        &mut self,
-        node: DataTypeDeclarationKind,
-    ) -> Result<DataTypeDeclarationKind, E> {
-        Ok(node)
-    }
+    // TODO Constants
+    dispatch!(Integer);
 
-    /// Fold variable declaration.
-    ///
-    /// See section 2.4.3.
-    fn fold_variable_declaration(&mut self, node: VarDecl) -> Result<VarDecl, E> {
-        Ok(VarDecl {
-            identifier: node.identifier,
-            var_type: node.var_type,
-            qualifier: node.qualifier,
-            initializer: Folder::fold(node.initializer, self)?,
-            position: node.position,
-        })
-    }
+    dispatch!(SignedInteger);
 
-    /// Fold an address assignment.
-    ///
-    /// See section 2.4.3.1.
-    fn fold_address_assignment(&mut self, node: AddressAssignment) -> Result<AddressAssignment, E> {
-        Ok(node)
-    }
+    // TODO should probably recurse to find source locations
+    leaf!(ConstantKind);
 
-    /// Fold initial value assignments.
-    ///
-    /// See section 2.4.3.2.
-    fn fold_initial_value_assignment(
-        &mut self,
-        node: InitialValueAssignmentKind,
-    ) -> Result<InitialValueAssignmentKind, E> {
-        Ok(node)
-    }
+    // 2.3.3.1
+    dispatch!(DataTypeDeclarationKind);
 
-    /// Fold function declarations.
-    ///
-    /// See section 2.5.1.
-    fn fold_function_declaration(
-        &mut self,
-        node: FunctionDeclaration,
-    ) -> Result<FunctionDeclaration, E> {
-        Ok(FunctionDeclaration {
-            name: node.name.clone(),
-            return_type: node.return_type,
-            variables: Folder::fold(node.variables, self)?,
-            body: node.body,
-        })
-    }
+    // 2.3.3.1
+    dispatch!(LateBoundDeclaration);
 
-    /// Fold function block declarations.
-    ///
-    /// See section 2.5.2.
-    fn fold_function_block_declaration(
-        &mut self,
-        node: FunctionBlockDeclaration,
-    ) -> Result<FunctionBlockDeclaration, E> {
-        Ok(FunctionBlockDeclaration {
-            name: node.name,
-            variables: Folder::fold(node.variables, self)?,
-            body: node.body,
-            position: node.position,
-        })
-    }
+    // 2.3.3.1
+    dispatch!(EnumerationDeclaration);
 
-    /// Fold program declarations.
-    ///
-    /// See section 2.5.3.
+    dispatch!(InitialValueAssignmentKind);
+    dispatch!(StructInitialValueAssignmentKind);
+
+    // 2.4.3.2
+    dispatch!(EnumeratedSpecificationInit);
+
+    // 2.4.3.2
+    dispatch!(EnumeratedSpecificationValues);
+
+    // 2.3.3.1
+    dispatch!(EnumeratedValue);
+
+    // 2.3.3.1
+    dispatch!(SubrangeDeclaration);
+
+    // 2.3.3.1
+    dispatch!(SubrangeSpecificationKind);
+
+    // 2.3.3.1
+    dispatch!(SubrangeSpecification);
+
+    // 2.3.3.1
+    dispatch!(SimpleDeclaration);
+
+    // 2.3.3.1
+    dispatch!(ArrayDeclaration);
+
+    dispatch!(ArrayInitialElementKind);
+
+    dispatch!(Repeated);
+
+    // 2.3.3.1
+    dispatch!(StructureDeclaration);
+
+    // 2.3.3.1
+    dispatch!(StructureElementDeclaration);
+
+    // 2.3.3.1
+    dispatch!(StructureInitializationDeclaration);
+
+    // 2.3.3.1
+    dispatch!(StructureElementInit);
+
+    // 2.3.3.1
+    dispatch!(StringDeclaration);
+
+    dispatch!(ArraySpecificationKind);
+
+    dispatch!(ArraySubranges);
+
+    // 2.4.2.1
+    dispatch!(Subrange);
+
+    // 2.4.3
+    dispatch!(VarDecl);
+
+    // 2.4.3.1
+    dispatch!(AddressAssignment);
+
+    // 2.4.3.2
+    dispatch!(SimpleInitializer);
+
+    // 2.4.3.1 and 2.4.3.2
+    dispatch!(StringInitializer);
+
+    // 2.4.3.2
+    dispatch!(EnumeratedValuesInitializer);
+
+    // 2.4.3.2
+    dispatch!(FunctionBlockInitialValueAssignment);
+
+    // 2.4.3.2.
+    dispatch!(ArrayInitialValueAssignment);
+
+    // 2.4.3.2 (TODO - where?)
+    dispatch!(EnumeratedSpecificationKind);
+
+    dispatch!(EnumeratedInitialValueAssignment);
+
+    dispatch!(VariableIdentifier);
+
+    dispatch!(DirectVariableIdentifier);
+
+    dispatch!(LibraryElementKind);
+
+    // 2.5.1
+    dispatch!(FunctionDeclaration);
+
+    // 2.5.2
+    dispatch!(FunctionBlockDeclaration);
+
+    dispatch!(FunctionBlockBodyKind);
+
+    // 2.5.3
     dispatch!(ProgramDeclaration);
 
+    // Declarations from Sfc
+
+    // 2.6
     dispatch!(Sfc);
 
+    // 2.6
     dispatch!(Network);
 
-    leaf!(Step);
+    // 2.6.2
+    dispatch!(ElementKind);
 
-    leaf!(Transition);
+    // 2.6.2
+    dispatch!(Step);
 
-    leaf!(Action);
+    // 2.6.3
+    dispatch!(Transition);
+
+    // 2.6.4
+    dispatch!(Action);
+
+    dispatch!(ActionAssociation);
+
+    // Declarations from Configuration
 
     // 2.7.1
     dispatch!(ResourceDeclaration);
+
     // 2.7.1
     dispatch!(ProgramConfiguration);
+
     // 2.7.2
     dispatch!(ConfigurationDeclaration);
+
     // 2.7.2
     dispatch!(TaskConfiguration);
 
+    // Declarations from Textual
+
+    // 3
     dispatch!(Statements);
 
-    leaf!(Assignment);
-    leaf!(FbCall);
-    leaf!(If);
-    leaf!(Case);
-    leaf!(For);
-    leaf!(While);
-    leaf!(Repeat);
-}
+    dispatch!(Variable);
 
-fn fold_source_loc<F: Fold<E> + ?Sized, E>(f: &mut F, node: SourceLoc) -> Result<SourceLoc, E> {
-    Ok(SourceLoc {
-        start: node.start,
-        end: node.end,
-        file_id: node.file_id,
-    })
-}
+    dispatch!(SymbolicVariableKind);
 
-fn fold_program_declaration<F: Fold<E> + ?Sized, E>(
-    f: &mut F,
-    node: ProgramDeclaration,
-) -> Result<ProgramDeclaration, E> {
-    Ok(ProgramDeclaration {
-        type_name: f.fold_id(node.type_name)?,
-        variables: Folder::fold(node.variables, f)?,
-        body: Folder::fold(node.body, f)?,
-    })
-}
+    // 3.2.3
+    dispatch!(FbCall);
 
-fn fold_sfc<F: Fold<E> + ?Sized, E>(f: &mut F, node: Sfc) -> Result<Sfc, E> {
-    Ok(Sfc {
-        networks: Folder::fold(node.networks, f)?,
-    })
-}
+    // 3.2.3
+    dispatch!(PositionalInput);
 
-fn fold_network<F: Fold<E> + ?Sized, E>(f: &mut F, node: Network) -> Result<Network, E> {
-    Ok(Network {
-        initial_step: f.fold_step(node.initial_step)?,
-        elements: Folder::fold(node.elements, f)?,
-    })
-}
+    // 3.2.3
+    dispatch!(NamedInput);
 
-fn fold_resource_declaration<F: Fold<E> + ?Sized, E>(
-    f: &mut F,
-    node: ResourceDeclaration,
-) -> Result<ResourceDeclaration, E> {
-    Ok(ResourceDeclaration {
-        name: f.fold_id(node.name)?,
-        resource: f.fold_id(node.resource)?,
-        global_vars: Folder::fold(node.global_vars, f)?,
-        tasks: Folder::fold(node.tasks, f)?,
-        programs: Folder::fold(node.programs, f)?,
-    })
-}
+    // 3.2.3
+    dispatch!(Output);
 
-fn fold_program_configuration<F: Fold<E> + ?Sized, E>(
-    f: &mut F,
-    node: ProgramConfiguration,
-) -> Result<ProgramConfiguration, E> {
-    Ok(ProgramConfiguration {
-        name: f.fold_id(node.name)?,
-        task_name: Folder::fold(node.task_name, f)?,
-        type_name: f.fold_id(node.type_name)?,
-    })
-}
+    // 3.2.3
+    dispatch!(ParamAssignmentKind);
 
-fn fold_configuration_declaration<F: Fold<E> + ?Sized, E>(
-    f: &mut F,
-    node: ConfigurationDeclaration,
-) -> Result<ConfigurationDeclaration, E> {
-    Ok(ConfigurationDeclaration {
-        name: f.fold_id(node.name)?,
-        global_var: Folder::fold(node.global_var, f)?,
-        resource_decl: Folder::fold(node.resource_decl, f)?,
-    })
-}
+    dispatch!(StmtKind);
 
-fn fold_task_configuration<F: Fold<E> + ?Sized, E>(
-    f: &mut F,
-    node: TaskConfiguration,
-) -> Result<TaskConfiguration, E> {
-    Ok(TaskConfiguration {
-        name: f.fold_id(node.name)?,
-        priority: node.priority,
-        interval: node.interval,
-    })
-}
+    // 3.3.1
+    dispatch!(CompareExpr);
 
-fn fold_statements<F: Fold<E> + ?Sized, E>(f: &mut F, node: Statements) -> Result<Statements, E> {
-    Ok(Statements {
-        body: Folder::fold(node.body, f)?,
-    })
-}
+    // 3.3.1
+    dispatch!(BinaryExpr);
 
-impl Folder for Id {
-    type Mapped = Id;
-    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        folder.fold_id(self)
-    }
-}
+    // 3.3.1
+    dispatch!(UnaryExpr);
 
-impl Folder for LibraryElementKind {
-    type Mapped = LibraryElementKind;
-    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        match self {
-            LibraryElementKind::DataTypeDeclaration(data_type) => {
-                Ok(LibraryElementKind::DataTypeDeclaration(
-                    folder.fold_data_type_declaration_kind(data_type)?,
-                ))
-            }
-            LibraryElementKind::FunctionBlockDeclaration(function_block_decl) => {
-                Ok(LibraryElementKind::FunctionBlockDeclaration(
-                    folder.fold_function_block_declaration(function_block_decl)?,
-                ))
-            }
-            LibraryElementKind::FunctionDeclaration(function_decl) => {
-                Ok(LibraryElementKind::FunctionDeclaration(
-                    folder.fold_function_declaration(function_decl)?,
-                ))
-            }
-            LibraryElementKind::ProgramDeclaration(program_decl) => {
-                Ok(LibraryElementKind::ProgramDeclaration(
-                    folder.fold_program_declaration(program_decl)?,
-                ))
-            }
-            LibraryElementKind::ConfigurationDeclaration(config_decl) => {
-                Ok(LibraryElementKind::ConfigurationDeclaration(
-                    folder.fold_configuration_declaration(config_decl)?,
-                ))
-            }
-        }
-    }
-}
+    dispatch!(Function);
 
-impl Folder for VarDecl {
-    type Mapped = VarDecl;
-    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        folder.fold_variable_declaration(self)
-    }
-}
+    dispatch!(ExprKind);
 
-impl Folder for InitialValueAssignmentKind {
-    type Mapped = InitialValueAssignmentKind;
-    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        folder.fold_initial_value_assignment(self)
-    }
-}
+    // 3.3.2.1
+    dispatch!(Assignment);
 
-impl Folder for AddressAssignment {
-    type Mapped = AddressAssignment;
-    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        folder.fold_address_assignment(self)
-    }
-}
+    // 3.3.2.3
+    dispatch!(If);
+    dispatch!(ElseIf);
 
-/// See section 2.7.1.
-impl Folder for ResourceDeclaration {
-    type Mapped = ResourceDeclaration;
-    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        folder.fold_resource_declaration(self)
-    }
-}
+    // 3.3.2.3
+    dispatch!(Case);
 
-/// See section 2.7.1.
-impl Folder for ProgramConfiguration {
-    type Mapped = ProgramConfiguration;
-    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        folder.fold_program_configuration(self)
-    }
-}
+    // 3.3.2.3
+    dispatch!(CaseStatementGroup);
 
-/// See section 2.7.2.
-impl Folder for TaskConfiguration {
-    type Mapped = TaskConfiguration;
-    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        folder.fold_task_configuration(self)
-    }
-}
+    // 3.3.2.3
+    dispatch!(CaseSelectionKind);
 
-impl Folder for FunctionBlockBodyKind {
-    type Mapped = FunctionBlockBodyKind;
-    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        match self {
-            FunctionBlockBodyKind::Sfc(network) => {
-                Ok(FunctionBlockBodyKind::Sfc(folder.fold_sfc(network)?))
-            }
-            FunctionBlockBodyKind::Statements(stmts) => Ok(FunctionBlockBodyKind::Statements(
-                folder.fold_statements(stmts)?,
-            )),
-            // TODO it isn't clear if visiting this is necessary
-            FunctionBlockBodyKind::Empty => Ok(FunctionBlockBodyKind::Empty),
-        }
-    }
-}
+    dispatch!(For);
 
-impl Folder for Network {
-    type Mapped = Network;
-    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        folder.fold_network(self)
-    }
-}
+    dispatch!(While);
 
-impl Folder for ElementKind {
-    type Mapped = ElementKind;
-    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        match self {
-            ElementKind::Step(step) => Ok(ElementKind::Step(folder.fold_step(step)?)),
-            ElementKind::Transition(transition) => {
-                Ok(ElementKind::Transition(folder.fold_transition(transition)?))
-            }
-            ElementKind::Action(action) => Ok(ElementKind::Action(folder.fold_action(action)?)),
-        }
-    }
-}
+    dispatch!(Repeat);
 
-impl Folder for StmtKind {
-    type Mapped = StmtKind;
-    fn fold<F: Fold<E> + ?Sized, E>(self, folder: &mut F) -> Result<Self::Mapped, E> {
-        match self {
-            StmtKind::Assignment(node) => Ok(StmtKind::Assignment(folder.fold_assignment(node)?)),
-            StmtKind::FbCall(node) => Ok(StmtKind::FbCall(folder.fold_fb_call(node)?)),
-            StmtKind::If(node) => Ok(StmtKind::If(folder.fold_if(node)?)),
-            StmtKind::Case(node) => Ok(StmtKind::Case(folder.fold_case(node)?)),
-            // TODO this
-            StmtKind::For(node) => Ok(StmtKind::For(folder.fold_for(node)?)),
-            StmtKind::While(node) => Ok(StmtKind::While(folder.fold_while(node)?)),
-            StmtKind::Repeat(node) => Ok(StmtKind::Repeat(folder.fold_repeat(node)?)),
-            StmtKind::Return => Ok(StmtKind::Return),
-            StmtKind::Exit => Ok(StmtKind::Exit),
-        }
-    }
+    dispatch!(NamedVariable);
+
+    dispatch!(ArrayVariable);
+
+    dispatch!(StructuredVariable);
 }

@@ -120,7 +120,7 @@ impl<'a> TypeResolver<'a> {
 }
 
 impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
-    fn fold_initial_value_assignment(
+    fn fold_initial_value_assignment_kind(
         &mut self,
         node: InitialValueAssignmentKind,
     ) -> Result<InitialValueAssignmentKind, Diagnostic> {

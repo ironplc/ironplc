@@ -6,6 +6,7 @@ use std::path::Path;
 use std::str::FromStr;
 use std::{cmp::Ordering, hash::Hash, hash::Hasher};
 
+use crate::fold::Fold;
 use crate::visitor::Visitor;
 use dsl_macro_derive::Recurse;
 
