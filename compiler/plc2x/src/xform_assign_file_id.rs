@@ -26,3 +26,40 @@ impl<'a> Fold<Diagnostic> for TransformFileId<'a> {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use ironplc_dsl::{
+        common::{DataTypeDeclarationKind, LibraryElementKind},
+        core::FileId,
+    };
+
+    use super::apply;
+
+    #[test]
+    fn apply_when_source_loc_then_changes_value() {
+        let program = "
+TYPE
+LEVEL : (CRITICAL) := CRITICAL;
+END_TYPE
+                ";
+
+        let input = ironplc_parser::parse_program(program, &FileId::from_string("input")).unwrap();
+        let expected_fid = FileId::from_string("output");
+        let library = apply(input, &expected_fid).unwrap();
+
+        let data_type = match library.elements.first().unwrap() {
+            LibraryElementKind::DataTypeDeclaration(dt) => dt,
+            _ => panic!(),
+        };
+
+        let enum_type = match data_type {
+            DataTypeDeclarationKind::Enumeration(enum_data_type) => enum_data_type,
+            _ => panic!(),
+        };
+
+        assert_eq!(6, enum_type.type_name.position.start);
+        assert_eq!(11, enum_type.type_name.position.end);
+        assert_eq!(expected_fid, enum_type.type_name.position.file_id);
+    }
+}
