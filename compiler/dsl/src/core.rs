@@ -14,7 +14,7 @@ use dsl_macro_derive::Recurse;
 ///
 /// FileId is normally useful in the context of source positions
 /// where a source position is in a file.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct FileId(String);
 
 impl FileId {
