@@ -78,4 +78,4 @@ update:
   cargo update
 
 expand:
-  cd dsl-macro-derive && cargo rustc --profile=check -- -Zunpretty=expanded
+  cd dsl_macro_derive && cargo rustc --profile=check -- -Zunpretty=expanded
