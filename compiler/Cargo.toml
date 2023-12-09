@@ -2,7 +2,7 @@
 members = [
     "plc2x",
     "dsl",
-    "dsl-macro-derive",
+    "dsl_macro_derive",
     "parser",
     "problems"
 ]

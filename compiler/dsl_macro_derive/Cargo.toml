@@ -1,5 +1,5 @@
 [package]
-name = "dsl-macro-derive"
+name = "dsl_macro_derive"
 version = "0.36.0"
 edition.workspace = true
 authors.workspace = true
