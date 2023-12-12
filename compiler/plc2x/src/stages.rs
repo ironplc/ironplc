@@ -60,6 +60,12 @@ impl CompilationSet {
     }
 }
 
+impl Default for CompilationSet {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn analyze(compilation_set: &CompilationSet) -> Result<(), Diagnostic> {
     let library = resolve_types(compilation_set)?;
     semantic(&library)
