@@ -1265,9 +1265,17 @@ pub struct Library {
     pub elements: Vec<LibraryElementKind>,
 }
 
+impl Default for Library {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Library {
     pub fn new() -> Self {
-        Library { elements: Vec::new() }
+        Library {
+            elements: Vec::new(),
+        }
     }
 
     pub fn of(elements: Vec<LibraryElementKind>) -> Self {

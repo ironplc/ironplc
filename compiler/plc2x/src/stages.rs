@@ -42,7 +42,7 @@ pub struct CompilationSet {
 impl CompilationSet {
     pub fn of(library: Library) -> Self {
         Self {
-            sources: vec![CompilationSource::Library(library)]
+            sources: vec![CompilationSource::Library(library)],
         }
     }
 }
@@ -52,17 +52,19 @@ pub fn analyze(compilation_set: &CompilationSet) -> Result<(), Diagnostic> {
     semantic(&library)
 }
 
-pub fn resolve_types(compilation_set: &CompilationSet) -> Result<Library, Diagnostic>  {
+pub fn resolve_types(compilation_set: &CompilationSet) -> Result<Library, Diagnostic> {
     // We want to analyze this as a complete set, so we need to join the items together
     // into a single library. Extend owns the item so after this we are free to modify
     let mut library = Library::new();
     for x in &compilation_set.sources {
         match x {
-            CompilationSource::Library(lib) => { library = library.extend(lib.clone()); },
+            CompilationSource::Library(lib) => {
+                library = library.extend(lib.clone());
+            }
             CompilationSource::Text(txt) => {
                 let lib = parse(&txt.0, &txt.1)?;
                 library = library.extend(lib);
-            },
+            }
         }
     }
 
@@ -98,8 +100,8 @@ pub fn semantic(library: &Library) -> Result<(), Diagnostic> {
 
 #[cfg(test)]
 mod tests {
-    use crate::stages::CompilationSet;
     use crate::stages::analyze;
+    use crate::stages::CompilationSet;
     use crate::test_helpers;
 
     use super::parse;
@@ -120,7 +122,10 @@ mod tests {
     impl CompilationSet {
         fn of_source(str: &String) -> Self {
             Self {
-                sources: vec![CompilationSource::Text((str.to_string(), FileId::default()))]
+                sources: vec![CompilationSource::Text((
+                    str.to_string(),
+                    FileId::default(),
+                ))],
             }
         }
     }

@@ -2,13 +2,13 @@
 //! as Visual Studio Code.
 
 //use std::sync::mpsc::{Sender, Receiver};
-use crossbeam_channel::{Sender, Receiver};
+use crossbeam_channel::{Receiver, Sender};
 
 use ironplc_dsl::core::FileId;
 use log::trace;
 use lsp_server::{Connection, ExtractError, Message};
 use lsp_types::{
-    notification::{self, PublishDiagnostics, Notification},
+    notification::{self, Notification, PublishDiagnostics},
     request::{self, Request},
     DiagnosticSeverity, NumberOrString, PublishDiagnosticsParams, ServerCapabilities,
     TextDocumentSyncCapability, TextDocumentSyncKind, Url,
@@ -37,12 +37,11 @@ fn start_with_connection(connection: Connection, project: Box<dyn Project>) -> R
 
     let mut server = LspServer::new(&connection.sender, project);
     match server.run(&connection.receiver) {
-        Ok(shutdown_request) => {
-            return connection.handle_shutdown(&shutdown_request).map(|_v| ()). map_err(|err| err.to_string());
-        },
-        Err(err) => {
-            return Err(err);
-        },
+        Ok(shutdown_request) => connection
+            .handle_shutdown(&shutdown_request)
+            .map(|_v| ())
+            .map_err(|err| err.to_string()),
+        Err(err) => Err(err),
     }
 }
 
@@ -64,10 +63,7 @@ impl<'a> LspServer<'a> {
     }
 
     fn new(sender: &'a Sender<Message>, project: Box<dyn Project>) -> Self {
-        Self {
-            sender,
-            project,
-        }
+        Self { sender, project }
     }
 
     /// The main event loop. The event loop receives messages from the other
@@ -99,30 +95,30 @@ impl<'a> LspServer<'a> {
             Err(req) => req,
         };
         // TODO handle requests
-        return "";
+        ""
     }
 
-    fn cast_request<T>(
-        request: lsp_server::Request,
-    ) -> Result<T::Params, lsp_server::Request>
+    fn cast_request<T>(request: lsp_server::Request) -> Result<T::Params, lsp_server::Request>
     where
         T: lsp_types::request::Request,
         T::Params: DeserializeOwned,
     {
-        request.extract(T::METHOD).map(|val| val.1).map_err(|e| match e {
-            ExtractError::MethodMismatch(n) => n,
-            err @ ExtractError::JsonError { .. } => panic!("Invalid request: {err:?}"),
-        })
+        request
+            .extract(T::METHOD)
+            .map(|val| val.1)
+            .map_err(|e| match e {
+                ExtractError::MethodMismatch(n) => n,
+                err @ ExtractError::JsonError { .. } => panic!("Invalid request: {err:?}"),
+            })
     }
 
     fn handle_notification(&mut self, notification: &lsp_server::Notification) -> &'static str {
-        let _notification =
-            match Self::cast_notification::<notification::Exit>(notification) {
-                Ok(_params) => {
-                    return notification::Exit::METHOD;
-                }
-                Err(notification) => notification,
-            };
+        let _notification = match Self::cast_notification::<notification::Exit>(notification) {
+            Ok(_params) => {
+                return notification::Exit::METHOD;
+            }
+            Err(notification) => notification,
+        };
 
         let _notification =
             match Self::cast_notification::<notification::DidChangeTextDocument>(notification) {
@@ -143,7 +139,7 @@ impl<'a> LspServer<'a> {
                 Err(notification) => notification,
             };
 
-        return "";
+        ""
         // TODO other possible messages
     }
 
@@ -155,10 +151,13 @@ impl<'a> LspServer<'a> {
         T::Params: DeserializeOwned,
     {
         // TODO why do I have this clone?
-        notification.clone().extract(T::METHOD).map_err(|e| match e {
-            ExtractError::MethodMismatch(n) => n,
-            err @ ExtractError::JsonError { .. } => panic!("Invalid notification: {err:?}"),
-        })
+        notification
+            .clone()
+            .extract(T::METHOD)
+            .map_err(|e| match e {
+                ExtractError::MethodMismatch(n) => n,
+                err @ ExtractError::JsonError { .. } => panic!("Invalid notification: {err:?}"),
+            })
     }
 
     fn send_notification<N>(&self, params: N::Params)
@@ -311,8 +310,8 @@ mod test {
 
     impl Drop for TestServer {
         fn drop(&mut self) {
-            self.send_request::<request::Shutdown>(Default::default());
-            self.send_notification::<notification::Exit>(Default::default());
+            self.send_request::<request::Shutdown>(());
+            self.send_notification::<notification::Exit>(());
 
             if let Some(server_thread) = self.server_thread.take() {
                 server_thread.join().unwrap();

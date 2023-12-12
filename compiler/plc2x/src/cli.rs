@@ -16,7 +16,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::stages::{analyze, CompilationSet, parse};
+use crate::stages::{analyze, parse, CompilationSet};
 
 // Checks specified files.
 pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
@@ -59,7 +59,7 @@ fn check_file(filename: &Path, suppress_output: bool) -> Result<(), usize> {
     // Try to parse the file so that we can form a compilation set
     let library = parse(&contents, &FileId::from_path(filename)).map_err(|e| {
         handle_diagnostic(e, filename, &contents, suppress_output);
-        return 1usize;
+        1usize
     })?;
 
     // Create the compilation set
@@ -68,7 +68,7 @@ fn check_file(filename: &Path, suppress_output: bool) -> Result<(), usize> {
     // Analyze the set
     analyze(&compilation_set).map_err(|e| {
         handle_diagnostic(e, filename, &contents, suppress_output);
-        return 2usize;
+        2usize
     })?;
 
     println!("OK");
@@ -97,16 +97,21 @@ fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, String> {
     Ok(vec![])
 }
 
-fn handle_diagnostic(diagnostic: ironplc_dsl::diagnostic::Diagnostic, filename: &Path, contents: &String, suppress_output: bool) {
+fn handle_diagnostic(
+    diagnostic: ironplc_dsl::diagnostic::Diagnostic,
+    filename: &Path,
+    contents: &String,
+    suppress_output: bool,
+) {
     if !suppress_output {
         let writer = StandardStream::stderr(ColorChoice::Always);
         let config = codespan_reporting::term::Config::default();
-        
+
         let mut files = SimpleFiles::new();
         files.add(filename.display().to_string(), contents);
 
         let diagnostic = map_diagnostic(diagnostic);
-        
+
         let _ = term::emit(&mut writer.lock(), &config, &files, &diagnostic).map_err(|err| {
             println!("Failed writing to terminal: {}", err);
             1usize
