@@ -146,11 +146,9 @@ impl Visitor<Diagnostic> for RuleDeclaredEnumeratedValues<'_> {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_dsl::core::FileId;
-
     use super::*;
 
-    use crate::stages::parse;
+    use crate::test_helpers::parse_and_resolve_types;
 
     #[test]
     fn apply_when_var_init_undefined_enum_value_then_error() {
@@ -165,7 +163,7 @@ LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_err());
@@ -184,7 +182,7 @@ LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok());
@@ -205,7 +203,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok());

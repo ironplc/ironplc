@@ -72,11 +72,9 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_dsl::core::FileId;
+    use crate::test_helpers::parse_and_resolve_types;
 
     use super::*;
-
-    use crate::stages::parse;
 
     #[test]
     fn apply_when_values_unique_then_ok() {
@@ -85,7 +83,7 @@ TYPE
 LOGLEVEL : (CRITICAL, ERROR);
 END_TYPE";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok());
@@ -99,7 +97,7 @@ LOGLEVEL : (CRITICAL, ERROR);
 LOGLEVEL2 : LOGLEVEL;
 END_TYPE";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok());
@@ -112,7 +110,7 @@ TYPE
 LOGLEVEL : (CRITICAL, CRITICAL);
 END_TYPE";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_err());

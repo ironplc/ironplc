@@ -1265,8 +1265,25 @@ pub struct Library {
     pub elements: Vec<LibraryElementKind>,
 }
 
+impl Default for Library {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Library {
-    pub fn new(elements: Vec<LibraryElementKind>) -> Self {
+    pub fn new() -> Self {
+        Library {
+            elements: Vec::new(),
+        }
+    }
+
+    pub fn of(elements: Vec<LibraryElementKind>) -> Self {
         Library { elements }
+    }
+
+    pub fn extend(mut self, other: Library) -> Self {
+        self.elements.extend(other.elements);
+        self
     }
 }

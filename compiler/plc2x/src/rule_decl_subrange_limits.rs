@@ -56,11 +56,9 @@ impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_dsl::core::FileId;
+    use crate::test_helpers::parse_and_resolve_types;
 
     use super::*;
-
-    use crate::stages::parse;
 
     #[test]
     fn apply_when_subrange_valid_then_ok() {
@@ -69,7 +67,7 @@ TYPE
     VALID_RANGE : INT(-10..10);
 END_TYPE";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok());
@@ -82,7 +80,7 @@ TYPE
     INVALID_RANGE : INT(10..-10);
 END_TYPE";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_err());
