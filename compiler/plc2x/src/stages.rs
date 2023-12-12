@@ -42,9 +42,7 @@ pub struct CompilationSet {
 impl CompilationSet {
     /// Initializes a new compilation set with no content.
     pub fn new() -> Self {
-        Self {
-            sources: vec![],
-        }
+        Self { sources: vec![] }
     }
 
     /// Initializes a new compilation set with the library as the initial content.
@@ -541,8 +539,14 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let mut compilation_set = CompilationSet::new();
-        compilation_set.push(CompilationSource::Text((program1.to_owned(), FileId::default())));
-        compilation_set.push(CompilationSource::Text((program2.to_owned(), FileId::default())));
+        compilation_set.push(CompilationSource::Text((
+            program1.to_owned(),
+            FileId::default(),
+        )));
+        compilation_set.push(CompilationSource::Text((
+            program2.to_owned(),
+            FileId::default(),
+        )));
 
         let result = analyze(&compilation_set);
         assert!(result.is_ok())

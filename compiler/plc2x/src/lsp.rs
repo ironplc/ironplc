@@ -2,8 +2,8 @@
 //! as Visual Studio Code.
 
 use crossbeam_channel::{Receiver, Sender};
-use log::trace;
 use ironplc_dsl::core::FileId;
+use log::trace;
 use lsp_server::{Connection, ExtractError, Message};
 use lsp_types::{
     notification::{self, Notification, PublishDiagnostics},
