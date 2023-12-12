@@ -13,26 +13,59 @@ use crate::{
     xform_resolve_late_bound_data_decl, xform_resolve_late_bound_type_initializer,
 };
 
-pub fn analyze(contents: &str, file_id: &FileId) -> Result<(), Diagnostic> {
-    let library = parse(contents, file_id)?;
-    semantic(&library)
-}
-
-/// Parse combines lexical and sematic analysis (stages 1 & 2).
-///
-/// The stage takes text and returns a library of domain specific
-/// objects including resolution of all ambiguous syntax.
+/// Parse create a library (set of elements) if the text is valid.
 ///
 /// Returns `Ok(Library)` if parsing succeeded.
-/// Returns `Err(String)` if parsing did not succeed.
+/// Returns `Err(Diagnostic)` if parsing did not succeed.
 pub fn parse(source: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
     let library = ironplc_parser::parse_program(source, file_id)?;
 
-    // Resolve the late bound type declarations, replacing with
-    // the type-specific declarations. This just simplifies
-    // code generation because we know the type of every declaration
-    // exactly
-    let library = xform_assign_file_id::apply(library, file_id)?;
+    // The parser does not know about the concept of files, so we apply the file
+    // ID as a post transformation.
+    xform_assign_file_id::apply(library, file_id)
+}
+
+/// A source that can be compiled together with other items.
+pub enum CompilationSource {
+    /// A parsed library. The library should be parsed but not linked.
+    Library(Library),
+    /// A text string from the specified file.
+    Text((String, FileId)),
+}
+
+/// A set of sources that should be compiled together.
+pub struct CompilationSet {
+    // TODO make these references so that we don't clone unnecessarily
+    pub sources: Vec<CompilationSource>,
+}
+
+impl CompilationSet {
+    pub fn of(library: Library) -> Self {
+        Self {
+            sources: vec![CompilationSource::Library(library)]
+        }
+    }
+}
+
+pub fn analyze(compilation_set: &CompilationSet) -> Result<(), Diagnostic> {
+    let library = resolve_types(compilation_set)?;
+    semantic(&library)
+}
+
+pub fn resolve_types(compilation_set: &CompilationSet) -> Result<Library, Diagnostic>  {
+    // We want to analyze this as a complete set, so we need to join the items together
+    // into a single library. Extend owns the item so after this we are free to modify
+    let mut library = Library::new();
+    for x in &compilation_set.sources {
+        match x {
+            CompilationSource::Library(lib) => { library = library.extend(lib.clone()); },
+            CompilationSource::Text(txt) => {
+                let lib = parse(&txt.0, &txt.1)?;
+                library = library.extend(lib);
+            },
+        }
+    }
+
     let library = xform_resolve_late_bound_data_decl::apply(library)?;
     xform_resolve_late_bound_type_initializer::apply(library)
 }
@@ -65,6 +98,7 @@ pub fn semantic(library: &Library) -> Result<(), Diagnostic> {
 
 #[cfg(test)]
 mod tests {
+    use crate::stages::CompilationSet;
     use crate::stages::analyze;
     use crate::test_helpers;
 
@@ -81,24 +115,34 @@ mod tests {
 
     use time::Duration;
 
+    use crate::stages::CompilationSource;
+
+    impl CompilationSet {
+        fn of_source(str: &String) -> Self {
+            Self {
+                sources: vec![CompilationSource::Text((str.to_string(), FileId::default()))]
+            }
+        }
+    }
+
     #[test]
     fn analyze_when_first_steps_then_result_is_ok() {
         let src = read_resource("first_steps.st");
-        let res = analyze(&src, &FileId::default());
+        let res = analyze(&CompilationSet::of_source(&src));
         assert!(res.is_ok())
     }
 
     #[test]
     fn analyze_when_first_steps_syntax_error_then_result_is_err() {
         let src = read_resource("first_steps_syntax_error.st");
-        let res = analyze(&src, &FileId::default());
+        let res = analyze(&CompilationSet::of_source(&src));
         assert!(res.is_err())
     }
 
     #[test]
     fn analyze_when_first_steps_semantic_error_then_result_is_err() {
         let src = read_resource("first_steps_semantic_error.st");
-        let res = analyze(&src, &FileId::default());
+        let res = analyze(&CompilationSet::of_source(&src));
         assert!(res.is_err())
     }
 
@@ -120,7 +164,7 @@ mod tests {
     #[test]
     fn analyze_2() {
         let src = read_resource("main.st");
-        let res = analyze(&src, &FileId::default());
+        let res = analyze(&CompilationSet::of_source(&src));
         assert!(res.is_ok())
     }
 
