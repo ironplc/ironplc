@@ -40,10 +40,23 @@ pub struct CompilationSet {
 }
 
 impl CompilationSet {
+    /// Initializes a new compilation set with no content.
+    pub fn new() -> Self {
+        Self {
+            sources: vec![],
+        }
+    }
+
+    /// Initializes a new compilation set with the library as the initial content.
     pub fn of(library: Library) -> Self {
         Self {
             sources: vec![CompilationSource::Library(library)],
         }
+    }
+
+    /// Appends an compilation source to the back of a set.
+    pub fn push(&mut self, source: CompilationSource) {
+        self.sources.push(source);
     }
 }
 
@@ -504,5 +517,28 @@ mod tests {
             ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap(),
             expected
         )
+    }
+
+    #[test]
+    fn analyze_when_split_across_multiple_files_then_ok() {
+        let program1 = "
+TYPE
+LOGLEVEL : (CRITICAL) := CRITICAL;
+END_TYPE";
+
+        let program2 = "
+FUNCTION_BLOCK LOGGER
+VAR_EXTERNAL CONSTANT
+ResetCounterValue : LOGLEVEL;
+END_VAR
+
+END_FUNCTION_BLOCK";
+
+        let mut compilation_set = CompilationSet::new();
+        compilation_set.push(CompilationSource::Text((program1.to_owned(), FileId::default())));
+        compilation_set.push(CompilationSource::Text((program2.to_owned(), FileId::default())));
+
+        let result = analyze(&compilation_set);
+        assert!(result.is_ok())
     }
 }

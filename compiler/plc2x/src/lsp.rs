@@ -1,11 +1,9 @@
 //! Implements the language server protocol for integration with an IDE such
 //! as Visual Studio Code.
 
-//use std::sync::mpsc::{Sender, Receiver};
 use crossbeam_channel::{Receiver, Sender};
-
-use ironplc_dsl::core::FileId;
 use log::trace;
+use ironplc_dsl::core::FileId;
 use lsp_server::{Connection, ExtractError, Message};
 use lsp_types::{
     notification::{self, Notification, PublishDiagnostics},
