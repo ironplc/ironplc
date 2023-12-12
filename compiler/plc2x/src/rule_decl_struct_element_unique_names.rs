@@ -76,9 +76,9 @@ impl Visitor<Diagnostic> for RuleStructElementNamesUnique {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::test_helpers::parse_and_resolve_types;
 
-    use crate::stages::parse;
+    use super::*;
 
     #[test]
     fn apply_when_structure_has_unique_names_then_ok() {
@@ -89,7 +89,7 @@ TYPE
     END_STRUCT;
 END_TYPE";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok());
@@ -105,7 +105,7 @@ TYPE
     END_STRUCT;
 END_TYPE";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_err());

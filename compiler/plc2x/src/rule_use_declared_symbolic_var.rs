@@ -101,10 +101,9 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_dsl::core::FileId;
+    use crate::test_helpers::parse_and_resolve_types;
 
     use super::*;
-    use crate::stages::parse;
 
     #[test]
     fn apply_when_function_block_undeclared_symbol_then_error() {
@@ -117,7 +116,7 @@ END_VAR
 TRIG := TRIG0;
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_err());
@@ -135,7 +134,7 @@ END_VAR
 TRIG := TRIG0;
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok());
@@ -153,7 +152,7 @@ END_VAR
 TRIG := TRIG0;
 END_FUNCTION";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok());
@@ -171,7 +170,7 @@ END_VAR
 TRIG := TRIG0;
 END_PROGRAM";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok());

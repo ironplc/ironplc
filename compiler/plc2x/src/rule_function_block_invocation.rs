@@ -278,10 +278,9 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_dsl::core::FileId;
+    use crate::test_helpers::parse_and_resolve_types;
 
     use super::*;
-    use crate::stages::parse;
 
     #[test]
     fn apply_when_no_names_uses_default_then_return_ok() {
@@ -297,7 +296,7 @@ END_VAR
 FB_INSTANCE();
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -320,7 +319,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -343,7 +342,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE, FALSE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -359,7 +358,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -382,7 +381,7 @@ END_VAR
 FB_INSTANCE(TRUE, FALSE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -406,7 +405,7 @@ END_VAR
 FB_INSTANCE(OUT1 => LOCAL);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -429,7 +428,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE, IN2 := FALSE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok())
@@ -448,7 +447,7 @@ END_VAR
 FB_INSTANCE(BAR := TRUE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -471,7 +470,7 @@ END_VAR
 FB_INSTANCE(TRUE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -493,7 +492,7 @@ END_VAR
 FB_INSTANCE(TRUE, FALSE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -515,7 +514,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE, BAR := TRUE);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -538,7 +537,7 @@ END_VAR
 FB_INSTANCE(OUT2 => LOCAL);
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -560,7 +559,7 @@ END_VAR
 FB_INSTANCE(IN1 := TRUE);
 END_PROGRAM";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok())

@@ -1,4 +1,8 @@
+use crate::stages::parse;
+use crate::stages::resolve_types;
+use crate::stages::CompilationSet;
 use ironplc_dsl::common::*;
+use ironplc_dsl::core::FileId;
 
 use std::fs;
 use std::path::PathBuf;
@@ -25,4 +29,11 @@ pub fn new_library(element: LibraryElementKind) -> Library {
     Library {
         elements: vec![element],
     }
+}
+
+#[cfg(test)]
+pub fn parse_and_resolve_types(program: &str) -> Library {
+    let library = parse(program, &FileId::default()).unwrap();
+    let compilation_set = CompilationSet::of(library);
+    resolve_types(&compilation_set).unwrap()
 }

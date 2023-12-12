@@ -55,11 +55,9 @@ impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_dsl::core::FileId;
+    use crate::test_helpers::parse_and_resolve_types;
 
     use super::*;
-
-    use crate::stages::parse;
 
     #[test]
     fn apply_when_var_init_function_block_is_const_then_error() {
@@ -75,7 +73,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_err())
@@ -94,7 +92,7 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_ok())

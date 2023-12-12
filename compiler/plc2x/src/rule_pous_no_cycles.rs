@@ -149,11 +149,9 @@ impl Visitor<Diagnostic> for RulePousNoCycles {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_dsl::core::FileId;
-
     use super::*;
 
-    use crate::stages::parse;
+    use crate::test_helpers::parse_and_resolve_types;
 
     #[test]
     fn apply_when_function_block_recursive_call_in_self_then_return_error() {
@@ -165,7 +163,7 @@ mod tests {
 
         END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
         assert!(result.is_err());
     }
@@ -187,7 +185,7 @@ mod tests {
 
         END_FUNCTION_BLOCK";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
         assert!(result.is_ok());
     }
@@ -210,7 +208,7 @@ mod tests {
             Caller := FALSE;
         END_FUNCTION";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
         assert!(result.is_ok());
     }

@@ -68,11 +68,9 @@ impl Visitor<Diagnostic> for RuleProgramTaskDefinitionExists {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_dsl::core::FileId;
+    use crate::test_helpers::parse_and_resolve_types;
 
     use super::*;
-
-    use crate::stages::parse;
 
     #[test]
     fn apply_when_task_not_defined_then_return_error() {
@@ -83,7 +81,7 @@ mod tests {
             END_RESOURCE
         END_CONFIGURATION";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
         assert!(result.is_err());
     }
@@ -98,7 +96,7 @@ mod tests {
             END_RESOURCE
         END_CONFIGURATION";
 
-        let library = parse(program, &FileId::default()).unwrap();
+        let library = parse_and_resolve_types(program);
         let result = apply(&library);
         assert!(result.is_ok());
     }
