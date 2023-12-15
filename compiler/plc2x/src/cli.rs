@@ -16,7 +16,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::stages::{analyze, parse, CompilationSet};
+use crate::{stages::{analyze, parse}, compilation_set::CompilationSet};
 
 // Checks specified files.
 pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {

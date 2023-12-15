@@ -264,7 +264,7 @@ mod test {
     use std::collections::HashMap;
 
     use crate::project::Project;
-    use crate::stages::CompilationSet;
+    use crate::compilation_set::CompilationSet;
 
     use super::start_with_connection;
 

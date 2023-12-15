@@ -10,7 +10,7 @@ use crate::{
     rule_program_task_definition_exists, rule_use_declared_enumerated_value,
     rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, xform_assign_file_id,
-    xform_resolve_late_bound_data_decl, xform_resolve_late_bound_type_initializer,
+    xform_resolve_late_bound_data_decl, xform_resolve_late_bound_type_initializer, compilation_set::{CompilationSet, CompilationSource},
 };
 
 /// Parse create a library (set of elements) if the text is valid.
@@ -25,51 +25,18 @@ pub fn parse(source: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
     xform_assign_file_id::apply(library, file_id)
 }
 
-/// A source that can be compiled together with other items.
-pub enum CompilationSource {
-    /// A parsed library. The library should be parsed but not linked.
-    Library(Library),
-    /// A text string from the specified file.
-    Text((String, FileId)),
-}
 
-/// A set of sources that should be compiled together.
-pub struct CompilationSet {
-    // TODO make these references so that we don't clone unnecessarily
-    pub sources: Vec<CompilationSource>,
-}
-
-impl CompilationSet {
-    /// Initializes a new compilation set with no content.
-    pub fn new() -> Self {
-        Self { sources: vec![] }
-    }
-
-    /// Initializes a new compilation set with the library as the initial content.
-    pub fn of(library: Library) -> Self {
-        Self {
-            sources: vec![CompilationSource::Library(library)],
-        }
-    }
-
-    /// Appends an compilation source to the back of a set.
-    pub fn push(&mut self, source: CompilationSource) {
-        self.sources.push(source);
-    }
-}
-
-impl Default for CompilationSet {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
+/// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
+/// 
+/// Returns `Ok(Library)` if analysis succeeded (containing a possibly new library) that is
+/// the merge of the inputs.
+/// Returns `Err(Diagnostic)` if analysis did not succeed.
 pub fn analyze(compilation_set: &CompilationSet) -> Result<(), Diagnostic> {
     let library = resolve_types(compilation_set)?;
     semantic(&library)
 }
 
-pub fn resolve_types(compilation_set: &CompilationSet) -> Result<Library, Diagnostic> {
+pub(crate) fn resolve_types(compilation_set: &CompilationSet) -> Result<Library, Diagnostic> {
     // We want to analyze this as a complete set, so we need to join the items together
     // into a single library. Extend owns the item so after this we are free to modify
     let mut library = Library::new();
@@ -93,7 +60,7 @@ pub fn resolve_types(compilation_set: &CompilationSet) -> Result<Library, Diagno
 ///
 /// Returns `Ok(())` if the library is free of semantic errors.
 /// Returns `Err(String)` if the library contains a semantic error.
-pub fn semantic(library: &Library) -> Result<(), Diagnostic> {
+pub(crate) fn semantic(library: &Library) -> Result<(), Diagnostic> {
     let functions: Vec<fn(&Library) -> Result<(), Diagnostic>> = vec![
         rule_use_declared_symbolic_var::apply,
         rule_use_declared_enumerated_value::apply,
