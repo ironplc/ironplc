@@ -5,12 +5,14 @@
 use ironplc_dsl::{core::FileId, diagnostic::Diagnostic};
 
 use crate::{
-    ironplc_dsl::common::Library, rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
+    compilation_set::{CompilationSet, CompilationSource},
+    ironplc_dsl::common::Library,
+    rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
     rule_enumeration_values_unique, rule_function_block_invocation, rule_pous_no_cycles,
     rule_program_task_definition_exists, rule_use_declared_enumerated_value,
     rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, xform_assign_file_id,
-    xform_resolve_late_bound_data_decl, xform_resolve_late_bound_type_initializer, compilation_set::{CompilationSet, CompilationSource},
+    xform_resolve_late_bound_data_decl, xform_resolve_late_bound_type_initializer,
 };
 
 /// Parse create a library (set of elements) if the text is valid.
@@ -25,9 +27,8 @@ pub fn parse(source: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
     xform_assign_file_id::apply(library, file_id)
 }
 
-
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
-/// 
+///
 /// Returns `Ok(Library)` if analysis succeeded (containing a possibly new library) that is
 /// the merge of the inputs.
 /// Returns `Err(Diagnostic)` if analysis did not succeed.

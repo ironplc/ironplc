@@ -1,6 +1,5 @@
 use ironplc_dsl::{common::Library, core::FileId};
 
-
 /// A source that can be compiled together with other items.
 pub enum CompilationSource {
     /// A parsed library. The library should be parsed but not linked.

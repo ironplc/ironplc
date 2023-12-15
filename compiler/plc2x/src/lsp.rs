@@ -263,8 +263,8 @@ mod test {
     use serde::Serialize;
     use std::collections::HashMap;
 
-    use crate::project::Project;
     use crate::compilation_set::CompilationSet;
+    use crate::project::Project;
 
     use super::start_with_connection;
 

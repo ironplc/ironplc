@@ -1,9 +1,9 @@
 //! Transformation rule that changes late bound types into
 //! specific types.
-//! 
+//!
 //! Late bound types are those where the type is ambiguous
 //! after parsing.
-//! 
+//!
 //! The transformation succeeds when all data type declarations
 //! resolve to a declared type.
 use crate::symbol_graph::{SymbolGraph, SymbolNode};
