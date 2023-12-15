@@ -5,6 +5,7 @@ extern crate ironplc_dsl;
 extern crate ironplc_parser;
 
 pub mod cli;
+mod compilation_set;
 pub mod logger;
 pub mod lsp;
 pub mod project;
