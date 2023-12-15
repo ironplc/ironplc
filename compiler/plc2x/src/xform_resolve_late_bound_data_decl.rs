@@ -1,3 +1,11 @@
+//! Transformation rule that changes late bound types into
+//! specific types.
+//!
+//! Late bound types are those where the type is ambiguous
+//! after parsing.
+//!
+//! The transformation succeeds when all data type declarations
+//! resolve to a declared type.
 use crate::symbol_graph::{SymbolGraph, SymbolNode};
 use ironplc_dsl::core::SourcePosition;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -22,7 +30,7 @@ pub fn apply(lib: Library) -> Result<Library, Diagnostic> {
     // Populate the graph.
     declarations.walk(&lib)?;
 
-    // Determine the types. We will create a mapping that says for item with
+    // Determine the types. Creates a mapping that says for item with
     // a particular type, how should we resolve it.
     let mut resolved_types = HashMap::new();
     for root in declarations.roots {

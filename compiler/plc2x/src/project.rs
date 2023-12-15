@@ -5,7 +5,10 @@
 
 use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
 
-use crate::stages::{analyze, CompilationSet, CompilationSource};
+use crate::{
+    compilation_set::{CompilationSet, CompilationSource},
+    stages::analyze,
+};
 
 /// A project consisting of one or more files.
 ///
