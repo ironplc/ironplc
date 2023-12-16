@@ -16,10 +16,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{
-    compilation_set::CompilationSet,
-    stages::{analyze, parse},
-};
+use crate::{compilation_set::CompilationSet, stages::analyze};
 
 // Checks specified files.
 pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
@@ -47,6 +44,8 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
 }
 
 fn check_file(filename: &Path, suppress_output: bool) -> Result<(), usize> {
+    let mut compilation_set = CompilationSet::new();
+
     let mut file = File::open(filename).map_err(|e| {
         println!("Failed opening file {}. {}", filename.display(), e);
         1usize
@@ -59,18 +58,12 @@ fn check_file(filename: &Path, suppress_output: bool) -> Result<(), usize> {
 
     println!("Checking {}", filename.display());
 
-    // Try to parse the file so that we can form a compilation set
-    let library = parse(&contents, &FileId::from_path(filename)).map_err(|e| {
-        handle_diagnostic(e, filename, &contents, suppress_output);
-        1usize
-    })?;
-
     // Create the compilation set
-    let compilation_set = CompilationSet::of(library);
+    compilation_set.push_source(&contents, FileId::from_path(filename));
 
     // Analyze the set
     analyze(&compilation_set).map_err(|e| {
-        handle_diagnostic(e, filename, &contents, suppress_output);
+        handle_diagnostic(e, &compilation_set, suppress_output);
         2usize
     })?;
 
@@ -102,16 +95,20 @@ fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, String> {
 
 fn handle_diagnostic(
     diagnostic: ironplc_dsl::diagnostic::Diagnostic,
-    filename: &Path,
-    contents: &String,
+    compilation_set: &CompilationSet,
     suppress_output: bool,
 ) {
     if !suppress_output {
         let writer = StandardStream::stderr(ColorChoice::Always);
         let config = codespan_reporting::term::Config::default();
 
-        let mut files = SimpleFiles::new();
-        files.add(filename.display().to_string(), contents);
+        let mut files: SimpleFiles<String, &String> = SimpleFiles::new();
+
+        for file_id in diagnostic.file_ids() {
+            if let Some(content) = compilation_set.content(file_id) {
+                files.add(file_id.to_string(), content);
+            }
+        }
 
         let diagnostic = map_diagnostic(diagnostic);
 
