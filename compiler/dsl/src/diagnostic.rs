@@ -5,10 +5,9 @@
 //! for different integrations and there is no one crate that does it all
 //! (especially one that works for both command line and language server
 //! protocol).
-
-use std::ops::Range;
-
 use ironplc_problems::Problem;
+use std::collections::HashSet;
+use std::{fs::File, ops::Range};
 
 use crate::core::{FileId, Id, SourceLoc, SourcePosition};
 
@@ -222,6 +221,17 @@ impl Diagnostic {
         } else {
             format!("{} ({})", self.description, self.described.join(", "))
         }
+    }
+
+    pub fn file_ids(&self) -> HashSet<&FileId> {
+        let mut file_ids = HashSet::new();
+        file_ids.insert(&self.primary.file_id);
+
+        for secondary_item in self.secondary.iter() {
+            file_ids.insert(&secondary_item.file_id);
+        }
+
+        file_ids
     }
 }
 

@@ -68,6 +68,7 @@ impl Project for FileBackedProject {
 
         CompilationSet {
             sources: all_sources,
+            references: vec![],
         }
     }
 

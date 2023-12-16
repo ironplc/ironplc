@@ -50,6 +50,10 @@ pub(crate) fn resolve_types(compilation_set: &CompilationSet) -> Result<Library,
                 let lib = parse(&txt.0, &txt.1)?;
                 library = library.extend(lib);
             }
+            CompilationSource::TextRef(txt) => {
+                let lib = parse(txt.0, &txt.1)?;
+                library = library.extend(lib);
+            }
         }
     }
 
@@ -104,13 +108,14 @@ mod tests {
 
     use crate::stages::CompilationSource;
 
-    impl CompilationSet {
+    impl<'a> CompilationSet<'a> {
         fn of_source(str: &String) -> Self {
             Self {
                 sources: vec![CompilationSource::Text((
                     str.to_string(),
                     FileId::default(),
                 ))],
+                references: vec![],
             }
         }
     }

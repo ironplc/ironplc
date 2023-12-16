@@ -14,7 +14,7 @@ use dsl_macro_derive::Recurse;
 ///
 /// FileId is normally useful in the context of source positions
 /// where a source position is in a file.
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Default)]
 pub struct FileId(String);
 
 impl FileId {
@@ -32,6 +32,12 @@ impl FileId {
     /// is normally the file path.
     pub fn from_string(path: &str) -> Self {
         FileId(String::from(path))
+    }
+}
+
+impl fmt::Display for FileId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
