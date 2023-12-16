@@ -49,9 +49,9 @@ pub(crate) fn resolve_types(compilation_set: &CompilationSet) -> Result<Library,
             CompilationSource::Text(txt) => {
                 let lib = parse(&txt.0, &txt.1)?;
                 library = library.extend(lib);
-            },
+            }
             CompilationSource::TextRef(txt) => {
-                let lib = parse(&txt.0, &txt.1)?;
+                let lib = parse(txt.0, &txt.1)?;
                 library = library.extend(lib);
             }
         }

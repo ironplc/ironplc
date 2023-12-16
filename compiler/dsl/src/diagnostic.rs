@@ -6,8 +6,8 @@
 //! (especially one that works for both command line and language server
 //! protocol).
 use ironplc_problems::Problem;
-use std::{ops::Range, fs::File};
 use std::collections::HashSet;
+use std::{fs::File, ops::Range};
 
 use crate::core::{FileId, Id, SourceLoc, SourcePosition};
 
@@ -230,7 +230,7 @@ impl Diagnostic {
         for secondary_item in self.secondary.iter() {
             file_ids.insert(&secondary_item.file_id);
         }
-        
+
         file_ids
     }
 }

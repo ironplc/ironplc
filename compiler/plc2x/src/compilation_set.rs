@@ -21,7 +21,10 @@ pub struct CompilationSet<'a> {
 impl<'a> CompilationSet<'a> {
     /// Initializes a new compilation set with no content.
     pub fn new() -> Self {
-        Self { sources: vec![], references: vec![] }
+        Self {
+            sources: vec![],
+            references: vec![],
+        }
     }
 
     /// Initializes a new compilation set with the library as the initial content.
@@ -39,46 +42,48 @@ impl<'a> CompilationSet<'a> {
 
     /// Appends an compilation source to the back of a set.
     pub fn push_source_into(&mut self, source: String, file_id: FileId) {
-        self.sources.push(CompilationSource::Text((source, file_id)));
+        self.sources
+            .push(CompilationSource::Text((source, file_id)));
     }
 
     pub fn push_source(&mut self, source: &'a String, file_id: FileId) {
-        self.sources.push(CompilationSource::TextRef((source, file_id)));
+        self.sources
+            .push(CompilationSource::TextRef((source, file_id)));
     }
 
     pub fn content(&self, file_id: &FileId) -> Option<&String> {
         for source in &self.sources {
             match source {
-                CompilationSource::Library(_lib) => {},
+                CompilationSource::Library(_lib) => {}
                 CompilationSource::Text(txt) => {
                     if txt.1 == *file_id {
                         return Some(&txt.0);
                     }
-                },
+                }
                 CompilationSource::TextRef(txt) => {
                     if txt.1 == *file_id {
-                        return Some(&txt.0);
+                        return Some(txt.0);
                     }
-                },
+                }
             }
         }
-        
+
         for source in &self.references {
             match source {
-                CompilationSource::Library(_lib) => {},
+                CompilationSource::Library(_lib) => {}
                 CompilationSource::Text(txt) => {
                     if txt.1 == *file_id {
                         return Some(&txt.0);
                     }
-                },
+                }
                 CompilationSource::TextRef(txt) => {
                     if txt.1 == *file_id {
-                        return Some(&txt.0);
+                        return Some(txt.0);
                     }
-                },
+                }
             }
         }
-        
+
         None
     }
 }
