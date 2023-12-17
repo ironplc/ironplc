@@ -7,12 +7,14 @@ Now that you've installed IronPLC, it's time to write a first program.
 If you've ever learned another programming language, you likely started
 by writing a "Hello, World" program to display that text.
 Don't worry if you haven't learned another programming language
-or haven't written a "Hello, World" program. An IEC 61131-3 program is different.
+or haven't written a "Hello, World" program. 
 
 IEC 61131-3 is designed for real-time automation controllers
 that often do not have a display. In other words, there is
-often no place to show "Hello, World". Other options, such as creating
-a file are also unusual.
+often no place to show "Hello, World". Other solutions to get feedback,
+such as creating a file are also unusual.
+
+In short, a "Hello, World" program in IEC 61131-3 is different.
 
 -------------------------------
 The Sense-Control-Actuate Cycle
@@ -33,7 +35,7 @@ then enable the buzzer.
 
 .. note::
 
-   It is possible to design a simpler door bell system. This is a more complex
+   It is possible to design a simpler door bell system. This
    example designed to illustrate how to use IEC 61131-3.
 
 -------------------------------------
@@ -75,7 +77,7 @@ Anatomy of the Hello, World Program
 
 Let's review this program. IEC 61131-3 applications are structured from blocks
 called Program Organization Units (POUs). The :code:`PROGRAM` is a top level block and
-similar to the "main" function in other languages. The piece indicated by
+similar to the :code:`main` function in other languages. The section indicated by
 
 .. code-block::
    :name: main
@@ -84,9 +86,9 @@ similar to the "main" function in other languages. The piece indicated by
 
    END_PROGRAM
 
-defines a :code:`PROGRAM` identified by the name :code:`main`.
+defines a :code:`PROGRAM` having the name :code:`main`.
 
-Unlike the "main" function in other languages, a program does not run by default.
+Unlike the :code:`main` function in other languages, a program does not run by default.
 We need to tell the PLC runtime how we want to run the program. The piece indicated by
 
 .. code-block::
@@ -97,5 +99,5 @@ We need to tell the PLC runtime how we want to run the program. The piece indica
    END_CONFIGURATION
 
 defines how we want the program to run. The configuration declares we want to execute
-the :code:`main` program once every 100 ms. as the highest priority task. This task 
+the :code:`main` program once every 100 ms and this task is the highest priority task. This task 
 executed on the hardware element named :code:`res`.
