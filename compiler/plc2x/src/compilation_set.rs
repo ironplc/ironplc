@@ -35,6 +35,12 @@ impl<'a> CompilationSet<'a> {
         }
     }
 
+    pub fn extend<I>(&mut self, sources: I)
+    where
+        I: IntoIterator<Item = CompilationSource<'a>> {
+        self.sources.extend(sources);
+    }
+
     /// Appends an compilation source to the back of a set.
     pub fn push(&mut self, source: CompilationSource<'a>) {
         self.sources.push(source);
