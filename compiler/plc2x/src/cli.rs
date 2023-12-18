@@ -16,7 +16,10 @@ use std::{
     path::PathBuf,
 };
 
-use crate::{compilation_set::{CompilationSet, CompilationSource}, stages::analyze};
+use crate::{
+    compilation_set::{CompilationSet, CompilationSource},
+    stages::analyze,
+};
 
 // Checks specified files.
 pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
@@ -30,27 +33,32 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
 
     let mut compilation_set = CompilationSet::new();
 
-    let sources : Result<Vec<_>, String> = files.iter().map(|path| {
-        let mut file = File::open(path).map_err(|e| {
-            println!("Failed opening file {}. {}", path.display(), e);
-            e.to_string()
-        })?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents).map_err(|err| {
-            format!("Failed to read file {}\n {}", path.display(), err);
-            err.to_string()
-        })?;
+    let sources: Result<Vec<_>, String> = files
+        .iter()
+        .map(|path| {
+            let mut file = File::open(path).map_err(|e| {
+                println!("Failed opening file {}. {}", path.display(), e);
+                e.to_string()
+            })?;
+            let mut contents = String::new();
+            file.read_to_string(&mut contents).map_err(|err| {
+                format!("Failed to read file {}\n {}", path.display(), err);
+                err.to_string()
+            })?;
 
-        Ok(CompilationSource::Text((contents, FileId::from_path(path))))
-    }).collect();
+            Ok(CompilationSource::Text((contents, FileId::from_path(path))))
+        })
+        .collect();
 
     compilation_set.extend(sources?);
 
     // Analyze the set
-    analyze(&compilation_set).map_err(|e| {
-        handle_diagnostic(e, &compilation_set, suppress_output);
-        1usize
-    }).map_err(|e| format!("Number of errors: {}", e))?;
+    analyze(&compilation_set)
+        .map_err(|e| {
+            handle_diagnostic(e, &compilation_set, suppress_output);
+            1usize
+        })
+        .map_err(|e| format!("Number of errors: {}", e))?;
 
     println!("OK");
     Ok(())

@@ -37,7 +37,8 @@ impl<'a> CompilationSet<'a> {
 
     pub fn extend<I>(&mut self, sources: I)
     where
-        I: IntoIterator<Item = CompilationSource<'a>> {
+        I: IntoIterator<Item = CompilationSource<'a>>,
+    {
         self.sources.extend(sources);
     }
 
