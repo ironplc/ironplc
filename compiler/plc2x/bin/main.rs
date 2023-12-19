@@ -24,7 +24,7 @@ struct Args {
 #[derive(clap::Subcommand, Debug)]
 enum Action {
     /// Check a file (or set of files) for syntax and semantic correctness.
-    /// 
+    ///
     /// When multiple files specified, then the files are checked as a single
     /// compilation unit (essentially by combining the files) for analysis.
     Check {
