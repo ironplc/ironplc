@@ -12,23 +12,32 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Parser, Debug)]
 #[command(name = "ironplcc", about = "IronPLC compiler")]
 struct Args {
-    /// Turn on verbose logging.
+    /// Turn on verbose logging. Repeat to increase verbosity.
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
 
+    /// Selects the subcommand.
     #[command(subcommand)]
     action: Action,
 }
 
 #[derive(clap::Subcommand, Debug)]
 enum Action {
+    /// Check a file (or set of files) for syntax and semantic correctness.
+    ///
+    /// When multiple files specified, then the files are checked as a single
+    /// compilation unit (essentially by combining the files) for analysis.
     Check {
+        /// Files to include in the check. Directory names can be given to
+        /// add all files in the given directory.
         files: Vec<PathBuf>,
     },
+    /// Run in Language Server Protocol mode to integrate with development tools.
     Lsp {
         #[arg(long)]
         stdio: bool,
     },
+    /// Prints the version number of the compiler.
     Version,
 }
 
