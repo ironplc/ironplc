@@ -9,9 +9,9 @@ use codespan_reporting::{
     },
 };
 use ironplc_dsl::core::FileId;
+use log::{debug, trace};
 use std::{
-    fs::{metadata, read_dir, File},
-    io::Read,
+    fs::{canonicalize, metadata, read_dir},
     ops::Range,
     path::PathBuf,
 };
@@ -23,6 +23,7 @@ use crate::{
 
 // Checks specified files.
 pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
+    trace!("Reading paths {:?}", paths);
     let mut files: Vec<PathBuf> = vec![];
     for path in paths {
         match enumerate_files(&path) {
@@ -33,41 +34,83 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
 
     let mut compilation_set = CompilationSet::new();
 
-    let sources: Result<Vec<_>, String> = files
-        .iter()
-        .map(|path| {
-            let mut file = File::open(path).map_err(|e| {
-                println!("Failed opening file {}. {}", path.display(), e);
-                e.to_string()
-            })?;
-            let mut contents = String::new();
-            file.read_to_string(&mut contents).map_err(|err| {
-                format!("Failed to read file {}\n {}", path.display(), err);
-                err.to_string()
-            })?;
-
-            Ok(CompilationSource::Text((contents, FileId::from_path(path))))
-        })
-        .collect();
+    let sources: Result<Vec<_>, String> = files.iter().map(path_to_source).collect();
 
     compilation_set.extend(sources?);
 
     // Analyze the set
-    analyze(&compilation_set)
-        .map_err(|e| {
-            handle_diagnostic(e, &compilation_set, suppress_output);
-            1usize
-        })
-        .map_err(|e| format!("Number of errors: {}", e))?;
+    if let Err(err) = analyze(&compilation_set) {
+        handle_diagnostic(err, &compilation_set, suppress_output);
+        return Err(String::from("Error"));
+    }
 
     println!("OK");
     Ok(())
 }
 
+/// Creates a compilation source item from the path (by reading the file).
+fn path_to_source(path: &PathBuf) -> Result<CompilationSource, String> {
+    debug!("Reading file {}", path.display());
+
+    let bytes = std::fs::read(path)
+        .map_err(|e| format!("Failed opening file {}. {}", path.display(), e))?;
+
+    // We try different encoders and return the first one that matches. From section 2.1.1,
+    // the allowed character set is one with characters consistent with ISO/IEC 10646-1 (UCS).
+    // There are other valid encodings, so if encountered, it is reasonable to add more here.
+    let decoders: [&'static encoding_rs::Encoding; 2] =
+        [encoding_rs::UTF_8, encoding_rs::ISO_8859_2];
+
+    let result = decoders.iter().find_map(|d| {
+        let (res, encoding_used, had_errors) = d.decode(&bytes);
+        if had_errors {
+            trace!(
+                "Path {} did not match encoding {}",
+                path.display(),
+                encoding_used.name()
+            );
+            return None;
+        }
+        trace!(
+            "Path {} matched encoding {}",
+            path.display(),
+            encoding_used.name()
+        );
+        Some(res)
+    });
+
+    match result {
+        Some(res) => {
+            let contents = String::from(res);
+            return Ok(CompilationSource::Text((contents, FileId::from_path(path))));
+        }
+        None => Err(format!(
+            "Failed reading file {}. The file is not UTF-8 or latin1",
+            path.display()
+        )),
+    }
+}
+
+/// Enumerates all files at the path.
+///
+/// If the path is a file, then returns the file. If the path is a directory,
+/// then returns all files in the directory.
 fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, String> {
-    let metadata = metadata(path).map_err(|e| e.to_string())?;
+    // Get the canonical path so that error messages are unambiguous
+    let path = canonicalize(path).map_err(|e| {
+        format!(
+            "Unable to determine canonical path for {}, {}",
+            path.display(),
+            e
+        )
+    })?;
+
+    // Determine what kind of path we have.
+    let metadata = metadata(&path)
+        .map_err(|e| format!("Unable to read metadata for {}: {}", path.display(), e))?;
     if metadata.is_dir() {
-        let paths = read_dir(path).map_err(|e| e.to_string())?;
+        let paths = read_dir(&path)
+            .map_err(|e| format!("Unable to read directory {}: {}", path.display(), e))?;
         let paths: Vec<PathBuf> = paths
             .into_iter()
             .filter_map(|entry| match entry {
@@ -81,11 +124,12 @@ fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, String> {
         return Ok(vec![path.to_path_buf()]);
     }
     if metadata.is_symlink() {
-        panic!("Sorry. Symlinks are not supported.")
+        return Err("Sorry. Symlinks are not supported.".to_string());
     }
     Ok(vec![])
 }
 
+/// Converts an IronPLC diagnostic into the
 fn handle_diagnostic(
     diagnostic: ironplc_dsl::diagnostic::Diagnostic,
     compilation_set: &CompilationSet,
