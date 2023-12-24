@@ -1,4 +1,5 @@
 use env_logger::Builder;
+use log::trace;
 use log::LevelFilter;
 use std::fs::File;
 use std::io::Write;
@@ -17,6 +18,8 @@ pub fn configure(verbosity: u8) -> Result<(), String> {
         4 => LevelFilter::Trace,
         _ => return Err(String::from("Don't be crazy with verbose")),
     };
+
+    trace!("Logger verbosity {}", log_level);
 
     // Determine the output log file - first the path then then file
     // This path is important for the end-to-end smoke test.
