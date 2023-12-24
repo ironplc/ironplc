@@ -58,15 +58,24 @@ fn path_to_source(path: &PathBuf) -> Result<CompilationSource, String> {
     // We try different encoders and return the first one that matches. From section 2.1.1,
     // the allowed character set is one with characters consistent with ISO/IEC 10646-1 (UCS).
     // There are other valid encodings, so if encountered, it is reasonable to add more here.
-    let decoders: [&'static encoding_rs::Encoding; 2] = [encoding_rs::UTF_8, encoding_rs::ISO_8859_2];
-    
+    let decoders: [&'static encoding_rs::Encoding; 2] =
+        [encoding_rs::UTF_8, encoding_rs::ISO_8859_2];
+
     let result = decoders.iter().find_map(|d| {
         let (res, encoding_used, had_errors) = d.decode(&bytes);
         if had_errors {
-            trace!("Path {} did not match encoding {}", path.display(), encoding_used.name());
+            trace!(
+                "Path {} did not match encoding {}",
+                path.display(),
+                encoding_used.name()
+            );
             return None;
         }
-        trace!("Path {} matched encoding {}", path.display(), encoding_used.name());
+        trace!(
+            "Path {} matched encoding {}",
+            path.display(),
+            encoding_used.name()
+        );
         Some(res)
     });
 
@@ -75,9 +84,10 @@ fn path_to_source(path: &PathBuf) -> Result<CompilationSource, String> {
             let contents = String::from(res);
             return Ok(CompilationSource::Text((contents, FileId::from_path(path))));
         }
-        None => {
-            return Err(format!("Failed reading file {}. The file is not UTF-8 or latin1", path.display()));
-        }
+        None => Err(format!(
+            "Failed reading file {}. The file is not UTF-8 or latin1",
+            path.display()
+        )),
     }
 }
 
@@ -114,7 +124,7 @@ fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, String> {
         return Ok(vec![path.to_path_buf()]);
     }
     if metadata.is_symlink() {
-        return Err(format!("Sorry. Symlinks are not supported."));
+        return Err("Sorry. Symlinks are not supported.".to_string());
     }
     Ok(vec![])
 }
