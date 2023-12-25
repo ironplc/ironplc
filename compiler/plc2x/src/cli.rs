@@ -17,7 +17,7 @@ use log::{debug, error, trace};
 use std::{
     fs::{canonicalize, metadata, read_dir},
     ops::Range,
-    path::{PathBuf, Path},
+    path::{Path, PathBuf},
 };
 
 use crate::{
@@ -108,18 +108,15 @@ fn path_to_source(path: &PathBuf) -> Result<CompilationSource, Diagnostic> {
 /// then returns all files in the directory.
 fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, Diagnostic> {
     // Get the canonical path so that error messages are unambiguous
-    let path = canonicalize(path).map_err(|e| {
-        diagnostic(Problem::StructureDuplicatedElement, path, e.to_string())
-    })?;
+    let path = canonicalize(path)
+        .map_err(|e| diagnostic(Problem::StructureDuplicatedElement, path, e.to_string()))?;
 
     // Determine what kind of path we have.
-    let metadata = metadata(&path).map_err(|e| {
-        diagnostic(Problem::CannotReadMetadata, &path, e.to_string())
-    })?;
+    let metadata = metadata(&path)
+        .map_err(|e| diagnostic(Problem::CannotReadMetadata, &path, e.to_string()))?;
     if metadata.is_dir() {
-        let paths = read_dir(&path).map_err(|e| {
-            diagnostic(Problem::CannotReadDirectory, &path, e.to_string())
-        })?;
+        let paths = read_dir(&path)
+            .map_err(|e| diagnostic(Problem::CannotReadDirectory, &path, e.to_string()))?;
         let paths: Vec<PathBuf> = paths
             .into_iter()
             .filter_map(|entry| match entry {
@@ -214,10 +211,7 @@ fn map_diagnostic(diagnostic: Diagnostic) -> CodeSpanDiagnostic<usize> {
 }
 
 fn diagnostic(problem: Problem, path: &Path, message: String) -> Diagnostic {
-    Diagnostic::problem(
-        problem,
-        Label::file(FileId::from_path(path), message),
-    )
+    Diagnostic::problem(problem, Label::file(FileId::from_path(path), message))
 }
 
 #[cfg(test)]

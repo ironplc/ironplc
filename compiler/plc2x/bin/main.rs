@@ -52,9 +52,7 @@ pub fn main() -> Result<(), String> {
             let proj = Box::new(FileBackedProject::new());
             lsp::start(proj)
         }
-        Action::Check { files } => {
-            cli::check(files, false)
-        }
+        Action::Check { files } => cli::check(files, false),
         Action::Version => {
             println!("ironplcc version {}", VERSION);
             Ok(())
