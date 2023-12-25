@@ -51,7 +51,9 @@ pub fn main() -> Result<(), String> {
             let proj = Box::new(FileBackedProject::new());
             lsp::start(proj)
         }
-        Action::Check { files } => cli::check(files, false),
+        Action::Check { files } => {
+            cli::check(files, false).map_err(|_e| String::from("Error running check"))
+        }
         Action::Version => {
             println!("ironplcc version {}", VERSION);
             Ok(())

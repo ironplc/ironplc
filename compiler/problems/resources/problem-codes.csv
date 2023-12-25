@@ -21,4 +21,10 @@ P0019,DeclarationNameDuplicated,Declaration name is duplicated
 P0020,DefinitionNameDuplicated,Definition name is duplicated
 P0021,FunctionBlockNotInScope,Function block invocation is not a variable in scope
 P0022,UndeclaredUnknownType,Unknown type
+P0023,CannotCanonicalizePath,Unable to canonicalize the path
+P0024,CannotReadMetadata,Unable to read metadata for the path
+P0025,CannotReadDirectory,Unable to read directory
+P0026,CannotReadFile,Unable to read file
+P0027,SymlinkUnsupported,Symlinks are not supported
+P0028,UnsupportedEncoding,File encoding is not supported
 P9999,NotImplemented,Capability is not implemented (yet!)
