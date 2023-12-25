@@ -56,7 +56,7 @@ fn check_when_binary_encoded_then_error() -> Result<(), Box<dyn std::error::Erro
         .arg(path_to_test_resource("binary_file.st"));
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("Error running check"));
+        .stderr(predicate::str::contains("Error during analysis"));
 
     Ok(())
 }

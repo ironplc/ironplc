@@ -42,6 +42,7 @@ enum Action {
 }
 
 pub fn main() -> Result<(), String> {
+    // The Err variant is a String so that the command line shows a nice message.
     let args = Args::parse();
 
     logger::configure(args.verbose)?;
@@ -52,7 +53,7 @@ pub fn main() -> Result<(), String> {
             lsp::start(proj)
         }
         Action::Check { files } => {
-            cli::check(files, false).map_err(|_e| String::from("Error running check"))
+            cli::check(files, false)
         }
         Action::Version => {
             println!("ironplcc version {}", VERSION);

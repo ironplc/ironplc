@@ -17,7 +17,7 @@ use log::{debug, error, trace};
 use std::{
     fs::{canonicalize, metadata, read_dir},
     ops::Range,
-    path::PathBuf,
+    path::{PathBuf, Path},
 };
 
 use crate::{
@@ -26,7 +26,7 @@ use crate::{
 };
 
 // Checks specified files.
-pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), ()> {
+pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
     trace!("Reading paths {:?}", paths);
     let mut files: Vec<PathBuf> = vec![];
     for path in paths {
@@ -34,26 +34,24 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), ()> {
             Ok(mut paths) => files.append(&mut paths),
             Err(err) => {
                 handle_diagnostic(err, None, suppress_output);
-                return Err(());
+                return Err(String::from("Error enumerating files"));
             }
         }
     }
 
+    // Create the compilation set
     let mut compilation_set = CompilationSet::new();
-
     let sources: Result<Vec<_>, Diagnostic> = files.iter().map(path_to_source).collect();
-
-    if let Err(err) = sources {
+    let sources = sources.map_err(|err| {
         handle_diagnostic(err, Some(&compilation_set), suppress_output);
-        return Err(());
-    }
-
-    compilation_set.extend(sources?);
+        String::from("Error reading source files")
+    })?;
+    compilation_set.extend(sources);
 
     // Analyze the set
     if let Err(err) = analyze(&compilation_set) {
         handle_diagnostic(err, Some(&compilation_set), suppress_output);
-        return Err(());
+        return Err(String::from("Error during analysis"));
     }
 
     println!("OK");
@@ -111,16 +109,16 @@ fn path_to_source(path: &PathBuf) -> Result<CompilationSource, Diagnostic> {
 fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, Diagnostic> {
     // Get the canonical path so that error messages are unambiguous
     let path = canonicalize(path).map_err(|e| {
-        return diagnostic(Problem::StructureDuplicatedElement, path, e.to_string());
+        diagnostic(Problem::StructureDuplicatedElement, path, e.to_string())
     })?;
 
     // Determine what kind of path we have.
     let metadata = metadata(&path).map_err(|e| {
-        return diagnostic(Problem::CannotReadMetadata, &path, e.to_string());
+        diagnostic(Problem::CannotReadMetadata, &path, e.to_string())
     })?;
     if metadata.is_dir() {
         let paths = read_dir(&path).map_err(|e| {
-            return diagnostic(Problem::CannotReadDirectory, &path, e.to_string());
+            diagnostic(Problem::CannotReadDirectory, &path, e.to_string())
         })?;
         let paths: Vec<PathBuf> = paths
             .into_iter()
@@ -167,7 +165,7 @@ fn handle_diagnostic(
             }
             None => {
                 for file_id in diagnostic.file_ids() {
-                    files.add(file_id.to_string(), &empty_source);
+                    files.add(file_id.to_string(), empty_source);
                 }
             }
         }
@@ -215,10 +213,10 @@ fn map_diagnostic(diagnostic: Diagnostic) -> CodeSpanDiagnostic<usize> {
         .with_labels(labels)
 }
 
-fn diagnostic(problem: Problem, path: &PathBuf, message: String) -> Diagnostic {
+fn diagnostic(problem: Problem, path: &Path, message: String) -> Diagnostic {
     Diagnostic::problem(
         problem,
-        Label::file(FileId::from_path(path.as_path()), message),
+        Label::file(FileId::from_path(path), message),
     )
 }
 
