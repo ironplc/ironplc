@@ -49,6 +49,19 @@ fn check_when_valid_file_8859_encoded_then_ok() -> Result<(), Box<dyn std::error
 }
 
 #[test]
+fn check_when_binary_encoded_then_error() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("ironplcc")?;
+
+    cmd.arg("check")
+        .arg(path_to_test_resource("binary_file.st"));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Error during analysis"));
+
+    Ok(())
+}
+
+#[test]
 fn check_when_syntax_error_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("ironplcc")?;
 

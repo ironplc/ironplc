@@ -1,19 +1,23 @@
 //! Implements the command line behavior.
 
 use codespan_reporting::{
-    diagnostic::{Diagnostic, Label, LabelStyle, Severity},
+    diagnostic::{Diagnostic as CodeSpanDiagnostic, Label as CodeSpanLabel, LabelStyle, Severity},
     files::SimpleFiles,
     term::{
         self,
         termcolor::{ColorChoice, StandardStream},
     },
 };
-use ironplc_dsl::core::FileId;
-use log::{debug, trace};
+use ironplc_dsl::{
+    core::FileId,
+    diagnostic::{Diagnostic, Label},
+};
+use ironplc_problems::Problem;
+use log::{debug, error, trace};
 use std::{
     fs::{canonicalize, metadata, read_dir},
     ops::Range,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use crate::{
@@ -28,20 +32,26 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
     for path in paths {
         match enumerate_files(&path) {
             Ok(mut paths) => files.append(&mut paths),
-            Err(err) => return Err(err),
+            Err(err) => {
+                handle_diagnostic(err, None, suppress_output);
+                return Err(String::from("Error enumerating files"));
+            }
         }
     }
 
+    // Create the compilation set
     let mut compilation_set = CompilationSet::new();
-
-    let sources: Result<Vec<_>, String> = files.iter().map(path_to_source).collect();
-
-    compilation_set.extend(sources?);
+    let sources: Result<Vec<_>, Diagnostic> = files.iter().map(path_to_source).collect();
+    let sources = sources.map_err(|err| {
+        handle_diagnostic(err, Some(&compilation_set), suppress_output);
+        String::from("Error reading source files")
+    })?;
+    compilation_set.extend(sources);
 
     // Analyze the set
     if let Err(err) = analyze(&compilation_set) {
-        handle_diagnostic(err, &compilation_set, suppress_output);
-        return Err(String::from("Error"));
+        handle_diagnostic(err, Some(&compilation_set), suppress_output);
+        return Err(String::from("Error during analysis"));
     }
 
     println!("OK");
@@ -49,17 +59,17 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
 }
 
 /// Creates a compilation source item from the path (by reading the file).
-fn path_to_source(path: &PathBuf) -> Result<CompilationSource, String> {
+fn path_to_source(path: &PathBuf) -> Result<CompilationSource, Diagnostic> {
     debug!("Reading file {}", path.display());
 
     let bytes = std::fs::read(path)
-        .map_err(|e| format!("Failed opening file {}. {}", path.display(), e))?;
+        .map_err(|e| diagnostic(Problem::CannotReadFile, path, e.to_string()))?;
 
     // We try different encoders and return the first one that matches. From section 2.1.1,
     // the allowed character set is one with characters consistent with ISO/IEC 10646-1 (UCS).
     // There are other valid encodings, so if encountered, it is reasonable to add more here.
     let decoders: [&'static encoding_rs::Encoding; 2] =
-        [encoding_rs::UTF_8, encoding_rs::ISO_8859_2];
+        [encoding_rs::UTF_8, encoding_rs::WINDOWS_1252];
 
     let result = decoders.iter().find_map(|d| {
         let (res, encoding_used, had_errors) = d.decode(&bytes);
@@ -84,9 +94,10 @@ fn path_to_source(path: &PathBuf) -> Result<CompilationSource, String> {
             let contents = String::from(res);
             return Ok(CompilationSource::Text((contents, FileId::from_path(path))));
         }
-        None => Err(format!(
-            "Failed reading file {}. The file is not UTF-8 or latin1",
-            path.display()
+        None => Err(diagnostic(
+            Problem::UnsupportedEncoding,
+            path,
+            String::from("The file is not UTF-8 or latin1"),
         )),
     }
 }
@@ -95,22 +106,17 @@ fn path_to_source(path: &PathBuf) -> Result<CompilationSource, String> {
 ///
 /// If the path is a file, then returns the file. If the path is a directory,
 /// then returns all files in the directory.
-fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, String> {
+fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, Diagnostic> {
     // Get the canonical path so that error messages are unambiguous
-    let path = canonicalize(path).map_err(|e| {
-        format!(
-            "Unable to determine canonical path for {}, {}",
-            path.display(),
-            e
-        )
-    })?;
+    let path = canonicalize(path)
+        .map_err(|e| diagnostic(Problem::StructureDuplicatedElement, path, e.to_string()))?;
 
     // Determine what kind of path we have.
     let metadata = metadata(&path)
-        .map_err(|e| format!("Unable to read metadata for {}: {}", path.display(), e))?;
+        .map_err(|e| diagnostic(Problem::CannotReadMetadata, &path, e.to_string()))?;
     if metadata.is_dir() {
         let paths = read_dir(&path)
-            .map_err(|e| format!("Unable to read directory {}: {}", path.display(), e))?;
+            .map_err(|e| diagnostic(Problem::CannotReadDirectory, &path, e.to_string()))?;
         let paths: Vec<PathBuf> = paths
             .into_iter()
             .filter_map(|entry| match entry {
@@ -124,15 +130,19 @@ fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, String> {
         return Ok(vec![path.to_path_buf()]);
     }
     if metadata.is_symlink() {
-        return Err("Sorry. Symlinks are not supported.".to_string());
+        return Err(diagnostic(
+            Problem::SymlinkUnsupported,
+            &path,
+            String::from(""),
+        ));
     }
     Ok(vec![])
 }
 
 /// Converts an IronPLC diagnostic into the
 fn handle_diagnostic(
-    diagnostic: ironplc_dsl::diagnostic::Diagnostic,
-    compilation_set: &CompilationSet,
+    diagnostic: Diagnostic,
+    compilation_set: Option<&CompilationSet>,
     suppress_output: bool,
 ) {
     if !suppress_output {
@@ -141,22 +151,32 @@ fn handle_diagnostic(
 
         let mut files: SimpleFiles<String, &String> = SimpleFiles::new();
 
-        for file_id in diagnostic.file_ids() {
-            if let Some(content) = compilation_set.content(file_id) {
-                files.add(file_id.to_string(), content);
+        let empty_source = &"".to_owned();
+        match compilation_set {
+            Some(set) => {
+                for file_id in diagnostic.file_ids() {
+                    if let Some(content) = set.content(file_id) {
+                        files.add(file_id.to_string(), content);
+                    }
+                }
+            }
+            None => {
+                for file_id in diagnostic.file_ids() {
+                    files.add(file_id.to_string(), empty_source);
+                }
             }
         }
 
         let diagnostic = map_diagnostic(diagnostic);
 
         let _ = term::emit(&mut writer.lock(), &config, &files, &diagnostic).map_err(|err| {
-            println!("Failed writing to terminal: {}", err);
+            error!("Failed writing to terminal: {}", err);
             1usize
         });
     }
 }
 
-fn map_label(label: ironplc_dsl::diagnostic::Label, style: LabelStyle) -> Label<usize> {
+fn map_label(label: Label, style: LabelStyle) -> CodeSpanLabel<usize> {
     let range = match label.location {
         ironplc_dsl::diagnostic::Location::QualifiedPosition(pos) => Range {
             start: pos.offset,
@@ -167,10 +187,10 @@ fn map_label(label: ironplc_dsl::diagnostic::Label, style: LabelStyle) -> Label<
             end: offset.end,
         },
     };
-    Label::new(style, 0, range).with_message(label.message)
+    CodeSpanLabel::new(style, 0, range).with_message(label.message)
 }
 
-fn map_diagnostic(diagnostic: ironplc_dsl::diagnostic::Diagnostic) -> Diagnostic<usize> {
+fn map_diagnostic(diagnostic: Diagnostic) -> CodeSpanDiagnostic<usize> {
     let description = diagnostic.description();
 
     // Set the primary labels
@@ -184,10 +204,14 @@ fn map_diagnostic(diagnostic: ironplc_dsl::diagnostic::Diagnostic) -> Diagnostic
             .map(|lbl| map_label(lbl, LabelStyle::Secondary)),
     );
 
-    Diagnostic::new(Severity::Error)
+    CodeSpanDiagnostic::new(Severity::Error)
         .with_code(diagnostic.code)
         .with_message(description)
         .with_labels(labels)
+}
+
+fn diagnostic(problem: Problem, path: &Path, message: String) -> Diagnostic {
+    Diagnostic::problem(problem, Label::file(FileId::from_path(path), message))
 }
 
 #[cfg(test)]
