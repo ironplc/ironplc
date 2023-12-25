@@ -42,6 +42,7 @@ enum Action {
 }
 
 pub fn main() -> Result<(), String> {
+    // The Err variant is a String so that the command line shows a nice message.
     let args = Args::parse();
 
     logger::configure(args.verbose)?;

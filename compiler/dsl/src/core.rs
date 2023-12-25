@@ -2,7 +2,7 @@
 //! part of the standard.
 use core::fmt;
 use std::ops::{Deref, Range};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::{cmp::Ordering, hash::Hash, hash::Hasher};
 
