@@ -374,8 +374,9 @@ parser! {
     /// the type_declaration also bring in from single_element_type_declaration so that we can match in an order
     /// that identifies the type
     rule type_declaration() -> DataTypeDeclarationKind =
-      a:array_type_declaration() { DataTypeDeclarationKind::Array(a) }
-      / s:string_type_declaration() { DataTypeDeclarationKind::String(s) }
+    s:string_type_declaration() { DataTypeDeclarationKind::String(s) }
+      / s:string_type_declaration__parenthesis() { DataTypeDeclarationKind::String(s) }
+      / a:array_type_declaration() { DataTypeDeclarationKind::Array(a) }
       / subrange:subrange_type_declaration__with_range() { DataTypeDeclarationKind::Subrange(subrange) }
       / structure_type_declaration__with_constant()
       / enumerated:enumerated_type_declaration__with_value() { DataTypeDeclarationKind::Enumeration(enumerated) }
@@ -632,6 +633,14 @@ parser! {
 
     rule string_type_name() -> Id = identifier()
     rule string_type_declaration() -> StringDeclaration = type_name:string_type_name() _ ":" _ width:(kw("STRING") { StringKind::String } / kw("WSTRING") { StringKind::WString }) _ "[" _ length:integer() _ "]" _ init:(":=" _ str:character_string() {str})? {
+      StringDeclaration {
+        type_name,
+        length,
+        width,
+        init: init.map(|v| v.into_iter().collect()),
+      }
+    }
+    rule string_type_declaration__parenthesis() -> StringDeclaration = type_name:string_type_name() _ ":" _ width:(kw("STRING") { StringKind::String } / kw("WSTRING") { StringKind::WString }) _ "(" _ length:integer() _ ")" _ init:(":=" _ str:character_string() {str})? {
       StringDeclaration {
         type_name,
         length,
