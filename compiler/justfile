@@ -39,7 +39,6 @@ package-windows-on-linux version filename:
   # When building on Linux, we expect an empty extension
   makensis -DARTIFACTSDIR=".\target\x86_64-pc-windows-gnu\release" -DOUTFILE="{{filename}}" -DVERSION="{{version}}" -DEXTENSION="" "setup.nsi"
 
-
 _package-windows version filename target:
   cargo build --release --target {{target}}
 
