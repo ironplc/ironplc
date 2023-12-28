@@ -28,17 +28,19 @@
 //! ```
 use std::collections::HashMap;
 use std::collections::LinkedList;
+use std::fmt;
 use std::hash::Hash;
 use std::marker::PhantomData;
 
-pub trait Key: Eq + Hash + Clone {}
+pub trait Key: Eq + Hash + Clone + fmt::Debug {}
+pub trait Value: fmt::Debug {}
 
-struct Scope<'a, K: Key, V: 'a> {
+struct Scope<'a, K: Key, V: 'a + Value> {
     table: HashMap<K, V>,
     phantom: PhantomData<&'a V>,
 }
 
-impl<'a, K: Key, V: 'a> Scope<'a, K, V> {
+impl<'a, K: Key, V: 'a + Value> Scope<'a, K, V> {
     fn new() -> Self {
         Scope {
             table: HashMap::new(),
@@ -78,11 +80,18 @@ impl<'a, K: Key, V: 'a> Scope<'a, K, V> {
     }
 }
 
-pub struct SymbolTable<'a, K: Key, V: 'a> {
+impl<'a, K: Key, V: 'a + Value> fmt::Debug for Scope<'a, K, V> {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&self.table, f)
+    }
+}
+
+pub struct SymbolTable<'a, K: Key, V: 'a + Value> {
     stack: LinkedList<Scope<'a, K, V>>,
 }
 
-impl<'a, K: Key, V: 'a> SymbolTable<'a, K, V> {
+impl<'a, K: Key, V: 'a + Value> SymbolTable<'a, K, V> {
     /// Creates an empty `SymbolTable`.
     pub fn new() -> Self {
         let mut stack = LinkedList::new();
@@ -155,5 +164,12 @@ impl<'a, K: Key, V: 'a> SymbolTable<'a, K, V> {
             None => None,
             Some(scope) => scope.remove(name),
         }
+    }
+}
+
+impl<'a, K: Key, V: 'a + Value> fmt::Debug for SymbolTable<'a, K, V> {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&self.stack, f)
     }
 }
