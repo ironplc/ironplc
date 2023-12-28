@@ -10,9 +10,10 @@ use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
 use ironplc_dsl::{common::*, core::Id};
 use ironplc_problems::Problem;
+use log::trace;
 use phf::{phf_set, Set};
 
-use crate::symbol_table::SymbolTable;
+use crate::symbol_table::{SymbolTable, Value};
 
 static ELEMENTARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
     // signed_integer_type_name
@@ -49,13 +50,20 @@ static ELEMENTARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
 /// Derived data types declared.
 ///
 /// See section 2.3.3.
+#[derive(Debug)]
 enum TypeDefinitionKind {
     /// Defines a type that can take one of a set number of values.
     Enumeration,
-    FunctionBlock,
-    /// Defines a type composed of sub-elements.
+    Subrange,
+    Simple,
+    Array(ArraySpecificationKind),
     Structure,
+    StructureInitialization,
+    String(StringKind, Integer),
+    FunctionBlock,
 }
+
+impl Value for TypeDefinitionKind {}
 
 pub fn apply(lib: Library) -> Result<Library, Diagnostic> {
     let mut id_to_type: SymbolTable<Id, TypeDefinitionKind> = SymbolTable::new();
@@ -89,23 +97,46 @@ impl SymbolTable<'_, Id, TypeDefinitionKind> {
 impl<'a> Visitor<Diagnostic> for SymbolTable<'a, Id, TypeDefinitionKind> {
     type Value = ();
 
-    fn visit_enumeration_declaration(
+    fn visit_data_type_declaration_kind(
         &mut self,
-        node: &EnumerationDeclaration,
+        node: &DataTypeDeclarationKind,
     ) -> Result<(), Diagnostic> {
-        self.add_if_new(&node.type_name, TypeDefinitionKind::Enumeration)
+        // We could visit all of the types individually, but that would allow
+        // new types to be created without necessarily handling the type. Using
+        // the match ensures that doesn't happen.
+        match node {
+            DataTypeDeclarationKind::Enumeration(node) => {
+                self.add_if_new(&node.type_name, TypeDefinitionKind::Enumeration)
+            }
+            DataTypeDeclarationKind::Subrange(node) => {
+                self.add_if_new(&node.type_name, TypeDefinitionKind::Subrange)
+            }
+            DataTypeDeclarationKind::Simple(node) => {
+                self.add_if_new(&node.type_name, TypeDefinitionKind::Simple)
+            }
+            DataTypeDeclarationKind::Array(node) => self.add_if_new(
+                &node.type_name,
+                TypeDefinitionKind::Array(node.spec.clone()),
+            ),
+            DataTypeDeclarationKind::Structure(node) => {
+                self.add_if_new(&node.type_name, TypeDefinitionKind::Structure)
+            }
+            DataTypeDeclarationKind::StructureInitialization(node) => {
+                self.add_if_new(&node.type_name, TypeDefinitionKind::StructureInitialization)
+            }
+            DataTypeDeclarationKind::String(node) => self.add_if_new(
+                &node.type_name,
+                TypeDefinitionKind::String(node.width.clone(), node.length.clone()),
+            ),
+            DataTypeDeclarationKind::LateBound(_) => Ok(()),
+        }
     }
+
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
     ) -> Result<(), Diagnostic> {
         self.add_if_new(&node.name, TypeDefinitionKind::FunctionBlock)
-    }
-    fn visit_structure_declaration(
-        &mut self,
-        node: &StructureDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
-        self.add_if_new(&node.type_name, TypeDefinitionKind::Structure)
     }
 }
 
@@ -158,8 +189,23 @@ impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
                                 elements_init: vec![],
                             },
                         )),
+                        TypeDefinitionKind::String(width, length) => {
+                            Ok(InitialValueAssignmentKind::String(StringInitializer {
+                                length: Some(length.clone()),
+                                width: width.clone(),
+                                initial_value: None,
+                            }))
+                        }
+                        TypeDefinitionKind::Array(spec) => Ok(InitialValueAssignmentKind::Array(
+                            ArrayInitialValueAssignment {
+                                spec: spec.clone(),
+                                initial_values: vec![],
+                            },
+                        )),
+                        _ => Err(Diagnostic::todo_with_id(&name, file!(), line!())),
                     },
                     None => {
+                        trace!("{:?}", self.types);
                         return Err(Diagnostic::problem(
                             Problem::UndeclaredUnknownType,
                             Label::source_loc(name.position(), "Variable type"),
