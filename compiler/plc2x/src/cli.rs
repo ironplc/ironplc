@@ -108,8 +108,13 @@ fn path_to_source(path: &PathBuf) -> Result<CompilationSource, Diagnostic> {
 /// then returns all files in the directory.
 fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, Diagnostic> {
     // Get the canonical path so that error messages are unambiguous
-    let path = canonicalize(path)
-        .map_err(|e| diagnostic(Problem::StructureDuplicatedElement, path, e.to_string()))?;
+    let path = canonicalize(path).map_err(|e| {
+        diagnostic(
+            Problem::CannotCanonicalizePath,
+            path,
+            format!("{}, {}", path.display(), e),
+        )
+    })?;
 
     // Determine what kind of path we have.
     let metadata = metadata(&path)

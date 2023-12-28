@@ -34,7 +34,7 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::symbol_table::{self, Key, SymbolTable};
+use crate::symbol_table::{self, Key, SymbolTable, Value};
 
 pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     let mut visitor: SymbolTable<Id, DummyNode> = symbol_table::SymbolTable::new();
@@ -42,7 +42,10 @@ pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     visitor.walk(lib)
 }
 
+#[derive(Debug)]
 struct DummyNode {}
+impl Value for DummyNode {}
+
 impl Key for Id {}
 
 impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
