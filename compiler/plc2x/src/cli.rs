@@ -112,7 +112,7 @@ fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, Diagnostic> {
         diagnostic(
             Problem::CannotCanonicalizePath,
             path,
-            format!("{}, {}", path.display(), e.to_string()),
+            format!("{}, {}", path.display(), e),
         )
     })?;
 

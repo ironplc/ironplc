@@ -106,34 +106,29 @@ impl<'a> Visitor<Diagnostic> for SymbolTable<'a, Id, TypeDefinitionKind> {
         // the match ensures that doesn't happen.
         match node {
             DataTypeDeclarationKind::Enumeration(node) => {
-                return self.add_if_new(&node.type_name, TypeDefinitionKind::Enumeration);
+                self.add_if_new(&node.type_name, TypeDefinitionKind::Enumeration)
             }
             DataTypeDeclarationKind::Subrange(node) => {
-                return self.add_if_new(&node.type_name, TypeDefinitionKind::Subrange);
+                self.add_if_new(&node.type_name, TypeDefinitionKind::Subrange)
             }
             DataTypeDeclarationKind::Simple(node) => {
-                return self.add_if_new(&node.type_name, TypeDefinitionKind::Simple);
+                self.add_if_new(&node.type_name, TypeDefinitionKind::Simple)
             }
-            DataTypeDeclarationKind::Array(node) => {
-                return self.add_if_new(
-                    &node.type_name,
-                    TypeDefinitionKind::Array(node.spec.clone()),
-                );
-            }
+            DataTypeDeclarationKind::Array(node) => self.add_if_new(
+                &node.type_name,
+                TypeDefinitionKind::Array(node.spec.clone()),
+            ),
             DataTypeDeclarationKind::Structure(node) => {
-                return self.add_if_new(&node.type_name, TypeDefinitionKind::Structure);
+                self.add_if_new(&node.type_name, TypeDefinitionKind::Structure)
             }
             DataTypeDeclarationKind::StructureInitialization(node) => {
-                return self
-                    .add_if_new(&node.type_name, TypeDefinitionKind::StructureInitialization);
+                self.add_if_new(&node.type_name, TypeDefinitionKind::StructureInitialization)
             }
-            DataTypeDeclarationKind::String(node) => {
-                return self.add_if_new(
-                    &node.type_name,
-                    TypeDefinitionKind::String(node.width.clone(), node.length.clone()),
-                );
-            }
-            DataTypeDeclarationKind::LateBound(_) => return Ok(()),
+            DataTypeDeclarationKind::String(node) => self.add_if_new(
+                &node.type_name,
+                TypeDefinitionKind::String(node.width.clone(), node.length.clone()),
+            ),
+            DataTypeDeclarationKind::LateBound(_) => Ok(()),
         }
     }
 
