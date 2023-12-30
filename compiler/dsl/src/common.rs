@@ -94,8 +94,8 @@ impl TryFrom<Integer> for f64 {
         let res: Result<u32, _> = value.value.try_into();
         let val = res.map_err(|e| TryFromIntegerError {})?;
 
-        let res: Result<f64, _> = val.try_into();
-        res.map_err(|e| TryFromIntegerError {})
+        let res: f64 = val.into();
+        Ok(res)
     }
 }
 
@@ -215,8 +215,8 @@ impl TryFrom<SignedInteger> for f64 {
         let res: Result<u32, _> = value.value.try_into();
         let val = res.map_err(|e| TryFromIntegerError {})?;
 
-        let res: Result<f64, _> = val.try_into();
-        res.map_err(|e| TryFromIntegerError {})
+        let res: f64 = val.into();
+        Ok(res)
     }
 }
 
@@ -225,12 +225,11 @@ impl TryFrom<SignedInteger> for f32 {
     fn try_from(value: SignedInteger) -> Result<f32, Self::Error> {
         let res: Result<u32, _> = value.value.try_into();
         let val = res.map_err(|e| TryFromIntegerError {})?;
-
-        let res: Result<f64, _> = val.try_into();
-        let val = res.map_err(|e| TryFromIntegerError {})?;
+ 
+        let res: f64 = val.into();
 
         // TODO how to do this
-        let val: f32 = val as f32;
+        let val: f32 = res as f32;
         Ok(val)
     }
 }
