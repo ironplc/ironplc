@@ -20,7 +20,7 @@ pub trait Project {
         &mut self,
         file_id: &FileId,
         content: &str,
-    ) -> Option<Diagnostic>;
+    ) -> Option<Vec<Diagnostic>>;
 
     /// Parsed libraries that constitute the project.
     fn compilation_set(&self) -> CompilationSet;
@@ -76,7 +76,7 @@ impl Project for FileBackedProject {
         &mut self,
         file_id: &FileId,
         content: &str,
-    ) -> Option<Diagnostic> {
+    ) -> Option<Vec<Diagnostic>> {
         match self.sources.iter().position(|val| val.0 == *file_id) {
             Some(index) => self.sources[index] = (file_id.clone(), content.to_owned()),
             None => self.sources.push((file_id.clone(), content.to_owned())),

@@ -24,11 +24,11 @@ enum LateResolvableTypeDecl {
     Unspecified,
 }
 
-pub fn apply(lib: Library) -> Result<Library, Diagnostic> {
+pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
     let mut declarations = TypeDeclResolver::new();
 
     // Populate the graph.
-    declarations.walk(&lib)?;
+    declarations.walk(&lib).map_err(|err| vec![err])?;
 
     // Determine the types. Creates a mapping that says for item with
     // a particular type, how should we resolve it.
@@ -40,7 +40,7 @@ pub fn apply(lib: Library) -> Result<Library, Diagnostic> {
                 Some(id) => {
                     resolved_types.insert(id.clone(), root.1.clone());
                 }
-                None => return Err(Diagnostic::todo(file!(), line!())),
+                None => return Err(vec![Diagnostic::todo(file!(), line!())]),
             }
         }
     }
@@ -48,8 +48,15 @@ pub fn apply(lib: Library) -> Result<Library, Diagnostic> {
     // Resolve the types. This is a single fold of the library
     let mut resolver = DeclarationResolver {
         ids_to_types: resolved_types,
+        diagnostics: vec![],
     };
-    resolver.fold_library(lib)
+    let result = resolver.fold_library(lib).map_err(|e| vec![e]);
+
+    if !resolver.diagnostics.is_empty() {
+        return Err(resolver.diagnostics);
+    }
+
+    result
 }
 
 struct TypeDeclResolver {
@@ -151,6 +158,7 @@ impl Visitor<Diagnostic> for TypeDeclResolver {
 struct DeclarationResolver {
     // Defines the desired type for each identifier
     ids_to_types: HashMap<Id, LateResolvableTypeDecl>,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl Fold<Diagnostic> for DeclarationResolver {
@@ -162,7 +170,7 @@ impl Fold<Diagnostic> for DeclarationResolver {
             if let Some(desired_type) = self.ids_to_types.get(&late_bound.data_type_name) {
                 match desired_type {
                     LateResolvableTypeDecl::Simple => {
-                        return Ok(DataTypeDeclarationKind::Simple(SimpleDeclaration {
+                        Ok(DataTypeDeclarationKind::Simple(SimpleDeclaration {
                             type_name: late_bound.data_type_name,
                             spec_and_init: InitialValueAssignmentKind::Simple(SimpleInitializer {
                                 type_name: late_bound.base_type_name,
@@ -170,21 +178,19 @@ impl Fold<Diagnostic> for DeclarationResolver {
                             }),
                         }))
                     }
-                    LateResolvableTypeDecl::Enumeration => {
-                        return Ok(DataTypeDeclarationKind::Enumeration(
-                            EnumerationDeclaration {
-                                type_name: late_bound.data_type_name,
-                                spec_init: EnumeratedSpecificationInit {
-                                    spec: EnumeratedSpecificationKind::TypeName(
-                                        late_bound.base_type_name,
-                                    ),
-                                    default: None,
-                                },
+                    LateResolvableTypeDecl::Enumeration => Ok(
+                        DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
+                            type_name: late_bound.data_type_name,
+                            spec_init: EnumeratedSpecificationInit {
+                                spec: EnumeratedSpecificationKind::TypeName(
+                                    late_bound.base_type_name,
+                                ),
+                                default: None,
                             },
-                        ))
-                    }
+                        }),
+                    ),
                     LateResolvableTypeDecl::Structure => {
-                        return Ok(DataTypeDeclarationKind::StructureInitialization(
+                        Ok(DataTypeDeclarationKind::StructureInitialization(
                             StructureInitializationDeclaration {
                                 type_name: late_bound.data_type_name,
                                 elements_init: vec![],
@@ -192,17 +198,21 @@ impl Fold<Diagnostic> for DeclarationResolver {
                         ))
                     }
                     LateResolvableTypeDecl::LateBound => {
-                        return Err(Diagnostic::todo(file!(), line!()))
+                        self.diagnostics.push(Diagnostic::todo(file!(), line!()));
+                        Ok(DataTypeDeclarationKind::LateBound(late_bound))
                     }
                     LateResolvableTypeDecl::Unspecified => {
-                        return Err(Diagnostic::todo(file!(), line!()))
+                        self.diagnostics.push(Diagnostic::todo(file!(), line!()));
+                        Ok(DataTypeDeclarationKind::LateBound(late_bound))
                     }
                 }
             } else {
-                return Err(Diagnostic::todo(file!(), line!()));
+                self.diagnostics.push(Diagnostic::todo(file!(), line!()));
+                Ok(DataTypeDeclarationKind::LateBound(late_bound))
             }
+        } else {
+            Ok(node)
         }
-        Ok(node)
     }
 }
 
