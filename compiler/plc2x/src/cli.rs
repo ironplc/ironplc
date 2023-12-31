@@ -15,6 +15,7 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 use log::{debug, error, trace};
 use std::{
+    collections::{HashMap, HashSet},
     fs::{canonicalize, metadata, read_dir},
     ops::Range,
     path::{Path, PathBuf},
@@ -29,28 +30,34 @@ use crate::{
 pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
     trace!("Reading paths {:?}", paths);
     let mut files: Vec<PathBuf> = vec![];
+    let mut had_error = false;
     for path in paths {
         match enumerate_files(&path) {
             Ok(mut paths) => files.append(&mut paths),
             Err(err) => {
-                handle_diagnostic(err, None, suppress_output);
-                return Err(String::from("Error enumerating files"));
+                handle_diagnostics(err, None, suppress_output);
+                had_error = true;
             }
         }
     }
 
+    if had_error {
+        return Err(String::from("Error enumerating files"));
+    }
+
     // Create the compilation set
     let mut compilation_set = CompilationSet::new();
-    let sources: Result<Vec<_>, Diagnostic> = files.iter().map(path_to_source).collect();
+    let sources: Result<Vec<_>, Vec<Diagnostic>> = files.iter().map(path_to_source).collect();
     let sources = sources.map_err(|err| {
-        handle_diagnostic(err, Some(&compilation_set), suppress_output);
+        // TODO handle multiple items
+        handle_diagnostics(err, Some(&compilation_set), suppress_output);
         String::from("Error reading source files")
     })?;
     compilation_set.extend(sources);
 
     // Analyze the set
     if let Err(err) = analyze(&compilation_set) {
-        handle_diagnostic(err, Some(&compilation_set), suppress_output);
+        handle_diagnostics(err, Some(&compilation_set), suppress_output);
         return Err(String::from("Error during analysis"));
     }
 
@@ -59,7 +66,7 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
 }
 
 /// Creates a compilation source item from the path (by reading the file).
-fn path_to_source(path: &PathBuf) -> Result<CompilationSource, Diagnostic> {
+fn path_to_source(path: &PathBuf) -> Result<CompilationSource, Vec<Diagnostic>> {
     debug!("Reading file {}", path.display());
 
     let bytes = std::fs::read(path)
@@ -106,7 +113,7 @@ fn path_to_source(path: &PathBuf) -> Result<CompilationSource, Diagnostic> {
 ///
 /// If the path is a file, then returns the file. If the path is a directory,
 /// then returns all files in the directory.
-fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, Diagnostic> {
+fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, Vec<Diagnostic>> {
     // Get the canonical path so that error messages are unambiguous
     let path = canonicalize(path).map_err(|e| {
         diagnostic(
@@ -145,8 +152,8 @@ fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, Diagnostic> {
 }
 
 /// Converts an IronPLC diagnostic into the
-fn handle_diagnostic(
-    diagnostic: Diagnostic,
+fn handle_diagnostics(
+    diagnostics: Vec<Diagnostic>,
     compilation_set: Option<&CompilationSet>,
     suppress_output: bool,
 ) {
@@ -156,33 +163,76 @@ fn handle_diagnostic(
 
         let mut files: SimpleFiles<String, &String> = SimpleFiles::new();
 
+        let mut unique_files: HashSet<&FileId> = HashSet::new();
+        for diagnostic in &diagnostics {
+            for file_id in diagnostic.file_ids() {
+                unique_files.insert(file_id);
+            }
+        }
+
+        let mut files_to_ids: HashMap<&FileId, usize> = HashMap::new();
         let empty_source = &"".to_owned();
         match compilation_set {
             Some(set) => {
-                for file_id in diagnostic.file_ids() {
+                for file_id in unique_files {
                     if let Some(content) = set.content(file_id) {
-                        files.add(file_id.to_string(), content);
+                        let id = files.add(file_id.to_string(), content);
+                        files_to_ids.insert(file_id, id);
                     }
                 }
             }
             None => {
-                for file_id in diagnostic.file_ids() {
-                    files.add(file_id.to_string(), empty_source);
+                for file_id in unique_files {
+                    let id = files.add(file_id.to_string(), empty_source);
+                    files_to_ids.insert(file_id, id);
                 }
             }
         }
 
-        let diagnostic = map_diagnostic(diagnostic);
+        diagnostics.iter().for_each(|d| {
+            let diagnostic = map_diagnostic(d, &files_to_ids);
 
-        let _ = term::emit(&mut writer.lock(), &config, &files, &diagnostic).map_err(|err| {
-            error!("Failed writing to terminal: {}", err);
-            1usize
+            let _ = term::emit(&mut writer.lock(), &config, &files, &diagnostic).map_err(|err| {
+                error!("Failed writing to terminal: {}", err);
+                1usize
+            });
         });
     }
 }
 
-fn map_label(label: Label, style: LabelStyle) -> CodeSpanLabel<usize> {
-    let range = match label.location {
+fn map_diagnostic(
+    diagnostic: &Diagnostic,
+    file_to_id: &HashMap<&FileId, usize>,
+) -> CodeSpanDiagnostic<usize> {
+    let description = diagnostic.description();
+
+    // Set the primary labels
+    let mut labels = vec![map_label(
+        &diagnostic.primary,
+        LabelStyle::Primary,
+        file_to_id,
+    )];
+
+    // Add any secondary labels
+    labels.extend(
+        diagnostic
+            .secondary
+            .iter()
+            .map(|lbl| map_label(lbl, LabelStyle::Secondary, file_to_id)),
+    );
+
+    CodeSpanDiagnostic::new(Severity::Error)
+        .with_code(diagnostic.code.clone())
+        .with_message(description)
+        .with_labels(labels)
+}
+
+fn map_label(
+    label: &Label,
+    style: LabelStyle,
+    file_to_id: &HashMap<&FileId, usize>,
+) -> CodeSpanLabel<usize> {
+    let range = match &label.location {
         ironplc_dsl::diagnostic::Location::QualifiedPosition(pos) => Range {
             start: pos.offset,
             end: pos.offset,
@@ -192,31 +242,15 @@ fn map_label(label: Label, style: LabelStyle) -> CodeSpanLabel<usize> {
             end: offset.end,
         },
     };
-    CodeSpanLabel::new(style, 0, range).with_message(label.message)
+    let id = file_to_id.get(&label.file_id);
+    CodeSpanLabel::new(style, *id.unwrap_or(&0), range).with_message(&label.message)
 }
 
-fn map_diagnostic(diagnostic: Diagnostic) -> CodeSpanDiagnostic<usize> {
-    let description = diagnostic.description();
-
-    // Set the primary labels
-    let mut labels = vec![map_label(diagnostic.primary, LabelStyle::Primary)];
-
-    // Add any secondary labels
-    labels.extend(
-        diagnostic
-            .secondary
-            .into_iter()
-            .map(|lbl| map_label(lbl, LabelStyle::Secondary)),
-    );
-
-    CodeSpanDiagnostic::new(Severity::Error)
-        .with_code(diagnostic.code)
-        .with_message(description)
-        .with_labels(labels)
-}
-
-fn diagnostic(problem: Problem, path: &Path, message: String) -> Diagnostic {
-    Diagnostic::problem(problem, Label::file(FileId::from_path(path), message))
+fn diagnostic(problem: Problem, path: &Path, message: String) -> Vec<Diagnostic> {
+    vec![Diagnostic::problem(
+        problem,
+        Label::file(FileId::from_path(path), message),
+    )]
 }
 
 #[cfg(test)]

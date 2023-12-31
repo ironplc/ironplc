@@ -174,11 +174,16 @@ impl<'a> LspServer<'a> {
         uri: Url,
         version: i32,
         contents: String,
-        diagnostic: Option<ironplc_dsl::diagnostic::Diagnostic>,
+        diagnostics: Option<Vec<ironplc_dsl::diagnostic::Diagnostic>>,
     ) {
+        let diagnostics: Vec<lsp_types::Diagnostic> = diagnostics.map_or_else(Vec::new, |d| {
+            d.into_iter()
+                .map(|d| map_diagnostic(d, &contents))
+                .collect()
+        });
         self.send_notification::<PublishDiagnostics>(PublishDiagnosticsParams {
             uri,
-            diagnostics: diagnostic.map_or_else(Vec::new, |f| vec![map_diagnostic(f, &contents)]),
+            diagnostics,
             version: Some(version),
         });
     }
@@ -277,19 +282,17 @@ mod test {
             &mut self,
             _: &ironplc_dsl::core::FileId,
             _: &str,
-        ) -> Option<Diagnostic> {
-            Some(
-                Diagnostic::problem(
-                    // Just an arbitrary error
-                    Problem::OpenComment,
-                    Label::offset(FileId::default(), 0..0, "First location"),
-                )
-                .with_secondary(Label::offset(
-                    FileId::default(),
-                    1..1,
-                    "Second place",
-                )),
+        ) -> Option<Vec<Diagnostic>> {
+            Some(vec![Diagnostic::problem(
+                // Just an arbitrary error
+                Problem::OpenComment,
+                Label::offset(FileId::default(), 0..0, "First location"),
             )
+            .with_secondary(Label::offset(
+                FileId::default(),
+                1..1,
+                "Second place",
+            ))])
         }
 
         fn compilation_set(&self) -> CompilationSet {

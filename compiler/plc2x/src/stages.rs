@@ -32,40 +32,53 @@ pub fn parse(source: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
 /// Returns `Ok(Library)` if analysis succeeded (containing a possibly new library) that is
 /// the merge of the inputs.
 /// Returns `Err(Diagnostic)` if analysis did not succeed.
-pub fn analyze(compilation_set: &CompilationSet) -> Result<(), Diagnostic> {
+pub fn analyze(compilation_set: &CompilationSet) -> Result<(), Vec<Diagnostic>> {
     let library = resolve_types(compilation_set)?;
     semantic(&library)
 }
 
-pub(crate) fn resolve_types(compilation_set: &CompilationSet) -> Result<Library, Diagnostic> {
+pub(crate) fn resolve_types(compilation_set: &CompilationSet) -> Result<Library, Vec<Diagnostic>> {
     // We want to analyze this as a complete set, so we need to join the items together
     // into a single library. Extend owns the item so after this we are free to modify
     let mut library = Library::new();
+    let mut diagnostics: Vec<Diagnostic> = Vec::new();
     for x in &compilation_set.sources {
         match x {
             CompilationSource::Library(lib) => {
                 library = library.extend(lib.clone());
             }
-            CompilationSource::Text(txt) => {
-                let lib = parse(&txt.0, &txt.1)?;
-                library = library.extend(lib);
-            }
-            CompilationSource::TextRef(txt) => {
-                let lib = parse(txt.0, &txt.1)?;
-                library = library.extend(lib);
-            }
+            CompilationSource::Text(txt) => match parse(&txt.0, &txt.1) {
+                Ok(lib) => library = library.extend(lib),
+                Err(err) => diagnostics.push(err),
+            },
+            CompilationSource::TextRef(txt) => match parse(txt.0, &txt.1) {
+                Ok(lib) => library = library.extend(lib),
+                Err(err) => diagnostics.push(err),
+            },
         }
     }
 
-    let library = xform_resolve_late_bound_data_decl::apply(library)?;
-    xform_resolve_late_bound_type_initializer::apply(library)
+    if !diagnostics.is_empty() {
+        return Err(diagnostics);
+    }
+
+    let xforms: Vec<fn(Library) -> Result<Library, Vec<Diagnostic>>> = vec![
+        xform_resolve_late_bound_data_decl::apply,
+        xform_resolve_late_bound_type_initializer::apply,
+    ];
+
+    for xform in xforms {
+        library = xform(library)?
+    }
+
+    Ok(library)
 }
 
 /// Semantic implements semantic analysis (stage 3).
 ///
 /// Returns `Ok(())` if the library is free of semantic errors.
 /// Returns `Err(String)` if the library contains a semantic error.
-pub(crate) fn semantic(library: &Library) -> Result<(), Diagnostic> {
+pub(crate) fn semantic(library: &Library) -> Result<(), Vec<Diagnostic>> {
     let functions: Vec<fn(&Library) -> Result<(), Diagnostic>> = vec![
         rule_use_declared_symbolic_var::apply,
         rule_use_declared_enumerated_value::apply,
@@ -80,11 +93,10 @@ pub(crate) fn semantic(library: &Library) -> Result<(), Diagnostic> {
         rule_decl_struct_element_unique_names::apply,
     ];
 
-    for func in functions {
-        func(library)?;
-    }
-
-    Ok(())
+    let semantic_results: Result<(), Vec<Diagnostic>> = functions
+        .iter()
+        .try_for_each(|func| func(library).map_err(|err| vec![err]));
+    semantic_results
 }
 
 #[cfg(test)]

@@ -65,16 +65,25 @@ enum TypeDefinitionKind {
 
 impl Value for TypeDefinitionKind {}
 
-pub fn apply(lib: Library) -> Result<Library, Diagnostic> {
+pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
     let mut id_to_type: SymbolTable<Id, TypeDefinitionKind> = SymbolTable::new();
 
     // Walk the entire library to find the types. We don't need
     // to keep track of contexts because types are global scoped.
-    id_to_type.walk(&lib)?;
+    id_to_type.walk(&lib).map_err(|err| vec![err])?;
 
     // Set the types for each item.
-    let mut resolver = TypeResolver { types: id_to_type };
-    resolver.fold_library(lib)
+    let mut resolver = TypeResolver {
+        types: id_to_type,
+        diagnostics: vec![],
+    };
+    let result = resolver.fold_library(lib).map_err(|e| vec![e]);
+
+    if !resolver.diagnostics.is_empty() {
+        return Err(resolver.diagnostics);
+    }
+
+    result
 }
 
 impl SymbolTable<'_, Id, TypeDefinitionKind> {
@@ -142,6 +151,7 @@ impl<'a> Visitor<Diagnostic> for SymbolTable<'a, Id, TypeDefinitionKind> {
 
 struct TypeResolver<'a> {
     types: SymbolTable<'a, Id, TypeDefinitionKind>,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> TypeResolver<'a> {
@@ -206,11 +216,14 @@ impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
                     },
                     None => {
                         trace!("{:?}", self.types);
-                        return Err(Diagnostic::problem(
-                            Problem::UndeclaredUnknownType,
-                            Label::source_loc(name.position(), "Variable type"),
-                        )
-                        .with_context_id("identifier", &name));
+                        self.diagnostics.push(
+                            Diagnostic::problem(
+                                Problem::UndeclaredUnknownType,
+                                Label::source_loc(name.position(), "Variable type"),
+                            )
+                            .with_context_id("identifier", &name),
+                        );
+                        Ok(InitialValueAssignmentKind::LateResolvedType(name))
                     }
                 }
             }
