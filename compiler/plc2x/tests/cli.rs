@@ -23,6 +23,18 @@ fn check_when_not_a_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn check_when_trace_log_and_not_a_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("ironplcc")?;
+
+    cmd.arg("-v").arg("-v").arg("-v").arg("-v").arg("check").arg("test/file/doesnt/exist");
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("error"));
+
+    Ok(())
+}
+
+#[test]
 fn check_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("ironplcc")?;
 
