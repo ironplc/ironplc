@@ -4,3 +4,5 @@ P0027
 
 .. problem-summary:: P0027
 
+The referenced path is a symbolic link that could not be
+resolved to a specific file or directory.

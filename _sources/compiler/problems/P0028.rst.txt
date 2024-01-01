@@ -4,3 +4,6 @@ P0028
 
 .. problem-summary:: P0028
 
+IEC 61131-3 files must be encoded with a ISO/IEC 10646-1 compatible
+character set. The referenced file is not a text file or the text contains
+incompatible characters.
