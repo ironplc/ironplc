@@ -22,9 +22,11 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 use std::collections::HashSet;
 
-pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
+use crate::result::SemanticResult;
+
+pub fn apply(lib: &Library) -> SemanticResult {
     let mut visitor = RuleProgramTaskDefinitionExists::new();
-    visitor.walk(lib)
+    visitor.walk(lib).map_err(|e| vec![e])
 }
 
 struct RuleProgramTaskDefinitionExists {}

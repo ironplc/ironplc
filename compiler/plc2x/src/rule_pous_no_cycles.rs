@@ -44,19 +44,21 @@ use petgraph::{
 };
 use std::collections::HashMap;
 
-pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
+use crate::result::SemanticResult;
+
+pub fn apply(lib: &Library) -> SemanticResult {
     // Walk to build a graph of POUs and their relationships
     let mut visitor = RulePousNoCycles::new();
-    visitor.walk(lib)?;
+    visitor.walk(lib).map_err(|e| vec![e])?;
 
     // Check if there are cycles in the graph.
     // TODO report what the cycle is
     if is_cyclic_directed(&visitor.graph) {
-        return Err(Diagnostic::problem(
+        return Err(vec![Diagnostic::problem(
             Problem::RecursiveCycle,
             // TODO wrong location
             Label::offset(FileId::default(), 0..0, "Cycle"),
-        ));
+        )]);
     }
 
     // TODO Check the relative calls that it obeys rules

@@ -44,20 +44,22 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
+use crate::result::SemanticResult;
+
+pub fn apply(lib: &Library) -> SemanticResult {
     let mut global_consts = HashSet::new();
 
     // Collect the global constants
     let mut visitor = FindGlobalConstVars {
         global_consts: &mut global_consts,
     };
-    visitor.walk(lib)?;
+    visitor.walk(lib).map_err(|e| vec![e])?;
 
     // Check that externals with the same name are constants
     let mut visitor = RuleExternalGlobalConst {
         global_consts: &mut global_consts,
     };
-    visitor.walk(lib)
+    visitor.walk(lib).map_err(|e| vec![e])
 }
 
 struct FindGlobalConstVars<'a> {
