@@ -26,13 +26,22 @@ use crate::result::SemanticResult;
 
 pub fn apply(lib: &Library) -> SemanticResult {
     let mut visitor = RuleProgramTaskDefinitionExists::new();
-    visitor.walk(lib).map_err(|e| vec![e])
+    visitor.walk(lib).map_err(|e| vec![e])?;
+
+    if !visitor.diagnostics.is_empty() {
+        return Err(visitor.diagnostics);
+    }
+    Ok(())
 }
 
-struct RuleProgramTaskDefinitionExists {}
+struct RuleProgramTaskDefinitionExists {
+    diagnostics: Vec<Diagnostic>,
+}
 impl RuleProgramTaskDefinitionExists {
     fn new() -> Self {
-        RuleProgramTaskDefinitionExists {}
+        RuleProgramTaskDefinitionExists {
+            diagnostics: Vec::new(),
+        }
     }
 }
 
@@ -54,12 +63,17 @@ impl Visitor<Diagnostic> for RuleProgramTaskDefinitionExists {
         for program in &node.programs {
             if let Some(task_name) = &program.task_name {
                 if !task_names.contains(&task_name) {
-                    return Err(Diagnostic::problem(
-                        Problem::ProgramMissingTaskConfig,
-                        Label::source_loc(task_name.position(), "Reference to task configuration"),
-                    )
-                    .with_context_id("program", &program.name)
-                    .with_context_id("task name", task_name));
+                    self.diagnostics.push(
+                        Diagnostic::problem(
+                            Problem::ProgramMissingTaskConfig,
+                            Label::source_loc(
+                                task_name.position(),
+                                "Reference to task configuration",
+                            ),
+                        )
+                        .with_context_id("program", &program.name)
+                        .with_context_id("task name", task_name),
+                    );
                 }
             }
         }
