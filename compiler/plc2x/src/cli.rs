@@ -49,7 +49,6 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
     let mut compilation_set = CompilationSet::new();
     let sources: Result<Vec<_>, Vec<Diagnostic>> = files.iter().map(path_to_source).collect();
     let sources = sources.map_err(|err| {
-        // TODO handle multiple items
         handle_diagnostics(err, Some(&compilation_set), suppress_output);
         String::from("Error reading source files")
     })?;
