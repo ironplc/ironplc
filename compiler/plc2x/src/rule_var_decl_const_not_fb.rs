@@ -57,7 +57,8 @@ impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
                             "Declaration of function block instance",
                         ),
                     )
-                    .with_context_id("function block", &fb.type_name));
+                    .with_context_id("function block", &fb.type_name),
+                );
             }
         }
 

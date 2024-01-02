@@ -50,7 +50,7 @@ pub fn apply(lib: &Library) -> SemanticResult {
 }
 
 struct RuleConstantVarsInitialized {
-    diagnostics: Vec<Diagnostic>
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
@@ -74,7 +74,8 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                                 Problem::ConstantMustHaveInitializer,
                                 Label::source_loc(&node.position, "Variable"),
                             )
-                            .with_context("variable", &node.identifier.to_string()));
+                            .with_context("variable", &node.identifier.to_string()),
+                        );
                     }
                 },
                 InitialValueAssignmentKind::String(str) => match str.initial_value {
@@ -85,7 +86,8 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                                 Problem::ConstantMustHaveInitializer,
                                 Label::source_loc(&node.position, "Variable declaration"),
                             )
-                            .with_context("variable", &node.identifier.to_string()));
+                            .with_context("variable", &node.identifier.to_string()),
+                        );
                     }
                 },
                 InitialValueAssignmentKind::EnumeratedValues(spec) => match spec.initial_value {
@@ -96,20 +98,20 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                                 Problem::ConstantMustHaveInitializer,
                                 Label::source_loc(&node.position, "Variable declaration"),
                             )
-                            .with_context("variable", &node.identifier.to_string()));
+                            .with_context("variable", &node.identifier.to_string()),
+                        );
                     }
                 },
                 InitialValueAssignmentKind::EnumeratedType(type_init) => {
                     match type_init.initial_value {
                         Some(_) => {}
-                        None => {
-                            self.diagnostics.push(
-                                Diagnostic::problem(
-                                    Problem::ConstantMustHaveInitializer,
-                                    Label::source_loc(&node.position, "Variable declaration"),
-                                )
-                                .with_context("variable", &node.identifier.to_string()))
-                        }
+                        None => self.diagnostics.push(
+                            Diagnostic::problem(
+                                Problem::ConstantMustHaveInitializer,
+                                Label::source_loc(&node.position, "Variable declaration"),
+                            )
+                            .with_context("variable", &node.identifier.to_string()),
+                        ),
                     }
                 }
                 InitialValueAssignmentKind::FunctionBlock(_) => {
