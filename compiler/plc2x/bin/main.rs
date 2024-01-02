@@ -49,7 +49,7 @@ pub fn main() -> Result<(), String> {
 
     match args.action {
         Action::Lsp { stdio: _ } => {
-            let proj = Box::new(FileBackedProject::new());
+            let proj = Box::<FileBackedProject>::default();
             lsp::start(proj)
         }
         Action::Check { files } => cli::check(files, false),

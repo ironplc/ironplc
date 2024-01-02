@@ -85,3 +85,25 @@ impl Project for FileBackedProject {
         analyze(&self.compilation_set()).err()
     }
 }
+
+#[cfg(test)]
+mod test {
+    use ironplc_dsl::core::FileId;
+
+    use super::{FileBackedProject, Project};
+
+    #[test]
+    fn compilation_set_when_empty_then_ok() {
+        let project = FileBackedProject::default();
+        assert_eq!(0, project.compilation_set().sources.len());
+        assert_eq!(0, project.compilation_set().references.len());
+    }
+
+    #[test]
+    fn analyze_when_not_valid_then_err() {
+        let mut project = FileBackedProject::default();
+        let result = project.on_did_change_text_document(&FileId::default(), "AAA");
+
+        assert!(result.is_some());
+    }
+}

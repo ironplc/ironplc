@@ -1266,21 +1266,19 @@ pub struct Library {
 
 impl Default for Library {
     fn default() -> Self {
-        Self::new()
+        Library::new()
     }
 }
 
 impl Library {
+    // Constructs a new empty library.
     pub fn new() -> Self {
         Library {
             elements: Vec::new(),
         }
     }
 
-    pub fn of(elements: Vec<LibraryElementKind>) -> Self {
-        Library { elements }
-    }
-
+    /// Extends a library with the contents of another library.
     pub fn extend(mut self, other: Library) -> Self {
         self.elements.extend(other.elements);
         self
