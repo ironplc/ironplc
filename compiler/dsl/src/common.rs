@@ -1264,6 +1264,12 @@ pub struct Library {
     pub elements: Vec<LibraryElementKind>,
 }
 
+impl Default for Library {
+    fn default() -> Self {
+        Library::new()
+    }
+}
+
 impl Library {
     // Constructs a new empty library.
     pub fn new() -> Self {
