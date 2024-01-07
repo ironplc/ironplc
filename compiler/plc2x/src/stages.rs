@@ -7,10 +7,12 @@ use ironplc_dsl::{core::FileId, diagnostic::Diagnostic};
 use crate::{
     compilation_set::{CompilationSet, CompilationSource},
     ironplc_dsl::common::Library,
+    result::SemanticResult,
     rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
     rule_enumeration_values_unique, rule_function_block_invocation, rule_pous_no_cycles,
-    rule_program_task_definition_exists, rule_use_declared_enumerated_value,
-    rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
+    rule_program_task_definition_exists, rule_unsupported_stdlib_type,
+    rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
+    rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, xform_assign_file_id,
     xform_resolve_late_bound_data_decl, xform_resolve_late_bound_type_initializer,
 };
@@ -78,25 +80,39 @@ pub(crate) fn resolve_types(compilation_set: &CompilationSet) -> Result<Library,
 ///
 /// Returns `Ok(())` if the library is free of semantic errors.
 /// Returns `Err(String)` if the library contains a semantic error.
-pub(crate) fn semantic(library: &Library) -> Result<(), Vec<Diagnostic>> {
-    let functions: Vec<fn(&Library) -> Result<(), Diagnostic>> = vec![
-        rule_use_declared_symbolic_var::apply,
-        rule_use_declared_enumerated_value::apply,
+pub(crate) fn semantic(library: &Library) -> SemanticResult {
+    let functions: Vec<fn(&Library) -> SemanticResult> = vec![
+        rule_decl_struct_element_unique_names::apply,
+        rule_decl_subrange_limits::apply,
+        rule_enumeration_values_unique::apply,
         rule_function_block_invocation::apply,
+        rule_pous_no_cycles::apply,
+        rule_program_task_definition_exists::apply,
+        rule_use_declared_enumerated_value::apply,
+        rule_use_declared_symbolic_var::apply,
+        rule_unsupported_stdlib_type::apply,
         rule_var_decl_const_initialized::apply,
         rule_var_decl_const_not_fb::apply,
-        rule_enumeration_values_unique::apply,
-        rule_program_task_definition_exists::apply,
-        rule_pous_no_cycles::apply,
         rule_var_decl_global_const_requires_external_const::apply,
-        rule_decl_subrange_limits::apply,
-        rule_decl_struct_element_unique_names::apply,
     ];
 
-    let semantic_results: Result<(), Vec<Diagnostic>> = functions
-        .iter()
-        .try_for_each(|func| func(library).map_err(|err| vec![err]));
-    semantic_results
+    let mut all_diagnostics = vec![];
+    for func in functions {
+        match func(library) {
+            Ok(_) => {
+                // Nothing to do here
+            }
+            Err(diagnostics) => {
+                all_diagnostics.extend(diagnostics);
+            }
+        }
+    }
+
+    if !all_diagnostics.is_empty() {
+        return Err(all_diagnostics);
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

@@ -24,12 +24,23 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 use std::collections::HashSet;
 
-pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
-    let mut visitor = RuleEnumerationValuesUnique {};
-    visitor.walk(lib)
+use crate::result::SemanticResult;
+
+pub fn apply(lib: &Library) -> SemanticResult {
+    let mut visitor = RuleEnumerationValuesUnique {
+        diagnostics: Vec::new(),
+    };
+    visitor.walk(lib).map_err(|e| vec![e])?;
+
+    if !visitor.diagnostics.is_empty() {
+        return Err(visitor.diagnostics);
+    }
+    Ok(())
 }
 
-struct RuleEnumerationValuesUnique {}
+struct RuleEnumerationValuesUnique {
+    diagnostics: Vec<Diagnostic>,
+}
 
 impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
     type Value = ();
@@ -48,16 +59,18 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
                     let seen = seen_values.get(&current.value);
                     match seen {
                         Some(first) => {
-                            return Err(Diagnostic::problem(
-                                Problem::EnumTypeDeclDuplicateItem,
-                                Label::source_loc(first.position(), "First instance"),
-                            )
-                            .with_context_id("declaration", &node.type_name)
-                            .with_context_id("duplicate value", first)
-                            .with_secondary(Label::source_loc(
-                                current.position(),
-                                "Duplicate value",
-                            )));
+                            self.diagnostics.push(
+                                Diagnostic::problem(
+                                    Problem::EnumTypeDeclDuplicateItem,
+                                    Label::source_loc(first.position(), "First instance"),
+                                )
+                                .with_context_id("declaration", &node.type_name)
+                                .with_context_id("duplicate value", first)
+                                .with_secondary(Label::source_loc(
+                                    current.position(),
+                                    "Duplicate value",
+                                )),
+                            );
                         }
                         None => {
                             seen_values.insert(&current.value);

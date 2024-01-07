@@ -34,12 +34,15 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::symbol_table::{self, Key, SymbolTable, Value};
+use crate::{
+    result::SemanticResult,
+    symbol_table::{self, Key, SymbolTable, Value},
+};
 
-pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
+pub fn apply(lib: &Library) -> SemanticResult {
     let mut visitor: SymbolTable<Id, DummyNode> = symbol_table::SymbolTable::new();
 
-    visitor.walk(lib)
+    visitor.walk(lib).map_err(|e| vec![e])
 }
 
 #[derive(Debug)]

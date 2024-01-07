@@ -37,7 +37,9 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 use std::collections::{HashMap, HashSet};
 
-pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
+use crate::result::SemanticResult;
+
+pub fn apply(lib: &Library) -> SemanticResult {
     // Collect the data type definitions from the library into a map so that
     // we can quickly look up invocations
     let mut enum_defs = HashMap::new();
@@ -54,7 +56,7 @@ pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
     // checking that all references use an enumeration value
     // that is part of the enumeration
     let mut visitor = RuleDeclaredEnumeratedValues::new(&enum_defs);
-    visitor.walk(lib)
+    visitor.walk(lib).map_err(|e| vec![e])
 }
 
 struct RuleDeclaredEnumeratedValues<'a> {

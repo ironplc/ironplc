@@ -41,6 +41,8 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 use std::collections::HashMap;
 
+use crate::result::SemanticResult;
+
 /// Returns the first variable matching the specified name and one of the
 /// variable types or `None` if the owner does not contain a matching
 /// variable.
@@ -81,7 +83,7 @@ fn find_output_type<'a>(owner: &'a dyn HasVariables, name: &'a Id) -> Option<&'a
     find(owner, name, &[VariableType::Output])
 }
 
-pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
+pub fn apply(lib: &Library) -> SemanticResult {
     // Collect the names from the library into a map so that
     // we can quickly look up invocations
     let mut function_blocks = HashMap::new();
@@ -93,7 +95,7 @@ pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
 
     // Walk the library to find all references to function blocks
     let mut visitor = RuleFunctionBlockUse::new(&function_blocks);
-    visitor.walk(lib)
+    visitor.walk(lib).map_err(|e| vec![e])
 }
 
 struct RuleFunctionBlockUse<'a> {
@@ -257,10 +259,11 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
             Some(function_block_name) => {
                 let function_block_decl = self.function_blocks.get(function_block_name);
                 match function_block_decl {
-                    None => {
-                        // Not defined, so this is not a valid use.
-                        panic!("Invalid semantic analysis state")
-                    }
+                    None => Err(Diagnostic::problem(
+                        Problem::FunctionBlockNotInScope,
+                        Label::source_loc(&fb_call.position, "Function block invocation"),
+                    )
+                    .with_context_id("invocation", &fb_call.var_name)),
                     Some(fb) => {
                         // Validate the parameter assignments
                         RuleFunctionBlockUse::check_assignments(fb, fb_call)

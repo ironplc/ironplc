@@ -13,7 +13,8 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_problems::Problem;
 
 pub fn preprocess(source: &str, file_id: &FileId) -> Result<String, Diagnostic> {
-    let source = remove_oscat_comment(source.to_string());
+    let source = source.to_string();
+    let source = remove_oscat_comment(source);
     remove_standard_comment(&source, file_id)
 }
 
