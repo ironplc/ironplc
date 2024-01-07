@@ -11,41 +11,9 @@ use ironplc_dsl::visitor::Visitor;
 use ironplc_dsl::{common::*, core::Id};
 use ironplc_problems::Problem;
 use log::trace;
-use phf::{phf_set, Set};
 
+use crate::stdlib::{is_elementary_type, is_unsupported_standard_type};
 use crate::symbol_table::{SymbolTable, Value};
-
-static ELEMENTARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
-    // signed_integer_type_name
-    "sint",
-    "int",
-    "dint",
-    "lint",
-    // unsigned_integer_type_name
-    "usint",
-    "uint",
-    "udint",
-    "ulint",
-    // real_type_name
-    "real",
-    "lreal",
-    // date_type_name
-    "date",
-    "time_of_day",
-    "tod",
-    "date_and_time",
-    "dt",
-    // bit_string_type_name
-    "bool",
-    "byte",
-    "word",
-    "dword",
-    "lword",
-    // remaining elementary_type_name
-    "string",
-    "wstring",
-    "time"
-};
 
 /// Derived data types declared.
 ///
@@ -154,12 +122,6 @@ struct TypeResolver<'a> {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl<'a> TypeResolver<'a> {
-    fn is_elementary_type(id: &Id) -> bool {
-        ELEMENTARY_TYPES_LOWER_CASE.contains(&id.lower_case().to_string())
-    }
-}
-
 impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
     fn fold_initial_value_assignment_kind(
         &mut self,
@@ -168,12 +130,20 @@ impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
         match node {
             // TODO this needs to handle struct definitions
             InitialValueAssignmentKind::LateResolvedType(name) => {
-                // Try to find the type for the specified name.
-                if TypeResolver::is_elementary_type(&name) {
+                // Element types resolve to the known type.
+                if is_elementary_type(&name) {
                     return Ok(InitialValueAssignmentKind::Simple(SimpleInitializer {
                         type_name: name,
                         initial_value: None,
                     }));
+                }
+
+                // Unsupported standard types resolve to a known type that we will detect later.
+                // This allows passing the transformation stage to show other errors.
+                if is_unsupported_standard_type(&name) {
+                    return Ok(InitialValueAssignmentKind::FunctionBlock(
+                        FunctionBlockInitialValueAssignment { type_name: name },
+                    ));
                 }
 
                 // TODO error handling
@@ -239,6 +209,7 @@ mod tests {
         common::*,
         core::{FileId, Id, SourceLoc},
     };
+    use ironplc_problems::Problem;
 
     #[test]
     fn apply_when_has_function_block_type_then_resolves_type() {
@@ -382,6 +353,10 @@ END_FUNCTION_BLOCK
         ";
         let input = ironplc_parser::parse_program(program, &FileId::default()).unwrap();
         let result = apply(input);
-        assert!(result.is_err())
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        assert_eq!(1, err.len());
+        assert_eq!(Problem::DefinitionNameDuplicated.code(), err[0].code);
     }
 }

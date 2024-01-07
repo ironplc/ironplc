@@ -25,12 +25,23 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
-    let mut visitor = RuleVarDeclConstIsNotFunctionBlock {};
-    visitor.walk(lib)
+use crate::result::SemanticResult;
+
+pub fn apply(lib: &Library) -> SemanticResult {
+    let mut visitor = RuleVarDeclConstIsNotFunctionBlock {
+        diagnostics: Vec::new(),
+    };
+    visitor.walk(lib).map_err(|e| vec![e])?;
+
+    if !visitor.diagnostics.is_empty() {
+        return Err(visitor.diagnostics);
+    }
+    Ok(())
 }
 
-struct RuleVarDeclConstIsNotFunctionBlock {}
+struct RuleVarDeclConstIsNotFunctionBlock {
+    diagnostics: Vec<Diagnostic>,
+}
 
 impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
     type Value = ();
@@ -38,14 +49,16 @@ impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Diagnostic> {
         if node.qualifier == DeclarationQualifier::Constant {
             if let InitialValueAssignmentKind::FunctionBlock(fb) = &node.initializer {
-                return Err(Diagnostic::problem(
-                    Problem::FunctionBlockNotConstant,
-                    Label::source_loc(
-                        node.identifier.position(),
-                        "Declaration of function block instance",
-                    ),
-                )
-                .with_context_id("function block", &fb.type_name));
+                self.diagnostics.push(
+                    Diagnostic::problem(
+                        Problem::FunctionBlockNotConstant,
+                        Label::source_loc(
+                            node.identifier.position(),
+                            "Declaration of function block instance",
+                        ),
+                    )
+                    .with_context_id("function block", &fb.type_name),
+                );
             }
         }
 

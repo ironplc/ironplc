@@ -27,4 +27,5 @@ P0025,CannotReadDirectory,Unable to read directory
 P0026,CannotReadFile,Unable to read file
 P0027,SymlinkUnsupported,Symlinks are not supported
 P0028,UnsupportedEncoding,File encoding is not supported
+P0029,UnsupportedStdLibType,Referenced type is valid but not implemented
 P9999,NotImplemented,Capability is not implemented (yet!)

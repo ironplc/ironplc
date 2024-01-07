@@ -24,12 +24,23 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
-    let mut visitor = RuleDeclSubrangeLimits {};
-    visitor.walk(lib)
+use crate::result::SemanticResult;
+
+pub fn apply(lib: &Library) -> SemanticResult {
+    let mut visitor = RuleDeclSubrangeLimits {
+        diagnostics: Vec::new(),
+    };
+    visitor.walk(lib).map_err(|e| vec![e])?;
+
+    if !visitor.diagnostics.is_empty() {
+        return Err(visitor.diagnostics);
+    }
+    Ok(())
 }
 
-struct RuleDeclSubrangeLimits {}
+struct RuleDeclSubrangeLimits {
+    diagnostics: Vec<Diagnostic>,
+}
 
 impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
     type Value = ();
@@ -39,16 +50,18 @@ impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
         let maximum: i128 = node.end.clone().try_into().expect("Value in range i128");
 
         if minimum >= maximum {
-            return Err(Diagnostic::problem(
-                Problem::SubrangeMinStrictlyLessMax,
-                Label::source_loc(&node.start.value.position, "Expected smaller value"),
-            )
-            .with_context("minimum", &node.start.to_string())
-            .with_context("maximum", &node.end.to_string())
-            .with_secondary(Label::source_loc(
-                &node.end.value.position,
-                "Expected greater value",
-            )));
+            self.diagnostics.push(
+                Diagnostic::problem(
+                    Problem::SubrangeMinStrictlyLessMax,
+                    Label::source_loc(&node.start.value.position, "Expected smaller value"),
+                )
+                .with_context("minimum", &node.start.to_string())
+                .with_context("maximum", &node.end.to_string())
+                .with_secondary(Label::source_loc(
+                    &node.end.value.position,
+                    "Expected greater value",
+                )),
+            );
         }
         Ok(())
     }

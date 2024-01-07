@@ -1,0 +1,8 @@
+=====
+P0029
+=====
+
+.. problem-summary:: P0029
+
+The referenced type is declared by the IEC 61131-3 specification, however this
+compiler does not provide an implementation.

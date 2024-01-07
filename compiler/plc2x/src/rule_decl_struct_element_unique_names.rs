@@ -31,12 +31,23 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 use std::collections::HashSet;
 
-pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
-    let mut visitor = RuleStructElementNamesUnique {};
-    visitor.walk(lib)
+use crate::result::SemanticResult;
+
+pub fn apply(lib: &Library) -> SemanticResult {
+    let mut visitor = RuleStructElementNamesUnique {
+        diagnostics: Vec::new(),
+    };
+    visitor.walk(lib).map_err(|e| vec![e])?;
+
+    if !visitor.diagnostics.is_empty() {
+        return Err(visitor.diagnostics);
+    }
+    Ok(())
 }
 
-struct RuleStructElementNamesUnique {}
+struct RuleStructElementNamesUnique {
+    diagnostics: Vec<Diagnostic>,
+}
 
 impl Visitor<Diagnostic> for RuleStructElementNamesUnique {
     type Value = ();
@@ -51,17 +62,19 @@ impl Visitor<Diagnostic> for RuleStructElementNamesUnique {
             let seen = element_names.get(&element.name);
             match seen {
                 Some(first) => {
-                    return Err(Diagnostic::problem(
-                        Problem::StructureDuplicatedElement,
-                        Label::source_loc(node.type_name.position(), "Structure"),
-                    )
-                    .with_context_id("structure", &node.type_name)
-                    .with_context_id("element", &element.name)
-                    .with_secondary(Label::source_loc(first.position(), "First use of name"))
-                    .with_secondary(Label::source_loc(
-                        element.name.position(),
-                        "Second use of name",
-                    )));
+                    self.diagnostics.push(
+                        Diagnostic::problem(
+                            Problem::StructureDuplicatedElement,
+                            Label::source_loc(node.type_name.position(), "Structure"),
+                        )
+                        .with_context_id("structure", &node.type_name)
+                        .with_context_id("element", &element.name)
+                        .with_secondary(Label::source_loc(first.position(), "First use of name"))
+                        .with_secondary(Label::source_loc(
+                            element.name.position(),
+                            "Second use of name",
+                        )),
+                    );
                 }
                 None => {
                     element_names.insert(&element.name);

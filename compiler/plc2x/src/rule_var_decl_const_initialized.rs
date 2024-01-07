@@ -35,12 +35,23 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-pub fn apply(lib: &Library) -> Result<(), Diagnostic> {
-    let mut visitor = RuleConstantVarsInitialized {};
-    visitor.walk(lib)
+use crate::result::SemanticResult;
+
+pub fn apply(lib: &Library) -> SemanticResult {
+    let mut visitor = RuleConstantVarsInitialized {
+        diagnostics: Vec::new(),
+    };
+    visitor.walk(lib).map_err(|e| vec![e])?;
+
+    if !visitor.diagnostics.is_empty() {
+        return Err(visitor.diagnostics);
+    }
+    Ok(())
 }
 
-struct RuleConstantVarsInitialized {}
+struct RuleConstantVarsInitialized {
+    diagnostics: Vec<Diagnostic>,
+}
 
 impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
     type Value = ();
@@ -58,43 +69,49 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                 InitialValueAssignmentKind::Simple(si) => match si.initial_value {
                     Some(_) => {}
                     None => {
-                        return Err(Diagnostic::problem(
-                            Problem::ConstantMustHaveInitializer,
-                            Label::source_loc(&node.position, "Variable"),
-                        )
-                        .with_context("variable", &node.identifier.to_string()));
+                        self.diagnostics.push(
+                            Diagnostic::problem(
+                                Problem::ConstantMustHaveInitializer,
+                                Label::source_loc(&node.position, "Variable"),
+                            )
+                            .with_context("variable", &node.identifier.to_string()),
+                        );
                     }
                 },
                 InitialValueAssignmentKind::String(str) => match str.initial_value {
                     Some(_) => {}
                     None => {
-                        return Err(Diagnostic::problem(
-                            Problem::ConstantMustHaveInitializer,
-                            Label::source_loc(&node.position, "Variable declaration"),
-                        )
-                        .with_context("variable", &node.identifier.to_string()));
+                        self.diagnostics.push(
+                            Diagnostic::problem(
+                                Problem::ConstantMustHaveInitializer,
+                                Label::source_loc(&node.position, "Variable declaration"),
+                            )
+                            .with_context("variable", &node.identifier.to_string()),
+                        );
                     }
                 },
                 InitialValueAssignmentKind::EnumeratedValues(spec) => match spec.initial_value {
                     Some(_) => {}
                     None => {
-                        return Err(Diagnostic::problem(
-                            Problem::ConstantMustHaveInitializer,
-                            Label::source_loc(&node.position, "Variable declaration"),
-                        )
-                        .with_context("variable", &node.identifier.to_string()));
+                        self.diagnostics.push(
+                            Diagnostic::problem(
+                                Problem::ConstantMustHaveInitializer,
+                                Label::source_loc(&node.position, "Variable declaration"),
+                            )
+                            .with_context("variable", &node.identifier.to_string()),
+                        );
                     }
                 },
                 InitialValueAssignmentKind::EnumeratedType(type_init) => {
                     match type_init.initial_value {
                         Some(_) => {}
-                        None => {
-                            return Err(Diagnostic::problem(
+                        None => self.diagnostics.push(
+                            Diagnostic::problem(
                                 Problem::ConstantMustHaveInitializer,
                                 Label::source_loc(&node.position, "Variable declaration"),
                             )
-                            .with_context("variable", &node.identifier.to_string()))
-                        }
+                            .with_context("variable", &node.identifier.to_string()),
+                        ),
                     }
                 }
                 InitialValueAssignmentKind::FunctionBlock(_) => {
