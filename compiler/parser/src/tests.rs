@@ -30,6 +30,12 @@ mod test {
     }
 
     #[test]
+    fn parse_strings() {
+        let res = parse_resource("strings.st");
+        assert!(res.is_ok())
+    }
+
+    #[test]
     fn parse_type_decl() {
         let res = parse_resource("type_decl.st");
         assert!(res.is_ok())
@@ -59,5 +65,47 @@ mod test {
     fn parse_array() {
         let res = parse_resource("array.st");
         assert!(res.is_ok())
+    }
+
+    #[test]
+    fn parse_program_when_has_comment_then_ok() {
+        let source = "
+        TYPE
+        (* A comment *)
+            CUSTOM_STRUCT : STRUCT 
+                NAME: BOOL;
+            END_STRUCT;
+        END_TYPE";
+
+        let res = parse_program(&source, &FileId::default()).unwrap();
+        assert_eq!(1, res.elements.len());
+    }
+
+    #[test]
+    fn parse_program_when_back_to_back_comments_then_ok() {
+        let program = "
+        TYPE
+        (* A comment *)(* A comment *)
+           CUSTOM_STRUCT : STRUCT 
+             NAME: BOOL;
+           END_STRUCT;
+        END_TYPE";
+
+        let res = parse_program(&program, &FileId::default());
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn parse_program_when_comment_not_closed_then_err() {
+        let program = "
+        TYPE
+        (* A comment
+            CUSTOM_STRUCT : STRUCT 
+                NAME: BOOL;
+            END_STRUCT;
+        END_TYPE";
+
+        let res = parse_program(&program, &FileId::default());
+        assert!(res.is_err());
     }
 }

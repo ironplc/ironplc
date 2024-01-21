@@ -170,6 +170,14 @@ impl VarDeclarations {
     }
 }
 
+fn if_extended_char(val: char) -> Option<char> {
+    let int_val = val as u32;
+    if int_val > 128 {
+        return Some(val);
+    }
+    None
+}
+
 parser! {
   grammar plc_parser() for str {
 
@@ -190,7 +198,14 @@ parser! {
     // output on matching with the name of the item
     rule semicolon() -> () = ";" ()
     rule comma() -> () = "," ()
-    rule _ = [' ' | '\n' | '\r' | '\t' ]*
+    rule whitespace() -> () = s:[' ' | '\n' | '\r' | '\t' ] {}
+
+    rule comment_char() -> () = !comment_end() c:[_] {? Ok(()) }
+    rule comment_content() -> () = comment_char()* {}
+    rule comment_start() -> () = "(*"
+    rule comment_end() -> () = "*)"
+    rule comment() -> () = comment_start() comment_content() comment_end()
+    rule _ = (whitespace() / comment())*
 
     // Case insensitive match
     rule i(literal: &'static str)
@@ -289,9 +304,13 @@ parser! {
     rule single_byte_character_string() -> Vec<char>  = "'" s:single_byte_character_representation()* "'" { s }
     rule double_byte_character_string() -> Vec<char> = "\"" s:double_byte_character_representation()* "\"" { s }
     // TODO escape characters
-    rule single_byte_character_representation() -> char = common_character_representation()
-    rule double_byte_character_representation() -> char = common_character_representation()
-    rule common_character_representation() -> char = c:[' '..='!' | '#' | '%'..='&' | '('..='~'] { c }
+    rule single_byte_character_representation() -> char = common_character_representation() / __single_byte_char_quotes() / common_character_representation__extended()
+    rule __single_byte_char_quotes() -> char = ("\"" { '\"' } / "$'" {'\''} )
+    rule double_byte_character_representation() -> char = common_character_representation() / __double_type_char_quotes() / common_character_representation__extended()
+    rule __double_type_char_quotes() -> char = ("'" { '\'' } / "$\"" {'\"'} )
+    rule common_character_representation() -> char = c:[' '..='!' | '#' | '%'..='&' | '('..='~' | '€'] { c }
+    rule common_character_representation__extended() -> char = input:[_]
+      {? if_extended_char(input).map_or_else(|| Err("extended char"), |v| Ok(input)) }
 
     // B.1.2.3 Time literals
     // Omitted and subsumed into constant.
