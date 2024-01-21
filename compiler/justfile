@@ -78,7 +78,3 @@ update:
 
 expand:
   cd dsl_macro_derive && cargo rustc --profile=check -- -Zunpretty=expanded
-
-visualize-parser filename:
-   cargo run --features trace check {{filename}} > output.tmp
-   cat output.tmp | pegviz --output output.html.tmp
