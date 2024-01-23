@@ -25,7 +25,7 @@ pub enum ConstantKind {
     // TODO these need values
     IntegerLiteral(IntegerLiteral),
     RealLiteral(Float),
-    CharacterString,
+    CharacterString(Vec<char>),
     Duration(Duration),
     TimeOfDay,
     Date,
@@ -546,7 +546,6 @@ pub struct ArrayDeclaration {
 pub enum ArrayInitialElementKind {
     Constant(ConstantKind),
     EnumValue(EnumeratedValue),
-    // TODO Make this an object?
     Repeated(Repeated),
 }
 
@@ -567,18 +566,18 @@ pub struct Repeated {
 
 impl Repeated {
     pub fn recurse_visit<V: Visitor<E> + ?Sized, E>(&self, v: &mut V) -> Result<V::Value, E> {
-        v.visit_integer(&self.size)
-        // TODO
+        v.visit_integer(&self.size)?;
+        self.init.as_ref().as_ref().map_or_else(|| Ok(V::Value::default()), |val| v.visit_array_initial_element_kind(&val))
     }
 }
 
 impl Repeated {
     pub fn recurse_fold<F: Fold<E> + ?Sized, E>(self, f: &mut F) -> Result<Repeated, E> {
+        let init = self.init.as_mut().as_mut().map(|x| f.fold_array_initial_element_kind(x)).transpose()?;
         Ok(Repeated {
             size: f.fold_integer(self.size)?,
-            init: self.init,
+            init: Box::new(init),
         })
-        // TODO
     }
 }
 

@@ -170,6 +170,7 @@ impl VarDeclarations {
     }
 }
 
+/// Returns the character if the character code is greater than 128.
 fn if_extended_char(val: char) -> Option<char> {
     let int_val = val as u32;
     if int_val > 128 {
@@ -245,7 +246,7 @@ parser! {
     rule constant() -> ConstantKind =
         real:real_literal() { ConstantKind::RealLiteral(real) }
         / integer:integer_literal() { ConstantKind::IntegerLiteral(integer) }
-        / c:character_string() { ConstantKind::CharacterString }
+        / c:character_string() { ConstantKind::CharacterString(c) }
         / duration:duration() { ConstantKind::Duration(duration) }
         / t:time_of_day() { ConstantKind::TimeOfDay }
         / d:date() { ConstantKind::Date }
@@ -308,7 +309,7 @@ parser! {
     rule __single_byte_char_quotes() -> char = ("\"" { '\"' } / "$'" {'\''} )
     rule double_byte_character_representation() -> char = common_character_representation() / __double_type_char_quotes() / common_character_representation__extended()
     rule __double_type_char_quotes() -> char = ("'" { '\'' } / "$\"" {'\"'} )
-    rule common_character_representation() -> char = c:[' '..='!' | '#' | '%'..='&' | '('..='~' | '€'] { c }
+    rule common_character_representation() -> char = c:[' '..='!' | '#' | '%'..='&' | '('..='~'] { c }
     rule common_character_representation__extended() -> char = input:[_]
       {? if_extended_char(input).map_or_else(|| Err("extended char"), |v| Ok(input)) }
 
