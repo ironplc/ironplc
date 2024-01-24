@@ -18,6 +18,6 @@ mod tests;
 
 /// Parse a full IEC 61131 program.
 pub fn parse_program(source: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
-    let source = preprocess(source, file_id)?;
+    let source = preprocess(source)?;
     parse_library(&source, file_id).map(|elements| Library { elements })
 }

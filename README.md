@@ -47,6 +47,10 @@ to get started.
 
 Contributions are very welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
+## Contact
+
+[Create an issue](https://github.com/ironplc/ironplc/issues/new/choose) to reach out about IronPLC.
+
 ## Similar Projects
 
 * [RuSTy](https://github.com/PLC-lang/rusty) - Structured text compiler written in Rust. RuSTy is further along but the LGPL and LGPL licenses are difficult for industrial uses.
