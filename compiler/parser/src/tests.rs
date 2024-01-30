@@ -48,6 +48,12 @@ mod test {
     }
 
     #[test]
+    fn parse_conditional() {
+        let res = parse_resource("conditional.st");
+        assert!(res.is_ok())
+    }
+
+    #[test]
     fn parse_oscat() {
         // OSCAT files have a header that as far as I can tell is not valid
         // but it is common.
