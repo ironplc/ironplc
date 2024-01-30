@@ -1223,7 +1223,7 @@ parser! {
     }
     // B.3.2.3 Selection statements
     rule selection_statement() -> StmtKind = if_statement() / case_statement()
-    rule if_statement() -> StmtKind = kw("IF") _ expr:expression() _ kw("THEN") _ body:statement_list()? _ else_ifs:(kw("ELSIF") expr:expression() _ kw("THEN") _ body:statement_list() {ElseIf{expr, body}}) ** _ _ else_body:("ELSE" _ e:statement_list() { e })? _ "END_IF" {
+    rule if_statement() -> StmtKind = kw("IF") _ expr:expression() _ kw("THEN") _ body:statement_list()? _ else_ifs:(kw("ELSIF") _ expr:expression() _ kw("THEN") _ body:statement_list() {ElseIf{expr, body}}) ** _ _ else_body:("ELSE" _ e:statement_list() { e })? _ "END_IF" {
       StmtKind::If(If {
         expr,
         body: body.unwrap_or_default(),
