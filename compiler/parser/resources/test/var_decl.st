@@ -27,9 +27,11 @@ PROGRAM fb
 
         VAL_STR: STRING[2];
         VAL_STR_INIT: STRING := 'abc';
+        VAL_STR_PREFIX: STRING := STRING#'ABC';
         VAL_STR_SIZED_INIT: STRING[3] := 'abc';
         VAL_WSTR: WSTRING[9];
         VAL_WSTR_INIT: WSTRING := "def";
+        VAL_WSTR_PREFIX: WSTRING := WSTRING#"ABC";
         VAL_WSTR_SIZED_INIT: WSTRING[3] := "def";
     END_VAR
 
