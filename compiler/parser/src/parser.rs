@@ -1207,7 +1207,7 @@ parser! {
     pub rule statement_list() -> Vec<StmtKind> = items:statements_or_empty()+ {
       flatten_statements(items)
     }
-    rule statements_or_empty() -> StatementsOrEmpty = _ ";" _ { StatementsOrEmpty::Empty() } / s:semisep(<statement()>) { StatementsOrEmpty::Statements((s))}
+    rule statements_or_empty() -> StatementsOrEmpty = _ ";" _ { StatementsOrEmpty::Empty() } / s:semisep(<statement()>) { StatementsOrEmpty::Statements(s)}
     rule statement() -> StmtKind = assignment_statement() / selection_statement() / iteration_statement() / subprogram_control_statement()
 
     // B.3.2.1 Assignment statements
