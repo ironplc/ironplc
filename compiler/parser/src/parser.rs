@@ -171,19 +171,19 @@ impl VarDeclarations {
 }
 
 enum StatementsOrEmpty {
-  Statements(Vec<StmtKind>),
-  Empty(),
+    Statements(Vec<StmtKind>),
+    Empty(),
 }
 
 fn flatten_statements(mut items: Vec<StatementsOrEmpty>) -> Vec<StmtKind> {
-  let mut stmts = Vec::new();
-      for stmt_list in items.iter_mut() {
+    let mut stmts = Vec::new();
+    for stmt_list in items.iter_mut() {
         match stmt_list {
-          StatementsOrEmpty::Statements(s) => stmts.append(s),
-          StatementsOrEmpty::Empty() => {},
+            StatementsOrEmpty::Statements(s) => stmts.append(s),
+            StatementsOrEmpty::Empty() => {}
         }
-      }
-      stmts
+    }
+    stmts
 }
 
 /// Returns the character if the character code is greater than 128.
