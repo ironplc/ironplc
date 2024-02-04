@@ -51,7 +51,7 @@ Contributions are very welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for detai
 
 ## Contact
 
-You can reach out by creating an [issue](https://github.com/ironplc/ironplc/issues/new/choose).
+[Create an issue](https://github.com/ironplc/ironplc/issues/new/choose) to reach out about IronPLC.
 
 ## Similar Projects
 

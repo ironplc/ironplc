@@ -170,6 +170,31 @@ impl VarDeclarations {
     }
 }
 
+enum StatementsOrEmpty {
+    Statements(Vec<StmtKind>),
+    Empty(),
+}
+
+fn flatten_statements(mut items: Vec<StatementsOrEmpty>) -> Vec<StmtKind> {
+    let mut stmts = Vec::new();
+    for stmt_list in items.iter_mut() {
+        match stmt_list {
+            StatementsOrEmpty::Statements(s) => stmts.append(s),
+            StatementsOrEmpty::Empty() => {}
+        }
+    }
+    stmts
+}
+
+/// Returns the character if the character code is greater than 128.
+fn if_extended_char(val: char) -> Option<char> {
+    let int_val = val as u32;
+    if int_val > 128 {
+        return Some(val);
+    }
+    None
+}
+
 parser! {
   grammar plc_parser() for str {
 
@@ -190,7 +215,14 @@ parser! {
     // output on matching with the name of the item
     rule semicolon() -> () = ";" ()
     rule comma() -> () = "," ()
-    rule _ = [' ' | '\n' | '\r' | '\t' ]*
+    rule whitespace() -> () = s:[' ' | '\n' | '\r' | '\t' ] {}
+
+    rule comment_char() -> () = !comment_end() c:[_] {? Ok(()) }
+    rule comment_content() -> () = comment_char()* {}
+    rule comment_start() -> () = "(*"
+    rule comment_end() -> () = "*)"
+    rule comment() -> () = comment_start() comment_content() comment_end()
+    rule _ = (whitespace() / comment())*
 
     // Case insensitive match
     rule i(literal: &'static str)
@@ -230,7 +262,7 @@ parser! {
     rule constant() -> ConstantKind =
         real:real_literal() { ConstantKind::RealLiteral(real) }
         / integer:integer_literal() { ConstantKind::IntegerLiteral(integer) }
-        / c:character_string() { ConstantKind::CharacterString }
+        / c:character_string() { ConstantKind::CharacterString(c) }
         / duration:duration() { ConstantKind::Duration(duration) }
         / t:time_of_day() { ConstantKind::TimeOfDay }
         / d:date() { ConstantKind::Date }
@@ -285,13 +317,17 @@ parser! {
       / (kw("BOOL#"))? kw("TRUE") { Boolean::True }
       / (kw("BOOL#"))? kw("FALSE") { Boolean::False }
     // B.1.2.2 Character strings
-    rule character_string() -> Vec<char> = s:single_byte_character_string() / d:double_byte_character_string()
-    rule single_byte_character_string() -> Vec<char>  = "'" s:single_byte_character_representation()* "'" { s }
-    rule double_byte_character_string() -> Vec<char> = "\"" s:double_byte_character_representation()* "\"" { s }
+    rule character_string() -> Vec<char> = single_byte_character_string() / double_byte_character_string()
+    rule single_byte_character_string() -> Vec<char>  = "STRING#"? "'" s:single_byte_character_representation()* "'" { s }
+    rule double_byte_character_string() -> Vec<char> = "WSTRING#"? "\"" s:double_byte_character_representation()* "\"" { s }
     // TODO escape characters
-    rule single_byte_character_representation() -> char = common_character_representation()
-    rule double_byte_character_representation() -> char = common_character_representation()
+    rule single_byte_character_representation() -> char = common_character_representation() / __single_byte_char_quotes() / common_character_representation__extended()
+    rule __single_byte_char_quotes() -> char = ("\"" { '\"' } / "$'" {'\''} )
+    rule double_byte_character_representation() -> char = common_character_representation() / __double_type_char_quotes() / common_character_representation__extended()
+    rule __double_type_char_quotes() -> char = ("'" { '\'' } / "$\"" {'\"'} )
     rule common_character_representation() -> char = c:[' '..='!' | '#' | '%'..='&' | '('..='~'] { c }
+    rule common_character_representation__extended() -> char = input:[_]
+      {? if_extended_char(input).map_or_else(|| Err("extended char"), |v| Ok(input)) }
 
     // B.1.2.3 Time literals
     // Omitted and subsumed into constant.
@@ -1168,7 +1204,10 @@ parser! {
     }
 
     // B.3.2 Statements
-    pub rule statement_list() -> Vec<StmtKind> = statements:semisep(<statement()>) { statements }
+    pub rule statement_list() -> Vec<StmtKind> = items:statements_or_empty()+ {
+      flatten_statements(items)
+    }
+    rule statements_or_empty() -> StatementsOrEmpty = _ ";" _ { StatementsOrEmpty::Empty() } / s:semisep(<statement()>) { StatementsOrEmpty::Statements(s)}
     rule statement() -> StmtKind = assignment_statement() / selection_statement() / iteration_statement() / subprogram_control_statement()
 
     // B.3.2.1 Assignment statements
@@ -1203,7 +1242,7 @@ parser! {
     }
     // B.3.2.3 Selection statements
     rule selection_statement() -> StmtKind = if_statement() / case_statement()
-    rule if_statement() -> StmtKind = kw("IF") _ expr:expression() _ kw("THEN") _ body:statement_list()? _ else_ifs:(kw("ELSIF") expr:expression() _ kw("THEN") _ body:statement_list() {ElseIf{expr, body}}) ** _ _ else_body:("ELSE" _ e:statement_list() { e })? _ "END_IF" {
+    rule if_statement() -> StmtKind = kw("IF") _ expr:expression() _ kw("THEN") _ body:statement_list()? _ else_ifs:(kw("ELSIF") _ expr:expression() _ kw("THEN") _ body:statement_list() {ElseIf{expr, body}}) ** _ _ else_body:(kw("ELSE") _ e:statement_list() { e })? _ "END_IF" {
       StmtKind::If(If {
         expr,
         body: body.unwrap_or_default(),
