@@ -1,5 +1,7 @@
 # IronPLC
 
+![](docs/images/banner.svg)
+
 ⚠ This project's capabilities are limited to a parser, semantic analyzer, and
 Visual Studio Code Extension that are that are building blocks for a complete
 IEC 61131-3 runtime and development environment.
