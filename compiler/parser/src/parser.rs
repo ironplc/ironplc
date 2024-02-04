@@ -316,11 +316,11 @@ parser! {
       / kw("BOOL#0") {Boolean::False }
       / (kw("BOOL#"))? kw("TRUE") { Boolean::True }
       / (kw("BOOL#"))? kw("FALSE") { Boolean::False }
+
     // B.1.2.2 Character strings
     rule character_string() -> Vec<char> = single_byte_character_string() / double_byte_character_string()
     rule single_byte_character_string() -> Vec<char>  = "STRING#"? "'" s:single_byte_character_representation()* "'" { s }
     rule double_byte_character_string() -> Vec<char> = "WSTRING#"? "\"" s:double_byte_character_representation()* "\"" { s }
-    // TODO escape characters
     rule single_byte_character_representation() -> char = common_character_representation() / __single_byte_char_quotes() / common_character_representation__extended()
     rule __single_byte_char_quotes() -> char = ("\"" { '\"' } / "$'" {'\''} )
     rule double_byte_character_representation() -> char = common_character_representation() / __double_type_char_quotes() / common_character_representation__extended()
@@ -346,7 +346,6 @@ parser! {
       / m:minutes() { m }
       / s:seconds() { s }
     rule days() -> Duration = days:fixed_point() "d" { DurationUnit::Days.fp(days) } / days:integer() "d" "_"? hours:hours() { hours + DurationUnit::Days.int(days) }
-
     rule fixed_point() -> f32 = i:integer__string_simplified() f:("." f:integer__string_simplified() { f })? {?
       format!("{}.{}", i, f.unwrap_or_default()).parse::<f32>().map_err(|e| "f32")
     }
@@ -355,7 +354,7 @@ parser! {
     rule seconds() -> Duration = secs:fixed_point() "s" { DurationUnit::Seconds.fp(secs) } / sec:integer() "s" "_"? ms:milliseconds() { ms + DurationUnit::Seconds.int(sec) }
     rule milliseconds() -> Duration = ms:fixed_point() "ms" { DurationUnit::Milliseconds.fp(ms) }
 
-    // 1.2.3.2 Time of day and date
+    // B.1.2.3.2 Time of day and date
     rule time_of_day() -> Time = (kw("TOD") / kw("TIME_OF_DAY")) "#" d:daytime() { d }
     rule daytime() -> Time = h:day_hour() ":" m:day_minute() ":" s:day_second() {?
       Time::from_hms(h.try_into().map_err(|e| "hour")?, m.try_into().map_err(|e| "min")?, s.try_into().map_err(|e| "sec")?).map_err(|e| "time")
@@ -376,8 +375,7 @@ parser! {
     rule date_and_time() -> PrimitiveDateTime = (kw("DATE_AND_TIME") / kw("DT")) "#" d:date_literal() "-" t:daytime() { PrimitiveDateTime::new(d, t) }
 
     // B.1.3 Data types
-    // This should match generic_type_name, but that's unnecessary because
-    // these are all just identifiers
+    // This should match generic_type_name, but that's unnecessary because these are all just identifiers
     rule data_type_name() -> Id = non_generic_type_name()
     rule non_generic_type_name() -> Id = et:elementary_type_name() { et.into() } / derived_type_name()
 
@@ -410,7 +408,7 @@ parser! {
     /// the type_declaration also bring in from single_element_type_declaration so that we can match in an order
     /// that identifies the type
     rule type_declaration() -> DataTypeDeclarationKind =
-    s:string_type_declaration() { DataTypeDeclarationKind::String(s) }
+      s:string_type_declaration() { DataTypeDeclarationKind::String(s) }
       / s:string_type_declaration__parenthesis() { DataTypeDeclarationKind::String(s) }
       / a:array_type_declaration() { DataTypeDeclarationKind::Array(a) }
       / subrange:subrange_type_declaration__with_range() { DataTypeDeclarationKind::Subrange(subrange) }
@@ -689,7 +687,6 @@ parser! {
     rule variable() -> Variable =
       d:direct_variable() { Variable::AddressAssignment(d) }
       / symbolic_variable:symbolic_variable() { symbolic_variable.into() }
-    // TODO add multi-element variable. This should probably return a different type
     #[cache_left_rec]
     rule symbolic_variable() -> SymbolicVariableKind =
       multi_element_variable()
@@ -728,6 +725,7 @@ parser! {
       / ("W" / "w") { SizePrefix::W }
       / ("D" / "d") { SizePrefix::D }
       / ("L" / "l") { SizePrefix::L }
+
     // B.1.4.2 Multi-element variables
     #[cache_left_rec]
     rule multi_element_variable() -> SymbolicVariableKind =
@@ -770,9 +768,7 @@ parser! {
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
     rule var_init_decl() -> Vec<UntypedVarDecl> = structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() /  var1_init_decl__with_ambiguous_struct()
-
     // TODO add in subrange_spec_init(), enumerated_spec_init()
-
     rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init:(a:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()) end:position!() {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
@@ -783,7 +779,6 @@ parser! {
         }
       }).collect()
     }
-
     rule var1_list() -> Vec<Id> = names:variable_name() ++ (_ "," _) { names }
     rule structured_var_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init_struct:initialized_structure() end:position!() {
       names.into_iter().map(|name| {
@@ -997,7 +992,6 @@ parser! {
     }
 
     // B.1.6 Sequential function chart elements
-    // TODO return something
     pub rule sequential_function_chart() -> Vec<Network> = networks:sfc_network() ++ _ { networks }
     // TOD add transition and action
     rule sfc_network() ->  Network = init:initial_step() _ elements:((s:step() {s } / a:action() {a} / t:transition() {t}) ** _) {
@@ -1130,6 +1124,8 @@ parser! {
      }
     rule prog_conf_element() -> Id = t:fb_task() { t.0 } /*/ p:prog_cnxn() { p }*/
     rule fb_task() -> (Id, Id) = n:fb_name() _ kw("WITH") _ tn:task_name() { (n, tn) }
+
+     // TODO Instruction List
 
     // B.3.1 Expressions
     pub rule expression() -> ExprKind = precedence!{
@@ -1291,9 +1287,7 @@ parser! {
         body,
       }
     }
-    // TODO
     rule exit_statement() -> StmtKind = kw("EXIT") { StmtKind::Exit }
-
   }
 }
 
