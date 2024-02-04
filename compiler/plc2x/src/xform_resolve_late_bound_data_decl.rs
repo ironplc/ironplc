@@ -15,6 +15,7 @@ use ironplc_dsl::{common::*, core::Id};
 use ironplc_problems::Problem;
 use std::collections::HashMap;
 
+/// The classes of types that this transform resolves.
 #[derive(Clone)]
 enum LateResolvableTypeDecl {
     Simple,
