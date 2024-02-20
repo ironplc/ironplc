@@ -195,6 +195,11 @@ fn if_extended_char(val: char) -> Option<char> {
     None
 }
 
+enum Element {
+    StructSelector(Id),
+    ArraySelector(Vec<ExprKind>),
+}
+
 parser! {
   grammar plc_parser() for str {
 
@@ -687,13 +692,37 @@ parser! {
 
     // B.1.4 Variables
     rule variable() -> Variable =
-      d:direct_variable() { Variable::AddressAssignment(d) }
+      d:direct_variable() { Variable::Direct(d) }
       / symbolic_variable:symbolic_variable() { symbolic_variable.into() }
-    // TODO add multi-element variable. This should probably return a different type
-    #[cache_left_rec]
-    rule symbolic_variable() -> SymbolicVariableKind =
-      multi_element_variable()
-      / name:variable_name() { SymbolicVariableKind::Named(NamedVariable{name}) }
+    //rule symbolic_variable() -> SymbolicVariableKind =
+    //  multi_element_variable()
+    //  / name:variable_name() { SymbolicVariableKind::Named(NamedVariable{name}) }
+    rule symbolic_variable() -> SymbolicVariableKind = name:identifier() elements:("." id:identifier() { Element::StructSelector(id) } / sub:subscript_list() {Element::ArraySelector(sub)})* {
+      // Start by assuming that the top is just a named variable
+      let mut head = SymbolicVariableKind::Named(NamedVariable { name });
+
+      // Then consume additional items to
+      for elem in elements {
+        match elem {
+            Element::StructSelector(st) => {
+              let cur = SymbolicVariableKind::Structured(StructuredVariable{
+                record: Box::new(head),
+                field: st,
+              });
+              head = cur;
+            },
+            Element::ArraySelector(arr) => {
+              let cur = SymbolicVariableKind::Array(ArrayVariable{
+                  subscripted_variable: Box::new(head),
+                  subscripts: arr
+                });
+              head = cur;
+            },
+        }
+      }
+
+      head
+    }
     rule variable_name() -> Id = identifier()
 
     // B.1.4.1 Directly represented variables
@@ -729,32 +758,25 @@ parser! {
       / ("D" / "d") { SizePrefix::D }
       / ("L" / "l") { SizePrefix::L }
     // B.1.4.2 Multi-element variables
-    #[cache_left_rec]
-    rule multi_element_variable() -> SymbolicVariableKind =
-      array_variable:array_variable() {
-        SymbolicVariableKind::Array(array_variable)
-      }
-      / sv:structured_variable() {
-        // TODO this is clearly wrong
-        SymbolicVariableKind::Structured(StructuredVariable{ record: Box::new(sv.0), field: sv.1 })
-      }
-    #[cache_left_rec]
-    rule array_variable() -> ArrayVariable = variable:subscripted_variable() subscripts:subscript_list() {
-      ArrayVariable {
-        variable: Box::new(variable),
-        subscripts,
-      }
-    }
-    //#[cache_left_rec]
-    // TODO this is wrong!!
-    rule subscripted_variable() -> SymbolicVariableKind = name:variable_name() { SymbolicVariableKind::Named(NamedVariable{ name }) }
+    //rule multi_element_variable() -> SymbolicVariableKind =
+    //  av:array_variable() {
+    //    SymbolicVariableKind::Array(av)
+    //  }
+    //  / sv:structured_variable() {
+    //    // TODO this is clearly wrong
+    //    SymbolicVariableKind::Structured(StructuredVariable{ record: Box::new(sv.0), field: sv.1 })
+    //  }
+    //rule array_variable() -> ArrayVariable = variable:subscripted_variable() subscripts:subscript_list() {
+    //    ArrayVariable {
+    //      variable: Box::new(variable),
+    //      subscripts,
+    //    }
+    //  }
+    rule subscripted_variable() -> SymbolicVariableKind = symbolic_variable()
     rule subscript_list() -> Vec<ExprKind> = "[" _ list:subscript()++ (_ "," _) _ "]" { list }
     rule subscript() -> ExprKind = expression()
-    #[cache_left_rec]
     rule structured_variable() -> (SymbolicVariableKind, Id) = r:record_variable() "." f:field_selector() { (r, f) }
-    // This should be symbolic variable
-    #[cache_left_rec]
-    rule record_variable() -> SymbolicVariableKind = name:variable_name() { SymbolicVariableKind::Named(NamedVariable{ name }) }
+    rule record_variable() -> SymbolicVariableKind = symbolic_variable()
     rule field_selector() -> Id = identifier()
 
     // B.1.4.3 Declarations and initialization
@@ -875,7 +897,7 @@ parser! {
         declaration
       }).collect()
     }
-    // TODO this doesn't pass all information. I suspect the rule from the dpec is not right
+    // TODO this doesn't pass all information. I suspect the rule from the description is not right
     rule global_var_decl() -> (Vec<VarDecl>) = start:position!() vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment{type_name: f})})? end:position!() {
       vs.0.into_iter().map(|name| {
         let init = initializer.clone().unwrap_or(InitialValueAssignmentKind::None);
