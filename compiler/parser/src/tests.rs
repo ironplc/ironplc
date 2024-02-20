@@ -74,6 +74,12 @@ mod test {
     }
 
     #[test]
+    fn parse_nested() {
+        let res: Result<Library, Diagnostic> = parse_resource("nested.st");
+        assert!(res.is_ok())
+    }
+
+    #[test]
     fn parse_program_when_has_comment_then_ok() {
         let source = "
         TYPE

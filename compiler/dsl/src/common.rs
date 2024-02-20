@@ -898,7 +898,9 @@ pub enum VariableType {
     Access,
 }
 
-/// Ways of identifying variable data objects.
+/// Ways of identifying variable data objects. These are used
+/// in declarations (as opposed to in statements), hence this
+/// does not have multi-element information (arrays and structures).
 ///
 /// See section 2.4.1.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
@@ -912,7 +914,6 @@ pub enum VariableIdentifier {
     ///
     /// Directly represented variables have an address and an optional
     /// symbolic identifier.
-    /// TODO create an object for this item?
     Direct(DirectVariableIdentifier),
 }
 

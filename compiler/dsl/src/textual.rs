@@ -21,22 +21,29 @@ pub struct Statements {
     pub body: Vec<StmtKind>,
 }
 
+/// A variable.
+///
+/// See section B.1.4.
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum Variable {
-    AddressAssignment(AddressAssignment),
-    Named(NamedVariable),
-    Array(ArrayVariable),
-    // A structured variable that may be nested. This data type is definitely
-    // incorrect because it doesn't support array types
-    Structured(StructuredVariable),
+    // A variable that maps to a hardware address.
+    Direct(AddressAssignment),
+    // A variable that maps to a symbolic name (essentially not a hardware address).
+    Symbolic(SymbolicVariableKind),
 }
 
 impl From<SymbolicVariableKind> for Variable {
     fn from(item: SymbolicVariableKind) -> Self {
         match item {
-            SymbolicVariableKind::Named(named) => Variable::Named(named),
-            SymbolicVariableKind::Array(array) => Variable::Array(array),
-            SymbolicVariableKind::Structured(structured) => Variable::Structured(structured),
+            SymbolicVariableKind::Named(named) => {
+                Variable::Symbolic(SymbolicVariableKind::Named(named))
+            }
+            SymbolicVariableKind::Array(array) => {
+                Variable::Symbolic(SymbolicVariableKind::Array(array))
+            }
+            SymbolicVariableKind::Structured(structured) => {
+                Variable::Symbolic(SymbolicVariableKind::Structured(structured))
+            }
         }
     }
 }
@@ -44,10 +51,8 @@ impl From<SymbolicVariableKind> for Variable {
 impl fmt::Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Variable::AddressAssignment(assignment) => f.write_fmt(format_args!("{}", assignment)),
-            Variable::Named(named) => f.write_fmt(format_args!("{}", named)),
-            Variable::Array(array) => f.write_fmt(format_args!("{}", array)),
-            Variable::Structured(structured) => f.write_fmt(format_args!("{}", structured)),
+            Variable::Direct(assignment) => f.write_fmt(format_args!("{}", assignment)),
+            Variable::Symbolic(named) => f.write_fmt(format_args!("{}", named)),
         }
     }
 }
@@ -56,8 +61,6 @@ impl fmt::Display for Variable {
 pub enum SymbolicVariableKind {
     Named(NamedVariable),
     Array(ArrayVariable),
-    // A structured variable that may be nested. This data type is definitely
-    // incorrect because it doesn't support array types
     Structured(StructuredVariable),
 }
 
@@ -75,18 +78,18 @@ impl fmt::Display for SymbolicVariableKind {
 
 impl Variable {
     pub fn named(name: &str) -> Variable {
-        Variable::Named(NamedVariable {
+        Variable::Symbolic(SymbolicVariableKind::Named(NamedVariable {
             name: Id::from(name),
-        })
+        }))
     }
 
     pub fn structured(record: &str, field: &str) -> Variable {
-        Variable::Structured(StructuredVariable {
+        Variable::Symbolic(SymbolicVariableKind::Structured(StructuredVariable {
             record: Box::new(SymbolicVariableKind::Named(NamedVariable {
                 name: Id::from(record),
             })),
             field: Id::from(field),
-        })
+        }))
     }
 }
 
@@ -104,7 +107,7 @@ impl fmt::Display for NamedVariable {
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct ArrayVariable {
     /// The variable that is being accessed by subscript (the array).
-    pub variable: Box<SymbolicVariableKind>,
+    pub subscripted_variable: Box<SymbolicVariableKind>,
     /// The ordered set of subscripts. These should be expressions that
     /// evaluate to an index.
     pub subscripts: Vec<ExprKind>,
@@ -113,7 +116,10 @@ pub struct ArrayVariable {
 impl fmt::Display for ArrayVariable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // TODO format this
-        f.write_fmt(format_args!("{} {:?}", self.variable, self.subscripts))
+        f.write_fmt(format_args!(
+            "{} {:?}",
+            self.subscripted_variable, self.subscripts
+        ))
     }
 }
 
@@ -395,12 +401,12 @@ impl StmtKind {
     }
 
     pub fn structured_assignment(target: &str, record: &str, field: &str) -> StmtKind {
-        let variable = Variable::Structured(StructuredVariable {
+        let variable = Variable::Symbolic(SymbolicVariableKind::Structured(StructuredVariable {
             record: Box::new(SymbolicVariableKind::Named(NamedVariable {
                 name: Id::from(record),
             })),
             field: Id::from(field),
-        });
+        }));
         StmtKind::Assignment(Assignment {
             target: Variable::named(target),
             value: ExprKind::Variable(variable),
