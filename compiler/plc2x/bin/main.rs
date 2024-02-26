@@ -23,11 +23,21 @@ struct Args {
 
 #[derive(clap::Subcommand, Debug)]
 enum Action {
-    /// Check a file (or set of files) for syntax and semantic correctness.
+    /// The check action checks a file (or set of files) for syntax and semantic correctness.
     ///
     /// When multiple files specified, then the files are checked as a single
     /// compilation unit (essentially by combining the files) for analysis.
     Check {
+        /// Files to include in the check. Directory names can be given to
+        /// add all files in the given directory.
+        files: Vec<PathBuf>,
+    },
+    /// The echo action reads (parses) the libraries and writes the context to the
+    /// standard output.
+    ///
+    /// The echo acton is primarily for diagnostics to understand the internal
+    /// structure of the parsed files.
+    Echo {
         /// Files to include in the check. Directory names can be given to
         /// add all files in the given directory.
         files: Vec<PathBuf>,
@@ -53,6 +63,7 @@ pub fn main() -> Result<(), String> {
             lsp::start(proj)
         }
         Action::Check { files } => cli::check(files, false),
+        Action::Echo { files } => cli::echo(files, false),
         Action::Version => {
             println!("ironplcc version {}", VERSION);
             Ok(())

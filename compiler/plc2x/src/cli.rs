@@ -12,6 +12,7 @@ use ironplc_dsl::{
     core::FileId,
     diagnostic::{Diagnostic, Label},
 };
+use ironplc_plc2plc::write;
 use ironplc_problems::Problem;
 use log::{debug, error, trace};
 use std::{
@@ -23,7 +24,7 @@ use std::{
 
 use crate::{
     compilation_set::{CompilationSet, CompilationSource},
-    stages::analyze,
+    stages::{analyze, parse},
 };
 
 // Checks specified files.
@@ -61,6 +62,63 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
     }
 
     println!("OK");
+    Ok(())
+}
+
+pub fn echo(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
+    trace!("Reading paths {:?}", paths);
+    let mut files: Vec<PathBuf> = vec![];
+    let mut had_error = false;
+    for path in paths {
+        match enumerate_files(&path) {
+            Ok(mut paths) => files.append(&mut paths),
+            Err(err) => {
+                handle_diagnostics(err, None, suppress_output);
+                had_error = true;
+            }
+        }
+    }
+
+    if had_error {
+        return Err(String::from("Error enumerating files"));
+    }
+
+    // Create the compilation set
+    let mut compilation_set = CompilationSet::new();
+    let sources: Result<Vec<_>, Vec<Diagnostic>> = files.iter().map(path_to_source).collect();
+    let sources = sources.map_err(|err| {
+        handle_diagnostics(err, Some(&compilation_set), suppress_output);
+        String::from("Error reading source files")
+    })?;
+    compilation_set.extend(sources);
+
+    // Write the set
+    for src in compilation_set.sources {
+        match src {
+            CompilationSource::Library(lib) => {
+                let output = write(&lib).map_err(|e| {
+                    handle_diagnostics(e, None, suppress_output);
+                    String::from("Error echo source")
+                })?;
+
+                print!("{}", output);
+            }
+            CompilationSource::Text(txt) => {
+                let lib = parse(&txt.0, &txt.1).map_err(|e| {
+                    handle_diagnostics(vec![e], None, suppress_output);
+                    String::from("Error reading source files")
+                })?;
+                let output = write(&lib).map_err(|e| {
+                    handle_diagnostics(e, None, suppress_output);
+                    String::from("Error echo source")
+                })?;
+
+                print!("{}", output);
+            }
+            CompilationSource::TextRef(_) => {}
+        }
+    }
+
     Ok(())
 }
 

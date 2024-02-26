@@ -2,7 +2,7 @@
 //! the input text into a form that can be easily parsed.
 //!
 //! The preprocessor:
-//! * removes comments
+//! * removes OSCAT comments
 //!
 //! Comments are replaced by whitespace so that language elements retain their
 //! original position (this means that source locations remain correct even
