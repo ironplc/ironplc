@@ -396,6 +396,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ironplc-plc2plc"
+version = "0.47.0"
+dependencies = [
+ "dsl_macro_derive",
+ "ironplc-dsl",
+ "ironplc-parser",
+ "paste",
+]
+
+[[package]]
 name = "ironplc-problems"
 version = "0.47.0"
 dependencies = [
@@ -415,6 +425,7 @@ dependencies = [
  "fixedbitset",
  "ironplc-dsl",
  "ironplc-parser",
+ "ironplc-plc2plc",
  "ironplc-problems",
  "log",
  "lsp-server",

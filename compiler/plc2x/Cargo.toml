@@ -17,6 +17,7 @@ trace = ["ironplc-parser/trace"]
 ironplc-parser = { path = "../parser", version = "0.47.0" }
 ironplc-dsl = { path = "../dsl", version = "0.47.0" }
 ironplc-problems = { path = "../problems", version = "0.47.0" }
+ironplc-plc2plc = { path = "../plc2plc", version = "0.47.0" }
 
 time = "0.3.17"
 phf = { version = "0.11", features = ["macros"] }
