@@ -11,7 +11,9 @@ repository.workspace = true
 maintenance = { status = "experimental" }
 
 [dependencies]
-ironplc-parser = { path = "../parser", version = "0.48.0" }
 ironplc-dsl = { path = "../dsl", version = "0.48.0" }
 dsl_macro_derive = { path = "../dsl_macro_derive", version = "0.48.0" }
 paste = "1.0"
+
+[dev-dependencies]
+ironplc-parser = { path = "../parser", version = "0.48.0" }

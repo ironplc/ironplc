@@ -89,7 +89,7 @@ mod test {
             END_STRUCT;
         END_TYPE";
 
-        let res = parse_program(&source, &FileId::default()).unwrap();
+        let res = parse_program(source, &FileId::default()).unwrap();
         assert_eq!(1, res.elements.len());
     }
 
@@ -103,7 +103,7 @@ mod test {
            END_STRUCT;
         END_TYPE";
 
-        let res = parse_program(&program, &FileId::default());
+        let res = parse_program(program, &FileId::default());
         assert!(res.is_ok());
     }
 
@@ -117,7 +117,7 @@ mod test {
             END_STRUCT;
         END_TYPE";
 
-        let res = parse_program(&program, &FileId::default());
+        let res = parse_program(program, &FileId::default());
         assert!(res.is_err());
     }
 }
