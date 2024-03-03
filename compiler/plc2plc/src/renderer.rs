@@ -56,7 +56,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    fn visit_integer(&mut self, node: &Integer) -> Result<Self::Value,Diagnostic> {
+    fn visit_integer(&mut self, node: &Integer) -> Result<Self::Value, Diagnostic> {
         self.write_ws(node.value.to_string().as_str());
         Ok(())
     }
@@ -106,7 +106,6 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_signed_integer(&node.end)
     }
 
-    
     // 2.4.3
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         self.newline();
@@ -153,9 +152,12 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     }
 
     // 2.4.3.1
-    fn visit_address_assignment(&mut self, node: &AddressAssignment) -> Result<Self::Value,Diagnostic> {
+    fn visit_address_assignment(
+        &mut self,
+        node: &AddressAssignment,
+    ) -> Result<Self::Value, Diagnostic> {
         self.write_char('%');
-        
+
         let loc = match &node.location {
             LocationPrefix::I => 'I',
             LocationPrefix::Q => 'Q',
@@ -182,28 +184,33 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-
     // 2.4.3.2
-    fn visit_simple_initializer(&mut self, node: &SimpleInitializer) -> Result<Self::Value, Diagnostic> {
+    fn visit_simple_initializer(
+        &mut self,
+        node: &SimpleInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
         self.write_ws(&node.type_name.to_string());
 
         match &node.initial_value {
             Some(iv) => {
                 self.write_ws(":=");
                 self.visit_constant_kind(iv)?;
-            },
-            None => {},
+            }
+            None => {}
         }
 
         Ok(())
     }
 
-    fn visit_direct_variable_identifier(&mut self, node: &DirectVariableIdentifier) -> Result<Self::Value, Diagnostic> {
+    fn visit_direct_variable_identifier(
+        &mut self,
+        node: &DirectVariableIdentifier,
+    ) -> Result<Self::Value, Diagnostic> {
         match &node.name {
-            Some(name) =>  { self.visit_id(name)? },
-            None => {},
+            Some(name) => self.visit_id(name)?,
+            None => {}
         }
-        
+
         self.write_ws("AT");
 
         self.visit_address_assignment(&node.address_assignment)?;
@@ -214,7 +221,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     // 2.5.1
     fn visit_function_declaration(
         &mut self,
-        _node: &FunctionDeclaration
+        _node: &FunctionDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("FUNCTION");
 
