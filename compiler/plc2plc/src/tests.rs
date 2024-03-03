@@ -6,7 +6,7 @@ mod test {
 
     use dsl::common::Library;
     use dsl::core::FileId;
-    
+
     use ironplc_parser::parse_program;
 
     use crate::write;
