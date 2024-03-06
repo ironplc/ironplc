@@ -152,7 +152,8 @@ mod tests {
     fn analyze_when_first_steps_then_result_is_ok() {
         let src = read_resource("first_steps.st");
         let res = analyze(&CompilationSet::of_source(&src));
-        assert!(res.is_ok())
+        assert!(res.is_ok());
+        format!("{:?}", res.unwrap().clone());
     }
 
     #[test]
@@ -188,7 +189,8 @@ mod tests {
     fn analyze_2() {
         let src = read_resource("main.st");
         let res = analyze(&CompilationSet::of_source(&src));
-        assert!(res.is_ok())
+        assert!(res.is_ok());
+        format!("{:?}", res.unwrap().clone());
     }
 
     #[test]
@@ -226,10 +228,10 @@ mod tests {
                 position: SourceLoc::default(),
             },
         ));
-        assert_eq!(
-            ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap(),
-            expected
-        )
+
+        let res = ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap();
+        assert_eq!(res, expected);
+        format!("{:?}", res.clone());
     }
 
     #[test]
@@ -327,10 +329,9 @@ mod tests {
                 position: SourceLoc::default(),
             },
         ));
-        assert_eq!(
-            ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap(),
-            expected
-        )
+        let res = ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap();
+        assert_eq!(res, expected);
+        format!("{:?}", res.clone());
     }
 
     #[test]
@@ -363,10 +364,9 @@ mod tests {
                 position: SourceLoc::default(),
             },
         ));
-        assert_eq!(
-            ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap(),
-            expected
-        )
+        let res = ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap();
+        assert_eq!(res, expected);
+        format!("{:?}", res.clone());
     }
 
     #[test]
@@ -518,10 +518,9 @@ mod tests {
                 }],
             },
         ));
-        assert_eq!(
-            ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap(),
-            expected
-        )
+        let res = ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap();
+        assert_eq!(res, expected);
+        format!("{:?}", res.clone());
     }
 
     #[test]
