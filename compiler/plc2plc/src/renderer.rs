@@ -18,25 +18,28 @@ pub fn apply(lib: &Library) -> Result<String, Vec<Diagnostic>> {
 
 struct LibraryRenderer {
     buffer: String,
+    indents: usize,
 }
 
 impl LibraryRenderer {
     fn new() -> Self {
         Self {
             buffer: String::new(),
+            indents: 0,
         }
     }
 
     fn write(&mut self, val: &str) {
+        if self.buffer.ends_with('\n') {
+            self.buffer.push_str("   ".repeat(self.indents).as_str());
+        }
         self.buffer.push_str(val);
     }
 
-    fn write_char(&mut self, val: char) {
-        self.buffer.push(val);
-    }
-
     fn write_ws(&mut self, val: &str) {
-        if !self.buffer.ends_with(' ') {
+        if self.buffer.ends_with('\n') {
+            self.buffer.push_str("   ".repeat(self.indents).as_str());
+        } else if !self.buffer.ends_with(' ') {
             self.buffer.push(' ');
         }
         self.buffer.push_str(val);
@@ -44,6 +47,14 @@ impl LibraryRenderer {
 
     fn newline(&mut self) {
         self.buffer.push('\n');
+    }
+
+    fn indent(&mut self) {
+        self.indents += 1;
+    }
+
+    fn outdent(&mut self) {
+        self.indents -= 1;
     }
 }
 
@@ -80,7 +91,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("TYPE");
         self.newline();
 
+        self.indent();
         node.recurse_visit(self)?;
+        self.outdent();
+        self.newline();
 
         self.write_ws("END_TYPE");
         self.newline();
@@ -91,9 +105,57 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &EnumerationDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        node.type_name.recurse_visit(self)?;
+        self.visit_id(&node.type_name)?;
 
-        node.spec_init.recurse_visit(self)
+        self.write_ws(":");
+
+        self.visit_enumerated_specification_init(&node.spec_init)
+    }
+
+    fn visit_enumerated_specification_init(
+        &mut self,
+        node: &EnumeratedSpecificationInit,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_enumerated_specification_kind(&node.spec)?;
+
+        if let Some(default) = &node.default {
+            self.write_ws(":=");
+            self.visit_enumerated_value(default)?;
+        }
+
+        Ok(())
+    }
+
+    fn visit_enumerated_specification_values(
+        &mut self,
+        node: &EnumeratedSpecificationValues,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("(");
+
+        let mut it = node.values.iter().peekable();
+        while let Some(val) = it.next() {
+            self.visit_enumerated_value(val)?;
+            if it.peek().is_some() {
+                self.write_ws(",");
+            }
+        }
+
+        self.write_ws(")");
+        Ok(())
+    }
+
+    // 2.3.3.1
+    fn visit_array_subranges(&mut self, node: &ArraySubranges) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("ARRAY");
+
+        for range in node.ranges.iter() {
+            self.visit_subrange(range)?;
+            self.write_ws(", ");
+        }
+
+        self.write_ws("OF");
+
+        self.visit_id(&node.type_name)
     }
 
     // 2.4.2.1
@@ -131,6 +193,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         self.newline();
 
+        self.indent();
         match &node.identifier {
             VariableIdentifier::Symbol(id) => {
                 self.visit_id(id)?;
@@ -145,6 +208,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         self.write(";");
         self.newline();
+        self.outdent();
 
         self.write_ws("END_VAR");
         self.newline();
@@ -156,18 +220,18 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &AddressAssignment,
     ) -> Result<Self::Value, Diagnostic> {
-        self.write_char('%');
+        let mut address = String::from("%");
 
         let loc = match &node.location {
             LocationPrefix::I => 'I',
             LocationPrefix::Q => 'Q',
             LocationPrefix::M => 'M',
         };
-        self.write_char(loc);
+        address.push(loc);
 
         let size = match &node.size {
             // TODO
-            SizePrefix::Unspecified => ' ',
+            SizePrefix::Unspecified => '*',
             SizePrefix::Nil => todo!(),
             SizePrefix::X => 'X',
             SizePrefix::B => 'B',
@@ -175,11 +239,16 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             SizePrefix::D => 'D',
             SizePrefix::L => 'L',
         };
-        self.write_char(size);
+        address.push(size);
 
-        for idx in &node.address {
-            self.write(idx.to_string().as_str());
-        }
+        let location: String = node
+            .address
+            .iter()
+            .map(|&id| id.to_string() + ".")
+            .collect();
+        address.push_str(location.trim_end_matches('.'));
+
+        self.write_ws(address.as_str());
 
         Ok(())
     }
@@ -236,21 +305,24 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("FUNCTION_BLOCK");
-
-        node.name.recurse_visit(self)?;
+        self.visit_id(&node.name)?;
         self.newline();
 
+        self.indent();
         for var in node.variables.iter() {
-            var.recurse_visit(self)?;
+            self.visit_var_decl(var)?;
         }
 
         node.body.recurse_visit(self)?;
+        self.outdent();
+        self.newline();
 
         self.write_ws("END_FUNCTION_BLOCK");
         self.newline();
         Ok(())
     }
 
+    // 2.5.3
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
@@ -267,6 +339,121 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node.body.recurse_visit(self)?;
 
         self.write_ws("END_PROGRAM");
+        self.newline();
+        Ok(())
+    }
+
+    // 2.7.1
+    fn visit_resource_declaration(
+        &mut self,
+        node: &dsl::configuration::ResourceDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("RESOURCE");
+        self.visit_id(&node.name)?;
+        self.write_ws("ON");
+        self.visit_id(&node.resource)?;
+        self.newline();
+
+        self.indent();
+        for task in node.tasks.iter() {
+            self.visit_task_configuration(task)?;
+        }
+
+        for program in node.programs.iter() {
+            self.visit_program_configuration(program)?;
+        }
+
+        for var in node.global_vars.iter() {
+            self.visit_var_decl(var)?;
+        }
+
+        self.outdent();
+
+        self.write_ws("END_RESOURCE");
+        self.newline();
+        Ok(())
+    }
+
+    // 2.7.2
+    fn visit_program_configuration(
+        &mut self,
+        node: &dsl::configuration::ProgramConfiguration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("PROGRAM");
+        self.visit_id(&node.name)?;
+
+        if let Some(task) = &node.task_name {
+            self.write_ws("WITH");
+            self.visit_id(task)?;
+        }
+
+        self.write_ws(":");
+        self.visit_id(&node.type_name)?;
+
+        self.write_ws(";");
+        self.newline();
+
+        Ok(())
+    }
+
+    // 2.7.2
+    fn visit_configuration_declaration(
+        &mut self,
+        node: &dsl::configuration::ConfigurationDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("CONFIGURATION");
+        self.visit_id(&node.name)?;
+        self.newline();
+
+        self.indent();
+        for res in node.resource_decl.iter() {
+            self.visit_resource_declaration(res)?;
+        }
+        self.outdent();
+
+        self.write_ws("END_CONFIGURATION");
+        self.newline();
+        Ok(())
+    }
+
+    // 2.7.2
+    fn visit_task_configuration(
+        &mut self,
+        node: &dsl::configuration::TaskConfiguration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("TASK");
+
+        self.visit_id(&node.name)?;
+        self.write_ws("(");
+
+        if let Some(_interval) = node.interval {
+            self.write_ws("INTERNAL");
+            self.write_ws(":=");
+            // TODO visit duration
+            self.write_ws(",");
+        }
+
+        self.write_ws("PRIORITY");
+        self.write_ws(":=");
+        self.write_ws(node.priority.to_string().as_str());
+
+        self.write_ws(")");
+
+        self.write_ws(";");
+        self.newline();
+        Ok(())
+    }
+
+    // 3.3.2.1
+    fn visit_assignment(
+        &mut self,
+        node: &dsl::textual::Assignment,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_variable(&node.target)?;
+        self.write_ws(":=");
+        self.visit_expr_kind(&node.value)?;
+
+        self.write_ws(";");
         self.newline();
         Ok(())
     }
