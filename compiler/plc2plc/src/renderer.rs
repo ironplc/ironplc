@@ -29,6 +29,13 @@ impl LibraryRenderer {
         }
     }
 
+    fn write_char(&mut self, val: char) {
+        if self.buffer.ends_with('\n') {
+            self.buffer.push_str("   ".repeat(self.indents).as_str());
+        }
+        self.buffer.push(val);
+    }
+
     fn write(&mut self, val: &str) {
         if self.buffer.ends_with('\n') {
             self.buffer.push_str("   ".repeat(self.indents).as_str());
@@ -101,6 +108,14 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
+    fn visit_late_bound_declaration(&mut self, node: &LateBoundDeclaration) -> Result<Self::Value,Diagnostic> {
+        self.visit_id(&node.data_type_name)?;
+
+        self.write_ws(":");
+
+        self.visit_id(&node.base_type_name)
+    }
+
     fn visit_enumeration_declaration(
         &mut self,
         node: &EnumerationDeclaration,
@@ -141,6 +156,82 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         }
 
         self.write_ws(")");
+        Ok(())
+    }
+
+    // 2.3.3.1
+    fn visit_structure_initialization_declaration(&mut self, node: &StructureInitializationDeclaration) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.type_name)?;
+
+        if !node.elements_init.is_empty() {
+            self.write_ws(":=");
+            self.write_ws("(");
+
+            let mut it = node.elements_init.iter().peekable();
+            while let Some(val) = it.next() {
+                self.visit_structure_element_init(val)?;
+                if it.peek().is_some() {
+                    self.write_ws(",");
+                }
+            }
+
+            self.write_ws(")");
+        }
+
+        Ok(())
+    }
+
+    // 2.3.3.1
+    fn visit_structure_element_init(&mut self, node: &StructureElementInit) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.name)?;
+
+        self.write_ws(":=");
+
+        self.visit_struct_initial_value_assignment_kind(&node.init)
+    }
+
+    fn visit_array_declaration(&mut self, node: &ArrayDeclaration) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.type_name)?;
+
+        self.write_ws("ARRAY");
+        self.write_ws("[");
+
+        self.visit_array_specification_kind(&node.spec)?;
+
+        self.write_ws("]");
+
+        Ok(())
+    }
+
+    // 2.3.3.1
+    fn visit_string_declaration(&mut self, node: &StringDeclaration) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.type_name)?;
+
+        self.write_ws("[");
+        self.visit_integer(&node.length)?;
+        self.write_ws("]");
+
+        if let Some(init) = &node.init {
+            let char = match node.width {
+                StringKind::String => "\"",
+                StringKind::WString => "'",
+            };
+
+            self.write_ws(":=");
+
+            self.write(char);
+            self.write(char)
+        }
+        
+        Ok(())
+    }
+
+    fn visit_array_specification_kind(&mut self,node: &ArraySpecificationKind) -> Result<Self::Value,Diagnostic> {
+        match &node {
+            ArraySpecificationKind::Type(id) => self.visit_id(id)?,
+            ArraySpecificationKind::Subranges(subranges) => self.visit_array_subranges(subranges)?,
+        }
+
         Ok(())
     }
 
@@ -266,6 +357,84 @@ impl Visitor<Diagnostic> for LibraryRenderer {
                 self.visit_constant_kind(iv)?;
             }
             None => {}
+        }
+
+        Ok(())
+    }
+
+    // 2.4.3.1 and 2.4.3.2
+    fn visit_string_initializer(&mut self, node: &StringInitializer) -> Result<Self::Value, Diagnostic> {
+        let kw = match node.width {
+            StringKind::String => "STRING",
+            StringKind::WString => "WSTRING",
+        };
+        self.write_ws(kw);
+
+        if let Some(len) = &node.length {
+            self.write_ws("[");
+            self.visit_integer(len)?;
+            self.write_ws("]");
+        }
+
+        if let Some(init) = &node.initial_value {
+            self.write_ws(":=");
+            
+            let quote = match node.width {
+                StringKind::String => "'",
+                StringKind::WString => "\"",
+            };
+
+            self.write(quote);
+            for c in init.iter() {
+                self.write_char(*c);
+            }
+            self.write(quote);
+        }
+
+        Ok(())
+    }
+
+    // 2.4.3.2
+    fn visit_enumerated_values_initializer(&mut self, node: &EnumeratedValuesInitializer) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("(");
+        
+        let mut it = node.values.iter().peekable();
+            while let Some(val) = it.next() {
+                self.visit_enumerated_value(val)?;
+                if it.peek().is_some() {
+                    self.write_ws(",");
+                }
+            }
+        self.write_ws("(");
+
+        if let Some(init) = &node.initial_value {
+            self.write_ws(":=");
+
+            self.visit_enumerated_value(init)?;
+        }
+
+        Ok(())
+    }
+    
+    // 2.4.3.2
+    fn visit_function_block_initial_value_assignment(&mut self, node: &FunctionBlockInitialValueAssignment) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.type_name)
+    }
+
+    // 2.4.3.2
+    fn visit_array_initial_value_assignment(&mut self, node: &ArrayInitialValueAssignment) -> Result<Self::Value, Diagnostic> {
+        self.visit_array_specification_kind(&node.spec)?;
+
+        if !node.initial_values.is_empty() {
+            self.write_ws(":=");
+
+            let mut it = node.initial_values.iter().peekable();
+            while let Some(val) = it.next() {
+                self.visit_array_initial_element_kind(val)?;
+                if it.peek().is_some() {
+                    self.write_ws(",");
+                }
+            }
         }
 
         Ok(())
@@ -455,6 +624,88 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         self.write_ws(";");
         self.newline();
+        Ok(())
+    }
+
+    // 3.2.3
+    fn visit_fb_call(&mut self,node: &dsl::textual::FbCall) -> Result<Self::Value,Diagnostic> {
+        self.visit_id(&node.var_name)?;
+
+        self.write_ws("(");
+
+        let mut it = node.params.iter().peekable();
+            while let Some(val) = it.next() {
+                self.visit_param_assignment_kind(val)?;
+                if it.peek().is_some() {
+                    self.write_ws(",");
+                }
+            }
+
+        self.write_ws(")");
+
+        Ok(())
+    }
+
+    fn visit_compare_expr(&mut self, node: &dsl::textual::CompareExpr) -> Result<Self::Value, Diagnostic> {
+        self.visit_expr_kind(&node.left)?;
+
+        let op = match node.op {
+            dsl::textual::CompareOp::Or => "OR",
+            dsl::textual::CompareOp::Xor => "XOR",
+            dsl::textual::CompareOp::And => "AND",
+            dsl::textual::CompareOp::Eq => "=",
+            dsl::textual::CompareOp::Ne => "<>",
+            dsl::textual::CompareOp::Lt => "<",
+            dsl::textual::CompareOp::Gt => ">",
+            dsl::textual::CompareOp::LtEq => "<=",
+            dsl::textual::CompareOp::GtEq => ">=",
+        };
+        self.write_ws(op);
+
+        self.visit_expr_kind(&node.right)
+    }
+
+    fn visit_binary_expr(&mut self, node: &dsl::textual::BinaryExpr) -> Result<Self::Value, Diagnostic> {
+        self.visit_expr_kind(&node.left)?;
+
+        let op = match node.op {
+            dsl::textual::Operator::Add => "+",
+            dsl::textual::Operator::Sub => "-",
+            dsl::textual::Operator::Mul => "*",
+            dsl::textual::Operator::Div => "/",
+            dsl::textual::Operator::Mod => "MOD",
+            dsl::textual::Operator::Pow => "**",
+        };
+        self.write_ws(op);
+
+        self.visit_expr_kind(&node.right)
+    }
+
+    fn visit_unary_expr(&mut self, node: &dsl::textual::UnaryExpr) -> Result<Self::Value, Diagnostic> {
+        let op = match node.op {
+            dsl::textual::UnaryOp::Neg => "-",
+            dsl::textual::UnaryOp::Not => "NOT",
+        };
+        self.write_ws(op);
+
+        self.visit_expr_kind(&node.term)
+    }
+
+    fn visit_function(&mut self, node: &dsl::textual::Function) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.name)?;
+
+        self.write_ws("(");
+
+        let mut it = node.param_assignment.iter().peekable();
+        while let Some(val) = it.next() {
+            self.visit_param_assignment_kind(val)?;
+            if it.peek().is_some() {
+                self.write_ws(",");
+            }
+        }
+
+        self.write_ws(")");
+
         Ok(())
     }
 }
