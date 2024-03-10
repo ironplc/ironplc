@@ -345,7 +345,6 @@ pub enum DataTypeDeclarationKind {
     /// Derived data type that restricts permitted values to a smaller range
     /// of the parent data type.
     Subrange(SubrangeDeclaration),
-    ///
     Simple(SimpleDeclaration),
     /// Derived data type that specifies required storage space for each instance.
     Array(ArrayDeclaration),
