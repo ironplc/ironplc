@@ -12,7 +12,7 @@ use ironplc_dsl::{
     core::FileId,
     diagnostic::{Diagnostic, Label},
 };
-use ironplc_plc2plc::write;
+use ironplc_plc2plc::write_to_string;
 use ironplc_problems::Problem;
 use log::{debug, error, trace};
 use std::{
@@ -96,7 +96,7 @@ pub fn echo(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
     for src in compilation_set.sources {
         match src {
             CompilationSource::Library(lib) => {
-                let output = write(&lib).map_err(|e| {
+                let output = write_to_string(&lib).map_err(|e| {
                     handle_diagnostics(e, None, suppress_output);
                     String::from("Error echo source")
                 })?;
@@ -108,7 +108,7 @@ pub fn echo(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
                     handle_diagnostics(vec![e], None, suppress_output);
                     String::from("Error reading source files")
                 })?;
-                let output = write(&lib).map_err(|e| {
+                let output = write_to_string(&lib).map_err(|e| {
                     handle_diagnostics(e, None, suppress_output);
                     String::from("Error echo source")
                 })?;

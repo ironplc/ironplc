@@ -126,13 +126,15 @@ pub trait Visitor<E> {
     dispatch!(EnumerationDeclaration);
 
     dispatch!(InitialValueAssignmentKind);
-    dispatch!(StructInitialValueAssignmentKind);
 
     // 2.4.3.2
     dispatch!(EnumeratedSpecificationInit);
 
     // 2.4.3.2
     dispatch!(EnumeratedSpecificationValues);
+
+    // 2.4.3.2
+    dispatch!(StructInitialValueAssignmentKind);
 
     // 2.3.3.1
     dispatch!(EnumeratedValue);
@@ -196,7 +198,7 @@ pub trait Visitor<E> {
     // 2.4.3.2
     dispatch!(FunctionBlockInitialValueAssignment);
 
-    // 2.4.3.2.
+    // 2.4.3.2
     dispatch!(ArrayInitialValueAssignment);
 
     // 2.4.3.2 (TODO - where?)
