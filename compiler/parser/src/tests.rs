@@ -12,10 +12,10 @@ mod test {
 
     pub fn read_resource(name: &'static str) -> String {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("resources/test");
+        path.push("../resources/test");
         path.push(name);
 
-        fs::read_to_string(path).expect("Unable to read file")
+        fs::read_to_string(path.clone()).expect(format!("Unable to read file {:?}", path).as_str())
     }
 
     pub fn parse_resource(name: &'static str) -> Result<Library, Diagnostic> {
