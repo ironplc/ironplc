@@ -9,14 +9,16 @@ mod test {
 
     use ironplc_parser::parse_program;
 
-    use crate::write;
+    use crate::write_to_string;
 
     pub fn read_resource(name: &'static str) -> String {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("resources/test");
+        // TODO move these resources to a common directory so that they can be used
+        // by more than one set of tests without crossing module boundaries
+        path.push("../parser/resources/test");
         path.push(name);
 
-        fs::read_to_string(path).expect("Unable to read file")
+        fs::read_to_string(path.clone()).expect(format!("Unable to read file {:?}", path).as_str())
     }
 
     pub fn parse_resource(name: &'static str) -> Library {
@@ -25,9 +27,65 @@ mod test {
     }
 
     #[test]
-    fn parse_print_variable_declarations() {
+    fn write_to_string_arrays() {
+        let res = parse_resource("array.st");
+        let res = write_to_string(&res).unwrap();
+        assert!(!res.is_empty());
+        // TODO this is still a work in progress
+    }
+
+    #[test]
+    fn write_to_string_conditional() {
+        let res = parse_resource("conditional.st");
+        let res = write_to_string(&res).unwrap();
+        assert!(!res.is_empty());
+        // TODO this is still a work in progress
+    }
+
+    #[test]
+    fn write_to_string_expressions() {
+        let res = parse_resource("expressions.st");
+        let res = write_to_string(&res).unwrap();
+        assert!(!res.is_empty());
+        // TODO this is still a work in progress
+    }
+
+    #[test]
+    fn write_to_string_nested() {
+        let res = parse_resource("nested.st");
+        let res = write_to_string(&res).unwrap();
+        assert!(!res.is_empty());
+        // TODO this is still a work in progress
+    }
+
+    #[test]
+    fn write_to_string_strings() {
+        let res = parse_resource("strings.st");
+        let res = write_to_string(&res).unwrap();
+        assert!(!res.is_empty());
+        // TODO this is still a work in progress
+    }
+
+    #[test]
+    fn write_to_string_textual() {
+        let res = parse_resource("textual.st");
+        let res = write_to_string(&res).unwrap();
+        assert!(!res.is_empty());
+        // TODO this is still a work in progress
+    }
+
+    #[test]
+    fn write_to_string_type_decl() {
+        let res = parse_resource("type_decl.st");
+        let res = write_to_string(&res).unwrap();
+        assert!(!res.is_empty());
+        // TODO this is still a work in progress
+    }
+
+    #[test]
+    fn write_to_string_var_decl() {
         let res = parse_resource("var_decl.st");
-        let res = write(&res).unwrap();
+        let res = write_to_string(&res).unwrap();
         assert!(!res.is_empty());
         // TODO this is still a work in progress
     }

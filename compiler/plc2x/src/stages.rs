@@ -153,7 +153,6 @@ mod tests {
         let src = read_resource("first_steps.st");
         let res = analyze(&CompilationSet::of_source(&src));
         assert!(res.is_ok());
-        format!("{:?}", res.unwrap().clone());
     }
 
     #[test]
@@ -190,7 +189,6 @@ mod tests {
         let src = read_resource("main.st");
         let res = analyze(&CompilationSet::of_source(&src));
         assert!(res.is_ok());
-        format!("{:?}", res.unwrap().clone());
     }
 
     #[test]

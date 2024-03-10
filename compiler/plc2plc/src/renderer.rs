@@ -7,6 +7,25 @@
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Id;
 use ironplc_dsl::{diagnostic::Diagnostic, visitor::Visitor};
+use paste::paste;
+
+/// Defines a macro for creating a comma separated list of items where
+/// each item in the list is created by visiting the item.
+macro_rules! visit_comma_separated {
+    ($self:ident, $iter:expr, $struct_name:ident) => {
+        paste! {
+            {
+                let mut it = $iter.peekable();
+                while let Some(item) = it.next() {
+                    $self.[<visit_ $struct_name:snake>](item)?;
+                    if it.peek().is_some() {
+                        $self.write_ws(",");
+                    }
+                }
+            }
+        }
+    };
+}
 
 pub fn apply(lib: &Library) -> Result<String, Vec<Diagnostic>> {
     let mut visitor = LibraryRenderer::new();
@@ -27,6 +46,13 @@ impl LibraryRenderer {
             buffer: String::new(),
             indents: 0,
         }
+    }
+
+    fn write_char(&mut self, val: char) {
+        if self.buffer.ends_with('\n') {
+            self.buffer.push_str("   ".repeat(self.indents).as_str());
+        }
+        self.buffer.push(val);
     }
 
     fn write(&mut self, val: &str) {
@@ -101,6 +127,17 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
+    fn visit_late_bound_declaration(
+        &mut self,
+        node: &LateBoundDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.data_type_name)?;
+
+        self.write_ws(":");
+
+        self.visit_id(&node.base_type_name)
+    }
+
     fn visit_enumeration_declaration(
         &mut self,
         node: &EnumerationDeclaration,
@@ -132,15 +169,97 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("(");
 
-        let mut it = node.values.iter().peekable();
-        while let Some(val) = it.next() {
-            self.visit_enumerated_value(val)?;
-            if it.peek().is_some() {
-                self.write_ws(",");
+        visit_comma_separated!(self, node.values.iter(), EnumeratedValue);
+
+        self.write_ws(")");
+        Ok(())
+    }
+
+    // 2.3.3.1
+    fn visit_structure_initialization_declaration(
+        &mut self,
+        node: &StructureInitializationDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.type_name)?;
+
+        if !node.elements_init.is_empty() {
+            self.write_ws(":=");
+            self.write_ws("(");
+
+            visit_comma_separated!(self, node.elements_init.iter(), StructureElementInit);
+
+            self.write_ws(")");
+        }
+
+        Ok(())
+    }
+
+    // 2.3.3.1
+    fn visit_structure_element_init(
+        &mut self,
+        node: &StructureElementInit,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.name)?;
+
+        self.write_ws(":=");
+
+        self.visit_struct_initial_value_assignment_kind(&node.init)
+    }
+
+    fn visit_array_declaration(
+        &mut self,
+        node: &ArrayDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.type_name)?;
+
+        self.write_ws("ARRAY");
+        self.write_ws("[");
+
+        self.visit_array_specification_kind(&node.spec)?;
+
+        self.write_ws("]");
+
+        Ok(())
+    }
+
+    // 2.3.3.1
+    fn visit_string_declaration(
+        &mut self,
+        node: &StringDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.type_name)?;
+
+        self.write_ws("[");
+        self.visit_integer(&node.length)?;
+        self.write_ws("]");
+
+        if let Some(init) = &node.init {
+            let char = match node.width {
+                StringKind::String => "\"",
+                StringKind::WString => "'",
+            };
+
+            self.write_ws(":=");
+
+            self.write(char);
+            self.write(init);
+            self.write(char)
+        }
+
+        Ok(())
+    }
+
+    fn visit_array_specification_kind(
+        &mut self,
+        node: &ArraySpecificationKind,
+    ) -> Result<Self::Value, Diagnostic> {
+        match &node {
+            ArraySpecificationKind::Type(id) => self.visit_id(id)?,
+            ArraySpecificationKind::Subranges(subranges) => {
+                self.visit_array_subranges(subranges)?
             }
         }
 
-        self.write_ws(")");
         Ok(())
     }
 
@@ -271,6 +390,83 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
+    // 2.4.3.1 and 2.4.3.2
+    fn visit_string_initializer(
+        &mut self,
+        node: &StringInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
+        let kw = match node.width {
+            StringKind::String => "STRING",
+            StringKind::WString => "WSTRING",
+        };
+        self.write_ws(kw);
+
+        if let Some(len) = &node.length {
+            self.write_ws("[");
+            self.visit_integer(len)?;
+            self.write_ws("]");
+        }
+
+        if let Some(init) = &node.initial_value {
+            self.write_ws(":=");
+
+            let quote = match node.width {
+                StringKind::String => "'",
+                StringKind::WString => "\"",
+            };
+
+            self.write(quote);
+            for c in init.iter() {
+                self.write_char(*c);
+            }
+            self.write(quote);
+        }
+
+        Ok(())
+    }
+
+    // 2.4.3.2
+    fn visit_enumerated_values_initializer(
+        &mut self,
+        node: &EnumeratedValuesInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("(");
+        visit_comma_separated!(self, node.values.iter(), EnumeratedValue);
+        self.write_ws("(");
+
+        if let Some(init) = &node.initial_value {
+            self.write_ws(":=");
+
+            self.visit_enumerated_value(init)?;
+        }
+
+        Ok(())
+    }
+
+    // 2.4.3.2
+    fn visit_function_block_initial_value_assignment(
+        &mut self,
+        node: &FunctionBlockInitialValueAssignment,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.type_name)
+    }
+
+    // 2.4.3.2
+    fn visit_array_initial_value_assignment(
+        &mut self,
+        node: &ArrayInitialValueAssignment,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_array_specification_kind(&node.spec)?;
+
+        if !node.initial_values.is_empty() {
+            self.write_ws(":=");
+
+            visit_comma_separated!(self, node.initial_values.iter(), ArrayInitialElementKind);
+        }
+
+        Ok(())
+    }
+
     fn visit_direct_variable_identifier(
         &mut self,
         node: &DirectVariableIdentifier,
@@ -290,9 +486,25 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     // 2.5.1
     fn visit_function_declaration(
         &mut self,
-        _node: &FunctionDeclaration,
+        node: &FunctionDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("FUNCTION");
+        self.visit_id(&node.name)?;
+        self.write_ws(":");
+        self.visit_id(&node.return_type)?;
+
+        self.indent();
+        for item in node.variables.iter() {
+            self.visit_var_decl(item)?;
+        }
+        self.outdent();
+        self.newline();
+
+        self.indent();
+        for stmt in node.body.iter() {
+            self.visit_stmt_kind(stmt)?;
+        }
+        self.outdent();
 
         self.write_ws("END_FUNCTION");
         self.newline();
@@ -456,5 +668,258 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws(";");
         self.newline();
         Ok(())
+    }
+
+    // 3.2.3
+    fn visit_fb_call(&mut self, node: &dsl::textual::FbCall) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.var_name)?;
+
+        self.write_ws("(");
+        visit_comma_separated!(self, node.params.iter(), ParamAssignmentKind);
+        self.write_ws(")");
+
+        Ok(())
+    }
+
+    fn visit_compare_expr(
+        &mut self,
+        node: &dsl::textual::CompareExpr,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_expr_kind(&node.left)?;
+
+        let op = match node.op {
+            dsl::textual::CompareOp::Or => "OR",
+            dsl::textual::CompareOp::Xor => "XOR",
+            dsl::textual::CompareOp::And => "AND",
+            dsl::textual::CompareOp::Eq => "=",
+            dsl::textual::CompareOp::Ne => "<>",
+            dsl::textual::CompareOp::Lt => "<",
+            dsl::textual::CompareOp::Gt => ">",
+            dsl::textual::CompareOp::LtEq => "<=",
+            dsl::textual::CompareOp::GtEq => ">=",
+        };
+        self.write_ws(op);
+
+        self.visit_expr_kind(&node.right)
+    }
+
+    fn visit_binary_expr(
+        &mut self,
+        node: &dsl::textual::BinaryExpr,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("(");
+        self.visit_expr_kind(&node.left)?;
+
+        let op = match node.op {
+            dsl::textual::Operator::Add => "+",
+            dsl::textual::Operator::Sub => "-",
+            dsl::textual::Operator::Mul => "*",
+            dsl::textual::Operator::Div => "/",
+            dsl::textual::Operator::Mod => "MOD",
+            dsl::textual::Operator::Pow => "**",
+        };
+        self.write_ws(op);
+
+        self.visit_expr_kind(&node.right)?;
+        self.write_ws("(");
+
+        Ok(())
+    }
+
+    fn visit_unary_expr(
+        &mut self,
+        node: &dsl::textual::UnaryExpr,
+    ) -> Result<Self::Value, Diagnostic> {
+        let op = match node.op {
+            dsl::textual::UnaryOp::Neg => "-",
+            dsl::textual::UnaryOp::Not => "NOT",
+        };
+        self.write_ws(op);
+
+        self.visit_expr_kind(&node.term)
+    }
+
+    fn visit_function(&mut self, node: &dsl::textual::Function) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.name)?;
+
+        self.write_ws("(");
+        visit_comma_separated!(self, node.param_assignment.iter(), ParamAssignmentKind);
+        self.write_ws(")");
+
+        Ok(())
+    }
+
+    fn visit_repeat(&mut self, node: &dsl::textual::Repeat) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("REPEAT");
+        self.newline();
+
+        self.indent();
+        for item in node.body.iter() {
+            self.visit_stmt_kind(item)?;
+        }
+        self.outdent();
+
+        self.write_ws("UNTIL");
+        self.visit_expr_kind(&node.until)?;
+        self.newline();
+
+        self.write_ws("END_REPEAT");
+        self.newline();
+
+        Ok(())
+    }
+
+    fn visit_if(&mut self, node: &dsl::textual::If) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("IF");
+        self.visit_expr_kind(&node.expr)?;
+        self.write_ws("THEN");
+        self.newline();
+
+        self.indent();
+        for item in node.body.iter() {
+            self.visit_stmt_kind(item)?;
+        }
+        self.outdent();
+
+        for item in node.else_ifs.iter() {
+            self.visit_else_if(item)?;
+        }
+
+        if !node.else_body.is_empty() {
+            self.write_ws("ELSE");
+            self.newline();
+
+            self.indent();
+            for item in node.else_body.iter() {
+                self.visit_stmt_kind(item)?;
+            }
+            self.outdent();
+        }
+
+        self.write_ws("END_IF");
+        self.newline();
+        Ok(())
+    }
+
+    fn visit_else_if(&mut self, node: &dsl::textual::ElseIf) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("ELSIF");
+        self.visit_expr_kind(&node.expr)?;
+        self.write_ws("THEN");
+        self.newline();
+
+        self.indent();
+        for item in node.body.iter() {
+            self.visit_stmt_kind(item)?;
+        }
+        self.outdent();
+
+        Ok(())
+    }
+
+    fn visit_case(&mut self, node: &dsl::textual::Case) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("CASE");
+        self.visit_expr_kind(&node.selector)?;
+        self.write_ws("OF");
+        self.newline();
+
+        self.indent();
+        for item in node.statement_groups.iter() {
+            self.visit_case_statement_group(item)?;
+        }
+
+        if !node.else_body.is_empty() {
+            self.write_ws("ELSE");
+            self.newline();
+            self.indent();
+
+            for item in node.else_body.iter() {
+                self.visit_stmt_kind(item)?;
+            }
+
+            self.outdent();
+        }
+        self.outdent();
+
+        self.write_ws("END_CASE");
+        self.newline();
+
+        Ok(())
+    }
+
+    fn visit_case_statement_group(
+        &mut self,
+        node: &dsl::textual::CaseStatementGroup,
+    ) -> Result<Self::Value, Diagnostic> {
+        for selector in node.selectors.iter() {
+            self.visit_case_selection_kind(selector)?;
+            self.write_ws(":");
+            self.newline();
+        }
+
+        self.indent();
+
+        if node.statements.is_empty() {
+            self.write_ws(";");
+        } else {
+            for item in node.statements.iter() {
+                self.visit_stmt_kind(item)?;
+            }
+        }
+        self.outdent();
+
+        Ok(())
+    }
+
+    fn visit_for(&mut self, node: &dsl::textual::For) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("FOR");
+        self.visit_id(&node.control)?;
+        self.write_ws(":=");
+        self.visit_expr_kind(&node.from)?;
+        self.write_ws("TO");
+        self.visit_expr_kind(&node.to)?;
+
+        if let Some(by) = &node.step {
+            self.write_ws("BY");
+            self.visit_expr_kind(by)?;
+        }
+
+        self.write_ws("DO");
+        self.newline();
+
+        self.indent();
+        for item in node.body.iter() {
+            self.visit_stmt_kind(item)?;
+        }
+        self.outdent();
+
+        self.write_ws("END_FOR");
+        self.newline();
+        Ok(())
+    }
+
+    fn visit_while(&mut self, node: &dsl::textual::While) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("WHILE");
+        self.visit_expr_kind(&node.condition)?;
+        self.write_ws("DO");
+        self.newline();
+
+        self.indent();
+        for item in node.body.iter() {
+            self.visit_stmt_kind(item)?;
+        }
+        self.outdent();
+
+        self.write_ws("END_WHILE");
+        self.newline();
+        Ok(())
+    }
+
+    fn visit_structured_variable(
+        &mut self,
+        node: &dsl::textual::StructuredVariable,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_symbolic_variable_kind(&node.record)?;
+        self.write_ws(".");
+        self.visit_id(&node.field)
     }
 }
