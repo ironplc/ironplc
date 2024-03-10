@@ -256,7 +256,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         match &node {
             ArraySpecificationKind::Type(id) => self.visit_id(id)?,
             ArraySpecificationKind::Subranges(subranges) => {
-                self.visit_array_subranges(subranges)?
+                self.visit_array_subranges(subranges)?;
             }
         }
 
@@ -266,12 +266,9 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     // 2.3.3.1
     fn visit_array_subranges(&mut self, node: &ArraySubranges) -> Result<Self::Value, Diagnostic> {
         self.write_ws("ARRAY");
-
-        for range in node.ranges.iter() {
-            self.visit_subrange(range)?;
-            self.write_ws(", ");
-        }
-
+        self.write_ws("[");
+        visit_comma_separated!(self, node.ranges.iter(), Subrange);
+        self.write_ws("]");
         self.write_ws("OF");
 
         self.visit_id(&node.type_name)
@@ -432,7 +429,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("(");
         visit_comma_separated!(self, node.values.iter(), EnumeratedValue);
-        self.write_ws("(");
+        self.write_ws(")");
 
         if let Some(init) = &node.initial_value {
             self.write_ws(":=");
@@ -721,7 +718,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws(op);
 
         self.visit_expr_kind(&node.right)?;
-        self.write_ws("(");
+        self.write_ws(")");
 
         Ok(())
     }
@@ -911,6 +908,16 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         self.write_ws("END_WHILE");
         self.newline();
+        Ok(())
+    }
+
+    fn visit_array_variable(&mut self, node: &dsl::textual::ArrayVariable) -> Result<Self::Value, Diagnostic> {
+        self.visit_symbolic_variable_kind(&node.subscripted_variable)?;
+        
+        self.write_ws("[");
+        visit_comma_separated!(self, node.subscripts.iter(), ExprKind);
+        self.write_ws("]");
+
         Ok(())
     }
 
