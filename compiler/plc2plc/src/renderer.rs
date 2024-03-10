@@ -911,9 +911,12 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    fn visit_array_variable(&mut self, node: &dsl::textual::ArrayVariable) -> Result<Self::Value, Diagnostic> {
+    fn visit_array_variable(
+        &mut self,
+        node: &dsl::textual::ArrayVariable,
+    ) -> Result<Self::Value, Diagnostic> {
         self.visit_symbolic_variable_kind(&node.subscripted_variable)?;
-        
+
         self.write_ws("[");
         visit_comma_separated!(self, node.subscripts.iter(), ExprKind);
         self.write_ws("]");
