@@ -15,7 +15,7 @@ mod test {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         // TODO move these resources to a common directory so that they can be used
         // by more than one set of tests without crossing module boundaries
-        path.push("../parser/resources/test");
+        path.push("../resources/test");
         path.push(name);
 
         fs::read_to_string(path.clone()).expect(format!("Unable to read file {:?}", path).as_str())
@@ -79,7 +79,7 @@ mod test {
         let res = parse_resource("type_decl.st");
         let res = write_to_string(&res).unwrap();
         assert!(!res.is_empty());
-        // TODO this is still a work in progress
+        // TODO this is stIill a work in progress
     }
 
     #[test]
