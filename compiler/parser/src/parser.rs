@@ -826,11 +826,11 @@ parser! {
         }
       }).collect()
     }
-    rule array_var_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ array_spec_init() end:position!() {
+    rule array_var_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init:array_spec_init() end:position!() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
-          initializer: InitialValueAssignmentKind::None,
+          initializer: InitialValueAssignmentKind::Array(init.clone()),
           position: SourceLoc::range(start, end)
         }
       }).collect()
