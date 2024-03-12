@@ -91,7 +91,7 @@ jobs:
       # Save output artifacts
       - name: Upload compiler installer to build artifacts
         if: ${{ inputs.gh-release-tag }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: compiler/${{ matrix.artifact }}
@@ -99,14 +99,14 @@ jobs:
 
       - name: Upload Compiler Installer SHA256 to Build Artifacts
         if: ${{ inputs.gh-release-tag }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}.sha256
           path: compiler/${{ matrix.artifact }}.sha256
           if-no-files-found: error
       - name: Upload Compiler Installer to GitHub Release
         if: ${{ inputs.gh-release-tag }}
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             compiler/${{ matrix.artifact }}

@@ -46,7 +46,7 @@ jobs:
       # Configure the execution environment
       - uses: taiki-e/install-action@just
       - name: Set up Python 3.x
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v
         with:
           python-version: '3.x'
 
