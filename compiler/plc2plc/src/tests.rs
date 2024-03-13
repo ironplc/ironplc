@@ -78,6 +78,7 @@ mod test {
     fn write_to_string_type_decl() {
         let res = parse_resource("type_decl.st");
         let res = write_to_string(&res).unwrap();
+        print!("{:?}", res);
         assert!(!res.is_empty());
         // TODO this is stIill a work in progress
     }
