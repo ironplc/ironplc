@@ -306,6 +306,34 @@ pub enum ElementaryTypeName {
     WSTRING,
 }
 
+impl ElementaryTypeName {
+    pub fn as_id(&self) -> Id {
+        match self {
+            ElementaryTypeName::BOOL => Id::from("BOOL"),
+            ElementaryTypeName::SINT => Id::from("SINT"),
+            ElementaryTypeName::INT => Id::from("INT"),
+            ElementaryTypeName::DINT => Id::from("DINT"),
+            ElementaryTypeName::LINT => Id::from("LINT"),
+            ElementaryTypeName::USINT => Id::from("USINT"),
+            ElementaryTypeName::UINT => Id::from("UINT"),
+            ElementaryTypeName::UDINT => Id::from("UDINT"),
+            ElementaryTypeName::ULINT => Id::from("ULINT"),
+            ElementaryTypeName::REAL => Id::from("REAL"),
+            ElementaryTypeName::LREAL => Id::from("LREAL"),
+            ElementaryTypeName::TIME => Id::from("TIME"),
+            ElementaryTypeName::DATE => Id::from("DATE"),
+            ElementaryTypeName::TimeOfDay => Id::from("TIME_OF_DAY"),
+            ElementaryTypeName::DateAndTime => Id::from("DATE_AND_TIME"),
+            ElementaryTypeName::STRING => Id::from("STRING"),
+            ElementaryTypeName::BYTE => Id::from("BYTE"),
+            ElementaryTypeName::WORD => Id::from("WORD"),
+            ElementaryTypeName::DWORD => Id::from("DWORD"),
+            ElementaryTypeName::LWORD => Id::from("LWORD"),
+            ElementaryTypeName::WSTRING => Id::from("WSTRING"),
+        }
+    }
+}
+
 impl From<ElementaryTypeName> for Id {
     fn from(value: ElementaryTypeName) -> Id {
         match value {
