@@ -28,6 +28,7 @@ macro_rules! visit_comma_separated {
 }
 
 pub fn apply(lib: &Library) -> Result<String, Vec<Diagnostic>> {
+    print!("{:?}", lib);
     let mut visitor = LibraryRenderer::new();
     visitor
         .walk(lib)
@@ -119,6 +120,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         self.indent();
         node.recurse_visit(self)?;
+        self.write_ws(";");
         self.outdent();
         self.newline();
 
@@ -175,6 +177,69 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
+    fn visit_subrange_declaration(
+        &mut self,
+        node: &SubrangeDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.type_name)?;
+
+        self.write_ws(":");
+
+        self.visit_subrange_specification_kind(&node.spec)?;
+
+        if let Some(init) = &node.default {
+            self.write_ws(":=");
+            self.visit_signed_integer(init)?;
+        }
+
+        Ok(())
+    }
+
+    fn visit_subrange_specification(
+        &mut self,
+        node: &SubrangeSpecification,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.type_name.as_id())?;
+        self.write_ws("(");
+        self.visit_subrange(&node.subrange)?;
+        self.write_ws(")");
+
+        Ok(())
+    }
+
+    fn visit_structure_declaration(
+        &mut self,
+        node: &StructureDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.type_name)?;
+
+        self.write_ws(":");
+
+        self.write_ws("STRUCT");
+
+        self.indent();
+        self.newline();
+        for item in node.elements.iter() {
+            self.visit_structure_element_declaration(item)?;
+            self.write_ws(";");
+            self.newline();
+        }
+        self.outdent();
+
+        self.write_ws("END_STRUCT");
+
+        Ok(())
+    }
+
+    fn visit_structure_element_declaration(
+        &mut self,
+        node: &StructureElementDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.name)?;
+        self.write_ws(":");
+        self.visit_initial_value_assignment_kind(&node.init)
+    }
+
     // 2.3.3.1
     fn visit_structure_initialization_declaration(
         &mut self,
@@ -212,12 +277,9 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_id(&node.type_name)?;
 
-        self.write_ws("ARRAY");
-        self.write_ws("[");
+        self.write_ws(":");
 
         self.visit_array_specification_kind(&node.spec)?;
-
-        self.write_ws("]");
 
         Ok(())
     }
@@ -228,6 +290,14 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &StringDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_id(&node.type_name)?;
+
+        self.write_ws(":");
+
+        let typ = match node.width {
+            StringKind::String => "STRING",
+            StringKind::WString => "WSTRING",
+        };
+        self.write_ws(typ);
 
         self.write_ws("[");
         self.visit_integer(&node.length)?;
@@ -682,6 +752,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &dsl::textual::CompareExpr,
     ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("(");
         self.visit_expr_kind(&node.left)?;
 
         let op = match node.op {
@@ -697,7 +768,9 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         };
         self.write_ws(op);
 
-        self.visit_expr_kind(&node.right)
+        self.visit_expr_kind(&node.right)?;
+        self.write_ws(")");
+        Ok(())
     }
 
     fn visit_binary_expr(
@@ -761,6 +834,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.newline();
 
         self.write_ws("END_REPEAT");
+        self.write_ws(";");
+        self.newline();
         self.newline();
 
         Ok(())
@@ -794,6 +869,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         }
 
         self.write_ws("END_IF");
+        self.write_ws(";");
+        self.newline();
         self.newline();
         Ok(())
     }
@@ -838,6 +915,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.outdent();
 
         self.write_ws("END_CASE");
+        self.write_ws(";");
+        self.newline();
         self.newline();
 
         Ok(())
@@ -856,7 +935,9 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.indent();
 
         if node.statements.is_empty() {
+            self.write_ws("(* empty *)");
             self.write_ws(";");
+            self.newline();
         } else {
             for item in node.statements.iter() {
                 self.visit_stmt_kind(item)?;
@@ -890,6 +971,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.outdent();
 
         self.write_ws("END_FOR");
+        self.write_ws(";");
+        self.newline();
         self.newline();
         Ok(())
     }
@@ -907,6 +990,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.outdent();
 
         self.write_ws("END_WHILE");
+        self.write_ws(";");
+        self.newline();
         self.newline();
         Ok(())
     }
