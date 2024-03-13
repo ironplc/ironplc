@@ -177,7 +177,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    fn visit_subrange_declaration(&mut self, node: &SubrangeDeclaration) -> Result<Self::Value, Diagnostic> {
+    fn visit_subrange_declaration(
+        &mut self,
+        node: &SubrangeDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
         self.visit_id(&node.type_name)?;
 
         self.write_ws(":");
@@ -192,7 +195,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    fn visit_subrange_specification(&mut self, node: &SubrangeSpecification) -> Result<Self::Value, Diagnostic> {
+    fn visit_subrange_specification(
+        &mut self,
+        node: &SubrangeSpecification,
+    ) -> Result<Self::Value, Diagnostic> {
         self.visit_id(&node.type_name.as_id())?;
         self.write_ws("(");
         self.visit_subrange(&node.subrange)?;
@@ -201,13 +207,16 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    fn visit_structure_declaration(&mut self, node: &StructureDeclaration) -> Result<Self::Value, Diagnostic> {
+    fn visit_structure_declaration(
+        &mut self,
+        node: &StructureDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
         self.visit_id(&node.type_name)?;
 
         self.write_ws(":");
 
         self.write_ws("STRUCT");
-    
+
         self.indent();
         self.newline();
         for item in node.elements.iter() {
@@ -222,7 +231,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    fn visit_structure_element_declaration(&mut self, node: &StructureElementDeclaration) -> Result<Self::Value, Diagnostic> {
+    fn visit_structure_element_declaration(
+        &mut self,
+        node: &StructureElementDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
         self.visit_id(&node.name)?;
         self.write_ws(":");
         self.visit_initial_value_assignment_kind(&node.init)
