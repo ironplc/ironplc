@@ -84,14 +84,14 @@ jobs:
       # Save output artifacts
       - name: Upload VSIX to build artifact
         if: ${{ inputs.artifact-name }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.artifact-name }}
           path: integrations/vscode/ironplc-vscode-extension.vsix
           if-no-files-found: error
       - name: Upload VSIX to GitHub Release
         if: ${{ inputs.gh-release-tag }}
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             integrations/vscode/ironplc-vscode-extension.vsix
