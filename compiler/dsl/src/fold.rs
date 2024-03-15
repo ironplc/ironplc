@@ -63,8 +63,35 @@ pub trait Fold<E> {
 
     dispatch!(SignedInteger);
 
+    // 2.2.1
+    dispatch!(IntegerLiteral);
+
+    // 2.2.1
+    leaf!(RealLiteral);
+
+    // 2.2.2
+    leaf!(BooleanLiteral);
+
+    // 2.2.2
+    leaf!(CharacterStringLiteral);
+
+    // 2.2.3
+    leaf!(DurationLiteral);
+
+    // 2.2.3.2
+    leaf!(TimeOfDayLiteral);
+
+    // 2.2.3.2
+    leaf!(DateLiteral);
+
+    // 2.2.3.2
+    leaf!(DateAndTimeLiteral);
+
+    // TODO where is this?
+    leaf!(BitStringLiteral);
+
     // TODO should probably recurse to find source locations
-    leaf!(ConstantKind);
+    dispatch!(ConstantKind);
 
     // 2.3.3.1
     dispatch!(DataTypeDeclarationKind);

@@ -113,8 +113,35 @@ pub trait Visitor<E> {
 
     dispatch!(SignedInteger);
 
-    // TODO should probably recurse to find source locations
-    leaf!(ConstantKind);
+    // 2.2.1
+    dispatch!(IntegerLiteral);
+
+    // 2.2.1
+    leaf!(RealLiteral);
+
+    // 2.2.2
+    leaf!(BooleanLiteral);
+
+    // 2.2.2
+    leaf!(CharacterStringLiteral);
+
+    // 2.2.3
+    leaf!(DurationLiteral);
+
+    // 2.2.3.2
+    leaf!(TimeOfDayLiteral);
+
+    // 2.2.3.2
+    leaf!(DateLiteral);
+
+    // 2.2.3.2
+    leaf!(DateAndTimeLiteral);
+
+    // TODO where is this?
+    leaf!(BitStringLiteral);
+
+    // 2.2
+    dispatch!(ConstantKind);
 
     // 2.3.3.1
     dispatch!(DataTypeDeclarationKind);
