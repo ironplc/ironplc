@@ -110,6 +110,88 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_integer(&node.value)
     }
 
+    fn visit_real_literal(&mut self, node: &RealLiteral) -> Result<Self::Value, Diagnostic> {
+        let mut val = String::new();
+        if let Some(data_type) = &node.data_type {
+            val.push_str(data_type.as_id().original());
+            val.push('#');
+        }
+        val.push_str(node.value.to_string().as_str());
+
+        self.write_ws(val.as_str());
+        Ok(())
+    }
+
+    fn visit_boolean_literal(&mut self, node: &BooleanLiteral) -> Result<Self::Value, Diagnostic> {
+        let val = match node.value {
+            Boolean::True => "BOOL#TRUE",
+            Boolean::False => "BOOL#FALSE",
+        };
+        self.write_ws(val);
+        Ok(())
+    }
+
+    fn visit_character_string_literal(
+        &mut self,
+        node: &CharacterStringLiteral,
+    ) -> Result<Self::Value, Diagnostic> {
+        // TODO this may not be right
+        let mut val = String::from("'");
+        let s: String = node.value.iter().collect();
+        val.push_str(s.as_str());
+        val.push('\'');
+        self.write_ws(&s);
+        Ok(())
+    }
+
+    fn visit_duration_literal(
+        &mut self,
+        _node: &DurationLiteral,
+    ) -> Result<Self::Value, Diagnostic> {
+        // TODO
+        self.write_ws("TIME#1s");
+        Ok(())
+    }
+
+    fn visit_time_of_day_literal(
+        &mut self,
+        _node: &TimeOfDayLiteral,
+    ) -> Result<Self::Value, Diagnostic> {
+        // TODO
+        self.write_ws("TIME_OF_DAY#12:00:00.00");
+        Ok(())
+    }
+
+    fn visit_date_literal(&mut self, _node: &DateLiteral) -> Result<Self::Value, Diagnostic> {
+        // TODO
+        self.write_ws("DATE#2000-01-01");
+        Ok(())
+    }
+
+    fn visit_date_and_time_literal(
+        &mut self,
+        _node: &DateAndTimeLiteral,
+    ) -> Result<Self::Value, Diagnostic> {
+        // TODO
+        self.write_ws("DATE_AND_TIME#2000-01-01-12:00:00.00");
+        Ok(())
+    }
+
+    fn visit_bit_string_literal(
+        &mut self,
+        node: &BitStringLiteral,
+    ) -> Result<Self::Value, Diagnostic> {
+        let mut s = String::new();
+        if let Some(data_type) = &node.data_type {
+            s.push_str(data_type.as_id().to_string().as_str());
+            s.push('#');
+        }
+        s.push_str(&node.value.value.to_string());
+
+        self.write_ws(&s);
+        Ok(())
+    }
+
     // 2.3.3.1
     fn visit_data_type_declaration_kind(
         &mut self,
@@ -529,6 +611,20 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             self.write_ws(":=");
 
             visit_comma_separated!(self, node.initial_values.iter(), ArrayInitialElementKind);
+        }
+
+        Ok(())
+    }
+
+    fn visit_enumerated_initial_value_assignment(
+        &mut self,
+        node: &EnumeratedInitialValueAssignment,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.type_name)?;
+
+        if let Some(init) = &node.initial_value {
+            self.write_ws(":=");
+            self.visit_enumerated_value(init)?;
         }
 
         Ok(())

@@ -11,7 +11,7 @@ repository.workspace = true
 maintenance = { status = "experimental" }
 
 [dependencies]
-time = "0.3.17"
+time = "0.3.34"
 ironplc-problems = { path = "../problems", version = "0.50.0" }
 dsl_macro_derive = { path = "../dsl_macro_derive", version = "0.50.0" }
 paste = "1.0"
