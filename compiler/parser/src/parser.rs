@@ -267,11 +267,11 @@ parser! {
     rule constant() -> ConstantKind =
         real:real_literal() { ConstantKind::RealLiteral(real) }
         / integer:integer_literal() { ConstantKind::IntegerLiteral(integer) }
-        / c:character_string() { ConstantKind::CharacterString(c) }
+        / c:character_string() { ConstantKind::CharacterString(CharacterStringLiteral::new(c)) }
         / duration:duration() { ConstantKind::Duration(duration) }
-        / t:time_of_day() { ConstantKind::TimeOfDay }
-        / d:date() { ConstantKind::Date }
-        / date_time:date_and_time() { ConstantKind::DateAndTime }
+        / t:time_of_day() { ConstantKind::TimeOfDay(t) }
+        / d:date() { ConstantKind::Date(d) }
+        / date_time:date_and_time() { ConstantKind::DateAndTime(date_time) }
         / bit_string:bit_string_literal() { ConstantKind::BitStringLiteral(bit_string) }
         / boolean:boolean_literal() { ConstantKind::Boolean(boolean) }
 
@@ -291,7 +291,7 @@ parser! {
     rule octal_integer() -> Integer = start:position!() octal_integer_prefix() n:$(['0'..='7']("_"? ['0'..='7'])*) end:position!() {? Integer::octal(n, SourceLoc::range(start, end)) }
     rule hex_integer_prefix() -> () = "16#" ()
     rule hex_integer() -> Integer = start:position!() hex_integer_prefix() n:$(['0'..='9' | 'A'..='F']("_"? ['0'..='9' | 'A'..='F'])*) end:position!() {? Integer::hex(n, SourceLoc::range(start, end)) }
-    rule real_literal() -> Float = tn:(t:real_type_name() "#" {t})? whole:signed_integer__string_simplified() "." fraction:integer__string_simplified() exp:exponent()? {?
+    rule real_literal() -> RealLiteral = tn:(t:real_type_name() "#" {t})? whole:signed_integer__string_simplified() "." fraction:integer__string_simplified() exp:exponent()? {?
       // Create the value from concatenating the parts so that it is trivial
       // to existing parsers.
       let mut value = (whole + "." + &fraction).parse::<f64>().map_err(|e| "real")?;
@@ -301,7 +301,7 @@ parser! {
         value *= exp;
       }
 
-      Ok(Float {
+      Ok(RealLiteral {
         value,
         data_type: tn,
       })
@@ -315,12 +315,12 @@ parser! {
       / kw("LWORD") { ElementaryTypeName::LWORD }
     // The specification says unsigned_integer, but there is no such rule.
     rule bit_string_literal() -> BitStringLiteral = data_type:(t:bit_string_literal_type() "#" {t})? value:(bi:binary_integer() { bi }/ oi:octal_integer() { oi } / hi:hex_integer() { hi } / ui:integer() { ui } ) { BitStringLiteral { value, data_type } }
-    rule boolean_literal() -> Boolean =
+    rule boolean_literal() -> BooleanLiteral =
       // 1 and 0 can be a Boolean, but only with the prefix is it definitely a Boolean
-      kw("BOOL#1") { Boolean::True }
-      / kw("BOOL#0") {Boolean::False }
-      / (kw("BOOL#"))? kw("TRUE") { Boolean::True }
-      / (kw("BOOL#"))? kw("FALSE") { Boolean::False }
+      kw("BOOL#1") { BooleanLiteral::new(Boolean::True) }
+      / kw("BOOL#0") { BooleanLiteral::new(Boolean::False) }
+      / (kw("BOOL#"))? kw("TRUE") { BooleanLiteral::new(Boolean::True) }
+      / (kw("BOOL#"))? kw("FALSE") { BooleanLiteral::new(Boolean::False) }
     // B.1.2.2 Character strings
     rule character_string() -> Vec<char> = single_byte_character_string() / double_byte_character_string()
     rule single_byte_character_string() -> Vec<char>  = "STRING#"? "'" s:single_byte_character_representation()* "'" { s }
@@ -338,11 +338,11 @@ parser! {
     // Omitted and subsumed into constant.
 
     // B.1.2.3.1 Duration
-    pub rule duration() -> Duration = (kw("TIME") / "T" / "t") "#" s:("-")? i:interval() {
+    pub rule duration() -> DurationLiteral = (kw("TIME") / "T" / "t") "#" s:("-")? i:interval() {
       if let Some(sign) = s {
-        return i * -1;
+        return DurationLiteral::new(i * -1);
       }
-      i
+      DurationLiteral::new(i)
     }
     // milliseconds must come first because the "m" in "ms" would match the minutes rule
     rule interval() -> Duration = ms:milliseconds() { ms }
@@ -361,14 +361,14 @@ parser! {
     rule milliseconds() -> Duration = ms:fixed_point() "ms" { DurationUnit::Milliseconds.fp(ms) }
 
     // 1.2.3.2 Time of day and date
-    rule time_of_day() -> Time = (kw("TOD") / kw("TIME_OF_DAY")) "#" d:daytime() { d }
+    rule time_of_day() -> TimeOfDayLiteral = (kw("TOD") / kw("TIME_OF_DAY")) "#" d:daytime() { TimeOfDayLiteral::new(d) }
     rule daytime() -> Time = h:day_hour() ":" m:day_minute() ":" s:day_second() {?
       Time::from_hms(h.try_into().map_err(|e| "hour")?, m.try_into().map_err(|e| "min")?, s.try_into().map_err(|e| "sec")?).map_err(|e| "time")
     }
     rule day_hour() -> Integer = i:integer() { i }
     rule day_minute() -> Integer = i:integer() { i }
     rule day_second() -> Integer = i:integer() { i }
-    rule date() -> Date = (kw("DATE") / "D" / "d") "#" d:date_literal() { d }
+    rule date() -> DateLiteral = (kw("DATE") / "D" / "d") "#" d:date_literal() { DateLiteral::new(d) }
     rule date_literal() -> Date = y:year() "-" m:month() "-" d:day() {?
       let y = y.value;
       let m = Month::try_from(<dsl::common::Integer as TryInto<u8>>::try_into(m).map_err(|e| "month")?).map_err(|e| "month")?;
@@ -378,7 +378,7 @@ parser! {
     rule year() -> Integer = i:integer() { i }
     rule month() -> Integer = i:integer() { i }
     rule day() -> Integer = i:integer() { i }
-    rule date_and_time() -> PrimitiveDateTime = (kw("DATE_AND_TIME") / kw("DT")) "#" d:date_literal() "-" t:daytime() { PrimitiveDateTime::new(d, t) }
+    rule date_and_time() -> DateAndTimeLiteral = (kw("DATE_AND_TIME") / kw("DT")) "#" d:date_literal() "-" t:daytime() { DateAndTimeLiteral::new(PrimitiveDateTime::new(d, t)) }
 
     // B.1.3 Data types
     // This should match generic_type_name, but that's unnecessary because
@@ -589,8 +589,7 @@ parser! {
             InitialValueAssignmentKind::EnumeratedType(
               EnumeratedInitialValueAssignment {
                 type_name: id,
-                // TODO solve this
-                initial_value: None,
+                initial_value: Some(spec_init.1),
               }
             )
           },
@@ -1134,7 +1133,7 @@ parser! {
     rule task_initialization_interval() -> Duration = kw("INTERVAL") _ ":=" _ source:data_source() _ "," {
       // TODO The interval may not necessarily be a duration, but for now, only support Duration types
       match source {
-        ConstantKind::Duration(duration) => duration,
+        ConstantKind::Duration(duration) => duration.value,
         _ => panic!("Only supporting Duration types for now"),
       }
      }
@@ -1406,7 +1405,7 @@ END_VAR";
     fn data_source() {
         assert_eq!(
             plc_parser::duration("T#100ms"),
-            Ok(Duration::new(0, 100_000_000))
+            Ok(DurationLiteral::new(Duration::new(0, 100_000_000)))
         )
     }
 

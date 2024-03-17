@@ -6,7 +6,7 @@ use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 use std::num::TryFromIntError;
 use std::ops::Deref;
-use time::Duration;
+use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
 use dsl_macro_derive::Recurse;
 
@@ -20,17 +20,17 @@ use crate::visitor::Visitor;
 /// Container for elementary constants.
 ///
 /// See section 2.2.
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Recurse)]
 pub enum ConstantKind {
     // TODO these need values
     IntegerLiteral(IntegerLiteral),
-    RealLiteral(Float),
-    CharacterString(Vec<char>),
-    Duration(Duration),
-    TimeOfDay,
-    Date,
-    DateAndTime,
-    Boolean(Boolean),
+    RealLiteral(RealLiteral),
+    Boolean(BooleanLiteral),
+    CharacterString(CharacterStringLiteral),
+    Duration(DurationLiteral),
+    TimeOfDay(TimeOfDayLiteral),
+    Date(DateLiteral),
+    DateAndTime(DateAndTimeLiteral),
     BitStringLiteral(BitStringLiteral),
 }
 
@@ -257,24 +257,98 @@ impl From<SignedInteger> for String {
 /// A signed integer literal with a optional type name.
 ///
 /// See section 2.2.1.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct IntegerLiteral {
     pub value: SignedInteger,
     // TODO restrict to valid integer type names
+    #[recurse(ignore)]
     pub data_type: Option<ElementaryTypeName>,
 }
 
+/// See section 2.2.1.
 #[derive(Debug, PartialEq, Clone)]
-pub struct Float {
+pub struct RealLiteral {
     pub value: f64,
     // TODO restrict to valid float type names
     pub data_type: Option<ElementaryTypeName>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct BooleanLiteral {
+    pub value: Boolean,
+}
+
+impl BooleanLiteral {
+    pub fn new(value: Boolean) -> Self {
+        Self { value }
+    }
+}
+
+// See section 2.2.2
 #[derive(Debug, PartialEq, Clone)]
+pub struct CharacterStringLiteral {
+    pub value: Vec<char>,
+}
+
+impl CharacterStringLiteral {
+    pub fn new(value: Vec<char>) -> Self {
+        Self { value }
+    }
+}
+
+// See section 2.2.2
+#[derive(Debug, PartialEq, Clone)]
+pub struct DurationLiteral {
+    pub value: Duration,
+}
+
+impl DurationLiteral {
+    pub fn new(value: Duration) -> Self {
+        Self { value }
+    }
+}
+
+// See section 2.2.3
+#[derive(Debug, PartialEq, Clone)]
+pub struct TimeOfDayLiteral {
+    value: Time,
+}
+
+impl TimeOfDayLiteral {
+    pub fn new(value: Time) -> Self {
+        Self { value }
+    }
+}
+
+// See section 2.2.3
+#[derive(Debug, PartialEq, Clone)]
+pub struct DateLiteral {
+    value: Date,
+}
+
+impl DateLiteral {
+    pub fn new(value: Date) -> Self {
+        Self { value }
+    }
+}
+
+// See section 2.2.3
+#[derive(Debug, PartialEq, Clone)]
+pub struct DateAndTimeLiteral {
+    value: PrimitiveDateTime,
+}
+
+impl DateAndTimeLiteral {
+    pub fn new(value: PrimitiveDateTime) -> Self {
+        Self { value }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct BitStringLiteral {
     pub value: Integer,
     // TODO restrict to valid float type names
+    #[recurse(ignore)]
     pub data_type: Option<ElementaryTypeName>,
 }
 

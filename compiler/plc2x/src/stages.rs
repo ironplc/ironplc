@@ -386,7 +386,7 @@ mod tests {
                         qualifier: DeclarationQualifier::Unspecified,
                         initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
                             type_name: Id::from("REAL"),
-                            initial_value: Some(ConstantKind::RealLiteral(Float {
+                            initial_value: Some(ConstantKind::RealLiteral(RealLiteral {
                                 value: 5.1,
                                 data_type: None,
                             })),
