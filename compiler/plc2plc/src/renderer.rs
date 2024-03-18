@@ -28,7 +28,6 @@ macro_rules! visit_comma_separated {
 }
 
 pub fn apply(lib: &Library) -> Result<String, Vec<Diagnostic>> {
-    print!("{:?}", lib);
     let mut visitor = LibraryRenderer::new();
     visitor
         .walk(lib)
