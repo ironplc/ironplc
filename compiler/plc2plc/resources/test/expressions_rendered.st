@@ -8,7 +8,7 @@
    END_IF ;
 
    var1 := NOT ( var3 OR var3 ) ;
-   var1 := FUNC_NAME ( var1 , ' ' ) ;
+   var1 := FUNC_NAME ( var1 ,   ) ;
    IF ( var1 > TIME#1s ) THEN
       var1 := 1 ;
    END_IF ;
