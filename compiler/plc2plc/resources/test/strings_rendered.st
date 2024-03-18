@@ -1,0 +1,3 @@
+ TYPE
+   TEXT_EXTENDED : STRING [ 1 ] :="�" ;
+END_TYPE
