@@ -38,7 +38,8 @@ milestones are the current plan to achieve that loveable product.
 * ✅ Build Windows and macOS installers
 * ✅ Setup weekly automated deployments
 * ✅ Build documentation website
-* Build a "standard" library
+* ✅ Implement semantic analyzer for multiple IEC 61131-3 structured text file
+* Build a tokenizer to enable syntax highlighting
 
 ## Usage
 
