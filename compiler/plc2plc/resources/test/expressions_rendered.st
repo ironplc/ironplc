@@ -9,7 +9,7 @@
 
    var1 := NOT ( var3 OR var3 ) ;
    var1 := FUNC_NAME ( var1 ,   ) ;
-   IF ( var1 > TIME#1s ) THEN
+   IF ( var1 > TIME#1000ms ) THEN
       var1 := 1 ;
    END_IF ;
 
