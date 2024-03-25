@@ -145,10 +145,11 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
     fn visit_duration_literal(
         &mut self,
-        _node: &DurationLiteral,
+        node: &DurationLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        // TODO
-        self.write_ws("TIME#1s");
+        // Always write out as milliseconds. The largest unit is allowed to be "out of range"
+        let val = format!("TIME#{}ms", node.value.whole_milliseconds());
+        self.write_ws(val.as_str());
         Ok(())
     }
 
@@ -818,6 +819,17 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
+    // 3.2.3
+    fn visit_fb_call(&mut self, node: &dsl::textual::FbCall) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.var_name)?;
+
+        self.write_ws("(");
+        visit_comma_separated!(self, node.params.iter(), ParamAssignmentKind);
+        self.write_ws(")");
+
+        Ok(())
+    }
+
     // 3.3.2.1
     fn visit_assignment(
         &mut self,
@@ -829,17 +841,6 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         self.write_ws(";");
         self.newline();
-        Ok(())
-    }
-
-    // 3.2.3
-    fn visit_fb_call(&mut self, node: &dsl::textual::FbCall) -> Result<Self::Value, Diagnostic> {
-        self.visit_id(&node.var_name)?;
-
-        self.write_ws("(");
-        visit_comma_separated!(self, node.params.iter(), ParamAssignmentKind);
-        self.write_ws(")");
-
         Ok(())
     }
 
