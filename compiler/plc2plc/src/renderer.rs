@@ -139,7 +139,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         let s: String = node.value.iter().collect();
         val.push_str(s.as_str());
         val.push('\'');
-        self.write_ws(&s);
+        self.write_ws(&val);
         Ok(())
     }
 
