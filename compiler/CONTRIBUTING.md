@@ -63,7 +63,7 @@ cargo test --features trace | pegviz --output ./pegviz.html
 
 ## How It Works
 
-The project is split into several parts:
+The project is split into several parts.
 
 * `dsl` defines relevant domain objects from the IEC 61131-3 language; it is
    the intermediate set of objects from parsing and contains an abstract syntax
