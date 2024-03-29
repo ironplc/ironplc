@@ -28,6 +28,13 @@ mod test {
     }
 
     #[test]
+    fn tokenize_comment() {
+        let source = read_resource("comment.st");
+        let mut lex = TokenType::lexer(source.as_str());
+        assert_no_err(&mut lex);
+    }
+
+    #[test]
     fn tokenize_conditional() {
         let source = read_resource("conditional.st");
         let mut lex = TokenType::lexer(source.as_str());
