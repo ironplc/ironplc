@@ -34,8 +34,12 @@ pub enum TokenType {
     #[regex(r"[ \t]+", token_callback)]
     Whitespace(Position),
 
+    // TODO this will not necessarily detect the right end position
+    #[regex(r"\(\*[^\*\)]*\*\)", token_callback, priority = 0)]
+    Comment(Position),
+
     // Grouping and other markers
-    #[token("(", token_callback)]
+    #[token("(", token_callback, priority = 1)]
     LeftParen(Position),
     #[token(")", token_callback)]
     RightParen(Position),
