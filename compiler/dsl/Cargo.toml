@@ -15,4 +15,4 @@ time = "0.3.34"
 ironplc-problems = { path = "../problems", version = "0.53.0" }
 dsl_macro_derive = { path = "../dsl_macro_derive", version = "0.53.0" }
 paste = "1.0"
-
+logos = "0.14.0"
