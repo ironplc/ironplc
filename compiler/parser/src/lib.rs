@@ -13,8 +13,10 @@ use dsl::{core::FileId, diagnostic::Diagnostic};
 use ironplc_dsl::common::Library;
 use preprocessor::preprocess;
 
+pub mod lexer;
 #[cfg(test)]
 mod tests;
+pub mod token;
 
 /// Parse a full IEC 61131 program.
 pub fn parse_program(source: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
