@@ -18,6 +18,5 @@ time = "0.3.17"
 phf = { version = "0.11", features = ["macros"] }
 ironplc-dsl = { path = "../dsl", version = "0.53.0" }
 ironplc-problems = { path = "../problems", version = "0.53.0" }
-
-[dependencies.peg]
-version = "0.8.1"
+peg = "0.8.1"
+logos = "0.14.0"
