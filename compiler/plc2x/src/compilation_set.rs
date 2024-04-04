@@ -58,6 +58,25 @@ impl<'a> CompilationSet<'a> {
             .push(CompilationSource::TextRef((source, file_id)));
     }
 
+    pub fn find(&self, file_id: &FileId) -> Option<&CompilationSource<'a>> {
+        for src in self.sources.iter() {
+            match src {
+                CompilationSource::Library(_lib) => {}
+                CompilationSource::Text(txt) => {
+                    if txt.1 == *file_id {
+                        return Some(src);
+                    }
+                }
+                CompilationSource::TextRef(txt_ref) => {
+                    if txt_ref.1 == *file_id {
+                        return Some(src);
+                    }
+                }
+            }
+        }
+        None
+    }
+
     pub fn content(&self, file_id: &FileId) -> Option<&String> {
         for source in &self.sources {
             match source {
