@@ -1,20 +1,24 @@
 //! Provides definitions of tokens from IEC 61131-3.
-use logos::{Lexer, Logos, Skip};
+use logos::{Lexer, Logos};
 
 /// The position of a token in a document.
 #[derive(Debug, Default, PartialEq)]
 pub struct Position {
     /// The line number (0-indexed)
-    line: usize,
+    pub line: usize,
     /// The column number (0-indexed)
-    column: usize,
+    pub column: usize,
 }
 
 /// Update the line count and the char index.
-fn newline_callback(lex: &mut Lexer<TokenType>) -> Skip {
+fn newline_callback(lex: &mut Lexer<TokenType>) -> Position {
+    let pos = Position {
+        line: lex.extras.line,
+        column: lex.extras.column,
+    };
     lex.extras.line += 1;
     lex.extras.column = lex.span().end;
-    Skip
+    pos
 }
 
 /// Compute the line and column position for the current token.
@@ -29,7 +33,7 @@ fn token_callback(lex: &mut Lexer<TokenType>) -> Position {
 #[logos(extras = Position)]
 pub enum TokenType {
     #[regex(r"[\n\r\f]", newline_callback)]
-    Newline,
+    Newline(Position),
 
     #[regex(r"[ \t]+", token_callback)]
     Whitespace(Position),

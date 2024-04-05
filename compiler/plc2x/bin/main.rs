@@ -5,6 +5,7 @@ use clap::Parser;
 use ironplcc::cli;
 use ironplcc::logger;
 use ironplcc::lsp;
+use ironplcc::lsp_project::LspProject;
 use ironplcc::project::FileBackedProject;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -59,7 +60,7 @@ pub fn main() -> Result<(), String> {
 
     match args.action {
         Action::Lsp { stdio: _ } => {
-            let proj = Box::<FileBackedProject>::default();
+            let proj = LspProject::new(Box::<FileBackedProject>::default());
             lsp::start(proj)
         }
         Action::Check { files } => cli::check(files, false),

@@ -51,6 +51,13 @@ mod test {
     }
 
     #[test]
+    fn write_to_string_configuration() {
+        let rendered = parse_and_render_resource("configuration.st");
+        let expected = read_resource("configuration_rendered.st");
+        assert_eq!(rendered, expected);
+    }
+
+    #[test]
     fn write_to_string_expressions() {
         let rendered = parse_and_render_resource("expressions.st");
         let expected = read_resource("expressions_rendered.st");

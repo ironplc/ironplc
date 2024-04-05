@@ -2,21 +2,29 @@
 //! as Visual Studio Code.
 
 use crossbeam_channel::{Receiver, Sender};
-use ironplc_dsl::core::FileId;
 use log::trace;
-use lsp_server::{Connection, ExtractError, Message};
+use lsp_server::{Connection, ExtractError, Message, RequestId};
 use lsp_types::{
     notification::{self, Notification, PublishDiagnostics},
     request::{self, Request},
-    DiagnosticSeverity, NumberOrString, PublishDiagnosticsParams, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    PublishDiagnosticsParams, SemanticTokenType, SemanticTokens, SemanticTokensFullOptions,
+    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncKind, WorkDoneProgressOptions,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::project::Project;
+use crate::lsp_project::LspProject;
+
+// Token types that this produces.
+const TOKEN_TYPE_LEGEND: [SemanticTokenType; 3] = [
+    SemanticTokenType::TYPE,
+    SemanticTokenType::ENUM,
+    SemanticTokenType::STRUCT,
+];
 
 /// Start the LSP server with the specified project as the context.
-pub fn start(project: Box<dyn Project>) -> Result<(), String> {
+pub fn start(project: LspProject) -> Result<(), String> {
     let (connection, io_threads) = Connection::stdio();
     let result = start_with_connection(connection, project);
 
@@ -26,7 +34,7 @@ pub fn start(project: Box<dyn Project>) -> Result<(), String> {
 }
 
 /// Start the LSP server using the connection for communication.
-fn start_with_connection(connection: Connection, project: Box<dyn Project>) -> Result<(), String> {
+fn start_with_connection(connection: Connection, project: LspProject) -> Result<(), String> {
     let server_capabilities =
         serde_json::to_value(LspServer::server_capabilities()).map_err(|e| e.to_string())?;
     connection
@@ -45,7 +53,7 @@ fn start_with_connection(connection: Connection, project: Box<dyn Project>) -> R
 
 struct LspServer<'a> {
     sender: &'a Sender<Message>,
-    project: Box<dyn Project>,
+    project: LspProject,
 }
 
 impl<'a> LspServer<'a> {
@@ -56,11 +64,26 @@ impl<'a> LspServer<'a> {
     fn server_capabilities() -> ServerCapabilities {
         ServerCapabilities {
             text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+            semantic_tokens_provider: Some(
+                SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
+                    // We don't report progress in generating tokens so
+                    // there is no work to report on
+                    work_done_progress_options: WorkDoneProgressOptions {
+                        work_done_progress: None,
+                    },
+                    legend: SemanticTokensLegend {
+                        token_types: TOKEN_TYPE_LEGEND.into(),
+                        token_modifiers: vec![],
+                    },
+                    range: None,
+                    full: Some(SemanticTokensFullOptions::Bool(true)),
+                }),
+            ),
             ..ServerCapabilities::default()
         }
     }
 
-    fn new(sender: &'a Sender<Message>, project: Box<dyn Project>) -> Self {
+    fn new(sender: &'a Sender<Message>, project: LspProject) -> Self {
         Self { sender, project }
     }
 
@@ -86,9 +109,34 @@ impl<'a> LspServer<'a> {
     }
 
     fn handle_request(&self, req: lsp_server::Request) -> &'static str {
-        let _request = match Self::cast_request::<request::Shutdown>(req) {
+        let req_id = req.id.clone();
+        let req = match Self::cast_request::<request::Shutdown>(req) {
             Ok(_params) => {
                 return request::Shutdown::METHOD;
+            }
+            Err(req) => req,
+        };
+        let _request = match Self::cast_request::<request::SemanticTokensFullRequest>(req) {
+            Ok(params) => {
+                let uri = params.text_document.uri;
+                let token_result = self.project.tokenize(&uri);
+
+                match token_result {
+                    Ok(tokens) => {
+                        self.send_response::<request::SemanticTokensFullRequest>(
+                            req_id,
+                            Some(SemanticTokensResult::Tokens(SemanticTokens {
+                                result_id: None,
+                                data: tokens,
+                            })),
+                        );
+                    }
+                    Err(_diagnostic) => {
+                        self.send_response::<request::SemanticTokensFullRequest>(req_id, None);
+                    }
+                }
+
+                return request::SemanticTokensFullRequest::METHOD;
             }
             Err(req) => req,
         };
@@ -110,6 +158,15 @@ impl<'a> LspServer<'a> {
             })
     }
 
+    fn send_response<R>(&self, request_id: RequestId, params: R::Result)
+    where
+        R: lsp_types::request::Request,
+        R::Result: Serialize,
+    {
+        let response = lsp_server::Response::new_ok(request_id, params);
+        self.sender.send(Message::Response(response)).unwrap()
+    }
+
     fn handle_notification(&mut self, notification: &lsp_server::Notification) -> &'static str {
         let _notification = match Self::cast_notification::<notification::Exit>(notification) {
             Ok(_params) => {
@@ -126,12 +183,15 @@ impl<'a> LspServer<'a> {
                     let uri = params.text_document.uri;
                     let version = params.text_document.version;
 
-                    let diagnostics = self.project.on_did_change_text_document(
-                        &FileId::from_string(uri.as_str()),
-                        contents.as_str(),
-                    );
+                    self.project.change_text_document(&uri, contents.as_str());
+                    let diagnostics = self.project.semantic();
 
-                    self.notify_analyze_result(uri, version, contents, diagnostics);
+                    self.send_notification::<PublishDiagnostics>(PublishDiagnosticsParams {
+                        uri,
+                        diagnostics,
+                        version: Some(version),
+                    });
+
                     return notification::DidChangeTextDocument::METHOD;
                 }
                 Err(notification) => notification,
@@ -168,92 +228,11 @@ impl<'a> LspServer<'a> {
             .send(Message::Notification(notification))
             .unwrap()
     }
-
-    fn notify_analyze_result(
-        &self,
-        uri: Url,
-        version: i32,
-        contents: String,
-        diagnostics: Option<Vec<ironplc_dsl::diagnostic::Diagnostic>>,
-    ) {
-        let diagnostics: Vec<lsp_types::Diagnostic> = diagnostics.map_or_else(Vec::new, |d| {
-            d.into_iter()
-                .map(|d| map_diagnostic(d, &contents))
-                .collect()
-        });
-        self.send_notification::<PublishDiagnostics>(PublishDiagnosticsParams {
-            uri,
-            diagnostics,
-            version: Some(version),
-        });
-    }
-}
-
-/// Convert diagnostic type into the LSP diagnostic type.
-fn map_diagnostic(
-    diagnostic: ironplc_dsl::diagnostic::Diagnostic,
-    contents: &str,
-) -> lsp_types::Diagnostic {
-    let description = diagnostic.description();
-    let range = map_label(&diagnostic.primary, contents);
-    lsp_types::Diagnostic {
-        range,
-        severity: Some(DiagnosticSeverity::ERROR),
-        code: Some(NumberOrString::String(diagnostic.code)),
-        code_description: None,
-        source: Some("ironplc".into()),
-        message: format!("{}: {}", description, diagnostic.primary.message),
-        related_information: None,
-        tags: None,
-        data: None,
-    }
-}
-
-/// Convert the diagnostic label into the LSP range type.
-fn map_label(label: &ironplc_dsl::diagnostic::Label, contents: &str) -> lsp_types::Range {
-    match &label.location {
-        ironplc_dsl::diagnostic::Location::QualifiedPosition(qualified) => lsp_types::Range::new(
-            lsp_types::Position::new((qualified.line - 1) as u32, (qualified.column - 1) as u32),
-            lsp_types::Position::new((qualified.line - 1) as u32, (qualified.column - 1) as u32),
-        ),
-        ironplc_dsl::diagnostic::Location::OffsetRange(offset) => {
-            let mut start_line = 0;
-            let mut start_offset = 0;
-
-            for char in contents[0..offset.start].chars() {
-                if char == '\n' {
-                    start_line += 1;
-                    start_offset = 0;
-                } else {
-                    start_offset += 1;
-                }
-            }
-
-            let mut end_line = start_line;
-            let mut end_offset = start_offset;
-            for char in contents[offset.start..offset.start].chars() {
-                if char == '\n' {
-                    end_line += 1;
-                    end_offset = 0;
-                } else {
-                    end_offset += 1;
-                }
-            }
-
-            lsp_types::Range::new(
-                lsp_types::Position::new(start_line, start_offset),
-                lsp_types::Position::new(end_line, end_offset),
-            )
-        }
-    }
 }
 
 #[cfg(test)]
 mod test {
     use core::time::Duration;
-    use ironplc_dsl::core::FileId;
-    use ironplc_dsl::diagnostic::{Diagnostic, Label};
-    use ironplc_problems::Problem;
     use lsp_server::{Connection, Message, RequestId};
     use lsp_server::{Notification, Response};
     use lsp_types::notification;
@@ -268,37 +247,10 @@ mod test {
     use serde::Serialize;
     use std::collections::HashMap;
 
-    use crate::compilation_set::CompilationSet;
-    use crate::project::Project;
+    use crate::lsp_project::LspProject;
+    use crate::project::{FileBackedProject, Project};
 
     use super::start_with_connection;
-
-    /// A test double for a real project. The mock returns expected responses
-    /// based on input parameters.
-    struct MockProject {}
-
-    impl Project for MockProject {
-        fn on_did_change_text_document(
-            &mut self,
-            _: &ironplc_dsl::core::FileId,
-            _: &str,
-        ) -> Option<Vec<Diagnostic>> {
-            Some(vec![Diagnostic::problem(
-                // Just an arbitrary error
-                Problem::OpenComment,
-                Label::offset(FileId::default(), 0..0, "First location"),
-            )
-            .with_secondary(Label::offset(
-                FileId::default(),
-                1..1,
-                "Second place",
-            ))])
-        }
-
-        fn compilation_set(&self) -> CompilationSet {
-            todo!()
-        }
-    }
 
     struct TestServer {
         server_thread: Option<std::thread::JoinHandle<()>>,
@@ -323,6 +275,7 @@ mod test {
     impl TestServer {
         #[allow(deprecated)]
         fn new(project: Box<dyn Project + Send>) -> Self {
+            let project = LspProject::new(project);
             let (server_connection, client_connection) = Connection::memory();
 
             let server_thread = std::thread::spawn(|| {
@@ -430,7 +383,7 @@ mod test {
 
     #[test]
     fn text_document_changed_then_returns_diagnostics() {
-        let proj = Box::new(MockProject {});
+        let proj = Box::new(FileBackedProject::default());
         let mut server = TestServer::new(proj);
         server.send_notification::<notification::DidChangeTextDocument>(
             DidChangeTextDocumentParams {

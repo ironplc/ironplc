@@ -1,3 +1,5 @@
+//! Provides a view onto a set of files that are compiled together
+//! as a single unit.
 use ironplc_dsl::{common::Library, core::FileId};
 
 /// A source that can be compiled together with other items.
@@ -56,6 +58,25 @@ impl<'a> CompilationSet<'a> {
     pub fn push_source(&mut self, source: &'a String, file_id: FileId) {
         self.sources
             .push(CompilationSource::TextRef((source, file_id)));
+    }
+
+    pub fn find(&self, file_id: &FileId) -> Option<&CompilationSource<'a>> {
+        for src in self.sources.iter() {
+            match src {
+                CompilationSource::Library(_lib) => {}
+                CompilationSource::Text(txt) => {
+                    if txt.1 == *file_id {
+                        return Some(src);
+                    }
+                }
+                CompilationSource::TextRef(txt_ref) => {
+                    if txt_ref.1 == *file_id {
+                        return Some(src);
+                    }
+                }
+            }
+        }
+        None
     }
 
     pub fn content(&self, file_id: &FileId) -> Option<&String> {

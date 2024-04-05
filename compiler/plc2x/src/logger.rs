@@ -1,3 +1,4 @@
+//! Provides configuration of a logger.
 use env_logger::Builder;
 use log::trace;
 use log::LevelFilter;

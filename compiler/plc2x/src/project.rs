@@ -3,11 +3,17 @@
 //!
 //! The trait enables easy testing of the language server protocol integration.
 
-use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
+use ironplc_dsl::{
+    common::Library,
+    core::{FileId, SourceLoc},
+    diagnostic::{Diagnostic, Label},
+};
+use ironplc_parser::token::TokenType;
+use ironplc_problems::Problem;
 
 use crate::{
     compilation_set::{CompilationSet, CompilationSource},
-    stages::analyze,
+    stages::{analyze, tokenize},
 };
 
 /// A project consisting of one or more files.
@@ -15,12 +21,14 @@ use crate::{
 /// The project acts is akin to an interface for interacting with the compiler
 /// for one or more files.
 pub trait Project {
-    /// Notifies that the file contents changed.
-    fn on_did_change_text_document(
-        &mut self,
-        file_id: &FileId,
-        content: &str,
-    ) -> Option<Vec<Diagnostic>>;
+    /// Updates the text for a document.
+    fn change_text_document(&mut self, file_id: &FileId, content: &str);
+
+    /// Requests tokens for the file.
+    fn tokenize(&self, file_id: &FileId) -> Result<Vec<TokenType>, Vec<Diagnostic>>;
+
+    /// Requests semantic analysis for the project.
+    fn semantic(&self) -> Result<(), Vec<Diagnostic>>;
 
     /// Parsed libraries that constitute the project.
     fn compilation_set(&self) -> CompilationSet;
@@ -72,17 +80,34 @@ impl Project for FileBackedProject {
         }
     }
 
-    fn on_did_change_text_document(
-        &mut self,
-        file_id: &FileId,
-        content: &str,
-    ) -> Option<Vec<Diagnostic>> {
+    fn change_text_document(&mut self, file_id: &FileId, content: &str) {
         match self.sources.iter().position(|val| val.0 == *file_id) {
             Some(index) => self.sources[index] = (file_id.clone(), content.to_owned()),
             None => self.sources.push((file_id.clone(), content.to_owned())),
         }
+    }
 
-        analyze(&self.compilation_set()).err()
+    fn tokenize(&self, file_id: &FileId) -> Result<Vec<TokenType>, Vec<Diagnostic>> {
+        let result: Option<Result<Vec<TokenType>, Vec<Diagnostic>>> =
+            self.sources.iter().find_map(|item| {
+                if item.0 != *file_id {
+                    return None;
+                }
+                Some(tokenize(item.1.as_str(), file_id))
+            });
+
+        match result {
+            Some(res) => res,
+            None => Err(vec![Diagnostic::problem(
+                Problem::NoContent,
+                Label::source_loc(&SourceLoc::default(), "No documents to tokenize"),
+            )]),
+        }
+    }
+
+    fn semantic(&self) -> Result<(), Vec<Diagnostic>> {
+        let compilation_set = self.compilation_set();
+        analyze(&compilation_set)
     }
 }
 
@@ -93,6 +118,14 @@ mod test {
     use super::{FileBackedProject, Project};
 
     #[test]
+    fn change_text_document_when_overwrite_then_one_file() {
+        let mut project = FileBackedProject::default();
+        project.change_text_document(&FileId::default(), "AAA");
+        project.change_text_document(&FileId::default(), "BBB");
+        assert_eq!(1, project.compilation_set().sources.len());
+    }
+
+    #[test]
     fn compilation_set_when_empty_then_ok() {
         let project = FileBackedProject::default();
         assert_eq!(0, project.compilation_set().sources.len());
@@ -100,10 +133,16 @@ mod test {
     }
 
     #[test]
+    fn tokenize_when_has_other_file_then_error() {
+        let mut project = FileBackedProject::default();
+        project.change_text_document(&FileId::default(), "AAA");
+        let res = project.tokenize(&FileId::from_string("abc"));
+        assert!(res.is_err());
+    }
+
+    #[test]
     fn analyze_when_not_valid_then_err() {
         let mut project = FileBackedProject::default();
-        let result = project.on_did_change_text_document(&FileId::default(), "AAA");
-
-        assert!(result.is_some());
+        project.change_text_document(&FileId::default(), "AAA");
     }
 }
