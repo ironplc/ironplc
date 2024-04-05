@@ -2,7 +2,12 @@
 
 //! The compiler as individual stages (to enable testing).
 
-use ironplc_dsl::{core::FileId, diagnostic::Diagnostic};
+use ironplc_dsl::{
+    core::FileId,
+    diagnostic::{Diagnostic, Label},
+};
+use ironplc_parser::{token::TokenType, tokenize_program};
+use ironplc_problems::Problem;
 
 use crate::{
     compilation_set::{CompilationSet, CompilationSource},
@@ -16,6 +21,10 @@ use crate::{
     rule_var_decl_global_const_requires_external_const, xform_assign_file_id,
     xform_resolve_late_bound_data_decl, xform_resolve_late_bound_type_initializer,
 };
+
+pub fn tokenize(source: &str, file_id: &FileId) -> Result<Vec<TokenType>, Vec<Diagnostic>> {
+    tokenize_program(source, file_id)
+}
 
 /// Parse create a library (set of elements) if the text is valid.
 ///
@@ -35,6 +44,12 @@ pub fn parse(source: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
 /// the merge of the inputs.
 /// Returns `Err(Diagnostic)` if analysis did not succeed.
 pub fn analyze(compilation_set: &CompilationSet) -> Result<(), Vec<Diagnostic>> {
+    if compilation_set.sources.is_empty() {
+        return Err(vec![Diagnostic::problem(
+            Problem::NoContent,
+            Label::offset(FileId::default(), 0..0, "First location"),
+        )]);
+    }
     let library = resolve_types(compilation_set)?;
     semantic(&library)
 }
