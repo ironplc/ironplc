@@ -3,7 +3,11 @@
 //!
 //! The trait enables easy testing of the language server protocol integration.
 
-use ironplc_dsl::{common::Library, core::{FileId, SourceLoc}, diagnostic::{Diagnostic, Label}};
+use ironplc_dsl::{
+    common::Library,
+    core::{FileId, SourceLoc},
+    diagnostic::{Diagnostic, Label},
+};
 use ironplc_parser::token::TokenType;
 use ironplc_problems::Problem;
 
@@ -95,10 +99,8 @@ impl Project for FileBackedProject {
         match result {
             Some(res) => res,
             None => Err(vec![Diagnostic::problem(
-                Problem::NoContent, Label::source_loc(
-                    &SourceLoc::default(),
-                    "No documents to tokenize",
-                )
+                Problem::NoContent,
+                Label::source_loc(&SourceLoc::default(), "No documents to tokenize"),
             )]),
         }
     }

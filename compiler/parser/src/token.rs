@@ -12,7 +12,10 @@ pub struct Position {
 
 /// Update the line count and the char index.
 fn newline_callback(lex: &mut Lexer<TokenType>) -> Position {
-    let pos = Position { line: lex.extras.line, column: lex.extras.column };
+    let pos = Position {
+        line: lex.extras.line,
+        column: lex.extras.column,
+    };
     lex.extras.line += 1;
     lex.extras.column = lex.span().end;
     pos
