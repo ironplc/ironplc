@@ -1,0 +1,7 @@
+=====
+P0030
+=====
+
+.. problem-summary:: P0030
+
+The compilation set was empty.

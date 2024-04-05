@@ -1,3 +1,5 @@
+//! Adapts data types between what is required by the compiler
+//! and the language server protocol.
 use ironplc_dsl::core::FileId;
 use ironplc_parser::token::TokenType;
 use lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString};
@@ -253,7 +255,7 @@ fn map_label(
 mod test {
     use lsp_types::Url;
 
-    use crate::project::FileBackedProject;
+    use crate::{project::FileBackedProject, test_helpers::read_resource};
 
     use super::LspProject;
 
@@ -262,20 +264,31 @@ mod test {
     }
 
     #[test]
-    fn tokenize_when_no_document_then_empty_tokens() {
+    fn tokenize_when_no_document_then_error() {
         let proj = new_empty_project();
         let url = Url::parse("http://example.com").unwrap();
-        let toks = proj.tokenize(&url).unwrap();
-        assert!(toks.is_empty());
+        assert!(proj.tokenize(&url).is_err());
     }
 
     #[test]
-    fn tokenize_when_has_document_then_empty_tokens() {
+    fn tokenize_when_has_document_then_not_empty_tokens() {
         let mut proj = new_empty_project();
         let url = Url::parse("http://example.com").unwrap();
 
         proj.change_text_document(&url, "TYPE TEXT_EMPTY : STRING [1]; END_TYPE");
 
         assert!(!proj.tokenize(&url).unwrap().is_empty());
+    }
+
+    #[test]
+    fn tokenize_when_first_steps_then_has_tokens() {
+        let mut proj = new_empty_project();
+        let url = Url::parse("http://example.com").unwrap();
+        let content = read_resource("first_steps.st");
+        proj.change_text_document(&url, content.as_str());
+
+        let result = proj.tokenize(&url);
+
+        assert!(result.is_ok());
     }
 }

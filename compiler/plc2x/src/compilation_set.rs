@@ -1,3 +1,5 @@
+//! Provides a view onto a set of files that are compiled together
+//! as a single unit.
 use ironplc_dsl::{common::Library, core::FileId};
 
 /// A source that can be compiled together with other items.

@@ -49,16 +49,10 @@ impl LibraryRenderer {
     }
 
     fn write_char(&mut self, val: char) {
-        if self.buffer.ends_with('\n') {
-            self.buffer.push_str("   ".repeat(self.indents).as_str());
-        }
         self.buffer.push(val);
     }
 
     fn write(&mut self, val: &str) {
-        if self.buffer.ends_with('\n') {
-            self.buffer.push_str("   ".repeat(self.indents).as_str());
-        }
         self.buffer.push_str(val);
     }
 

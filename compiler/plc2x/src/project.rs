@@ -3,8 +3,9 @@
 //!
 //! The trait enables easy testing of the language server protocol integration.
 
-use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
+use ironplc_dsl::{common::Library, core::{FileId, SourceLoc}, diagnostic::{Diagnostic, Label}};
 use ironplc_parser::token::TokenType;
+use ironplc_problems::Problem;
 
 use crate::{
     compilation_set::{CompilationSet, CompilationSource},
@@ -91,10 +92,15 @@ impl Project for FileBackedProject {
                 Some(tokenize(item.1.as_str(), file_id))
             });
 
-        if let Some(result) = result {
-            return result;
+        match result {
+            Some(res) => res,
+            None => Err(vec![Diagnostic::problem(
+                Problem::NoContent, Label::source_loc(
+                    &SourceLoc::default(),
+                    "No documents to tokenize",
+                )
+            )]),
         }
-        Ok(vec![])
     }
 
     fn semantic(&self) -> Result<(), Vec<Diagnostic>> {
@@ -110,10 +116,26 @@ mod test {
     use super::{FileBackedProject, Project};
 
     #[test]
+    fn change_text_document_when_overwrite_then_one_file() {
+        let mut project = FileBackedProject::default();
+        project.change_text_document(&FileId::default(), "AAA");
+        project.change_text_document(&FileId::default(), "BBB");
+        assert_eq!(1, project.compilation_set().sources.len());
+    }
+
+    #[test]
     fn compilation_set_when_empty_then_ok() {
         let project = FileBackedProject::default();
         assert_eq!(0, project.compilation_set().sources.len());
         assert_eq!(0, project.compilation_set().references.len());
+    }
+
+    #[test]
+    fn tokenize_when_has_other_file_then_error() {
+        let mut project = FileBackedProject::default();
+        project.change_text_document(&FileId::default(), "AAA");
+        let res = project.tokenize(&FileId::from_string("abc"));
+        assert!(res.is_err());
     }
 
     #[test]
