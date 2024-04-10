@@ -1,7 +1,31 @@
 {
     "scopeName": "source.61131-3-st",
-    "patterns": [{ "include": "#operators" }, {"include": "#controls"}],
+    "patterns": [{ "include": "#pous" }, { "include": "#operators" }, { "include": "#keywords" }, { "include": "#comments" }],
     "repository": {
+      "pous": {
+        "patterns": [
+            {
+                "name": "storage.function",
+                "match": "\\b(PROGRAM|FUNCTION|FUNCTION_BLOCK)\\s*\\b([a-zA-Z0-9_]*)\\b",
+                "captures": {
+                    "1": {
+                        "name": "storage.function"
+                    },
+                    "2": {
+                        "name": "entity.name.function"
+                    }
+                },
+                "patterns": [
+                    { "include": "#operators" },
+                    { "include": "#keywords" }
+                ]
+            },
+            {
+                "name": "storage.function",
+                "match": "\\b(END_PROGRAM|END_FUNCTION|END_FUNCTION_BLOCK)\\b"
+            }
+        ]
+      },
       "operators": {
         "patterns": [
             {
@@ -22,11 +46,42 @@
             }
         ]
       },
-      "controls": {
+      "keywords": {
         "patterns": [
             {
                 "name": "keyword.control.iteration",
                 "match": "\\b(?:BY|DO|FOR|REPEAT|TO|UNTIL|WHILE)\\b"
+            },
+            {
+                "name": "keyword.control.branch",
+                "match": "\\b(?:IF|THEN|END_IF)\\b"
+            },
+            {
+                "name": "keyword.other",
+                "match": "\\b(?:CONFIGURATION|END_CONFIGURATION|RESOURCE|END_RESOURCE|TASK)\\b"
+            },
+            
+            {
+                "name": "keyword.other",
+                "match": "\\b(?:ON|WITH)\\b"
+            },
+            
+            {
+                "name": "storage.var",
+                "match": "\\b(?:VAR|VAR_INPUT|VAR_OUTPUT|END_VAR)\\b"
+            },
+            {
+                "name": "storage.modifier",
+                "match": "\\b(?:RETAIN|CONSTANT)\\b"
+            }
+        ]
+      },
+      "comments": {
+        "patterns": [
+            {
+                "name": "comment.block",
+                "begin": "\\(\\*",
+				"end": "\\*\\)"
             }
         ]
       }
