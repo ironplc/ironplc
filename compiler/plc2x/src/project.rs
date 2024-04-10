@@ -10,6 +10,7 @@ use ironplc_dsl::{
 };
 use ironplc_parser::token::TokenType;
 use ironplc_problems::Problem;
+use log::trace;
 
 use crate::{
     compilation_set::{CompilationSet, CompilationSource},
@@ -81,10 +82,18 @@ impl Project for FileBackedProject {
     }
 
     fn change_text_document(&mut self, file_id: &FileId, content: &str) {
+        trace!(
+            "Change text document sources initial length is {}",
+            self.sources.len()
+        );
         match self.sources.iter().position(|val| val.0 == *file_id) {
             Some(index) => self.sources[index] = (file_id.clone(), content.to_owned()),
             None => self.sources.push((file_id.clone(), content.to_owned())),
         }
+        trace!(
+            "Change text document sources new length is {}",
+            self.sources.len()
+        );
     }
 
     fn tokenize(&self, file_id: &FileId) -> Result<Vec<TokenType>, Vec<Diagnostic>> {
@@ -98,10 +107,13 @@ impl Project for FileBackedProject {
 
         match result {
             Some(res) => res,
-            None => Err(vec![Diagnostic::problem(
-                Problem::NoContent,
-                Label::source_loc(&SourceLoc::default(), "No documents to tokenize"),
-            )]),
+            None => {
+                trace!("Sources are {:?}", self.sources);
+                Err(vec![Diagnostic::problem(
+                    Problem::NoContent,
+                    Label::source_loc(&SourceLoc::default(), "No documents to tokenize"),
+                )])
+            }
         }
     }
 
