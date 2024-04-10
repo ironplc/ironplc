@@ -7,21 +7,13 @@ use lsp_server::{Connection, ExtractError, Message, RequestId};
 use lsp_types::{
     notification::{self, Notification, PublishDiagnostics},
     request::{self, Request},
-    PublishDiagnosticsParams, SemanticTokenType, SemanticTokens, SemanticTokensFullOptions,
-    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensResult,
-    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind, WorkDoneProgressOptions,
+    PublishDiagnosticsParams, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
+    SemanticTokensOptions, SemanticTokensResult, SemanticTokensServerCapabilities,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, WorkDoneProgressOptions,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::lsp_project::LspProject;
-
-// Token types that this produces.
-const TOKEN_TYPE_LEGEND: [SemanticTokenType; 3] = [
-    SemanticTokenType::TYPE,
-    SemanticTokenType::ENUM,
-    SemanticTokenType::STRUCT,
-];
+use crate::lsp_project::{LspProject, TOKEN_TYPE_LEGEND};
 
 /// Start the LSP server with the specified project as the context.
 pub fn start(project: LspProject) -> Result<(), String> {
@@ -123,6 +115,7 @@ impl<'a> LspServer<'a> {
 
                 match token_result {
                     Ok(tokens) => {
+                        trace!("SemanticTokensFullRequest Success Response {:?}", tokens);
                         self.send_response::<request::SemanticTokensFullRequest>(
                             req_id,
                             Some(SemanticTokensResult::Tokens(SemanticTokens {
@@ -131,7 +124,8 @@ impl<'a> LspServer<'a> {
                             })),
                         );
                     }
-                    Err(_diagnostic) => {
+                    Err(diagnostic) => {
+                        trace!("SemanticTokensFullRequest Error Response {:?}", diagnostic);
                         self.send_response::<request::SemanticTokensFullRequest>(req_id, None);
                     }
                 }
@@ -163,6 +157,7 @@ impl<'a> LspServer<'a> {
         R: lsp_types::request::Request,
         R::Result: Serialize,
     {
+        trace!("Response for method {}", R::METHOD);
         let response = lsp_server::Response::new_ok(request_id, params);
         self.sender.send(Message::Response(response)).unwrap()
     }

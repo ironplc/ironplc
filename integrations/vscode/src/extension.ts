@@ -119,13 +119,16 @@ function findCompiler() {
 		const result = trial();
 		const testDir = result[0];
 		const typeType = result[1];
+
 		if (!testDir) {
 			// If this returns falsy, then the trial is not valid and we continue
 			continue;
 		}
 
 		const testExe = path.join(testDir, 'ironplcc' + ext);
+		console.debug('Checking for IronPLC compiler at "' + testExe + '"');
 		if (!existsSync(testExe)) {
+			console.debug('IronPLC compiler not found at at "' + testExe + '"');
 			triedLocations.push(typeType + ': (' + testExe + ')');
 			// The file name doesn't exist
 			continue;
