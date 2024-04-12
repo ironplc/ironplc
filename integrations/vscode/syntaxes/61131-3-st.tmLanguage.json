@@ -1,7 +1,37 @@
 {
     "scopeName": "source.61131-3-st",
-    "patterns": [{ "include": "#pous" }, { "include": "#operators" }, { "include": "#keywords" }, { "include": "#comments" }],
+    "patterns": [{ "include": "#types" }, { "include": "#pous" }, { "include": "#operators" }, { "include": "#keywords" }, { "include": "#comments" }],
     "repository": {
+      "types": {
+        "patterns": [
+            {
+                "name": "storage.type",
+                "match": "(?i)\\b(END_)?TYPE\\b"
+            },
+            {
+                "name": "entity.name",
+                "match": "(?i)\\b[a-zA-Z_]*\\s*:\\s*(STRUCT)\\b",
+                "captures": {
+                    "1": {
+                        "name": "storage.type"
+                    }
+                }
+            },
+            {
+                "name": "storage.type",
+                "match": "(?i)\\bEND_STRUCT\\b"
+            },
+            {
+                "name": "entity.name",
+                "match": "(?i)\\b[a-zA-Z_]*\\s*:\\s*(WSTRING|STRING)\\b",
+                "captures": {
+                    "1": {
+                        "name": "storage.type"
+                    }
+                }
+            }
+        ]
+      },
       "pous": {
         "patterns": [
             {
