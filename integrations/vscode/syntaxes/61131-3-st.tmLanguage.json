@@ -1,12 +1,70 @@
 {
     "scopeName": "source.61131-3-st",
-    "patterns": [{ "include": "#pous" }, { "include": "#operators" }, { "include": "#keywords" }, { "include": "#comments" }],
+    "patterns": [{ "include": "#types" }, { "include": "#pous" }, { "include": "#operators" }, { "include": "#keywords" }, { "include": "#comments" }],
     "repository": {
+      "types": {
+        "patterns": [
+            {
+                "name": "storage.type",
+                "match": "(?i)\\b(END_)?TYPE\\b"
+            },
+            {
+                "name": "entity",
+                "match": "(?i)\\b([a-zA-Z0-9_]*)\\s*:\\s*(STRUCT)\\b",
+                "captures": {
+                    "1": {
+                        "name": "entity.name.type"
+                    },
+                    "2": {
+                        "name": "storage.type"
+                    }
+                }
+            },
+            {
+                "name": "storage.type",
+                "match": "(?i)\\bEND_STRUCT\\b"
+            },
+            {
+                "name": "entity",
+                "match": "(?i)\\b([a-zA-Z0-9_]*)\\s*(:)\\s*(WSTRING|STRING)\\b",
+                "captures": {
+                    "1": {
+                        "name": "entity.name.type"
+                    },
+                    "3": {
+                        "name": "storage.type"
+                    }
+                }
+            },
+            {
+                "name": "entity",
+                "match": "(?i)\\b([a-zA-Z0-9_]*)\\s*(:)\\s*(ARRAY)\\b",
+                "captures": {
+                    "1": {
+                        "name": "entity.name.type"
+                    },
+                    "3": {
+                        "name": "storage.type"
+                    },
+                    "4": {
+                        "name": "storage.type"
+                    },
+                    "5": {
+                        "name": "storage.type"
+                    },
+                    "6": {
+                        "name": "storage.type"
+                    }
+                }
+            }
+
+        ]
+      },
       "pous": {
         "patterns": [
             {
                 "name": "storage.function",
-                "match": "\\b(PROGRAM|FUNCTION|FUNCTION_BLOCK)\\s*\\b([a-zA-Z0-9_]*)\\b",
+                "match": "(?i)\\b(PROGRAM|FUNCTION|FUNCTION_BLOCK)\\s*\\b([a-zA-Z0-9_]*)\\b",
                 "captures": {
                     "1": {
                         "name": "storage.function"
@@ -22,7 +80,7 @@
             },
             {
                 "name": "storage.function",
-                "match": "\\b(END_PROGRAM|END_FUNCTION|END_FUNCTION_BLOCK)\\b"
+                "match": "(?i)\\b(END_PROGRAM|END_FUNCTION|END_FUNCTION_BLOCK)\\b"
             }
         ]
       },
@@ -31,6 +89,10 @@
             {
                 "name": "keyword.operator.comparison",
                 "match": "(?:<>|=)"
+            },
+            {
+                "name": "keyword.operator.logical",
+                "match": "(?i)\\b(XOR|OR|AND|NOR)\\b"
             },
             {
                 "name": "keyword.operator.eqv_expression",
@@ -50,29 +112,33 @@
         "patterns": [
             {
                 "name": "keyword.control.iteration",
-                "match": "\\b(?:BY|DO|FOR|REPEAT|TO|UNTIL|WHILE)\\b"
+                "match": "(?i)\\b(?:BY|DO|FOR|REPEAT|TO|UNTIL|WHILE|END_FOR|END_WHILE|END_REPEAT)\\b"
             },
             {
                 "name": "keyword.control.branch",
-                "match": "\\b(?:IF|THEN|END_IF)\\b"
+                "match": "(?i)\\b(?:IF|THEN|ELSIF|ELSE|END_IF)\\b"
+            },
+            {
+                "name": "keyword.control.branch",
+                "match": "(?i)\\b(?:CASE|END_CASE)\\b"
             },
             {
                 "name": "keyword.other",
-                "match": "\\b(?:CONFIGURATION|END_CONFIGURATION|RESOURCE|END_RESOURCE|TASK)\\b"
+                "match": "(?i)\\b(?:CONFIGURATION|END_CONFIGURATION|RESOURCE|END_RESOURCE|TASK)\\b"
             },
             
             {
                 "name": "keyword.other",
-                "match": "\\b(?:ON|WITH)\\b"
+                "match": "(?i)\\b(?:ON|WITH)\\b"
             },
             
             {
                 "name": "storage.var",
-                "match": "\\b(?:VAR|VAR_INPUT|VAR_OUTPUT|END_VAR)\\b"
+                "match": "(?i)\\b(?:VAR|VAR_INPUT|VAR_OUTPUT|END_VAR)\\b"
             },
             {
                 "name": "storage.modifier",
-                "match": "\\b(?:RETAIN|CONSTANT)\\b"
+                "match": "(?i)\\b(?:RETAIN|CONSTANT)\\b"
             }
         ]
       },
