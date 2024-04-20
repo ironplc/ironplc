@@ -1,6 +1,8 @@
 //! Provides definitions specific to sequential function chart (SFC) elements.
 //!
 //! See section 2 (especially 2.6).
+use core::fmt;
+
 use crate::common::*;
 use crate::core::Id;
 use crate::textual::*;
@@ -120,6 +122,12 @@ pub enum ActionQualifier {
     PR,
     // Pulse (falling edge)
     PF,
+}
+
+impl fmt::Display for ActionQualifier {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 /// Associated actions with steps.

@@ -1,0 +1,30 @@
+ FUNCTION_BLOCK sfc
+
+   VAR_INPUT
+      IN : BOOL;
+   END_VAR
+
+   VAR_OUTPUT
+      OUT : INT;
+   END_VAR
+
+   VAR
+      COUNT : INT;
+   END_VAR
+   INITIAL_STEP Start :
+   END_STEP
+
+   TRANSITION FROM Start TO MidStep
+      := BOOL#FALSE ;
+   END_TRANSITION
+
+   STEP MidStep :
+      RESET ( N );
+   END_STEP
+
+   ACTION RESET :
+      COUNT := 0 ;
+   END_ACTION
+
+
+END_FUNCTION_BLOCK
