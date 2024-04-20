@@ -681,7 +681,9 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         for var in node.variables.iter() {
             self.visit_var_decl(var)?;
         }
+        self.outdent();
 
+        self.indent();
         node.body.recurse_visit(self)?;
         self.outdent();
         self.newline();
@@ -709,6 +711,105 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         self.write_ws("END_PROGRAM");
         self.newline();
+        Ok(())
+    }
+
+    // 2.6.2
+    fn visit_network(&mut self, node: &dsl::sfc::Network) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("INITIAL_STEP");
+        self.visit_id(&node.initial_step.name)?;
+        self.write_ws(":");
+        self.newline();
+
+        self.write_ws("END_STEP");
+        self.newline();
+        self.newline();
+
+        for elem in node.elements.iter() {
+            self.visit_element_kind(elem)?;
+            self.newline();
+        }
+        Ok(())
+    }
+
+    // 2.6.2
+    fn visit_step(&mut self, node: &dsl::sfc::Step) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("STEP");
+        self.visit_id(&node.name)?;
+        self.write_ws(":");
+        self.newline();
+
+        self.indent();
+        for elem in node.action_associations.iter() {
+            self.visit_action_association(elem)?;
+            self.newline();
+        }
+        self.outdent();
+
+        self.write_ws("END_STEP");
+        self.newline();
+        Ok(())
+    }
+
+    // 2.6.3
+    fn visit_transition(&mut self, node: &dsl::sfc::Transition) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("TRANSITION FROM");
+
+        visit_comma_separated!(self, node.from.iter(), Id);
+
+        self.write_ws("TO");
+
+        visit_comma_separated!(self, node.to.iter(), Id);
+        self.newline();
+
+        self.indent();
+        self.write_ws(":=");
+        self.visit_expr_kind(&node.condition)?;
+        self.write_ws(";");
+        self.newline();
+        self.outdent();
+
+        self.write_ws("END_TRANSITION");
+        self.newline();
+        Ok(())
+    }
+
+    // 2.6.3
+    fn visit_action(&mut self, node: &dsl::sfc::Action) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("ACTION");
+
+        self.visit_id(&node.name)?;
+        self.write_ws(":");
+        self.newline();
+
+        self.indent();
+        self.visit_function_block_body_kind(&node.body)?;
+        self.outdent();
+
+        self.write_ws("END_ACTION");
+        self.newline();
+        Ok(())
+    }
+
+    // 2.6.4
+    fn visit_action_association(
+        &mut self,
+        node: &dsl::sfc::ActionAssociation,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.name)?;
+
+        self.write_ws("(");
+
+        if let Some(qualifier) = &node.qualifier {
+            self.write_ws(qualifier.to_string().as_str());
+            if !node.indicators.is_empty() {
+                self.write_ws(",");
+            }
+        }
+
+        visit_comma_separated!(self, node.indicators.iter(), Id);
+        self.write_ws(");");
+
         Ok(())
     }
 
