@@ -5,7 +5,7 @@
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Problem Codes" href="problems/index.html" /><link rel="prev" title="Compiler Reference" href="index.html" />
 
-    <!-- Generated with Sphinx 7.2.6 and Furo 2024.01.29 -->
+    <!-- Generated with Sphinx 7.3.7 and Furo 2024.01.29 -->
         <title>Basic Usage - IronPLC documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=a746c00c" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=135e06be" />
@@ -270,7 +270,7 @@
 <p>These docs are a bit ambitious. The steps described are accurate but IronPLC cannot yet run programs.</p>
 </div>
 <section id="basic-usage">
-<h1>Basic Usage<a class="headerlink" href="#basic-usage" title="Link to this heading">#</a></h1>
+<h1>Basic Usage<a class="headerlink" href="#basic-usage" title="Link to this heading">¶</a></h1>
 <p>You can use the command line interface to check a file (and sets of files)
 for correctness.</p>
 <div class="admonition note">
@@ -279,7 +279,7 @@ for correctness.</p>
 if you have not already installed the IronPLC Compiler.</p>
 </div>
 <section id="create-a-project-directory">
-<h2>Create a Project Directory<a class="headerlink" href="#create-a-project-directory" title="Link to this heading">#</a></h2>
+<h2>Create a Project Directory<a class="headerlink" href="#create-a-project-directory" title="Link to this heading">¶</a></h2>
 <p>You’ll start by making a directory to store your IEC 61131-3 code.
 <strong class="program">ironplcc</strong> doesn’t care where your code lives (and your
 code can be in multiple directories), but creating a directory will
@@ -287,7 +287,7 @@ make it easy to work with your code.</p>
 <p>Open a terminal and enter the commands in <a class="reference internal" href="#compiler-create-directory"><span class="std std-ref">Create Project Directory</span></a>
 to make the <code class="file docutils literal notranslate"><span class="pre">ironplc-hello-world</span></code> directory.</p>
 <div class="literal-block-wrapper docutils container" id="compiler-create-directory">
-<div class="code-block-caption"><span class="caption-text">Create Project Directory</span><a class="headerlink" href="#compiler-create-directory" title="Link to this code">#</a></div>
+<div class="code-block-caption"><span class="caption-text">Create Project Directory</span><a class="headerlink" href="#compiler-create-directory" title="Link to this code">¶</a></div>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>mkdir<span class="w"> </span>~/ironplc-hello-world
 <span class="nb">cd</span><span class="w"> </span>~/ironplc-hello-world
 </pre></div>
@@ -295,7 +295,7 @@ to make the <code class="file docutils literal notranslate"><span class="pre">ir
 </div>
 </section>
 <section id="create-an-iec-61131-3-program">
-<h2>Create an IEC 61131-3 Program<a class="headerlink" href="#create-an-iec-61131-3-program" title="Link to this heading">#</a></h2>
+<h2>Create an IEC 61131-3 Program<a class="headerlink" href="#create-an-iec-61131-3-program" title="Link to this heading">¶</a></h2>
 <p>The next step is to create a source file for your IEC 61131-3 program.
 <strong class="program">ironplcc</strong> doesn’t care what your call your file(s), but it will
 automatically detect file names with the <code class="file docutils literal notranslate"><span class="pre">.st</span></code> extension as IEC
@@ -303,7 +303,7 @@ automatically detect file names with the <code class="file docutils literal notr
 <p>In the same terminal, enter the commands in <a class="reference internal" href="#compiler-create-hello-world"><span class="std std-ref">Create Hello World Program</span></a>
 to create a program.</p>
 <div class="literal-block-wrapper docutils container" id="compiler-create-hello-world">
-<div class="code-block-caption"><span class="caption-text">Create Hello World Program</span><a class="headerlink" href="#compiler-create-hello-world" title="Link to this code">#</a></div>
+<div class="code-block-caption"><span class="caption-text">Create Hello World Program</span><a class="headerlink" href="#compiler-create-hello-world" title="Link to this code">¶</a></div>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;PROGRAM main</span>
 <span class="s2">   VAR</span>
 <span class="s2">      Button AT %IX1: BOOL;</span>
@@ -325,11 +325,11 @@ to create a program.</p>
 </div>
 </section>
 <section id="check-the-program-for-correctness">
-<h2>Check the Program for Correctness<a class="headerlink" href="#check-the-program-for-correctness" title="Link to this heading">#</a></h2>
+<h2>Check the Program for Correctness<a class="headerlink" href="#check-the-program-for-correctness" title="Link to this heading">¶</a></h2>
 <p>Finally, in the same terminal, run the commands in <a class="reference internal" href="#compiler-check-syntax"><span class="std std-ref">Check Syntax</span></a>
 to check your program’s syntax.</p>
 <div class="literal-block-wrapper docutils container" id="compiler-check-syntax">
-<div class="code-block-caption"><span class="caption-text">Check Syntax</span><a class="headerlink" href="#compiler-check-syntax" title="Link to this code">#</a></div>
+<div class="code-block-caption"><span class="caption-text">Check Syntax</span><a class="headerlink" href="#compiler-check-syntax" title="Link to this code">¶</a></div>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>main.st
 </pre></div>
 </div>
@@ -418,7 +418,7 @@ to check your program’s syntax.</p>
     </aside>
   </div>
 </div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
-    <script src="../_static/doctools.js?v=888ff710"></script>
+    <script src="../_static/doctools.js?v=9a2dae69"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/scripts/furo.js?v=32e29ea5"></script>
     <script src="../_static/tabs.js?v=3ee01567"></script>
