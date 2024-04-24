@@ -319,8 +319,10 @@ parser! {
       // 1 and 0 can be a Boolean, but only with the prefix is it definitely a Boolean
       kw("BOOL#1") { BooleanLiteral::new(Boolean::True) }
       / kw("BOOL#0") { BooleanLiteral::new(Boolean::False) }
-      / (kw("BOOL#"))? kw("TRUE") { BooleanLiteral::new(Boolean::True) }
-      / (kw("BOOL#"))? kw("FALSE") { BooleanLiteral::new(Boolean::False) }
+      / kw("BOOL#TRUE") { BooleanLiteral::new(Boolean::True) }
+      / kw("TRUE") { BooleanLiteral::new(Boolean::True) }
+      / kw("BOOL#FALSE") { BooleanLiteral::new(Boolean::False) }
+      / kw("FALSE") { BooleanLiteral::new(Boolean::False) }
     // B.1.2.2 Character strings
     rule character_string() -> Vec<char> = single_byte_character_string() / double_byte_character_string()
     rule single_byte_character_string() -> Vec<char>  = "STRING#"? "'" s:single_byte_character_representation()* "'" { s }
@@ -367,6 +369,7 @@ parser! {
     }
     rule day_hour() -> Integer = i:integer() { i }
     rule day_minute() -> Integer = i:integer() { i }
+    // TODO this should be fixed_point
     rule day_second() -> Integer = i:integer() { i }
     rule date() -> DateLiteral = (kw("DATE") / "D" / "d") "#" d:date_literal() { DateLiteral::new(d) }
     rule date_literal() -> Date = y:year() "-" m:month() "-" d:day() {?
