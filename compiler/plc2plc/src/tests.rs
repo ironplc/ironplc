@@ -65,6 +65,13 @@ mod test {
     }
 
     #[test]
+    fn write_to_string_literal() {
+        let rendered = parse_and_render_resource("literal.st");
+        let expected = read_resource("literal_rendered.st");
+        assert_eq!(rendered, expected);
+    }
+
+    #[test]
     fn write_to_string_nested() {
         let rendered = parse_and_render_resource("nested.st");
         let expected = read_resource("nested_rendered.st");
