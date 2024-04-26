@@ -26,7 +26,7 @@ pub trait Project {
     fn change_text_document(&mut self, file_id: &FileId, content: &str);
 
     /// Requests tokens for the file.
-    fn tokenize(&self, file_id: &FileId) -> Result<Vec<TokenType>, Vec<Diagnostic>>;
+    fn tokenize(&self, file_id: &FileId) -> (Vec<TokenType>, Vec<Diagnostic>);
 
     /// Requests semantic analysis for the project.
     fn semantic(&self) -> Result<(), Vec<Diagnostic>>;
@@ -96,8 +96,8 @@ impl Project for FileBackedProject {
         );
     }
 
-    fn tokenize(&self, file_id: &FileId) -> Result<Vec<TokenType>, Vec<Diagnostic>> {
-        let result: Option<Result<Vec<TokenType>, Vec<Diagnostic>>> =
+    fn tokenize(&self, file_id: &FileId) -> (Vec<TokenType>, Vec<Diagnostic>) {
+        let result: Option<(Vec<TokenType>, Vec<Diagnostic>)> =
             self.sources.iter().find_map(|item| {
                 if item.0 != *file_id {
                     return None;
@@ -109,10 +109,13 @@ impl Project for FileBackedProject {
             Some(res) => res,
             None => {
                 trace!("Sources are {:?}", self.sources);
-                Err(vec![Diagnostic::problem(
-                    Problem::NoContent,
-                    Label::source_loc(&SourceLoc::default(), "No documents to tokenize"),
-                )])
+                (
+                    vec![],
+                    vec![Diagnostic::problem(
+                        Problem::NoContent,
+                        Label::source_loc(&SourceLoc::default(), "No documents to tokenize"),
+                    )],
+                )
             }
         }
     }
@@ -149,7 +152,7 @@ mod test {
         let mut project = FileBackedProject::default();
         project.change_text_document(&FileId::default(), "AAA");
         let res = project.tokenize(&FileId::from_string("abc"));
-        assert!(res.is_err());
+        assert!(!res.1.is_empty());
     }
 
     #[test]

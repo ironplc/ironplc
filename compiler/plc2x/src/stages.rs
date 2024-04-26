@@ -22,7 +22,7 @@ use crate::{
     xform_resolve_late_bound_data_decl, xform_resolve_late_bound_type_initializer,
 };
 
-pub fn tokenize(source: &str, file_id: &FileId) -> Result<Vec<TokenType>, Vec<Diagnostic>> {
+pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<TokenType>, Vec<Diagnostic>) {
     tokenize_program(source, file_id)
 }
 
