@@ -12,6 +12,7 @@ use ironplc_dsl::{
     core::FileId,
     diagnostic::{Diagnostic, Label},
 };
+use ironplc_parser::tokenize_program;
 use ironplc_plc2plc::write_to_string;
 use ironplc_problems::Problem;
 use log::{debug, error, trace};
@@ -119,6 +120,34 @@ pub fn echo(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
         }
     }
 
+    Ok(())
+}
+
+pub fn tokenize(path: &PathBuf, suppress_output: bool) -> Result<(), String> {
+    let contents = path_to_source(path).map_err(|diagnostics| {
+        handle_diagnostics(diagnostics, None, suppress_output);
+        "Problem reading file"
+    })?;
+
+    if let CompilationSource::Text(txt) = contents {
+        let (tokens, diagnostics) = tokenize_program(txt.0.as_str(), &txt.1);
+
+        if !diagnostics.is_empty() {
+            println!("Number of errors {}", diagnostics.len());
+            let mut set = CompilationSet::new();
+            set.extend(vec![CompilationSource::Text((
+                txt.0.clone(),
+                txt.1.clone(),
+            ))]);
+            handle_diagnostics(diagnostics, Some(&set), suppress_output);
+            return Ok(());
+        }
+
+        debug!("{:?}", tokens);
+        println!("{:?}", tokens);
+    }
+
+    println!("OK");
     Ok(())
 }
 
