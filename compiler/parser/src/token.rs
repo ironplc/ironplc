@@ -38,7 +38,15 @@ fn token_callback(lex: &mut Lexer<TokenType>) -> Position {
     Position { line, column }
 }
 
-#[derive(Copy, Clone, Logos, Debug, PartialEq)]
+/// Compute the line and column position for the current token.
+fn token_with_value_callback(lex: &mut Lexer<TokenType>) -> (Position, String) {
+    let line = lex.extras.line;
+    let column = lex.span().start - lex.extras.column;
+
+    (Position { line, column }, lex.slice().to_owned())
+}
+
+#[derive(Clone, Logos, Debug, PartialEq)]
 #[logos(extras = Position)]
 pub enum TokenType {
     #[regex(r"[\n\r\f]", newline_callback)]
@@ -48,8 +56,8 @@ pub enum TokenType {
     Whitespace(Position),
 
     // TODO this will not necessarily detect the right end position
-    #[regex(r"\(\*[^\*\)]*\*\)", token_callback, priority = 0)]
-    Comment(Position),
+    #[regex(r"\(\*[^\*\)]*\*\)", token_with_value_callback, priority = 0)]
+    Comment((Position, String)),
 
     // Grouping and other markers
     #[token("(", token_callback, priority = 1)]
@@ -76,21 +84,21 @@ pub enum TokenType {
     // TODO It would be nice for this to be associated with a type
     #[token("#", token_callback)]
     Hash(Position),
-    #[regex(r"'[^']*'", token_callback)]
-    #[regex("\"[^\"]*\"", token_callback)]
-    StringLiteral(Position),
+    #[regex(r"'[^']*'", token_with_value_callback)]
+    #[regex("\"[^\"]*\"", token_with_value_callback)]
+    StringLiteral((Position, String)),
 
     // B.1.1 Letters, digits and identifier
     // Lower priority than any keyword.
-    #[regex(r"[A-Za-z][A-Za-z0-9_]*", token_callback, priority = 1)]
-    Identifier(Position),
+    #[regex(r"[A-Za-z][A-Za-z0-9_]*", token_with_value_callback, priority = 1)]
+    Identifier((Position, String)),
 
     // B.1.2 Constants
     // We don't try to understand the literals here with complex regular expression
     // matching and precedence. Rather we identify some of the relevant constituent
     // parts and piece them together later.
-    #[regex(r"[0-9_]+", token_callback)]
-    Integer(Position),
+    #[regex(r"[0-9_]+", token_with_value_callback)]
+    Integer((Position, String)),
 
     #[token("ACTION", token_callback, ignore(case))]
     Action(Position),
@@ -303,8 +311,8 @@ pub enum TokenType {
     #[token("WSTRING", token_callback, ignore(case))]
     WString(Position),
 
-    #[regex(r"%[IQM]", token_callback, ignore(case))]
-    Location(Position),
+    #[regex(r"%[IQM]", token_with_value_callback, ignore(case))]
+    Location((Position, String)),
 
     // Expressions
     #[token("OR", token_callback, ignore(case))]
