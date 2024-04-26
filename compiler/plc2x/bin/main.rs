@@ -43,6 +43,15 @@ enum Action {
         /// add all files in the given directory.
         files: Vec<PathBuf>,
     },
+    /// The tokenize action checks a file if it can be tokenized with all content
+    /// matching a token.
+    ///
+    /// The tokenize acton is primarily for diagnostics to understand the internal
+    /// structure of the parsed files.
+    Tokenize {
+        /// File to tokenize.
+        file: PathBuf,
+    },
     /// Run in Language Server Protocol mode to integrate with development tools.
     Lsp {
         #[arg(long)]
@@ -65,6 +74,7 @@ pub fn main() -> Result<(), String> {
         }
         Action::Check { files } => cli::check(files, false),
         Action::Echo { files } => cli::echo(files, false),
+        Action::Tokenize { file } => cli::tokenize(&file, false),
         Action::Version => {
             println!("ironplcc version {}", VERSION);
             Ok(())

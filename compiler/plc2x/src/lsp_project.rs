@@ -27,19 +27,20 @@ impl LspProject {
         let file_id = FileId::from_string(url.as_str());
         let result = self.wrapped.tokenize(&file_id);
 
-        match result {
-            Ok(tokens) => Ok(tokens
+        if !result.1.is_empty() {
+            let compilation_set = self.wrapped.compilation_set();
+            return Err(result
+                .1
                 .into_iter()
-                .filter_map(|tok| LspTokenType(tok).into())
-                .collect()),
-            Err(errors) => {
-                let compilation_set = self.wrapped.compilation_set();
-                Err(errors
-                    .into_iter()
-                    .map(|err| map_diagnostic(err, &compilation_set))
-                    .collect())
-            }
+                .map(|err| map_diagnostic(err, &compilation_set))
+                .collect());
         }
+
+        Ok(result
+            .0
+            .into_iter()
+            .filter_map(|tok| LspTokenType(tok).into())
+            .collect())
     }
 
     pub(crate) fn semantic(&self) -> Vec<Diagnostic> {
@@ -92,15 +93,27 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::Colon(pos) => (pos, None),
             TokenType::Period(pos) => (pos, None),
             TokenType::Hash(pos) => (pos, None),
-            TokenType::String(pos) => (pos, Some(STRING_INDEX)),
+            TokenType::StringLiteral(pos) => (pos, Some(STRING_INDEX)),
             TokenType::Identifier(pos) => (pos, Some(VARIABLE_INDEX)),
+            TokenType::Integer(pos) => (pos, None),
+            TokenType::Type(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::EndType(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::Array(pos) => (pos, None),
+            TokenType::Struct(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::EndStruct(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::String(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::WString(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::Var(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::VarInput(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::VarOutput(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::VarInOut(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::VarExternal(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::VarGlobal(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::VarEnd(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::Retain(pos) => (pos, Some(MODIFIER_INDEX)),
             TokenType::Constant(pos) => (pos, Some(MODIFIER_INDEX)),
             TokenType::At(pos) => (pos, Some(KEYWORD_INDEX)),
-            TokenType::Percent(pos) => (pos, Some(OPERATOR_INDEX)),
+            TokenType::Location(pos) => (pos, Some(OPERATOR_INDEX)),
             TokenType::Function(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::EndFunction(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::FunctionBlock(pos) => (pos, Some(KEYWORD_INDEX)),
@@ -111,8 +124,6 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::On(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::EndResource(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::Task(pos) => (pos, Some(KEYWORD_INDEX)),
-            TokenType::Interval(pos) => (pos, Some(KEYWORD_INDEX)),
-            TokenType::Priority(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::EndTask(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::Program(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::With(pos) => (pos, Some(KEYWORD_INDEX)),
@@ -144,13 +155,54 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::CaseEnd(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::For(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::Do(pos) => (pos, Some(KEYWORD_INDEX)),
-            TokenType::ForEnd(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::EndFor(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::While(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::EndWhile(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::Repeat(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::Until(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::RepeatEnd(pos) => (pos, Some(KEYWORD_INDEX)),
             TokenType::Exit(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Action(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::EndAction(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::En(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Eno(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::False(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::FEdge(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::To(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::By(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::InitialStep(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::EndStep(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::REdge(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::ReadOnly(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::ReadWrite(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::NonRetain(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Return(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Step(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Transition(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::From(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::EndTransition(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::True(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::VarTemp(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::VarAccess(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::VarConfig(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Bool(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Sint(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Int(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Dint(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Lint(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Usint(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Uint(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Udint(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Ulint(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Real(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Time(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Date(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::TimeOfDay(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::DateAndTime(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Byte(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Word(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Dword(pos) => (pos, Some(KEYWORD_INDEX)),
+            TokenType::Lword(pos) => (pos, Some(KEYWORD_INDEX)),
         };
 
         let pos = token_info.0;
