@@ -8,7 +8,7 @@ use ironplc_dsl::{
     core::{FileId, SourceLoc},
     diagnostic::{Diagnostic, Label},
 };
-use ironplc_parser::token::TokenType;
+use ironplc_parser::token::Token;
 use ironplc_problems::Problem;
 use log::trace;
 
@@ -26,7 +26,7 @@ pub trait Project {
     fn change_text_document(&mut self, file_id: &FileId, content: &str);
 
     /// Requests tokens for the file.
-    fn tokenize(&self, file_id: &FileId) -> (Vec<TokenType>, Vec<Diagnostic>);
+    fn tokenize(&self, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>);
 
     /// Requests semantic analysis for the project.
     fn semantic(&self) -> Result<(), Vec<Diagnostic>>;
@@ -96,14 +96,13 @@ impl Project for FileBackedProject {
         );
     }
 
-    fn tokenize(&self, file_id: &FileId) -> (Vec<TokenType>, Vec<Diagnostic>) {
-        let result: Option<(Vec<TokenType>, Vec<Diagnostic>)> =
-            self.sources.iter().find_map(|item| {
-                if item.0 != *file_id {
-                    return None;
-                }
-                Some(tokenize(item.1.as_str(), file_id))
-            });
+    fn tokenize(&self, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>) {
+        let result: Option<(Vec<Token>, Vec<Diagnostic>)> = self.sources.iter().find_map(|item| {
+            if item.0 != *file_id {
+                return None;
+            }
+            Some(tokenize(item.1.as_str(), file_id))
+        });
 
         match result {
             Some(res) => res,

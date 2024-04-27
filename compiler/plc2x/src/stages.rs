@@ -6,7 +6,7 @@ use ironplc_dsl::{
     core::FileId,
     diagnostic::{Diagnostic, Label},
 };
-use ironplc_parser::{token::TokenType, tokenize_program};
+use ironplc_parser::{token::Token, tokenize_program};
 use ironplc_problems::Problem;
 
 use crate::{
@@ -22,7 +22,7 @@ use crate::{
     xform_resolve_late_bound_data_decl, xform_resolve_late_bound_type_initializer,
 };
 
-pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<TokenType>, Vec<Diagnostic>) {
+pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>) {
     tokenize_program(source, file_id)
 }
 
