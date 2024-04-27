@@ -29,10 +29,7 @@ pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>)
             Ok(token_type) => {
                 tokens.push(Token {
                     token_type: token_type.clone(),
-                    position: Position {
-                        line: line,
-                        column: column,
-                    },
+                    position: Position { line, column },
                     text: lexer.slice().into(),
                 });
 
