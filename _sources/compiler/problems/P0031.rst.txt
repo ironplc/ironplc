@@ -1,0 +1,7 @@
+=====
+P0030
+=====
+
+.. problem-summary:: P0031
+
+The compiler encountered an unexpected token while parsing the source text.
