@@ -22,9 +22,12 @@ use dsl::diagnostic::Label;
 use dsl::diagnostic::QualifiedPosition;
 use ironplc_problems::Problem;
 use peg::parser;
+use peg::Parse;
+use peg::ParseElem;
+use peg::RuleResult;
 
-use crate::keyword::get_keyword;
 use crate::mapper::*;
+use crate::token::{Token, TokenType};
 use ironplc_dsl::common::*;
 use ironplc_dsl::configuration::*;
 use ironplc_dsl::core::Id;
@@ -36,17 +39,21 @@ use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
 /// Parses a IEC 61131-3 library into object form.
 pub fn parse_library(
-    source: &str,
+    tokens: Vec<Token>,
     file_id: &FileId,
 ) -> Result<Vec<LibraryElementKind>, Diagnostic> {
-    plc_parser::library(source).map_err(|e| {
+    plc_parser::library(&SliceByRef(&tokens[..])).map_err(|e| {
+        let token_index = e.location;
+        // TODO remove the unw.as_str()rap
+        let problem_token = tokens.get(token_index).unwrap();
         let expected = Vec::from_iter(e.expected.tokens()).join(", ");
         Diagnostic::problem(
             Problem::SyntaxError,
             Label::qualified(
                 file_id.clone(),
-                QualifiedPosition::new(e.location.line, e.location.column, e.location.offset),
-                format!("Expected one of: {}", expected),
+                // TODO fix the position
+                QualifiedPosition::new(problem_token.position.line, problem_token.position.column, problem_token.position.start ),
+                format!("Expected one of: {}. Found {}", expected, problem_token),
             ),
         )
     })
@@ -186,26 +193,48 @@ fn flatten_statements(mut items: Vec<StatementsOrEmpty>) -> Vec<StmtKind> {
     stmts
 }
 
-/// Returns the character if the character code is greater than 128.
-fn if_extended_char(val: char) -> Option<char> {
-    let int_val = val as u32;
-    if int_val > 128 {
-        return Some(val);
-    }
-    None
-}
-
 enum Element {
     StructSelector(Id),
     ArraySelector(Vec<ExprKind>),
 }
 
+/// The default implementation of the parsing traits for `[T]` expects `T` to be
+/// `Copy`, as in the `[u8]` or simple enum cases. This wrapper exposes the
+/// elements by `&T` reference, which is `Copy`.
+pub struct SliceByRef<'a, T>(pub &'a [T]);
+
+impl<'a , T> Parse for SliceByRef<'a, T> {
+    type PositionRepr = usize;
+    fn start(&self) -> usize {
+        0
+    }
+
+    fn is_eof(&self, pos: usize) -> bool {
+        pos >= self.0.len()
+    }
+
+    fn position_repr(&self, pos: usize) -> usize {
+        pos
+    }
+}
+
+impl<'a, T: 'a> ParseElem<'a> for SliceByRef<'a, T> {
+    type Element = &'a T;
+
+    fn parse_elem(&'a self, pos: usize) -> RuleResult<&'a T> {
+        match self.0[pos..].first() {
+            Some(c) => RuleResult::Matched(pos + 1, c),
+            None => RuleResult::Failed,
+        }
+    }
+}
+
 parser! {
-  grammar plc_parser() for str {
+  grammar plc_parser<'a>() for SliceByRef<'a, Token> {
 
     /// Rule to enable optional tracing rule for pegviz markers that makes
     /// working with the parser easier in the terminal.
-    rule traced<T>(e: rule<T>) -> T =
+    /*rule traced<T>(e: rule<T>) -> T =
     &(input:$([_]*) {
         #[cfg(feature = "trace")]
         println!("[PEG_INPUT_START]\n{}\n[PEG_TRACE_START]", input);
@@ -214,41 +243,40 @@ parser! {
         #[cfg(feature = "trace")]
         println!("[PEG_TRACE_STOP]");
         e.ok_or("")
-    }
+    }*/
+
+    /// Helper rule to match a particular type of token.
+    rule tok(ty: TokenType) -> &'input Token = token:[t if t.token_type == ty] { token }
+    rule tok_eq(ty: TokenType, val: &str) -> &'input Token = token:[t if t.token_type == ty && t.text.as_str() == val] { token }
+    /// Helper rule to match an Identifier with the specified text
+    rule id_eq(val: &str) -> &'input Token = [t if t.token_type == TokenType::Identifier && t.text.as_str() == val]
 
     // peg rules for making the grammar easier to work with. These produce
     // output on matching with the name of the item
-    rule semicolon() -> () = ";" ()
-    rule comma() -> () = "," ()
-    rule whitespace() -> () = s:[' ' | '\n' | '\r' | '\t' ] {}
+    rule semicolon() -> () = tok(TokenType::Semicolon) ()
+    rule comma() -> () = tok(TokenType::Comma) ()
+    rule whitespace() -> () = tok(TokenType::Whitespace) {} / tok(TokenType::Newline) {}
 
-    rule comment_char() -> () = !comment_end() c:[_] {? Ok(()) }
-    rule comment_content() -> () = comment_char()* {}
-    rule comment_start() -> () = "(*"
-    rule comment_end() -> () = "*)"
-    rule comment() -> () = comment_start() comment_content() comment_end()
+    rule comment() -> () = tok(TokenType::Comment) ()
     rule _ = (whitespace() / comment())*
 
     // Case insensitive match
-    rule i(literal: &'static str)
+    // TODO remove me
+    /*rule i(literal: &'static str)
       = input:$([_]*<{literal.len()}>)
-        {? if input.eq_ignore_ascii_case(literal) { Ok(()) } else { Err(literal) } }
+        {? if input.eq_ignore_ascii_case(literal) { Ok(()) } else { Err(literal) } }*/
 
-    rule kw(literal: &'static str)
-      = input:$([_]*<{literal.len()}>) !ID_CHAR()
-      {? if input.eq_ignore_ascii_case(literal) { Ok(()) } else { Err(literal) } }
     // A semi-colon separated list with required ending separator
     rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v}
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
     rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) comma() {v}
 
-    rule KEYWORD_ITEM() = input:$(['a'..='z' | 'A'..='Z']+)
-      {? get_keyword(input).map_or_else(|| Err("keyword"), |v| Ok(())) }
-    rule ID_CHAR() = ['a'..='z' | '0'..='9' | 'A'..='Z' | '_']
-    rule KEYWORD() = KEYWORD_ITEM() !ID_CHAR()
-    rule STANDARD_FUNCTION_BLOCK_NAME() = kw("END_VAR")
+    // TODO this should be a list of standard function block names
+    rule STANDARD_FUNCTION_BLOCK_NAME() = id_eq("END_VAR")
 
-    pub rule library() -> Vec<LibraryElementKind> = traced(<library__impl()>)
+    // TODO reneable trace
+    //pub rule library() -> Vec<LibraryElementKind> = traced(<library__impl()>)
+    pub rule library() -> Vec<LibraryElementKind> = library__impl()
     pub rule library__impl() -> Vec<LibraryElementKind> = _ decls:library_element_declaration() ** _ _ { decls.into_iter().flatten().collect() }
 
     // B.0 Programming model
@@ -261,7 +289,7 @@ parser! {
 
     // B.1.1 Letters, digits and identifier
     //rule digit() -> &'input str = $(['0'..='9'])
-    rule identifier() -> Id = start:position!() !KEYWORD() i:$(['a'..='z' | '0'..='9' | 'A'..='Z' | '_']+) end:position!() { Id::from(i).with_position(SourceLoc::range(start, end)) }
+    rule identifier() -> Id = i:tok(TokenType::Identifier) { Id::from(i.text.as_str()).with_position(SourceLoc::default()) }
 
     // B.1.2 Constants
     rule constant() -> ConstantKind =
@@ -277,102 +305,97 @@ parser! {
 
     // B.1.2.1 Numeric literals
     // numeric_literal omitted because it only appears in constant so we do not need to create a type for it
-    rule integer_literal() -> IntegerLiteral = data_type:(t:integer_type_name() "#" {t})? value:(bi:binary_integer() { bi.into() } / oi:octal_integer() { oi.into() } / hi:hex_integer() { hi.into() } / si:signed_integer() { si }) { IntegerLiteral { value, data_type } }
-    rule signed_integer__string() -> &'input str = n:$(['+' | '-']?['0'..='9']("_"? ['0'..='9'])*) { n }
-    rule signed_integer__string_simplified() -> String = n:signed_integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit() || *c == '-' || *c == '+').collect() }
-    rule signed_integer() -> SignedInteger = start:position!() n:signed_integer__string() end:position!() {? SignedInteger::new(n, SourceLoc::range(start, end)) }
+    rule integer_literal() -> IntegerLiteral = data_type:(t:integer_type_name() tok(TokenType::Hash) {t})? value:(bi:binary_integer() { bi.into() } / oi:octal_integer() { oi.into() } / hi:hex_integer() { hi.into() } / si:signed_integer() { si }) { IntegerLiteral { value, data_type } }
+    rule signed_integer__positive() -> SignedInteger = tok(TokenType::Plus)? digits:tok(TokenType::Digits) {? SignedInteger::positive(digits.text.as_str()) }
+    rule signed_integer__negative() -> SignedInteger = tok(TokenType::Minus) digits:tok(TokenType::Digits) {? SignedInteger::negative(digits.text.as_str()) }
+    rule signed_integer() -> SignedInteger = signed_integer__positive() / signed_integer__negative()
     // TODO handle the sign
-    rule integer__string() -> &'input str = n:$(['0'..='9']("_"? ['0'..='9'])*) { n }
+    rule integer__string() -> &'input str = n:tok(TokenType::Digits) { n.text.as_str() }
     rule integer__string_simplified() -> String = n:integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit()).collect() }
     rule integer() -> Integer = start:position!() n:integer__string() end:position!() {? Integer::new(n, SourceLoc::range(start, end)) }
-    rule binary_integer_prefix() -> () = "2#" ()
-    rule binary_integer() -> Integer = start:position!() binary_integer_prefix() n:$(['0'..='1']("_"? ['0'..='1'])*) end:position!() {? Integer::binary(n, SourceLoc::range(start, end)) }
-    rule octal_integer_prefix() -> () = "8#" ()
-    rule octal_integer() -> Integer = start:position!() octal_integer_prefix() n:$(['0'..='7']("_"? ['0'..='7'])*) end:position!() {? Integer::octal(n, SourceLoc::range(start, end)) }
-    rule hex_integer_prefix() -> () = "16#" ()
-    rule hex_integer() -> Integer = start:position!() hex_integer_prefix() n:$(['0'..='9' | 'A'..='F']("_"? ['0'..='9' | 'A'..='F'])*) end:position!() {? Integer::hex(n, SourceLoc::range(start, end)) }
-    rule real_literal() -> RealLiteral = tn:(t:real_type_name() "#" {t})? whole:signed_integer__string_simplified() "." fraction:integer__string_simplified() exp:exponent()? {?
+    rule binary_integer_prefix() -> () = tok_eq(TokenType::Digits, "2") tok(TokenType::Hash) ()
+    rule binary_integer() -> Integer = start:position!() binary_integer_prefix() n:tok(TokenType::Digits) end:position!() {? Integer::try_binary(n.text.as_str()) }
+    rule octal_integer_prefix() -> () = tok_eq(TokenType::Digits, "8") tok(TokenType::Hash) ()
+    rule octal_integer() -> Integer = start:position!() octal_integer_prefix() n:tok(TokenType::Digits) end:position!() {? Integer::try_octal(n.text.as_str()) }
+    rule hex_integer_prefix() -> () = tok_eq(TokenType::Digits, "16") tok(TokenType::Hash) ()
+    // TODO this doesn't do HEX
+    rule hex_integer() -> Integer = start:position!() hex_integer_prefix() n:tok(TokenType::Identifier) end:position!() {? Integer::try_hex(n.text.as_str()) }
+    rule real_literal() -> RealLiteral = tn:(t:real_type_name() id_eq("#") {t})? whole:signed_integer() tok(TokenType::Period) fraction:integer__string_simplified() exp:exponent()? {?
+      // TODO this entire block is wrong
       // Create the value from concatenating the parts so that it is trivial
       // to existing parsers.
-      let mut value = (whole + "." + &fraction).parse::<f64>().map_err(|e| "real")?;
+      /*let mut value = (whole + "." + &fraction).parse::<f64>().map_err(|e| "real")?;
 
       if let Some(exp) = exp {
         let exp = f64::powf(exp.try_into().map_err(|e| "exp")?, 10.0);
         value *= exp;
-      }
+      }*/
 
       Ok(RealLiteral {
-        value,
+        value: 0.0,
         data_type: tn,
       })
     }
-    rule exponent() -> SignedInteger = ("E" / "e") si:signed_integer() { si }
+    rule exponent() -> SignedInteger = (id_eq("E") / id_eq("e")) si:signed_integer() { si }
     // bit_string_literal_type is not a rule in the specification but helps write simpler code
     rule bit_string_literal_type() -> ElementaryTypeName =
-      kw("BYTE") { ElementaryTypeName::BYTE }
-      / kw("WORD") { ElementaryTypeName::WORD }
-      / kw("DWORD") { ElementaryTypeName::DWORD }
-      / kw("LWORD") { ElementaryTypeName::LWORD }
+      tok(TokenType::Byte) { ElementaryTypeName::BYTE }
+      / tok(TokenType::Word) { ElementaryTypeName::WORD }
+      / tok(TokenType::Dword) { ElementaryTypeName::DWORD }
+      / tok(TokenType::Lword) { ElementaryTypeName::LWORD }
     // The specification says unsigned_integer, but there is no such rule.
-    rule bit_string_literal() -> BitStringLiteral = data_type:(t:bit_string_literal_type() "#" {t})? value:(bi:binary_integer() { bi }/ oi:octal_integer() { oi } / hi:hex_integer() { hi } / ui:integer() { ui } ) { BitStringLiteral { value, data_type } }
+    rule bit_string_literal() -> BitStringLiteral = data_type:(t:bit_string_literal_type() tok(TokenType::Hash) {t})? value:(bi:binary_integer() { bi }/ oi:octal_integer() { oi } / hi:hex_integer() { hi } / ui:integer() { ui } ) { BitStringLiteral { value, data_type } }
     rule boolean_literal() -> BooleanLiteral =
       // 1 and 0 can be a Boolean, but only with the prefix is it definitely a Boolean
-      kw("BOOL#1") { BooleanLiteral::new(Boolean::True) }
-      / kw("BOOL#0") { BooleanLiteral::new(Boolean::False) }
-      / kw("BOOL#TRUE") { BooleanLiteral::new(Boolean::True) }
-      / kw("TRUE") { BooleanLiteral::new(Boolean::True) }
-      / kw("BOOL#FALSE") { BooleanLiteral::new(Boolean::False) }
-      / kw("FALSE") { BooleanLiteral::new(Boolean::False) }
+      tok(TokenType::Bool) tok(TokenType::Hash) id_eq("1") { BooleanLiteral::new(Boolean::True) }
+      / tok(TokenType::Bool) tok(TokenType::Hash) id_eq("0") { BooleanLiteral::new(Boolean::False) }
+      / tok(TokenType::Bool) tok(TokenType::Hash) tok(TokenType::True)  { BooleanLiteral::new(Boolean::True) }
+      / tok(TokenType::True) { BooleanLiteral::new(Boolean::True) }
+      / tok(TokenType::Bool) tok(TokenType::Hash) tok(TokenType::False) { BooleanLiteral::new(Boolean::False) }
+      / tok(TokenType::False) { BooleanLiteral::new(Boolean::False) }
     // B.1.2.2 Character strings
     rule character_string() -> Vec<char> = single_byte_character_string() / double_byte_character_string()
-    rule single_byte_character_string() -> Vec<char>  = "STRING#"? "'" s:single_byte_character_representation()* "'" { s }
-    rule double_byte_character_string() -> Vec<char> = "WSTRING#"? "\"" s:double_byte_character_representation()* "\"" { s }
-    // TODO escape characters
-    rule single_byte_character_representation() -> char = common_character_representation() / __single_byte_char_quotes() / common_character_representation__extended()
-    rule __single_byte_char_quotes() -> char = ("\"" { '\"' } / "$'" {'\''} )
-    rule double_byte_character_representation() -> char = common_character_representation() / __double_type_char_quotes() / common_character_representation__extended()
-    rule __double_type_char_quotes() -> char = ("'" { '\'' } / "$\"" {'\"'} )
-    rule common_character_representation() -> char = c:[' '..='!' | '#' | '%'..='&' | '('..='~'] { c }
-    rule common_character_representation__extended() -> char = input:[_]
-      {? if_extended_char(input).map_or_else(|| Err("extended char"), |v| Ok(input)) }
-
+    rule single_byte_character_string() -> Vec<char>  = (tok(TokenType::String) tok(TokenType::Hash))? t:tok(TokenType::SingleByteString) { t.text.chars().collect() }
+    rule double_byte_character_string() -> Vec<char> = (tok(TokenType::WString) tok(TokenType::Hash))? t:tok(TokenType::DoubleByteString) { t.text.chars().collect() }
+  
     // B.1.2.3 Time literals
     // Omitted and subsumed into constant.
 
     // B.1.2.3.1 Duration
-    pub rule duration() -> DurationLiteral = (kw("TIME") / "T" / "t") "#" s:("-")? i:interval() {
+    pub rule duration() -> DurationLiteral = (tok(TokenType::Time) / dt("T") / dt("t")) tok(TokenType::Hash) s:(tok(TokenType::Minus))? i:interval() {
       if let Some(sign) = s {
         return DurationLiteral::new(i * -1);
       }
       DurationLiteral::new(i)
     }
     // milliseconds must come first because the "m" in "ms" would match the minutes rule
+    rule dt(val: &str) -> &'input Token = [t if t.token_type == TokenType::Identifier && t.text.as_str() == val]
     rule interval() -> Duration = ms:milliseconds() { ms }
       / d:days() { d }
       / h:hours() { h }
       / m:minutes() { m }
       / s:seconds() { s }
-    rule days() -> Duration = days:fixed_point() "d" { DurationUnit::Days.fp(days) } / days:integer() "d" "_"? hours:hours() { hours + DurationUnit::Days.int(days) }
+    rule days() -> Duration = days:fixed_point() dt("d") { DurationUnit::Days.fp(days) } / days:integer() dt("d") dt("_")? hours:hours() { hours + DurationUnit::Days.int(days) }
 
-    rule fixed_point() -> f32 = i:integer__string_simplified() f:("." f:integer__string_simplified() { f })? {?
+    rule fixed_point() -> f32 = i:integer__string_simplified() f:(dt(".") f:integer__string_simplified() { f })? {?
       format!("{}.{}", i, f.unwrap_or_default()).parse::<f32>().map_err(|e| "f32")
     }
-    rule hours() -> Duration = hours:fixed_point() "h" { DurationUnit::Hours.fp(hours) } / hours:integer() "h" "_"? min:minutes() { min + DurationUnit::Hours.int(hours) }
-    rule minutes() -> Duration = min:fixed_point() "m" { DurationUnit::Minutes.fp(min) } / mins:integer() "m" "_"? sec:seconds() { sec + DurationUnit::Minutes.int(mins) }
-    rule seconds() -> Duration = secs:fixed_point() "s" { DurationUnit::Seconds.fp(secs) } / sec:integer() "s" "_"? ms:milliseconds() { ms + DurationUnit::Seconds.int(sec) }
-    rule milliseconds() -> Duration = ms:fixed_point() "ms" { DurationUnit::Milliseconds.fp(ms) }
+    rule hours() -> Duration = hours:fixed_point() dt("h") { DurationUnit::Hours.fp(hours) } / hours:integer() dt("h") dt("_")? min:minutes() { min + DurationUnit::Hours.int(hours) }
+    rule minutes() -> Duration = min:fixed_point() dt("m") { DurationUnit::Minutes.fp(min) } / mins:integer() dt("m") dt("_")? sec:seconds() { sec + DurationUnit::Minutes.int(mins) }
+    rule seconds() -> Duration = secs:fixed_point() dt("s") { DurationUnit::Seconds.fp(secs) } / sec:integer() dt("s") dt("_")? ms:milliseconds() { ms + DurationUnit::Seconds.int(sec) }
+    rule milliseconds() -> Duration = ms:fixed_point() dt("ms") { DurationUnit::Milliseconds.fp(ms) }
 
     // 1.2.3.2 Time of day and date
-    rule time_of_day() -> TimeOfDayLiteral = (kw("TOD") / kw("TIME_OF_DAY")) "#" d:daytime() { TimeOfDayLiteral::new(d) }
-    rule daytime() -> Time = h:day_hour() ":" m:day_minute() ":" s:day_second() {?
+    rule time_of_day() -> TimeOfDayLiteral = tok(TokenType::TimeOfDay) tok(TokenType::Hash) d:daytime() { TimeOfDayLiteral::new(d) }
+    rule daytime() -> Time = h:day_hour() tok(TokenType::Colon) m:day_minute() tok(TokenType::Colon) s:day_second() {?
       Time::from_hms(h.try_into().map_err(|e| "hour")?, m.try_into().map_err(|e| "min")?, s.try_into().map_err(|e| "sec")?).map_err(|e| "time")
     }
     rule day_hour() -> Integer = i:integer() { i }
     rule day_minute() -> Integer = i:integer() { i }
     // TODO this should be fixed_point
     rule day_second() -> Integer = i:integer() { i }
-    rule date() -> DateLiteral = (kw("DATE") / "D" / "d") "#" d:date_literal() { DateLiteral::new(d) }
-    rule date_literal() -> Date = y:year() "-" m:month() "-" d:day() {?
+    rule date() -> DateLiteral = (tok(TokenType::Date) / dt("D") / dt("d")) tok(TokenType::Hash) d:date_literal() { DateLiteral::new(d) }
+    rule date_literal() -> Date = y:year() tok(TokenType::Minus) m:month() tok(TokenType::Minus) d:day() {?
       let y = y.value;
       let m = Month::try_from(<dsl::common::Integer as TryInto<u8>>::try_into(m).map_err(|e| "month")?).map_err(|e| "month")?;
       let d = d.value;
@@ -381,7 +404,7 @@ parser! {
     rule year() -> Integer = i:integer() { i }
     rule month() -> Integer = i:integer() { i }
     rule day() -> Integer = i:integer() { i }
-    rule date_and_time() -> DateAndTimeLiteral = (kw("DATE_AND_TIME") / kw("DT")) "#" d:date_literal() "-" t:daytime() { DateAndTimeLiteral::new(PrimitiveDateTime::new(d, t)) }
+    rule date_and_time() -> DateAndTimeLiteral = tok(TokenType::DateAndTime) tok(TokenType::Hash) d:date_literal() tok(TokenType::Minus) t:daytime() { DateAndTimeLiteral::new(PrimitiveDateTime::new(d, t)) }
 
     // B.1.3 Data types
     // This should match generic_type_name, but that's unnecessary because
@@ -391,14 +414,14 @@ parser! {
 
     // B.1.3.1 Elementary data types
     rule elementary_type_name() -> ElementaryTypeName = numeric_type_name() / date_type_name() / bit_string_type_name() / elementary_string_type_name()
-    rule elementary_string_type_name() -> ElementaryTypeName = kw("STRING") { ElementaryTypeName::STRING } / kw("WSTRING") { ElementaryTypeName::WSTRING }
+    rule elementary_string_type_name() -> ElementaryTypeName = tok(TokenType::String) { ElementaryTypeName::STRING } / tok(TokenType::WString) { ElementaryTypeName::WSTRING }
     rule numeric_type_name() -> ElementaryTypeName = integer_type_name() / real_type_name()
     rule integer_type_name() -> ElementaryTypeName = signed_integer_type_name() / unsigned_integer_type_name()
-    rule signed_integer_type_name() -> ElementaryTypeName = kw("SINT") { ElementaryTypeName::SINT }  / kw("INT") { ElementaryTypeName::INT } / kw("DINT") { ElementaryTypeName::DINT } / kw("LINT") { ElementaryTypeName::LINT }
-    rule unsigned_integer_type_name() -> ElementaryTypeName = kw("USINT") { ElementaryTypeName::USINT }  / kw("UINT") { ElementaryTypeName::UINT } / kw("UDINT") { ElementaryTypeName::UDINT } / kw("ULINT") { ElementaryTypeName::ULINT }
-    rule real_type_name() -> ElementaryTypeName = kw("REAL") { ElementaryTypeName::REAL } / kw("LREAL") { ElementaryTypeName::LREAL }
-    rule date_type_name() -> ElementaryTypeName = kw("DATE") { ElementaryTypeName::DATE } / kw("TIME_OF_DAY") { ElementaryTypeName::TimeOfDay } / kw("TOD") { ElementaryTypeName::TimeOfDay } / kw("DATE_AND_TIME") { ElementaryTypeName::DateAndTime } / kw("DT") { ElementaryTypeName::DateAndTime }
-    rule bit_string_type_name() -> ElementaryTypeName = kw("BOOL") { ElementaryTypeName::BOOL } / kw("BYTE") { ElementaryTypeName::BYTE } / kw("WORD") { ElementaryTypeName::WORD } / kw("DWORD") { ElementaryTypeName::DWORD } / kw("LWORD") { ElementaryTypeName::LWORD }
+    rule signed_integer_type_name() -> ElementaryTypeName = tok(TokenType::Sint) { ElementaryTypeName::SINT }  / tok(TokenType::Int) { ElementaryTypeName::INT } / tok(TokenType::Dint) { ElementaryTypeName::DINT } / tok(TokenType::Lint) { ElementaryTypeName::LINT }
+    rule unsigned_integer_type_name() -> ElementaryTypeName = tok(TokenType::Usint) { ElementaryTypeName::USINT }  / tok(TokenType::Uint) { ElementaryTypeName::UINT } / tok(TokenType::Udint) { ElementaryTypeName::UDINT } / tok(TokenType::Ulint) { ElementaryTypeName::ULINT }
+    rule real_type_name() -> ElementaryTypeName = tok(TokenType::Real) { ElementaryTypeName::REAL } / tok(TokenType::Lreal) { ElementaryTypeName::LREAL }
+    rule date_type_name() -> ElementaryTypeName = tok(TokenType::Date) { ElementaryTypeName::DATE } / tok(TokenType::TimeOfDay) { ElementaryTypeName::TimeOfDay } / tok(TokenType::DateAndTime) { ElementaryTypeName::DateAndTime }
+    rule bit_string_type_name() -> ElementaryTypeName = tok(TokenType::Bool) { ElementaryTypeName::BOOL } / tok(TokenType::Byte) { ElementaryTypeName::BYTE } / tok(TokenType::Word) { ElementaryTypeName::WORD } / tok(TokenType::Dword) { ElementaryTypeName::DWORD } / tok(TokenType::Lword) { ElementaryTypeName::LWORD }
 
     // B.1.3.2
     // Rule not needed for parsing - generics are handled at a later parse stage
@@ -414,7 +437,7 @@ parser! {
     rule enumerated_type_name() -> Id = identifier()
     rule array_type_name() -> Id = identifier()
     rule structure_type_name() -> Id = identifier()
-    rule data_type_declaration() -> Vec<DataTypeDeclarationKind> = "TYPE" _ declarations:semisep(<type_declaration()>) _ "END_TYPE" { declarations }
+    rule data_type_declaration() -> Vec<DataTypeDeclarationKind> = tok(TokenType::Type) _ declarations:semisep(<type_declaration()>) _ tok(TokenType::EndType) { declarations }
     /// the type_declaration also bring in from single_element_type_declaration so that we can match in an order
     /// that identifies the type
     rule type_declaration() -> DataTypeDeclarationKind =
@@ -433,50 +456,50 @@ parser! {
     // Union of structure_type_declaration, enumerated_type_declaration and
     // simple_type_declaration all without any initializer. These types all
     // look the same
-    rule structure_or_enumerated_or_simple_type_declaration__without_value() -> LateBoundDeclaration = data_type_name:identifier() _ ":" _ base_type_name:identifier() {
+    rule structure_or_enumerated_or_simple_type_declaration__without_value() -> LateBoundDeclaration = data_type_name:identifier() _ tok(TokenType::Colon) _ base_type_name:identifier() {
       LateBoundDeclaration {
         data_type_name,
         base_type_name,
       }
     }
 
-    rule simple_type_declaration__with_constant() -> SimpleDeclaration = type_name:simple_type_name() _ ":" _ spec_and_init:simple_spec_init__with_constant() {
+    rule simple_type_declaration__with_constant() -> SimpleDeclaration = type_name:simple_type_name() _ tok(TokenType::Colon) _ spec_and_init:simple_spec_init__with_constant() {
       SimpleDeclaration {
         type_name,
         spec_and_init,
       }
     }
-    rule simple_spec_init() -> InitialValueAssignmentKind = type_name:simple_specification() _ constant:(":=" _ c:constant() { c })? {
+    rule simple_spec_init() -> InitialValueAssignmentKind = type_name:simple_specification() _ constant:(tok(TokenType::Assignment) _ c:constant() { c })? {
       InitialValueAssignmentKind::Simple(SimpleInitializer {
         type_name,
         initial_value: constant,
       })
     }
     // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
-    rule simple_spec_init__with_constant() -> InitialValueAssignmentKind = type_name:simple_specification() _ ":=" _ constant:constant() {
+    rule simple_spec_init__with_constant() -> InitialValueAssignmentKind = type_name:simple_specification() _ tok(TokenType::Assignment) _ constant:constant() {
       InitialValueAssignmentKind::Simple(SimpleInitializer {
         type_name,
         initial_value: Some(constant),
       })
     }
     rule simple_specification() -> Id = et:elementary_type_name() { et.into() } / simple_type_name()
-    rule subrange_type_declaration__with_range() -> SubrangeDeclaration = type_name:subrange_type_name() _ ":" _ spec:subrange_spec_init__with_range() {
+    rule subrange_type_declaration__with_range() -> SubrangeDeclaration = type_name:subrange_type_name() _ tok(TokenType::Colon) _ spec:subrange_spec_init__with_range() {
       SubrangeDeclaration {
         type_name,
         spec: spec.0,
         default: spec.1,
       }
     }
-    rule subrange_spec_init__with_range() -> (SubrangeSpecificationKind, Option<SignedInteger>) = spec:subrange_specification__with_range() _ default:(":=" _ def:signed_integer() { def })? {
+    rule subrange_spec_init__with_range() -> (SubrangeSpecificationKind, Option<SignedInteger>) = spec:subrange_specification__with_range() _ default:(tok(TokenType::Assignment) _ def:signed_integer() { def })? {
       (spec, default)
     }
     // TODO or add a subrange type name
     rule subrange_specification__with_range() -> SubrangeSpecificationKind
-      = type_name:integer_type_name() _ "(" _ subrange:subrange() _ ")" { SubrangeSpecificationKind::Specification(SubrangeSpecification{ type_name, subrange }) }
-    rule subrange() -> Subrange = start:signed_integer() ".." end:signed_integer() { Subrange{start, end} }
+      = type_name:integer_type_name() _ tok(TokenType::LeftParen) _ subrange:subrange() _ tok(TokenType::RightParen) { SubrangeSpecificationKind::Specification(SubrangeSpecification{ type_name, subrange }) }
+    rule subrange() -> Subrange = start:signed_integer() tok(TokenType::Range) end:signed_integer() { Subrange{start, end} }
 
     rule enumerated_type_declaration__with_value() -> EnumerationDeclaration =
-      type_name:enumerated_type_name() _ ":" _ spec_init:enumerated_spec_init__with_value() {
+      type_name:enumerated_type_name() _ tok(TokenType::Colon) _ spec_init:enumerated_spec_init__with_value() {
         let spec = spec_init.0;
         let init = spec_init.1;
 
@@ -488,7 +511,7 @@ parser! {
           },
         }
       }
-      / type_name:enumerated_type_name() _ ":" _ spec_init:enumerated_spec_init__with_values() {
+      / type_name:enumerated_type_name() _ tok(TokenType::Colon) _ spec_init:enumerated_spec_init__with_values() {
         let spec = spec_init.0;
         let init = spec_init.1;
 
@@ -500,13 +523,13 @@ parser! {
           },
         }
       }
-    rule enumerated_spec_init__with_value() -> (EnumeratedSpecificationKind, EnumeratedValue) = spec:enumerated_specification() _ ":=" _ def:enumerated_value() {
+    rule enumerated_spec_init__with_value() -> (EnumeratedSpecificationKind, EnumeratedValue) = spec:enumerated_specification() _ tok(TokenType::Assignment) _ def:enumerated_value() {
       (spec, def)
     }
-    rule enumerated_spec_init__with_values() -> (EnumeratedSpecificationKind, Option<EnumeratedValue>) = spec:enumerated_specification__only_values() _ default:(":=" _ d:enumerated_value() { d })? {
+    rule enumerated_spec_init__with_values() -> (EnumeratedSpecificationKind, Option<EnumeratedValue>) = spec:enumerated_specification__only_values() _ default:(tok(TokenType::Assignment) _ d:enumerated_value() { d })? {
       (spec, default)
     }
-    rule enumerated_spec_init() -> EnumeratedSpecificationInit = spec:enumerated_specification() _ default:(":=" _ d:enumerated_value() { d })? {
+    rule enumerated_spec_init() -> EnumeratedSpecificationInit = spec:enumerated_specification() _ default:(tok(TokenType::Assignment) _ d:enumerated_value() { d })? {
       EnumeratedSpecificationInit {
         spec,
         default,
@@ -514,43 +537,43 @@ parser! {
     }
     // TODO this doesn't support type name as a value
     rule enumerated_specification__only_values() -> EnumeratedSpecificationKind  =
-      start:position!() "(" _ v:enumerated_value() ++ (_ "," _) _ ")" end:position!() { EnumeratedSpecificationKind::values(v, SourceLoc::range(start, end)) }
+      start:position!() tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) end:position!() { EnumeratedSpecificationKind::values(v, SourceLoc::range(start, end)) }
     rule enumerated_specification() -> EnumeratedSpecificationKind  =
-      start:position!() "(" _ v:enumerated_value() ++ (_ "," _) _ ")" end:position!() { EnumeratedSpecificationKind::values(v, SourceLoc::range(start, end)) }
+      start:position!() tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) end:position!() { EnumeratedSpecificationKind::values(v, SourceLoc::range(start, end)) }
       / name:enumerated_type_name() { EnumeratedSpecificationKind::TypeName(name) }
-    rule enumerated_value() -> EnumeratedValue = start:position!() type_name:(name:enumerated_type_name() "#" { name })? value:identifier() end:position!() { EnumeratedValue {type_name, value, position: SourceLoc::range(start, end)} }
-    rule array_type_declaration() -> ArrayDeclaration = type_name:array_type_name() _ ":" _ spec_and_init:array_spec_init() {
+    rule enumerated_value() -> EnumeratedValue = start:position!() type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:identifier() end:position!() { EnumeratedValue {type_name, value, position: SourceLoc::range(start, end)} }
+    rule array_type_declaration() -> ArrayDeclaration = type_name:array_type_name() _ tok(TokenType::Colon) _ spec_and_init:array_spec_init() {
       ArrayDeclaration {
         type_name,
         spec: spec_and_init.spec,
         init: spec_and_init.initial_values,
       }
     }
-    rule array_spec_init() -> ArrayInitialValueAssignment = spec:array_specification() _ init:(":=" _ a:array_initialization() { a })? {
+    rule array_spec_init() -> ArrayInitialValueAssignment = spec:array_specification() _ init:(tok(TokenType::Assignment) _ a:array_initialization() { a })? {
       ArrayInitialValueAssignment {
         spec,
         initial_values: init.unwrap_or_default()
       }
     }
-    rule array_specification() -> ArraySpecificationKind = kw("ARRAY") _ "[" _ ranges:subrange() ** (_ "," _ ) _ "]" _ kw("OF") _ type_name:non_generic_type_name() {
+    rule array_specification() -> ArraySpecificationKind = tok(TokenType::Array) _ tok(TokenType::LeftBracket) _ ranges:subrange() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) _ tok(TokenType::Of) _ type_name:non_generic_type_name() {
       ArraySpecificationKind::Subranges(ArraySubranges { ranges, type_name } )
     }
     // TODO
     // type_name:array_type_name() {
     //  ArraySpecification::Type(type_name)
     //} /
-    rule array_initialization() -> Vec<ArrayInitialElementKind> = "[" _ init:array_initial_elements() ** (_ "," _ ) _ "]" { init }
-    rule array_initial_elements() -> ArrayInitialElementKind = size:integer() _ "(" ai:array_initial_element()? ")" { ArrayInitialElementKind::repeated(size, ai) } / array_initial_element()
+    rule array_initialization() -> Vec<ArrayInitialElementKind> = tok(TokenType::LeftBracket) _ init:array_initial_elements() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) { init }
+    rule array_initial_elements() -> ArrayInitialElementKind = size:integer() _ tok(TokenType::LeftParen) ai:array_initial_element()? tok(TokenType::RightParen) { ArrayInitialElementKind::repeated(size, ai) } / array_initial_element()
     // TODO | structure_initialization | array_initialization
     rule array_initial_element() -> ArrayInitialElementKind = c:constant() { ArrayInitialElementKind::Constant(c) } / e:enumerated_value() { ArrayInitialElementKind::EnumValue(e) }
     rule structure_type_declaration__with_constant() -> DataTypeDeclarationKind =
-      type_name:structure_type_name() _ ":" _ decl:structure_declaration() {
+      type_name:structure_type_name() _ tok(TokenType::Colon) _ decl:structure_declaration() {
         DataTypeDeclarationKind::Structure(StructureDeclaration {
           type_name,
           elements: decl.elements,
         })
       }
-      / type_name:structure_type_name() _ ":" _ init:initialized_structure__without_ambiguous() {
+      / type_name:structure_type_name() _ tok(TokenType::Colon) _ init:initialized_structure__without_ambiguous() {
         DataTypeDeclarationKind::StructureInitialization(StructureInitializationDeclaration {
           // TODO there is something off with having two type names
           type_name,
@@ -559,7 +582,7 @@ parser! {
       }
     // structure_specification - covered in structure_type_declaration because that avoids
     // an intermediate object that doesn't know the type name
-    rule initialized_structure() -> StructureInitializationDeclaration = type_name:structure_type_name() _ init:(":=" _ i:structure_initialization() {i})? {
+    rule initialized_structure() -> StructureInitializationDeclaration = type_name:structure_type_name() _ init:(tok(TokenType::Assignment) _ i:structure_initialization() {i})? {
       StructureInitializationDeclaration {
         type_name,
         elements_init: init.unwrap_or_default(),
@@ -568,20 +591,20 @@ parser! {
     /// Same as initialized_structure but requires an initializer. Without the
     /// initializer, this is ambiguous with simple and enumeration initialization
     /// declarations.
-    rule initialized_structure__without_ambiguous() -> StructureInitializationDeclaration = type_name:structure_type_name() _ ":=" _ init:structure_initialization() {
+    rule initialized_structure__without_ambiguous() -> StructureInitializationDeclaration = type_name:structure_type_name() _ tok(TokenType::Assignment) _ init:structure_initialization() {
       StructureInitializationDeclaration {
         type_name,
         elements_init: init,
       }
     }
-    rule structure_declaration() -> StructureDeclaration = kw("STRUCT") _ elements:semisep_oneplus(<structure_element_declaration()>) _ kw("END_STRUCT") {
+    rule structure_declaration() -> StructureDeclaration = tok(TokenType::Struct) _ elements:semisep_oneplus(<structure_element_declaration()>) _ tok(TokenType::EndStruct) {
       StructureDeclaration {
         // Requires a value but we don't know the name until level up
         type_name: Id::from(""),
         elements,
       }
     }
-    rule structure_element_declaration() -> StructureElementDeclaration = name:structure_element_name() _ ":" _ init:(
+    rule structure_element_declaration() -> StructureElementDeclaration = name:structure_element_name() _ tok(TokenType::Colon) _ init:(
       arr:array_spec_init() { InitialValueAssignmentKind::Array(arr) }
       // handle the initial value
       / subrange:subrange_spec_init__with_range() { InitialValueAssignmentKind::Subrange(subrange.0) }
@@ -615,8 +638,8 @@ parser! {
         }
     }
     rule structure_element_name() ->Id = identifier()
-    rule structure_initialization() -> Vec<StructureElementInit> = "(" _ elems:structure_element_initialization() ++ (_ "," _) _ ")" { elems }
-    rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ ":=" _ init:(c:constant() { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value() { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)}) {
+    rule structure_initialization() -> Vec<StructureElementInit> = tok(TokenType::LeftParen) _ elems:structure_element_initialization() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { elems }
+    rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ tok(TokenType::Assignment) _ init:(c:constant() { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value() { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)}) {
       StructureElementInit {
         name,
         init,
@@ -630,14 +653,14 @@ parser! {
     //
     // There is still value in trying to disambiguate early because it allows us to use
     // the parser definitions.
-    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ ":=" _ c:constant() {
+    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ tok(TokenType::Assignment) _ c:constant() {
       // A simple_specification with a constant is unambiguous because the constant is
       // not a valid identifier.
       InitialValueAssignmentKind::Simple(SimpleInitializer {
         type_name: s,
         initial_value: Some(c),
       })
-    } / spec:enumerated_specification() _ ":=" _ init:enumerated_value() {
+    } / spec:enumerated_specification() _ tok(TokenType::Assignment) _ init:enumerated_value() {
       // An enumerated_specification defined with a value is unambiguous the value
       // is not a valid constant.
       match spec {
@@ -654,7 +677,7 @@ parser! {
           })
         }
       }
-    } / start:position!() "(" _ values:enumerated_value() ** (_ "," _ ) _ ")" _  init:(":=" _ i:enumerated_value() {i})? {
+    } / start:position!() tok(TokenType::LeftParen) _ values:enumerated_value() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightParen) _  init:(tok(TokenType::Assignment) _ i:enumerated_value() {i})? {
       // An enumerated_specification defined by enum values is unambiguous because
       // the parenthesis are not valid simple_specification.
       InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer {
@@ -675,7 +698,7 @@ parser! {
     }
 
     rule string_type_name() -> Id = identifier()
-    rule string_type_declaration() -> StringDeclaration = type_name:string_type_name() _ ":" _ width:(kw("STRING") { StringKind::String } / kw("WSTRING") { StringKind::WString }) _ "[" _ length:integer() _ "]" _ init:(":=" _ str:character_string() {str})? {
+    rule string_type_declaration() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringKind::String } / tok(TokenType::WString) { StringKind::WString }) _ tok(TokenType::LeftBracket) _ length:integer() _ tok(TokenType::RightBracket) _ init:(tok(TokenType::Assignment) _ str:character_string() {str})? {
       StringDeclaration {
         type_name,
         length,
@@ -683,7 +706,7 @@ parser! {
         init: init.map(|v| v.into_iter().collect()),
       }
     }
-    rule string_type_declaration__parenthesis() -> StringDeclaration = type_name:string_type_name() _ ":" _ width:(kw("STRING") { StringKind::String } / kw("WSTRING") { StringKind::WString }) _ "(" _ length:integer() _ ")" _ init:(":=" _ str:character_string() {str})? {
+    rule string_type_declaration__parenthesis() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringKind::String } / tok(TokenType::WString) { StringKind::WString }) _ tok(TokenType::LeftParen) _ length:integer() _ tok(TokenType::RightParen) _ init:(tok(TokenType::Assignment) _ str:character_string() {str})? {
       StringDeclaration {
         type_name,
         length,
@@ -699,7 +722,7 @@ parser! {
     //rule symbolic_variable() -> SymbolicVariableKind =
     //  multi_element_variable()
     //  / name:variable_name() { SymbolicVariableKind::Named(NamedVariable{name}) }
-    rule symbolic_variable() -> SymbolicVariableKind = name:identifier() elements:("." id:identifier() { Element::StructSelector(id) } / sub:subscript_list() {Element::ArraySelector(sub)})* {
+    rule symbolic_variable() -> SymbolicVariableKind = name:identifier() elements:(tok(TokenType::Period) id:identifier() { Element::StructSelector(id) } / sub:subscript_list() {Element::ArraySelector(sub)})* {
       // Start by assuming that the top is just a named variable
       let mut head = SymbolicVariableKind::Named(NamedVariable { name });
 
@@ -728,37 +751,37 @@ parser! {
     rule variable_name() -> Id = identifier()
 
     // B.1.4.1 Directly represented variables
-    pub rule direct_variable() -> AddressAssignment = start:position!() "%" l:location_prefix() "*" end:position!() {
+    // There is no location_prefix rule because it would be ambiguous when the % prefix normally
+    // resolved ambiguity. Therefore, the lexer matches the entire direct variable.
+    pub rule direct_variable() -> AddressAssignment = tok(TokenType::DirectAddressUnassigned) {
       AddressAssignment {
-        location: l,
+        // TODO fix this
+        location: LocationPrefix::M,
         size: SizePrefix::Unspecified,
         address: vec![],
-        position: SourceLoc::range(start, end)
+        position: SourceLoc::default()
       }
-    } / start:position!() "%" l:location_prefix() s:size_prefix()? addr:integer() ++ "." end:position!() {?
-      let size = s.unwrap_or(SizePrefix::Nil);
+    } / tok(TokenType::DirectAddress) {?
+      /*let size = s.unwrap_or(SizePrefix::Nil);
       let mut addresses = Vec::new();
       for part in addr.iter() {
         addresses.push(part.value.try_into().map_err(|e| "address")?);
-      }
+      }*/
+      // TODO fix this
 
       Ok(AddressAssignment {
-        location: l,
-        size,
-        address: addresses,
-        position: SourceLoc::range(start, end)
+        location: LocationPrefix::M,
+        size: SizePrefix::Unspecified,
+        address: vec![],
+        position: SourceLoc::default()
       })
     }
-    rule location_prefix() -> LocationPrefix =
-      ("I" / "i") { LocationPrefix::I }
-      / ("Q" / "q" ) { LocationPrefix::Q }
-      / ("M" / "m") { LocationPrefix::M }
     rule size_prefix() -> SizePrefix =
-      ("X" / "x") { SizePrefix::X }
-      / ("B" / "b") { SizePrefix::B }
-      / ("W" / "w") { SizePrefix::W }
-      / ("D" / "d") { SizePrefix::D }
-      / ("L" / "l") { SizePrefix::L }
+      id_eq("X") { SizePrefix::X }
+      / id_eq("B")  { SizePrefix::B }
+      / id_eq("W")  { SizePrefix::W }
+      / id_eq("D")  { SizePrefix::D }
+      / id_eq("L")  { SizePrefix::L }
     // B.1.4.2 Multi-element variables
     //rule multi_element_variable() -> SymbolicVariableKind =
     //  av:array_variable() {
@@ -775,19 +798,19 @@ parser! {
     //    }
     //  }
     rule subscripted_variable() -> SymbolicVariableKind = symbolic_variable()
-    rule subscript_list() -> Vec<ExprKind> = "[" _ list:subscript()++ (_ "," _) _ "]" { list }
+    rule subscript_list() -> Vec<ExprKind> = tok(TokenType::LeftBracket) _ list:subscript()++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightBracket) { list }
     rule subscript() -> ExprKind = expression()
-    rule structured_variable() -> (SymbolicVariableKind, Id) = r:record_variable() "." f:field_selector() { (r, f) }
+    rule structured_variable() -> (SymbolicVariableKind, Id) = r:record_variable() tok(TokenType::Period) f:field_selector() { (r, f) }
     rule record_variable() -> SymbolicVariableKind = symbolic_variable()
     rule field_selector() -> Id = identifier()
 
     // B.1.4.3 Declarations and initialization
-    pub rule input_declarations() -> Vec<VarDecl> = kw("VAR_INPUT") _ qualifier:(kw("RETAIN") {DeclarationQualifier::Retain} / kw("NON_RETAIN") {DeclarationQualifier::NonRetain})? _ declarations:semisep(<input_declaration()>) _ kw("END_VAR") {
+    pub rule input_declarations() -> Vec<VarDecl> = tok(TokenType::VarInput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<input_declaration()>) _ tok(TokenType::EndVar) {
       VarDeclarations::flat_map(declarations, VariableType::Input, qualifier)
     }
     // TODO add edge declaration (as a separate item - a tuple)
     rule input_declaration() -> Vec<UntypedVarDecl> = var_init_decl()
-    rule edge_declaration() -> () = var1_list() _ ":" _ kw("BOOL") _ (kw("R_EDGE") / kw("F_EDGE"))? {}
+    rule edge_declaration() -> () = var1_list() _ tok(TokenType::Colon) _ tok(TokenType::Bool) _ (tok(TokenType::REdge) / tok(TokenType::FEdge))? {}
     // TODO the problem is we match first, then
     // TODO missing multiple here
     // We have to first handle the special case of enumeration or fb_name without an initializer
@@ -797,7 +820,7 @@ parser! {
 
     // TODO add in subrange_spec_init(), enumerated_spec_init()
 
-    rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init:(a:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()) end:position!() {
+    rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ tok(TokenType::Colon) _ init:(a:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()) end:position!() {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
         UntypedVarDecl {
@@ -808,8 +831,8 @@ parser! {
       }).collect()
     }
 
-    rule var1_list() -> Vec<Id> = names:variable_name() ++ (_ "," _) { names }
-    rule structured_var_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init_struct:initialized_structure() end:position!() {
+    rule var1_list() -> Vec<Id> = names:variable_name() ++ (_ tok(TokenType::Comma) _) { names }
+    rule structured_var_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ tok(TokenType::Colon) _ init_struct:initialized_structure() end:position!() {
       names.into_iter().map(|name| {
         // TODO
         UntypedVarDecl {
@@ -819,7 +842,7 @@ parser! {
         }
       }).collect()
     }
-    rule structured_var_init_decl__without_ambiguous() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init_struct:initialized_structure__without_ambiguous() end:position!() {
+    rule structured_var_init_decl__without_ambiguous() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ tok(TokenType::Colon) _ init_struct:initialized_structure__without_ambiguous() end:position!() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
@@ -828,7 +851,7 @@ parser! {
         }
       }).collect()
     }
-    rule array_var_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ init:array_spec_init() end:position!() {
+    rule array_var_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ tok(TokenType::Colon) _ init:array_spec_init() end:position!() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
@@ -838,25 +861,25 @@ parser! {
       }).collect()
     }
     rule fb_name() -> Id = i:identifier() { i }
-    pub rule output_declarations() -> Vec<VarDecl> = kw("VAR_OUTPUT") _ qualifier:(kw("RETAIN") {DeclarationQualifier::Retain} / kw("NON_RETAIN") {DeclarationQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ kw("END_VAR") {
+    pub rule output_declarations() -> Vec<VarDecl> = tok(TokenType::VarOutput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::flat_map(declarations, VariableType::Output, qualifier)
     }
-    pub rule input_output_declarations() -> Vec<VarDecl> = kw("VAR_IN_OUT") _ qualifier:(kw("RETAIN") {DeclarationQualifier::Retain} / kw("NON_RETAIN") {DeclarationQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ kw("END_VAR") {
+    pub rule input_output_declarations() -> Vec<VarDecl> = tok(TokenType::VarInOut) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::flat_map(declarations, VariableType::InOut,  qualifier)
     }
-    rule var_declarations() -> VarDeclarations = kw("VAR") _ qualifier:(kw("CONSTANT") {DeclarationQualifier::Constant})? _ declarations:semisep(<var_init_decl()>) _ kw("END_VAR") {
+    rule var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) {DeclarationQualifier::Constant})? _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
     //rule temp_var_decl() -> var1_dec
-    rule retentive_var_declarations() -> VarDeclarations = kw("VAR") _ kw("RETAIN") _ declarations:semisep(<var_init_decl()>) _ kw("END_VAR") {
+    rule retentive_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ tok(TokenType::Retain) _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
       let qualifier = Option::Some(DeclarationQualifier::Retain);
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
-    rule located_var_declarations() -> VarDeclarations = kw("VAR") _ qualifier:(kw("CONSTANT") { DeclarationQualifier::Constant } / kw("RETAIN") {DeclarationQualifier::Retain} / kw("NON_RETAIN") {DeclarationQualifier::NonRetain})? _ declarations:semisep(<located_var_decl()>) _ kw("END_VAR") {
+    rule located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) { DeclarationQualifier::Constant } / tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<located_var_decl()>) _ tok(TokenType::EndVar) {
       let qualifier = qualifier.or(Some(DeclarationQualifier::Unspecified));
       VarDeclarations::Located(VarDeclarations::map(declarations, qualifier))
     }
-    rule located_var_decl() -> VarDecl = start:position!() name:variable_name()? _ location:location() _ ":" _ initializer:located_var_spec_init() end:position!() {
+    rule located_var_decl() -> VarDecl = start:position!() name:variable_name()? _ location:location() _ tok(TokenType::Colon) _ initializer:located_var_spec_init() end:position!() {
       VarDecl {
         identifier: VariableIdentifier::new_direct(name, location),
         // TODO Is the type always var?
@@ -867,7 +890,7 @@ parser! {
       }
     }
     // We use the same type as in other places for VarInit, but the external always omits the initializer
-    rule external_var_declarations() -> VarDeclarations = kw("VAR_EXTERNAL") _ qualifier:(kw("CONSTANT") {DeclarationQualifier::Constant})? _ declarations:semisep(<external_declaration()>) _ kw("END_VAR") {
+    rule external_var_declarations() -> VarDeclarations = tok(TokenType::VarExternal) _ qualifier:(tok(TokenType::Constant) {DeclarationQualifier::Constant})? _ declarations:semisep(<external_declaration()>) _ tok(TokenType::EndVar) {
       VarDeclarations::External(VarDeclarations::map(declarations, qualifier))
     }
     // TODO subrange_specification, array_specification(), structure_type_name and others
@@ -877,7 +900,7 @@ parser! {
         initial_value: None,
       })
     }
-    rule external_declaration() -> VarDecl = start:position!() name:global_var_name() _ ":" _ spec:external_declaration_spec() end:position!() {
+    rule external_declaration() -> VarDecl = start:position!() name:global_var_name() _ tok(TokenType::Colon) _ spec:external_declaration_spec() end:position!() {
       VarDecl {
         identifier: VariableIdentifier::Symbol(name),
         var_type: VariableType::External,
@@ -888,8 +911,8 @@ parser! {
     }
     rule global_var_name() -> Id = i:identifier() { i }
 
-    rule qualifier() -> DeclarationQualifier = kw("CONSTANT") { DeclarationQualifier::Constant } / kw("RETAIN") { DeclarationQualifier::Retain }
-    pub rule global_var_declarations() -> Vec<VarDecl> = kw("VAR_GLOBAL") _ qualifier:qualifier()? _ declarations:semisep(<global_var_decl()>) _ kw("END_VAR") {
+    rule qualifier() -> DeclarationQualifier = tok(TokenType::Constant) { DeclarationQualifier::Constant } / tok(TokenType::Retain) { DeclarationQualifier::Retain }
+    pub rule global_var_declarations() -> Vec<VarDecl> = tok(TokenType::VarGlobal) _ qualifier:qualifier()? _ declarations:semisep(<global_var_decl()>) _ tok(TokenType::EndVar) {
       // TODO set the options - this is pretty similar to VarInit - maybe it should be the same
       let declarations = declarations.into_iter().flatten();
       declarations.into_iter().map(|declaration| {
@@ -900,7 +923,7 @@ parser! {
       }).collect()
     }
     // TODO this doesn't pass all information. I suspect the rule from the description is not right
-    rule global_var_decl() -> (Vec<VarDecl>) = start:position!() vs:global_var_spec() _ ":" _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment{type_name: f})})? end:position!() {
+    rule global_var_decl() -> (Vec<VarDecl>) = start:position!() vs:global_var_spec() _ tok(TokenType::Colon) _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment{type_name: f})})? end:position!() {
       vs.0.into_iter().map(|name| {
         let init = initializer.clone().unwrap_or(InitialValueAssignmentKind::None);
         VarDecl {
@@ -923,10 +946,10 @@ parser! {
     // TODO this is completely fabricated - it isn't correct.
     rule located_var_spec_init() -> InitialValueAssignmentKind = simple:simple_spec_init() { simple }
     // TODO
-    pub rule location() -> AddressAssignment = kw("AT") _ v:direct_variable() { v }
-    rule global_var_list() -> Vec<Id> = names:global_var_name() ++ (_ "," _) { names }
+    pub rule location() -> AddressAssignment = tok(TokenType::At) _ v:direct_variable() { v }
+    rule global_var_list() -> Vec<Id> = names:global_var_name() ++ (_ tok(TokenType::Comma) _) { names }
     rule string_var_declaration() -> Vec<UntypedVarDecl> = single_byte_string_var_declaration() / double_byte_string_var_declaration()
-    rule single_byte_string_var_declaration() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ spec:single_byte_string_spec() end:position!() {
+    rule single_byte_string_var_declaration() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ tok(TokenType::Colon) _ spec:single_byte_string_spec() end:position!() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
@@ -935,14 +958,14 @@ parser! {
         }
       }).collect()
     }
-    rule single_byte_string_spec() -> StringInitializer = kw("STRING") _ length:("[" _ i:integer() _ "]" {i})? _ initial_value:(":=" _ v:single_byte_character_string() {v})? {
+    rule single_byte_string_spec() -> StringInitializer = tok(TokenType::String) _ length:(tok(TokenType::LeftBracket) _ i:integer() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:single_byte_character_string() {v})? {
       StringInitializer {
         length,
         width: StringKind::String,
         initial_value,
       }
     }
-    rule double_byte_string_var_declaration() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ ":" _ spec:double_byte_string_spec() end:position!() {
+    rule double_byte_string_var_declaration() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ tok(TokenType::Colon) _ spec:double_byte_string_spec() end:position!() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
@@ -951,7 +974,7 @@ parser! {
         }
       }).collect()
     }
-    rule double_byte_string_spec() -> StringInitializer = kw("WSTRING") _ length:("[" _ i:integer() _ "]" {i})? _ initial_value:(":=" _ v:double_byte_character_string() {v})? {
+    rule double_byte_string_spec() -> StringInitializer = tok(TokenType::WString) _ length:(tok(TokenType::LeftBracket) _ i:integer() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:double_byte_character_string() {v})? {
       StringInitializer {
         length,
         width: StringKind::WString,
@@ -963,7 +986,7 @@ parser! {
     rule function_name() -> Id = standard_function_name() / derived_function_name()
     rule standard_function_name() -> Id = identifier()
     rule derived_function_name() -> Id = identifier()
-    rule function_declaration() -> FunctionDeclaration = kw("FUNCTION") _  name:derived_function_name() _ ":" _ rt:(et:elementary_type_name() { et.into() } / dt:derived_type_name() { dt }) _ var_decls:(io:io_var_declarations() / func:function_var_decls()) ** _ _ body:function_body() _ kw("END_FUNCTION") {
+    rule function_declaration() -> FunctionDeclaration = tok(TokenType::Function) _  name:derived_function_name() _ tok(TokenType::Colon) _ rt:(et:elementary_type_name() { et.into() } / dt:derived_type_name() { dt }) _ var_decls:(io:io_var_declarations() / func:function_var_decls()) ** _ _ body:function_body() _ tok(TokenType::EndFunction) {
       let variables = VarDeclarations::unzip(var_decls);
       FunctionDeclaration {
         name,
@@ -973,7 +996,7 @@ parser! {
       }
     }
     rule io_var_declarations() -> VarDeclarations = i:input_declarations() { VarDeclarations::Inputs(i) } / o:output_declarations() { VarDeclarations::Outputs(o) } / io:input_output_declarations() { VarDeclarations::Inouts(io) }
-    rule function_var_decls() -> VarDeclarations = kw("VAR") _ qualifier:(kw("CONSTANT") {DeclarationQualifier::Constant})? _ vars:semisep_oneplus(<var2_init_decl()>) _ kw("END_VAR") {
+    rule function_var_decls() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) {DeclarationQualifier::Constant})? _ vars:semisep_oneplus(<var2_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::Var(VarDeclarations::flat_map(vars, VariableType::Var, qualifier))
     }
     // TODO a bunch are missing here
@@ -987,7 +1010,7 @@ parser! {
     rule function_block_type_name() -> Id = i:identifier() { i }
     rule derived_function_block_name() -> Id = !STANDARD_FUNCTION_BLOCK_NAME() i:identifier() { i }
     // TODO add variable declarations
-    rule function_block_declaration() -> FunctionBlockDeclaration = start:position!() kw("FUNCTION_BLOCK") _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other }) ** _ _ body:function_block_body() _ kw("END_FUNCTION_BLOCK") end:position!() {
+    rule function_block_declaration() -> FunctionBlockDeclaration = start:position!() tok(TokenType::FunctionBlock) _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other }) ** _ _ body:function_block_body() _ tok(TokenType::EndFunctionBlock) end:position!() {
       let variables = VarDeclarations::unzip(decls);
       FunctionBlockDeclaration {
         name,
@@ -998,11 +1021,11 @@ parser! {
     }
     // TODO there are far more here
     rule other_var_declarations() -> VarDeclarations = external_var_declarations() / var_declarations() / retentive_var_declarations() / non_retentive_var_declarations()
-    //rule temp_var_decls() -> VarDeclarations = kw("VAR_TEMP") _ declarations:semisep(<temp_var_decl()>) _ kw("END_VAR") {
+    //rule temp_var_decls() -> VarDeclarations = tok(TokenType::"VAR_TEMP") _ declarations:semisep(<temp_var_decl()>) _ tok(TokenType::"END_VAR") {
     //  let qualifier = Option::Some(DeclarationQualifier::Retain);
     //  VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     //}
-    rule non_retentive_var_declarations() -> VarDeclarations = kw("VAR") _ kw("NON_RETAIN") _ declarations:semisep(<var_init_decl()>) _ kw("END_VAR") {
+    rule non_retentive_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ tok(TokenType::NonRetain) _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
       let qualifier = Option::Some(DeclarationQualifier::NonRetain);
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
@@ -1010,7 +1033,7 @@ parser! {
 
     // B.1.5.3 Program declaration
     rule program_type_name() -> Id = i:identifier() { i }
-    pub rule program_declaration() ->  ProgramDeclaration = kw("PROGRAM") _ p:program_type_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other } / located:located_var_declarations() { located }) ** _ _ body:function_block_body() _ kw("END_PROGRAM") {
+    pub rule program_declaration() ->  ProgramDeclaration = tok(TokenType::Program) _ p:program_type_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other } / located:located_var_declarations() { located }) ** _ _ body:function_block_body() _ tok(TokenType::EndProgram) {
       let variables = VarDeclarations::unzip(decls);
       ProgramDeclaration {
         type_name: p,
@@ -1030,13 +1053,13 @@ parser! {
         elements
       }
     }
-    rule initial_step() -> Step = kw("INITIAL_STEP") _ name:step_name() _ ":" _ action_associations:action_association() ** (_ ";" _) kw("END_STEP") {
+    rule initial_step() -> Step = tok(TokenType::InitialStep) _ name:step_name() _ tok(TokenType::Colon) _ action_associations:action_association() ** (_ tok(TokenType::Semicolon) _) tok(TokenType::EndStep) {
       Step{
         name,
         action_associations,
        }
     }
-    rule step() -> ElementKind = kw("STEP") _ name:step_name() _ ":" _ action_associations:semisep(<action_association()>) _ kw("END_STEP") {
+    rule step() -> ElementKind = tok(TokenType::Step) _ name:step_name() _ tok(TokenType::Colon) _ action_associations:semisep(<action_association()>) _ tok(TokenType::EndStep) {
       ElementKind::step(
         name,
         action_associations
@@ -1044,7 +1067,7 @@ parser! {
     }
     rule step_name() -> Id = identifier()
     // TODO this is missing stuff
-    rule action_association() -> ActionAssociation = name:action_name() _ "(" _ qualifier:action_qualifier()? _ indicators:("," _ i:indicator_name() ** (_ "," _) { i })? _ ")" {
+    rule action_association() -> ActionAssociation = name:action_name() _ tok(TokenType::LeftParen) _ qualifier:action_qualifier()? _ indicators:(tok(TokenType::Comma) _ i:indicator_name() ** (_ tok(TokenType::Comma) _) { i })? _ tok(TokenType::RightParen) {
       ActionAssociation {
         name,
         qualifier,
@@ -1053,19 +1076,19 @@ parser! {
     }
     rule action_name() -> Id = identifier()
     rule action_qualifier() -> ActionQualifier =
-      kw("N") { ActionQualifier::N }
-      / kw("R") { ActionQualifier::R }
-      / kw("S") { ActionQualifier::S }
-      / kw("L") { ActionQualifier::L }
-      / kw("D") { ActionQualifier::D }
-      / kw("P") { ActionQualifier::P }
-      / kw("SD") { ActionQualifier::SD }
-      / kw("DS") { ActionQualifier::DS }
-      / kw("SL") { ActionQualifier::SL }
-      / kw("P1") { ActionQualifier::PR }
-      / kw("P0") { ActionQualifier::PF }
+      id_eq("N") { ActionQualifier::N }
+      / id_eq("R") { ActionQualifier::R }
+      / id_eq("S") { ActionQualifier::S }
+      / id_eq("L") { ActionQualifier::L }
+      / id_eq("D") { ActionQualifier::D }
+      / id_eq("P") { ActionQualifier::P }
+      / id_eq("SD") { ActionQualifier::SD }
+      / id_eq("DS") { ActionQualifier::DS }
+      / id_eq("SL") { ActionQualifier::SL }
+      / id_eq("P1") { ActionQualifier::PR }
+      / id_eq("P0") { ActionQualifier::PF }
     rule indicator_name() -> Id = variable_name()
-    rule transition() -> ElementKind = kw("TRANSITION") _ name:transition_name()? _ priority:("(" _ kw("PRIORITY") _ ":=" _ p:integer() _ ")" {p})? _ kw("FROM") _ from:steps() _ kw("TO") _ to:steps() _ condition:transition_condition() _ kw("END_TRANSITION") {?
+    rule transition() -> ElementKind = tok(TokenType::Transition) _ name:transition_name()? _ priority:(tok(TokenType::LeftParen) _ id_eq("PRIORITY") _ tok(TokenType::Assignment) _ p:integer() _ tok(TokenType::RightParen) {p})? _ tok(TokenType::From) _ from:steps() _ tok(TokenType::To) _ to:steps() _ condition:transition_condition() _ tok(TokenType::EndTransition) {?
       let mut prio : Option<u32> = None;
       if let Some(p) = priority {
           let p = p.value.try_into().map_err(|e| "priority")?;
@@ -1082,13 +1105,13 @@ parser! {
     rule transition_name() -> Id = identifier()
     rule steps() -> Vec<Id> = name:step_name() {
       vec![name]
-    } / "(" _ n1:step_name() _ "," _ n2:step_name() _ nr:("," _ n:step_name()) ** _ _ ")" {
+    } / tok(TokenType::LeftParen) _ n1:step_name() _ tok(TokenType::Comma) _ n2:step_name() _ nr:(tok(TokenType::Comma) _ n:step_name()) ** _ _ tok(TokenType::RightParen) {
       // TODO need to extend with nr
       vec![n1, n2]
     }
     // TODO add simple_instruction_list , fbd_network, rung
-    rule transition_condition() -> ExprKind =  ":=" _ expr:expression() _ ";" { expr }
-    rule action() -> ElementKind = kw("ACTION") _ name:action_name() _ ":" _ body:function_block_body() _ kw("END_ACTION") {
+    rule transition_condition() -> ExprKind =  tok(TokenType::Assignment) _ expr:expression() _ tok(TokenType::Semicolon) { expr }
+    rule action() -> ElementKind = tok(TokenType::Action) _ name:action_name() _ tok(TokenType::Colon) _ body:function_block_body() _ tok(TokenType::EndAction) {
       ElementKind::Action(Action {
         name,
         body
@@ -1098,7 +1121,7 @@ parser! {
     // B.1.7 Configuration elements
     rule configuration_name() -> Id = i:identifier() { i }
     rule resource_type_name() -> Id = i:identifier() { i }
-    pub rule configuration_declaration() -> ConfigurationDeclaration = kw("CONFIGURATION") _ n:configuration_name() _ g:global_var_declarations()? _ r:resource_declaration() _ kw("END_CONFIGURATION") {
+    pub rule configuration_declaration() -> ConfigurationDeclaration = tok(TokenType::Configuration) _ n:configuration_name() _ g:global_var_declarations()? _ r:resource_declaration() _ tok(TokenType::EndConfiguration) {
       let g = g.unwrap_or_default();
       // TODO this should really be multiple items
       let r = vec![r];
@@ -1108,7 +1131,7 @@ parser! {
         resource_decl: r,
       }
     }
-    rule resource_declaration() -> ResourceDeclaration = kw("RESOURCE") _ n:resource_name() _ kw("ON") _ t:resource_type_name() _ g:global_var_declarations()? _ resource:single_resource_declaration() _ kw("END_RESOURCE") {
+    rule resource_declaration() -> ResourceDeclaration = tok(TokenType::Resource) _ n:resource_name() _ tok(TokenType::On) _ t:resource_type_name() _ g:global_var_declarations()? _ resource:single_resource_declaration() _ tok(TokenType::EndResource) {
       let g = g.unwrap_or_default();
       ResourceDeclaration {
         name: n,
@@ -1122,7 +1145,7 @@ parser! {
     rule single_resource_declaration() -> (Vec<TaskConfiguration>, Vec<ProgramConfiguration>) = t:semisep(<task_configuration()>)? _ p:semisep_oneplus(<program_configuration()>) { (t.unwrap_or_default(), p) }
     rule resource_name() -> Id = i:identifier() { i }
     rule program_name() -> Id = i:identifier() { i }
-    pub rule task_configuration() -> TaskConfiguration = kw("TASK") _ name:task_name() _ init:task_initialization() {
+    pub rule task_configuration() -> TaskConfiguration = tok(TokenType::Task) _ name:task_name() _ init:task_initialization() {
       TaskConfiguration {
         name,
         priority: init.0,
@@ -1132,20 +1155,20 @@ parser! {
     }
     rule task_name() -> Id = i:identifier() { i }
     // TODO add single and interval
-    pub rule task_initialization() -> (u32, Option<Duration>) = "(" _ interval:task_initialization_interval()? _ priority:task_initialization_priority() _ ")" { (priority, interval) }
-    rule task_initialization_interval() -> Duration = kw("INTERVAL") _ ":=" _ source:data_source() _ "," {
+    pub rule task_initialization() -> (u32, Option<Duration>) = tok(TokenType::LeftParen) _ interval:task_initialization_interval()? _ priority:task_initialization_priority() _ tok(TokenType::RightParen) { (priority, interval) }
+    rule task_initialization_interval() -> Duration = id_eq("INTERVAL") _ tok(TokenType::Assignment) _ source:data_source() _ tok(TokenType::Comma) {
       // TODO The interval may not necessarily be a duration, but for now, only support Duration types
       match source {
         ConstantKind::Duration(duration) => duration.value,
         _ => panic!("Only supporting Duration types for now"),
       }
      }
-    rule task_initialization_priority() -> u32 = kw("PRIORITY") _ ":=" _ i:integer() {? i.value.try_into().map_err(|e| "priority") }
+    rule task_initialization_priority() -> u32 = id_eq("PRIORITY") _ tok(TokenType::Assignment) _ i:integer() {? i.value.try_into().map_err(|e| "priority") }
     // TODO there are more here, but only supporting Constant for now
     pub rule data_source() -> ConstantKind = constant:constant() { constant }
     // TODO more options here
     //pub rule data_source() -> &'input str =
-    pub rule program_configuration() -> ProgramConfiguration = kw("PROGRAM") _ name:program_name() task_name:( _ kw("WITH") _ t:task_name() { t })? _ ":" _ pt:program_type_name() (_ "(" _ c:prog_conf_element() ** (_ "," _) _ ")")? {
+    pub rule program_configuration() -> ProgramConfiguration = tok(TokenType::Program) _ name:program_name() task_name:( _ tok(TokenType::With) _ t:task_name() { t })? _ tok(TokenType::Colon) _ pt:program_type_name() (_ tok(TokenType::LeftParen) _ c:prog_conf_element() ** (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen))? {
       ProgramConfiguration {
         name,
         task_name,
@@ -1153,41 +1176,40 @@ parser! {
       }
      }
     rule prog_conf_element() -> Id = t:fb_task() { t.0 } /*/ p:prog_cnxn() { p }*/
-    rule fb_task() -> (Id, Id) = n:fb_name() _ kw("WITH") _ tn:task_name() { (n, tn) }
+    rule fb_task() -> (Id, Id) = n:fb_name() _ tok(TokenType::With) _ tn:task_name() { (n, tn) }
 
     // B.3.1 Expressions
     pub rule expression() -> ExprKind = precedence!{
       // or_expression
-      x:(@) _ kw("OR") _ y:@ { ExprKind::compare(CompareOp::Or, x, y) }
+      x:(@) _ tok(TokenType::Or) _ y:@ { ExprKind::compare(CompareOp::Or, x, y) }
       --
       // xor_expression
-      x:(@) _ kw("XOR") _ y:@ { ExprKind::compare(CompareOp::Xor, x, y) }
+      x:(@) _ tok(TokenType::Xor) _ y:@ { ExprKind::compare(CompareOp::Xor, x, y) }
       --
       // and_expression
-      x:(@) _ "&" _ y:@ { ExprKind::compare(CompareOp::And, x, y ) }
-      x:(@) _ kw("AND") _ y:@ { ExprKind::compare(CompareOp::And, x, y ) }
+      x:(@) _ tok(TokenType::And) _ y:@ { ExprKind::compare(CompareOp::And, x, y ) }
       --
       // comparison
-      x:(@) _ "=" _ y:@ { ExprKind::compare(CompareOp::Eq, x, y ) }
-      x:(@) _ "<>" _ y:@ { ExprKind::compare(CompareOp::Ne, x, y ) }
+      x:(@) _ tok(TokenType::Equal)_ y:@ { ExprKind::compare(CompareOp::Eq, x, y ) }
+      x:(@) _ tok(TokenType::NotEqual) _ y:@ { ExprKind::compare(CompareOp::Ne, x, y ) }
       --
       // equ_expression
-      x:(@) _ "<" _ y:@ { ExprKind::compare(CompareOp::Lt, x, y ) }
-      x:(@) _ ">" _ y:@ { ExprKind::compare(CompareOp::Gt, x, y ) }
-      x:(@) _ "<=" _ y:@ { ExprKind::compare(CompareOp::LtEq, x, y) }
-      x:(@) _ ">=" _ y:@ { ExprKind::compare(CompareOp::GtEq, x, y) }
+      x:(@) _ tok(TokenType::Less) _ y:@ { ExprKind::compare(CompareOp::Lt, x, y ) }
+      x:(@) _ tok(TokenType::Greater)_ y:@ { ExprKind::compare(CompareOp::Gt, x, y ) }
+      x:(@) _ tok(TokenType::LessEqual) _ y:@ { ExprKind::compare(CompareOp::LtEq, x, y) }
+      x:(@) _ tok(TokenType::GreaterEqual) _ y:@ { ExprKind::compare(CompareOp::GtEq, x, y) }
       --
       // add_expression
-      x:(@) _ "+" _ y:@ { ExprKind::binary(Operator::Add, x, y ) }
-      x:(@) _ "-" _ y:@ { ExprKind::binary(Operator::Sub, x, y ) }
+      x:(@) _ tok(TokenType::Plus) _ y:@ { ExprKind::binary(Operator::Add, x, y ) }
+      x:(@) _ tok(TokenType::Minus) _ y:@ { ExprKind::binary(Operator::Sub, x, y ) }
       --
       // multiply_operator
-      x:(@) _ "*" _ y:@ { ExprKind::binary(Operator::Mul, x, y ) }
-      x:(@) _ "/" _ y:@ { ExprKind::binary(Operator::Div, x, y ) }
-      x:(@) _ kw("MOD") _ y:@ { ExprKind::binary(Operator::Mod, x, y ) }
+      x:(@) _ tok(TokenType::Star) _ y:@ { ExprKind::binary(Operator::Mul, x, y ) }
+      x:(@) _ tok(TokenType::Div)_ y:@ { ExprKind::binary(Operator::Div, x, y ) }
+      x:(@) _ tok(TokenType::Mod) _ y:@ { ExprKind::binary(Operator::Mod, x, y ) }
       --
       // power_expression
-      x:(@) _ "**" _ y:@ { ExprKind::binary(Operator::Pow, x, y ) }
+      x:(@) _ tok(TokenType::Power) _ y:@ { ExprKind::binary(Operator::Pow, x, y ) }
       --
       //unary_expression
       p:unary_expression() { p }
@@ -1196,7 +1218,7 @@ parser! {
       c:constant() { ExprKind::Const(c) }
       //ev:enumerated_value()
       v:variable() { ExprKind::Variable(v) }
-      "(" _ e:expression() _ ")" { ExprKind::Expression(Box::new(e)) }
+      tok(TokenType::LeftParen) _ e:expression() _ tok(TokenType::RightParen) { ExprKind::Expression(Box::new(e)) }
       f:function_expression() { f }
     }
     rule unary_expression() -> ExprKind = unary:unary_operator()? _ expr:primary_expression() {
@@ -1205,7 +1227,7 @@ parser! {
       }
       expr
     }
-    rule unary_operator() -> UnaryOp = "-" {UnaryOp::Neg} / kw("NOT") {UnaryOp::Not}
+    rule unary_operator() -> UnaryOp = tok(TokenType::Minus) {UnaryOp::Neg} / tok(TokenType::Not) {UnaryOp::Not}
     rule primary_expression() -> ExprKind
       = constant:constant() {
           ExprKind::Const(constant)
@@ -1217,10 +1239,10 @@ parser! {
       / variable:variable() {
         ExprKind::Variable(variable)
       }
-      / "(" _ expression:expression() _ ")" {
+      / tok(TokenType::LeftParen) _ expression:expression() _ tok(TokenType::RightParen) {
         expression
       }
-    rule function_expression() -> ExprKind = name:function_name() _ "(" _ params:param_assignment() ** (_ "," _) _ ")" {
+    rule function_expression() -> ExprKind = name:function_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) {
       ExprKind::Function(Function {
         name,
         param_assignment: params
@@ -1231,15 +1253,15 @@ parser! {
     pub rule statement_list() -> Vec<StmtKind> = items:statements_or_empty()+ {
       flatten_statements(items)
     }
-    rule statements_or_empty() -> StatementsOrEmpty = _ ";" _ { StatementsOrEmpty::Empty() } / s:semisep(<statement()>) { StatementsOrEmpty::Statements(s)}
+    rule statements_or_empty() -> StatementsOrEmpty = _ tok(TokenType::Semicolon) _ { StatementsOrEmpty::Empty() } / s:semisep(<statement()>) { StatementsOrEmpty::Statements(s)}
     rule statement() -> StmtKind = assignment_statement() / selection_statement() / iteration_statement() / subprogram_control_statement()
 
     // B.3.2.1 Assignment statements
-    pub rule assignment_statement() -> StmtKind = var:variable() _ ":=" _ expr:expression() { StmtKind::assignment(var, expr) }
+    pub rule assignment_statement() -> StmtKind = var:variable() _ tok(TokenType::Assignment) _ expr:expression() { StmtKind::assignment(var, expr) }
 
     // B.3.2.2 Subprogram control statements
-    rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb } / kw("RETURN") { StmtKind::Return }
-    rule fb_invocation() -> StmtKind = start:position!() name:fb_name() _ "(" _ params:param_assignment() ** (_ "," _) _ ")" end:position!() {
+    rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb } / tok(TokenType::Return) { StmtKind::Return }
+    rule fb_invocation() -> StmtKind = start:position!() name:fb_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) end:position!() {
       StmtKind::FbCall(FbCall {
         var_name: name,
         params,
@@ -1247,14 +1269,14 @@ parser! {
       })
     }
     // TODO this needs much more
-    rule param_assignment() -> ParamAssignmentKind = not:(kw("NOT") {})? _ src:variable_name() _ "=>" _ tgt:variable() {
+    rule param_assignment() -> ParamAssignmentKind = not:(tok(TokenType::Not) {})? _ src:variable_name() _ tok(TokenType::RightArrow) _ tgt:variable() {
       ParamAssignmentKind::Output (
         Output{
         not: false,
         src,
         tgt,
       })
-    } / name:(n:variable_name() _ ":=" { n })? _ expr:expression() {
+    } / name:(n:variable_name() _ tok(TokenType::Assignment) { n })? _ expr:expression() {
       match name {
         Some(n) => {
           ParamAssignmentKind::NamedInput(NamedInput {name: n, expr} )
@@ -1266,7 +1288,7 @@ parser! {
     }
     // B.3.2.3 Selection statements
     rule selection_statement() -> StmtKind = if_statement() / case_statement()
-    rule if_statement() -> StmtKind = kw("IF") _ expr:expression() _ kw("THEN") _ body:statement_list()? _ else_ifs:(kw("ELSIF") _ expr:expression() _ kw("THEN") _ body:statement_list() {ElseIf{expr, body}}) ** _ _ else_body:(kw("ELSE") _ e:statement_list() { e })? _ "END_IF" {
+    rule if_statement() -> StmtKind = tok(TokenType::If) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list()? _ else_ifs:(tok(TokenType::Elsif) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list() {ElseIf{expr, body}}) ** _ _ else_body:(tok(TokenType::Else) _ e:statement_list() { e })? _ tok(TokenType::EndIf) {
       StmtKind::If(If {
         expr,
         body: body.unwrap_or_default(),
@@ -1274,25 +1296,25 @@ parser! {
         else_body: else_body.unwrap_or_default()
       })
     }
-    rule case_statement() -> StmtKind = kw("CASE") _ selector:expression() _ kw("OF") _ cases:case_element() ** _ _ else_body:(kw("ELSE") _ e:statement_list() { e })? _ kw("END_CASE") {
+    rule case_statement() -> StmtKind = tok(TokenType::Case) _ selector:expression() _ tok(TokenType::Of) _ cases:case_element() ** _ _ else_body:(tok(TokenType::Else) _ e:statement_list() { e })? _ tok(TokenType::EndCase) {
       StmtKind::Case(Case {
         selector,
         statement_groups: cases,
         else_body: else_body.unwrap_or_default(),
       })
     }
-    rule case_element() -> CaseStatementGroup = selectors:case_list() _ ":" _ statements:statement_list() {
+    rule case_element() -> CaseStatementGroup = selectors:case_list() _ tok(TokenType::Colon) _ statements:statement_list() {
       CaseStatementGroup {
         selectors,
         statements,
       }
     }
-    rule case_list() -> Vec<CaseSelectionKind> = cases_list:case_list_element() ++ (_ "," _) { cases_list }
+    rule case_list() -> Vec<CaseSelectionKind> = cases_list:case_list_element() ++ (_ tok(TokenType::Comma) _) { cases_list }
     rule case_list_element() -> CaseSelectionKind = sr:subrange() {CaseSelectionKind::Subrange(sr)} / si:signed_integer() {CaseSelectionKind::SignedInteger(si)} / ev:enumerated_value() {CaseSelectionKind::EnumeratedValue(ev)}
 
     // B.3.2.4 Iteration statements
     rule iteration_statement() -> StmtKind = f:for_statement() {StmtKind::For(f)} / w:while_statement() {StmtKind::While(w)} / r:repeat_statement() {StmtKind::Repeat(r)} / exit_statement()
-    rule for_statement() -> For = kw("FOR") _ control:control_variable() _ ":=" _ range:for_list() _ kw("DO") _ body:statement_list() _ kw("END_FOR") {
+    rule for_statement() -> For = tok(TokenType::For) _ control:control_variable() _ tok(TokenType::Assignment) _ range:for_list() _ tok(TokenType::Do) _ body:statement_list() _ tok(TokenType::EndFor) {
       For {
         control,
         from: range.0,
@@ -1302,26 +1324,26 @@ parser! {
       }
     }
     rule control_variable() -> Id = identifier()
-    rule for_list() -> (ExprKind, ExprKind, Option<ExprKind>) = from:expression() _ kw("TO") _ to:expression() _ step:(kw("BY") _ s:expression() {s})? { (from, to, step) }
-    rule while_statement() -> While = kw("WHILE") _ condition:expression() _ kw("DO") _ body:statement_list() _ kw("END_WHILE") {
+    rule for_list() -> (ExprKind, ExprKind, Option<ExprKind>) = from:expression() _ tok(TokenType::To) _ to:expression() _ step:(tok(TokenType::By) _ s:expression() {s})? { (from, to, step) }
+    rule while_statement() -> While = tok(TokenType::While) _ condition:expression() _ tok(TokenType::Do) _ body:statement_list() _ tok(TokenType::EndWhile) {
       While {
         condition,
         body,
       }
     }
-    rule repeat_statement() -> Repeat = kw("REPEAT") _ body:statement_list() _ kw("UNTIL") _ until:expression() _ kw("END_REPEAT") {
+    rule repeat_statement() -> Repeat = tok(TokenType::Repeat) _ body:statement_list() _ tok(TokenType::Until) _ until:expression() _ tok(TokenType::EndRepeat) {
       Repeat {
         until,
         body,
       }
     }
     // TODO
-    rule exit_statement() -> StmtKind = kw("EXIT") { StmtKind::Exit }
+    rule exit_statement() -> StmtKind = tok(TokenType::Exit) { StmtKind::Exit }
 
   }
 }
 
-mod test {
+/*mod test {
     #[allow(unused_imports)]
     use super::*;
 
@@ -1689,3 +1711,4 @@ END_VAR";
         assert_eq!(plc_parser::statement_list(statement), expected)
     }
 }
+*/

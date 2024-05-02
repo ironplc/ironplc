@@ -1,5 +1,6 @@
 //! Provides definitions of tokens from IEC 61131-3.
-use std::fmt::Debug;
+use core::fmt;
+use std::{fmt::Debug};
 
 use logos::Logos;
 
@@ -10,6 +11,9 @@ pub struct Position {
     pub line: usize,
     /// The column number (0-indexed)
     pub column: usize,
+    /// Offset from beginning
+    pub start: usize,
+    pub end: usize,
 }
 
 impl Debug for Position {
@@ -28,6 +32,11 @@ pub struct Token {
     pub text: String,
 }
 
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("Type: {:?}, Value: '{}'", self.token_type, self.text))
+    }
+}
 #[derive(Clone, Logos, Debug, PartialEq)]
 #[logos(extras = Position)]
 pub enum TokenType {
@@ -62,13 +71,19 @@ pub enum TokenType {
     Colon,
     #[token(".")]
     Period,
+    #[token("..")]
+    Range,
 
     // TODO It would be nice for this to be associated with a type
     #[token("#")]
     Hash,
+
+    // Separate the single byte and double byte representations
+    // because those have different valid prefixes.
     #[regex(r"'[^']*'")]
+    SingleByteString,
     #[regex("\"[^\"]*\"")]
-    StringLiteral,
+    DoubleByteString,
 
     // B.1.1 Letters, digits and identifier
     // Lower priority than any keyword.
@@ -80,7 +95,7 @@ pub enum TokenType {
     // matching and precedence. Rather we identify some of the relevant constituent
     // parts and piece them together later.
     #[regex(r"[0-9][0-9_]*")]
-    Integer,
+    Digits,
 
     #[token("ACTION", ignore(case))]
     Action,
@@ -100,7 +115,7 @@ pub enum TokenType {
     #[token("ELSE", ignore(case))]
     Else,
     #[token("END_CASE", ignore(case))]
-    CaseEnd,
+    EndCase,
 
     #[token("CONSTANT", ignore(case))]
     Constant,
@@ -152,7 +167,7 @@ pub enum TokenType {
     #[token("ELSIF", ignore(case))]
     Elsif,
     #[token("END_IF", ignore(case))]
-    IfEnd,
+    EndIf,
 
     #[token("INITIAL_STEP", ignore(case))]
     InitialStep,
@@ -179,7 +194,7 @@ pub enum TokenType {
     #[token("UNTIL", ignore(case))]
     Until,
     #[token("END_REPEAT", ignore(case))]
-    RepeatEnd,
+    EndRepeat,
 
     #[token("RESOURCE", ignore(case))]
     Resource,
@@ -227,7 +242,7 @@ pub enum TokenType {
     #[token("VAR", ignore(case))]
     Var,
     #[token("END_VAR", ignore(case))]
-    VarEnd,
+    EndVar,
     #[token("VAR_INPUT", ignore(case))]
     VarInput,
     #[token("VAR_OUTPUT", ignore(case))]
@@ -270,6 +285,8 @@ pub enum TokenType {
     Ulint,
     #[token("REAL", ignore(case))]
     Real,
+    #[token("LREAL", ignore(case))]
+    Lreal,
     #[token("TIME", ignore(case))]
     Time,
     #[token("DATE", ignore(case))]
@@ -293,8 +310,10 @@ pub enum TokenType {
     #[token("WSTRING", ignore(case))]
     WString,
 
-    #[regex(r"%[IQM]", ignore(case))]
-    Location,
+    #[regex(r"%[IQM]\*", ignore(case))]
+    DirectAddressUnassigned,
+    #[regex(r"%[IQM]([XBWDL])?(\d(\.\d)*)", ignore(case))]
+    DirectAddress,
 
     // Expressions
     #[token("OR", ignore(case))]
@@ -333,4 +352,7 @@ pub enum TokenType {
 
     #[token(":=")]
     Assignment,
+
+    #[token("=>")]
+    RightArrow,
 }

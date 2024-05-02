@@ -16,3 +16,5 @@ ironplc-problems = { path = "../problems", version = "0.57.0" }
 dsl_macro_derive = { path = "../dsl_macro_derive", version = "0.57.0" }
 paste = "1.0"
 logos = "0.14.0"
+regex = "1.10.4"
+lazy_static = "1.4.0"
