@@ -1220,8 +1220,7 @@ impl TryFrom<&str> for AddressAssignment {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         if let Some(cap) = DIRECT_ADDRESS_UNASSIGNED.captures(value) {
-            let location_prefix = cap.get(0).unwrap().as_str();
-            let location_prefix = LocationPrefix::try_from(location_prefix)?;
+            let location_prefix = LocationPrefix::try_from(&cap[1])?;
             return Ok(AddressAssignment {
                 location: location_prefix,
                 size: SizePrefix::Unspecified,
@@ -1231,16 +1230,16 @@ impl TryFrom<&str> for AddressAssignment {
         }
 
         if let Some(cap) = DIRECT_ADDRESS.captures(value) {
-            let location_prefix = cap.get(0).unwrap().as_str();
-            let location_prefix = LocationPrefix::try_from(location_prefix)?;
+            let location_prefix = LocationPrefix::try_from(&cap[1])?;
+            let size_prefix = SizePrefix::try_from(&cap[2])?;
+            let pos: Vec<u32> = cap[3].split('.').map(|v| v.parse::<u32>().unwrap()).collect();
 
-            let size_prefix = cap.get(1).unwrap().as_str();
-            let size_prefix = SizePrefix::try_from(size_prefix)?;
+            println!("{}", &cap[3]);
 
             return Ok(AddressAssignment {
                 location: location_prefix,
                 size: size_prefix,
-                address: vec![],
+                address: pos,
                 position: SourceLoc::default()
             });
         }

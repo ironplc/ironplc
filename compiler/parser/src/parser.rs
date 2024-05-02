@@ -320,23 +320,30 @@ parser! {
     rule hex_integer_prefix() -> () = tok_eq(TokenType::Digits, "16") tok(TokenType::Hash) ()
     // TODO this doesn't do HEX
     rule hex_integer() -> Integer = start:position!() hex_integer_prefix() n:tok(TokenType::Identifier) end:position!() {? Integer::try_hex(n.text.as_str()) }
-    rule real_literal() -> RealLiteral = tn:(t:real_type_name() id_eq("#") {t})? whole:signed_integer() tok(TokenType::Period) fraction:integer__string_simplified() exp:exponent()? {?
-      // TODO this entire block is wrong
+    rule real_literal() -> RealLiteral = tn:(t:real_type_name() tok(TokenType::Hash) {t})? sign:(tok(TokenType::Plus) { 1 } / tok(TokenType::Minus) { -1 })? whole:tok(TokenType::Digits) tok(TokenType::Period) fraction:tok(TokenType::Digits) exp:exponent()? {?
       // Create the value from concatenating the parts so that it is trivial
       // to existing parsers.
-      /*let mut value = (whole + "." + &fraction).parse::<f64>().map_err(|e| "real")?;
+      let whole: String = whole.text.chars().filter(|c| c.is_ascii_digit()).collect();
+      let fraction: String = fraction.text.chars().filter(|c| c.is_ascii_digit()).collect();
+
+      let mut value = (whole + "." + &fraction).parse::<f64>().map_err(|e| "real")?;
 
       if let Some(exp) = exp {
-        let exp = f64::powf(exp.try_into().map_err(|e| "exp")?, 10.0);
+        let exp = f64::powf(exp as f64, 10.0);
         value *= exp;
-      }*/
+      }
 
       Ok(RealLiteral {
-        value: 0.0,
+        value: value,
         data_type: tn,
       })
     }
-    rule exponent() -> SignedInteger = (id_eq("E") / id_eq("e")) si:signed_integer() { si }
+    rule exponent() -> i128 = (id_eq("E") / id_eq("e")) sign:(tok(TokenType::Plus) { 1 } / tok(TokenType::Minus) { -1 })? whole:tok(TokenType::Digits) {?
+      let sign: i128 = sign.unwrap_or(1);
+      let value: String = whole.text.chars().filter(|c| c.is_ascii_digit()).collect();
+      let value = value.as_str().parse::<i128>().map_err(|e| "not an exponent")?;
+      return Ok(sign * value);
+    }
     // bit_string_literal_type is not a rule in the specification but helps write simpler code
     rule bit_string_literal_type() -> ElementaryTypeName =
       tok(TokenType::Byte) { ElementaryTypeName::BYTE }
@@ -355,8 +362,19 @@ parser! {
       / tok(TokenType::False) { BooleanLiteral::new(Boolean::False) }
     // B.1.2.2 Character strings
     rule character_string() -> Vec<char> = single_byte_character_string() / double_byte_character_string()
-    rule single_byte_character_string() -> Vec<char>  = (tok(TokenType::String) tok(TokenType::Hash))? t:tok(TokenType::SingleByteString) { t.text.chars().collect() }
-    rule double_byte_character_string() -> Vec<char> = (tok(TokenType::WString) tok(TokenType::Hash))? t:tok(TokenType::DoubleByteString) { t.text.chars().collect() }
+    rule single_byte_character_string() -> Vec<char>  = (tok(TokenType::String) tok(TokenType::Hash))? t:tok(TokenType::SingleByteString) {
+      // The token includes the surrounding single quotes, so remove those when generating the literal
+      let mut chars = t.text.chars();
+      chars.next();
+      chars.next_back();
+      chars.collect()
+    }
+    rule double_byte_character_string() -> Vec<char> = (tok(TokenType::WString) tok(TokenType::Hash))? t:tok(TokenType::DoubleByteString) {
+      let mut chars = t.text.chars();
+      chars.next();
+      chars.next_back();
+      chars.collect()
+    }
   
     // B.1.2.3 Time literals
     // Omitted and subsumed into constant.
@@ -753,28 +771,11 @@ parser! {
     // B.1.4.1 Directly represented variables
     // There is no location_prefix rule because it would be ambiguous when the % prefix normally
     // resolved ambiguity. Therefore, the lexer matches the entire direct variable.
-    pub rule direct_variable() -> AddressAssignment = tok(TokenType::DirectAddressUnassigned) {
-      AddressAssignment {
-        // TODO fix this
-        location: LocationPrefix::M,
-        size: SizePrefix::Unspecified,
-        address: vec![],
-        position: SourceLoc::default()
-      }
-    } / tok(TokenType::DirectAddress) {?
-      /*let size = s.unwrap_or(SizePrefix::Nil);
-      let mut addresses = Vec::new();
-      for part in addr.iter() {
-        addresses.push(part.value.try_into().map_err(|e| "address")?);
-      }*/
+    pub rule direct_variable() -> AddressAssignment = t:tok(TokenType::DirectAddressUnassigned) {?
       // TODO fix this
-
-      Ok(AddressAssignment {
-        location: LocationPrefix::M,
-        size: SizePrefix::Unspecified,
-        address: vec![],
-        position: SourceLoc::default()
-      })
+      AddressAssignment::try_from(t.text.as_str())
+    } / t:tok(TokenType::DirectAddress) {?
+      AddressAssignment::try_from(t.text.as_str())
     }
     rule size_prefix() -> SizePrefix =
       id_eq("X") { SizePrefix::X }
