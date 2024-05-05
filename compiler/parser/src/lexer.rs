@@ -29,7 +29,12 @@ pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>)
             Ok(token_type) => {
                 tokens.push(Token {
                     token_type: token_type.clone(),
-                    position: Position { line, column, start: lexer.span().start, end: lexer.span().end },
+                    position: Position {
+                        line,
+                        column,
+                        start: lexer.span().start,
+                        end: lexer.span().end,
+                    },
                     text: lexer.slice().into(),
                 });
 
@@ -48,7 +53,10 @@ pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>)
                     Label::offset(
                         file_id.clone(),
                         span,
-                        format!("The text {} does not match a token", lexer.slice()),
+                        format!(
+                            "The text '{}' is not valid IEC 61131-3 text at this location.",
+                            lexer.slice()
+                        ),
                     ),
                 ))
             }

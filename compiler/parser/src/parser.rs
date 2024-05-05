@@ -52,7 +52,11 @@ pub fn parse_library(
             Label::qualified(
                 file_id.clone(),
                 // TODO fix the position
-                QualifiedPosition::new(problem_token.position.line, problem_token.position.column, problem_token.position.start ),
+                QualifiedPosition::new(
+                    problem_token.position.line,
+                    problem_token.position.column,
+                    problem_token.position.start,
+                ),
                 format!("Expected one of: {}. Found {}", expected, problem_token),
             ),
         )
@@ -203,7 +207,7 @@ enum Element {
 /// elements by `&T` reference, which is `Copy`.
 pub struct SliceByRef<'a, T>(pub &'a [T]);
 
-impl<'a , T> Parse for SliceByRef<'a, T> {
+impl<'a, T> Parse for SliceByRef<'a, T> {
     type PositionRepr = usize;
     fn start(&self) -> usize {
         0
@@ -378,7 +382,7 @@ parser! {
       chars.next_back();
       chars.collect()
     }
-  
+
     // B.1.2.3 Time literals
     // Omitted and subsumed into constant.
 

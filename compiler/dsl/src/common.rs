@@ -3,12 +3,12 @@
 //! See section 2.
 use core::str::FromStr;
 use lazy_static::lazy_static;
-use std::panic::Location;
 use regex::Regex;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 use std::num::TryFromIntError;
 use std::ops::{Add, Deref};
+use std::panic::Location;
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
 use dsl_macro_derive::Recurse;
@@ -119,13 +119,19 @@ impl Integer {
     }
 
     pub fn try_hex(a: &str) -> Result<Self, &'static str> {
-        let (hex, remainder): (Vec<_>, Vec<_>) = a.chars().filter(|c| *c != '_').partition(|c| c.is_ascii_hexdigit());
+        let (hex, remainder): (Vec<_>, Vec<_>) = a
+            .chars()
+            .filter(|c| *c != '_')
+            .partition(|c| c.is_ascii_hexdigit());
         if !remainder.is_empty() {
             return Err("Non-hex characters");
         }
         let hex: String = hex.into_iter().collect();
         u128::from_str_radix(hex.as_str(), 16)
-            .map(|value| Integer { position: SourceLoc::default(), value })
+            .map(|value| Integer {
+                position: SourceLoc::default(),
+                value,
+            })
             .map_err(|e| "hex")
     }
 
@@ -137,13 +143,19 @@ impl Integer {
     }
 
     pub fn try_octal(a: &str) -> Result<Self, &'static str> {
-        let (oct, remainder): (Vec<_>, Vec<_>) = a.chars().filter(|c| *c != '_').partition(|c| matches!(c, '0'..='7'));
+        let (oct, remainder): (Vec<_>, Vec<_>) = a
+            .chars()
+            .filter(|c| *c != '_')
+            .partition(|c| matches!(c, '0'..='7'));
         if !remainder.is_empty() {
             return Err("Non-octal characters");
         }
         let oct: String = oct.into_iter().collect();
         u128::from_str_radix(oct.as_str(), 8)
-            .map(|value| Integer { position: SourceLoc::default(), value })
+            .map(|value| Integer {
+                position: SourceLoc::default(),
+                value,
+            })
             .map_err(|e| "octal")
     }
 
@@ -155,13 +167,19 @@ impl Integer {
     }
 
     pub fn try_binary(a: &str) -> Result<Self, &'static str> {
-        let (bin, remainder): (Vec<_>, Vec<_>) = a.chars().filter(|c| *c != '_').partition(|c| matches!(c, '0'..='1'));
+        let (bin, remainder): (Vec<_>, Vec<_>) = a
+            .chars()
+            .filter(|c| *c != '_')
+            .partition(|c| matches!(c, '0'..='1'));
         if !remainder.is_empty() {
             return Err("Non-binary characters");
         }
         let bin: String = bin.into_iter().collect();
         u128::from_str_radix(bin.as_str(), 2)
-            .map(|value| Integer { position: SourceLoc::default(), value })
+            .map(|value| Integer {
+                position: SourceLoc::default(),
+                value,
+            })
             .map_err(|e| "binary")
     }
 
@@ -823,7 +841,7 @@ impl TryFrom<Option<char>> for LocationPrefix {
             Some('I') => Ok(LocationPrefix::I),
             Some('Q') => Ok(LocationPrefix::Q),
             Some('M') => Ok(LocationPrefix::M),
-            _ => Err("Value must be one of I, Q, M")
+            _ => Err("Value must be one of I, Q, M"),
         }
     }
 }
@@ -871,7 +889,7 @@ impl TryFrom<Option<char>> for SizePrefix {
             Some('D') => Ok(SizePrefix::D),
             Some('L') => Ok(SizePrefix::L),
             None => Ok(SizePrefix::Nil),
-            _ => Err("Value must be one of *, X, B, W, D, L, NIL")
+            _ => Err("Value must be one of *, X, B, W, D, L, NIL"),
         }
     }
 }
@@ -1210,7 +1228,7 @@ pub struct AddressAssignment {
     pub position: SourceLoc,
 }
 
-lazy_static!{
+lazy_static! {
     static ref DIRECT_ADDRESS_UNASSIGNED: Regex = Regex::new(r"%([IQM])\*").unwrap();
     static ref DIRECT_ADDRESS: Regex = Regex::new(r"%([IQM])([XBWDL])?(\d(\.\d)*)").unwrap();
 }
@@ -1225,14 +1243,17 @@ impl TryFrom<&str> for AddressAssignment {
                 location: location_prefix,
                 size: SizePrefix::Unspecified,
                 address: vec![],
-                position: SourceLoc::default()
+                position: SourceLoc::default(),
             });
         }
 
         if let Some(cap) = DIRECT_ADDRESS.captures(value) {
             let location_prefix = LocationPrefix::try_from(&cap[1])?;
             let size_prefix = SizePrefix::try_from(&cap[2])?;
-            let pos: Vec<u32> = cap[3].split('.').map(|v| v.parse::<u32>().unwrap()).collect();
+            let pos: Vec<u32> = cap[3]
+                .split('.')
+                .map(|v| v.parse::<u32>().unwrap())
+                .collect();
 
             println!("{}", &cap[3]);
 
@@ -1240,7 +1261,7 @@ impl TryFrom<&str> for AddressAssignment {
                 location: location_prefix,
                 size: size_prefix,
                 address: pos,
-                position: SourceLoc::default()
+                position: SourceLoc::default(),
             });
         }
 

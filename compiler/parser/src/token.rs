@@ -34,7 +34,10 @@ pub struct Token {
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("Type: {:?}, Value: '{}'", self.token_type, self.text))
+        f.write_fmt(format_args!(
+            "Type: {:?}, Value: '{}'",
+            self.token_type, self.text
+        ))
     }
 }
 #[derive(Clone, Logos, Debug, PartialEq)]
