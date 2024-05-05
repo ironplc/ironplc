@@ -289,7 +289,10 @@ parser! {
 
     // B.1.1 Letters, digits and identifier
     //rule digit() -> &'input str = $(['0'..='9'])
-    rule identifier() -> Id = i:tok(TokenType::Identifier) { Id::from(i.text.as_str()).with_position(SourceLoc::default()) }
+    rule identifier() -> Id = i:tok(TokenType::Identifier) {
+      Id::from(i.text.as_str())
+        .with_position(SourceLoc::range(i.position.start, i.position.end))
+    }
 
     // B.1.2 Constants
     rule constant() -> ConstantKind =

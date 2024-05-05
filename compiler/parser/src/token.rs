@@ -1,6 +1,6 @@
 //! Provides definitions of tokens from IEC 61131-3.
 use core::fmt;
-use std::{fmt::Debug};
+use std::fmt::Debug;
 
 use logos::Logos;
 

@@ -252,8 +252,8 @@ fn map_label(
     let contents = compilation_set.find(file_id);
     match &label.location {
         ironplc_dsl::diagnostic::Location::QualifiedPosition(qualified) => lsp_types::Range::new(
-            lsp_types::Position::new((qualified.line - 1) as u32, (qualified.column - 1) as u32),
-            lsp_types::Position::new((qualified.line - 1) as u32, (qualified.column - 1) as u32),
+            lsp_types::Position::new((qualified.line) as u32, (qualified.column) as u32),
+            lsp_types::Position::new((qualified.line) as u32, (qualified.column) as u32),
         ),
         ironplc_dsl::diagnostic::Location::OffsetRange(offset) => {
             if let Some(contents) = contents {
