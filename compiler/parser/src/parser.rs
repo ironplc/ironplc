@@ -46,7 +46,7 @@ pub fn parse_library(
         let token_index = e.location;
         // TODO remove the unw.as_str()rap
         let problem_token = tokens.get(token_index).unwrap();
-        let expected = Vec::from_iter(e.expected.tokens()).join(", ");
+        let expected = Vec::from_iter(e.expected.tokens()).join(" | ");
         Diagnostic::problem(
             Problem::SyntaxError,
             Label::qualified(
@@ -57,7 +57,12 @@ pub fn parse_library(
                     problem_token.position.column,
                     problem_token.position.start,
                 ),
-                format!("Expected one of: {}. Found {}", expected, problem_token),
+                format!(
+                    "Expected {}. Found text '{}' that matched token {}",
+                    expected,
+                    problem_token.text.replace('\n', "\\n"),
+                    problem_token.token_type.describe()
+                ),
             ),
         )
     })
@@ -250,7 +255,15 @@ parser! {
     }*/
 
     /// Helper rule to match a particular type of token.
-    rule tok(ty: TokenType) -> &'input Token = token:[t if t.token_type == ty] { token }
+    rule tok(ty: TokenType) -> &'input Token = token:[t] {?
+      if token.token_type == ty {
+        return Ok(token);
+      }
+      Err(ty.describe())
+    }
+
+    // rule name (args) -> return = matcher
+    // rule tok2(ty: TokenType) = &'input Token =
     rule tok_eq(ty: TokenType, val: &str) -> &'input Token = token:[t if t.token_type == ty && t.text.as_str() == val] { token }
     /// Helper rule to match an Identifier with the specified text
     rule id_eq(val: &str) -> &'input Token = [t if t.token_type == TokenType::Identifier && t.text.as_str() == val]
