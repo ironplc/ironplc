@@ -58,6 +58,7 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
 
     // Analyze the set
     if let Err(err) = analyze(&compilation_set) {
+        trace!("Errors {:?}", err);
         handle_diagnostics(err, Some(&compilation_set), suppress_output);
         return Err(String::from("Error during analysis"));
     }

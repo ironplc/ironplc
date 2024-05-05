@@ -1,4 +1,5 @@
 //! Provides definitions of tokens from IEC 61131-3.
+use core::fmt;
 use std::fmt::Debug;
 
 use logos::Logos;
@@ -10,6 +11,9 @@ pub struct Position {
     pub line: usize,
     /// The column number (0-indexed)
     pub column: usize,
+    /// Offset from beginning
+    pub start: usize,
+    pub end: usize,
 }
 
 impl Debug for Position {
@@ -28,6 +32,14 @@ pub struct Token {
     pub text: String,
 }
 
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!(
+            "Type: {:?}, Value: '{}'",
+            self.token_type, self.text
+        ))
+    }
+}
 #[derive(Clone, Logos, Debug, PartialEq)]
 #[logos(extras = Position)]
 pub enum TokenType {
@@ -62,13 +74,19 @@ pub enum TokenType {
     Colon,
     #[token(".")]
     Period,
+    #[token("..")]
+    Range,
 
     // TODO It would be nice for this to be associated with a type
     #[token("#")]
     Hash,
+
+    // Separate the single byte and double byte representations
+    // because those have different valid prefixes.
     #[regex(r"'[^']*'")]
+    SingleByteString,
     #[regex("\"[^\"]*\"")]
-    StringLiteral,
+    DoubleByteString,
 
     // B.1.1 Letters, digits and identifier
     // Lower priority than any keyword.
@@ -80,7 +98,7 @@ pub enum TokenType {
     // matching and precedence. Rather we identify some of the relevant constituent
     // parts and piece them together later.
     #[regex(r"[0-9][0-9_]*")]
-    Integer,
+    Digits,
 
     #[token("ACTION", ignore(case))]
     Action,
@@ -100,7 +118,7 @@ pub enum TokenType {
     #[token("ELSE", ignore(case))]
     Else,
     #[token("END_CASE", ignore(case))]
-    CaseEnd,
+    EndCase,
 
     #[token("CONSTANT", ignore(case))]
     Constant,
@@ -152,7 +170,7 @@ pub enum TokenType {
     #[token("ELSIF", ignore(case))]
     Elsif,
     #[token("END_IF", ignore(case))]
-    IfEnd,
+    EndIf,
 
     #[token("INITIAL_STEP", ignore(case))]
     InitialStep,
@@ -179,7 +197,7 @@ pub enum TokenType {
     #[token("UNTIL", ignore(case))]
     Until,
     #[token("END_REPEAT", ignore(case))]
-    RepeatEnd,
+    EndRepeat,
 
     #[token("RESOURCE", ignore(case))]
     Resource,
@@ -227,7 +245,7 @@ pub enum TokenType {
     #[token("VAR", ignore(case))]
     Var,
     #[token("END_VAR", ignore(case))]
-    VarEnd,
+    EndVar,
     #[token("VAR_INPUT", ignore(case))]
     VarInput,
     #[token("VAR_OUTPUT", ignore(case))]
@@ -270,6 +288,8 @@ pub enum TokenType {
     Ulint,
     #[token("REAL", ignore(case))]
     Real,
+    #[token("LREAL", ignore(case))]
+    Lreal,
     #[token("TIME", ignore(case))]
     Time,
     #[token("DATE", ignore(case))]
@@ -293,8 +313,10 @@ pub enum TokenType {
     #[token("WSTRING", ignore(case))]
     WString,
 
-    #[regex(r"%[IQM]", ignore(case))]
-    Location,
+    #[regex(r"%[IQM]\*", ignore(case))]
+    DirectAddressUnassigned,
+    #[regex(r"%[IQM]([XBWDL])?(\d(\.\d)*)", ignore(case))]
+    DirectAddress,
 
     // Expressions
     #[token("OR", ignore(case))]
@@ -333,4 +355,143 @@ pub enum TokenType {
 
     #[token(":=")]
     Assignment,
+
+    #[token("=>")]
+    RightArrow,
+}
+
+impl TokenType {
+    pub fn describe(&self) -> &'static str {
+        match self {
+            TokenType::Newline => "'\\n' (new line)",
+            TokenType::Whitespace => "' ' (space) | '\\t' (tab)",
+            TokenType::Comment => "'(* ... *)' (comment)",
+            TokenType::LeftParen => "'('",
+            TokenType::RightParen => "')'",
+            TokenType::LeftBrace => "'{'",
+            TokenType::RightBrace => "'}'",
+            TokenType::LeftBracket => "'['",
+            TokenType::RightBracket => "']'",
+            TokenType::Comma => "','",
+            TokenType::Semicolon => "';'",
+            TokenType::Colon => "':'",
+            TokenType::Period => "'.'",
+            TokenType::Range => "'..'",
+            TokenType::Hash => "'#'",
+            TokenType::SingleByteString => "single byte string",
+            TokenType::DoubleByteString => "double string",
+            TokenType::Identifier => "",
+            TokenType::Digits => "0-9",
+            TokenType::Action => "'ACTION'",
+            TokenType::EndAction => "'END_ACTION'",
+            TokenType::Array => "'ARRAY'",
+            TokenType::Of => "'OF'",
+            TokenType::At => "'AT'",
+            TokenType::Case => "'CASE'",
+            TokenType::Else => "'ELSE'",
+            TokenType::EndCase => "'END_CASE'",
+            TokenType::Constant => "'CONSTANT'",
+            TokenType::Configuration => "'CONFIGURATION'",
+            TokenType::EndConfiguration => "'END_CONFIGURATION'",
+            TokenType::En => "'EN'",
+            TokenType::Eno => "'ENO'",
+            TokenType::Exit => "'EXIT'",
+            TokenType::False => "'FALSE'",
+            TokenType::FEdge => "'F_EDGE'",
+            TokenType::For => "'FOR'",
+            TokenType::To => "'TO'",
+            TokenType::By => "'BY'",
+            TokenType::Do => "'DO'",
+            TokenType::EndFor => "'END_FOR'",
+            TokenType::Function => "'FUNCTION'",
+            TokenType::EndFunction => "'END_FUNCTION'",
+            TokenType::FunctionBlock => "'FUNCTION_BLOCK'",
+            TokenType::EndFunctionBlock => "'END_FUNCTION_BLOCK'",
+            TokenType::If => "'IF'",
+            TokenType::Then => "'THEN'",
+            TokenType::Elsif => "'ELSIF'",
+            TokenType::EndIf => "'END_IF'",
+            TokenType::InitialStep => "'INITIAL_STEP'",
+            TokenType::EndStep => "'END_STEP'",
+            TokenType::Program => "'PROGRAM'",
+            TokenType::With => "'WITH'",
+            TokenType::EndProgram => "'END_PROGRAM'",
+            TokenType::REdge => "'R_EDGE'",
+            TokenType::ReadOnly => "'READ_ONLY'",
+            TokenType::ReadWrite => "'READ_WRITE'",
+            TokenType::Repeat => "'REPEAT'",
+            TokenType::Until => "'UNTIL'",
+            TokenType::EndRepeat => "'END_REPEAT'",
+            TokenType::Resource => "'RESOURCE'",
+            TokenType::On => "'ON'",
+            TokenType::EndResource => "'END_RESOURCE'",
+            TokenType::Retain => "'RETAIN'",
+            TokenType::NonRetain => "'NON_RETAIN'",
+            TokenType::Return => "'RETURN'",
+            TokenType::Step => "'STEP'",
+            TokenType::Struct => "'STRUCT'",
+            TokenType::EndStruct => "'END_STRUCT'",
+            TokenType::Task => "'TASK'",
+            TokenType::EndTask => "'END_TASK'",
+            TokenType::Transition => "'TRANSITION'",
+            TokenType::From => "'FROM'",
+            TokenType::EndTransition => "'END_TRANSITION'",
+            TokenType::True => "'TRUE'",
+            TokenType::Type => "'TYPE'",
+            TokenType::EndType => "'END_TYPE'",
+            TokenType::Var => "'VAR'",
+            TokenType::EndVar => "'END_VAR'",
+            TokenType::VarInput => "'VAR_INPUT'",
+            TokenType::VarOutput => "'VAR_OUTPUT'",
+            TokenType::VarInOut => "'VAR_IN_OUT'",
+            TokenType::VarTemp => "'VAR_TEMP'",
+            TokenType::VarExternal => "'VAR_EXTERNAL'",
+            TokenType::VarAccess => "'VAR_ACCESS'",
+            TokenType::VarConfig => "'VAR_CONFIG'",
+            TokenType::VarGlobal => "'VAR_GLOBAL'",
+            TokenType::While => "'WHILE'",
+            TokenType::EndWhile => "'END_WHILE'",
+            TokenType::Bool => "'BOOL'",
+            TokenType::Sint => "'SINT'",
+            TokenType::Int => "'INT'",
+            TokenType::Dint => "'DINT'",
+            TokenType::Lint => "'LINT'",
+            TokenType::Usint => "'USINT'",
+            TokenType::Uint => "'UINT'",
+            TokenType::Udint => "'UDINT'",
+            TokenType::Ulint => "'ULINT'",
+            TokenType::Real => "'REAL'",
+            TokenType::Lreal => "'LREAL'",
+            TokenType::Time => "'TIME'",
+            TokenType::Date => "'DATE' | 'D'",
+            TokenType::TimeOfDay => "'TIME_OF_DAY' | 'TOD'",
+            TokenType::DateAndTime => "'DATE_AND_TIME' | 'DT'",
+            TokenType::String => "'STRING'",
+            TokenType::Byte => "'BYTE'",
+            TokenType::Word => "'WORD'",
+            TokenType::Dword => "'DWORD'",
+            TokenType::Lword => "'LWORD'",
+            TokenType::WString => "'WSTRING'",
+            TokenType::DirectAddressUnassigned => "address assignment",
+            TokenType::DirectAddress => "direct address",
+            TokenType::Or => "'OR'",
+            TokenType::Xor => "'XOR'",
+            TokenType::And => "'AND' | '&'",
+            TokenType::Equal => "'='",
+            TokenType::NotEqual => "'<>'",
+            TokenType::Less => "'<'",
+            TokenType::Greater => "'>'",
+            TokenType::LessEqual => "'<='",
+            TokenType::GreaterEqual => "'>='",
+            TokenType::Div => "'/'",
+            TokenType::Star => "'*'",
+            TokenType::Plus => "'+'",
+            TokenType::Minus => "'-'",
+            TokenType::Mod => "'MOD'",
+            TokenType::Power => "'**'",
+            TokenType::Not => "'NOT'",
+            TokenType::Assignment => "':='",
+            TokenType::RightArrow => "'=>'",
+        }
+    }
 }
