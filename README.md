@@ -12,7 +12,6 @@ devices running programs written in the IEC 61131-3 language.
 [![IronPLC Integration](https://github.com/ironplc/ironplc/actions/workflows/integration.yaml/badge.svg)](https://github.com/ironplc/ironplc/actions/workflows/integration.yaml)
 [![IronPLC Deployment](https://github.com/ironplc/ironplc/actions/workflows/deployment.yaml/badge.svg)](https://github.com/ironplc/ironplc/actions/workflows/deployment.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Lines of Code](https://tokei.rs/b1/github/garretfick/ironplc)](https://github.com/XAMPPRocky/tokei)
 
 SoftPLCs enable embedded and other computers to operate as programmable logic
 controllers (PLCs) that execute all sorts of processes from home automation
