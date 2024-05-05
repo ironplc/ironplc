@@ -341,7 +341,7 @@ parser! {
       }
 
       Ok(RealLiteral {
-        value: value,
+        value,
         data_type: tn,
       })
     }

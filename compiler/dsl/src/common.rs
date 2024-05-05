@@ -851,7 +851,7 @@ impl TryFrom<&str> for LocationPrefix {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let c = value.chars().nth(0);
-        return LocationPrefix::try_from(c);
+        LocationPrefix::try_from(c)
     }
 }
 
@@ -899,7 +899,7 @@ impl TryFrom<&str> for SizePrefix {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let c = value.chars().nth(0);
-        return SizePrefix::try_from(c);
+        SizePrefix::try_from(c)
     }
 }
 
