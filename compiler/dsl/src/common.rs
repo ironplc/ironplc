@@ -2,10 +2,13 @@
 //!
 //! See section 2.
 use core::str::FromStr;
+use lazy_static::lazy_static;
+use regex::Regex;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 use std::num::TryFromIntError;
-use std::ops::Deref;
+use std::ops::{Add, Deref};
+use std::panic::Location;
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
 use dsl_macro_derive::Recurse;
@@ -115,6 +118,23 @@ impl Integer {
             .map_err(|e| "dec")
     }
 
+    pub fn try_hex(a: &str) -> Result<Self, &'static str> {
+        let (hex, remainder): (Vec<_>, Vec<_>) = a
+            .chars()
+            .filter(|c| *c != '_')
+            .partition(|c| c.is_ascii_hexdigit());
+        if !remainder.is_empty() {
+            return Err("Non-hex characters");
+        }
+        let hex: String = hex.into_iter().collect();
+        u128::from_str_radix(hex.as_str(), 16)
+            .map(|value| Integer {
+                position: SourceLoc::default(),
+                value,
+            })
+            .map_err(|e| "hex")
+    }
+
     pub fn hex(a: &str, position: SourceLoc) -> Result<Self, &'static str> {
         let without_underscore: String = a.chars().filter(|c| c.is_ascii_hexdigit()).collect();
         u128::from_str_radix(without_underscore.as_str(), 16)
@@ -122,11 +142,45 @@ impl Integer {
             .map_err(|e| "hex")
     }
 
+    pub fn try_octal(a: &str) -> Result<Self, &'static str> {
+        let (oct, remainder): (Vec<_>, Vec<_>) = a
+            .chars()
+            .filter(|c| *c != '_')
+            .partition(|c| matches!(c, '0'..='7'));
+        if !remainder.is_empty() {
+            return Err("Non-octal characters");
+        }
+        let oct: String = oct.into_iter().collect();
+        u128::from_str_radix(oct.as_str(), 8)
+            .map(|value| Integer {
+                position: SourceLoc::default(),
+                value,
+            })
+            .map_err(|e| "octal")
+    }
+
     pub fn octal(a: &str, position: SourceLoc) -> Result<Self, &'static str> {
         let without_underscore: String = a.chars().filter(|c| matches!(c, '0'..='7')).collect();
         u128::from_str_radix(without_underscore.as_str(), 8)
             .map(|value| Integer { position, value })
             .map_err(|e| "octal")
+    }
+
+    pub fn try_binary(a: &str) -> Result<Self, &'static str> {
+        let (bin, remainder): (Vec<_>, Vec<_>) = a
+            .chars()
+            .filter(|c| *c != '_')
+            .partition(|c| matches!(c, '0'..='1'));
+        if !remainder.is_empty() {
+            return Err("Non-binary characters");
+        }
+        let bin: String = bin.into_iter().collect();
+        u128::from_str_radix(bin.as_str(), 2)
+            .map(|value| Integer {
+                position: SourceLoc::default(),
+                value,
+            })
+            .map_err(|e| "binary")
     }
 
     pub fn binary(a: &str, position: SourceLoc) -> Result<Self, &'static str> {
@@ -172,6 +226,20 @@ impl SignedInteger {
                 is_neg: false,
             }),
         }
+    }
+
+    pub fn positive(a: &str) -> Result<Self, &'static str> {
+        Ok(Self {
+            value: Integer::new(a, SourceLoc::default())?,
+            is_neg: false,
+        })
+    }
+
+    pub fn negative(a: &str) -> Result<Self, &'static str> {
+        Ok(Self {
+            value: Integer::new(a, SourceLoc::default())?,
+            is_neg: true,
+        })
     }
 }
 
@@ -765,6 +833,28 @@ pub enum LocationPrefix {
     M,
 }
 
+impl TryFrom<Option<char>> for LocationPrefix {
+    type Error = &'static str;
+
+    fn try_from(value: Option<char>) -> Result<Self, Self::Error> {
+        match value {
+            Some('I') => Ok(LocationPrefix::I),
+            Some('Q') => Ok(LocationPrefix::Q),
+            Some('M') => Ok(LocationPrefix::M),
+            _ => Err("Value must be one of I, Q, M"),
+        }
+    }
+}
+
+impl TryFrom<&str> for LocationPrefix {
+    type Error = &'static str;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let c = value.chars().nth(0);
+        LocationPrefix::try_from(c)
+    }
+}
+
 /// Size prefix for directly represented variables. Defines how many bits
 /// are associated with the variable.
 ///
@@ -785,6 +875,32 @@ pub enum SizePrefix {
     D,
     /// 64-bit size
     L,
+}
+
+impl TryFrom<Option<char>> for SizePrefix {
+    type Error = &'static str;
+
+    fn try_from(value: Option<char>) -> Result<Self, Self::Error> {
+        match value {
+            Some('*') => Ok(SizePrefix::Unspecified),
+            Some('X') => Ok(SizePrefix::X),
+            Some('B') => Ok(SizePrefix::B),
+            Some('W') => Ok(SizePrefix::W),
+            Some('D') => Ok(SizePrefix::D),
+            Some('L') => Ok(SizePrefix::L),
+            None => Ok(SizePrefix::Nil),
+            _ => Err("Value must be one of *, X, B, W, D, L, NIL"),
+        }
+    }
+}
+
+impl TryFrom<&str> for SizePrefix {
+    type Error = &'static str;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let c = value.chars().nth(0);
+        SizePrefix::try_from(c)
+    }
 }
 
 /// Array specification defines a size/shape of an array.
@@ -1110,6 +1226,47 @@ pub struct AddressAssignment {
     #[recurse(ignore)]
     pub address: Vec<u32>,
     pub position: SourceLoc,
+}
+
+lazy_static! {
+    static ref DIRECT_ADDRESS_UNASSIGNED: Regex = Regex::new(r"%([IQM])\*").unwrap();
+    static ref DIRECT_ADDRESS: Regex = Regex::new(r"%([IQM])([XBWDL])?(\d(\.\d)*)").unwrap();
+}
+
+impl TryFrom<&str> for AddressAssignment {
+    type Error = &'static str;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        if let Some(cap) = DIRECT_ADDRESS_UNASSIGNED.captures(value) {
+            let location_prefix = LocationPrefix::try_from(&cap[1])?;
+            return Ok(AddressAssignment {
+                location: location_prefix,
+                size: SizePrefix::Unspecified,
+                address: vec![],
+                position: SourceLoc::default(),
+            });
+        }
+
+        if let Some(cap) = DIRECT_ADDRESS.captures(value) {
+            let location_prefix = LocationPrefix::try_from(&cap[1])?;
+            let size_prefix = SizePrefix::try_from(&cap[2])?;
+            let pos: Vec<u32> = cap[3]
+                .split('.')
+                .map(|v| v.parse::<u32>().unwrap())
+                .collect();
+
+            println!("{}", &cap[3]);
+
+            return Ok(AddressAssignment {
+                location: location_prefix,
+                size: size_prefix,
+                address: pos,
+                position: SourceLoc::default(),
+            });
+        }
+
+        Err("Value not convertible to direct variable")
+    }
 }
 
 impl fmt::Debug for AddressAssignment {
