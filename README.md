@@ -58,6 +58,7 @@ Contributions are very welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for detai
 * [RuSTy](https://github.com/PLC-lang/rusty) - Structured text compiler written in Rust. RuSTy is further along but the LGPL and LGPL licenses are difficult for industrial uses.
 * [Structured Text language Support](https://github.com/Serhioromano/vscode-st) - Structured text language support for Visual Studio Code.
 * [Beremiz](https://beremiz.org/) - A Python-based PLC programming environment.
+* [RoboPLC](https://github.com/roboplc/roboplc/) - A Rust framework for creating industrial control appliances
 * [msr](https://github.com/slowtec/msr) - A Rust library for industrial automation.
 * [ethercat-rs](https://github.com/birkenfeld/ethercat-rs) - An experimental Rust automation toolbox using the IgH (Etherlab) EtherCAT master.
 * [rustmatic](https://github.com/NOP0/rustmatic) - Rustmatic is a thought experiment on creating a PLC-like environment in Rust.
