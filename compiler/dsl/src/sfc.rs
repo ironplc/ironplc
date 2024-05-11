@@ -113,18 +113,73 @@ pub enum ActionQualifier {
     /// Pulse
     P,
     // Stored and time delayed
-    SD,
+    SD(ActionTimeKind),
     // Delayed and stored
-    DS,
+    DS(ActionTimeKind),
     // Stored and time limited
-    SL,
+    SL(ActionTimeKind),
     // Pulse (rising edge)
-    PR,
+    PR(ActionTimeKind),
     // Pulse (falling edge)
-    PF,
+    PF(ActionTimeKind),
 }
 
 impl fmt::Display for ActionQualifier {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl ActionQualifier {
+    pub fn recurse_visit<V: Visitor<E> + ?Sized, E>(&self, v: &mut V) -> Result<V::Value, E> {
+        match self {
+            ActionQualifier::N => Ok(V::Value::default()),
+            ActionQualifier::R => Ok(V::Value::default()),
+            ActionQualifier::S => Ok(V::Value::default()),
+            ActionQualifier::L => Ok(V::Value::default()),
+            ActionQualifier::D => Ok(V::Value::default()),
+            ActionQualifier::P => Ok(V::Value::default()),
+            ActionQualifier::SD(node) => v.visit_action_time_kind(node),
+            ActionQualifier::DS(node) => v.visit_action_time_kind(node),
+            ActionQualifier::SL(node) => v.visit_action_time_kind(node),
+            ActionQualifier::PR(node) => v.visit_action_time_kind(node),
+            ActionQualifier::PF(node) => v.visit_action_time_kind(node),
+        }
+    }
+
+    pub fn recurse_fold<F: Fold<E> + ?Sized, E>(self, f: &mut F) -> Result<Self, E> {
+        match self {
+            ActionQualifier::N => Ok(ActionQualifier::N),
+            ActionQualifier::R => Ok(ActionQualifier::R),
+            ActionQualifier::S => Ok(ActionQualifier::S),
+            ActionQualifier::L => Ok(ActionQualifier::L),
+            ActionQualifier::D => Ok(ActionQualifier::D),
+            ActionQualifier::P => Ok(ActionQualifier::P),
+            ActionQualifier::SD(node) => Ok(ActionQualifier::SD(f.fold_action_time_kind(node)?)),
+            ActionQualifier::DS(node) => Ok(ActionQualifier::DS(f.fold_action_time_kind(node)?)),
+            ActionQualifier::SL(node) => Ok(ActionQualifier::SL(f.fold_action_time_kind(node)?)),
+            ActionQualifier::PR(node) => Ok(ActionQualifier::PR(f.fold_action_time_kind(node)?)),
+            ActionQualifier::PF(node) => Ok(ActionQualifier::PF(f.fold_action_time_kind(node)?)),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Recurse)]
+pub enum ActionTimeKind {
+    Duration(DurationLiteral),
+    VariableName(Id),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum TimedQualifier {
+    L,
+    D,
+    SD,
+    DS,
+    SL,
+}
+
+impl fmt::Display for TimedQualifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }
@@ -136,7 +191,6 @@ impl fmt::Display for ActionQualifier {
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct ActionAssociation {
     pub name: Id,
-    #[recurse(ignore)]
     pub qualifier: Option<ActionQualifier>,
     pub indicators: Vec<Id>,
 }

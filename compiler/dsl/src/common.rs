@@ -25,7 +25,6 @@ use crate::visitor::Visitor;
 /// See section 2.2.
 #[derive(PartialEq, Clone, Debug, Recurse)]
 pub enum ConstantKind {
-    // TODO these need values
     IntegerLiteral(IntegerLiteral),
     RealLiteral(RealLiteral),
     Boolean(BooleanLiteral),
@@ -274,31 +273,6 @@ impl TryFrom<SignedInteger> for i128 {
             primitive *= -1;
         }
         Ok(primitive)
-    }
-}
-
-impl TryFrom<SignedInteger> for f64 {
-    type Error = TryFromIntegerError;
-    fn try_from(value: SignedInteger) -> Result<f64, Self::Error> {
-        let res: Result<u32, _> = value.value.try_into();
-        let val = res.map_err(|e| TryFromIntegerError {})?;
-
-        let res: f64 = val.into();
-        Ok(res)
-    }
-}
-
-impl TryFrom<SignedInteger> for f32 {
-    type Error = TryFromIntegerError;
-    fn try_from(value: SignedInteger) -> Result<f32, Self::Error> {
-        let res: Result<u32, _> = value.value.try_into();
-        let val = res.map_err(|e| TryFromIntegerError {})?;
-
-        let res: f64 = val.into();
-
-        // TODO how to do this
-        let val: f32 = res as f32;
-        Ok(val)
     }
 }
 
@@ -799,7 +773,7 @@ pub struct StructureElementInit {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum StringKind {
+pub enum StringType {
     /// String of single-byte characters
     String,
     /// String of double-byte characters
@@ -815,7 +789,7 @@ pub struct StringDeclaration {
     pub length: Integer,
     /// The size of a single 'character'
     #[recurse(ignore)]
-    pub width: StringKind,
+    pub width: StringType,
     #[recurse(ignore)]
     pub init: Option<String>,
 }
@@ -973,7 +947,7 @@ impl VarDecl {
             qualifier,
             initializer: InitialValueAssignmentKind::String(StringInitializer {
                 length: None,
-                width: StringKind::String,
+                width: StringType::String,
                 initial_value: None,
             }),
             position: loc,
@@ -1255,8 +1229,6 @@ impl TryFrom<&str> for AddressAssignment {
                 .map(|v| v.parse::<u32>().unwrap())
                 .collect();
 
-            println!("{}", &cap[3]);
-
             return Ok(AddressAssignment {
                 location: location_prefix,
                 size: size_prefix,
@@ -1292,6 +1264,8 @@ impl SourcePosition for AddressAssignment {
         &self.position
     }
 }
+
+/// Container for variable specifications.
 
 /// Container for initial value assignments. The initial value specifies a
 /// "coarse grained assignment",
@@ -1389,7 +1363,7 @@ pub struct StringInitializer {
     pub length: Option<Integer>,
     /// The size of a single 'character'
     #[recurse(ignore)]
-    pub width: StringKind,
+    pub width: StringType,
     /// Default value of the string. If not specified, then
     /// the default value is the empty string.
     #[recurse(ignore)]
@@ -1412,6 +1386,26 @@ pub struct FunctionBlockInitialValueAssignment {
 pub struct ArrayInitialValueAssignment {
     pub spec: ArraySpecificationKind,
     pub initial_values: Vec<ArrayInitialElementKind>,
+}
+
+#[derive(Clone, PartialEq, Debug, Recurse)]
+pub enum VariableSpecificationKind {
+    Simple(Id),
+    Subrange(SubrangeSpecificationKind),
+    Enumerated(EnumeratedSpecificationKind),
+    Array(ArraySpecificationKind),
+    Struct(StructureDeclaration),
+    String(StringSpecification),
+    WString(StringSpecification),
+    // Represents simple, subrange or structure
+    Ambiguous(Id),
+}
+
+#[derive(Clone, PartialEq, Debug, Recurse)]
+pub struct StringSpecification {
+    #[recurse(ignore)]
+    pub width: StringType,
+    pub length: Option<Integer>,
 }
 
 /// Container for top-level elements that are valid top-level declarations in

@@ -90,7 +90,6 @@ pub trait Fold<E> {
     // TODO where is this?
     leaf!(BitStringLiteral);
 
-    // TODO should probably recurse to find source locations
     dispatch!(ConstantKind);
 
     // 2.3.3.1
@@ -176,6 +175,10 @@ pub trait Fold<E> {
     // 2.4.3.2.
     dispatch!(ArrayInitialValueAssignment);
 
+    dispatch!(VariableSpecificationKind);
+
+    dispatch!(StringSpecification);
+
     // 2.4.3.2 (TODO - where?)
     dispatch!(EnumeratedSpecificationKind);
 
@@ -218,6 +221,10 @@ pub trait Fold<E> {
     // 2.6.4
     dispatch!(Action);
 
+    dispatch!(ActionQualifier);
+
+    dispatch!(ActionTimeKind);
+
     dispatch!(ActionAssociation);
 
     // Declarations from Configuration
@@ -232,7 +239,35 @@ pub trait Fold<E> {
     dispatch!(ConfigurationDeclaration);
 
     // 2.7.2
+    dispatch!(AccessDeclaration);
+
+    // 2.7.2
+    dispatch!(AccessPathKind);
+
+    // 2.7.2
+    dispatch!(DirectAccessPath);
+
+    // 2.7.2
+    dispatch!(SymbolicAccessPath);
+
+    // 2.7.2
     dispatch!(TaskConfiguration);
+
+    dispatch!(FunctionBlockTask);
+
+    dispatch!(ProgramConnectionSource);
+
+    dispatch!(ProgramConnectionSourceKind);
+
+    dispatch!(ProgramConnectionSink);
+
+    dispatch!(ProgramConnectionSinkKind);
+
+    dispatch!(GlobalVarReference);
+
+    dispatch!(FunctionBlockInit);
+
+    dispatch!(LocatedVarInit);
 
     // Declarations from Textual
 

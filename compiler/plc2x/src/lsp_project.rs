@@ -113,7 +113,7 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::Constant => Some(MODIFIER_INDEX),
             TokenType::At => Some(KEYWORD_INDEX),
             TokenType::DirectAddress => Some(OPERATOR_INDEX),
-            TokenType::DirectAddressUnassigned => Some(OPERATOR_INDEX),
+            TokenType::DirectAddressIncomplete => Some(OPERATOR_INDEX),
             TokenType::Function => Some(KEYWORD_INDEX),
             TokenType::EndFunction => Some(KEYWORD_INDEX),
             TokenType::FunctionBlock => Some(KEYWORD_INDEX),
@@ -215,7 +215,6 @@ impl From<LspTokenType> for Option<SemanticToken> {
         token_type.map(|token_type| SemanticToken {
             delta_line: pos.line as u32,
             delta_start: pos.column as u32,
-            // TODO
             length: val.0.text.len() as u32,
             token_type,
             token_modifiers_bitset: 0,

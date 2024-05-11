@@ -523,12 +523,10 @@ mod tests {
                         priority: 1,
                         interval: Option::Some(Duration::new(0, 100_000_000)),
                     }],
-                    programs: vec![ProgramConfiguration {
-                        name: Id::from("plc_task_instance"),
-                        task_name: Option::Some(Id::from("plc_task")),
-                        type_name: Id::from("plc_prg"),
-                    }],
+                    programs: vec![ProgramConfiguration {name:Id::from("plc_task_instance"),task_name:Option::Some(Id::from("plc_task")),type_name:Id::from("plc_prg"), fb_tasks: vec![], sources: vec![], sinks: vec![] }],
                 }],
+                fb_inits: vec![],
+                located_var_inits: vec![],
             },
         ));
         let res = ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap();
