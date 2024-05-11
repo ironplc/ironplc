@@ -257,8 +257,8 @@ parser! {
 
     /// Rule to enable optional tracing rule for pegviz markers that makes
     /// working with the parser easier in the terminal.
-    /*rule traced<T>(e: rule<T>) -> T =
-    &(input:$([_]*) {
+    rule traced<T>(e: rule<T>) -> T =
+    &(input:[t] {
         #[cfg(feature = "trace")]
         println!("[PEG_INPUT_START]\n{}\n[PEG_TRACE_START]", input);
     })
@@ -266,7 +266,7 @@ parser! {
         #[cfg(feature = "trace")]
         println!("[PEG_TRACE_STOP]");
         e.ok_or("")
-    }*/
+    }
 
     /// Helper rule to match a particular type of token.
     rule tok(ty: TokenType) -> &'input Token = token:[t] {?
@@ -305,9 +305,8 @@ parser! {
     // TODO this should be a list of standard function block names
     rule STANDARD_FUNCTION_BLOCK_NAME() = id_eq("END_VAR")
 
-    // TODO reneable trace
-    //pub rule library() -> Vec<LibraryElementKind> = traced(<library__impl()>)
-    pub rule library() -> Vec<LibraryElementKind> = library__impl()
+    pub rule library() -> Vec<LibraryElementKind> = traced(<library__impl()>)
+    //pub rule library() -> Vec<LibraryElementKind> = library__impl()
     pub rule library__impl() -> Vec<LibraryElementKind> = _ decls:library_element_declaration() ** _ _ { decls.into_iter().flatten().collect() }
 
     // B.0 Programming model
@@ -1013,7 +1012,7 @@ parser! {
         initial_value,
       }
     }
-    rule incompl_located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<incompl_located_var_decl()>) _ tok(TokenType::EndVar) {
+    rule incompl_located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_oneplus(<incompl_located_var_decl()>) _ tok(TokenType::EndVar) {
       let declarations = declarations.into_iter().map(|decl| {
         let qualifier = qualifier
           .clone()
