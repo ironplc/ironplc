@@ -258,9 +258,11 @@ parser! {
     /// Rule to enable optional tracing rule for pegviz markers that makes
     /// working with the parser easier in the terminal.
     rule traced<T>(e: rule<T>) -> T =
-    &(input:[t] {
+    &(input:[t]* {
         #[cfg(feature = "trace")]
-        println!("[PEG_INPUT_START]\n{}\n[PEG_TRACE_START]", input);
+        println!("[PARSER INFO_START]\nNumber of parsed tokens: {}\n[PARSER INFO_STOP]\n", input.len());
+        #[cfg(feature = "trace")]
+        println!("[PEG_INPUT_START]\n{}\n[PEG_TRACE_START]", input.iter().fold(String::new(), |s1, s2| s1 + "\n" + s2.to_string().as_str()).trim_start().to_string());
     })
     e:e()? {?
         #[cfg(feature = "trace")]

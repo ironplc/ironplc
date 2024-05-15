@@ -36,7 +36,7 @@ impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
             "Type: {:?}, Value: '{}'",
-            self.token_type, self.text
+            self.token_type, self.text.replace('\n', "\\n")
         ))
     }
 }
