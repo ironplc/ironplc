@@ -1014,7 +1014,7 @@ parser! {
         initial_value,
       }
     }
-    rule incompl_located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_oneplus(<incompl_located_var_decl()>) _ tok(TokenType::EndVar) {
+    rule incompl_located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<incompl_located_var_decl()>) _ tok(TokenType::EndVar) {
       let declarations = declarations.into_iter().map(|decl| {
         let qualifier = qualifier
           .clone()
@@ -1046,6 +1046,7 @@ parser! {
       / a:array_specification() { VariableSpecificationKind::Array(a) }
       / tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, }) }
       / tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, }) }
+      / et:elementary_type_name() { VariableSpecificationKind::Simple(et.into()) } 
       / id:identifier() { VariableSpecificationKind::Ambiguous(id) }
 
     // B.1.5.1 Functions

@@ -144,8 +144,9 @@ pub fn tokenize(path: &PathBuf, suppress_output: bool) -> Result<(), String> {
             return Ok(());
         }
 
-        debug!("{:?}", tokens);
-        println!("{:?}", tokens);
+        let tokens = tokens.iter().fold(String::new(), |s1, s2| s1 + "\n" + s2.to_string().as_str()).trim_start().to_string();
+        debug!("{}", tokens);
+        println!("{}", tokens);
     }
 
     println!("OK");
