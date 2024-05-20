@@ -83,6 +83,76 @@ struct IncomplVarDecl {
     pub spec: VariableSpecificationKind,
 }
 
+impl From<IncomplVarDecl> for VarDecl {
+    fn from(val: IncomplVarDecl) -> Self {
+        let init = match val.spec {
+            VariableSpecificationKind::Simple(node) => {
+                InitialValueAssignmentKind::Simple(SimpleInitializer {
+                    type_name: node,
+                    initial_value: None,
+                })
+            }
+            VariableSpecificationKind::Subrange(node) => InitialValueAssignmentKind::Subrange(node),
+            VariableSpecificationKind::Enumerated(node) => match node {
+                EnumeratedSpecificationKind::TypeName(ty) => {
+                    InitialValueAssignmentKind::EnumeratedType(EnumeratedInitialValueAssignment {
+                        type_name: ty,
+                        initial_value: None,
+                    })
+                }
+                EnumeratedSpecificationKind::Values(values) => {
+                    InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer {
+                        values: values.values,
+                        initial_value: None,
+                    })
+                }
+            },
+            VariableSpecificationKind::Array(node) => {
+                InitialValueAssignmentKind::Array(ArrayInitialValueAssignment {
+                    spec: node,
+                    initial_values: vec![],
+                })
+            }
+            // TODO initialize the variables
+            VariableSpecificationKind::Struct(node) => {
+                InitialValueAssignmentKind::Structure(StructureInitializationDeclaration {
+                    type_name: node.type_name,
+                    elements_init: vec![],
+                })
+            }
+            VariableSpecificationKind::String(node) => {
+                InitialValueAssignmentKind::String(StringInitializer {
+                    length: node.length,
+                    width: StringType::String,
+                    initial_value: None,
+                })
+            }
+            VariableSpecificationKind::WString(node) => {
+                InitialValueAssignmentKind::String(StringInitializer {
+                    length: node.length,
+                    width: StringType::WString,
+                    initial_value: None,
+                })
+            }
+            VariableSpecificationKind::Ambiguous(node) => {
+                InitialValueAssignmentKind::LateResolvedType(node)
+            }
+        };
+
+        Self {
+            identifier: VariableIdentifier::Direct(DirectVariableIdentifier {
+                name: Some(val.name),
+                address_assignment: val.loc,
+                source_loc: SourceLoc::default(),
+            }),
+            var_type: VariableType::Var,
+            qualifier: val.qualifier,
+            initializer: init,
+            position: SourceLoc::default(),
+        }
+    }
+}
+
 // Container for IO variable declarations.
 //
 // This is internal for the parser to help with retaining context (input,
@@ -136,9 +206,8 @@ impl VarDeclarations {
                 VarDeclarations::External(mut v) => {
                     vars.append(&mut v);
                 }
-                VarDeclarations::Incomplete(mut _v) => {
-                    // TODO
-                    // This ignores incomplete variable declarations
+                VarDeclarations::Incomplete(v) => {
+                    vars.append(&mut v.into_iter().map(|var| var.into()).collect());
                 }
             }
         }
@@ -1046,7 +1115,7 @@ parser! {
       / a:array_specification() { VariableSpecificationKind::Array(a) }
       / tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, }) }
       / tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, }) }
-      / et:elementary_type_name() { VariableSpecificationKind::Simple(et.into()) } 
+      / et:elementary_type_name() { VariableSpecificationKind::Simple(et.into()) }
       / id:identifier() { VariableSpecificationKind::Ambiguous(id) }
 
     // B.1.5.1 Functions
