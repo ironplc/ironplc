@@ -370,8 +370,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws(":");
 
         let typ = match node.width {
-            StringKind::String => "STRING",
-            StringKind::WString => "WSTRING",
+            StringType::String => "STRING",
+            StringType::WString => "WSTRING",
         };
         self.write_ws(typ);
 
@@ -381,8 +381,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         if let Some(init) = &node.init {
             let char = match node.width {
-                StringKind::String => "\"",
-                StringKind::WString => "'",
+                StringType::String => "\"",
+                StringType::WString => "'",
             };
 
             self.write_ws(":=");
@@ -492,16 +492,15 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         address.push(loc);
 
         let size = match &node.size {
-            // TODO
-            SizePrefix::Unspecified => '*',
-            SizePrefix::Nil => todo!(),
-            SizePrefix::X => 'X',
-            SizePrefix::B => 'B',
-            SizePrefix::W => 'W',
-            SizePrefix::D => 'D',
-            SizePrefix::L => 'L',
+            SizePrefix::Unspecified => "*",
+            SizePrefix::Nil => "",
+            SizePrefix::X => "X",
+            SizePrefix::B => "B",
+            SizePrefix::W => "W",
+            SizePrefix::D => "D",
+            SizePrefix::L => "L",
         };
-        address.push(size);
+        address.push_str(size);
 
         let location: String = node
             .address
@@ -539,8 +538,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &StringInitializer,
     ) -> Result<Self::Value, Diagnostic> {
         let kw = match node.width {
-            StringKind::String => "STRING",
-            StringKind::WString => "WSTRING",
+            StringType::String => "STRING",
+            StringType::WString => "WSTRING",
         };
         self.write_ws(kw);
 
@@ -554,8 +553,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             self.write_ws(":=");
 
             let quote = match node.width {
-                StringKind::String => "'",
-                StringKind::WString => "\"",
+                StringType::String => "'",
+                StringType::WString => "\"",
             };
 
             self.write(quote);

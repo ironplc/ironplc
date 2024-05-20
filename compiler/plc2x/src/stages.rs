@@ -527,8 +527,13 @@ mod tests {
                         name: Id::from("plc_task_instance"),
                         task_name: Option::Some(Id::from("plc_task")),
                         type_name: Id::from("plc_prg"),
+                        fb_tasks: vec![],
+                        sources: vec![],
+                        sinks: vec![],
                     }],
                 }],
+                fb_inits: vec![],
+                located_var_inits: vec![],
             },
         ));
         let res = ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap();
