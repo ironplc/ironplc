@@ -108,7 +108,6 @@ pub trait Visitor<E> {
 
     // Declarations from Common
 
-    // TODO Constants
     dispatch!(Integer);
 
     dispatch!(SignedInteger);
@@ -228,6 +227,10 @@ pub trait Visitor<E> {
     // 2.4.3.2
     dispatch!(ArrayInitialValueAssignment);
 
+    dispatch!(VariableSpecificationKind);
+
+    dispatch!(StringSpecification);
+
     // 2.4.3.2 (TODO - where?)
     dispatch!(EnumeratedSpecificationKind);
 
@@ -270,6 +273,10 @@ pub trait Visitor<E> {
     // 2.6.4
     dispatch!(Action);
 
+    dispatch!(ActionQualifier);
+
+    dispatch!(ActionTimeKind);
+
     dispatch!(ActionAssociation);
 
     // Declarations from Configuration
@@ -284,7 +291,35 @@ pub trait Visitor<E> {
     dispatch!(ConfigurationDeclaration);
 
     // 2.7.2
+    dispatch!(AccessDeclaration);
+
+    // 2.7.2
+    dispatch!(AccessPathKind);
+
+    // 2.7.2
+    dispatch!(DirectAccessPath);
+
+    // 2.7.2
+    dispatch!(SymbolicAccessPath);
+
+    // 2.7.2
     dispatch!(TaskConfiguration);
+
+    dispatch!(FunctionBlockTask);
+
+    dispatch!(ProgramConnectionSource);
+
+    dispatch!(ProgramConnectionSourceKind);
+
+    dispatch!(ProgramConnectionSink);
+
+    dispatch!(ProgramConnectionSinkKind);
+
+    dispatch!(GlobalVarReference);
+
+    dispatch!(FunctionBlockInit);
+
+    dispatch!(LocatedVarInit);
 
     // Declarations from Textual
 

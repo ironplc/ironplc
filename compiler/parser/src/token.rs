@@ -36,7 +36,8 @@ impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
             "Type: {:?}, Value: '{}'",
-            self.token_type, self.text
+            self.token_type,
+            self.text.replace('\n', "\\n")
         ))
     }
 }
@@ -314,7 +315,7 @@ pub enum TokenType {
     WString,
 
     #[regex(r"%[IQM]\*", ignore(case))]
-    DirectAddressUnassigned,
+    DirectAddressIncomplete,
     #[regex(r"%[IQM]([XBWDL])?(\d(\.\d)*)", ignore(case))]
     DirectAddress,
 
@@ -378,10 +379,10 @@ impl TokenType {
             TokenType::Period => "'.'",
             TokenType::Range => "'..'",
             TokenType::Hash => "'#'",
-            TokenType::SingleByteString => "single byte string",
-            TokenType::DoubleByteString => "double string",
+            TokenType::SingleByteString => "\\'[^\\']*\\' (single byte string)",
+            TokenType::DoubleByteString => "\"[^\"]*\" (double byte string)",
             TokenType::Identifier => "",
-            TokenType::Digits => "0-9",
+            TokenType::Digits => "[0-9][0-9_]* (integer)",
             TokenType::Action => "'ACTION'",
             TokenType::EndAction => "'END_ACTION'",
             TokenType::Array => "'ARRAY'",
@@ -472,8 +473,8 @@ impl TokenType {
             TokenType::Dword => "'DWORD'",
             TokenType::Lword => "'LWORD'",
             TokenType::WString => "'WSTRING'",
-            TokenType::DirectAddressUnassigned => "address assignment",
-            TokenType::DirectAddress => "direct address",
+            TokenType::DirectAddressIncomplete => "'%I*' | '%Q*' | '%M*' (incomplete address)",
+            TokenType::DirectAddress => "%[IQM]([XBWDL])?(\\d(\\.\\d)*) (direct address)",
             TokenType::Or => "'OR'",
             TokenType::Xor => "'XOR'",
             TokenType::And => "'AND' | '&'",
