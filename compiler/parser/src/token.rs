@@ -2,32 +2,21 @@
 use core::fmt;
 use std::fmt::Debug;
 
+use dsl::core::SourceSpan;
 use logos::Logos;
-
 /// The position of a token in a document.
-#[derive(Copy, Clone, Default, PartialEq)]
-pub struct Position {
-    /// The line number (0-indexed)
-    pub line: usize,
-    /// The column number (0-indexed)
-    pub column: usize,
-    /// Offset from beginning
-    pub start: usize,
-    pub end: usize,
-}
-
-impl Debug for Position {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("Ln {} Col {}", self.line, self.column))
-    }
-}
 
 #[derive(Debug)]
 pub struct Token {
     /// The type of the token (what does this token represent).
     pub token_type: TokenType,
     /// The location in the source text where the token begins.
-    pub position: Position,
+    pub span: SourceSpan,
+
+    pub line: usize,
+
+    pub col: usize,
+
     /// The text that this token matched.
     pub text: String,
 }
@@ -42,7 +31,6 @@ impl fmt::Display for Token {
     }
 }
 #[derive(Clone, Logos, Debug, PartialEq)]
-#[logos(extras = Position)]
 pub enum TokenType {
     #[regex(r"[\n\r\f]")]
     Newline,

@@ -98,7 +98,7 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
             }
             None => Err(Diagnostic::problem(
                 Problem::VariableUndefined,
-                Label::source_loc(node.name.position(), "Undefined variable"),
+                Label::span(node.name.position(), "Undefined variable"),
             )
             .with_context_id("variable", &node.name)),
         }

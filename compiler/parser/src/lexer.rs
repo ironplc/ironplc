@@ -4,12 +4,12 @@
 //! This lexer makes some simplifying assumptions:
 //! * there are no pragmas
 use dsl::{
-    core::FileId,
+    core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
 use logos::Logos;
 
-use crate::token::{Position, Token, TokenType};
+use crate::token::{Token, TokenType};
 
 /// Tokenize a IEC 61131 program.
 ///
@@ -21,38 +21,40 @@ pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>)
     let mut diagnostics = Vec::new();
     let mut lexer = TokenType::lexer(source);
 
-    let mut column = 0;
-    let mut line = 0;
+    let mut line: usize = 0;
+    let mut col: usize = 0;
 
     while let Some(token) = lexer.next() {
         match token {
             Ok(token_type) => {
                 tokens.push(Token {
                     token_type: token_type.clone(),
-                    position: Position {
-                        line,
-                        column,
+                    span: SourceSpan {
+                        // TODO this will be slow
+                        file_id: file_id.clone(),
                         start: lexer.span().start,
                         end: lexer.span().end,
                     },
+                    line,
+                    col,
                     text: lexer.slice().into(),
                 });
 
                 match token_type {
                     TokenType::Newline => {
                         line += 1;
-                        column = 0;
+                        col = 0;
                     }
-                    _ => column += lexer.span().len(),
+                    _ => col += lexer.span().len(),
                 }
             }
             Err(_) => {
                 let span = lexer.span();
+                let span = SourceSpan::range(span.start, span.end).with_file_id(file_id);
                 diagnostics.push(Diagnostic::problem(
                     ironplc_problems::Problem::UnexpectedToken,
-                    Label::offset(
-                        file_id.clone(),
-                        span,
+                    Label::span(
+                        &span,
                         format!(
                             "The text '{}' is not valid IEC 61131-3 text at this location.",
                             lexer.slice()

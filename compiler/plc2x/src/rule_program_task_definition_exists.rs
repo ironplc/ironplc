@@ -66,10 +66,7 @@ impl Visitor<Diagnostic> for RuleProgramTaskDefinitionExists {
                     self.diagnostics.push(
                         Diagnostic::problem(
                             Problem::ProgramMissingTaskConfig,
-                            Label::source_loc(
-                                task_name.position(),
-                                "Reference to task configuration",
-                            ),
+                            Label::span(task_name.position(), "Reference to task configuration"),
                         )
                         .with_context_id("program", &program.name)
                         .with_context_id("task name", task_name),

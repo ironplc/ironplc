@@ -3,6 +3,7 @@
 //! See section 2.
 use core::str::FromStr;
 use lazy_static::lazy_static;
+use logos::Source;
 use regex::Regex;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
@@ -14,7 +15,7 @@ use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 use dsl_macro_derive::Recurse;
 
 use crate::configuration::ConfigurationDeclaration;
-use crate::core::{Id, SourceLoc, SourcePosition};
+use crate::core::{Id, SourcePosition, SourceSpan};
 use crate::fold::Fold;
 use crate::sfc::{Network, Sfc};
 use crate::textual::*;
@@ -39,7 +40,7 @@ pub enum ConstantKind {
 impl ConstantKind {
     pub fn integer_literal(value: &str) -> Result<Self, &'static str> {
         Ok(Self::IntegerLiteral(IntegerLiteral {
-            value: SignedInteger::new(value, SourceLoc::default())?,
+            value: SignedInteger::new(value, SourceSpan::default())?,
             data_type: None,
         }))
     }
@@ -59,7 +60,7 @@ pub enum Boolean {
 /// and later bound to smaller types depend on context.
 #[derive(Debug, Clone, PartialEq, Recurse)]
 pub struct Integer {
-    pub position: SourceLoc,
+    pub span: SourceSpan,
     /// The value in the maximum possible size. An integer is inherently
     /// an unsigned value.
     #[recurse(ignore)]
@@ -108,12 +109,12 @@ impl From<Integer> for f32 {
 }
 
 impl Integer {
-    pub fn new(a: &str, position: SourceLoc) -> Result<Self, &'static str> {
+    pub fn new(a: &str, span: SourceSpan) -> Result<Self, &'static str> {
         let without_underscore: String = a.chars().filter(|c| c.is_ascii_digit()).collect();
         without_underscore
             .as_str()
             .parse::<u128>()
-            .map(|value| Integer { position, value })
+            .map(|value| Integer { span, value })
             .map_err(|e| "dec")
     }
 
@@ -128,16 +129,16 @@ impl Integer {
         let hex: String = hex.into_iter().collect();
         u128::from_str_radix(hex.as_str(), 16)
             .map(|value| Integer {
-                position: SourceLoc::default(),
+                span: SourceSpan::default(),
                 value,
             })
             .map_err(|e| "hex")
     }
 
-    pub fn hex(a: &str, position: SourceLoc) -> Result<Self, &'static str> {
+    pub fn hex(a: &str, span: SourceSpan) -> Result<Self, &'static str> {
         let without_underscore: String = a.chars().filter(|c| c.is_ascii_hexdigit()).collect();
         u128::from_str_radix(without_underscore.as_str(), 16)
-            .map(|value| Integer { position, value })
+            .map(|value| Integer { span, value })
             .map_err(|e| "hex")
     }
 
@@ -152,16 +153,16 @@ impl Integer {
         let oct: String = oct.into_iter().collect();
         u128::from_str_radix(oct.as_str(), 8)
             .map(|value| Integer {
-                position: SourceLoc::default(),
+                span: SourceSpan::default(),
                 value,
             })
             .map_err(|e| "octal")
     }
 
-    pub fn octal(a: &str, position: SourceLoc) -> Result<Self, &'static str> {
+    pub fn octal(a: &str, span: SourceSpan) -> Result<Self, &'static str> {
         let without_underscore: String = a.chars().filter(|c| matches!(c, '0'..='7')).collect();
         u128::from_str_radix(without_underscore.as_str(), 8)
-            .map(|value| Integer { position, value })
+            .map(|value| Integer { span, value })
             .map_err(|e| "octal")
     }
 
@@ -176,16 +177,16 @@ impl Integer {
         let bin: String = bin.into_iter().collect();
         u128::from_str_radix(bin.as_str(), 2)
             .map(|value| Integer {
-                position: SourceLoc::default(),
+                span: SourceSpan::default(),
                 value,
             })
             .map_err(|e| "binary")
     }
 
-    pub fn binary(a: &str, position: SourceLoc) -> Result<Self, &'static str> {
+    pub fn binary(a: &str, span: SourceSpan) -> Result<Self, &'static str> {
         let without_underscore: String = a.chars().filter(|c| matches!(c, '0'..='1')).collect();
         u128::from_str_radix(without_underscore.as_str(), 2)
-            .map(|value| Integer { position, value })
+            .map(|value| Integer { span, value })
             .map_err(|e| "binary")
     }
 }
@@ -204,24 +205,24 @@ pub struct SignedInteger {
 }
 
 impl SignedInteger {
-    pub fn new(a: &str, position: SourceLoc) -> Result<Self, &'static str> {
+    pub fn new(a: &str, span: SourceSpan) -> Result<Self, &'static str> {
         match a.chars().next() {
             Some('+') => {
                 let whole = a.get(1..).ok_or("int")?;
                 Ok(Self {
-                    value: Integer::new(whole, position)?,
+                    value: Integer::new(whole, span)?,
                     is_neg: false,
                 })
             }
             Some('-') => {
                 let whole = a.get(1..).ok_or("int")?;
                 Ok(Self {
-                    value: Integer::new(whole, position)?,
+                    value: Integer::new(whole, span)?,
                     is_neg: true,
                 })
             }
             _ => Ok(Self {
-                value: Integer::new(a, position)?,
+                value: Integer::new(a, span)?,
                 is_neg: false,
             }),
         }
@@ -229,14 +230,14 @@ impl SignedInteger {
 
     pub fn positive(a: &str) -> Result<Self, &'static str> {
         Ok(Self {
-            value: Integer::new(a, SourceLoc::default())?,
+            value: Integer::new(a, SourceSpan::default())?,
             is_neg: false,
         })
     }
 
     pub fn negative(a: &str) -> Result<Self, &'static str> {
         Ok(Self {
-            value: Integer::new(a, SourceLoc::default())?,
+            value: Integer::new(a, SourceSpan::default())?,
             is_neg: true,
         })
     }
@@ -549,7 +550,7 @@ impl EnumeratedSpecificationInit {
         EnumeratedSpecificationInit {
             spec: EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues {
                 values: values.into_iter().map(EnumeratedValue::new).collect(),
-                position: SourceLoc::default(),
+                position: SourceSpan::default(),
             }),
             default: Some(EnumeratedValue::new(default)),
         }
@@ -575,18 +576,18 @@ impl EnumeratedSpecificationKind {
             .map(|v| EnumeratedValue {
                 type_name: None,
                 value: Id::from(v),
-                position: SourceLoc::default(),
+                position: SourceSpan::default(),
             })
             .collect();
         EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues {
             values,
-            position: SourceLoc::default(),
+            position: SourceSpan::default(),
         })
     }
 
     pub fn values(
         values: Vec<EnumeratedValue>,
-        position: SourceLoc,
+        position: SourceSpan,
     ) -> EnumeratedSpecificationKind {
         EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues { values, position })
     }
@@ -596,7 +597,7 @@ impl EnumeratedSpecificationKind {
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct EnumeratedSpecificationValues {
     pub values: Vec<EnumeratedValue>,
-    pub position: SourceLoc,
+    pub position: SourceSpan,
 }
 
 /// A particular value in a enumeration.
@@ -609,7 +610,7 @@ pub struct EnumeratedSpecificationValues {
 pub struct EnumeratedValue {
     pub type_name: Option<Id>,
     pub value: Id,
-    pub position: SourceLoc,
+    pub position: SourceSpan,
 }
 
 impl EnumeratedValue {
@@ -617,18 +618,18 @@ impl EnumeratedValue {
         EnumeratedValue {
             type_name: None,
             value: Id::from(value),
-            position: SourceLoc::default(),
+            position: SourceSpan::default(),
         }
     }
 
-    pub fn with_position(mut self, position: SourceLoc) -> Self {
+    pub fn with_position(mut self, position: SourceSpan) -> Self {
         self.position = position;
         self
     }
 }
 
 impl SourcePosition for EnumeratedValue {
-    fn position(&self) -> &SourceLoc {
+    fn position(&self) -> &SourceSpan {
         &self.position
     }
 }
@@ -919,7 +920,7 @@ pub struct VarDecl {
     #[recurse(ignore)]
     pub qualifier: DeclarationQualifier,
     pub initializer: InitialValueAssignmentKind,
-    pub position: SourceLoc,
+    pub span: SourceSpan,
 }
 
 impl VarDecl {
@@ -931,7 +932,7 @@ impl VarDecl {
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::simple_uninitialized(type_name),
-            position: SourceLoc::default(),
+            span: SourceSpan::default(),
         }
     }
 
@@ -939,7 +940,7 @@ impl VarDecl {
         name: &str,
         var_type: VariableType,
         qualifier: DeclarationQualifier,
-        loc: SourceLoc,
+        loc: SourceSpan,
     ) -> Self {
         Self {
             identifier: VariableIdentifier::new_symbol(name),
@@ -949,8 +950,9 @@ impl VarDecl {
                 length: None,
                 width: StringType::String,
                 initial_value: None,
+                keyword_span: SourceSpan::default(),
             }),
-            position: loc,
+            span: loc,
         }
     }
 
@@ -967,7 +969,7 @@ impl VarDecl {
                     initial_value: None,
                 },
             ),
-            position: SourceLoc::default(),
+            span: SourceSpan::default(),
         }
     }
 
@@ -984,11 +986,11 @@ impl VarDecl {
                     initial_value: Some(EnumeratedValue {
                         type_name: None,
                         value: Id::from(initial_value),
-                        position: SourceLoc::default(),
+                        position: SourceSpan::default(),
                     }),
                 },
             ),
-            position: SourceLoc::default(),
+            span: SourceSpan::default(),
         }
     }
 
@@ -1004,7 +1006,7 @@ impl VarDecl {
                     type_name: Id::from(type_name),
                 },
             ),
-            position: SourceLoc::default(),
+            span: SourceSpan::default(),
         }
     }
 
@@ -1020,7 +1022,7 @@ impl VarDecl {
                     elements_init: vec![],
                 },
             ),
-            position: SourceLoc::default(),
+            span: SourceSpan::default(),
         }
     }
 
@@ -1035,7 +1037,7 @@ impl VarDecl {
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::LateResolvedType(Id::from(type_name)),
-            position: SourceLoc::default(),
+            span: SourceSpan::default(),
         }
     }
 
@@ -1119,7 +1121,7 @@ impl VariableIdentifier {
         VariableIdentifier::Direct(DirectVariableIdentifier {
             name,
             address_assignment: location,
-            source_loc: SourceLoc::default(),
+            source_loc: SourceSpan::default(),
         })
     }
 
@@ -1138,7 +1140,7 @@ impl VariableIdentifier {
 }
 
 impl SourcePosition for VariableIdentifier {
-    fn position(&self) -> &SourceLoc {
+    fn position(&self) -> &SourceSpan {
         match self {
             VariableIdentifier::Symbol(name) => name.position(),
             VariableIdentifier::Direct(direct) => &direct.source_loc,
@@ -1165,7 +1167,7 @@ impl Display for VariableIdentifier {
 pub struct DirectVariableIdentifier {
     pub name: Option<Id>,
     pub address_assignment: AddressAssignment,
-    pub source_loc: SourceLoc,
+    pub source_loc: SourceSpan,
 }
 
 /// Qualifier types for definitions.
@@ -1199,7 +1201,7 @@ pub struct AddressAssignment {
     pub size: SizePrefix,
     #[recurse(ignore)]
     pub address: Vec<u32>,
-    pub position: SourceLoc,
+    pub position: SourceSpan,
 }
 
 lazy_static! {
@@ -1217,7 +1219,7 @@ impl TryFrom<&str> for AddressAssignment {
                 location: location_prefix,
                 size: SizePrefix::Unspecified,
                 address: vec![],
-                position: SourceLoc::default(),
+                position: SourceSpan::default(),
             });
         }
 
@@ -1233,7 +1235,7 @@ impl TryFrom<&str> for AddressAssignment {
                 location: location_prefix,
                 size: size_prefix,
                 address: pos,
-                position: SourceLoc::default(),
+                position: SourceSpan::default(),
             });
         }
 
@@ -1260,7 +1262,7 @@ impl fmt::Display for AddressAssignment {
 }
 
 impl SourcePosition for AddressAssignment {
-    fn position(&self) -> &SourceLoc {
+    fn position(&self) -> &SourceSpan {
         &self.position
     }
 }
@@ -1281,8 +1283,7 @@ pub enum InitialValueAssignmentKind {
     ///
     /// Some types allow no initializer and this avoids nesting of the
     /// enumeration with an Option enumeration.
-    #[recurse(ignore)]
-    None,
+    None(SourceSpan),
     Simple(SimpleInitializer),
     String(StringInitializer),
     EnumeratedValues(EnumeratedValuesInitializer),
@@ -1368,6 +1369,8 @@ pub struct StringInitializer {
     /// the default value is the empty string.
     #[recurse(ignore)]
     pub initial_value: Option<Vec<char>>,
+
+    pub keyword_span: SourceSpan,
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]
@@ -1406,6 +1409,7 @@ pub struct StringSpecification {
     #[recurse(ignore)]
     pub width: StringType,
     pub length: Option<Integer>,
+    pub keyword_span: SourceSpan,
 }
 
 /// Container for top-level elements that are valid top-level declarations in
@@ -1455,7 +1459,7 @@ pub struct FunctionBlockDeclaration {
     pub name: Id,
     pub variables: Vec<VarDecl>,
     pub body: FunctionBlockBodyKind,
-    pub position: SourceLoc,
+    pub span: SourceSpan,
 }
 
 impl HasVariables for FunctionBlockDeclaration {

@@ -3,7 +3,7 @@
 //! The compiler as individual stages (to enable testing).
 
 use ironplc_dsl::{
-    core::FileId,
+    core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
 use ironplc_parser::{token::Token, tokenize_program};
@@ -45,9 +45,10 @@ pub fn parse(source: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
 /// Returns `Err(Diagnostic)` if analysis did not succeed.
 pub fn analyze(compilation_set: &CompilationSet) -> Result<(), Vec<Diagnostic>> {
     if compilation_set.sources.is_empty() {
+        let span = SourceSpan::range(0, 0).with_file_id(&FileId::default());
         return Err(vec![Diagnostic::problem(
             Problem::NoContent,
-            Label::offset(FileId::default(), 0..0, "First location"),
+            Label::span(&span, "First location"),
         )]);
     }
     let library = resolve_types(compilation_set)?;
@@ -142,7 +143,7 @@ mod tests {
     use ironplc_dsl::configuration::*;
     use ironplc_dsl::core::FileId;
     use ironplc_dsl::core::Id;
-    use ironplc_dsl::core::SourceLoc;
+    use ironplc_dsl::core::SourceSpan;
     use ironplc_dsl::sfc::*;
     use ironplc_dsl::textual::*;
     use test_helpers::*;
@@ -219,7 +220,7 @@ mod tests {
                         "MSG",
                         VariableType::Input,
                         DeclarationQualifier::Unspecified,
-                        SourceLoc::default(),
+                        SourceSpan::default(),
                     ),
                     VarDecl::enumerated("LEVEL", "LOGLEVEL", "INFO").with_type(VariableType::Input),
                     VarDecl::simple("TRIG0", "BOOL"),
@@ -238,7 +239,7 @@ mod tests {
                         ExprKind::named_variable("TRIG"),
                     ),
                 ]),
-                position: SourceLoc::default(),
+                span: SourceSpan::default(),
             },
         ));
 
@@ -265,7 +266,7 @@ mod tests {
                             type_name: Id::from("INT"),
                             initial_value: None,
                         }),
-                        position: SourceLoc::default(),
+                        span: SourceSpan::default(),
                     },
                 ],
                 body: FunctionBlockBodyKind::sfc(vec![Network {
@@ -339,7 +340,7 @@ mod tests {
                         ),
                     ],
                 }]),
-                position: SourceLoc::default(),
+                span: SourceSpan::default(),
             },
         ));
         let res = ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap();
@@ -365,7 +366,7 @@ mod tests {
                             type_name: Id::from("INT"),
                             initial_value: None,
                         }),
-                        position: SourceLoc::default(),
+                        span: SourceSpan::default(),
                     },
                     VarDecl::simple("_TMP_ADD4_OUT", "INT"),
                     VarDecl::simple("_TMP_SEL7_OUT", "INT"),
@@ -374,7 +375,7 @@ mod tests {
                     StmtKind::simple_assignment("Cnt", "_TMP_SEL7_OUT"),
                     StmtKind::simple_assignment("OUT", "Cnt"),
                 ]),
-                position: SourceLoc::default(),
+                span: SourceSpan::default(),
             },
         ));
         let res = ironplc_parser::parse_program(src.as_str(), &FileId::default()).unwrap();
@@ -406,7 +407,7 @@ mod tests {
                                 data_type: None,
                             })),
                         }),
-                        position: SourceLoc::default(),
+                        span: SourceSpan::default(),
                     },
                 ],
                 body: vec![StmtKind::assignment(
@@ -512,7 +513,7 @@ mod tests {
                         type_name: Id::from("INT"),
                         initial_value: Some(ConstantKind::integer_literal("17").unwrap()),
                     }),
-                    position: SourceLoc::default(),
+                    span: SourceSpan::default(),
                 }],
                 resource_decl: vec![ResourceDeclaration {
                     name: Id::from("resource1"),

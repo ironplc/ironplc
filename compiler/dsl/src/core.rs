@@ -45,23 +45,29 @@ impl fmt::Display for FileId {
 ///
 /// The location is defined by indices in the source file.
 #[derive(Debug, Clone)]
-pub struct SourceLoc {
+pub struct SourceSpan {
     pub start: usize,
     pub end: usize,
     pub file_id: FileId,
 }
 
-impl SourceLoc {
-    pub fn range(start: usize, end: usize) -> SourceLoc {
-        SourceLoc {
+impl SourceSpan {
+    pub fn bounded(start: &SourceSpan, end: &SourceSpan) -> Self {
+        Self {
+            start: start.start,
+            end: end.end,
+            file_id: start.file_id.clone(),
+        }
+    }
+    pub fn range(start: usize, end: usize) -> Self {
+        Self {
             start,
             end,
             file_id: FileId::default(),
         }
     }
-
     pub fn with_file_id(&self, file_id: &FileId) -> Self {
-        SourceLoc {
+        Self {
             start: self.start,
             end: self.end,
             file_id: file_id.clone(),
@@ -69,13 +75,13 @@ impl SourceLoc {
     }
 }
 
-impl Default for SourceLoc {
+impl Default for SourceSpan {
     fn default() -> Self {
-        SourceLoc::range(0, 0)
+        SourceSpan::range(0, 0)
     }
 }
 
-impl PartialEq for SourceLoc {
+impl PartialEq for SourceSpan {
     fn eq(&self, other: &Self) -> bool {
         // Two source locations are equal by default? Yes - when comparing
         // items, we rarely want to know that they were declared at the same
@@ -83,11 +89,11 @@ impl PartialEq for SourceLoc {
         true
     }
 }
-impl Eq for SourceLoc {}
+impl Eq for SourceSpan {}
 
 pub trait SourcePosition {
     /// Get the source code position of the object.
-    fn position(&self) -> &SourceLoc;
+    fn position(&self) -> &SourceSpan;
 }
 
 /// Implements Identifier.
@@ -103,7 +109,7 @@ pub struct Id {
     pub original: String,
     #[recurse(ignore)]
     pub lower_case: String,
-    pub position: SourceLoc,
+    pub span: SourceSpan,
 }
 
 impl Id {
@@ -112,12 +118,12 @@ impl Id {
         Id {
             original: String::from(str),
             lower_case: String::from(str).to_lowercase(),
-            position: SourceLoc::default(),
+            span: SourceSpan::default(),
         }
     }
 
-    pub fn with_position(mut self, loc: SourceLoc) -> Self {
-        self.position = loc;
+    pub fn with_position(mut self, loc: SourceSpan) -> Self {
+        self.span = loc;
         self
     }
 
@@ -133,7 +139,7 @@ impl Id {
 
 impl Clone for Id {
     fn clone(&self) -> Self {
-        Id::from(self.original.as_str()).with_position(self.position.clone())
+        Id::from(self.original.as_str()).with_position(self.span.clone())
     }
 }
 
@@ -163,7 +169,7 @@ impl fmt::Display for Id {
 }
 
 impl SourcePosition for Id {
-    fn position(&self) -> &SourceLoc {
-        &self.position
+    fn position(&self) -> &SourceSpan {
+        &self.span
     }
 }

@@ -62,14 +62,11 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
                             self.diagnostics.push(
                                 Diagnostic::problem(
                                     Problem::EnumTypeDeclDuplicateItem,
-                                    Label::source_loc(first.position(), "First instance"),
+                                    Label::span(first.position(), "First instance"),
                                 )
                                 .with_context_id("declaration", &node.type_name)
                                 .with_context_id("duplicate value", first)
-                                .with_secondary(Label::source_loc(
-                                    current.position(),
-                                    "Duplicate value",
-                                )),
+                                .with_secondary(Label::span(current.position(), "Duplicate value")),
                             );
                         }
                         None => {

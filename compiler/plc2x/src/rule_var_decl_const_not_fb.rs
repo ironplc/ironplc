@@ -52,7 +52,7 @@ impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
                 self.diagnostics.push(
                     Diagnostic::problem(
                         Problem::FunctionBlockNotConstant,
-                        Label::source_loc(
+                        Label::span(
                             node.identifier.position(),
                             "Declaration of function block instance",
                         ),

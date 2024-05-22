@@ -35,5 +35,5 @@ pub fn parse_program(source: &str, file_id: &FileId) -> Result<Library, Diagnost
     if !result.1.is_empty() {
         return Err(result.1.remove(0));
     }
-    parse_library(result.0, file_id).map(|elements| Library { elements })
+    parse_library(result.0).map(|elements| Library { elements })
 }

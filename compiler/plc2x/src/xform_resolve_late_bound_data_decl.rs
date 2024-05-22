@@ -109,9 +109,9 @@ impl TypeDeclResolver {
                 .expect("Expected key");
             Err(Diagnostic::problem(
                 Problem::DeclarationNameDuplicated,
-                Label::source_loc(item.position(), "Duplicate declaration"),
+                Label::span(item.position(), "Duplicate declaration"),
             )
-            .with_secondary(Label::source_loc(existing.position(), "First declaration")))
+            .with_secondary(Label::span(existing.position(), "First declaration")))
         }
     }
 }

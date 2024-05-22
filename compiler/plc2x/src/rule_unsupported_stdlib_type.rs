@@ -46,7 +46,7 @@ impl Visitor<Diagnostic> for RuleUnsupportedStdLibType {
         if is_unsupported_standard_type(&node.type_name) {
             self.diagnostics.push(Diagnostic::problem(
                 Problem::UnsupportedStdLibType,
-                Label::source_loc(&node.type_name.position, "Unsupported variable type name"),
+                Label::span(&node.type_name.span, "Unsupported variable type name"),
             ));
         }
         node.recurse_visit(self)

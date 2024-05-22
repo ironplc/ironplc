@@ -4,7 +4,7 @@
 use crate::common::{
     AddressAssignment, ConstantKind, EnumeratedValue, IntegerLiteral, SignedInteger, Subrange,
 };
-use crate::core::{Id, SourceLoc};
+use crate::core::{Id, SourceSpan};
 use std::cmp::Ordering;
 use std::fmt;
 use std::ops::Deref;
@@ -144,7 +144,7 @@ pub struct FbCall {
     /// call.
     pub var_name: Id,
     pub params: Vec<ParamAssignmentKind>,
-    pub position: SourceLoc,
+    pub position: SourceSpan,
 }
 
 /// A binary expression that produces a Boolean result by comparing operands.
@@ -218,7 +218,7 @@ impl ExprKind {
 
     pub fn integer_literal(value: &str) -> ExprKind {
         ExprKind::Const(ConstantKind::IntegerLiteral(IntegerLiteral {
-            value: SignedInteger::new(value, SourceLoc::default()).unwrap(),
+            value: SignedInteger::new(value, SourceSpan::default()).unwrap(),
             data_type: None,
         }))
     }
@@ -385,7 +385,7 @@ impl StmtKind {
         StmtKind::FbCall(FbCall {
             var_name: Id::from(fb_name),
             params: assignments,
-            position: SourceLoc::default(),
+            position: SourceSpan::default(),
         })
     }
 

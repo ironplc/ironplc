@@ -4,7 +4,7 @@
 //! The IEC 61131-3 syntax has some ambiguous types that are initially
 //! parsed into a placeholder. This transform replaces the placeholders
 //! with well-known types.
-use ironplc_dsl::core::SourcePosition;
+use ironplc_dsl::core::{SourcePosition, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
@@ -59,12 +59,12 @@ impl SymbolTable<'_, Id, TypeDefinitionKind> {
         if let Some(existing) = self.try_add(to_add, kind) {
             return Err(Diagnostic::problem(
                 Problem::DefinitionNameDuplicated,
-                Label::source_loc(
+                Label::span(
                     to_add.position(),
                     format!("Duplicated definition {}", to_add),
                 ),
             )
-            .with_secondary(Label::source_loc(existing.0.position(), "First definition")));
+            .with_secondary(Label::span(existing.0.position(), "First definition")));
         }
 
         Ok(())
@@ -174,6 +174,7 @@ impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
                                 length: Some(length.clone()),
                                 width: width.clone(),
                                 initial_value: None,
+                                keyword_span: SourceSpan::default(),
                             }))
                         }
                         TypeDefinitionKind::Array(spec) => Ok(InitialValueAssignmentKind::Array(
@@ -189,7 +190,7 @@ impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
                         self.diagnostics.push(
                             Diagnostic::problem(
                                 Problem::UndeclaredUnknownType,
-                                Label::source_loc(name.position(), "Variable type"),
+                                Label::span(name.position(), "Variable type"),
                             )
                             .with_context_id("identifier", &name),
                         );
@@ -207,7 +208,7 @@ mod tests {
     use super::apply;
     use ironplc_dsl::{
         common::*,
-        core::{FileId, Id, SourceLoc},
+        core::{FileId, Id, SourceSpan},
     };
     use ironplc_problems::Problem;
 
@@ -234,13 +235,13 @@ END_FUNCTION_BLOCK
                     name: Id::from("called"),
                     variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
-                    position: SourceLoc::default(),
+                    span: SourceSpan::default(),
                 }),
                 LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
                     name: Id::from("caller"),
                     variables: vec![VarDecl::function_block("fb_var", "called")],
                     body: FunctionBlockBodyKind::empty(),
-                    position: SourceLoc::default(),
+                    span: SourceSpan::default(),
                 }),
             ],
         };
@@ -282,7 +283,7 @@ END_FUNCTION_BLOCK
                     name: Id::from("caller"),
                     variables: vec![VarDecl::structure("the_var", "the_struct")],
                     body: FunctionBlockBodyKind::empty(),
-                    position: SourceLoc::default(),
+                    span: SourceSpan::default(),
                 }),
             ],
         };
@@ -324,7 +325,7 @@ END_FUNCTION_BLOCK
                     name: Id::from("caller"),
                     variables: vec![VarDecl::uninitialized_enumerated("the_var", "values")],
                     body: FunctionBlockBodyKind::empty(),
-                    position: SourceLoc::default(),
+                    span: SourceSpan::default(),
                 }),
             ],
         };

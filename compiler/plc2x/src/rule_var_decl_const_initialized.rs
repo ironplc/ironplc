@@ -65,14 +65,16 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
 
         match node.qualifier {
             DeclarationQualifier::Constant => match &node.initializer {
-                InitialValueAssignmentKind::None => return Err(Diagnostic::todo(file!(), line!())),
+                InitialValueAssignmentKind::None(sp) => {
+                    return Err(Diagnostic::todo_with_span(sp, file!(), line!()))
+                }
                 InitialValueAssignmentKind::Simple(si) => match si.initial_value {
                     Some(_) => {}
                     None => {
                         self.diagnostics.push(
                             Diagnostic::problem(
                                 Problem::ConstantMustHaveInitializer,
-                                Label::source_loc(&node.position, "Variable"),
+                                Label::span(&node.span, "Variable"),
                             )
                             .with_context("variable", &node.identifier.to_string()),
                         );
@@ -84,7 +86,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                         self.diagnostics.push(
                             Diagnostic::problem(
                                 Problem::ConstantMustHaveInitializer,
-                                Label::source_loc(&node.position, "Variable declaration"),
+                                Label::span(&node.span, "Variable declaration"),
                             )
                             .with_context("variable", &node.identifier.to_string()),
                         );
@@ -96,7 +98,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                         self.diagnostics.push(
                             Diagnostic::problem(
                                 Problem::ConstantMustHaveInitializer,
-                                Label::source_loc(&node.position, "Variable declaration"),
+                                Label::span(&node.span, "Variable declaration"),
                             )
                             .with_context("variable", &node.identifier.to_string()),
                         );
@@ -108,7 +110,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                         None => self.diagnostics.push(
                             Diagnostic::problem(
                                 Problem::ConstantMustHaveInitializer,
-                                Label::source_loc(&node.position, "Variable declaration"),
+                                Label::span(&node.span, "Variable declaration"),
                             )
                             .with_context("variable", &node.identifier.to_string()),
                         ),

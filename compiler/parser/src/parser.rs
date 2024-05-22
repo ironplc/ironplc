@@ -15,11 +15,9 @@
 //! * parser rule names in all capital letters are not production rules
 extern crate peg;
 
-use dsl::core::FileId;
-use dsl::core::SourceLoc;
+use dsl::core::SourceSpan;
 use dsl::diagnostic::Diagnostic;
 use dsl::diagnostic::Label;
-use dsl::diagnostic::QualifiedPosition;
 use ironplc_problems::Problem;
 use peg::parser;
 use peg::Parse;
@@ -38,24 +36,17 @@ use ironplc_dsl::textual::*;
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
 /// Parses a IEC 61131-3 library into object form.
-pub fn parse_library(
-    tokens: Vec<Token>,
-    file_id: &FileId,
-) -> Result<Vec<LibraryElementKind>, Diagnostic> {
+pub fn parse_library(tokens: Vec<Token>) -> Result<Vec<LibraryElementKind>, Diagnostic> {
     plc_parser::library(&SliceByRef(&tokens[..])).map_err(|e| {
         let token_index = e.location;
         // TODO remove the unw.as_str()rap
         let problem_token = tokens.get(token_index).unwrap();
         let expected = Vec::from_iter(e.expected.tokens()).join(" | ");
+
         Diagnostic::problem(
             Problem::SyntaxError,
-            Label::qualified(
-                file_id.clone(),
-                QualifiedPosition::new(
-                    problem_token.position.line,
-                    problem_token.position.column,
-                    problem_token.position.start,
-                ),
+            Label::span(
+                &problem_token.span.clone(),
                 format!(
                     "Expected {}. Found text '{}' that matched token {}",
                     expected,
@@ -73,7 +64,7 @@ pub fn parse_library(
 struct UntypedVarDecl {
     pub name: Id,
     pub initializer: InitialValueAssignmentKind,
-    pub position: SourceLoc,
+    pub span: SourceSpan,
 }
 
 struct IncomplVarDecl {
@@ -125,6 +116,7 @@ impl From<IncomplVarDecl> for VarDecl {
                     length: node.length,
                     width: StringType::String,
                     initial_value: None,
+                    keyword_span: node.keyword_span,
                 })
             }
             VariableSpecificationKind::WString(node) => {
@@ -132,6 +124,7 @@ impl From<IncomplVarDecl> for VarDecl {
                     length: node.length,
                     width: StringType::WString,
                     initial_value: None,
+                    keyword_span: node.keyword_span,
                 })
             }
             VariableSpecificationKind::Ambiguous(node) => {
@@ -143,12 +136,12 @@ impl From<IncomplVarDecl> for VarDecl {
             identifier: VariableIdentifier::Direct(DirectVariableIdentifier {
                 name: Some(val.name),
                 address_assignment: val.loc,
-                source_loc: SourceLoc::default(),
+                source_loc: SourceSpan::default(),
             }),
             var_type: VariableType::Var,
             qualifier: val.qualifier,
             initializer: init,
-            position: SourceLoc::default(),
+            span: SourceSpan::default(),
         }
     }
 }
@@ -251,7 +244,7 @@ impl VarDeclarations {
                     var_type: var_type.clone(),
                     qualifier,
                     initializer: declaration.initializer,
-                    position: declaration.position,
+                    span: declaration.span,
                 }
             })
             .collect()
@@ -391,7 +384,7 @@ parser! {
     // B.1.1 Letters, digits and identifier
     rule identifier() -> Id = i:tok(TokenType::Identifier) {
       Id::from(i.text.as_str())
-        .with_position(SourceLoc::range(i.position.start, i.position.end))
+        .with_position(i.span.clone())
     }
 
     // B.1.2 Constants
@@ -414,7 +407,7 @@ parser! {
     rule signed_integer() -> SignedInteger = signed_integer__positive() / signed_integer__negative()
     rule integer__string() -> &'input str = n:tok(TokenType::Digits) { n.text.as_str() }
     rule integer__string_simplified() -> String = n:integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit()).collect() }
-    rule integer() -> Integer = start:position!() n:integer__string() end:position!() {? Integer::new(n, SourceLoc::range(start, end)) }
+    rule integer() -> Integer = start:position!() n:integer__string() end:position!() {? Integer::new(n, SourceSpan::range(start, end)) }
     rule binary_integer_prefix() -> () = tok_eq(TokenType::Digits, "2") tok(TokenType::Hash) ()
     rule binary_integer() -> Integer = start:position!() binary_integer_prefix() n:tok(TokenType::Digits) end:position!() {? Integer::try_binary(n.text.as_str()) }
     rule octal_integer_prefix() -> () = tok_eq(TokenType::Digits, "8") tok(TokenType::Hash) ()
@@ -663,11 +656,11 @@ parser! {
     }
     // TODO this doesn't support type name as a value
     rule enumerated_specification__only_values() -> EnumeratedSpecificationKind  =
-      start:position!() tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) end:position!() { EnumeratedSpecificationKind::values(v, SourceLoc::range(start, end)) }
+      start:position!() tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) end:position!() { EnumeratedSpecificationKind::values(v, SourceSpan::range(start, end)) }
     rule enumerated_specification() -> EnumeratedSpecificationKind  =
-      start:position!() tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) end:position!() { EnumeratedSpecificationKind::values(v, SourceLoc::range(start, end)) }
+      start:position!() tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) end:position!() { EnumeratedSpecificationKind::values(v, SourceSpan::range(start, end)) }
       / name:enumerated_type_name() { EnumeratedSpecificationKind::TypeName(name) }
-    rule enumerated_value() -> EnumeratedValue = start:position!() type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:identifier() end:position!() { EnumeratedValue {type_name, value, position: SourceLoc::range(start, end)} }
+    rule enumerated_value() -> EnumeratedValue = start:position!() type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:identifier() end:position!() { EnumeratedValue {type_name, value, position: SourceSpan::range(start, end)} }
     rule array_type_declaration() -> ArrayDeclaration = type_name:array_type_name() _ tok(TokenType::Colon) _ spec_and_init:array_spec_init() {
       ArrayDeclaration {
         type_name,
@@ -923,7 +916,7 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: init.clone(),
-          position: SourceLoc::range(start, end)
+          span: SourceSpan::range(start, end)
         }
       }).collect()
     }
@@ -935,7 +928,7 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
-          position: SourceLoc::range(start, end)
+          span: SourceSpan::range(start, end)
         }
       }).collect()
     }
@@ -944,7 +937,7 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
-          position: SourceLoc::range(start, end)
+          span: SourceSpan::range(start, end)
         }
       }).collect()
     }
@@ -953,7 +946,7 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Array(init.clone()),
-          position: SourceLoc::range(start, end)
+          span: SourceSpan::range(start, end)
         }
       }).collect()
     }
@@ -989,7 +982,7 @@ parser! {
         var_type: VariableType::Var,
         qualifier: DeclarationQualifier::Unspecified,
         initializer,
-        position: SourceLoc::range(start, end),
+        span: SourceSpan::range(start, end),
       }
     }
     // We use the same type as in other places for VarInit, but the external always omits the initializer
@@ -1003,13 +996,13 @@ parser! {
         initial_value: None,
       })
     }
-    rule external_declaration() -> VarDecl = start:position!() name:global_var_name() _ tok(TokenType::Colon) _ spec:external_declaration_spec() end:position!() {
+    rule external_declaration() -> VarDecl = name:global_var_name() _ tok(TokenType::Colon) _ spec:external_declaration_spec() {
       VarDecl {
         identifier: VariableIdentifier::Symbol(name),
         var_type: VariableType::External,
         qualifier: DeclarationQualifier::Unspecified,
         initializer: spec,
-        position: SourceLoc::range(start, end),
+        span: SourceSpan::default(),
       }
     }
     rule global_var_name() -> Id = i:identifier() { i }
@@ -1026,9 +1019,9 @@ parser! {
       }).collect()
     }
     // TODO this doesn't pass all information. I suspect the rule from the description is not right
-    rule global_var_decl() -> (Vec<VarDecl>) = start:position!() vs:global_var_spec() _ tok(TokenType::Colon) _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment{type_name: f})})? end:position!() {
+    rule global_var_decl() -> (Vec<VarDecl>) = vs:global_var_spec() _ tok:tok(TokenType::Colon) _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment{type_name: f})})? {
       vs.0.into_iter().map(|name| {
-        let init = initializer.clone().unwrap_or(InitialValueAssignmentKind::None);
+        let init = initializer.clone().unwrap_or(InitialValueAssignmentKind::None(SourceSpan::bounded(&tok.span, &tok.span)));
         VarDecl {
           identifier: VariableIdentifier::Symbol(name),
           var_type: VariableType::Global,
@@ -1036,7 +1029,7 @@ parser! {
           // TODO this is clearly wrong
           initializer: init,
           // TODO this is clearly wrong
-          position: SourceLoc::range(start, end),
+          span: SourceSpan::default(),
         }
       }).collect()
      }
@@ -1051,20 +1044,22 @@ parser! {
     rule location() -> AddressAssignment = tok(TokenType::At) _ v:direct_variable() { v }
     rule global_var_list() -> Vec<Id> = names:global_var_name() ++ (_ tok(TokenType::Comma) _) { names }
     rule string_var_declaration() -> Vec<UntypedVarDecl> = single_byte_string_var_declaration() / double_byte_string_var_declaration()
-    rule single_byte_string_var_declaration() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ tok(TokenType::Colon) _ spec:single_byte_string_spec() end:position!() {
+    rule single_byte_string_var_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ spec:single_byte_string_spec() {
       names.into_iter().map(|name| {
+        let span = name.span.clone();
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::String(spec.clone()),
-          position: SourceLoc::range(start, end)
+          span,
         }
       }).collect()
     }
-    rule single_byte_string_spec() -> StringInitializer = tok(TokenType::String) _ length:(tok(TokenType::LeftBracket) _ i:integer() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:single_byte_character_string() {v})? {
+    rule single_byte_string_spec() -> StringInitializer = start:tok(TokenType::String) _ length:(tok(TokenType::LeftBracket) _ i:integer() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:single_byte_character_string() {v})? {
       StringInitializer {
         length,
         width: StringType::String,
         initial_value,
+        keyword_span: start.span.clone(),
       }
     }
     rule double_byte_string_var_declaration() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ tok(TokenType::Colon) _ spec:double_byte_string_spec() end:position!() {
@@ -1072,15 +1067,16 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::String(spec.clone()),
-          position: SourceLoc::range(start, end)
+          span: SourceSpan::range(start, end)
         }
       }).collect()
     }
-    rule double_byte_string_spec() -> StringInitializer = tok(TokenType::WString) _ length:(tok(TokenType::LeftBracket) _ i:integer() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:double_byte_character_string() {v})? {
+    rule double_byte_string_spec() -> StringInitializer = start:tok(TokenType::WString) _ length:(tok(TokenType::LeftBracket) _ i:integer() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:double_byte_character_string() {v})? {
       StringInitializer {
         length,
         width: StringType::WString,
         initial_value,
+        keyword_span: start.span.clone(),
       }
     }
     rule incompl_located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<incompl_located_var_decl()>) _ tok(TokenType::EndVar) {
@@ -1113,8 +1109,8 @@ parser! {
       sr:subrange_specification__with_range() { VariableSpecificationKind::Subrange(sr) }
       / e:enumerated_specification() { VariableSpecificationKind::Enumerated(e) }
       / a:array_specification() { VariableSpecificationKind::Array(a) }
-      / tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, }) }
-      / tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, }) }
+      / tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
       / et:elementary_type_name() { VariableSpecificationKind::Simple(et.into()) }
       / id:identifier() { VariableSpecificationKind::Ambiguous(id) }
 
@@ -1145,13 +1141,13 @@ parser! {
     // but we don't need that distinction here.
     rule function_block_type_name() -> Id = i:identifier() { i }
     rule derived_function_block_name() -> Id = !STANDARD_FUNCTION_BLOCK_NAME() i:identifier() { i }
-    rule function_block_declaration() -> FunctionBlockDeclaration = tok(TokenType::FunctionBlock) _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other }) ** _ _ body:function_block_body() _ tok(TokenType::EndFunctionBlock) {
+    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
       let variables = VarDeclarations::unzip(decls);
       FunctionBlockDeclaration {
         name,
         variables,
         body,
-        position: SourceLoc::default(),
+        span: SourceSpan::bounded(&start.span, &end.span),
       }
     }
     // TODO temp_var_decls
@@ -1508,11 +1504,12 @@ parser! {
 
     // B.3.2.2 Subprogram control statements
     rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb } / tok(TokenType::Return) { StmtKind::Return }
-    rule fb_invocation() -> StmtKind = start:position!() name:fb_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) end:position!() {
+    rule fb_invocation() -> StmtKind = name:fb_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
+      let span = SourceSpan::bounded(&name.span, &end.span);
       StmtKind::FbCall(FbCall {
         var_name: name,
         params,
-        position: SourceLoc::range(start, end)
+        position: span,
       })
     }
     // TODO this needs much more
@@ -1606,7 +1603,7 @@ parser! {
                 var_type: VariableType::Input,
                 qualifier: DeclarationQualifier::Unspecified,
                 initializer: InitialValueAssignmentKind::simple_uninitialized("BOOL"),
-                position: SourceLoc::default(),
+                position: SourceSpan::default(),
             },
             VarDecl {
                 identifier: VariableIdentifier::new_symbol("MSG"),
@@ -1617,7 +1614,7 @@ parser! {
                     width: StringType::String,
                     initial_value: None,
                 }),
-                position: SourceLoc::default(),
+                position: SourceSpan::default(),
             },
         ];
         assert_eq!(plc_parser::input_declarations(decl), Ok(vars))
@@ -1638,7 +1635,7 @@ END_VAR";
                     initial_value: Some(EnumeratedValue::new("INFO")),
                 },
             ),
-            position: SourceLoc::default(),
+            position: SourceSpan::default(),
         }]);
         assert_eq!(plc_parser::input_declarations(decl), expected)
     }
@@ -1655,7 +1652,7 @@ END_VAR";
                 var_type: VariableType::Output,
                 qualifier: DeclarationQualifier::Unspecified,
                 initializer: InitialValueAssignmentKind::simple_uninitialized("BOOL"),
-                position: SourceLoc::default(),
+                position: SourceSpan::default(),
             },
             VarDecl {
                 identifier: VariableIdentifier::new_symbol("MSG"),
@@ -1666,7 +1663,7 @@ END_VAR";
                     width: StringType::String,
                     initial_value: None,
                 }),
-                position: SourceLoc::default(),
+                position: SourceSpan::default(),
             },
         ];
         assert_eq!(plc_parser::output_declarations(decl), Ok(vars))
@@ -1730,7 +1727,7 @@ END_VAR";
             location: LocationPrefix::I,
             size: SizePrefix::X,
             address,
-            position: SourceLoc::default(),
+            position: SourceSpan::default(),
         };
         assert_eq!(plc_parser::direct_variable("%IX1"), Ok(var))
     }
@@ -1742,7 +1739,7 @@ END_VAR";
             location: LocationPrefix::I,
             size: SizePrefix::X,
             address,
-            position: SourceLoc::default(),
+            position: SourceSpan::default(),
         };
         assert_eq!(plc_parser::location("AT %IX1"), Ok(var))
     }
@@ -1758,7 +1755,7 @@ END_VAR";
                 "INT",
                 ConstantKind::integer_literal("17").unwrap(),
             ),
-            position: SourceLoc::default(),
+            position: SourceSpan::default(),
         }];
         assert_eq!(
             plc_parser::global_var_declarations(
@@ -1936,7 +1933,7 @@ END_VAR";
             params: vec![ParamAssignmentKind::positional(ExprKind::named_variable(
                 "Reset",
             ))],
-            position: SourceLoc::default(),
+            position: SourceSpan::default(),
         })]);
 
         assert_eq!(plc_parser::statement_list(statement), expected)
@@ -1951,7 +1948,7 @@ END_VAR";
                 "Cnt",
                 ExprKind::named_variable("Reset"),
             )],
-            position: SourceLoc::default(),
+            position: SourceSpan::default(),
         })]);
 
         assert_eq!(plc_parser::statement_list(statement), expected)

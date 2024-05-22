@@ -33,7 +33,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::{FileId, Id},
+    core::{FileId, Id, SourceSpan},
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -54,10 +54,11 @@ pub fn apply(lib: &Library) -> SemanticResult {
     // Check if there are cycles in the graph.
     // TODO report what the cycle is
     if is_cyclic_directed(&visitor.graph) {
+        let span = SourceSpan::range(0, 0).with_file_id(&FileId::default());
         return Err(vec![Diagnostic::problem(
             Problem::RecursiveCycle,
             // TODO wrong location
-            Label::offset(FileId::default(), 0..0, "Cycle"),
+            Label::span(&span, "Cycle"),
         )]);
     }
 
