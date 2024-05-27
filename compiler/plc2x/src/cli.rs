@@ -133,6 +133,15 @@ pub fn tokenize(path: &PathBuf, suppress_output: bool) -> Result<(), String> {
     if let CompilationSource::Text(txt) = contents {
         let (tokens, diagnostics) = tokenize_program(txt.0.as_str(), &txt.1);
 
+        let tokens = tokens
+            .iter()
+            .fold(String::new(), |s1, s2| s1 + "\n" + s2.to_string().as_str())
+            .trim_start()
+            .to_string();
+
+        debug!("{}", tokens);
+        println!("{}", tokens);
+
         if !diagnostics.is_empty() {
             println!("Number of errors {}", diagnostics.len());
             let mut set = CompilationSet::new();
@@ -141,16 +150,8 @@ pub fn tokenize(path: &PathBuf, suppress_output: bool) -> Result<(), String> {
                 txt.1.clone(),
             ))]);
             handle_diagnostics(diagnostics, Some(&set), suppress_output);
-            return Ok(());
+            return Err(String::from("Not valid"));
         }
-
-        let tokens = tokens
-            .iter()
-            .fold(String::new(), |s1, s2| s1 + "\n" + s2.to_string().as_str())
-            .trim_start()
-            .to_string();
-        debug!("{}", tokens);
-        println!("{}", tokens);
     }
 
     println!("OK");

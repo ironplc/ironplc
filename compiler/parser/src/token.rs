@@ -24,22 +24,27 @@ pub struct Token {
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
-            "Type: {:?}, Value: '{}'",
+            "Type: {:?}, Value: '{}', At: Ln {},Col {}",
             self.token_type,
-            self.text.replace('\n', "\\n")
+            self.text.replace('\n', "\\n").replace('\r', "\\r"),
+            self.line,
+            self.col
         ))
     }
 }
 #[derive(Clone, Logos, Debug, PartialEq)]
 pub enum TokenType {
-    #[regex(r"[\n\r\f]")]
+    #[regex(r"\r\n")]
+    #[regex(r"\n")]
+    #[regex(r"\f")]
     Newline,
 
     #[regex(r"[ \t]+")]
     Whitespace,
 
     // TODO this will not necessarily detect the right end position
-    #[regex(r"\(\*[^\*\)]*\*\)", priority = 0)]
+    //#[regex(r"\(\*[\s\S]*\*\)", priority = 0)]
+    #[regex(r"\(\*(?:[^*]|\*[^\)])*\*\)", priority = 0)]
     Comment,
 
     // Grouping and other markers
