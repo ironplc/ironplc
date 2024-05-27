@@ -19,6 +19,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
+    core::Located,
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -53,11 +54,11 @@ impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
             self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::SubrangeMinStrictlyLessMax,
-                    Label::span(&node.start.value.span, "Expected smaller value"),
+                    Label::span(node.start.value.span(), "Expected smaller value"),
                 )
                 .with_context("minimum", &node.start.to_string())
                 .with_context("maximum", &node.end.to_string())
-                .with_secondary(Label::span(&node.end.value.span, "Expected greater value")),
+                .with_secondary(Label::span(node.end.value.span(), "Expected greater value")),
             );
         }
         Ok(())

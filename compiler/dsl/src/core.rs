@@ -52,11 +52,18 @@ pub struct SourceSpan {
 }
 
 impl SourceSpan {
-    pub fn bounded(start: &SourceSpan, end: &SourceSpan) -> Self {
+    pub fn join(start: &SourceSpan, end: &SourceSpan) -> Self {
         Self {
             start: start.start,
             end: end.end,
             file_id: start.file_id.clone(),
+        }
+    }
+    pub fn join2(start: &dyn Located, end: &dyn Located) -> Self {
+        Self {
+            start: start.span().start,
+            end: end.span().start,
+            file_id: start.span().file_id.clone(),
         }
     }
     pub fn range(start: usize, end: usize) -> Self {
@@ -91,9 +98,10 @@ impl PartialEq for SourceSpan {
 }
 impl Eq for SourceSpan {}
 
-pub trait SourcePosition {
+/// Defines an element that has a location in source code.
+pub trait Located {
     /// Get the source code position of the object.
-    fn position(&self) -> &SourceSpan;
+    fn span(&self) -> SourceSpan;
 }
 
 /// Implements Identifier.
@@ -168,8 +176,8 @@ impl fmt::Display for Id {
     }
 }
 
-impl SourcePosition for Id {
-    fn position(&self) -> &SourceSpan {
-        &self.span
+impl Located for Id {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
     }
 }

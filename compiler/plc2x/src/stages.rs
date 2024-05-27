@@ -48,7 +48,7 @@ pub fn analyze(compilation_set: &CompilationSet) -> Result<(), Vec<Diagnostic>> 
         let span = SourceSpan::range(0, 0).with_file_id(&FileId::default());
         return Err(vec![Diagnostic::problem(
             Problem::NoContent,
-            Label::span(&span, "First location"),
+            Label::span(span, "First location"),
         )]);
     }
     let library = resolve_types(compilation_set)?;
@@ -220,7 +220,6 @@ mod tests {
                         "MSG",
                         VariableType::Input,
                         DeclarationQualifier::Unspecified,
-                        SourceSpan::default(),
                     ),
                     VarDecl::enumerated("LEVEL", "LOGLEVEL", "INFO").with_type(VariableType::Input),
                     VarDecl::simple("TRIG0", "BOOL"),
@@ -266,7 +265,6 @@ mod tests {
                             type_name: Id::from("INT"),
                             initial_value: None,
                         }),
-                        span: SourceSpan::default(),
                     },
                 ],
                 body: FunctionBlockBodyKind::sfc(vec![Network {
@@ -366,7 +364,6 @@ mod tests {
                             type_name: Id::from("INT"),
                             initial_value: None,
                         }),
-                        span: SourceSpan::default(),
                     },
                     VarDecl::simple("_TMP_ADD4_OUT", "INT"),
                     VarDecl::simple("_TMP_SEL7_OUT", "INT"),
@@ -407,7 +404,6 @@ mod tests {
                                 data_type: None,
                             })),
                         }),
-                        span: SourceSpan::default(),
                     },
                 ],
                 body: vec![StmtKind::assignment(
@@ -513,7 +509,6 @@ mod tests {
                         type_name: Id::from("INT"),
                         initial_value: Some(ConstantKind::integer_literal("17").unwrap()),
                     }),
-                    span: SourceSpan::default(),
                 }],
                 resource_decl: vec![ResourceDeclaration {
                     name: Id::from("resource1"),

@@ -9,7 +9,7 @@ use ironplc_problems::Problem;
 use std::collections::HashSet;
 use std::{fs::File, ops::Range};
 
-use crate::core::{FileId, Id, SourcePosition, SourceSpan};
+use crate::core::{FileId, Id, Located, SourceSpan};
 
 /// A position marker that has both line and offset information.
 #[derive(Debug)]
@@ -61,13 +61,13 @@ pub struct Label {
 }
 
 impl Label {
-    pub fn span(span: &SourceSpan, message: impl Into<String>) -> Self {
+    pub fn span(span: SourceSpan, message: impl Into<String>) -> Self {
         Self {
             location: Location {
                 start: span.start,
                 end: span.end,
             },
-            file_id: span.file_id.clone(),
+            file_id: span.file_id,
             message: message.into(),
         }
     }
@@ -126,7 +126,7 @@ impl Diagnostic {
         Diagnostic::problem(
             Problem::NotImplemented,
             Label::span(
-                &SourceSpan::default(),
+                SourceSpan::default(),
                 format!("Not implemented at {}#L{}", file, line),
             ),
         )
@@ -141,10 +141,7 @@ impl Diagnostic {
     pub fn todo_with_id(id: &Id, file: &str, line: u32) -> Self {
         Diagnostic::problem(
             Problem::NotImplemented,
-            Label::span(
-                id.position(),
-                format!("Not implemented at {}#L{}", file, line),
-            ),
+            Label::span(id.span(), format!("Not implemented at {}#L{}", file, line)),
         )
     }
 
@@ -154,7 +151,7 @@ impl Diagnostic {
     ///
     /// Unlike other uses of problem, the location in this is related to the compiler
     /// rather than the IEC 61131-3 source.
-    pub fn todo_with_span(span: &SourceSpan, file: &str, line: u32) -> Self {
+    pub fn todo_with_span(span: SourceSpan, file: &str, line: u32) -> Self {
         Diagnostic::problem(
             Problem::NotImplemented,
             Label::span(span, format!("Not implemented at {}#L{}", file, line)),

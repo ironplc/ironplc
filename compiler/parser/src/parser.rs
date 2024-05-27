@@ -46,7 +46,7 @@ pub fn parse_library(tokens: Vec<Token>) -> Result<Vec<LibraryElementKind>, Diag
         Diagnostic::problem(
             Problem::SyntaxError,
             Label::span(
-                &problem_token.span.clone(),
+                problem_token.span.clone(),
                 format!(
                     "Expected {}. Found text '{}' that matched token {}",
                     expected,
@@ -64,7 +64,6 @@ pub fn parse_library(tokens: Vec<Token>) -> Result<Vec<LibraryElementKind>, Diag
 struct UntypedVarDecl {
     pub name: Id,
     pub initializer: InitialValueAssignmentKind,
-    pub span: SourceSpan,
 }
 
 struct IncomplVarDecl {
@@ -136,12 +135,11 @@ impl From<IncomplVarDecl> for VarDecl {
             identifier: VariableIdentifier::Direct(DirectVariableIdentifier {
                 name: Some(val.name),
                 address_assignment: val.loc,
-                source_loc: SourceSpan::default(),
+                span: SourceSpan::default(),
             }),
             var_type: VariableType::Var,
             qualifier: val.qualifier,
             initializer: init,
-            span: SourceSpan::default(),
         }
     }
 }
@@ -244,7 +242,6 @@ impl VarDeclarations {
                     var_type: var_type.clone(),
                     qualifier,
                     initializer: declaration.initializer,
-                    span: declaration.span,
                 }
             })
             .collect()
@@ -407,13 +404,13 @@ parser! {
     rule signed_integer() -> SignedInteger = signed_integer__positive() / signed_integer__negative()
     rule integer__string() -> &'input str = n:tok(TokenType::Digits) { n.text.as_str() }
     rule integer__string_simplified() -> String = n:integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit()).collect() }
-    rule integer() -> Integer = start:position!() n:integer__string() end:position!() {? Integer::new(n, SourceSpan::range(start, end)) }
-    rule binary_integer_prefix() -> () = tok_eq(TokenType::Digits, "2") tok(TokenType::Hash) ()
-    rule binary_integer() -> Integer = start:position!() binary_integer_prefix() n:tok(TokenType::Digits) end:position!() {? Integer::try_binary(n.text.as_str()) }
-    rule octal_integer_prefix() -> () = tok_eq(TokenType::Digits, "8") tok(TokenType::Hash) ()
-    rule octal_integer() -> Integer = start:position!() octal_integer_prefix() n:tok(TokenType::Digits) end:position!() {? Integer::try_octal(n.text.as_str()) }
-    rule hex_integer_prefix() -> () = tok_eq(TokenType::Digits, "16") tok(TokenType::Hash) ()
-    rule hex_integer() -> Integer = start:position!() hex_integer_prefix() n:tok(TokenType::Identifier) end:position!() {? Integer::try_hex(n.text.as_str()) }
+    rule integer() -> Integer = n:integer__string() {? Integer::new(n, SourceSpan::default()) }
+    rule binary_integer_prefix() -> &'input Token = t:tok_eq(TokenType::Digits, "2") tok(TokenType::Hash) { t }
+    rule binary_integer() -> Integer =  binary_integer_prefix() n:tok(TokenType::Digits) {? Integer::try_binary(n.text.as_str()) }
+    rule octal_integer_prefix() -> &'input Token = t:tok_eq(TokenType::Digits, "8") tok(TokenType::Hash) { t }
+    rule octal_integer() -> Integer = octal_integer_prefix() n:tok(TokenType::Digits) {? Integer::try_octal(n.text.as_str()) }
+    rule hex_integer_prefix() -> &'input Token = t:tok_eq(TokenType::Digits, "16") tok(TokenType::Hash) { t }
+    rule hex_integer() -> Integer = hex_integer_prefix() n:tok(TokenType::Identifier) {? Integer::try_hex(n.text.as_str()) }
     rule real_literal() -> RealLiteral = tn:(t:real_type_name() tok(TokenType::Hash) {t})? sign:(tok(TokenType::Plus) { 1 } / tok(TokenType::Minus) { -1 })? whole:tok(TokenType::Digits) tok(TokenType::Period) fraction:tok(TokenType::Digits) exp:exponent()? {?
       // Create the value from concatenating the parts so that it is trivial
       // to existing parsers.
@@ -656,11 +653,11 @@ parser! {
     }
     // TODO this doesn't support type name as a value
     rule enumerated_specification__only_values() -> EnumeratedSpecificationKind  =
-      start:position!() tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) end:position!() { EnumeratedSpecificationKind::values(v, SourceSpan::range(start, end)) }
+      tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { EnumeratedSpecificationKind::values(v) }
     rule enumerated_specification() -> EnumeratedSpecificationKind  =
-      start:position!() tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) end:position!() { EnumeratedSpecificationKind::values(v, SourceSpan::range(start, end)) }
+      tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { EnumeratedSpecificationKind::values(v) }
       / name:enumerated_type_name() { EnumeratedSpecificationKind::TypeName(name) }
-    rule enumerated_value() -> EnumeratedValue = start:position!() type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:identifier() end:position!() { EnumeratedValue {type_name, value, position: SourceSpan::range(start, end)} }
+    rule enumerated_value() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:identifier() { EnumeratedValue {type_name, value} }
     rule array_type_declaration() -> ArrayDeclaration = type_name:array_type_name() _ tok(TokenType::Colon) _ spec_and_init:array_spec_init() {
       ArrayDeclaration {
         type_name,
@@ -796,7 +793,7 @@ parser! {
           })
         }
       }
-    } / start:position!() tok(TokenType::LeftParen) _ values:enumerated_value() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightParen) _  init:(tok(TokenType::Assignment) _ i:enumerated_value() {i})? {
+    } / tok(TokenType::LeftParen) _ values:enumerated_value() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightParen) _  init:(tok(TokenType::Assignment) _ i:enumerated_value() {i})? {
       // An enumerated_specification defined by enum values is unambiguous because
       // the parenthesis are not valid simple_specification.
       InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer {
@@ -910,43 +907,39 @@ parser! {
     // type name.
     // TODO add in subrange_spec_init(), enumerated_spec_init()
     rule var_init_decl() -> Vec<UntypedVarDecl> = structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() /  var1_init_decl__with_ambiguous_struct()
-    rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ tok(TokenType::Colon) _ init:(a:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()) end:position!() {
+    rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(a:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
           initializer: init.clone(),
-          span: SourceSpan::range(start, end)
         }
       }).collect()
     }
 
     rule var1_list() -> Vec<Id> = names:variable_name() ++ (_ tok(TokenType::Comma) _) { names }
-    rule structured_var_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ tok(TokenType::Colon) _ init_struct:initialized_structure() end:position!() {
+    rule structured_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init_struct:initialized_structure()  {
       names.into_iter().map(|name| {
         // TODO
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
-          span: SourceSpan::range(start, end)
         }
       }).collect()
     }
-    rule structured_var_init_decl__without_ambiguous() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ tok(TokenType::Colon) _ init_struct:initialized_structure__without_ambiguous() end:position!() {
+    rule structured_var_init_decl__without_ambiguous() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init_struct:initialized_structure__without_ambiguous() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
-          span: SourceSpan::range(start, end)
         }
       }).collect()
     }
-    rule array_var_init_decl() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ tok(TokenType::Colon) _ init:array_spec_init() end:position!() {
+    rule array_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:array_spec_init() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Array(init.clone()),
-          span: SourceSpan::range(start, end)
         }
       }).collect()
     }
@@ -975,14 +968,13 @@ parser! {
       let qualifier = qualifier.or(Some(DeclarationQualifier::Unspecified));
       VarDeclarations::Located(VarDeclarations::map(declarations, qualifier))
     }
-    rule located_var_decl() -> VarDecl = start:position!() name:variable_name()? _ location:location() _ tok(TokenType::Colon) _ initializer:located_var_spec_init() end:position!() {
+    rule located_var_decl() -> VarDecl = name:variable_name()? _ location:location() _ tok(TokenType::Colon) _ initializer:located_var_spec_init() {
       VarDecl {
         identifier: VariableIdentifier::new_direct(name, location),
         // TODO Is the type always var?
         var_type: VariableType::Var,
         qualifier: DeclarationQualifier::Unspecified,
         initializer,
-        span: SourceSpan::range(start, end),
       }
     }
     // We use the same type as in other places for VarInit, but the external always omits the initializer
@@ -1002,7 +994,6 @@ parser! {
         var_type: VariableType::External,
         qualifier: DeclarationQualifier::Unspecified,
         initializer: spec,
-        span: SourceSpan::default(),
       }
     }
     rule global_var_name() -> Id = i:identifier() { i }
@@ -1021,15 +1012,13 @@ parser! {
     // TODO this doesn't pass all information. I suspect the rule from the description is not right
     rule global_var_decl() -> (Vec<VarDecl>) = vs:global_var_spec() _ tok:tok(TokenType::Colon) _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment{type_name: f})})? {
       vs.0.into_iter().map(|name| {
-        let init = initializer.clone().unwrap_or(InitialValueAssignmentKind::None(SourceSpan::bounded(&tok.span, &tok.span)));
+        let init = initializer.clone().unwrap_or(InitialValueAssignmentKind::None(SourceSpan::join(&tok.span, &tok.span)));
         VarDecl {
           identifier: VariableIdentifier::Symbol(name),
           var_type: VariableType::Global,
           qualifier: DeclarationQualifier::Unspecified,
           // TODO this is clearly wrong
           initializer: init,
-          // TODO this is clearly wrong
-          span: SourceSpan::default(),
         }
       }).collect()
      }
@@ -1050,7 +1039,6 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::String(spec.clone()),
-          span,
         }
       }).collect()
     }
@@ -1062,12 +1050,11 @@ parser! {
         keyword_span: start.span.clone(),
       }
     }
-    rule double_byte_string_var_declaration() -> Vec<UntypedVarDecl> = start:position!() names:var1_list() _ tok(TokenType::Colon) _ spec:double_byte_string_spec() end:position!() {
+    rule double_byte_string_var_declaration() -> Vec<UntypedVarDecl> =  names:var1_list() _ tok(TokenType::Colon) _ spec:double_byte_string_spec() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::String(spec.clone()),
-          span: SourceSpan::range(start, end)
         }
       }).collect()
     }
@@ -1147,7 +1134,7 @@ parser! {
         name,
         variables,
         body,
-        span: SourceSpan::bounded(&start.span, &end.span),
+        span: SourceSpan::join(&start.span, &end.span),
       }
     }
     // TODO temp_var_decls
@@ -1505,7 +1492,7 @@ parser! {
     // B.3.2.2 Subprogram control statements
     rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb } / tok(TokenType::Return) { StmtKind::Return }
     rule fb_invocation() -> StmtKind = name:fb_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
-      let span = SourceSpan::bounded(&name.span, &end.span);
+      let span = SourceSpan::join(&name.span, &end.span);
       StmtKind::FbCall(FbCall {
         var_name: name,
         params,

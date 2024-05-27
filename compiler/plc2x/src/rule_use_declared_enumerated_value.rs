@@ -30,7 +30,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::{Id, SourcePosition},
+    core::{Id, Located},
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -103,7 +103,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                 None => {
                     return Err(Diagnostic::problem(
                         Problem::EnumNotDeclared,
-                        Label::span(name.position(), "Enumeration reference"),
+                        Label::span(name.span(), "Enumeration reference"),
                     )
                     .with_context_id("name", name))
                 }
@@ -113,7 +113,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
             if seen_names.contains(name) {
                 return Err(Diagnostic::problem(
                     Problem::EnumRecursive,
-                    Label::span(name.position(), "Current enumeration"),
+                    Label::span(name.span(), "Current enumeration"),
                 )
                 .with_context_id("type", name));
             }
@@ -136,7 +136,7 @@ impl Visitor<Diagnostic> for RuleDeclaredEnumeratedValues<'_> {
             if !defined_values.contains(value) {
                 return Err(Diagnostic::problem(
                     Problem::EnumValueNotDefined,
-                    Label::span(value.position(), "Expected value in enumeration"),
+                    Label::span(value.span(), "Expected value in enumeration"),
                 )
                 .with_context_id("value", &value.value));
             }

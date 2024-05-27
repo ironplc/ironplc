@@ -7,7 +7,7 @@
 //! The transformation succeeds when all data type declarations
 //! resolve to a declared type.
 use crate::symbol_graph::{SymbolGraph, SymbolNode};
-use ironplc_dsl::core::SourcePosition;
+use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
@@ -109,9 +109,9 @@ impl TypeDeclResolver {
                 .expect("Expected key");
             Err(Diagnostic::problem(
                 Problem::DeclarationNameDuplicated,
-                Label::span(item.position(), "Duplicate declaration"),
+                Label::span(item.span(), "Duplicate declaration"),
             )
-            .with_secondary(Label::span(existing.position(), "First declaration")))
+            .with_secondary(Label::span(existing.span(), "First declaration")))
         }
     }
 }

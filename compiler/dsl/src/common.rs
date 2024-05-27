@@ -15,7 +15,7 @@ use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 use dsl_macro_derive::Recurse;
 
 use crate::configuration::ConfigurationDeclaration;
-use crate::core::{Id, SourcePosition, SourceSpan};
+use crate::core::{Id, Located, SourceSpan};
 use crate::fold::Fold;
 use crate::sfc::{Network, Sfc};
 use crate::textual::*;
@@ -65,6 +65,12 @@ pub struct Integer {
     /// an unsigned value.
     #[recurse(ignore)]
     pub value: u128,
+}
+
+impl Located for Integer {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
 }
 
 #[derive(Debug)]
@@ -550,7 +556,6 @@ impl EnumeratedSpecificationInit {
         EnumeratedSpecificationInit {
             spec: EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues {
                 values: values.into_iter().map(EnumeratedValue::new).collect(),
-                position: SourceSpan::default(),
             }),
             default: Some(EnumeratedValue::new(default)),
         }
@@ -576,20 +581,13 @@ impl EnumeratedSpecificationKind {
             .map(|v| EnumeratedValue {
                 type_name: None,
                 value: Id::from(v),
-                position: SourceSpan::default(),
             })
             .collect();
-        EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues {
-            values,
-            position: SourceSpan::default(),
-        })
+        EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues { values })
     }
 
-    pub fn values(
-        values: Vec<EnumeratedValue>,
-        position: SourceSpan,
-    ) -> EnumeratedSpecificationKind {
-        EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues { values, position })
+    pub fn values(values: Vec<EnumeratedValue>) -> EnumeratedSpecificationKind {
+        EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues { values })
     }
 }
 
@@ -597,7 +595,6 @@ impl EnumeratedSpecificationKind {
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct EnumeratedSpecificationValues {
     pub values: Vec<EnumeratedValue>,
-    pub position: SourceSpan,
 }
 
 /// A particular value in a enumeration.
@@ -610,7 +607,6 @@ pub struct EnumeratedSpecificationValues {
 pub struct EnumeratedValue {
     pub type_name: Option<Id>,
     pub value: Id,
-    pub position: SourceSpan,
 }
 
 impl EnumeratedValue {
@@ -618,19 +614,16 @@ impl EnumeratedValue {
         EnumeratedValue {
             type_name: None,
             value: Id::from(value),
-            position: SourceSpan::default(),
         }
-    }
-
-    pub fn with_position(mut self, position: SourceSpan) -> Self {
-        self.position = position;
-        self
     }
 }
 
-impl SourcePosition for EnumeratedValue {
-    fn position(&self) -> &SourceSpan {
-        &self.position
+impl Located for EnumeratedValue {
+    fn span(&self) -> SourceSpan {
+        match &self.type_name {
+            Some(name) => SourceSpan::join2(name, &self.value),
+            None => self.value.span.clone(),
+        }
     }
 }
 
@@ -920,7 +913,12 @@ pub struct VarDecl {
     #[recurse(ignore)]
     pub qualifier: DeclarationQualifier,
     pub initializer: InitialValueAssignmentKind,
-    pub span: SourceSpan,
+}
+
+impl Located for VarDecl {
+    fn span(&self) -> SourceSpan {
+        self.identifier.span()
+    }
 }
 
 impl VarDecl {
@@ -932,16 +930,10 @@ impl VarDecl {
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::simple_uninitialized(type_name),
-            span: SourceSpan::default(),
         }
     }
 
-    pub fn string(
-        name: &str,
-        var_type: VariableType,
-        qualifier: DeclarationQualifier,
-        loc: SourceSpan,
-    ) -> Self {
+    pub fn string(name: &str, var_type: VariableType, qualifier: DeclarationQualifier) -> Self {
         Self {
             identifier: VariableIdentifier::new_symbol(name),
             var_type,
@@ -952,7 +944,6 @@ impl VarDecl {
                 initial_value: None,
                 keyword_span: SourceSpan::default(),
             }),
-            span: loc,
         }
     }
 
@@ -969,7 +960,6 @@ impl VarDecl {
                     initial_value: None,
                 },
             ),
-            span: SourceSpan::default(),
         }
     }
 
@@ -986,11 +976,9 @@ impl VarDecl {
                     initial_value: Some(EnumeratedValue {
                         type_name: None,
                         value: Id::from(initial_value),
-                        position: SourceSpan::default(),
                     }),
                 },
             ),
-            span: SourceSpan::default(),
         }
     }
 
@@ -1006,7 +994,6 @@ impl VarDecl {
                     type_name: Id::from(type_name),
                 },
             ),
-            span: SourceSpan::default(),
         }
     }
 
@@ -1022,7 +1009,6 @@ impl VarDecl {
                     elements_init: vec![],
                 },
             ),
-            span: SourceSpan::default(),
         }
     }
 
@@ -1037,7 +1023,6 @@ impl VarDecl {
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::LateResolvedType(Id::from(type_name)),
-            span: SourceSpan::default(),
         }
     }
 
@@ -1121,7 +1106,7 @@ impl VariableIdentifier {
         VariableIdentifier::Direct(DirectVariableIdentifier {
             name,
             address_assignment: location,
-            source_loc: SourceSpan::default(),
+            span: SourceSpan::default(),
         })
     }
 
@@ -1139,11 +1124,11 @@ impl VariableIdentifier {
     }
 }
 
-impl SourcePosition for VariableIdentifier {
-    fn position(&self) -> &SourceSpan {
+impl Located for VariableIdentifier {
+    fn span(&self) -> SourceSpan {
         match self {
-            VariableIdentifier::Symbol(name) => name.position(),
-            VariableIdentifier::Direct(direct) => &direct.source_loc,
+            VariableIdentifier::Symbol(name) => name.span(),
+            VariableIdentifier::Direct(direct) => direct.span(),
         }
     }
 }
@@ -1167,7 +1152,13 @@ impl Display for VariableIdentifier {
 pub struct DirectVariableIdentifier {
     pub name: Option<Id>,
     pub address_assignment: AddressAssignment,
-    pub source_loc: SourceSpan,
+    pub span: SourceSpan,
+}
+
+impl Located for DirectVariableIdentifier {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
 }
 
 /// Qualifier types for definitions.
@@ -1258,12 +1249,6 @@ impl fmt::Display for AddressAssignment {
             .field("location", &self.location)
             .field("size", &self.size)
             .finish()
-    }
-}
-
-impl SourcePosition for AddressAssignment {
-    fn position(&self) -> &SourceSpan {
-        &self.position
     }
 }
 
@@ -1465,6 +1450,12 @@ pub struct FunctionBlockDeclaration {
 impl HasVariables for FunctionBlockDeclaration {
     fn variables(&self) -> &Vec<VarDecl> {
         &self.variables
+    }
+}
+
+impl Located for FunctionBlockDeclaration {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
     }
 }
 

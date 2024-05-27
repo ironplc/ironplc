@@ -13,6 +13,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
+    core::Located,
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -46,7 +47,7 @@ impl Visitor<Diagnostic> for RuleUnsupportedStdLibType {
         if is_unsupported_standard_type(&node.type_name) {
             self.diagnostics.push(Diagnostic::problem(
                 Problem::UnsupportedStdLibType,
-                Label::span(&node.type_name.span, "Unsupported variable type name"),
+                Label::span(node.type_name.span(), "Unsupported variable type name"),
             ));
         }
         node.recurse_visit(self)

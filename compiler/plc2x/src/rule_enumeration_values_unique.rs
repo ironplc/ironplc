@@ -17,7 +17,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::{Id, SourcePosition},
+    core::{Id, Located},
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -62,11 +62,11 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
                             self.diagnostics.push(
                                 Diagnostic::problem(
                                     Problem::EnumTypeDeclDuplicateItem,
-                                    Label::span(first.position(), "First instance"),
+                                    Label::span(first.span(), "First instance"),
                                 )
                                 .with_context_id("declaration", &node.type_name)
                                 .with_context_id("duplicate value", first)
-                                .with_secondary(Label::span(current.position(), "Duplicate value")),
+                                .with_secondary(Label::span(current.span(), "Duplicate value")),
                             );
                         }
                         None => {

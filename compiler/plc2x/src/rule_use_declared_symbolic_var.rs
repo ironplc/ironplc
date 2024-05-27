@@ -28,7 +28,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::{Id, SourcePosition},
+    core::{Id, Located},
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -98,7 +98,7 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
             }
             None => Err(Diagnostic::problem(
                 Problem::VariableUndefined,
-                Label::span(node.name.position(), "Undefined variable"),
+                Label::span(node.name.span(), "Undefined variable"),
             )
             .with_context_id("variable", &node.name)),
         }

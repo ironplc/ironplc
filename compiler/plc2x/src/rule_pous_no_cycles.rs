@@ -58,7 +58,7 @@ pub fn apply(lib: &Library) -> SemanticResult {
         return Err(vec![Diagnostic::problem(
             Problem::RecursiveCycle,
             // TODO wrong location
-            Label::span(&span, "Cycle"),
+            Label::span(span, "Cycle"),
         )]);
     }
 

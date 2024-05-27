@@ -4,7 +4,7 @@
 use crate::common::{
     AddressAssignment, ConstantKind, EnumeratedValue, IntegerLiteral, SignedInteger, Subrange,
 };
-use crate::core::{Id, SourceSpan};
+use crate::core::{Id, Located, SourceSpan};
 use std::cmp::Ordering;
 use std::fmt;
 use std::ops::Deref;
@@ -145,6 +145,12 @@ pub struct FbCall {
     pub var_name: Id,
     pub params: Vec<ParamAssignmentKind>,
     pub position: SourceSpan,
+}
+
+impl Located for FbCall {
+    fn span(&self) -> SourceSpan {
+        self.position.clone()
+    }
 }
 
 /// A binary expression that produces a Boolean result by comparing operands.

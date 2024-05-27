@@ -112,7 +112,7 @@ impl Project for FileBackedProject {
                     vec![],
                     vec![Diagnostic::problem(
                         Problem::NoContent,
-                        Label::span(&SourceSpan::default(), "No documents to tokenize"),
+                        Label::span(SourceSpan::default(), "No documents to tokenize"),
                     )],
                 )
             }

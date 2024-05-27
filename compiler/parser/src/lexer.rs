@@ -54,7 +54,7 @@ pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>)
                 diagnostics.push(Diagnostic::problem(
                     ironplc_problems::Problem::UnexpectedToken,
                     Label::span(
-                        &span,
+                        span,
                         format!(
                             "The text '{}' is not valid IEC 61131-3 text at this location.",
                             lexer.slice()
