@@ -5,7 +5,7 @@
 
 use ironplc_dsl::{
     common::Library,
-    core::{FileId, SourceLoc},
+    core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
 use ironplc_parser::token::Token;
@@ -112,7 +112,7 @@ impl Project for FileBackedProject {
                     vec![],
                     vec![Diagnostic::problem(
                         Problem::NoContent,
-                        Label::source_loc(&SourceLoc::default(), "No documents to tokenize"),
+                        Label::span(SourceSpan::default(), "No documents to tokenize"),
                     )],
                 )
             }

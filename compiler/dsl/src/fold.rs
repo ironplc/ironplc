@@ -51,7 +51,7 @@ pub trait Fold<E> {
 
     // Declarations from Core
 
-    leaf!(SourceLoc);
+    leaf!(SourceSpan);
 
     // 2.1.2.
     dispatch!(Id);

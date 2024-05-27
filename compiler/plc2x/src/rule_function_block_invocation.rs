@@ -33,7 +33,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::Id,
+    core::{Id, Located},
     diagnostic::{Diagnostic, Label},
     textual::*,
     visitor::Visitor,
@@ -142,7 +142,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
         if !formal.is_empty() && !non_formal.is_empty() {
             return Err(Diagnostic::problem(
                 Problem::FunctionCallMixedArgTypes,
-                Label::source_loc(&fb_call.position, "Function "),
+                Label::span(fb_call.span(), "Function "),
             )
             .with_context_id("function", &function_block.name));
         }
@@ -157,12 +157,12 @@ impl<'a> RuleFunctionBlockUse<'a> {
                     None => {
                         return Err(Diagnostic::problem(
                             Problem::FunctionInvocationMissingInput,
-                            Label::source_loc(&fb_call.position, "Function block invocation"),
+                            Label::span(fb_call.span(), "Function block invocation"),
                         )
                         .with_context_id("invocation", &function_block.name)
                         .with_context_id("undefined input", &name.name)
-                        .with_secondary(Label::source_loc(
-                            &function_block.position,
+                        .with_secondary(Label::span(
+                            function_block.span(),
                             "Function block declaration",
                         )))
                     }
@@ -177,7 +177,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
             if non_formal.len() != num_required_inputs {
                 return Err(Diagnostic::problem(
                     Problem::FunctionInvocationRequiresFormal,
-                    Label::source_loc(&fb_call.position, "Function block invocation"),
+                    Label::span(fb_call.span(), "Function block invocation"),
                 )
                 .with_context_id("invocation", &function_block.name)
                 .with_context("required", &format!("{}", num_required_inputs))
@@ -193,7 +193,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
                 None => {
                     return Err(Diagnostic::problem(
                         Problem::FunctionInvocationUndefinedOutput,
-                        Label::source_loc(&fb_call.position, "Function block invocation"),
+                        Label::span(fb_call.span(), "Function block invocation"),
                     )
                     .with_context_id("invocation", &function_block.name)
                     .with_context_id("source", &output.src)
@@ -261,7 +261,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
                 match function_block_decl {
                     None => Err(Diagnostic::problem(
                         Problem::FunctionBlockNotInScope,
-                        Label::source_loc(&fb_call.position, "Function block invocation"),
+                        Label::span(fb_call.span(), "Function block invocation"),
                     )
                     .with_context_id("invocation", &fb_call.var_name)),
                     Some(fb) => {
@@ -272,7 +272,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
             }
             None => Err(Diagnostic::problem(
                 Problem::FunctionBlockNotInScope,
-                Label::source_loc(&fb_call.position, "Function block invocation"),
+                Label::span(fb_call.span(), "Function block invocation"),
             )
             .with_context_id("invocation", &fb_call.var_name)),
         }
