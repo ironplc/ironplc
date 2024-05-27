@@ -46,7 +46,11 @@ impl fmt::Display for FileId {
 /// The location is defined by indices in the source file.
 #[derive(Debug, Clone)]
 pub struct SourceSpan {
+    /// The position of the starting character (0-indexed).
     pub start: usize,
+    /// The position of the ending character (0-indexed).
+    ///
+    /// Equals the start position for a length of 1 character.
     pub end: usize,
     pub file_id: FileId,
 }

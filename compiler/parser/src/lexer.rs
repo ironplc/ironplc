@@ -45,6 +45,20 @@ pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>)
                         line += 1;
                         col = 0;
                     }
+                    TokenType::Comment => {
+                        // Comments can have new lines embedded
+                        for c in lexer.slice().chars() {
+                            match c {
+                                '\n' => {
+                                    line += 1;
+                                    col = 0;
+                                }
+                                _ => {
+                                    col += 0;
+                                }
+                            }
+                        }
+                    }
                     _ => col += lexer.span().len(),
                 }
             }

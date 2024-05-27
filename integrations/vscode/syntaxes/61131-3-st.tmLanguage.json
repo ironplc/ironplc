@@ -123,18 +123,21 @@
                 "match": "(?i)\\b(?:CASE|END_CASE)\\b"
             },
             {
+                "name": "keyword.control.branch",
+                "match": "(?i)\\b(?:ACTION|END_ACTION)\\b"
+            },
+            {
                 "name": "keyword.other",
                 "match": "(?i)\\b(?:CONFIGURATION|END_CONFIGURATION|RESOURCE|END_RESOURCE|TASK)\\b"
             },
-            
             {
                 "name": "keyword.other",
                 "match": "(?i)\\b(?:ON|WITH)\\b"
             },
-            
+
             {
                 "name": "storage.var",
-                "match": "(?i)\\b(?:VAR|VAR_INPUT|VAR_OUTPUT|END_VAR)\\b"
+                "match": "(?i)\\b(?:VAR|VAR_INPUT|VAR_OUTPUT|VAR_IN_OUT|VAR_TEMP|END_VAR)\\b"
             },
             {
                 "name": "storage.modifier",
