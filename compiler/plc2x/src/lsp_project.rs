@@ -210,11 +210,10 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::RightArrow => Some(KEYWORD_INDEX),
         };
 
-        let pos = val.0.position;
-
+        // TODO fix this mapping
         token_type.map(|token_type| SemanticToken {
-            delta_line: pos.line as u32,
-            delta_start: pos.column as u32,
+            delta_line: val.0.line as u32,
+            delta_start: val.0.col as u32,
             length: val.0.text.len() as u32,
             token_type,
             token_modifiers_bitset: 0,
@@ -249,81 +248,74 @@ fn map_label(
 ) -> lsp_types::Range {
     let file_id = &label.file_id;
     let contents = compilation_set.find(file_id);
-    match &label.location {
-        ironplc_dsl::diagnostic::Location::QualifiedPosition(qualified) => lsp_types::Range::new(
-            lsp_types::Position::new((qualified.line) as u32, (qualified.column) as u32),
-            lsp_types::Position::new((qualified.line) as u32, (qualified.column) as u32),
-        ),
-        ironplc_dsl::diagnostic::Location::OffsetRange(offset) => {
-            if let Some(contents) = contents {
-                match contents {
-                    compilation_set::CompilationSource::Library(_lib) => {}
-                    compilation_set::CompilationSource::Text((contents, _id)) => {
-                        let mut start_line = 0;
-                        let mut start_offset = 0;
 
-                        for char in contents[0..offset.start].chars() {
-                            if char == '\n' {
-                                start_line += 1;
-                                start_offset = 0;
-                            } else {
-                                start_offset += 1;
-                            }
-                        }
+    if let Some(contents) = contents {
+        match contents {
+            compilation_set::CompilationSource::Library(_lib) => {}
+            compilation_set::CompilationSource::Text((contents, _id)) => {
+                let mut start_line = 0;
+                let mut start_offset = 0;
 
-                        let mut end_line = start_line;
-                        let mut end_offset = start_offset;
-                        for char in contents[offset.start..offset.start].chars() {
-                            if char == '\n' {
-                                end_line += 1;
-                                end_offset = 0;
-                            } else {
-                                end_offset += 1;
-                            }
-                        }
-
-                        return lsp_types::Range::new(
-                            lsp_types::Position::new(start_line, start_offset),
-                            lsp_types::Position::new(end_line, end_offset),
-                        );
-                    }
-                    compilation_set::CompilationSource::TextRef((contents, _id)) => {
-                        let mut start_line = 0;
-                        let mut start_offset = 0;
-
-                        for char in contents[0..offset.start].chars() {
-                            if char == '\n' {
-                                start_line += 1;
-                                start_offset = 0;
-                            } else {
-                                start_offset += 1;
-                            }
-                        }
-
-                        let mut end_line = start_line;
-                        let mut end_offset = start_offset;
-                        for char in contents[offset.start..offset.start].chars() {
-                            if char == '\n' {
-                                end_line += 1;
-                                end_offset = 0;
-                            } else {
-                                end_offset += 1;
-                            }
-                        }
-
-                        return lsp_types::Range::new(
-                            lsp_types::Position::new(start_line, start_offset),
-                            lsp_types::Position::new(end_line, end_offset),
-                        );
+                for char in contents[0..label.location.start].chars() {
+                    if char == '\n' {
+                        start_line += 1;
+                        start_offset = 0;
+                    } else {
+                        start_offset += 1;
                     }
                 }
+
+                let mut end_line = start_line;
+                let mut end_offset = start_offset;
+                for char in contents[label.location.start..label.location.start].chars() {
+                    if char == '\n' {
+                        end_line += 1;
+                        end_offset = 0;
+                    } else {
+                        end_offset += 1;
+                    }
+                }
+
+                return lsp_types::Range::new(
+                    lsp_types::Position::new(start_line, start_offset),
+                    lsp_types::Position::new(end_line, end_offset),
+                );
             }
-            lsp_types::Range::new(
-                lsp_types::Position::new(0, 0),
-                lsp_types::Position::new(0, 0),
-            )
+            compilation_set::CompilationSource::TextRef((contents, _id)) => {
+                let mut start_line = 0;
+                let mut start_offset = 0;
+
+                for char in contents[0..label.location.start].chars() {
+                    if char == '\n' {
+                        start_line += 1;
+                        start_offset = 0;
+                    } else {
+                        start_offset += 1;
+                    }
+                }
+
+                let mut end_line = start_line;
+                let mut end_offset = start_offset;
+                for char in contents[label.location.start..label.location.start].chars() {
+                    if char == '\n' {
+                        end_line += 1;
+                        end_offset = 0;
+                    } else {
+                        end_offset += 1;
+                    }
+                }
+
+                return lsp_types::Range::new(
+                    lsp_types::Position::new(start_line, start_offset),
+                    lsp_types::Position::new(end_line, end_offset),
+                );
+            }
         }
     }
+    lsp_types::Range::new(
+        lsp_types::Position::new(0, 0),
+        lsp_types::Position::new(0, 0),
+    )
 }
 
 #[cfg(test)]

@@ -34,7 +34,7 @@
 
 use crate::common::*;
 use crate::configuration::*;
-use crate::core::{Id, SourceLoc};
+use crate::core::{Id, SourceSpan};
 use crate::diagnostic::Diagnostic;
 use crate::sfc::*;
 use crate::textual::*;
@@ -101,7 +101,7 @@ pub trait Visitor<E> {
 
     // Declarations from Core
 
-    leaf!(SourceLoc);
+    leaf!(SourceSpan);
 
     // 2.1.2.
     dispatch!(Id);
@@ -392,7 +392,7 @@ pub trait Visitor<E> {
 mod test {
     use super::*;
     use crate::common::*;
-    use crate::core::{Id, SourceLoc};
+    use crate::core::{Id, SourceSpan};
     use crate::textual::*;
     use std::collections::LinkedList;
     use std::fmt::Error;

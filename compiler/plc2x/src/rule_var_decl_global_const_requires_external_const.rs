@@ -38,7 +38,7 @@ use std::collections::HashSet;
 
 use ironplc_dsl::{
     common::*,
-    core::{Id, SourcePosition},
+    core::{Id, Located},
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -94,16 +94,10 @@ impl<'a> Visitor<Diagnostic> for RuleExternalGlobalConst<'a> {
                 if let Some(global) = self.global_consts.get(name) {
                     return Err(Diagnostic::problem(
                         Problem::VariableMustBeConst,
-                        Label::source_loc(
-                            node.identifier.position(),
-                            "Reference to global variable",
-                        ),
+                        Label::span(node.identifier.span(), "Reference to global variable"),
                     )
                     .with_context("variable", &node.identifier.to_string())
-                    .with_secondary(Label::source_loc(
-                        global.position(),
-                        "Constant global variable",
-                    )));
+                    .with_secondary(Label::span(global.span(), "Constant global variable")));
                 }
             }
         }

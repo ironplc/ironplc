@@ -324,15 +324,9 @@ fn map_label(
     style: LabelStyle,
     file_to_id: &HashMap<&FileId, usize>,
 ) -> CodeSpanLabel<usize> {
-    let range = match &label.location {
-        ironplc_dsl::diagnostic::Location::QualifiedPosition(pos) => Range {
-            start: pos.offset,
-            end: pos.offset,
-        },
-        ironplc_dsl::diagnostic::Location::OffsetRange(offset) => Range {
-            start: offset.start,
-            end: offset.end,
-        },
+    let range = Range {
+        start: label.location.start,
+        end: label.location.end,
     };
     let id = file_to_id.get(&label.file_id);
     CodeSpanLabel::new(style, *id.unwrap_or(&0), range).with_message(&label.message)

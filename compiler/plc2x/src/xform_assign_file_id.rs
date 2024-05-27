@@ -4,7 +4,7 @@
 //! while parsing, so this transform sets the file ID
 //! after parsing.
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::{FileId, SourceLoc};
+use ironplc_dsl::core::{FileId, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 
@@ -18,8 +18,8 @@ struct TransformFileId<'a> {
 }
 
 impl<'a> Fold<Diagnostic> for TransformFileId<'a> {
-    fn fold_source_loc(&mut self, node: SourceLoc) -> Result<SourceLoc, Diagnostic> {
-        Ok(SourceLoc {
+    fn fold_source_span(&mut self, node: SourceSpan) -> Result<SourceSpan, Diagnostic> {
+        Ok(SourceSpan {
             start: node.start,
             end: node.end,
             file_id: self.file_id.clone(),
@@ -58,8 +58,8 @@ END_TYPE
             _ => panic!(),
         };
 
-        assert_eq!(6, enum_type.type_name.position.start);
-        assert_eq!(11, enum_type.type_name.position.end);
-        assert_eq!(expected_fid, enum_type.type_name.position.file_id);
+        assert_eq!(6, enum_type.type_name.span.start);
+        assert_eq!(11, enum_type.type_name.span.end);
+        assert_eq!(expected_fid, enum_type.type_name.span.file_id);
     }
 }

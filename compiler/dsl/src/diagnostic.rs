@@ -9,7 +9,7 @@ use ironplc_problems::Problem;
 use std::collections::HashSet;
 use std::{fs::File, ops::Range};
 
-use crate::core::{FileId, Id, SourceLoc, SourcePosition};
+use crate::core::{FileId, Id, Located, SourceSpan};
 
 /// A position marker that has both line and offset information.
 #[derive(Debug)]
@@ -36,17 +36,11 @@ impl QualifiedPosition {
 
 /// A position marker that only has an offset in a file.
 #[derive(Debug)]
-pub struct OffsetRange {
+pub struct Location {
     /// Byte offset from start of string (0-indexed)
     pub start: usize,
     /// Byte offset from end of string (0-indexed)
     pub end: usize,
-}
-
-#[derive(Debug)]
-pub enum Location {
-    QualifiedPosition(QualifiedPosition),
-    OffsetRange(OffsetRange),
 }
 
 /// A label that refers to some range in a file and possibly associated
@@ -67,41 +61,13 @@ pub struct Label {
 }
 
 impl Label {
-    pub fn qualified(
-        file_id: impl Into<FileId>,
-        position: QualifiedPosition,
-        message: impl Into<String>,
-    ) -> Self {
+    pub fn span(span: SourceSpan, message: impl Into<String>) -> Self {
         Self {
-            location: Location::QualifiedPosition(position),
-            file_id: file_id.into(),
-            message: message.into(),
-        }
-    }
-
-    pub fn offset(
-        file_id: impl Into<FileId>,
-        offset: impl Into<Range<usize>>,
-        message: impl Into<String>,
-    ) -> Self {
-        let range = offset.into();
-        Self {
-            location: Location::OffsetRange(OffsetRange {
-                start: range.start,
-                end: range.end,
-            }),
-            file_id: file_id.into(),
-            message: message.into(),
-        }
-    }
-
-    pub fn source_loc(source_loc: &SourceLoc, message: impl Into<String>) -> Self {
-        Self {
-            location: Location::OffsetRange(OffsetRange {
-                start: source_loc.start,
-                end: source_loc.end,
-            }),
-            file_id: source_loc.file_id.clone(),
+            location: Location {
+                start: span.start,
+                end: span.end,
+            },
+            file_id: span.file_id,
             message: message.into(),
         }
     }
@@ -110,11 +76,7 @@ impl Label {
     /// line number.
     pub fn file(file_id: impl Into<FileId>, message: impl Into<String>) -> Self {
         Self {
-            location: Location::QualifiedPosition(QualifiedPosition {
-                column: 0,
-                line: 0,
-                offset: 0,
-            }),
+            location: Location { start: 0, end: 0 },
             file_id: file_id.into(),
             message: message.into(),
         }
@@ -163,8 +125,8 @@ impl Diagnostic {
     pub fn todo(file: &str, line: u32) -> Self {
         Diagnostic::problem(
             Problem::NotImplemented,
-            Label::source_loc(
-                &SourceLoc::default(),
+            Label::span(
+                SourceSpan::default(),
                 format!("Not implemented at {}#L{}", file, line),
             ),
         )
@@ -179,10 +141,20 @@ impl Diagnostic {
     pub fn todo_with_id(id: &Id, file: &str, line: u32) -> Self {
         Diagnostic::problem(
             Problem::NotImplemented,
-            Label::source_loc(
-                id.position(),
-                format!("Not implemented at {}#L{}", file, line),
-            ),
+            Label::span(id.span(), format!("Not implemented at {}#L{}", file, line)),
+        )
+    }
+
+    /// Creates a "todo" diagnostic associated with a file and line in the Rust
+    /// source code. Also provides a location in IEC 61131-3 associated with the
+    /// todo (but is not necessarily the origin).
+    ///
+    /// Unlike other uses of problem, the location in this is related to the compiler
+    /// rather than the IEC 61131-3 source.
+    pub fn todo_with_span(span: SourceSpan, file: &str, line: u32) -> Self {
+        Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span, format!("Not implemented at {}#L{}", file, line)),
         )
     }
 
