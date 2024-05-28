@@ -72,7 +72,8 @@
           "Structured Text"
         ],
         "extensions": [
-          ".st"
+          ".st",
+          ".iec"
         ],
         "configuration": "./decl/61131-3-st-language-configuration.json"
       }

@@ -13,8 +13,12 @@ pub struct Token {
     /// The location in the source text where the token begins.
     pub span: SourceSpan,
 
+    /// The line in the source text where the token begins.
+    /// This is public only in the crate for the purpose of nice error messages.
     pub line: usize,
 
+    /// The column in the source text where the token begins.
+    /// This is public only in the crate for the purpose of nice error messages.
     pub col: usize,
 
     /// The text that this token matched.
@@ -370,7 +374,7 @@ impl TokenType {
             TokenType::Semicolon => "';'",
             TokenType::Colon => "':'",
             TokenType::Period => "'.'",
-            TokenType::Range => "'..'",
+            TokenType::Range => "'..' (range)",
             TokenType::Hash => "'#'",
             TokenType::SingleByteString => "\\'[^\\']*\\' (single byte string)",
             TokenType::DoubleByteString => "\"[^\"]*\" (double byte string)",

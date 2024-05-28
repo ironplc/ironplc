@@ -43,6 +43,15 @@ pub struct Location {
     pub end: usize,
 }
 
+impl std::fmt::Display for Location {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Location")
+            .field("start", &self.start)
+            .field("end", &self.end)
+            .finish()
+    }
+}
+
 /// A label that refers to some range in a file and possibly associated
 /// with a message related to that range.
 ///
