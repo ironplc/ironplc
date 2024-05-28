@@ -171,6 +171,28 @@ impl<'a> LspServer<'a> {
         };
 
         let _notification =
+            match Self::cast_notification::<notification::DidOpenTextDocument>(notification) {
+                Ok(params) => {
+                    trace!("DidChangeTextDocument {}", params.text_document.uri);
+                    let contents = params.text_document.text;
+                    let uri = params.text_document.uri;
+                    let version = params.text_document.version;
+
+                    self.project.change_text_document(&uri, contents.as_str());
+                    let diagnostics = self.project.semantic();
+
+                    self.send_notification::<PublishDiagnostics>(PublishDiagnosticsParams {
+                        uri,
+                        diagnostics,
+                        version: Some(version),
+                    });
+
+                    return notification::DidChangeTextDocument::METHOD;
+                }
+                Err(notification) => notification,
+            };
+
+        let _notification =
             match Self::cast_notification::<notification::DidChangeTextDocument>(notification) {
                 Ok(params) => {
                     trace!("DidChangeTextDocument {}", params.text_document.uri);

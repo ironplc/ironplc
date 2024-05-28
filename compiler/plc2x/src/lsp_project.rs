@@ -2,7 +2,9 @@
 //! and the language server protocol.
 use ironplc_dsl::core::FileId;
 use ironplc_parser::token::{Token, TokenType};
-use lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, SemanticTokenType};
+use lsp_types::{
+    CodeDescription, Diagnostic, DiagnosticSeverity, NumberOrString, SemanticTokenType,
+};
 use lsp_types::{SemanticToken, Url};
 
 use crate::compilation_set::{self, CompilationSet};
@@ -228,13 +230,25 @@ fn map_diagnostic(
 ) -> lsp_types::Diagnostic {
     let description = diagnostic.description();
     let range = map_label(&diagnostic.primary, compilation_set);
+
+    let code_description = match Url::parse(
+        format!(
+            "https://www.ironplc.com/compiler/problems/{}.html",
+            diagnostic.code
+        )
+        .as_str(),
+    ) {
+        Ok(url) => Some(CodeDescription { href: url }),
+        Err(_) => None,
+    };
+
     lsp_types::Diagnostic {
         range,
         severity: Some(DiagnosticSeverity::ERROR),
         code: Some(NumberOrString::String(diagnostic.code)),
-        code_description: None,
+        code_description,
         source: Some("ironplc".into()),
-        message: format!("{}: {}", description, diagnostic.primary.message),
+        message: format!("{}: {} ", description, diagnostic.primary.message),
         related_information: None,
         tags: None,
         data: None,
