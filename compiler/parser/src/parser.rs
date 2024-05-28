@@ -39,19 +39,19 @@ use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 pub fn parse_library(tokens: Vec<Token>) -> Result<Vec<LibraryElementKind>, Diagnostic> {
     plc_parser::library(&SliceByRef(&tokens[..])).map_err(|e| {
         let token_index = e.location;
-        // TODO remove the unw.as_str()rap
-        let problem_token = tokens.get(token_index).unwrap();
+
         let expected = Vec::from_iter(e.expected.tokens()).join(" | ");
+        let actual = tokens.get(token_index - 1).unwrap();
 
         Diagnostic::problem(
             Problem::SyntaxError,
             Label::span(
-                problem_token.span.clone(),
+                actual.span.clone(),
                 format!(
                     "Expected {}. Found text '{}' that matched token {}",
                     expected,
-                    problem_token.text.replace('\n', "\\n"),
-                    problem_token.token_type.describe()
+                    actual.text.replace('\n', "\\n").replace('\r', "\\r"),
+                    actual.token_type.describe()
                 ),
             ),
         )

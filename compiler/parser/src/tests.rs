@@ -108,6 +108,20 @@ mod test {
     }
 
     #[test]
+    fn parse_program_when_right_parent_in_comment_then_ok() {
+        let program = "
+        TYPE
+        (* A comment) *)(* A comment *)
+           CUSTOM_STRUCT : STRUCT 
+             NAME: BOOL;
+           END_STRUCT;
+        END_TYPE";
+
+        let res = parse_program(program, &FileId::default());
+        assert!(res.is_ok());
+    }
+
+    #[test]
     fn parse_program_when_comment_not_closed_then_err() {
         let program = "
         TYPE
@@ -119,5 +133,42 @@ mod test {
 
         let res = parse_program(program, &FileId::default());
         assert!(res.is_err());
+
+        let err = res.unwrap_err();
+        assert_eq!(
+            "Unmatched token in source text".to_owned(),
+            err.description()
+        );
+        assert_eq!("The text '(* A comment\n            CUSTOM_STRUCT : STRUCT \n                NAME: BOOL;\n            END_STRUCT;\n        END_TYPE' is not valid IEC 61131-3 text at line 3 colum 9.".to_owned(), err.primary.message);
+    }
+
+    #[test]
+    fn parse_program_when_bad_name_then_err() {
+        let program = "
+        TYPE
+            CUSTOM_STRUCT : STRUCT& 
+                NAME: BOOL;
+            END_STRUCT;
+        END_TYPE";
+
+        let res = parse_program(program, &FileId::default());
+        assert!(res.is_err());
+
+        let err = res.unwrap_err();
+        assert_eq!("Syntax error".to_owned(), err.description());
+        assert_eq!("Expected  | ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | '\\n' (new line). Found text '&' that matched token 'AND' | '&'".to_owned(), err.primary.message);
+    }
+
+    #[test]
+    fn parse_program_when_not_valid_top_item_then_err() {
+        let program = "ACTION
+        END_ACTION";
+
+        let res = parse_program(program, &FileId::default());
+        assert!(res.is_err());
+
+        let err = res.unwrap_err();
+        assert_eq!("Syntax error".to_owned(), err.description());
+        assert_eq!("Expected ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | 'CONFIGURATION' | 'FUNCTION' | 'FUNCTION_BLOCK' | 'PROGRAM' | 'TYPE' | '\\n' (new line). Found text 'ACTION' that matched token 'ACTION'".to_owned(), err.primary.message);
     }
 }

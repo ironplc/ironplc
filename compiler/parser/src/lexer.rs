@@ -70,8 +70,12 @@ pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>)
                     Label::span(
                         span,
                         format!(
-                            "The text '{}' is not valid IEC 61131-3 text at this location.",
-                            lexer.slice()
+                            "The text '{}' is not valid IEC 61131-3 text at line {} colum {}.",
+                            lexer.slice(),
+                            // Add +1 to the line and column because these are displayed to users
+                            // having 1-index based positions.
+                            line + 1,
+                            col + 1,
                         ),
                     ),
                 ))
