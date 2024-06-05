@@ -23,6 +23,7 @@ mod rule_use_declared_symbolic_var;
 mod rule_var_decl_const_initialized;
 mod rule_var_decl_const_not_fb;
 mod rule_var_decl_global_const_requires_external_const;
+mod source;
 mod stages;
 mod stdlib;
 mod symbol_graph;

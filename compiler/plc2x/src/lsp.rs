@@ -2,14 +2,16 @@
 //! as Visual Studio Code.
 
 use crossbeam_channel::{Receiver, Sender};
-use log::trace;
+use log::{debug, trace};
 use lsp_server::{Connection, ExtractError, Message, RequestId};
 use lsp_types::{
     notification::{self, Notification, PublishDiagnostics},
     request::{self, Request},
-    PublishDiagnosticsParams, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
-    SemanticTokensOptions, SemanticTokensResult, SemanticTokensServerCapabilities,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, WorkDoneProgressOptions,
+    InitializeParams, PublishDiagnosticsParams, SemanticTokens, SemanticTokensFullOptions,
+    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncKind, WorkDoneProgressOptions, WorkspaceFoldersServerCapabilities,
+    WorkspaceServerCapabilities,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -27,13 +29,33 @@ pub fn start(project: LspProject) -> Result<(), String> {
 
 /// Start the LSP server using the connection for communication.
 fn start_with_connection(connection: Connection, project: LspProject) -> Result<(), String> {
+    // Declare what capabilities this server supports
     let server_capabilities =
         serde_json::to_value(LspServer::server_capabilities()).map_err(|e| e.to_string())?;
-    connection
+
+    // Send the capabilities to the client and receive back the initialization.
+    let initialize_params = connection
         .initialize(server_capabilities)
         .map_err(|e| e.to_string())?;
 
+    // Configure a project based on the initialize params
+    let initialize_params: InitializeParams =
+        serde_json::from_value(initialize_params).map_err(|e| e.to_string())?;
+
     let mut server = LspServer::new(&connection.sender, project);
+
+    match initialize_params.workspace_folders {
+        Some(folders) => {
+            debug!("Initialize server with workspace folders {:?}", folders);
+            if let Some(folder) = folders.first() {
+                server.project.initialize(folder);
+            }
+        }
+        None => {
+            debug!("Initialize server without a workspace folder");
+        }
+    }
+
     match server.run(&connection.receiver) {
         Ok(shutdown_request) => connection
             .handle_shutdown(&shutdown_request)
@@ -71,6 +93,13 @@ impl<'a> LspServer<'a> {
                     full: Some(SemanticTokensFullOptions::Bool(true)),
                 }),
             ),
+            workspace: Some(WorkspaceServerCapabilities {
+                workspace_folders: Some(WorkspaceFoldersServerCapabilities {
+                    supported: Some(true),
+                    change_notifications: None,
+                }),
+                file_operations: None,
+            }),
             ..ServerCapabilities::default()
         }
     }
@@ -178,7 +207,8 @@ impl<'a> LspServer<'a> {
                     let uri = params.text_document.uri;
                     let version = params.text_document.version;
 
-                    self.project.change_text_document(&uri, contents.as_str());
+                    self.project
+                        .change_text_document(&uri, contents.as_str().to_string());
                     let diagnostics = self.project.semantic();
 
                     self.send_notification::<PublishDiagnostics>(PublishDiagnosticsParams {
@@ -200,7 +230,8 @@ impl<'a> LspServer<'a> {
                     let uri = params.text_document.uri;
                     let version = params.text_document.version;
 
-                    self.project.change_text_document(&uri, contents.as_str());
+                    self.project
+                        .change_text_document(&uri, contents.as_str().to_string());
                     let diagnostics = self.project.semantic();
 
                     self.send_notification::<PublishDiagnostics>(PublishDiagnosticsParams {
