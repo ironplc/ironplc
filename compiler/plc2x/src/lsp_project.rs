@@ -1,9 +1,12 @@
 //! Adapts data types between what is required by the compiler
 //! and the language server protocol.
+use std::path::Path;
+
 use ironplc_dsl::core::FileId;
 use ironplc_parser::token::{Token, TokenType};
 use lsp_types::{
     CodeDescription, Diagnostic, DiagnosticSeverity, NumberOrString, SemanticTokenType,
+    WorkspaceFolder,
 };
 use lsp_types::{SemanticToken, Url};
 
@@ -20,7 +23,12 @@ impl LspProject {
     pub fn new(project: Box<dyn Project + Send>) -> Self {
         Self { wrapped: project }
     }
-    pub(crate) fn change_text_document(&mut self, url: &Url, content: &str) {
+
+    pub(crate) fn initialize(&mut self, folder: &WorkspaceFolder) {
+        self.wrapped.initialize(Path::new(folder.uri.as_str()));
+    }
+
+    pub(crate) fn change_text_document(&mut self, url: &Url, content: String) {
         let file_id = FileId::from_string(url.as_str());
         self.wrapped.change_text_document(&file_id, content);
     }
@@ -355,7 +363,7 @@ mod test {
     fn tokenize_when_has_document_then_not_empty_tokens() {
         let mut proj = new_empty_project();
         let url = Url::parse("http://example.com").unwrap();
-        proj.change_text_document(&url, "TYPE TEXT_EMPTY : STRING [1]; END_TYPE");
+        proj.change_text_document(&url, "TYPE TEXT_EMPTY : STRING [1]; END_TYPE".to_owned());
 
         let result = proj.tokenize(&url);
         assert!(!result.unwrap().is_empty());
@@ -366,7 +374,7 @@ mod test {
         let mut proj = new_empty_project();
         let url = Url::parse("http://example.com").unwrap();
         let content = read_resource("first_steps.st");
-        proj.change_text_document(&url, content.as_str());
+        proj.change_text_document(&url, content);
 
         let result = proj.tokenize(&url);
 

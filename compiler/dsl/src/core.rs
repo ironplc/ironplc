@@ -1,6 +1,7 @@
 //! Common items useful for working with IEC 61131-3 elements but not
 //! part of the standard.
 use core::fmt;
+use std::fs::DirEntry;
 use std::ops::{Deref, Range};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -26,6 +27,11 @@ impl FileId {
     /// Creates a file identifier from the path.
     pub fn from_path(path: &Path) -> Self {
         FileId(String::from(path.to_string_lossy().deref()))
+    }
+
+    /// Creates a file identifier from the directory entry.
+    pub fn from_dir_entry(entry: DirEntry) -> Self {
+        FileId(String::from(entry.path().to_string_lossy().deref()))
     }
 
     /// Creates a file identifier from the slice. The slice

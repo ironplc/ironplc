@@ -5,6 +5,7 @@ use log::LevelFilter;
 use std::fs::File;
 use std::io::Write;
 use std::{env, fs};
+use time::OffsetDateTime;
 
 /// Configures the log with the specified verbosity.
 ///
@@ -49,11 +50,12 @@ pub fn configure(verbosity: u8) -> Result<(), String> {
         .format(|buf, record| {
             writeln!(
                 buf,
-                "[{} {}:{}] {}",
+                "[{} {}:{} {:?}] {}",
                 // TODO - write the timestamp
                 record.level(),
                 record.file().unwrap_or("unknown"),
                 record.line().unwrap_or(0),
+                OffsetDateTime::now_utc(),
                 record.args()
             )
         })
