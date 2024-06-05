@@ -49,8 +49,8 @@ enum Action {
     /// The tokenize acton is primarily for diagnostics to understand the internal
     /// structure of the parsed files.
     Tokenize {
-        /// File to tokenize.
-        file: PathBuf,
+        /// Files to tokenize.
+        files: Vec<PathBuf>,
     },
     /// Run in Language Server Protocol mode to integrate with development tools.
     Lsp {
@@ -74,7 +74,7 @@ pub fn main() -> Result<(), String> {
         }
         Action::Check { files } => cli::check(files, false),
         Action::Echo { files } => cli::echo(files, false),
-        Action::Tokenize { file } => cli::tokenize(&file, false),
+        Action::Tokenize { files } => cli::tokenize(files, false),
         Action::Version => {
             println!("ironplcc version {}", VERSION);
             Ok(())

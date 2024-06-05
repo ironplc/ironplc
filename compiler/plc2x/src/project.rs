@@ -3,17 +3,19 @@
 //!
 //! The trait enables easy testing of the language server protocol integration.
 
+use std::{collections::HashMap, fs, path::Path};
+
 use ironplc_dsl::{
-    common::Library,
     core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
 use ironplc_parser::token::Token;
 use ironplc_problems::Problem;
-use log::trace;
+use log::{info, trace};
 
 use crate::{
     compilation_set::{CompilationSet, CompilationSource},
+    source::Source,
     stages::{analyze, tokenize},
 };
 
@@ -22,8 +24,11 @@ use crate::{
 /// The project acts is akin to an interface for interacting with the compiler
 /// for one or more files.
 pub trait Project {
+    /// Initialize
+    fn initialize(&mut self, dir: &Path) -> Vec<Diagnostic>;
+
     /// Updates the text for a document.
-    fn change_text_document(&mut self, file_id: &FileId, content: &str);
+    fn change_text_document(&mut self, file_id: &FileId, content: String);
 
     /// Requests tokens for the file.
     fn tokenize(&self, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>);
@@ -37,12 +42,8 @@ pub trait Project {
 
 /// A project is a collection of files used together as a single unit.
 pub struct FileBackedProject {
-    /// Files that are part of the project but indirectly references
-    /// (the standard library).
-    external_sources: Vec<(FileId, Library)>,
-
     /// The user-supplied source files for the project
-    sources: Vec<(FileId, String)>,
+    sources: HashMap<FileId, Source>,
 }
 
 impl Default for FileBackedProject {
@@ -54,26 +55,64 @@ impl Default for FileBackedProject {
 impl FileBackedProject {
     pub fn new() -> Self {
         FileBackedProject {
-            external_sources: Vec::new(),
-            sources: Vec::new(),
+            sources: HashMap::new(),
         }
+    }
+
+    pub fn push(&mut self, file_id: FileId) -> Result<(), Diagnostic> {
+        match Source::try_from_file_id(&file_id) {
+            Ok(src) => {
+                self.change_text_document(&file_id, src.as_string().to_string());
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    pub fn get(&self, file_id: &FileId) -> Option<&Source> {
+        self.sources.get(file_id)
     }
 }
 
 impl Project for FileBackedProject {
+    /// Create a new project from the files in the specified directory.
+    ///
+    /// TODO this is not definitely not the right architecture.
+    fn initialize(&mut self, dir: &Path) -> Vec<Diagnostic> {
+        info!("Initialize project from path {:?}", dir);
+
+        self.sources.clear();
+
+        let files = fs::read_dir(dir).unwrap();
+        let mut errors = vec![];
+
+        files
+            .filter_map(Result::ok)
+            .filter(|f| {
+                f.path().extension().is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("st") || ext.eq_ignore_ascii_case("iec")
+                })
+            })
+            .for_each(|f| {
+                let path = FileId::from_dir_entry(f);
+                match self.push(path) {
+                    Ok(_) => {}
+                    Err(err) => errors.push(err),
+                }
+            });
+
+        errors
+    }
+
     fn compilation_set(&self) -> CompilationSet {
-        let mut all_sources: Vec<_> = self
-            .external_sources
-            .iter()
-            .map(|x| CompilationSource::Library(x.1.clone()))
-            .collect();
-        let mut sources: Vec<_> = self
+        let all_sources: Vec<_> = self
             .sources
             .iter()
-            .map(|x| CompilationSource::Text((x.1.clone(), x.0.clone())))
+            .map(|source| {
+                let file_id = source.0.clone();
+                return CompilationSource::Text((source.1.as_string().to_owned(), file_id));
+            })
             .collect();
-
-        all_sources.append(&mut sources);
 
         CompilationSet {
             sources: all_sources,
@@ -81,15 +120,14 @@ impl Project for FileBackedProject {
         }
     }
 
-    fn change_text_document(&mut self, file_id: &FileId, content: &str) {
+    fn change_text_document(&mut self, file_id: &FileId, content: String) {
         trace!(
             "Change text document sources initial length is {}",
             self.sources.len()
         );
-        match self.sources.iter().position(|val| val.0 == *file_id) {
-            Some(index) => self.sources[index] = (file_id.clone(), content.to_owned()),
-            None => self.sources.push((file_id.clone(), content.to_owned())),
-        }
+
+        self.sources.insert(file_id.clone(), Source::new(content));
+
         trace!(
             "Change text document sources new length is {}",
             self.sources.len()
@@ -97,25 +135,18 @@ impl Project for FileBackedProject {
     }
 
     fn tokenize(&self, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>) {
-        let result: Option<(Vec<Token>, Vec<Diagnostic>)> = self.sources.iter().find_map(|item| {
-            if item.0 != *file_id {
-                return None;
-            }
-            Some(tokenize(item.1.as_str(), file_id))
-        });
+        trace!("Sources are {:?}", self.sources);
+        let source = self.sources.get(file_id);
 
-        match result {
-            Some(res) => res,
-            None => {
-                trace!("Sources are {:?}", self.sources);
-                (
-                    vec![],
-                    vec![Diagnostic::problem(
-                        Problem::NoContent,
-                        Label::span(SourceSpan::default(), "No documents to tokenize"),
-                    )],
-                )
-            }
+        match source {
+            Some(src) => tokenize(src.as_string(), file_id),
+            None => (
+                vec![],
+                vec![Diagnostic::problem(
+                    Problem::NoContent,
+                    Label::span(SourceSpan::default(), "No documents to tokenize"),
+                )],
+            ),
         }
     }
 
@@ -134,8 +165,8 @@ mod test {
     #[test]
     fn change_text_document_when_overwrite_then_one_file() {
         let mut project = FileBackedProject::default();
-        project.change_text_document(&FileId::default(), "AAA");
-        project.change_text_document(&FileId::default(), "BBB");
+        project.change_text_document(&FileId::default(), "AAA".to_owned());
+        project.change_text_document(&FileId::default(), "BBB".to_owned());
         assert_eq!(1, project.compilation_set().sources.len());
     }
 
@@ -149,7 +180,7 @@ mod test {
     #[test]
     fn tokenize_when_has_other_file_then_error() {
         let mut project = FileBackedProject::default();
-        project.change_text_document(&FileId::default(), "AAA");
+        project.change_text_document(&FileId::default(), "AAA".to_owned());
         let res = project.tokenize(&FileId::from_string("abc"));
         assert!(!res.1.is_empty());
     }
@@ -157,6 +188,6 @@ mod test {
     #[test]
     fn analyze_when_not_valid_then_err() {
         let mut project = FileBackedProject::default();
-        project.change_text_document(&FileId::default(), "AAA");
+        project.change_text_document(&FileId::default(), "AAA".to_owned());
     }
 }

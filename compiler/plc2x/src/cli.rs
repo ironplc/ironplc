@@ -24,42 +24,19 @@ use std::{
 };
 
 use crate::{
-    compilation_set::{CompilationSet, CompilationSource},
+    compilation_set::CompilationSource,
+    project::{FileBackedProject, Project},
     stages::{analyze, parse},
 };
 
 // Checks specified files.
 pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
-    trace!("Reading paths {:?}", paths);
-    let mut files: Vec<PathBuf> = vec![];
-    let mut had_error = false;
-    for path in paths {
-        match enumerate_files(&path) {
-            Ok(mut paths) => files.append(&mut paths),
-            Err(err) => {
-                handle_diagnostics(err, None, suppress_output);
-                had_error = true;
-            }
-        }
-    }
-
-    if had_error {
-        return Err(String::from("Error enumerating files"));
-    }
-
-    // Create the compilation set
-    let mut compilation_set = CompilationSet::new();
-    let sources: Result<Vec<_>, Vec<Diagnostic>> = files.iter().map(path_to_source).collect();
-    let sources = sources.map_err(|err| {
-        handle_diagnostics(err, Some(&compilation_set), suppress_output);
-        String::from("Error reading source files")
-    })?;
-    compilation_set.extend(sources);
+    let project = create_project(paths, suppress_output)?;
 
     // Analyze the set
-    if let Err(err) = analyze(&compilation_set) {
+    if let Err(err) = analyze(&project.compilation_set()) {
         trace!("Errors {:?}", err);
-        handle_diagnostics(err, Some(&compilation_set), suppress_output);
+        handle_diagnostics(err, Some(&project), suppress_output);
         return Err(String::from("Error during analysis"));
     }
 
@@ -68,34 +45,10 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
 }
 
 pub fn echo(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
-    trace!("Reading paths {:?}", paths);
-    let mut files: Vec<PathBuf> = vec![];
-    let mut had_error = false;
-    for path in paths {
-        match enumerate_files(&path) {
-            Ok(mut paths) => files.append(&mut paths),
-            Err(err) => {
-                handle_diagnostics(err, None, suppress_output);
-                had_error = true;
-            }
-        }
-    }
-
-    if had_error {
-        return Err(String::from("Error enumerating files"));
-    }
-
-    // Create the compilation set
-    let mut compilation_set = CompilationSet::new();
-    let sources: Result<Vec<_>, Vec<Diagnostic>> = files.iter().map(path_to_source).collect();
-    let sources = sources.map_err(|err| {
-        handle_diagnostics(err, Some(&compilation_set), suppress_output);
-        String::from("Error reading source files")
-    })?;
-    compilation_set.extend(sources);
+    let project = create_project(paths, suppress_output)?;
 
     // Write the set
-    for src in compilation_set.sources {
+    for src in project.compilation_set().sources {
         match src {
             CompilationSource::Library(lib) => {
                 let output = write_to_string(&lib).map_err(|e| {
@@ -124,33 +77,27 @@ pub fn echo(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
     Ok(())
 }
 
-pub fn tokenize(path: &PathBuf, suppress_output: bool) -> Result<(), String> {
-    let contents = path_to_source(path).map_err(|diagnostics| {
-        handle_diagnostics(diagnostics, None, suppress_output);
-        "Problem reading file"
-    })?;
+pub fn tokenize(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
+    let project = create_project(paths, suppress_output)?;
 
-    if let CompilationSource::Text(txt) = contents {
-        let (tokens, diagnostics) = tokenize_program(txt.0.as_str(), &txt.1);
+    for contents in project.compilation_set().sources {
+        if let CompilationSource::Text(txt) = contents {
+            let (tokens, diagnostics) = tokenize_program(txt.0.as_str(), &txt.1);
 
-        let tokens = tokens
-            .iter()
-            .fold(String::new(), |s1, s2| s1 + "\n" + s2.to_string().as_str())
-            .trim_start()
-            .to_string();
+            let tokens = tokens
+                .iter()
+                .fold(String::new(), |s1, s2| s1 + "\n" + s2.to_string().as_str())
+                .trim_start()
+                .to_string();
 
-        debug!("{}", tokens);
-        println!("{}", tokens);
+            debug!("{}", tokens);
+            println!("{}", tokens);
 
-        if !diagnostics.is_empty() {
-            println!("Number of errors {}", diagnostics.len());
-            let mut set = CompilationSet::new();
-            set.extend(vec![CompilationSource::Text((
-                txt.0.clone(),
-                txt.1.clone(),
-            ))]);
-            handle_diagnostics(diagnostics, Some(&set), suppress_output);
-            return Err(String::from("Not valid"));
+            if !diagnostics.is_empty() {
+                println!("Number of errors {}", diagnostics.len());
+                handle_diagnostics(diagnostics, Some(&project), suppress_output);
+                return Err(String::from("Not valid"));
+            }
         }
     }
 
@@ -158,48 +105,45 @@ pub fn tokenize(path: &PathBuf, suppress_output: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Creates a compilation source item from the path (by reading the file).
-fn path_to_source(path: &PathBuf) -> Result<CompilationSource, Vec<Diagnostic>> {
-    debug!("Reading file {}", path.display());
+fn create_project(paths: Vec<PathBuf>, suppress_output: bool) -> Result<FileBackedProject, String> {
+    trace!("Reading paths {:?}", paths);
+    let mut files: Vec<PathBuf> = vec![];
+    let mut had_error = false;
 
-    let bytes = std::fs::read(path)
-        .map_err(|e| diagnostic(Problem::CannotReadFile, path, e.to_string()))?;
-
-    // We try different encoders and return the first one that matches. From section 2.1.1,
-    // the allowed character set is one with characters consistent with ISO/IEC 10646-1 (UCS).
-    // There are other valid encodings, so if encountered, it is reasonable to add more here.
-    let decoders: [&'static encoding_rs::Encoding; 2] =
-        [encoding_rs::UTF_8, encoding_rs::WINDOWS_1252];
-
-    let result = decoders.iter().find_map(|d| {
-        let (res, encoding_used, had_errors) = d.decode(&bytes);
-        if had_errors {
-            trace!(
-                "Path {} did not match encoding {}",
-                path.display(),
-                encoding_used.name()
-            );
-            return None;
+    for path in paths {
+        match enumerate_files(&path) {
+            Ok(mut paths) => files.append(&mut paths),
+            Err(err) => {
+                handle_diagnostics(err, None, suppress_output);
+                had_error = true;
+            }
         }
-        trace!(
-            "Path {} matched encoding {}",
-            path.display(),
-            encoding_used.name()
-        );
-        Some(res)
-    });
-
-    match result {
-        Some(res) => {
-            let contents = String::from(res);
-            return Ok(CompilationSource::Text((contents, FileId::from_path(path))));
-        }
-        None => Err(diagnostic(
-            Problem::UnsupportedEncoding,
-            path,
-            String::from("The file is not UTF-8 or latin1"),
-        )),
     }
+
+    if had_error {
+        return Err(String::from("Error enumerating files"));
+    }
+
+    // Create the project
+    let mut project = FileBackedProject::new();
+    let mut errors: Vec<Diagnostic> = vec![];
+
+    for file_path in files {
+        let res = project.push(FileId::from_path(&file_path));
+        match res {
+            Ok(_) => {}
+            Err(err) => {
+                errors.push(err);
+            }
+        }
+    }
+
+    if !errors.is_empty() {
+        handle_diagnostics(errors, Some(&project), suppress_output);
+        return Err(String::from("Error reading source files"));
+    }
+
+    Ok(project)
 }
 
 /// Enumerates all files at the path.
@@ -247,14 +191,14 @@ fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, Vec<Diagnostic>> {
 /// Converts an IronPLC diagnostic into the
 fn handle_diagnostics(
     diagnostics: Vec<Diagnostic>,
-    compilation_set: Option<&CompilationSet>,
+    project: Option<&FileBackedProject>,
     suppress_output: bool,
 ) {
     if !suppress_output {
         let writer = StandardStream::stderr(ColorChoice::Always);
         let config = codespan_reporting::term::Config::default();
 
-        let mut files: SimpleFiles<String, &String> = SimpleFiles::new();
+        let mut files: SimpleFiles<String, &str> = SimpleFiles::new();
 
         let mut unique_files: HashSet<&FileId> = HashSet::new();
         for diagnostic in &diagnostics {
@@ -265,11 +209,11 @@ fn handle_diagnostics(
 
         let mut files_to_ids: HashMap<&FileId, usize> = HashMap::new();
         let empty_source = &"".to_owned();
-        match compilation_set {
+        match project {
             Some(set) => {
                 for file_id in unique_files {
-                    if let Some(content) = set.content(file_id) {
-                        let id = files.add(file_id.to_string(), content);
+                    if let Some(content) = set.get(file_id) {
+                        let id = files.add(file_id.to_string(), content.as_string());
                         files_to_ids.insert(file_id, id);
                     }
                 }
