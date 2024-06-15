@@ -1,7 +1,5 @@
 //! Adapts data types between what is required by the compiler
 //! and the language server protocol.
-use std::path::Path;
-
 use ironplc_dsl::core::FileId;
 use ironplc_parser::token::{Token, TokenType};
 use lsp_types::{
@@ -25,12 +23,18 @@ impl LspProject {
     }
 
     pub(crate) fn initialize(&mut self, folder: &WorkspaceFolder) {
-        self.wrapped.initialize(Path::new(folder.uri.as_str()));
+        let path = folder.uri.to_file_path();
+        if let Ok(path) = path {
+            self.wrapped.initialize(&path);
+        }
     }
 
     pub(crate) fn change_text_document(&mut self, url: &Url, content: String) {
-        let file_id = FileId::from_string(url.as_str());
-        self.wrapped.change_text_document(&file_id, content);
+        let path = url.to_file_path();
+        if let Ok(path) = path {
+            let file_id = FileId::from_path(&path);
+            self.wrapped.change_text_document(&file_id, content);
+        }
     }
 
     pub(crate) fn tokenize(&self, url: &Url) -> Result<Vec<SemanticToken>, Vec<Diagnostic>> {

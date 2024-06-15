@@ -11,7 +11,7 @@ use ironplc_dsl::{
 };
 use ironplc_parser::token::Token;
 use ironplc_problems::Problem;
-use log::{info, trace};
+use log::{info, trace, warn};
 
 use crate::{
     compilation_set::{CompilationSet, CompilationSource},
@@ -83,25 +83,36 @@ impl Project for FileBackedProject {
 
         self.sources.clear();
 
-        let files = fs::read_dir(dir).unwrap();
-        let mut errors = vec![];
+        match fs::read_dir(dir) {
+            Ok(files) => {
+                let mut errors = vec![];
 
-        files
-            .filter_map(Result::ok)
-            .filter(|f| {
-                f.path().extension().is_some_and(|ext| {
-                    ext.eq_ignore_ascii_case("st") || ext.eq_ignore_ascii_case("iec")
-                })
-            })
-            .for_each(|f| {
-                let path = FileId::from_dir_entry(f);
-                match self.push(path) {
-                    Ok(_) => {}
-                    Err(err) => errors.push(err),
-                }
-            });
+                files
+                    .filter_map(Result::ok)
+                    .filter(|f| {
+                        f.path().extension().is_some_and(|ext| {
+                            ext.eq_ignore_ascii_case("st") || ext.eq_ignore_ascii_case("iec")
+                        })
+                    })
+                    .for_each(|f| {
+                        let path = FileId::from_dir_entry(f);
+                        match self.push(path) {
+                            Ok(_) => {}
+                            Err(err) => errors.push(err),
+                        }
+                    });
 
-        errors
+                errors
+            }
+            Err(err) => {
+                warn!("Unable to read directory '{}': {}", dir.display(), err);
+                let problem = Diagnostic::problem(
+                    Problem::CannotReadDirectory,
+                    Label::file(FileId::from_path(dir), err.to_string()),
+                );
+                vec![problem]
+            }
+        }
     }
 
     fn compilation_set(&self) -> CompilationSet {
