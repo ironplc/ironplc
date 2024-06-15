@@ -38,23 +38,29 @@ impl LspProject {
     }
 
     pub(crate) fn tokenize(&self, url: &Url) -> Result<Vec<SemanticToken>, Vec<Diagnostic>> {
-        let file_id = FileId::from_string(url.as_str());
-        let result = self.wrapped.tokenize(&file_id);
+        let path = url.to_file_path();
+        if let Ok(path) = path {
+            let file_id = FileId::from_path(&path);
 
-        if !result.1.is_empty() {
-            let compilation_set = self.wrapped.compilation_set();
-            return Err(result
-                .1
+            let result = self.wrapped.tokenize(&file_id);
+
+            if !result.1.is_empty() {
+                let compilation_set = self.wrapped.compilation_set();
+                return Err(result
+                    .1
+                    .into_iter()
+                    .map(|err| map_diagnostic(err, &compilation_set))
+                    .collect());
+            }
+
+            return Ok(result
+                .0
                 .into_iter()
-                .map(|err| map_diagnostic(err, &compilation_set))
+                .filter_map(|tok| LspTokenType(tok).into())
                 .collect());
         }
 
-        Ok(result
-            .0
-            .into_iter()
-            .filter_map(|tok| LspTokenType(tok).into())
-            .collect())
+        Err(vec![])
     }
 
     pub(crate) fn semantic(&self) -> Vec<Diagnostic> {
@@ -366,7 +372,7 @@ mod test {
     #[test]
     fn tokenize_when_has_document_then_not_empty_tokens() {
         let mut proj = new_empty_project();
-        let url = Url::parse("http://example.com").unwrap();
+        let url = Url::parse("file:///localhost/first_steps.st").unwrap();
         proj.change_text_document(&url, "TYPE TEXT_EMPTY : STRING [1]; END_TYPE".to_owned());
 
         let result = proj.tokenize(&url);
@@ -376,7 +382,7 @@ mod test {
     #[test]
     fn tokenize_when_first_steps_then_has_tokens() {
         let mut proj = new_empty_project();
-        let url = Url::parse("http://example.com").unwrap();
+        let url = Url::parse("file:///localhost/first_steps.st").unwrap();
         let content = read_resource("first_steps.st");
         proj.change_text_document(&url, content);
 
