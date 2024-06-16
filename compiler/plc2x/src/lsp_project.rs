@@ -352,11 +352,13 @@ fn map_label(
 
 #[cfg(test)]
 mod test {
-    use lsp_types::Url;
+    use ironplc_dsl::core::SourceSpan;
+    use ironplc_parser::token::{Token, TokenType};
+    use lsp_types::{SemanticToken, Url};
 
     use crate::{project::FileBackedProject, test_helpers::read_resource};
 
-    use super::LspProject;
+    use super::{LspProject, LspTokenType};
 
     fn new_empty_project() -> LspProject {
         LspProject::new(Box::new(FileBackedProject::new()))
@@ -389,5 +391,151 @@ mod test {
         let result = proj.tokenize(&url);
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn from_lsp_token_type_for_semantic_token() {
+        // This test exists mostly for the purpose of code coverage.
+        let tok_types = vec![
+            TokenType::Newline,
+            TokenType::Whitespace,
+            TokenType::Comment,
+            TokenType::LeftParen,
+            TokenType::RightParen,
+            TokenType::LeftBrace,
+            TokenType::RightBrace,
+            TokenType::Comma,
+            TokenType::Semicolon,
+            TokenType::Colon,
+            TokenType::Period,
+            TokenType::Range,
+            TokenType::Hash,
+            TokenType::SingleByteString,
+            TokenType::DoubleByteString,
+            TokenType::Identifier,
+            TokenType::Digits,
+            TokenType::Action,
+            TokenType::EndAction,
+            TokenType::Array,
+            TokenType::Of,
+            TokenType::At,
+            TokenType::Case,
+            TokenType::Else,
+            TokenType::EndCase,
+            TokenType::For,
+            TokenType::Constant,
+            TokenType::Configuration,
+            TokenType::EndConfiguration,
+            TokenType::En,
+            TokenType::Eno,
+            TokenType::Exit,
+            TokenType::False,
+            TokenType::FEdge,
+            TokenType::To,
+            TokenType::By,
+            TokenType::Do,
+            TokenType::EndFor,
+            TokenType::Function,
+            TokenType::EndFunction,
+            TokenType::FunctionBlock,
+            TokenType::EndFunctionBlock,
+            TokenType::If,
+            TokenType::Then,
+            TokenType::Elsif,
+            TokenType::EndIf,
+            TokenType::InitialStep,
+            TokenType::EndStep,
+            TokenType::Program,
+            TokenType::With,
+            TokenType::EndProgram,
+            TokenType::REdge,
+            TokenType::ReadOnly,
+            TokenType::ReadWrite,
+            TokenType::Repeat,
+            TokenType::Until,
+            TokenType::EndRepeat,
+            TokenType::Resource,
+            TokenType::On,
+            TokenType::EndResource,
+            TokenType::Retain,
+            TokenType::NonRetain,
+            TokenType::Return,
+            TokenType::Step,
+            TokenType::Struct,
+            TokenType::EndStruct,
+            TokenType::Task,
+            TokenType::EndTask,
+            TokenType::Transition,
+            TokenType::From,
+            TokenType::EndTransition,
+            TokenType::True,
+            TokenType::Type,
+            TokenType::EndType,
+            TokenType::Var,
+            TokenType::EndVar,
+            TokenType::VarInput,
+            TokenType::VarOutput,
+            TokenType::VarInOut,
+            TokenType::VarTemp,
+            TokenType::VarExternal,
+            TokenType::VarAccess,
+            TokenType::VarConfig,
+            TokenType::VarGlobal,
+            TokenType::While,
+            TokenType::EndWhile,
+            TokenType::Bool,
+            TokenType::Sint,
+            TokenType::Int,
+            TokenType::Dint,
+            TokenType::Lint,
+            TokenType::Usint,
+            TokenType::Uint,
+            TokenType::Udint,
+            TokenType::Ulint,
+            TokenType::Real,
+            TokenType::Lreal,
+            TokenType::Time,
+            TokenType::Date,
+            TokenType::TimeOfDay,
+            TokenType::DateAndTime,
+            TokenType::String,
+            TokenType::Byte,
+            TokenType::Word,
+            TokenType::Dword,
+            TokenType::Lword,
+            TokenType::WString,
+            TokenType::DirectAddressIncomplete,
+            TokenType::DirectAddress,
+            TokenType::Or,
+            TokenType::Xor,
+            TokenType::And,
+            TokenType::Equal,
+            TokenType::NotEqual,
+            TokenType::Less,
+            TokenType::Greater,
+            TokenType::LessEqual,
+            TokenType::GreaterEqual,
+            TokenType::Div,
+            TokenType::Star,
+            TokenType::Plus,
+            TokenType::Minus,
+            TokenType::Mod,
+            TokenType::Power,
+            TokenType::Not,
+            TokenType::Assignment,
+            TokenType::RightArrow,
+        ];
+
+        for tok_type in tok_types.into_iter() {
+            let lsp_token_type = LspTokenType(Token {
+                token_type: tok_type,
+                span: SourceSpan::default(),
+                line: 0,
+                col: 0,
+                text: "".to_owned(),
+            });
+
+            let _semantic_token: Option<SemanticToken> = lsp_token_type.into();
+        }
     }
 }
