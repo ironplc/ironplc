@@ -2,6 +2,7 @@
 //! and the language server protocol.
 use ironplc_dsl::core::FileId;
 use ironplc_parser::token::{Token, TokenType};
+use log::error;
 use lsp_types::{
     CodeDescription, Diagnostic, DiagnosticSeverity, NumberOrString, SemanticTokenType,
     WorkspaceFolder,
@@ -26,6 +27,8 @@ impl LspProject {
         let path = folder.uri.to_file_path();
         if let Ok(path) = path {
             self.wrapped.initialize(&path);
+        }  else {
+            error!("URL must be convertible to a file path {}", url);
         }
     }
 
@@ -34,6 +37,8 @@ impl LspProject {
         if let Ok(path) = path {
             let file_id = FileId::from_path(&path);
             self.wrapped.change_text_document(&file_id, content);
+        } else {
+            error!("URL must be convertible to a file path {}", url);
         }
     }
 
@@ -58,6 +63,8 @@ impl LspProject {
                 .into_iter()
                 .filter_map(|tok| LspTokenType(tok).into())
                 .collect());
+        } else {
+            error!("URL must be convertible to a file path {}", url);
         }
 
         Err(vec![])
@@ -360,6 +367,13 @@ mod test {
 
     use super::{LspProject, LspTokenType};
 
+    #[cfg(target_os = "macos")]
+    static FAKE_PATH: &str = "file:///localhost/first_steps.st";
+    #[cfg(target_os = "linux")]
+    static FAKE_PATH: &str = "file:///localhost/first_steps.st";
+    #[cfg(target_os = "windows")]
+    static FAKE_PATH: &str = "file:///C|first_steps.st";
+
     fn new_empty_project() -> LspProject {
         LspProject::new(Box::new(FileBackedProject::new()))
     }
@@ -374,7 +388,7 @@ mod test {
     #[test]
     fn tokenize_when_has_document_then_not_empty_tokens() {
         let mut proj = new_empty_project();
-        let url = Url::parse("file:///localhost/first_steps.st").unwrap();
+        let url = Url::parse(FAKE_PATH).unwrap();
         proj.change_text_document(&url, "TYPE TEXT_EMPTY : STRING [1]; END_TYPE".to_owned());
 
         let result = proj.tokenize(&url);
@@ -384,7 +398,7 @@ mod test {
     #[test]
     fn tokenize_when_first_steps_then_has_tokens() {
         let mut proj = new_empty_project();
-        let url = Url::parse("file:///localhost/first_steps.st").unwrap();
+        let url = Url::parse(FAKE_PATH).unwrap();
         let content = read_resource("first_steps.st");
         proj.change_text_document(&url, content);
 
