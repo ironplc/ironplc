@@ -27,8 +27,8 @@ impl LspProject {
         let path = folder.uri.to_file_path();
         if let Ok(path) = path {
             self.wrapped.initialize(&path);
-        }  else {
-            error!("URL must be convertible to a file path {}", url);
+        } else {
+            error!("URL must be convertible to a file path {}", folder.uri);
         }
     }
 
