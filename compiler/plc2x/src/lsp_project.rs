@@ -372,7 +372,7 @@ mod test {
     #[cfg(target_os = "linux")]
     static FAKE_PATH: &str = "file:///localhost/first_steps.st";
     #[cfg(target_os = "windows")]
-    static FAKE_PATH: &str = "file:///C|first_steps.st";
+    static FAKE_PATH: &str = "file:///C:/first_steps.st";
 
     fn new_empty_project() -> LspProject {
         LspProject::new(Box::new(FileBackedProject::new()))
