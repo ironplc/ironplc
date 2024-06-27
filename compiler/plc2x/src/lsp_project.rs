@@ -74,11 +74,12 @@ impl LspProject {
         let path = url.to_file_path();
         if let Ok(path) = path {
             let file_id = FileId::from_path(&path);
-            
+
             let compilation_set = self.wrapped.compilation_set();
             let diagnostics: Vec<lsp_types::Diagnostic> = self.wrapped.semantic().map_or_else(
                 |diagnostics| {
-                    diagnostics.into_iter()
+                    diagnostics
+                        .into_iter()
                         .filter(|d| d.file_ids().contains(&file_id))
                         .map(|d| map_diagnostic(d, &compilation_set))
                         .collect()
