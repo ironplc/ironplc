@@ -8,12 +8,10 @@
 //! original position (this means that source locations remain correct even
 //! after comments are removed).
 
-use ironplc_dsl::diagnostic::Diagnostic;
-
-pub fn preprocess(source: &str) -> Result<String, Diagnostic> {
+pub fn preprocess(source: &str) -> String {
     let source = source.to_string();
     let source = remove_oscat_comment(source);
-    Ok(source)
+    source
 }
 
 /// Removes the OSCAT ranged comment. This is not valid IEC 61131, but there
