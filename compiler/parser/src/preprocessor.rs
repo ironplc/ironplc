@@ -10,8 +10,7 @@
 
 pub fn preprocess(source: &str) -> String {
     let source = source.to_string();
-    let source = remove_oscat_comment(source);
-    source
+    remove_oscat_comment(source)
 }
 
 /// Removes the OSCAT ranged comment. This is not valid IEC 61131, but there

@@ -31,7 +31,7 @@ pub fn tokenize_program(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diag
 
 /// Parse a full IEC 61131 program.
 pub fn parse_program(source: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
-    let mut result = tokenize_program(&source, file_id);
+    let mut result = tokenize_program(source, file_id);
     if !result.1.is_empty() {
         return Err(result.1.remove(0));
     }
