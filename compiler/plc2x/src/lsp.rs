@@ -209,7 +209,7 @@ impl<'a> LspServer<'a> {
 
                     self.project
                         .change_text_document(&uri, contents.as_str().to_string());
-                    let diagnostics = self.project.semantic();
+                    let diagnostics = self.project.semantic(&uri);
 
                     self.send_notification::<PublishDiagnostics>(PublishDiagnosticsParams {
                         uri,
@@ -232,7 +232,7 @@ impl<'a> LspServer<'a> {
 
                     self.project
                         .change_text_document(&uri, contents.as_str().to_string());
-                    let diagnostics = self.project.semantic();
+                    let diagnostics = self.project.semantic(&uri);
 
                     self.send_notification::<PublishDiagnostics>(PublishDiagnosticsParams {
                         uri,

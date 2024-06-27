@@ -25,13 +25,13 @@ pub mod token;
 /// because we usually continue with parsing even if there are token errors because
 /// that will give the context of what was wrong in the location with the error.
 pub fn tokenize_program(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>) {
-    tokenize(source, file_id)
+    let source = preprocess(source);
+    tokenize(&source, file_id)
 }
 
 /// Parse a full IEC 61131 program.
 pub fn parse_program(source: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
-    let source = preprocess(source)?;
-    let mut result = tokenize_program(&source, file_id);
+    let mut result = tokenize_program(source, file_id);
     if !result.1.is_empty() {
         return Err(result.1.remove(0));
     }
