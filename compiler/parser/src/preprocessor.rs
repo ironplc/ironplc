@@ -57,7 +57,7 @@ mod tests {
             END_STRUCT;
         END_TYPE";
 
-        let output = preprocess(program).unwrap();
+        let output = preprocess(program);
         assert_eq!(program, output.as_str());
     }
 
@@ -79,7 +79,7 @@ TYPE
     (*@KEY@:END_DESCRIPTION*)
 END_TYPE";
 
-        let output = preprocess(program).unwrap();
+        let output = preprocess(program);
         assert_eq!(expected, output.as_str());
     }
 
@@ -92,6 +92,6 @@ END_TYPE";
         END_TYPE";
 
         let res = preprocess(program);
-        assert!(res.is_ok());
+        assert!(res.len() > 0);
     }
 }
