@@ -8,12 +8,9 @@
 //! original position (this means that source locations remain correct even
 //! after comments are removed).
 
-use ironplc_dsl::diagnostic::Diagnostic;
-
-pub fn preprocess(source: &str) -> Result<String, Diagnostic> {
+pub fn preprocess(source: &str) -> String {
     let source = source.to_string();
-    let source = remove_oscat_comment(source);
-    Ok(source)
+    remove_oscat_comment(source)
 }
 
 /// Removes the OSCAT ranged comment. This is not valid IEC 61131, but there
@@ -60,7 +57,7 @@ mod tests {
             END_STRUCT;
         END_TYPE";
 
-        let output = preprocess(program).unwrap();
+        let output = preprocess(program);
         assert_eq!(program, output.as_str());
     }
 
@@ -82,7 +79,7 @@ TYPE
     (*@KEY@:END_DESCRIPTION*)
 END_TYPE";
 
-        let output = preprocess(program).unwrap();
+        let output = preprocess(program);
         assert_eq!(expected, output.as_str());
     }
 
@@ -95,6 +92,6 @@ END_TYPE";
         END_TYPE";
 
         let res = preprocess(program);
-        assert!(res.is_ok());
+        assert!(res.len() > 0);
     }
 }

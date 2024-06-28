@@ -70,17 +70,28 @@ impl LspProject {
         Err(vec![])
     }
 
-    pub(crate) fn semantic(&self) -> Vec<Diagnostic> {
-        let compilation_set = self.wrapped.compilation_set();
-        let diagnostics: Vec<lsp_types::Diagnostic> = self.wrapped.semantic().map_or_else(
-            |d| {
-                d.into_iter()
-                    .map(|d| map_diagnostic(d, &compilation_set))
-                    .collect()
-            },
-            |()| Vec::new(),
-        );
-        diagnostics
+    pub(crate) fn semantic(&self, url: &Url) -> Vec<lsp_types::Diagnostic> {
+        let path = url.to_file_path();
+        if let Ok(path) = path {
+            let file_id = FileId::from_path(&path);
+
+            let compilation_set = self.wrapped.compilation_set();
+            let diagnostics: Vec<lsp_types::Diagnostic> = self.wrapped.semantic().map_or_else(
+                |diagnostics| {
+                    diagnostics
+                        .into_iter()
+                        .filter(|d| d.file_ids().contains(&file_id))
+                        .map(|d| map_diagnostic(d, &compilation_set))
+                        .collect()
+                },
+                |()| Vec::new(),
+            );
+            return diagnostics;
+        } else {
+            error!("URL must be convertible to a file path {}", url);
+        }
+
+        vec![]
     }
 }
 
