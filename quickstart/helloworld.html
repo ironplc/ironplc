@@ -414,6 +414,36 @@ We need to tell the PLC runtime how we want to run the program. The piece indica
 <p>defines how we want the program to run. The configuration declares we want to execute
 the <code class="code docutils literal notranslate"><span class="pre">main</span></code> program once every 100 ms and this task is the highest priority task. This task
 executed on the hardware element named <code class="code docutils literal notranslate"><span class="pre">res</span></code>.</p>
+<p>We want our program to enable (or disable) the buzzer based on whether the button is
+pressed. The piece indicated by</p>
+<div class="highlight-default notranslate" id="var"><div class="highlight"><pre><span></span><span class="n">VAR</span>
+
+<span class="n">END_VAR</span>
+</pre></div>
+</div>
+<p>defines two variables that will contain the state of the button and buzzer. We can then use
+the variable containing the state of the button to control the variable containing the
+desired state of the buzzer. The statement indicated by</p>
+<div class="highlight-default notranslate" id="statement"><div class="highlight"><pre><span></span><span class="n">Buzzer</span> <span class="o">:=</span> <span class="n">NOT</span> <span class="n">Button</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>does just that. In plain English, the statement says “assign the value of
+<code class="code docutils literal notranslate"><span class="pre">Buzzer</span></code> to be the boolean inverse of the value of <code class="code docutils literal notranslate"><span class="pre">Button</span></code>.”</p>
+<p>From the perspective of the program, there is no specific meaning to the
+names <code class="code docutils literal notranslate"><span class="pre">Buzzer</span></code> and <code class="code docutils literal notranslate"><span class="pre">Button</span></code>. We could have called them
+<code class="code docutils literal notranslate"><span class="pre">foo</span></code> and <code class="code docutils literal notranslate"><span class="pre">bar</span></code>, but we choose names that were indicative of
+their purpose.</p>
+<p>Our program needs to associate the variables <code class="code docutils literal notranslate"><span class="pre">Buzzer</span></code> and <code class="code docutils literal notranslate"><span class="pre">Button</span></code>
+with digital input/output. We do this by declaring these as directly represented
+variables. Directly represented variable have specific physical or logical locations,
+for example, being associated with a digital input pin. The declarations</p>
+<div class="highlight-default notranslate" id="directly-represented"><div class="highlight"><pre><span></span><span class="n">AT</span> <span class="o">%</span><span class="n">IX1</span>
+</pre></div>
+</div>
+<p>associates the variable <code class="code docutils literal notranslate"><span class="pre">Button</span></code> with a 1-bit (Boolean) input.</p>
+<p>The net result of these elements is to define a program that every 100 ms, reads
+from an input device, evaluates the logical inverse, and assign the result to
+an output device.</p>
 </section>
 </section>
 

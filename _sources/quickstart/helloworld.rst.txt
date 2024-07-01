@@ -101,3 +101,46 @@ We need to tell the PLC runtime how we want to run the program. The piece indica
 defines how we want the program to run. The configuration declares we want to execute
 the :code:`main` program once every 100 ms and this task is the highest priority task. This task 
 executed on the hardware element named :code:`res`.
+
+We want our program to enable (or disable) the buzzer based on whether the button is
+pressed. The piece indicated by
+
+.. code-block:: 
+   :name: var
+
+   VAR
+
+   END_VAR
+
+defines two variables that will contain the state of the button and buzzer. We can then use
+the variable containing the state of the button to control the variable containing the
+desired state of the buzzer. The statement indicated by
+
+.. code-block:: 
+   :name: statement
+
+   Buzzer := NOT Button;
+
+does just that. In plain English, the statement says "assign the value of
+:code:`Buzzer` to be the boolean inverse of the value of :code:`Button`."
+
+From the perspective of the program, there is no specific meaning to the
+names :code:`Buzzer` and :code:`Button`. We could have called them
+:code:`foo` and :code:`bar`, but we choose names that were indicative of
+their purpose.
+
+Our program needs to associate the variables :code:`Buzzer` and :code:`Button`
+with digital input/output. We do this by declaring these as directly represented
+variables. Directly represented variable have specific physical or logical locations,
+for example, being associated with a digital input pin. The declarations
+
+.. code-block:: 
+   :name: directly-represented
+
+   AT %IX1
+
+associates the variable :code:`Button` with a 1-bit (Boolean) input.
+
+The net result of these elements is to define a program that every 100 ms, reads
+from an input device, evaluates the logical inverse, and assign the result to
+an output device. 
