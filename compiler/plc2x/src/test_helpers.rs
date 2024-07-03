@@ -24,13 +24,6 @@ pub fn resource_path(name: &'static str) -> PathBuf {
 }
 
 #[cfg(test)]
-pub fn new_library(element: LibraryElementKind) -> Library {
-    Library {
-        elements: vec![element],
-    }
-}
-
-#[cfg(test)]
 pub fn parse_and_resolve_types(program: &str) -> Library {
     use crate::compilation_set::CompilationSet;
 

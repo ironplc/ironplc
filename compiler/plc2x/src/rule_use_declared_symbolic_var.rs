@@ -14,6 +14,18 @@
 //!    TRIG := TRIG0;
 //! END_FUNCTION_BLOCK
 //! ```
+//!
+//! ```ignore
+//! TYPE
+//!     MyColors: (Red, Green);
+//! END_TYPE
+//! FUNCTION_BLOCK
+//!     VAR
+//!         Color: MyColors := Red;
+//!     END_VAR
+//!     Color := Green;
+//! END_FUNCTION_BLOCK
+//! ```
 //!   
 //! ## Fails
 //!
@@ -119,13 +131,19 @@ VAR
 TRIG0 : BOOL;
 END_VAR
          
-TRIG := TRIG0;
+TRIG := TRIG0.A;
 END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
         let result = apply(&library);
 
         assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .first()
+            .unwrap()
+            .described
+            .contains(&"variable=TRIG".to_owned()))
     }
 
     #[test]
@@ -175,6 +193,26 @@ END_VAR
          
 TRIG := TRIG0;
 END_PROGRAM";
+
+        let library = parse_and_resolve_types(program);
+        let result = apply(&library);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_assign_enum_variant_then_ok() {
+        let program = "
+TYPE
+    MyColors: (Red, Green);
+END_TYPE
+
+FUNCTION_BLOCK FB_EXAMPLE
+    VAR
+        Color: MyColors := Red;
+    END_VAR
+    Color := Green;
+END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
         let result = apply(&library);

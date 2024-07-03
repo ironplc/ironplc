@@ -38,7 +38,8 @@ milestones are the current plan to achieve that loveable product.
 * ✅ Setup weekly automated deployments
 * ✅ Build documentation website
 * ✅ Implement semantic analyzer for multiple IEC 61131-3 structured text file
-* Build a tokenizer to enable syntax highlighting
+* ✅ Implement a tokenizer to enable syntax highlighting
+* Enable working with multiple files via Visual Studio Code Extension
 
 ## Usage
 
