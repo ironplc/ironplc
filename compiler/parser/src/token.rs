@@ -25,6 +25,7 @@ pub struct Token {
     pub text: String,
 }
 
+#[cfg(feature = "trace")]
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
@@ -36,6 +37,17 @@ impl fmt::Display for Token {
         ))
     }
 }
+
+#[cfg(not(feature = "trace"))]
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!(
+            "{}",
+            self.text.replace('\n', "\\n").replace('\r', "\\r"),
+        ))
+    }
+}
+
 #[derive(Clone, Logos, Debug, PartialEq)]
 pub enum TokenType {
     #[regex(r"\r\n")]

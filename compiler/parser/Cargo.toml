@@ -11,7 +11,8 @@ repository.workspace = true
 maintenance = { status = "experimental" }
 
 [features]
-trace = ["peg/trace"]
+debug = ["peg/trace"]
+trace = ["debug"]
 
 [dependencies]
 time = "0.3.17"

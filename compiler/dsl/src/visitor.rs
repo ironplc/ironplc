@@ -358,6 +358,8 @@ pub trait Visitor<E> {
 
     dispatch!(Function);
 
+    dispatch!(LateBound);
+
     dispatch!(ExprKind);
 
     // 3.3.2.1
@@ -420,6 +422,12 @@ mod test {
         fn visit_named_variable(&mut self, var: &NamedVariable) -> Result<(), ()> {
             let mut dst = &mut self.names;
             dst.push_back(var.name.to_string());
+            Ok(())
+        }
+
+        fn visit_late_bound(&mut self, node: &LateBound) -> Result<(), ()> {
+            let mut dst = &mut self.names;
+            dst.push_back(node.name.to_string());
             Ok(())
         }
 
