@@ -2,7 +2,8 @@
 //!
 //! See section 3.
 use crate::common::{
-    AddressAssignment, ConstantKind, EnumeratedValue, IntegerLiteral, SignedInteger, Subrange,
+    AddressAssignment, ConstantKind, EnumeratedValue, IntegerLiteral, LateBoundDeclaration,
+    SignedInteger, Subrange,
 };
 use crate::core::{Id, Located, SourceSpan};
 use std::cmp::Ordering;
@@ -193,6 +194,11 @@ pub struct Function {
     pub param_assignment: Vec<ParamAssignmentKind>,
 }
 
+#[derive(Debug, PartialEq, Clone, Recurse)]
+pub struct LateBound {
+    pub name: Id,
+}
+
 /// Expression that yields a value derived from the input(s) to the expression.
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum ExprKind {
@@ -201,8 +207,10 @@ pub enum ExprKind {
     UnaryOp(Box<UnaryExpr>),
     Expression(Box<ExprKind>),
     Const(ConstantKind),
+    EnumeratedValue(EnumeratedValue),
     Variable(Variable),
     Function(Function),
+    LateBound(LateBound),
 }
 
 impl ExprKind {
@@ -220,6 +228,12 @@ impl ExprKind {
 
     pub fn named_variable(name: &str) -> ExprKind {
         ExprKind::Variable(Variable::named(name))
+    }
+
+    pub fn late_bound(name: &str) -> ExprKind {
+        ExprKind::LateBound(LateBound {
+            name: Id::from(name),
+        })
     }
 
     pub fn integer_literal(value: &str) -> ExprKind {
@@ -369,7 +383,7 @@ impl StmtKind {
     pub fn fb_assign(fb_name: &str, inputs: Vec<&str>, output: &str) -> StmtKind {
         let assignments = inputs
             .into_iter()
-            .map(|input| ParamAssignmentKind::positional(ExprKind::named_variable(input)))
+            .map(|input| ParamAssignmentKind::positional(ExprKind::late_bound(input)))
             .collect::<Vec<ParamAssignmentKind>>();
 
         StmtKind::assignment(
@@ -384,7 +398,12 @@ impl StmtKind {
         let assignments = inputs
             .into_iter()
             .map(|pair| {
-                ParamAssignmentKind::named(pair.0, ExprKind::Variable(Variable::named(pair.1)))
+                ParamAssignmentKind::named(
+                    pair.0,
+                    ExprKind::LateBound(LateBound {
+                        name: Id::from(pair.1),
+                    }),
+                )
             })
             .collect::<Vec<ParamAssignmentKind>>();
 
@@ -402,7 +421,9 @@ impl StmtKind {
     pub fn simple_assignment(target: &str, src: &str) -> StmtKind {
         StmtKind::Assignment(Assignment {
             target: Variable::named(target),
-            value: ExprKind::Variable(Variable::named(src)),
+            value: ExprKind::LateBound(LateBound {
+                name: Id::from(src),
+            }),
         })
     }
 

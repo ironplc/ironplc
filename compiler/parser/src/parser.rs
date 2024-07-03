@@ -1466,6 +1466,9 @@ parser! {
       / function:function_expression() {
           function
         }
+      / id:identifier() _ !(tok(TokenType::LeftParen) / tok(TokenType::LeftBracket) / tok(TokenType::Period)) {
+        ExprKind::LateBound(LateBound{ name: id })
+      }
       / variable:variable() {
         ExprKind::Variable(variable)
       }
