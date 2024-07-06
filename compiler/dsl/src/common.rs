@@ -125,8 +125,13 @@ impl Integer {
     }
 
     pub fn try_hex(a: &str) -> Result<Self, &'static str> {
+        if !a.starts_with("16#") {
+            return Err("Non-hex start");
+        }
+
         let (hex, remainder): (Vec<_>, Vec<_>) = a
             .chars()
+            .skip(3)
             .filter(|c| *c != '_')
             .partition(|c| c.is_ascii_hexdigit());
         if !remainder.is_empty() {
@@ -149,6 +154,10 @@ impl Integer {
     }
 
     pub fn try_octal(a: &str) -> Result<Self, &'static str> {
+        if !a.starts_with("16#") {
+            return Err("Non-hex start");
+        }
+
         let (oct, remainder): (Vec<_>, Vec<_>) = a
             .chars()
             .filter(|c| *c != '_')

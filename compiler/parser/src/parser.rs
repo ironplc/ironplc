@@ -318,9 +318,9 @@ parser! {
     /// working with the parser easier in the terminal.
     rule traced<T>(e: rule<T>) -> T =
     &(input:[t]* {
-        #[cfg(feature = "trace")]
+        #[cfg(any(feature = "debug", feature = "trace"))]
         println!("[PARSER INFO_START]\nNumber of parsed tokens: {}\n[PARSER INFO_STOP]\n", input.len());
-        #[cfg(feature = "trace")]
+        #[cfg(any(feature = "debug", feature = "trace"))]
         println!("[PEG_INPUT_START]\n{}\n[PEG_TRACE_START]", input.iter().fold(String::new(), |s1, s2| s1 + "\n" + s2.to_string().as_str()).trim_start().to_string());
     })
     e:e()? {?
@@ -407,10 +407,8 @@ parser! {
     rule integer() -> Integer = n:integer__string() {? Integer::new(n, SourceSpan::default()) }
     rule binary_integer_prefix() -> &'input Token = t:tok_eq(TokenType::Digits, "2") tok(TokenType::Hash) { t }
     rule binary_integer() -> Integer =  binary_integer_prefix() n:tok(TokenType::Digits) {? Integer::try_binary(n.text.as_str()) }
-    rule octal_integer_prefix() -> &'input Token = t:tok_eq(TokenType::Digits, "8") tok(TokenType::Hash) { t }
-    rule octal_integer() -> Integer = octal_integer_prefix() n:tok(TokenType::Digits) {? Integer::try_octal(n.text.as_str()) }
-    rule hex_integer_prefix() -> &'input Token = t:tok_eq(TokenType::Digits, "16") tok(TokenType::Hash) { t }
-    rule hex_integer() -> Integer = hex_integer_prefix() n:tok(TokenType::Identifier) {? Integer::try_hex(n.text.as_str()) }
+    rule octal_integer() -> Integer = n:tok(TokenType::OctDigits) {? Integer::try_octal(n.text.as_str()) }
+    rule hex_integer() -> Integer = n:tok(TokenType::HexDigits) {? Integer::try_hex(n.text.as_str()) }
     rule real_literal() -> RealLiteral = tn:(t:real_type_name() tok(TokenType::Hash) {t})? sign:(tok(TokenType::Plus) { 1 } / tok(TokenType::Minus) { -1 })? whole:tok(TokenType::Digits) tok(TokenType::Period) fraction:tok(TokenType::Digits) exp:exponent()? {?
       // Create the value from concatenating the parts so that it is trivial
       // to existing parsers.
