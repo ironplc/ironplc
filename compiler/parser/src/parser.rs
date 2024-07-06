@@ -405,8 +405,7 @@ parser! {
     rule integer__string() -> &'input str = n:tok(TokenType::Digits) { n.text.as_str() }
     rule integer__string_simplified() -> String = n:integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit()).collect() }
     rule integer() -> Integer = n:integer__string() {? Integer::new(n, SourceSpan::default()) }
-    rule binary_integer_prefix() -> &'input Token = t:tok_eq(TokenType::Digits, "2") tok(TokenType::Hash) { t }
-    rule binary_integer() -> Integer =  binary_integer_prefix() n:tok(TokenType::Digits) {? Integer::try_binary(n.text.as_str()) }
+    rule binary_integer() -> Integer =  n:tok(TokenType::BinDigits) {? Integer::try_binary(n.text.as_str()) }
     rule octal_integer() -> Integer = n:tok(TokenType::OctDigits) {? Integer::try_octal(n.text.as_str()) }
     rule hex_integer() -> Integer = n:tok(TokenType::HexDigits) {? Integer::try_hex(n.text.as_str()) }
     rule real_literal() -> RealLiteral = tn:(t:real_type_name() tok(TokenType::Hash) {t})? sign:(tok(TokenType::Plus) { 1 } / tok(TokenType::Minus) { -1 })? whole:tok(TokenType::Digits) tok(TokenType::Period) fraction:tok(TokenType::Digits) exp:exponent()? {?
