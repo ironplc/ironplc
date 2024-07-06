@@ -187,6 +187,23 @@ mod test {
     }
 
     #[test]
+    fn parse_program_when_complex_bit_string_then_ok() {
+        let program = "
+FUNCTION fun:DWORD
+
+VAR_IN_OUT
+    VAR1: INT;
+END_VAR
+
+VAR1 := DWORD#16#0000FFFF;
+
+END_FUNCTION";
+
+        let res = parse_program(program, &FileId::default());
+        assert!(res.is_ok());
+    }
+
+    #[test]
     fn parse_when_first_steps_function_block_counter_fbd_then_builds_structure() {
         let src = read_resource("first_steps_function_block_counter_fbd.st");
         let expected = new_library(LibraryElementKind::FunctionBlockDeclaration(

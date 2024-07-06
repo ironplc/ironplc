@@ -104,6 +104,12 @@ pub enum TokenType {
     Identifier,
 
     // B.1.2 Constants
+    #[regex(r"16#[0-9A-F][0-9A-F_]*")]
+    HexDigits,
+    #[regex(r"8#[0-7][0-7_]*")]
+    OctDigits,
+    #[regex(r"2#[0-1][0-1_]*")]
+    BinDigits,
     // We don't try to understand the literals here with complex regular expression
     // matching and precedence. Rather we identify some of the relevant constituent
     // parts and piece them together later.
@@ -391,6 +397,9 @@ impl TokenType {
             TokenType::SingleByteString => "\\'[^\\']*\\' (single byte string)",
             TokenType::DoubleByteString => "\"[^\"]*\" (double byte string)",
             TokenType::Identifier => "",
+            TokenType::HexDigits => "16#[0-9A-F][0-9A-F_]* (hexadecimal bit string)",
+            TokenType::OctDigits => "8#[0-7][0-7]* (octal bit string)",
+            TokenType::BinDigits => "2#[0-1][0-1]* (binary bit string)",
             TokenType::Digits => "[0-9][0-9_]* (integer)",
             TokenType::Action => "'ACTION'",
             TokenType::EndAction => "'END_ACTION'",
