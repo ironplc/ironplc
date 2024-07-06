@@ -125,8 +125,13 @@ impl Integer {
     }
 
     pub fn try_hex(a: &str) -> Result<Self, &'static str> {
+        if !a.starts_with("16#") {
+            return Err("Non-hex start");
+        }
+
         let (hex, remainder): (Vec<_>, Vec<_>) = a
             .chars()
+            .skip(3)
             .filter(|c| *c != '_')
             .partition(|c| c.is_ascii_hexdigit());
         if !remainder.is_empty() {
@@ -149,8 +154,13 @@ impl Integer {
     }
 
     pub fn try_octal(a: &str) -> Result<Self, &'static str> {
+        if !a.starts_with("8#") {
+            return Err("Non-octal start");
+        }
+
         let (oct, remainder): (Vec<_>, Vec<_>) = a
             .chars()
+            .skip(2)
             .filter(|c| *c != '_')
             .partition(|c| matches!(c, '0'..='7'));
         if !remainder.is_empty() {
@@ -173,8 +183,13 @@ impl Integer {
     }
 
     pub fn try_binary(a: &str) -> Result<Self, &'static str> {
+        if !a.starts_with("2#") {
+            return Err("Non-binary start");
+        }
+
         let (bin, remainder): (Vec<_>, Vec<_>) = a
             .chars()
+            .skip(2)
             .filter(|c| *c != '_')
             .partition(|c| matches!(c, '0'..='1'));
         if !remainder.is_empty() {
