@@ -38,11 +38,25 @@ then enable the buzzer.
    It is possible to design a simpler door bell system. This
    example designed to illustrate how to use IEC 61131-3.
 
--------------------------------------
-Create a Program with Structured Text
--------------------------------------
+------------------------------------------
+Create an Application with Structured Text
+------------------------------------------
 
-Run Visual Studio Code, then in Visual Studio Code:
+This section will show you how to create a IEC 61131-3 application.
+
+In a Terminal, enter the commands in :ref:`Create Project Directory <newhelloworld>` to
+create a new folder and start Visual Studio Code.
+
+   .. code-block:: shell
+      :caption: Create Project Directory
+      :name: newhelloworld
+
+      mkdir helloworld
+      cd helloworld
+      code .
+
+
+In Visual Studio Code, follow the steps to create a new Structured Text file.
 
 #. In the main menu, select :menuselection:`File --> New File...`.
 #. In the :guilabel:`New File...` dialog, select the :menuselection:`Structured Text File` option.
@@ -71,11 +85,11 @@ Run Visual Studio Code, then in Visual Studio Code:
 
 #. Save the file with the name :file:`main.st`.
 
------------------------------------
-Anatomy of the Hello, World Program
------------------------------------
+---------------------------------------
+Anatomy of the Hello, World Application
+---------------------------------------
 
-Let's review this program. IEC 61131-3 applications are structured from blocks
+Let's review this application. IEC 61131-3 applications are structured from blocks
 called Program Organization Units (POUs). The :code:`PROGRAM` is a top level block and
 similar to the :code:`main` function in other languages. The section indicated by
 
@@ -143,4 +157,30 @@ associates the variable :code:`Button` with a 1-bit (Boolean) input.
 
 The net result of these elements is to define a program that every 100 ms, reads
 from an input device, evaluates the logical inverse, and assign the result to
-an output device. 
+an output device.
+
+---------------------------
+Working with Multiple Files
+---------------------------
+
+You can define your IEC 61131-3 application in multiple files and IronPLC
+will combine them into a single unit.
+
+In Visual Studio Code, follow the steps to create a new Structured Text file.
+
+#. In the main menu, select :menuselection:`File --> New File...`.
+#. In the :guilabel:`New File...` dialog, select the :menuselection:`Structured Text File` option.
+#. Enter the code in :ref:`Hello World - Configuration <helloworld-config>` into the :guilabel:`Editor`.
+
+   .. code-block::
+      :caption: Hello World - Configuration
+      :name: helloworld-config
+
+      CONFIGURATION config
+         RESOURCE res ON PLC
+            TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+            PROGRAM plc_task_instance WITH plc_task : main;
+         END_RESOURCE
+      END_CONFIGURATION
+
+#. Save the file with the name :file:`config.st`.
