@@ -361,9 +361,22 @@ then enable the buzzer.</p>
 example designed to illustrate how to use IEC 61131-3.</p>
 </div>
 </section>
-<section id="create-a-program-with-structured-text">
-<h2>Create a Program with Structured Text<a class="headerlink" href="#create-a-program-with-structured-text" title="Link to this heading">¶</a></h2>
-<p>Run Visual Studio Code, then in Visual Studio Code:</p>
+<section id="create-an-application-with-structured-text">
+<h2>Create an Application with Structured Text<a class="headerlink" href="#create-an-application-with-structured-text" title="Link to this heading">¶</a></h2>
+<p>This section will show you how to create a IEC 61131-3 application.</p>
+<p>In a Terminal, enter the commands in <a class="reference internal" href="#newhelloworld"><span class="std std-ref">Create Project Directory</span></a> to
+create a new folder and start Visual Studio Code.</p>
+<blockquote>
+<div><div class="literal-block-wrapper docutils container" id="newhelloworld">
+<div class="code-block-caption"><span class="caption-text">Create Project Directory</span><a class="headerlink" href="#newhelloworld" title="Link to this code">¶</a></div>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>mkdir<span class="w"> </span>helloworld
+<span class="nb">cd</span><span class="w"> </span>helloworld
+code<span class="w"> </span>.
+</pre></div>
+</div>
+</div>
+</div></blockquote>
+<p>In Visual Studio Code, follow the steps to create a new Structured Text file.</p>
 <ol class="arabic">
 <li><p>In the main menu, select <span class="menuselection">File ‣ New File…</span>.</p></li>
 <li><p>In the <span class="guilabel">New File…</span> dialog, select the <span class="menuselection">Structured Text File</span> option.</p></li>
@@ -393,9 +406,9 @@ example designed to illustrate how to use IEC 61131-3.</p>
 <li><p>Save the file with the name <code class="file docutils literal notranslate"><span class="pre">main.st</span></code>.</p></li>
 </ol>
 </section>
-<section id="anatomy-of-the-hello-world-program">
-<h2>Anatomy of the Hello, World Program<a class="headerlink" href="#anatomy-of-the-hello-world-program" title="Link to this heading">¶</a></h2>
-<p>Let’s review this program. IEC 61131-3 applications are structured from blocks
+<section id="anatomy-of-the-hello-world-application">
+<h2>Anatomy of the Hello, World Application<a class="headerlink" href="#anatomy-of-the-hello-world-application" title="Link to this heading">¶</a></h2>
+<p>Let’s review this application. IEC 61131-3 applications are structured from blocks
 called Program Organization Units (POUs). The <code class="code docutils literal notranslate"><span class="pre">PROGRAM</span></code> is a top level block and
 similar to the <code class="code docutils literal notranslate"><span class="pre">main</span></code> function in other languages. The section indicated by</p>
 <div class="highlight-default notranslate" id="main"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
@@ -444,6 +457,30 @@ for example, being associated with a digital input pin. The declarations</p>
 <p>The net result of these elements is to define a program that every 100 ms, reads
 from an input device, evaluates the logical inverse, and assign the result to
 an output device.</p>
+</section>
+<section id="working-with-multiple-files">
+<h2>Working with Multiple Files<a class="headerlink" href="#working-with-multiple-files" title="Link to this heading">¶</a></h2>
+<p>You can define your IEC 61131-3 application in multiple files and IronPLC
+will combine them into a single unit.</p>
+<p>In Visual Studio Code, follow the steps to create a new Structured Text file.</p>
+<ol class="arabic">
+<li><p>In the main menu, select <span class="menuselection">File ‣ New File…</span>.</p></li>
+<li><p>In the <span class="guilabel">New File…</span> dialog, select the <span class="menuselection">Structured Text File</span> option.</p></li>
+<li><p>Enter the code in <a class="reference internal" href="#helloworld-config"><span class="std std-ref">Hello World - Configuration</span></a> into the <span class="guilabel">Editor</span>.</p>
+<div class="literal-block-wrapper docutils container" id="helloworld-config">
+<div class="code-block-caption"><span class="caption-text">Hello World - Configuration</span><a class="headerlink" href="#helloworld-config" title="Link to this code">¶</a></div>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">CONFIGURATION</span> <span class="n">config</span>
+   <span class="n">RESOURCE</span> <span class="n">res</span> <span class="n">ON</span> <span class="n">PLC</span>
+      <span class="n">TASK</span> <span class="n">plc_task</span><span class="p">(</span><span class="n">INTERVAL</span> <span class="o">:=</span> <span class="n">T</span><span class="c1">#100ms, PRIORITY := 1);</span>
+      <span class="n">PROGRAM</span> <span class="n">plc_task_instance</span> <span class="n">WITH</span> <span class="n">plc_task</span> <span class="p">:</span> <span class="n">main</span><span class="p">;</span>
+   <span class="n">END_RESOURCE</span>
+<span class="n">END_CONFIGURATION</span>
+</pre></div>
+</div>
+</div>
+</li>
+<li><p>Save the file with the name <code class="file docutils literal notranslate"><span class="pre">config.st</span></code>.</p></li>
+</ol>
 </section>
 </section>
 
@@ -512,8 +549,9 @@ an output device.</p>
             <ul>
 <li><a class="reference internal" href="#">Hello, World!</a><ul>
 <li><a class="reference internal" href="#the-sense-control-actuate-cycle">The Sense-Control-Actuate Cycle</a></li>
-<li><a class="reference internal" href="#create-a-program-with-structured-text">Create a Program with Structured Text</a></li>
-<li><a class="reference internal" href="#anatomy-of-the-hello-world-program">Anatomy of the Hello, World Program</a></li>
+<li><a class="reference internal" href="#create-an-application-with-structured-text">Create an Application with Structured Text</a></li>
+<li><a class="reference internal" href="#anatomy-of-the-hello-world-application">Anatomy of the Hello, World Application</a></li>
+<li><a class="reference internal" href="#working-with-multiple-files">Working with Multiple Files</a></li>
 </ul>
 </li>
 </ul>
