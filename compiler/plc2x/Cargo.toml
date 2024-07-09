@@ -14,15 +14,13 @@ maintenance = { status = "experimental" }
 trace = ["ironplc-parser/trace"]
 
 [dependencies]
+ironplc-analyzer = { path = "../analyzer", version = "0.69.0" }
 ironplc-parser = { path = "../parser", version = "0.69.0" }
 ironplc-dsl = { path = "../dsl", version = "0.69.0" }
 ironplc-problems = { path = "../problems", version = "0.69.0" }
 ironplc-plc2plc = { path = "../plc2plc", version = "0.69.0" }
 
 time = "0.3.17"
-phf = { version = "0.11", features = ["macros"] }
-petgraph = { version = "0.6.2" }
-fixedbitset = { version = "0.4.2" }
 clap = { version = "4.0", features = ["derive", "wrap_help"] }
 codespan-reporting = { version = "0.11.1" }
 lsp-server = "0.7"
@@ -32,7 +30,6 @@ serde_json = "1.0"
 env_logger = "0.10.0"
 log = "0.4.20"
 crossbeam-channel = "0.5"
-encoding_rs = "0.8"
 
 [dev-dependencies]
 assert_cmd = { version = "2.0" }

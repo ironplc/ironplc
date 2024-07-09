@@ -8,6 +8,10 @@ use codespan_reporting::{
         termcolor::{ColorChoice, StandardStream},
     },
 };
+use ironplc_analyzer::{
+    compilation_set::CompilationSource,
+    stages::{analyze, parse},
+};
 use ironplc_dsl::{
     core::FileId,
     diagnostic::{Diagnostic, Label},
@@ -23,11 +27,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{
-    compilation_set::CompilationSource,
-    project::{FileBackedProject, Project},
-    stages::{analyze, parse},
-};
+use crate::project::{FileBackedProject, Project};
 
 // Checks specified files.
 pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
@@ -286,18 +286,18 @@ fn diagnostic(problem: Problem, path: &Path, message: String) -> Vec<Diagnostic>
 
 #[cfg(test)]
 mod tests {
-    use crate::{cli::check, test_helpers::resource_path};
+    use crate::{cli::check, test_helpers::resource_path, test_helpers::shared_resource_path};
 
     #[test]
     fn first_steps_when_invalid_syntax_then_error() {
-        let paths = vec![resource_path("first_steps_semantic_error.st")];
+        let paths = vec![shared_resource_path("first_steps_semantic_error.st")];
         let result = check(paths, true);
         assert!(result.is_err())
     }
 
     #[test]
     fn first_steps_when_valid_syntax_then_ok() {
-        let paths = vec![resource_path("first_steps.st")];
+        let paths = vec![shared_resource_path("first_steps.st")];
         let result = check(paths, true);
         assert!(result.is_ok())
     }

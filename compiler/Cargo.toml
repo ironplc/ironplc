@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "analyzer",
     "plc2x",
     "plc2plc",
     "dsl",

@@ -10,6 +10,15 @@ pub fn path_to_test_resource(name: &'static str) -> PathBuf {
     path
 }
 
+pub fn path_to_shared_test_resource(name: &'static str) -> PathBuf {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("..");
+    path.push("resources");
+    path.push("test");
+    path.push(name);
+    path
+}
+
 #[test]
 fn check_when_not_a_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("ironplcc")?;
@@ -44,7 +53,7 @@ fn check_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("ironplcc")?;
 
     cmd.arg("check")
-        .arg(path_to_test_resource("first_steps.st"));
+        .arg(path_to_shared_test_resource("first_steps.st"));
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("OK"));
@@ -83,7 +92,7 @@ fn check_when_syntax_error_file_then_err() -> Result<(), Box<dyn std::error::Err
     let mut cmd = Command::cargo_bin("ironplcc")?;
 
     cmd.arg("check")
-        .arg(path_to_test_resource("first_steps_syntax_error.st"));
+        .arg(path_to_shared_test_resource("first_steps_syntax_error.st"));
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("Syntax error"));
@@ -95,8 +104,9 @@ fn check_when_syntax_error_file_then_err() -> Result<(), Box<dyn std::error::Err
 fn check_when_semantic_error_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("ironplcc")?;
 
-    cmd.arg("check")
-        .arg(path_to_test_resource("first_steps_semantic_error.st"));
+    cmd.arg("check").arg(path_to_shared_test_resource(
+        "first_steps_semantic_error.st",
+    ));
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("Enumeration uses value"));
