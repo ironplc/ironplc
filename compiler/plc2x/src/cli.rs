@@ -286,7 +286,9 @@ fn diagnostic(problem: Problem, path: &Path, message: String) -> Vec<Diagnostic>
 
 #[cfg(test)]
 mod tests {
-    use crate::{cli::check, test_helpers::resource_path, test_helpers::shared_resource_path};
+    use ironplc_test::shared_resource_path;
+
+    use crate::{cli::check, test_helpers::resource_path};
 
     #[test]
     fn first_steps_when_invalid_syntax_then_error() {

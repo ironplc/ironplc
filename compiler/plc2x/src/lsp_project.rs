@@ -375,12 +375,10 @@ fn map_label(
 mod test {
     use ironplc_dsl::core::SourceSpan;
     use ironplc_parser::token::{Token, TokenType};
+    use ironplc_test::read_shared_resource;
     use lsp_types::{SemanticToken, Url};
 
-    use crate::{
-        project::FileBackedProject,
-        test_helpers::{read_resource, read_shared_resource},
-    };
+    use crate::project::FileBackedProject;
 
     use super::{LspProject, LspTokenType};
 

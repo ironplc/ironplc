@@ -137,10 +137,8 @@ pub(crate) fn semantic(library: &Library) -> SemanticResult {
 mod tests {
     use crate::stages::analyze;
     use crate::stages::CompilationSet;
-    use crate::test_helpers;
     use ironplc_dsl::core::FileId;
-    use test_helpers::*;
-
+    use ironplc_test::read_shared_resource;
     use crate::stages::CompilationSource;
 
     impl<'a> CompilationSet<'a> {
@@ -157,28 +155,28 @@ mod tests {
 
     #[test]
     fn analyze_when_first_steps_then_result_is_ok() {
-        let src = read_resource("first_steps.st");
+        let src = read_shared_resource("first_steps.st");
         let res = analyze(&CompilationSet::of_source(&src));
         assert!(res.is_ok());
     }
 
     #[test]
     fn analyze_when_first_steps_syntax_error_then_result_is_err() {
-        let src = read_resource("first_steps_syntax_error.st");
+        let src = read_shared_resource("first_steps_syntax_error.st");
         let res = analyze(&CompilationSet::of_source(&src));
         assert!(res.is_err())
     }
 
     #[test]
     fn analyze_when_first_steps_semantic_error_then_result_is_err() {
-        let src = read_resource("first_steps_semantic_error.st");
+        let src = read_shared_resource("first_steps_semantic_error.st");
         let res = analyze(&CompilationSet::of_source(&src));
         assert!(res.is_err())
     }
 
     #[test]
     fn analyze_2() {
-        let src = read_resource("main.st");
+        let src = read_shared_resource("main.st");
         let res = analyze(&CompilationSet::of_source(&src));
         assert!(res.is_ok());
     }

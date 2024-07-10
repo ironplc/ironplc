@@ -14,6 +14,7 @@ maintenance = { status = "experimental" }
 ironplc-parser = { path = "../parser", version = "0.69.0" }
 ironplc-dsl = { path = "../dsl", version = "0.69.0" }
 ironplc-problems = { path = "../problems", version = "0.69.0" }
+ironplc-test = { path = "../test", version = "0.69.0" }
 log = "0.4.20"
 phf = { version = "0.11", features = ["macros"] }
 petgraph = { version = "0.6.2" }
