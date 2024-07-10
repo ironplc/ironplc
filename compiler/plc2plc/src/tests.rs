@@ -7,6 +7,7 @@ mod test {
     use dsl::core::FileId;
 
     use ironplc_parser::parse_program;
+    use ironplc_test::read_shared_resource;
 
     use crate::write_to_string;
 
@@ -20,18 +21,8 @@ mod test {
         fs::read_to_string(path.clone()).expect(format!("Unable to read file {:?}", path).as_str())
     }
 
-    pub fn read_common_resource(name: &'static str) -> String {
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        // TODO move these resources to a common directory so that they can be used
-        // by more than one set of tests without crossing module boundaries
-        path.push("../resources/test");
-        path.push(name);
-
-        fs::read_to_string(path.clone()).expect(format!("Unable to read file {:?}", path).as_str())
-    }
-
     pub fn parse_and_render_resource(name: &'static str) -> String {
-        let source = read_common_resource(name);
+        let source = read_shared_resource(name);
         let library = parse_program(&source, &FileId::default()).unwrap();
         write_to_string(&library).unwrap()
     }

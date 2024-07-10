@@ -500,6 +500,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ironplc-analyzer"
+version = "0.69.0"
+dependencies = [
+ "encoding_rs",
+ "fixedbitset",
+ "ironplc-dsl",
+ "ironplc-parser",
+ "ironplc-problems",
+ "ironplc-test",
+ "log",
+ "petgraph",
+ "phf",
+]
+
+[[package]]
 name = "ironplc-dsl"
 version = "0.69.0"
 dependencies = [
@@ -518,6 +533,7 @@ version = "0.69.0"
 dependencies = [
  "ironplc-dsl",
  "ironplc-problems",
+ "ironplc-test",
  "logos",
  "peg",
  "phf",
@@ -531,6 +547,7 @@ dependencies = [
  "dsl_macro_derive",
  "ironplc-dsl",
  "ironplc-parser",
+ "ironplc-test",
  "paste",
 ]
 
@@ -542,6 +559,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ironplc-test"
+version = "0.69.0"
+
+[[package]]
 name = "ironplcc"
 version = "0.69.0"
 dependencies = [
@@ -549,18 +570,16 @@ dependencies = [
  "clap",
  "codespan-reporting",
  "crossbeam-channel",
- "encoding_rs",
  "env_logger",
- "fixedbitset",
+ "ironplc-analyzer",
  "ironplc-dsl",
  "ironplc-parser",
  "ironplc-plc2plc",
  "ironplc-problems",
+ "ironplc-test",
  "log",
  "lsp-server",
  "lsp-types",
- "petgraph",
- "phf",
  "predicates",
  "serde",
  "serde_json",

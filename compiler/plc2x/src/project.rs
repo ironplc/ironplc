@@ -5,6 +5,11 @@
 
 use std::{collections::HashMap, fs, path::Path};
 
+use ironplc_analyzer::{
+    compilation_set::{CompilationSet, CompilationSource},
+    source::Source,
+    stages::{analyze, tokenize},
+};
 use ironplc_dsl::{
     core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
@@ -12,12 +17,6 @@ use ironplc_dsl::{
 use ironplc_parser::token::Token;
 use ironplc_problems::Problem;
 use log::{info, trace, warn};
-
-use crate::{
-    compilation_set::{CompilationSet, CompilationSource},
-    source::Source,
-    stages::{analyze, tokenize},
-};
 
 /// A project consisting of one or more files.
 ///

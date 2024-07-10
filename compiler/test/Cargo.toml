@@ -1,0 +1,11 @@
+[package]
+name = "ironplc-test"
+description = "Test resources."
+version = "0.69.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[badges]
+maintenance = { status = "experimental" }
