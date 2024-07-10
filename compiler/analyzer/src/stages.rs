@@ -137,9 +137,9 @@ pub(crate) fn semantic(library: &Library) -> SemanticResult {
 mod tests {
     use crate::stages::analyze;
     use crate::stages::CompilationSet;
+    use crate::stages::CompilationSource;
     use ironplc_dsl::core::FileId;
     use ironplc_test::read_shared_resource;
-    use crate::stages::CompilationSource;
 
     impl<'a> CompilationSet<'a> {
         fn of_source(str: &String) -> Self {
