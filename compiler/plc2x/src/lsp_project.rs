@@ -334,35 +334,6 @@ fn map_label(
                     lsp_types::Position::new(end_line, end_offset),
                 );
             }
-            compilation_set::CompilationSource::TextRef((contents, _id)) => {
-                let mut start_line = 0;
-                let mut start_offset = 0;
-
-                for char in contents[0..label.location.start].chars() {
-                    if char == '\n' {
-                        start_line += 1;
-                        start_offset = 0;
-                    } else {
-                        start_offset += 1;
-                    }
-                }
-
-                let mut end_line = start_line;
-                let mut end_offset = start_offset;
-                for char in contents[label.location.start..label.location.start].chars() {
-                    if char == '\n' {
-                        end_line += 1;
-                        end_offset = 0;
-                    } else {
-                        end_offset += 1;
-                    }
-                }
-
-                return lsp_types::Range::new(
-                    lsp_types::Position::new(start_line, start_offset),
-                    lsp_types::Position::new(end_line, end_offset),
-                );
-            }
         }
     }
     lsp_types::Range::new(

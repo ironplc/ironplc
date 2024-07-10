@@ -126,7 +126,6 @@ impl Project for FileBackedProject {
 
         CompilationSet {
             sources: all_sources,
-            references: vec![],
         }
     }
 
@@ -184,7 +183,6 @@ mod test {
     fn compilation_set_when_empty_then_ok() {
         let project = FileBackedProject::default();
         assert_eq!(0, project.compilation_set().sources.len());
-        assert_eq!(0, project.compilation_set().references.len());
     }
 
     #[test]
