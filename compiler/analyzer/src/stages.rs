@@ -70,10 +70,6 @@ pub(crate) fn resolve_types(compilation_set: &CompilationSet) -> Result<Library,
                 Ok(lib) => library = library.extend(lib),
                 Err(err) => diagnostics.push(err),
             },
-            CompilationSource::TextRef(txt) => match parse(txt.0, &txt.1) {
-                Ok(lib) => library = library.extend(lib),
-                Err(err) => diagnostics.push(err),
-            },
         }
     }
 
@@ -141,14 +137,13 @@ mod tests {
     use ironplc_dsl::core::FileId;
     use ironplc_test::read_shared_resource;
 
-    impl<'a> CompilationSet<'a> {
+    impl CompilationSet {
         fn of_source(str: &String) -> Self {
             Self {
                 sources: vec![CompilationSource::Text((
                     str.to_string(),
                     FileId::default(),
                 ))],
-                references: vec![],
             }
         }
     }

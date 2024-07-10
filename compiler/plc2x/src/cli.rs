@@ -70,7 +70,6 @@ pub fn echo(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
 
                 print!("{}", output);
             }
-            CompilationSource::TextRef(_) => {}
         }
     }
 
