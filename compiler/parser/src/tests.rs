@@ -1,9 +1,6 @@
 //! Tests of parser.
 #[cfg(test)]
 mod test {
-    use std::fs;
-    use std::path::PathBuf;
-
     use dsl::common::{
         ConstantKind, DataTypeDeclarationKind, DeclarationQualifier, EnumeratedSpecificationInit,
         EnumerationDeclaration, FunctionBlockBodyKind, FunctionBlockDeclaration,
@@ -20,20 +17,13 @@ mod test {
     use dsl::textual::{
         CompareOp, ExprKind, Function, Operator, ParamAssignmentKind, StmtKind, UnaryOp, Variable,
     };
+    use ironplc_test::read_shared_resource;
     use time::Duration;
 
     use crate::parse_program;
 
-    pub fn read_resource(name: &'static str) -> String {
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("../resources/test");
-        path.push(name);
-
-        fs::read_to_string(path.clone()).expect(format!("Unable to read file {:?}", path).as_str())
-    }
-
     pub fn parse_resource(name: &'static str) -> Result<Library, Diagnostic> {
-        let source = read_resource(name);
+        let source = read_shared_resource(name);
         parse_program(&source, &FileId::default())
     }
 
@@ -205,7 +195,7 @@ END_FUNCTION";
 
     #[test]
     fn parse_when_first_steps_function_block_counter_fbd_then_builds_structure() {
-        let src = read_resource("first_steps_function_block_counter_fbd.st");
+        let src = read_shared_resource("first_steps_function_block_counter_fbd.st");
         let expected = new_library(LibraryElementKind::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("CounterFBD"),
@@ -239,7 +229,7 @@ END_FUNCTION";
 
     #[test]
     fn parse_when_first_steps_func_avg_val_then_builds_structure() {
-        let src = read_resource("first_steps_func_avg_val.st");
+        let src = read_shared_resource("first_steps_func_avg_val.st");
         let expected = new_library(LibraryElementKind::FunctionDeclaration(
             FunctionDeclaration {
                 name: Id::from("AverageVal"),
@@ -300,7 +290,7 @@ END_FUNCTION";
 
     #[test]
     fn parse_when_first_steps_program_declaration_then_builds_structure() {
-        let src = read_resource("first_steps_program.st");
+        let src = read_shared_resource("first_steps_program.st");
         let expected = new_library(LibraryElementKind::ProgramDeclaration(ProgramDeclaration {
             type_name: Id::from("plc_prg"),
             variables: vec![
@@ -345,7 +335,7 @@ END_FUNCTION";
 
     #[test]
     fn parse_when_first_steps_configuration_then_builds_structure() {
-        let src = read_resource("first_steps_configuration.st");
+        let src = read_shared_resource("first_steps_configuration.st");
         let expected = new_library(LibraryElementKind::ConfigurationDeclaration(
             ConfigurationDeclaration {
                 name: Id::from("config"),
@@ -388,7 +378,7 @@ END_FUNCTION";
     #[test]
     fn parse_when_first_steps_function_block_logger_then_test_apply_when_names_correct_then_passes()
     {
-        let src = read_resource("first_steps_function_block_logger.st");
+        let src = read_shared_resource("first_steps_function_block_logger.st");
         let expected = new_library(LibraryElementKind::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("LOGGER"),
@@ -424,7 +414,7 @@ END_FUNCTION";
 
     #[test]
     fn parse_when_first_steps_function_block_counter_sfc_then_builds_structure() {
-        let src = read_resource("first_steps_function_block_counter_sfc.st");
+        let src = read_shared_resource("first_steps_function_block_counter_sfc.st");
         let expected = new_library(LibraryElementKind::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("CounterSFC"),
@@ -528,7 +518,7 @@ END_FUNCTION";
 
     #[test]
     fn parse_when_first_steps_data_type_decl_then_builds_structure() {
-        let src = read_resource("first_steps_data_type_decl.st");
+        let src = read_shared_resource("first_steps_data_type_decl.st");
         let expected = new_library(LibraryElementKind::DataTypeDeclaration(
             DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
                 type_name: Id::from("LOGLEVEL"),

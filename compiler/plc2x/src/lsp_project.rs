@@ -1,5 +1,6 @@
 //! Adapts data types between what is required by the compiler
 //! and the language server protocol.
+use ironplc_analyzer::compilation_set::{self, CompilationSet};
 use ironplc_dsl::core::FileId;
 use ironplc_parser::token::{Token, TokenType};
 use log::error;
@@ -9,7 +10,6 @@ use lsp_types::{
 };
 use lsp_types::{SemanticToken, Url};
 
-use crate::compilation_set::{self, CompilationSet};
 use crate::project::Project;
 
 /// The LSP project provides a view onto a project that accepts
@@ -375,9 +375,10 @@ fn map_label(
 mod test {
     use ironplc_dsl::core::SourceSpan;
     use ironplc_parser::token::{Token, TokenType};
+    use ironplc_test::read_shared_resource;
     use lsp_types::{SemanticToken, Url};
 
-    use crate::{project::FileBackedProject, test_helpers::read_resource};
+    use crate::project::FileBackedProject;
 
     use super::{LspProject, LspTokenType};
 
@@ -413,7 +414,7 @@ mod test {
     fn tokenize_when_first_steps_then_has_tokens() {
         let mut proj = new_empty_project();
         let url = Url::parse(FAKE_PATH).unwrap();
-        let content = read_resource("first_steps.st");
+        let content = read_shared_resource("first_steps.st");
         proj.change_text_document(&url, content);
 
         let result = proj.tokenize(&url);

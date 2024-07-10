@@ -1,19 +1,4 @@
-use crate::stages::parse;
-use crate::stages::resolve_types;
-use ironplc_dsl::common::*;
-use ironplc_dsl::core::FileId;
-
-use std::fs;
 use std::path::PathBuf;
-
-#[cfg(test)]
-pub fn read_resource(name: &'static str) -> String {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("resources/test");
-    path.push(name);
-
-    fs::read_to_string(path).expect("Unable to read file")
-}
 
 #[cfg(test)]
 pub fn resource_path(name: &'static str) -> PathBuf {
@@ -21,13 +6,4 @@ pub fn resource_path(name: &'static str) -> PathBuf {
     path.push("resources/test");
     path.push(name);
     path
-}
-
-#[cfg(test)]
-pub fn parse_and_resolve_types(program: &str) -> Library {
-    use crate::compilation_set::CompilationSet;
-
-    let library = parse(program, &FileId::default()).unwrap();
-    let compilation_set = CompilationSet::of(library);
-    resolve_types(&compilation_set).unwrap()
 }

@@ -1,6 +1,6 @@
 [package]
-name = "ironplc-parser"
-description = "Parser for IEC 61131-3 language elements."
+name = "ironplc-analyzer"
+description = "Semantic analyzer for PLC code."
 version = "0.69.0"
 edition.workspace = true
 authors.workspace = true
@@ -10,15 +10,16 @@ repository.workspace = true
 [badges]
 maintenance = { status = "experimental" }
 
-[features]
-debug = ["peg/trace"]
-trace = ["debug"]
-
 [dependencies]
-time = "0.3.17"
-phf = { version = "0.11", features = ["macros"] }
+ironplc-parser = { path = "../parser", version = "0.69.0" }
 ironplc-dsl = { path = "../dsl", version = "0.69.0" }
 ironplc-problems = { path = "../problems", version = "0.69.0" }
 ironplc-test = { path = "../test", version = "0.69.0" }
-logos = "0.14.0"
-peg = "0.8.3"
+log = "0.4.20"
+phf = { version = "0.11", features = ["macros"] }
+petgraph = { version = "0.6.2" }
+fixedbitset = { version = "0.4.2" }
+encoding_rs = "0.8"
+
+[dev-dependencies]
+ironplc-parser = { path = "../parser", version = "0.69.0" }
