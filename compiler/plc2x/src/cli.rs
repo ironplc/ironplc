@@ -8,15 +8,12 @@ use codespan_reporting::{
         termcolor::{ColorChoice, StandardStream},
     },
 };
-use ironplc_analyzer::{
-    compilation_set::CompilationSource,
-    stages::{analyze, parse},
-};
+use ironplc_analyzer::{compilation_set::CompilationSource, stages::analyze};
 use ironplc_dsl::{
     core::FileId,
     diagnostic::{Diagnostic, Label},
 };
-use ironplc_parser::tokenize_program;
+use ironplc_parser::{parse_program, tokenize_program};
 use ironplc_plc2plc::write_to_string;
 use ironplc_problems::Problem;
 use log::{debug, error, trace};
@@ -59,7 +56,7 @@ pub fn echo(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
                 print!("{}", output);
             }
             CompilationSource::Text(txt) => {
-                let lib = parse(&txt.0, &txt.1).map_err(|e| {
+                let lib = parse_program(&txt.0, &txt.1).map_err(|e| {
                     handle_diagnostics(vec![e], None, suppress_output);
                     String::from("Error reading source files")
                 })?;

@@ -6,7 +6,7 @@ use ironplc_dsl::{
     core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
-use ironplc_parser::{token::Token, tokenize_program};
+use ironplc_parser::parse_program;
 use ironplc_problems::Problem;
 
 use crate::{
@@ -18,26 +18,9 @@ use crate::{
     rule_program_task_definition_exists, rule_unsupported_stdlib_type,
     rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
     rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
-    rule_var_decl_global_const_requires_external_const, xform_assign_file_id,
-    xform_resolve_late_bound_data_decl, xform_resolve_late_bound_expr_kind,
-    xform_resolve_late_bound_type_initializer,
+    rule_var_decl_global_const_requires_external_const, xform_resolve_late_bound_data_decl,
+    xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
 };
-
-pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>) {
-    tokenize_program(source, file_id)
-}
-
-/// Parse create a library (set of elements) if the text is valid.
-///
-/// Returns `Ok(Library)` if parsing succeeded.
-/// Returns `Err(Diagnostic)` if parsing did not succeed.
-pub fn parse(source: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
-    let library = ironplc_parser::parse_program(source, file_id)?;
-
-    // The parser does not know about the concept of files, so we apply the file
-    // ID as a post transformation.
-    xform_assign_file_id::apply(library, file_id)
-}
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
 ///
@@ -66,7 +49,7 @@ pub(crate) fn resolve_types(compilation_set: &CompilationSet) -> Result<Library,
             CompilationSource::Library(lib) => {
                 library = library.extend(lib.clone());
             }
-            CompilationSource::Text(txt) => match parse(&txt.0, &txt.1) {
+            CompilationSource::Text(txt) => match parse_program(&txt.0, &txt.1) {
                 Ok(lib) => library = library.extend(lib),
                 Err(err) => diagnostics.push(err),
             },
