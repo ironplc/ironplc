@@ -1,6 +1,6 @@
 [package]
 name = "ironplc-problems"
-description = "Generated problem messages."
+description = "Generated problem messages. This crate turns a CSV file containing error descriptions into an enumeration."
 version = "0.69.0"
 edition.workspace = true
 authors.workspace = true

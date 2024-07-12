@@ -1,6 +1,6 @@
 [package]
 name = "ironplc-dsl"
-description = "Domain-specific language objects for IEC 61131 language elements."
+description = "Domain-specific language objects for IEC 61131 language elements. Defines the intermediate set of objects are are the output of parsing and contains the syntax tree."
 version = "0.69.0"
 edition.workspace = true
 authors.workspace = true

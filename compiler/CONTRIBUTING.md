@@ -63,17 +63,6 @@ cargo test --features trace | pegviz --output ./pegviz.html
 
 ## How It Works
 
-The project is split into several parts.
-
-* `dsl` defines relevant domain objects from the IEC 61131-3 language; it is
-   the intermediate set of objects from parsing and contains an abstract syntax
-   tree as one component (among many)
-* `dsl-macro-dervice` defines macros used to implement `dsl`
-* `parser` is tokenizes and parses an IEC 61131-3 text file into the `dsl`
-   objects
-* `plc2x` is the front-end for a source-to-source compiler; it assembles all
-   the pieces
-* `problems` defines the set of all possible compiler errors (uses code generation
-   so that the problem codes are shared with the website).
-
-There is no strict definition of what goes where. Better rules would be nice.
+The project is split into several parts. The best way to find out
+what each part does is to open the Cargo.toml file and read the
+description.

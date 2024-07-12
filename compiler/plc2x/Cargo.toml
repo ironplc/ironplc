@@ -1,6 +1,6 @@
 [package]
 name = "ironplcc"
-description = "Compiler front-end for ironplc."
+description = "Compiler front-end for ironplc. This component provides both the CLI and Language Server Protocol"
 version = "0.69.0"
 edition.workspace = true
 authors.workspace = true

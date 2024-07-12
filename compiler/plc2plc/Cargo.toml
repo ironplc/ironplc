@@ -1,6 +1,6 @@
 [package]
 name = "ironplc-plc2plc"
-description = "Generates PLC code from PLC code."
+description = "Generates PLC code from PLC code. The primary purpose is to validate parsing but it can be useful to understand the internal representation."
 version = "0.69.0"
 edition.workspace = true
 authors.workspace = true
