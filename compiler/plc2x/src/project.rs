@@ -7,7 +7,6 @@ use std::{collections::HashMap, fs, path::Path};
 
 use ironplc_analyzer::{
     compilation_set::{CompilationSet, CompilationSource},
-    source::Source,
     stages::analyze,
 };
 use ironplc_dsl::{
@@ -17,6 +16,8 @@ use ironplc_dsl::{
 use ironplc_parser::{token::Token, tokenize_program};
 use ironplc_problems::Problem;
 use log::{info, trace, warn};
+
+use crate::source::Source;
 
 /// A project consisting of one or more files.
 ///

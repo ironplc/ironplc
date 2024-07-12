@@ -372,7 +372,6 @@ dependencies = [
 name = "ironplc-analyzer"
 version = "0.69.0"
 dependencies = [
- "encoding_rs",
  "fixedbitset",
  "ironplc-dsl",
  "ironplc-parser",
@@ -439,6 +438,7 @@ dependencies = [
  "clap",
  "codespan-reporting",
  "crossbeam-channel",
+ "encoding_rs",
  "env_logger",
  "ironplc-analyzer",
  "ironplc-dsl",
