@@ -19,7 +19,6 @@ log = "0.4.20"
 phf = { version = "0.11", features = ["macros"] }
 petgraph = { version = "0.6.2" }
 fixedbitset = { version = "0.4.2" }
-encoding_rs = "0.8"
 
 [dev-dependencies]
 ironplc-parser = { path = "../parser", version = "0.69.0" }
