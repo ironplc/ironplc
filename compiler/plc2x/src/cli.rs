@@ -8,12 +8,11 @@ use codespan_reporting::{
         termcolor::{ColorChoice, StandardStream},
     },
 };
-use ironplc_analyzer::{compilation_set::CompilationSource, stages::analyze};
 use ironplc_dsl::{
     core::FileId,
     diagnostic::{Diagnostic, Label},
 };
-use ironplc_parser::{parse_program, tokenize_program};
+use ironplc_parser::tokenize_program;
 use ironplc_plc2plc::write_to_string;
 use ironplc_problems::Problem;
 use log::{debug, error, trace};
@@ -28,12 +27,12 @@ use crate::project::{FileBackedProject, Project};
 
 // Checks specified files.
 pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
-    let project = create_project(paths, suppress_output)?;
+    let mut project = create_project(paths, suppress_output)?;
 
     // Analyze the set
-    if let Err(err) = analyze(&project.compilation_set()) {
+    if let Err(err) = project.semantic() {
         trace!("Errors {:?}", err);
-        handle_diagnostics(err, Some(&project), suppress_output);
+        handle_diagnostics(&err, Some(&project), suppress_output);
         return Err(String::from("Error during analysis"));
     }
 
@@ -42,30 +41,31 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
 }
 
 pub fn echo(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
-    let project = create_project(paths, suppress_output)?;
+    let mut project = create_project(paths, suppress_output)?;
 
-    // Write the set
-    for src in project.compilation_set().sources {
-        match src {
-            CompilationSource::Library(lib) => {
-                let output = write_to_string(&lib).map_err(|e| {
-                    handle_diagnostics(e, None, suppress_output);
+    // Collect the results and output after because getting the results may change
+    // the project itself
+    let mut results = vec![];
+    for src in project.sources_mut() {
+        results.push(src.library());
+    }
+
+    for result in results {
+        match result {
+            Ok(library) => {
+                let output = write_to_string(library).map_err(|e| {
+                    handle_diagnostics(&e, None, suppress_output);
                     String::from("Error echo source")
                 })?;
 
                 print!("{}", output);
             }
-            CompilationSource::Text(txt) => {
-                let lib = parse_program(&txt.0, &txt.1).map_err(|e| {
-                    handle_diagnostics(vec![e], None, suppress_output);
-                    String::from("Error reading source files")
-                })?;
-                let output = write_to_string(&lib).map_err(|e| {
-                    handle_diagnostics(e, None, suppress_output);
-                    String::from("Error echo source")
-                })?;
+            Err(diagnostics) => {
+                let diagnostics: Vec<Diagnostic> = diagnostics.into_iter().cloned().collect();
+                // TODO this needs to be improved but will wait for changes to source
+                handle_diagnostics(&diagnostics, None, suppress_output);
 
-                print!("{}", output);
+                print!("Error echo source");
             }
         }
     }
@@ -76,24 +76,23 @@ pub fn echo(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
 pub fn tokenize(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
     let project = create_project(paths, suppress_output)?;
 
-    for contents in project.compilation_set().sources {
-        if let CompilationSource::Text(txt) = contents {
-            let (tokens, diagnostics) = tokenize_program(txt.0.as_str(), &txt.1);
+    // Write the set
+    for src in project.sources() {
+        let (tokens, diagnostics) = tokenize_program(src.as_string(), src.file_id());
 
-            let tokens = tokens
-                .iter()
-                .fold(String::new(), |s1, s2| s1 + "\n" + s2.to_string().as_str())
-                .trim_start()
-                .to_string();
+        let tokens = tokens
+            .iter()
+            .fold(String::new(), |s1, s2| s1 + "\n" + s2.to_string().as_str())
+            .trim_start()
+            .to_string();
 
-            debug!("{}", tokens);
-            println!("{}", tokens);
+        debug!("{}", tokens);
+        println!("{}", tokens);
 
-            if !diagnostics.is_empty() {
-                println!("Number of errors {}", diagnostics.len());
-                handle_diagnostics(diagnostics, Some(&project), suppress_output);
-                return Err(String::from("Not valid"));
-            }
+        if !diagnostics.is_empty() {
+            println!("Number of errors {}", diagnostics.len());
+            handle_diagnostics(&diagnostics, Some(&project), suppress_output);
+            return Err(String::from("Not valid"));
         }
     }
 
@@ -110,7 +109,7 @@ fn create_project(paths: Vec<PathBuf>, suppress_output: bool) -> Result<FileBack
         match enumerate_files(&path) {
             Ok(mut paths) => files.append(&mut paths),
             Err(err) => {
-                handle_diagnostics(err, None, suppress_output);
+                handle_diagnostics(&err, None, suppress_output);
                 had_error = true;
             }
         }
@@ -135,7 +134,7 @@ fn create_project(paths: Vec<PathBuf>, suppress_output: bool) -> Result<FileBack
     }
 
     if !errors.is_empty() {
-        handle_diagnostics(errors, Some(&project), suppress_output);
+        handle_diagnostics(&errors, Some(&project), suppress_output);
         return Err(String::from("Error reading source files"));
     }
 
@@ -186,7 +185,7 @@ fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, Vec<Diagnostic>> {
 
 /// Converts an IronPLC diagnostic into the
 fn handle_diagnostics(
-    diagnostics: Vec<Diagnostic>,
+    diagnostics: &[Diagnostic],
     project: Option<&FileBackedProject>,
     suppress_output: bool,
 ) {
@@ -197,7 +196,7 @@ fn handle_diagnostics(
         let mut files: SimpleFiles<String, &str> = SimpleFiles::new();
 
         let mut unique_files: HashSet<&FileId> = HashSet::new();
-        for diagnostic in &diagnostics {
+        for diagnostic in diagnostics {
             for file_id in diagnostic.file_ids() {
                 unique_files.insert(file_id);
             }

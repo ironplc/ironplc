@@ -6,16 +6,12 @@ use ironplc_dsl::{
     core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
-use ironplc_parser::parse_program;
 use ironplc_problems::Problem;
 
 use crate::{
-    compilation_set::{CompilationSet, CompilationSource},
-    ironplc_dsl::common::Library,
-    result::SemanticResult,
-    rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
-    rule_enumeration_values_unique, rule_function_block_invocation, rule_pous_no_cycles,
-    rule_program_task_definition_exists, rule_unsupported_stdlib_type,
+    ironplc_dsl::common::Library, result::SemanticResult, rule_decl_struct_element_unique_names,
+    rule_decl_subrange_limits, rule_enumeration_values_unique, rule_function_block_invocation,
+    rule_pous_no_cycles, rule_program_task_definition_exists, rule_unsupported_stdlib_type,
     rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
     rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, xform_resolve_late_bound_data_decl,
@@ -27,37 +23,24 @@ use crate::{
 /// Returns `Ok(Library)` if analysis succeeded (containing a possibly new library) that is
 /// the merge of the inputs.
 /// Returns `Err(Diagnostic)` if analysis did not succeed.
-pub fn analyze(compilation_set: &CompilationSet) -> Result<(), Vec<Diagnostic>> {
-    if compilation_set.sources.is_empty() {
+pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
+    if sources.is_empty() {
         let span = SourceSpan::range(0, 0).with_file_id(&FileId::default());
         return Err(vec![Diagnostic::problem(
             Problem::NoContent,
             Label::span(span, "First location"),
         )]);
     }
-    let library = resolve_types(compilation_set)?;
+    let library = resolve_types(sources)?;
     semantic(&library)
 }
 
-pub(crate) fn resolve_types(compilation_set: &CompilationSet) -> Result<Library, Vec<Diagnostic>> {
+pub(crate) fn resolve_types(sources: &[&Library]) -> Result<Library, Vec<Diagnostic>> {
     // We want to analyze this as a complete set, so we need to join the items together
     // into a single library. Extend owns the item so after this we are free to modify
     let mut library = Library::new();
-    let mut diagnostics: Vec<Diagnostic> = Vec::new();
-    for x in &compilation_set.sources {
-        match x {
-            CompilationSource::Library(lib) => {
-                library = library.extend(lib.clone());
-            }
-            CompilationSource::Text(txt) => match parse_program(&txt.0, &txt.1) {
-                Ok(lib) => library = library.extend(lib),
-                Err(err) => diagnostics.push(err),
-            },
-        }
-    }
-
-    if !diagnostics.is_empty() {
-        return Err(diagnostics);
+    for x in sources {
+        library = library.extend((*x).clone());
     }
 
     let xforms: Vec<fn(Library) -> Result<Library, Vec<Diagnostic>>> = vec![
@@ -115,47 +98,29 @@ pub(crate) fn semantic(library: &Library) -> SemanticResult {
 #[cfg(test)]
 mod tests {
     use crate::stages::analyze;
-    use crate::stages::CompilationSet;
-    use crate::stages::CompilationSource;
+    use ironplc_dsl::common::Library;
     use ironplc_dsl::core::FileId;
+    use ironplc_parser::parse_program;
     use ironplc_test::read_shared_resource;
-
-    impl CompilationSet {
-        fn of_source(str: &String) -> Self {
-            Self {
-                sources: vec![CompilationSource::Text((
-                    str.to_string(),
-                    FileId::default(),
-                ))],
-            }
-        }
-    }
 
     #[test]
     fn analyze_when_first_steps_then_result_is_ok() {
-        let src = read_shared_resource("first_steps.st");
-        let res = analyze(&CompilationSet::of_source(&src));
+        let lib = parse_shared_library("first_steps.st");
+        let res = analyze(&vec![&lib]);
         assert!(res.is_ok());
     }
 
     #[test]
-    fn analyze_when_first_steps_syntax_error_then_result_is_err() {
-        let src = read_shared_resource("first_steps_syntax_error.st");
-        let res = analyze(&CompilationSet::of_source(&src));
-        assert!(res.is_err())
-    }
-
-    #[test]
     fn analyze_when_first_steps_semantic_error_then_result_is_err() {
-        let src = read_shared_resource("first_steps_semantic_error.st");
-        let res = analyze(&CompilationSet::of_source(&src));
+        let lib = parse_shared_library("first_steps_semantic_error.st");
+        let res = analyze(&vec![&lib]);
         assert!(res.is_err())
     }
 
     #[test]
     fn analyze_2() {
-        let src = read_shared_resource("main.st");
-        let res = analyze(&CompilationSet::of_source(&src));
+        let lib = parse_shared_library("main.st");
+        let res = analyze(&vec![&lib]);
         assert!(res.is_ok());
     }
 
@@ -174,17 +139,15 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let mut compilation_set = CompilationSet::new();
-        compilation_set.push(CompilationSource::Text((
-            program1.to_owned(),
-            FileId::default(),
-        )));
-        compilation_set.push(CompilationSource::Text((
-            program2.to_owned(),
-            FileId::default(),
-        )));
+        let program1 = parse_program(&program1, &FileId::default()).unwrap();
+        let program2 = parse_program(&program2, &FileId::default()).unwrap();
 
-        let result = analyze(&compilation_set);
+        let result = analyze(&vec![&program1, &program2]);
         assert!(result.is_ok())
+    }
+
+    fn parse_shared_library(name: &'static str) -> Library {
+        let src = read_shared_resource(name);
+        parse_program(&src, &FileId::default()).unwrap()
     }
 }

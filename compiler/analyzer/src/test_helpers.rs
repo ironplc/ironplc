@@ -6,9 +6,6 @@ use ironplc_dsl::core::FileId;
 pub fn parse_and_resolve_types(program: &str) -> Library {
     use ironplc_parser::parse_program;
 
-    use crate::compilation_set::CompilationSet;
-
     let library = parse_program(program, &FileId::default()).unwrap();
-    let compilation_set = CompilationSet::of(library);
-    resolve_types(&compilation_set).unwrap()
+    resolve_types(&vec![&library]).unwrap()
 }

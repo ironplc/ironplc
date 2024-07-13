@@ -4,7 +4,6 @@
 extern crate ironplc_dsl;
 extern crate ironplc_parser;
 
-pub mod compilation_set;
 mod result;
 mod rule_decl_struct_element_unique_names;
 mod rule_decl_subrange_limits;

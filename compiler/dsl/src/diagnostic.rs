@@ -35,7 +35,7 @@ impl QualifiedPosition {
 }
 
 /// A position marker that only has an offset in a file.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Location {
     /// Byte offset from start of string (0-indexed)
     pub start: usize,
@@ -57,7 +57,7 @@ impl std::fmt::Display for Location {
 ///
 /// Normally this indicates the location of an error or warning along with a
 /// text message describing that position.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Label {
     /// The position of label.
     pub location: Location,
@@ -94,7 +94,7 @@ impl Label {
 
 /// A diagnostic. Diagnostic have a code that is indicative of the category,
 /// a primary location and possibly non-zero set of secondary location.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Diagnostic {
     /// A normally unique value describing the type of diagnostic.
     pub code: String,

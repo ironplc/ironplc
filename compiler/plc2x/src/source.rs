@@ -8,26 +8,56 @@ use std::{
 };
 
 use ironplc_dsl::{
+    common::Library,
     core::FileId,
     diagnostic::{Diagnostic, Label},
 };
+use ironplc_parser::parse_program;
 use ironplc_problems::Problem;
 use log::{debug, trace};
 
 /// The contents of a source file.
-#[derive(Clone, Debug)]
-pub struct Source(String);
+#[derive(Debug)]
+pub struct Source {
+    file_id: FileId,
+    data: String,
+    library: Option<Result<Library, Diagnostic>>,
+}
 
 impl Source {
-    pub fn new(source: String) -> Self {
-        Self(source)
+    pub fn new(source: String, file_id: &FileId) -> Self {
+        Self {
+            file_id: file_id.clone(),
+            data: source,
+            library: None,
+        }
     }
     pub fn try_from_file_id(item: &FileId) -> Result<Source, Diagnostic> {
         let path: PathBuf = item.to_string().into();
-        path_to_source(&path).map(Source)
+        path_to_source(&path).map(|src| Source::new(src, item))
     }
     pub fn as_string(&self) -> &str {
-        self.0.borrow()
+        self.data.borrow()
+    }
+    pub fn file_id(&self) -> &FileId {
+        &self.file_id
+    }
+    pub fn library(&mut self) -> Result<&Library, Vec<&Diagnostic>> {
+        if self.library.is_none() {
+            self.library = Some(parse_program(self.data.borrow(), &self.file_id))
+        }
+
+        match &self.library {
+            Some(result) => match result {
+                Ok(library) => Ok(library),
+                Err(diagnostic) => Err(vec![diagnostic]),
+            },
+            None => {
+                // this will crash the program. While it is should not be possible to
+                // get here, this is a bad practice but I need to refactor source first.
+                todo!()
+            }
+        }
     }
 }
 

@@ -1,6 +1,5 @@
 //! Adapts data types between what is required by the compiler
 //! and the language server protocol.
-use ironplc_analyzer::compilation_set::{self, CompilationSet};
 use ironplc_dsl::core::FileId;
 use ironplc_parser::token::{Token, TokenType};
 use log::error;
@@ -50,11 +49,10 @@ impl LspProject {
             let result = self.wrapped.tokenize(&file_id);
 
             if !result.1.is_empty() {
-                let compilation_set = self.wrapped.compilation_set();
                 return Err(result
                     .1
                     .into_iter()
-                    .map(|err| map_diagnostic(err, &compilation_set))
+                    .map(|err| map_diagnostic(err, self.wrapped.as_ref()))
                     .collect());
             }
 
@@ -70,23 +68,20 @@ impl LspProject {
         Err(vec![])
     }
 
-    pub(crate) fn semantic(&self, url: &Url) -> Vec<lsp_types::Diagnostic> {
+    pub(crate) fn semantic(&mut self, url: &Url) -> Vec<lsp_types::Diagnostic> {
         let path = url.to_file_path();
         if let Ok(path) = path {
             let file_id = FileId::from_path(&path);
+            let semantic_result = self.wrapped.semantic();
 
-            let compilation_set = self.wrapped.compilation_set();
-            let diagnostics: Vec<lsp_types::Diagnostic> = self.wrapped.semantic().map_or_else(
-                |diagnostics| {
-                    diagnostics
-                        .into_iter()
-                        .filter(|d| d.file_ids().contains(&file_id))
-                        .map(|d| map_diagnostic(d, &compilation_set))
-                        .collect()
-                },
-                |()| Vec::new(),
-            );
-            return diagnostics;
+            return match semantic_result {
+                Ok(_) => vec![],
+                Err(diagnostics) => diagnostics
+                    .into_iter()
+                    .filter(|d| d.file_ids().contains(&file_id))
+                    .map(|d| map_diagnostic(d, self.wrapped.as_ref()))
+                    .collect(),
+            };
         } else {
             error!("URL must be convertible to a file path {}", url);
         }
@@ -265,10 +260,10 @@ impl From<LspTokenType> for Option<SemanticToken> {
 /// Convert diagnostic type into the LSP diagnostic type.
 fn map_diagnostic(
     diagnostic: ironplc_dsl::diagnostic::Diagnostic,
-    compilation_set: &CompilationSet,
+    project: &dyn Project,
 ) -> lsp_types::Diagnostic {
     let description = diagnostic.description();
-    let range = map_label(&diagnostic.primary, compilation_set);
+    let range = map_label(&diagnostic.primary, project);
 
     let code_description = match Url::parse(
         format!(
@@ -295,46 +290,40 @@ fn map_diagnostic(
 }
 
 /// Convert the diagnostic label into the LSP range type.
-fn map_label(
-    label: &ironplc_dsl::diagnostic::Label,
-    compilation_set: &CompilationSet,
-) -> lsp_types::Range {
+fn map_label(label: &ironplc_dsl::diagnostic::Label, project: &dyn Project) -> lsp_types::Range {
     let file_id = &label.file_id;
-    let contents = compilation_set.find(file_id);
+    let contents = project.find(file_id);
 
     if let Some(contents) = contents {
-        match contents {
-            compilation_set::CompilationSource::Library(_lib) => {}
-            compilation_set::CompilationSource::Text((contents, _id)) => {
-                let mut start_line = 0;
-                let mut start_offset = 0;
+        let contents = contents.as_string();
 
-                for char in contents[0..label.location.start].chars() {
-                    if char == '\n' {
-                        start_line += 1;
-                        start_offset = 0;
-                    } else {
-                        start_offset += 1;
-                    }
-                }
+        let mut start_line = 0;
+        let mut start_offset = 0;
 
-                let mut end_line = start_line;
-                let mut end_offset = start_offset;
-                for char in contents[label.location.start..label.location.start].chars() {
-                    if char == '\n' {
-                        end_line += 1;
-                        end_offset = 0;
-                    } else {
-                        end_offset += 1;
-                    }
-                }
-
-                return lsp_types::Range::new(
-                    lsp_types::Position::new(start_line, start_offset),
-                    lsp_types::Position::new(end_line, end_offset),
-                );
+        for char in contents[0..label.location.start].chars() {
+            if char == '\n' {
+                start_line += 1;
+                start_offset = 0;
+            } else {
+                start_offset += 1;
             }
         }
+
+        let mut end_line = start_line;
+        let mut end_offset = start_offset;
+        for char in contents[label.location.start..label.location.start].chars() {
+            if char == '\n' {
+                end_line += 1;
+                end_offset = 0;
+            } else {
+                end_offset += 1;
+            }
+        }
+
+        return lsp_types::Range::new(
+            lsp_types::Position::new(start_line, start_offset),
+            lsp_types::Position::new(end_line, end_offset),
+        );
     }
     lsp_types::Range::new(
         lsp_types::Position::new(0, 0),
