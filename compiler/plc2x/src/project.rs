@@ -5,10 +5,7 @@
 
 use std::{collections::HashMap, fs, path::Path};
 
-use ironplc_analyzer::{
-    compilation_set::{CompilationSet, CompilationSource},
-    stages::analyze,
-};
+use ironplc_analyzer::stages::analyze;
 use ironplc_dsl::{
     core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
@@ -34,10 +31,14 @@ pub trait Project {
     fn tokenize(&self, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>);
 
     /// Requests semantic analysis for the project.
-    fn semantic(&self) -> Result<(), Vec<Diagnostic>>;
+    fn semantic(&mut self) -> Result<(), Vec<Diagnostic>>;
 
-    /// Parsed libraries that constitute the project.
-    fn compilation_set(&self) -> CompilationSet;
+    /// Gets the sources that are the project.
+    fn sources(&self) -> Vec<&Source>;
+
+    fn sources_mut(&mut self) -> Vec<&mut Source>;
+
+    fn find(&self, file_id: &FileId) -> Option<&Source>;
 }
 
 /// A project is a collection of files used together as a single unit.
@@ -115,28 +116,14 @@ impl Project for FileBackedProject {
         }
     }
 
-    fn compilation_set(&self) -> CompilationSet {
-        let all_sources: Vec<_> = self
-            .sources
-            .iter()
-            .map(|source| {
-                let file_id = source.0.clone();
-                return CompilationSource::Text((source.1.as_string().to_owned(), file_id));
-            })
-            .collect();
-
-        CompilationSet {
-            sources: all_sources,
-        }
-    }
-
     fn change_text_document(&mut self, file_id: &FileId, content: String) {
         trace!(
             "Change text document sources initial length is {}",
             self.sources.len()
         );
 
-        self.sources.insert(file_id.clone(), Source::new(content));
+        self.sources
+            .insert(file_id.clone(), Source::new(content, file_id));
 
         trace!(
             "Change text document sources new length is {}",
@@ -160,9 +147,52 @@ impl Project for FileBackedProject {
         }
     }
 
-    fn semantic(&self) -> Result<(), Vec<Diagnostic>> {
-        let compilation_set = self.compilation_set();
-        analyze(&compilation_set)
+    fn semantic(&mut self) -> Result<(), Vec<Diagnostic>> {
+        let library_results: Vec<_> = self
+            .sources
+            .iter_mut()
+            .map(|source| source.1.library())
+            .collect();
+
+        // We would like to do "best effort" semantic analysis. So, we will do
+        // semantic analysis on the items we can analyze, and the provide full
+        // diagnostics for any problems
+        let mut all_libraries = vec![];
+        let mut all_diagnostics: Vec<Diagnostic> = vec![];
+        for library_result in library_results {
+            match library_result {
+                Ok(library) => {
+                    all_libraries.push(library);
+                }
+                Err(diagnostics) => {
+                    for diagnostic in diagnostics {
+                        all_diagnostics.push(diagnostic.clone());
+                    }
+                }
+            }
+        }
+
+        // Do the analysis
+        match analyze(&all_libraries) {
+            Ok(_) => Ok(()),
+            Err(diagnostics) => {
+                // If we had an error, then add more diagnostics to any that we already had
+                all_diagnostics.extend(diagnostics);
+                Err(all_diagnostics)
+            }
+        }
+    }
+
+    fn sources(&self) -> Vec<&Source> {
+        self.sources.values().collect()
+    }
+
+    fn sources_mut(&mut self) -> Vec<&mut Source> {
+        self.sources.values_mut().collect()
+    }
+
+    fn find(&self, file_id: &FileId) -> Option<&Source> {
+        self.sources.get(file_id)
     }
 }
 
@@ -177,13 +207,13 @@ mod test {
         let mut project = FileBackedProject::default();
         project.change_text_document(&FileId::default(), "AAA".to_owned());
         project.change_text_document(&FileId::default(), "BBB".to_owned());
-        assert_eq!(1, project.compilation_set().sources.len());
+        assert_eq!(1, project.sources().len());
     }
 
     #[test]
     fn compilation_set_when_empty_then_ok() {
         let project = FileBackedProject::default();
-        assert_eq!(0, project.compilation_set().sources.len());
+        assert_eq!(0, project.sources().len());
     }
 
     #[test]
