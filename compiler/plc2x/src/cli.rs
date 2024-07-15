@@ -283,26 +283,47 @@ fn diagnostic(problem: Problem, path: &Path, message: String) -> Vec<Diagnostic>
 mod tests {
     use ironplc_test::shared_resource_path;
 
-    use crate::{cli::check, test_helpers::resource_path};
+    use crate::{cli::check, cli::echo, test_helpers::resource_path};
 
     #[test]
-    fn first_steps_when_invalid_syntax_then_error() {
+    fn check_first_steps_when_invalid_syntax_then_error() {
         let paths = vec![shared_resource_path("first_steps_semantic_error.st")];
         let result = check(paths, true);
         assert!(result.is_err())
     }
 
     #[test]
-    fn first_steps_when_valid_syntax_then_ok() {
+    fn check_first_steps_when_valid_syntax_then_ok() {
         let paths = vec![shared_resource_path("first_steps.st")];
         let result = check(paths, true);
         assert!(result.is_ok())
     }
 
     #[test]
-    fn first_steps_dir_when_valid_syntax_then_ok() {
+    fn check_first_steps_dir_when_valid_syntax_then_ok() {
         let paths = vec![resource_path("set")];
         let result = check(paths, true);
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    fn echo_first_steps_when_invalid_syntax_then_error() {
+        let paths = vec![shared_resource_path("first_steps_syntax_error.st")];
+        let result = check(paths, true);
+        assert!(result.is_err())
+    }
+
+    #[test]
+    fn echo_first_steps_when_valid_syntax_then_ok() {
+        let paths = vec![shared_resource_path("first_steps.st")];
+        let result = echo(paths, true);
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    fn tokenize_first_steps_when_valid_syntax_then_ok() {
+        let paths = vec![shared_resource_path("first_steps.st")];
+        let result = echo(paths, true);
         assert!(result.is_ok())
     }
 }
