@@ -149,10 +149,11 @@ fn echo_when_semantic_error_file_then_ok() -> Result<(), Box<dyn std::error::Err
 fn tokenize_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("ironplcc")?;
 
-    cmd.arg("tokenize").arg(shared_resource_path("first_steps.st"));
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("Type: EndConfiguration, Value: \'END_CONFIGURATION\', At: Ln 175,Col 0"));
+    cmd.arg("tokenize")
+        .arg(shared_resource_path("first_steps.st"));
+    cmd.assert().success().stdout(predicate::str::contains(
+        "Type: EndConfiguration, Value: \'END_CONFIGURATION\', At: Ln 175,Col 0",
+    ));
 
     Ok(())
 }
