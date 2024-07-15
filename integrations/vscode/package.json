@@ -3,7 +3,7 @@
   "displayName": "IronPLC",
   "publisher": "ironplc",
   "description": "IronPLC is the beginning of a development environment for IEC 61131-3.",
-  "version": "0.69.0",
+  "version": "0.70.0",
   "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0"
