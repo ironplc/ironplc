@@ -25,6 +25,18 @@ pub struct Token {
     pub text: String,
 }
 
+impl Token {
+    pub fn describe(&self) -> String {
+        format!(
+            "Type: {:?}, Value: '{}', At: Ln {},Col {}",
+            self.token_type,
+            self.text.replace('\n', "\\n").replace('\r', "\\r"),
+            self.line,
+            self.col
+        )
+    }
+}
+
 #[cfg(feature = "trace")]
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
