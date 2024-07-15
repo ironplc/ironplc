@@ -50,6 +50,8 @@ pub fn echo(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
         results.push(src.library());
     }
 
+    let mut has_error = false;
+
     for result in results {
         match result {
             Ok(library) => {
@@ -65,12 +67,17 @@ pub fn echo(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
                 // TODO this needs to be improved but will wait for changes to source
                 handle_diagnostics(&diagnostics, None, suppress_output);
 
-                print!("Error echo source");
+                print!("Syntax error");
+
+                has_error = true;
             }
         }
     }
 
-    Ok(())
+    match has_error {
+        true => Err("Tokenize error".to_owned()),
+        false => Ok(()),
+    }
 }
 
 pub fn tokenize(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
@@ -82,7 +89,7 @@ pub fn tokenize(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String
 
         let tokens = tokens
             .iter()
-            .fold(String::new(), |s1, s2| s1 + "\n" + s2.to_string().as_str())
+            .fold(String::new(), |s1, s2| s1 + "\n" + s2.describe().as_str())
             .trim_start()
             .to_string();
 

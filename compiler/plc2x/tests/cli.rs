@@ -105,6 +105,59 @@ fn check_when_semantic_error_file_then_err() -> Result<(), Box<dyn std::error::E
 }
 
 #[test]
+fn echo_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("ironplcc")?;
+
+    cmd.arg("echo").arg(shared_resource_path("first_steps.st"));
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("END_CONFIGURATION"));
+
+    Ok(())
+}
+
+#[test]
+fn echo_when_syntax_error_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("ironplcc")?;
+
+    cmd.arg("echo")
+        .arg(shared_resource_path("first_steps_syntax_error.st"));
+    cmd.assert()
+        .failure()
+        .stdout(predicate::str::contains("Syntax error"))
+        .stderr(predicate::str::contains("Expected"));
+
+    Ok(())
+}
+
+#[test]
+fn echo_when_semantic_error_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
+    // For echo, we are only asking if we could parse, not if it is semantically
+    // valid, so a semantic problem should not be an error.
+    let mut cmd = Command::cargo_bin("ironplcc")?;
+
+    cmd.arg("echo")
+        .arg(shared_resource_path("first_steps_semantic_error.st"));
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("END_CONFIGURATION"));
+
+    Ok(())
+}
+
+#[test]
+fn tokenize_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("ironplcc")?;
+
+    cmd.arg("tokenize").arg(shared_resource_path("first_steps.st"));
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Type: EndConfiguration, Value: \'END_CONFIGURATION\', At: Ln 175,Col 0"));
+
+    Ok(())
+}
+
+#[test]
 fn version_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("ironplcc")?;
 
