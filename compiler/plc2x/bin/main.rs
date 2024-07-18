@@ -72,9 +72,9 @@ pub fn main() -> Result<(), String> {
             let proj = LspProject::new(Box::<FileBackedProject>::default());
             lsp::start(proj)
         }
-        Action::Check { files } => cli::check(files, false),
-        Action::Echo { files } => cli::echo(files, false),
-        Action::Tokenize { files } => cli::tokenize(files, false),
+        Action::Check { files } => cli::check(&files, false),
+        Action::Echo { files } => cli::echo(&files, false),
+        Action::Tokenize { files } => cli::tokenize(&files, false),
         Action::Version => {
             println!("ironplcc version {}", VERSION);
             Ok(())

@@ -26,7 +26,7 @@ use std::{
 use crate::project::{FileBackedProject, Project};
 
 // Checks specified files.
-pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
+pub fn check(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
     let mut project = create_project(paths, suppress_output)?;
 
     // Analyze the set
@@ -40,7 +40,7 @@ pub fn check(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
     Ok(())
 }
 
-pub fn echo(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
+pub fn echo(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
     let mut project = create_project(paths, suppress_output)?;
 
     // Collect the results and output after because getting the results may change
@@ -80,7 +80,7 @@ pub fn echo(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
     }
 }
 
-pub fn tokenize(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String> {
+pub fn tokenize(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
     let project = create_project(paths, suppress_output)?;
 
     // Write the set
@@ -107,13 +107,13 @@ pub fn tokenize(paths: Vec<PathBuf>, suppress_output: bool) -> Result<(), String
     Ok(())
 }
 
-fn create_project(paths: Vec<PathBuf>, suppress_output: bool) -> Result<FileBackedProject, String> {
+fn create_project(paths: &[PathBuf], suppress_output: bool) -> Result<FileBackedProject, String> {
     trace!("Reading paths {:?}", paths);
     let mut files: Vec<PathBuf> = vec![];
     let mut had_error = false;
 
     for path in paths {
-        match enumerate_files(&path) {
+        match enumerate_files(path) {
             Ok(mut paths) => files.append(&mut paths),
             Err(err) => {
                 handle_diagnostics(&err, None, suppress_output);
@@ -295,42 +295,42 @@ mod tests {
     #[test]
     fn check_first_steps_when_invalid_syntax_then_error() {
         let paths = vec![shared_resource_path("first_steps_semantic_error.st")];
-        let result = check(paths, true);
+        let result = check(&paths, true);
         assert!(result.is_err())
     }
 
     #[test]
     fn check_first_steps_when_valid_syntax_then_ok() {
         let paths = vec![shared_resource_path("first_steps.st")];
-        let result = check(paths, true);
+        let result = check(&paths, true);
         assert!(result.is_ok())
     }
 
     #[test]
     fn check_first_steps_dir_when_valid_syntax_then_ok() {
         let paths = vec![resource_path("set")];
-        let result = check(paths, true);
+        let result = check(&paths, true);
         assert!(result.is_ok())
     }
 
     #[test]
     fn echo_first_steps_when_invalid_syntax_then_error() {
         let paths = vec![shared_resource_path("first_steps_syntax_error.st")];
-        let result = check(paths, true);
+        let result = check(&paths, true);
         assert!(result.is_err())
     }
 
     #[test]
     fn echo_first_steps_when_valid_syntax_then_ok() {
         let paths = vec![shared_resource_path("first_steps.st")];
-        let result = echo(paths, true);
+        let result = echo(&paths, true);
         assert!(result.is_ok())
     }
 
     #[test]
     fn tokenize_first_steps_when_valid_syntax_then_ok() {
         let paths = vec![shared_resource_path("first_steps.st")];
-        let result = echo(paths, true);
+        let result = echo(&paths, true);
         assert!(result.is_ok())
     }
 }
