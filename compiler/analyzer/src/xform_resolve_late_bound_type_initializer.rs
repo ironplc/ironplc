@@ -4,11 +4,11 @@
 //! The IEC 61131-3 syntax has some ambiguous types that are initially
 //! parsed into a placeholder. This transform replaces the placeholders
 //! with well-known types.
+use ironplc_dsl::common::*;
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
-use ironplc_dsl::{common::*, core::Id};
 use ironplc_problems::Problem;
 use log::trace;
 
@@ -34,15 +34,15 @@ enum TypeDefinitionKind {
 impl Value for TypeDefinitionKind {}
 
 pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
-    let mut id_to_type: SymbolTable<Id, TypeDefinitionKind> = SymbolTable::new();
+    let mut type_to_type_kind: SymbolTable<Type, TypeDefinitionKind> = SymbolTable::new();
 
     // Walk the entire library to find the types. We don't need
     // to keep track of contexts because types are global scoped.
-    id_to_type.walk(&lib).map_err(|err| vec![err])?;
+    type_to_type_kind.walk(&lib).map_err(|err| vec![err])?;
 
     // Set the types for each item.
     let mut resolver = TypeResolver {
-        types: id_to_type,
+        types: type_to_type_kind,
         diagnostics: vec![],
     };
     let result = resolver.fold_library(lib).map_err(|e| vec![e]);
@@ -54,8 +54,8 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
     result
 }
 
-impl SymbolTable<'_, Id, TypeDefinitionKind> {
-    fn add_if_new(&mut self, to_add: &Id, kind: TypeDefinitionKind) -> Result<(), Diagnostic> {
+impl SymbolTable<'_, Type, TypeDefinitionKind> {
+    fn add_if_new(&mut self, to_add: &Type, kind: TypeDefinitionKind) -> Result<(), Diagnostic> {
         if let Some(existing) = self.try_add(to_add, kind) {
             return Err(Diagnostic::problem(
                 Problem::DefinitionNameDuplicated,
@@ -68,7 +68,7 @@ impl SymbolTable<'_, Id, TypeDefinitionKind> {
     }
 }
 
-impl<'a> Visitor<Diagnostic> for SymbolTable<'a, Id, TypeDefinitionKind> {
+impl<'a> Visitor<Diagnostic> for SymbolTable<'a, Type, TypeDefinitionKind> {
     type Value = ();
 
     fn visit_data_type_declaration_kind(
@@ -110,12 +110,17 @@ impl<'a> Visitor<Diagnostic> for SymbolTable<'a, Id, TypeDefinitionKind> {
         &mut self,
         node: &FunctionBlockDeclaration,
     ) -> Result<(), Diagnostic> {
-        self.add_if_new(&node.name, TypeDefinitionKind::FunctionBlock)
+        // Other items are types, but in the case of a function block declaration, this is
+        // actually an identifier, so treat identifier and type as equivalent in this context.
+        self.add_if_new(
+            &Type::from_id(&node.name),
+            TypeDefinitionKind::FunctionBlock,
+        )
     }
 }
 
 struct TypeResolver<'a> {
-    types: SymbolTable<'a, Id, TypeDefinitionKind>,
+    types: SymbolTable<'a, Type, TypeDefinitionKind>,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -180,7 +185,7 @@ impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
                                 initial_values: vec![],
                             },
                         )),
-                        _ => Err(Diagnostic::todo_with_id(&name, file!(), line!())),
+                        _ => Err(Diagnostic::todo_with_type(&name, file!(), line!())),
                     },
                     None => {
                         trace!("{:?}", self.types);
@@ -189,7 +194,7 @@ impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
                                 Problem::UndeclaredUnknownType,
                                 Label::span(name.span(), "Variable type"),
                             )
-                            .with_context_id("identifier", &name),
+                            .with_context_type("identifier", &name),
                         );
                         Ok(InitialValueAssignmentKind::LateResolvedType(name))
                     }
@@ -269,7 +274,7 @@ END_FUNCTION_BLOCK
             elements: vec![
                 LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Structure(
                     StructureDeclaration {
-                        type_name: Id::from("the_struct"),
+                        type_name: Type::from("the_struct"),
                         elements: vec![StructureElementDeclaration {
                             name: Id::from("member"),
                             init: InitialValueAssignmentKind::simple_uninitialized("BOOL"),
@@ -309,7 +314,7 @@ END_FUNCTION_BLOCK
             elements: vec![
                 LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
                     EnumerationDeclaration {
-                        type_name: Id::from("values"),
+                        type_name: Type::from("values"),
                         spec_init: EnumeratedSpecificationInit {
                             spec: EnumeratedSpecificationKind::from_values(vec![
                                 "val1", "val2", "val3",

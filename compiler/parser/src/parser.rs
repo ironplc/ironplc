@@ -383,6 +383,7 @@ parser! {
       Id::from(i.text.as_str())
         .with_position(i.span.clone())
     }
+    rule type_name() -> Type = i:identifier() { Type::from_id(&i) }
 
     // B.1.2 Constants
     rule constant() -> ConstantKind =
@@ -516,8 +517,8 @@ parser! {
     // B.1.3 Data types
     // This should match generic_type_name, but that's unnecessary because
     // these are all just identifiers
-    rule data_type_name() -> Id = non_generic_type_name()
-    rule non_generic_type_name() -> Id = et:elementary_type_name() { et.into() } / derived_type_name()
+    rule data_type_name() -> Type = non_generic_type_name()
+    rule non_generic_type_name() -> Type = et:elementary_type_name() { et.into() } / derived_type_name()
 
     // B.1.3.1 Elementary data types
     rule elementary_type_name() -> ElementaryTypeName =
@@ -543,13 +544,13 @@ parser! {
     // TODO review this section for missing rules
     // All of these are aliases for identifiers, which means the single_element_type_name will just match first
     // I've left in just in case the definition changes.
-    rule derived_type_name() -> Id = single_element_type_name() / array_type_name() / structure_type_name() / string_type_name()
-    rule single_element_type_name() -> Id = simple_type_name() / subrange_type_name() / enumerated_type_name()
-    rule simple_type_name() -> Id = identifier()
-    rule subrange_type_name() -> Id = identifier()
-    rule enumerated_type_name() -> Id = identifier()
-    rule array_type_name() -> Id = identifier()
-    rule structure_type_name() -> Id = identifier()
+    rule derived_type_name() -> Type = single_element_type_name() / array_type_name() / structure_type_name() / string_type_name()
+    rule single_element_type_name() -> Type = simple_type_name() / subrange_type_name() / enumerated_type_name()
+    rule simple_type_name() -> Type = type_name()
+    rule subrange_type_name() -> Type = type_name()
+    rule enumerated_type_name() -> Type = type_name()
+    rule array_type_name() -> Type = type_name()
+    rule structure_type_name() -> Type = type_name()
     rule data_type_declaration() -> Vec<DataTypeDeclarationKind> = tok(TokenType::Type) _ declarations:semisep(<type_declaration()>) _ tok(TokenType::EndType) { declarations }
     /// the type_declaration also bring in from single_element_type_declaration so that we can match in an order
     /// that identifies the type
@@ -569,7 +570,7 @@ parser! {
     // Union of structure_type_declaration, enumerated_type_declaration and
     // simple_type_declaration all without any initializer. These types all
     // look the same
-    rule structure_or_enumerated_or_simple_type_declaration__without_value() -> LateBoundDeclaration = data_type_name:identifier() _ tok(TokenType::Colon) _ base_type_name:identifier() {
+    rule structure_or_enumerated_or_simple_type_declaration__without_value() -> LateBoundDeclaration = data_type_name:type_name() _ tok(TokenType::Colon) _ base_type_name:type_name() {
       LateBoundDeclaration {
         data_type_name,
         base_type_name,
@@ -595,7 +596,7 @@ parser! {
         initial_value: Some(constant),
       })
     }
-    rule simple_specification() -> Id = et:elementary_type_name() { et.into() } / simple_type_name()
+    rule simple_specification() -> Type = et:elementary_type_name() { et.into() } / simple_type_name()
     rule subrange_type_declaration__with_range() -> SubrangeDeclaration = type_name:subrange_type_name() _ tok(TokenType::Colon) _ spec:subrange_spec_init__with_range() {
       SubrangeDeclaration {
         type_name,
@@ -712,8 +713,8 @@ parser! {
     }
     rule structure_declaration() -> StructureDeclaration = tok(TokenType::Struct) _ elements:semisep_oneplus(<structure_element_declaration()>) _ tok(TokenType::EndStruct) {
       StructureDeclaration {
-        // Requires a value but we don't know the name until level up
-        type_name: Id::from(""),
+        // Requires a value but we don't know the name until one level up
+        type_name: Type::from(""),
         elements,
       }
     }
@@ -804,13 +805,13 @@ parser! {
         type_name: et.into(),
         initial_value: None,
       })
-    }/ i:identifier() {
+    }/ i:type_name() {
       // What remains is ambiguous and the devolves to a single identifier because the prior
       // cases have captures all cases with a value. This can be simple, enumerated or struct
       InitialValueAssignmentKind::LateResolvedType(i)
     }
 
-    rule string_type_name() -> Id = identifier()
+    rule string_type_name() -> Type = type_name()
     rule string_type_declaration() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) _ tok(TokenType::LeftBracket) _ length:integer() _ tok(TokenType::RightBracket) _ init:(tok(TokenType::Assignment) _ str:character_string() {str})? {
       StringDeclaration {
         type_name,
@@ -1096,7 +1097,7 @@ parser! {
       / tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
       / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
       / et:elementary_type_name() { VariableSpecificationKind::Simple(et.into()) }
-      / id:identifier() { VariableSpecificationKind::Ambiguous(id) }
+      / id:type_name() { VariableSpecificationKind::Ambiguous(id) }
 
     // B.1.5.1 Functions
     rule function_name() -> Id = standard_function_name() / derived_function_name()
@@ -1123,7 +1124,7 @@ parser! {
     // B.1.5.2 Function blocks
     // IEC 61131 defines separate standard and derived function block names,
     // but we don't need that distinction here.
-    rule function_block_type_name() -> Id = i:identifier() { i }
+    rule function_block_type_name() -> Type = type_name()
     rule derived_function_block_name() -> Id = !STANDARD_FUNCTION_BLOCK_NAME() i:identifier() { i }
     rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
       let variables = VarDeclarations::unzip(decls);
@@ -1148,12 +1149,12 @@ parser! {
     rule function_block_body() -> FunctionBlockBodyKind = networks:sequential_function_chart() { FunctionBlockBodyKind::sfc(networks) } / statements:statement_list() { FunctionBlockBodyKind::stmts(statements) } / _ { FunctionBlockBodyKind::empty( )}
 
     // B.1.5.3 Program declaration
-    rule program_type_name() -> Id = i:identifier() { i }
+    rule program_type_name() -> Id = identifier()
     // TODO program_access_decls
     pub rule program_declaration() -> ProgramDeclaration = tok(TokenType::Program) _ p:program_type_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other } / located:located_var_declarations() { located } ) ** _ _ body:function_block_body() _ tok(TokenType::EndProgram) {
       let variables = VarDeclarations::unzip(decls);
       ProgramDeclaration {
-        type_name: p,
+        name: p,
         variables,
         // TODO more
         body,

@@ -5,7 +5,7 @@ mod test {
         ConstantKind, DataTypeDeclarationKind, DeclarationQualifier, EnumeratedSpecificationInit,
         EnumerationDeclaration, FunctionBlockBodyKind, FunctionBlockDeclaration,
         FunctionDeclaration, InitialValueAssignmentKind, Library, LibraryElementKind,
-        ProgramDeclaration, RealLiteral, SimpleInitializer, VarDecl, VariableIdentifier,
+        ProgramDeclaration, RealLiteral, SimpleInitializer, Type, VarDecl, VariableIdentifier,
         VariableType,
     };
     use dsl::configuration::{
@@ -208,7 +208,7 @@ END_FUNCTION";
                         var_type: VariableType::External,
                         qualifier: DeclarationQualifier::Constant,
                         initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
-                            type_name: Id::from("INT"),
+                            type_name: Type::from("INT"),
                             initial_value: None,
                         }),
                     },
@@ -233,7 +233,7 @@ END_FUNCTION";
         let expected = new_library(LibraryElementKind::FunctionDeclaration(
             FunctionDeclaration {
                 name: Id::from("AverageVal"),
-                return_type: Id::from("REAL"),
+                return_type: Type::from("REAL"),
                 variables: vec![
                     VarDecl::simple("Cnt1", "INT").with_type(VariableType::Input),
                     VarDecl::simple("Cnt2", "INT").with_type(VariableType::Input),
@@ -245,7 +245,7 @@ END_FUNCTION";
                         var_type: VariableType::Var,
                         qualifier: DeclarationQualifier::Unspecified,
                         initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
-                            type_name: Id::from("REAL"),
+                            type_name: Type::from("REAL"),
                             initial_value: Some(ConstantKind::RealLiteral(RealLiteral {
                                 value: 5.1,
                                 data_type: None,
@@ -292,7 +292,7 @@ END_FUNCTION";
     fn parse_when_first_steps_program_declaration_then_builds_structure() {
         let src = read_shared_resource("first_steps_program.st");
         let expected = new_library(LibraryElementKind::ProgramDeclaration(ProgramDeclaration {
-            type_name: Id::from("plc_prg"),
+            name: Id::from("plc_prg"),
             variables: vec![
                 VarDecl::simple("Reset", "BOOL").with_type(VariableType::Input),
                 VarDecl::simple("Cnt1", "INT").with_type(VariableType::Output),
@@ -344,7 +344,7 @@ END_FUNCTION";
                     var_type: VariableType::Global,
                     qualifier: DeclarationQualifier::Constant,
                     initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
-                        type_name: Id::from("INT"),
+                        type_name: Type::from("INT"),
                         initial_value: Some(ConstantKind::integer_literal("17").unwrap()),
                     }),
                 }],
@@ -427,7 +427,7 @@ END_FUNCTION";
                         var_type: VariableType::External,
                         qualifier: DeclarationQualifier::Constant,
                         initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
-                            type_name: Id::from("INT"),
+                            type_name: Type::from("INT"),
                             initial_value: None,
                         }),
                     },
@@ -521,7 +521,7 @@ END_FUNCTION";
         let src = read_shared_resource("first_steps_data_type_decl.st");
         let expected = new_library(LibraryElementKind::DataTypeDeclaration(
             DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
-                type_name: Id::from("LOGLEVEL"),
+                type_name: Type::from("LOGLEVEL"),
                 spec_init: EnumeratedSpecificationInit::values_and_default(
                     vec!["CRITICAL", "WARNING", "INFO", "DEBUG"],
                     "INFO",

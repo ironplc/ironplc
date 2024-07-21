@@ -7,11 +7,11 @@
 //! The transformation succeeds when all data type declarations
 //! resolve to a declared type.
 use crate::symbol_graph::{SymbolGraph, SymbolNode};
+use ironplc_dsl::common::*;
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
-use ironplc_dsl::{common::*, core::Id};
 use ironplc_problems::Problem;
 use std::collections::HashMap;
 
@@ -63,7 +63,7 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
 struct TypeDeclResolver {
     graph: SymbolGraph<LateResolvableTypeDecl>,
     roots: Vec<(SymbolNode, LateResolvableTypeDecl)>,
-    index_to_id: HashMap<SymbolNode, Id>,
+    index_to_id: HashMap<SymbolNode, Type>,
 }
 
 impl TypeDeclResolver {
@@ -75,7 +75,7 @@ impl TypeDeclResolver {
         }
     }
 
-    fn connect(&mut self, parent: &Id, child: &Id, child_kind: LateResolvableTypeDecl) {
+    fn connect(&mut self, parent: &Type, child: &Type, child_kind: LateResolvableTypeDecl) {
         let parent_node = self
             .graph
             .add_node(parent, LateResolvableTypeDecl::Unspecified);
@@ -91,7 +91,7 @@ impl TypeDeclResolver {
     ///
     /// If the name already exists, returns an diagnostic indicating the
     /// name conflict.
-    fn add(&mut self, item: &Id, item_kind: LateResolvableTypeDecl) -> Result<(), Diagnostic> {
+    fn add(&mut self, item: &Type, item_kind: LateResolvableTypeDecl) -> Result<(), Diagnostic> {
         if !self.graph.contains_node(item) {
             let added = self.graph.add_node(item, item_kind);
             let data = self.graph.data(item);
@@ -158,7 +158,7 @@ impl Visitor<Diagnostic> for TypeDeclResolver {
 
 struct DeclarationResolver {
     // Defines the desired type for each identifier
-    ids_to_types: HashMap<Id, LateResolvableTypeDecl>,
+    ids_to_types: HashMap<Type, LateResolvableTypeDecl>,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -220,10 +220,7 @@ impl Fold<Diagnostic> for DeclarationResolver {
 #[cfg(test)]
 mod tests {
     use super::apply;
-    use ironplc_dsl::{
-        common::*,
-        core::{FileId, Id},
-    };
+    use ironplc_dsl::{common::*, core::FileId};
 
     #[test]
     fn apply_when_ambiguous_enum_then_resolves_type() {
@@ -240,7 +237,7 @@ END_TYPE
             elements: vec![
                 LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
                     EnumerationDeclaration {
-                        type_name: Id::from("LEVEL"),
+                        type_name: Type::from("LEVEL"),
                         spec_init: EnumeratedSpecificationInit::values_and_default(
                             vec!["CRITICAL"],
                             "CRITICAL",
@@ -249,9 +246,9 @@ END_TYPE
                 )),
                 LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
                     EnumerationDeclaration {
-                        type_name: Id::from("LEVEL_ALIAS"),
+                        type_name: Type::from("LEVEL_ALIAS"),
                         spec_init: EnumeratedSpecificationInit {
-                            spec: EnumeratedSpecificationKind::TypeName(Id::from("LEVEL")),
+                            spec: EnumeratedSpecificationKind::TypeName(Type::from("LEVEL")),
                             default: None,
                         },
                     },

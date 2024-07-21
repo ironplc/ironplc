@@ -139,6 +139,8 @@ pub trait Visitor<E> {
     // TODO where is this?
     leaf!(BitStringLiteral);
 
+    dispatch!(Type);
+
     // 2.2
     dispatch!(ConstantKind);
 
@@ -442,7 +444,7 @@ mod test {
     fn walk_when_has_symbolic_variable_then_visits_variable() {
         let library = Library {
             elements: vec![LibraryElementKind::ProgramDeclaration(ProgramDeclaration {
-                type_name: Id::from("plc_prg"),
+                name: Id::from("plc_prg"),
                 variables: vec![VarDecl::simple("Reset", "BOOL").with_type(VariableType::Input)],
                 body: FunctionBlockBodyKind::stmts(vec![StmtKind::fb_assign(
                     "AverageVal",
