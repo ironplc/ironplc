@@ -245,7 +245,8 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         if let InitialValueAssignmentKind::FunctionBlock(fbi) = &node.initializer {
             if let Some(id) = node.identifier.symbolic_id() {
-                self.var_to_fb.insert(id.clone(), fbi.type_name.clone());
+                self.var_to_fb
+                    .insert(id.clone(), fbi.type_name.name.clone());
             }
         }
         Ok(())

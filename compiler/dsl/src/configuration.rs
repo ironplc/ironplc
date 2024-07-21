@@ -6,7 +6,7 @@ use time::Duration;
 use crate::{
     common::{
         AddressAssignment, ConstantKind, EnumeratedValue, HasVariables, InitialValueAssignmentKind,
-        VarDecl,
+        Type, VarDecl,
     },
     core::Id,
     textual::SymbolicVariableKind,
@@ -83,7 +83,7 @@ impl HasVariables for ConfigurationDeclaration {
 pub struct AccessDeclaration {
     pub identifier: Id,
     pub path: AccessPathKind,
-    pub type_name: Id,
+    pub type_name: Type,
     #[recurse(ignore)]
     pub direction: Option<Direction>,
 }

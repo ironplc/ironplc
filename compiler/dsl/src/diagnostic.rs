@@ -9,6 +9,7 @@ use ironplc_problems::Problem;
 use std::collections::HashSet;
 use std::{fs::File, ops::Range};
 
+use crate::common::Type;
 use crate::core::{FileId, Id, Located, SourceSpan};
 
 /// A position marker that has both line and offset information.
@@ -160,6 +161,19 @@ impl Diagnostic {
     ///
     /// Unlike other uses of problem, the location in this is related to the compiler
     /// rather than the IEC 61131-3 source.
+    pub fn todo_with_type(ty: &Type, file: &str, line: u32) -> Self {
+        Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(ty.span(), format!("Not implemented at {}#L{}", file, line)),
+        )
+    }
+
+    /// Creates a "todo" diagnostic associated with a file and line in the Rust
+    /// source code. Also provides a location in IEC 61131-3 associated with the
+    /// todo (but is not necessarily the origin).
+    ///
+    /// Unlike other uses of problem, the location in this is related to the compiler
+    /// rather than the IEC 61131-3 source.
     pub fn todo_with_span(span: SourceSpan, file: &str, line: u32) -> Self {
         Diagnostic::problem(
             Problem::NotImplemented,
@@ -178,13 +192,12 @@ impl Diagnostic {
         self
     }
 
-    /// Adds to the problem description (primary text) additional context
-    /// about the problem.
-    ///
-    /// This is similar to adding primary and second items except that this
-    /// forms part of the main description and does not need to be related to
-    /// a position in a source file.
     pub fn with_context_id(mut self, description: &str, item: &Id) -> Self {
+        self.described.push(format!("{}={}", description, item));
+        self
+    }
+
+    pub fn with_context_type(mut self, description: &str, item: &Type) -> Self {
         self.described.push(format!("{}={}", description, item));
         self
     }

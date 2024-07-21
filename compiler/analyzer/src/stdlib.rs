@@ -1,4 +1,4 @@
-use ironplc_dsl::core::Id;
+use ironplc_dsl::common::Type;
 use phf::{phf_set, Set};
 
 static STANDARD_LIBRARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
@@ -26,8 +26,8 @@ static STANDARD_LIBRARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
     // TODO there is more in IEC 61131-5
 };
 
-pub(crate) fn is_unsupported_standard_type(id: &Id) -> bool {
-    STANDARD_LIBRARY_TYPES_LOWER_CASE.contains(&id.lower_case().to_string())
+pub(crate) fn is_unsupported_standard_type(ty: &Type) -> bool {
+    STANDARD_LIBRARY_TYPES_LOWER_CASE.contains(&ty.name.lower_case().to_string())
 }
 
 static ELEMENTARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
@@ -62,6 +62,6 @@ static ELEMENTARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
     "time"
 };
 
-pub(crate) fn is_elementary_type(id: &Id) -> bool {
-    ELEMENTARY_TYPES_LOWER_CASE.contains(&id.lower_case().to_string())
+pub(crate) fn is_elementary_type(ty: &Type) -> bool {
+    ELEMENTARY_TYPES_LOWER_CASE.contains(&ty.name.lower_case().to_string())
 }

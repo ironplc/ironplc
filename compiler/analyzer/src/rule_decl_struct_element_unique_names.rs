@@ -67,7 +67,7 @@ impl Visitor<Diagnostic> for RuleStructElementNamesUnique {
                             Problem::StructureDuplicatedElement,
                             Label::span(node.type_name.span(), "Structure"),
                         )
-                        .with_context_id("structure", &node.type_name)
+                        .with_context_type("structure", &node.type_name)
                         .with_context_id("element", &element.name)
                         .with_secondary(Label::span(first.span(), "First use of name"))
                         .with_secondary(Label::span(element.name.span(), "Second use of name")),

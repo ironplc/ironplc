@@ -29,6 +29,7 @@ impl<'a> Fold<Diagnostic> for TransformFileId<'a> {
 
 #[cfg(test)]
 mod tests {
+    use dsl::core::Located;
     use ironplc_dsl::{
         common::{DataTypeDeclarationKind, LibraryElementKind},
         core::FileId,
@@ -60,8 +61,10 @@ END_TYPE
             _ => panic!(),
         };
 
-        assert_eq!(6, enum_type.type_name.span.start);
-        assert_eq!(11, enum_type.type_name.span.end);
-        assert_eq!(expected_fid, enum_type.type_name.span.file_id);
+        let span = enum_type.type_name.span();
+
+        assert_eq!(6, span.start);
+        assert_eq!(11, span.end);
+        assert_eq!(expected_fid, span.file_id);
     }
 }

@@ -126,7 +126,7 @@ impl Visitor<Diagnostic> for RulePousNoCycles {
         &mut self,
         node: &ProgramDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.current_from = Some(node.type_name.clone());
+        self.current_from = Some(node.name.clone());
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -140,7 +140,7 @@ impl Visitor<Diagnostic> for RulePousNoCycles {
         match &self.current_from {
             Some(from) => {
                 let from = self.add_node(&from.clone());
-                let to = self.add_node(&init.type_name);
+                let to = self.add_node(&init.type_name.name);
                 self.graph.add_edge(from, to, ());
             }
             None => return Err(Diagnostic::todo(file!(), line!())),

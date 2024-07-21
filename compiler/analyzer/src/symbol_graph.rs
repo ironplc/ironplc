@@ -1,5 +1,5 @@
 use fixedbitset::FixedBitSet;
-use ironplc_dsl::core::Id;
+use ironplc_dsl::common::Type;
 use petgraph::{
     stable_graph::{NodeIndex, StableDiGraph},
     visit::Dfs,
@@ -10,7 +10,7 @@ pub type SymbolNode = NodeIndex;
 
 pub struct SymbolGraph<N> {
     graph: StableDiGraph<(), (), u32>,
-    nodes: HashMap<Id, (SymbolNode, N)>,
+    nodes: HashMap<Type, (SymbolNode, N)>,
 }
 
 impl<N> SymbolGraph<N> {
@@ -22,11 +22,11 @@ impl<N> SymbolGraph<N> {
     }
 
     /// Returns `true` if the graph contains a node for the specified id.
-    pub fn contains_node(&self, id: &Id) -> bool {
+    pub fn contains_node(&self, id: &Type) -> bool {
         self.nodes.contains_key(id)
     }
 
-    pub fn add_node(&mut self, id: &Id, data: N) -> SymbolNode {
+    pub fn add_node(&mut self, id: &Type, data: N) -> SymbolNode {
         let nodes = &self.nodes;
         match nodes.get(id) {
             Some(node_and_data) => node_and_data.0,
@@ -42,11 +42,11 @@ impl<N> SymbolGraph<N> {
     ///
     /// Returning the key matters because objects such as Id's can be equal
     /// even if not identical.
-    pub fn get_node(&self, id: &Id) -> Option<(&Id, &SymbolNode)> {
+    pub fn get_node(&self, id: &Type) -> Option<(&Type, &SymbolNode)> {
         self.nodes.get_key_value(id).map(|kv| (kv.0, &kv.1 .0))
     }
 
-    pub fn data(&self, id: &Id) -> Option<&N> {
+    pub fn data(&self, id: &Type) -> Option<&N> {
         match self.nodes.get(id) {
             Some(node_and_data) => Some(&node_and_data.1),
             None => None,

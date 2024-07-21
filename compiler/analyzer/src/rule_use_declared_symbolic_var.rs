@@ -62,6 +62,7 @@ struct DummyNode {}
 impl Value for DummyNode {}
 
 impl Key for Id {}
+impl Key for Type {}
 
 impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
     type Value = ();
@@ -77,7 +78,7 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
 
     fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Diagnostic> {
         self.enter();
-        self.add(&node.type_name, DummyNode {});
+        self.add(&node.name, DummyNode {});
         let ret = node.recurse_visit(self);
         self.exit();
         ret

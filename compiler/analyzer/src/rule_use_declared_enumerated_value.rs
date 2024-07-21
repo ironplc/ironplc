@@ -30,7 +30,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::{Id, Located},
+    core::Located,
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -60,10 +60,10 @@ pub fn apply(lib: &Library) -> SemanticResult {
 }
 
 struct RuleDeclaredEnumeratedValues<'a> {
-    enum_defs: &'a HashMap<Id, &'a EnumerationDeclaration>,
+    enum_defs: &'a HashMap<Type, &'a EnumerationDeclaration>,
 }
 impl<'a> RuleDeclaredEnumeratedValues<'a> {
-    fn new(enum_defs: &'a HashMap<Id, &'a EnumerationDeclaration>) -> Self {
+    fn new(enum_defs: &'a HashMap<Type, &'a EnumerationDeclaration>) -> Self {
         RuleDeclaredEnumeratedValues { enum_defs }
     }
 
@@ -82,7 +82,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
     /// * recursive type name
     fn find_enum_declaration_values(
         &self,
-        type_name: &'a Id,
+        type_name: &'a Type,
     ) -> Result<&Vec<EnumeratedValue>, Diagnostic> {
         // Keep track of names we've seen before so that we can be sure that
         // the loop terminates
@@ -105,7 +105,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                         Problem::EnumNotDeclared,
                         Label::span(name.span(), "Enumeration reference"),
                     )
-                    .with_context_id("name", name))
+                    .with_context_type("name", name))
                 }
             }
 
@@ -115,7 +115,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
                     Problem::EnumRecursive,
                     Label::span(name.span(), "Current enumeration"),
                 )
-                .with_context_id("type", name));
+                .with_context_type("type", name));
             }
         }
     }
