@@ -64,7 +64,7 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
                                     Problem::EnumTypeDeclDuplicateItem,
                                     Label::span(first.span(), "First instance"),
                                 )
-                                .with_context_id("declaration", &node.type_name)
+                                .with_context_type("declaration", &node.type_name)
                                 .with_context_id("duplicate value", first)
                                 .with_secondary(Label::span(current.span(), "Duplicate value")),
                             );
