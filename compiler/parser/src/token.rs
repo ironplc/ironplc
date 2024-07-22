@@ -408,7 +408,7 @@ impl TokenType {
             TokenType::Hash => "'#'",
             TokenType::SingleByteString => "\\'[^\\']*\\' (single byte string)",
             TokenType::DoubleByteString => "\"[^\"]*\" (double byte string)",
-            TokenType::Identifier => "",
+            TokenType::Identifier => "(identifier)",
             TokenType::HexDigits => "16#[0-9A-F][0-9A-F_]* (hexadecimal bit string)",
             TokenType::OctDigits => "8#[0-7][0-7]* (octal bit string)",
             TokenType::BinDigits => "2#[0-1][0-1]* (binary bit string)",

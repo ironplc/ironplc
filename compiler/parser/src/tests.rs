@@ -160,7 +160,7 @@ mod test {
 
         let err = res.unwrap_err();
         assert_eq!("Syntax error".to_owned(), err.description());
-        assert_eq!("Expected  | ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | '\\n' (new line). Found text '&' that matched token 'AND' | '&'".to_owned(), err.primary.message);
+        assert_eq!("Expected ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | '\\n' (new line) | (identifier). Found text '&' that matched token 'AND' | '&'".to_owned(), err.primary.message);
     }
 
     #[test]
