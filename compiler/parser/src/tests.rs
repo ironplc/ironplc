@@ -140,7 +140,7 @@ mod test {
 
         let err = res.unwrap_err();
         assert_eq!(
-            "Unmatched token in source text".to_owned(),
+            "Unmatched character sequence in source text".to_owned(),
             err.description()
         );
         assert_eq!("The text '(* A comment\n            CUSTOM_STRUCT : STRUCT \n                NAME: BOOL;\n            END_STRUCT;\n        END_TYPE' is not valid IEC 61131-3 text at line 3 colum 9.".to_owned(), err.primary.message);
@@ -194,6 +194,42 @@ END_FUNCTION";
     }
 
     #[test]
+    fn parse_program_when_real_then_ok() {
+        let program = "
+FUNCTION fun:DWORD
+
+VAR
+    InputsNumber : REAL := -5.0E-1;
+END_VAR
+
+fun := InputsNumber;
+
+END_FUNCTION";
+        let res = parse_program(program, &FileId::default()).unwrap();
+
+        let expected = new_library(LibraryElementKind::FunctionDeclaration(
+            FunctionDeclaration {
+                name: Id::from("fun"),
+                return_type: Type::from("DWORD"),
+                variables: vec![VarDecl {
+                    identifier: VariableIdentifier::new_symbol("InputsNumber"),
+                    var_type: VariableType::Var,
+                    qualifier: DeclarationQualifier::Unspecified,
+                    initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
+                        type_name: Type::from("REAL"),
+                        initial_value: Some(ConstantKind::RealLiteral(RealLiteral {
+                            value: -0.5,
+                            data_type: None,
+                        })),
+                    }),
+                }],
+                body: vec![StmtKind::simple_assignment("fun", "InputsNumber")],
+            },
+        ));
+        assert_eq!(res, expected);
+    }
+
+    #[test]
     fn parse_when_first_steps_function_block_counter_fbd_then_builds_structure() {
         let src = read_shared_resource("first_steps_function_block_counter_fbd.st");
         let expected = new_library(LibraryElementKind::FunctionBlockDeclaration(
@@ -224,7 +260,6 @@ END_FUNCTION";
         ));
         let res = parse_program(src.as_str(), &FileId::default()).unwrap();
         assert_eq!(res, expected);
-        format!("{:?}", res.clone());
     }
 
     #[test]

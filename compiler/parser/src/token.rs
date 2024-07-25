@@ -70,8 +70,6 @@ pub enum TokenType {
     #[regex(r"[ \t]+")]
     Whitespace,
 
-    // TODO this will not necessarily detect the right end position
-    //#[regex(r"\(\*[\s\S]*\*\)", priority = 0)]
     #[regex(r"\(\*(?:[^*]|\*[^\)])*\*\)", priority = 0)]
     Comment,
 
@@ -122,6 +120,9 @@ pub enum TokenType {
     OctDigits,
     #[regex(r"2#[0-1][0-1_]*")]
     BinDigits,
+    // Omit the -/+ prefix so that real does not consume the sign (just like digits)
+    #[regex(r"(?:[0-9][0-9_]*)(?:\.[0-9_]+)(?:[eE][+-]?[0-9_]+)?", priority = 1)]
+    RealLiteral,
     // We don't try to understand the literals here with complex regular expression
     // matching and precedence. Rather we identify some of the relevant constituent
     // parts and piece them together later.
@@ -412,6 +413,7 @@ impl TokenType {
             TokenType::HexDigits => "16#[0-9A-F][0-9A-F_]* (hexadecimal bit string)",
             TokenType::OctDigits => "8#[0-7][0-7]* (octal bit string)",
             TokenType::BinDigits => "2#[0-1][0-1]* (binary bit string)",
+            TokenType::RealLiteral => "(real literal)",
             TokenType::Digits => "[0-9][0-9_]* (integer)",
             TokenType::Action => "'ACTION'",
             TokenType::EndAction => "'END_ACTION'",
