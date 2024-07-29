@@ -24,13 +24,13 @@ use peg::Parse;
 use peg::ParseElem;
 use peg::RuleResult;
 
-use crate::mapper::*;
 use crate::token::{Token, TokenType};
 use ironplc_dsl::common::*;
 use ironplc_dsl::configuration::*;
 use ironplc_dsl::core::Id;
 use ironplc_dsl::sfc::*;
 use ironplc_dsl::textual::*;
+use ironplc_dsl::time::*;
 
 // Don't use std::time::Duration because it does not allow negative values.
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
@@ -405,13 +405,14 @@ parser! {
     rule signed_integer() -> SignedInteger = signed_integer__positive() / signed_integer__negative()
     rule integer__string() -> &'input str = n:tok(TokenType::Digits) { n.text.as_str() }
     rule integer__string_simplified() -> String = n:integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit()).collect() }
+    // TODO
     rule integer() -> Integer = n:integer__string() {? Integer::new(n, SourceSpan::default()) }
     rule binary_integer() -> Integer =  n:tok(TokenType::BinDigits) {? Integer::try_binary(n.text.as_str()) }
     rule octal_integer() -> Integer = n:tok(TokenType::OctDigits) {? Integer::try_octal(n.text.as_str()) }
     rule hex_integer() -> Integer = n:tok(TokenType::HexDigits) {? Integer::try_hex(n.text.as_str()) }
-    rule real_literal() -> RealLiteral = tn:(t:real_type_name() tok(TokenType::Hash) {t})? sign:(tok(TokenType::Minus) { -1.0 }/ tok(TokenType::Plus) { 1.0 })? literal:tok(TokenType::RealLiteral) {?
+    rule real_literal() -> RealLiteral = tn:(t:real_type_name() tok(TokenType::Hash) {t})? sign:(tok(TokenType::Minus) { -1.0 }/ tok(TokenType::Plus) { 1.0 })? literal:(fp:tok(TokenType::FloatingPoint) {fp.text.as_str()} / fp:tok(TokenType::FixedPoint) {fp.text.as_str()} ){?
       let sign = sign.unwrap_or(1.0);
-      RealLiteral::try_parse(literal.text.as_str(), tn).map(|node| {
+      RealLiteral::try_parse(literal, tn).map(|node| {
         RealLiteral {
           value: node.value * sign,
           data_type: node.data_type,
@@ -465,35 +466,44 @@ parser! {
     // dt_sep defines case insensitive separators between parts of duration
     rule dt_sep(val: &str) -> &'input Token = [t if t.token_type == TokenType::Identifier && t.text.as_str() == val]
 
-    pub rule duration() -> DurationLiteral = (tok(TokenType::Time) / dt_sep("T") / dt_sep("t")) tok(TokenType::Hash) s:(tok(TokenType::Minus))? i:interval() {
-      if let Some(sign) = s {
-        return DurationLiteral::new(i * -1);
+    pub rule duration() -> DurationLiteral = start:position!() (tok(TokenType::Time) / dt_sep("T") / dt_sep("t")) tok(TokenType::Hash) s:(tok(TokenType::Minus))? i:interval() end:position!() {
+      let span = SourceSpan::range(start, end);
+      let interval = match s {
+        Some(sign) => i.interval * -1,
+        None => i.interval,
+      };
+      DurationLiteral {
+        span,
+        interval,
       }
-      DurationLiteral::new(i)
     }
     // milliseconds must come first because the "m" in "ms" would match the minutes rule
-    rule interval() -> Duration = ms:milliseconds() { ms }
+    rule interval() -> DurationLiteral = ms:milliseconds() { ms }
       / d:days() { d }
       / h:hours() { h }
       / m:minutes() { m }
       / s:seconds() { s }
-    rule days() -> Duration = days:fixed_point() dt_sep("d") { DurationUnit::Days.fp(days) } / days:integer() dt_sep("d") dt_sep("_")? hours:hours() { hours + DurationUnit::Days.int(days) }
-    rule fixed_point() -> f32 = i:integer__string_simplified() f:(dt_sep(".") f:integer__string_simplified() { f })? {?
-      format!("{}.{}", i, f.unwrap_or_default()).parse::<f32>().map_err(|e| "f32")
+    rule days() -> DurationLiteral = days:fixed_point() dt_sep("d") { DurationLiteral::days(days) } / days:integer() dt_sep("d") dt_sep("_")? hours:hours() { hours.plus(DurationLiteral::days(days.into())) }
+    rule fixed_point() -> FixedPoint =
+      fp:tok(TokenType::FixedPoint) {?
+        FixedPoint::parse(fp.text.as_str())
+      }
+      / i:integer() {?
+        Ok(i.into())
     }
-    rule hours() -> Duration = hours:fixed_point() dt_sep("h") { DurationUnit::Hours.fp(hours) } / hours:integer() dt_sep("h") dt_sep("_")? min:minutes() { min + DurationUnit::Hours.int(hours) }
-    rule minutes() -> Duration = min:fixed_point() dt_sep("m") { DurationUnit::Minutes.fp(min) } / mins:integer() dt_sep("m") dt_sep("_")? sec:seconds() { sec + DurationUnit::Minutes.int(mins) }
-    rule seconds() -> Duration = secs:fixed_point() dt_sep("s") { DurationUnit::Seconds.fp(secs) } / sec:integer() dt_sep("s") dt_sep("_")? ms:milliseconds() { ms + DurationUnit::Seconds.int(sec) }
-    rule milliseconds() -> Duration = ms:fixed_point() dt_sep("ms") { DurationUnit::Milliseconds.fp(ms) }
+    rule hours() -> DurationLiteral = hours:fixed_point() dt_sep("h") { DurationLiteral::hours(hours) } / hours:integer() dt_sep("h") dt_sep("_")? min:minutes() { min.plus(DurationLiteral::hours(hours.into())) }
+    rule minutes() -> DurationLiteral = min:fixed_point() dt_sep("m") { DurationLiteral::minutes(min) } / mins:integer() dt_sep("m") dt_sep("_")? sec:seconds() { sec.plus(DurationLiteral::minutes(mins.into())) }
+    rule seconds() -> DurationLiteral = secs:fixed_point() dt_sep("s") { DurationLiteral::seconds(secs) } / sec:integer() dt_sep("s") dt_sep("_")? ms:milliseconds() { ms.plus(DurationLiteral::seconds(sec.into())) }
+    rule milliseconds() -> DurationLiteral = ms:fixed_point() dt_sep("ms") { DurationLiteral::milliseconds(ms) }
 
     // 1.2.3.2 Time of day and date
     rule time_of_day() -> TimeOfDayLiteral = tok(TokenType::TimeOfDay) tok(TokenType::Hash) d:daytime() { TimeOfDayLiteral::new(d) }
     rule daytime() -> Time = h:day_hour() tok(TokenType::Colon) m:day_minute() tok(TokenType::Colon) s:day_second() {?
-      Time::from_hms(h.try_into().map_err(|e| "hour")?, m.try_into().map_err(|e| "min")?, s as u8).map_err(|e| "time")
+      Time::from_hms(h.try_into().map_err(|e| "hour")?, m.try_into().map_err(|e| "min")?, s.whole as u8).map_err(|e| "time")
     }
-    rule day_hour() -> Integer = i:integer() { i }
-    rule day_minute() -> Integer = i:integer() { i }
-    rule day_second() -> f32 = i:fixed_point() { i }
+    rule day_hour() -> Integer = integer()
+    rule day_minute() -> Integer = integer()
+    rule day_second() -> FixedPoint = fixed_point()
     rule date() -> DateLiteral = (tok(TokenType::Date) / dt_sep("D") / dt_sep("d")) tok(TokenType::Hash) d:date_literal() { DateLiteral::new(d) }
     rule date_literal() -> Date = y:year() tok(TokenType::Minus) m:month() tok(TokenType::Minus) d:day() {?
       let y = y.value;
@@ -1323,7 +1333,7 @@ parser! {
     rule task_initialization_interval() -> Duration = id_eq("INTERVAL") _ tok(TokenType::Assignment) _ source:data_source() _ tok(TokenType::Comma) {
       // TODO The interval may not necessarily be a duration, but for now, only support Duration types
       match source {
-        ConstantKind::Duration(duration) => duration.value,
+        ConstantKind::Duration(duration) => duration.interval,
         _ => panic!("Only supporting Duration types for now"),
       }
      }
