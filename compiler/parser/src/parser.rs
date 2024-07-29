@@ -33,7 +33,7 @@ use ironplc_dsl::textual::*;
 use ironplc_dsl::time::*;
 
 // Don't use std::time::Duration because it does not allow negative values.
-use time::{Date, Duration, Month, PrimitiveDateTime, Time};
+use time::{Date, Month, PrimitiveDateTime, Time};
 
 /// Parses a IEC 61131-3 library into object form.
 pub fn parse_library(tokens: Vec<Token>) -> Result<Vec<LibraryElementKind>, Diagnostic> {
@@ -1329,11 +1329,11 @@ parser! {
     }
     rule task_name() -> Id = identifier()
     // TODO add single and interval
-    pub rule task_initialization() -> (u32, Option<Duration>) = tok(TokenType::LeftParen) _ interval:task_initialization_interval()? _ priority:task_initialization_priority() _ tok(TokenType::RightParen) { (priority, interval) }
-    rule task_initialization_interval() -> Duration = id_eq("INTERVAL") _ tok(TokenType::Assignment) _ source:data_source() _ tok(TokenType::Comma) {
+    pub rule task_initialization() -> (u32, Option<DurationLiteral>) = tok(TokenType::LeftParen) _ interval:task_initialization_interval()? _ priority:task_initialization_priority() _ tok(TokenType::RightParen) { (priority, interval) }
+    rule task_initialization_interval() -> DurationLiteral = id_eq("INTERVAL") _ tok(TokenType::Assignment) _ source:data_source() _ tok(TokenType::Comma) {
       // TODO The interval may not necessarily be a duration, but for now, only support Duration types
       match source {
-        ConstantKind::Duration(duration) => duration.interval,
+        ConstantKind::Duration(duration) => duration,
         _ => panic!("Only supporting Duration types for now"),
       }
      }

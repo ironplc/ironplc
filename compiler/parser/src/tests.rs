@@ -428,7 +428,10 @@ END_FUNCTION";
                     tasks: vec![TaskConfiguration {
                         name: Id::from("plc_task"),
                         priority: 1,
-                        interval: Option::Some(Duration::new(0, 100_000_000)),
+                        interval: Option::Some(DurationLiteral {
+                            span: SourceSpan::default(),
+                            interval: Duration::new(0, 100_000_000),
+                        }),
                     }],
                     programs: vec![ProgramConfiguration {
                         name: Id::from("plc_task_instance"),
