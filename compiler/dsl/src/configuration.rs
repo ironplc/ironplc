@@ -10,6 +10,7 @@ use crate::{
     },
     core::Id,
     textual::SymbolicVariableKind,
+    time::DurationLiteral,
 };
 
 use crate::fold::Fold;
@@ -130,7 +131,7 @@ pub struct TaskConfiguration {
     pub priority: u32,
     // TODO this might not be optional
     #[recurse(ignore)]
-    pub interval: Option<Duration>,
+    pub interval: Option<DurationLiteral>,
 }
 
 #[derive(Clone, Debug, PartialEq, Recurse)]
