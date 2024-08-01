@@ -121,8 +121,12 @@ pub enum TokenType {
     #[regex(r"2#[0-1][0-1_]*")]
     BinDigits,
     // Omit the -/+ prefix so that real does not consume the sign (just like digits)
-    #[regex(r"(?:[0-9][0-9_]*)(?:\.[0-9_]+)(?:[eE][+-]?[0-9_]+)?", priority = 1)]
-    RealLiteral,
+    #[regex(r"(?:[0-9][0-9_]*)(?:\.[0-9_]+)(?:[eE][+-]?[0-9_]+)", priority = 1)]
+    FloatingPoint,
+    // Same as fixed point but without the exponential. This enables us to support
+    // time values as fixed point that do not have the
+    #[regex(r"(?:[0-9][0-9_]*)(?:\.[0-9_]+)", priority = 2)]
+    FixedPoint,
     // We don't try to understand the literals here with complex regular expression
     // matching and precedence. Rather we identify some of the relevant constituent
     // parts and piece them together later.
@@ -413,7 +417,8 @@ impl TokenType {
             TokenType::HexDigits => "16#[0-9A-F][0-9A-F_]* (hexadecimal bit string)",
             TokenType::OctDigits => "8#[0-7][0-7]* (octal bit string)",
             TokenType::BinDigits => "2#[0-1][0-1]* (binary bit string)",
-            TokenType::RealLiteral => "(real literal)",
+            TokenType::FloatingPoint => "(floating point)",
+            TokenType::FixedPoint => "(fixed point)",
             TokenType::Digits => "[0-9][0-9_]* (integer)",
             TokenType::Action => "'ACTION'",
             TokenType::EndAction => "'END_ACTION'",

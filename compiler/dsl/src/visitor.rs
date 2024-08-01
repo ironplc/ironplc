@@ -38,6 +38,7 @@ use crate::core::{Id, SourceSpan};
 use crate::diagnostic::Diagnostic;
 use crate::sfc::*;
 use crate::textual::*;
+use crate::time::*;
 use paste::paste;
 
 /// Defines a macro for the `Visitor` trait that dispatches visiting

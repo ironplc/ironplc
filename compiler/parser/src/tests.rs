@@ -14,9 +14,8 @@ mod test {
     use dsl::core::{FileId, Id, SourceSpan};
     use dsl::diagnostic::Diagnostic;
     use dsl::sfc::{ActionAssociation, ActionQualifier, ElementKind, Network, Step};
-    use dsl::textual::{
-        CompareOp, ExprKind, Function, Operator, ParamAssignmentKind, StmtKind, UnaryOp, Variable,
-    };
+    use dsl::textual::*;
+    use dsl::time::*;
     use ironplc_test::read_shared_resource;
     use time::Duration;
 
@@ -224,6 +223,42 @@ END_FUNCTION";
                     }),
                 }],
                 body: vec![StmtKind::simple_assignment("fun", "InputsNumber")],
+            },
+        ));
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn parse_program_when_fixed_point_duration_then_ok() {
+        let program = "
+FUNCTION fun:TIME
+
+VAR
+    tv : TIME := t#1.2s;
+END_VAR
+
+fun := tv;
+
+END_FUNCTION";
+        let res = parse_program(program, &FileId::default()).unwrap();
+
+        let expected = new_library(LibraryElementKind::FunctionDeclaration(
+            FunctionDeclaration {
+                name: Id::from("fun"),
+                return_type: Type::from("TIME"),
+                variables: vec![VarDecl {
+                    identifier: VariableIdentifier::new_symbol("tv"),
+                    var_type: VariableType::Var,
+                    qualifier: DeclarationQualifier::Unspecified,
+                    initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
+                        type_name: Type::from("TIME"),
+                        initial_value: Some(ConstantKind::Duration(DurationLiteral {
+                            interval: Duration::milliseconds(1200),
+                            span: SourceSpan::default(),
+                        })),
+                    }),
+                }],
+                body: vec![StmtKind::simple_assignment("fun", "tv")],
             },
         ));
         assert_eq!(res, expected);

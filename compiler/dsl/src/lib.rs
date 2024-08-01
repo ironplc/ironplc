@@ -16,4 +16,6 @@ pub mod sfc;
 #[allow(unused)]
 pub mod textual;
 #[allow(unused)]
+pub mod time;
+#[allow(unused)]
 pub mod visitor;

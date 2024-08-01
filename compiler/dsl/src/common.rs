@@ -10,6 +10,7 @@ use std::hash::{Hash, Hasher};
 use std::num::TryFromIntError;
 use std::ops::{Add, Deref};
 use std::panic::Location;
+use time::convert::{Day, Hour, Minute, Second};
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
 use dsl_macro_derive::Recurse;
@@ -19,6 +20,7 @@ use crate::core::{Id, Located, SourceSpan};
 use crate::fold::Fold;
 use crate::sfc::{Network, Sfc};
 use crate::textual::*;
+use crate::time::*;
 use crate::visitor::Visitor;
 
 /// Container for elementary constants.
@@ -329,6 +331,88 @@ pub struct IntegerLiteral {
     pub data_type: Option<ElementaryTypeName>,
 }
 
+/// The fixed point structure represents a fixed point number.
+///
+/// The structure keeps the whole and decimal parts as integers so that
+/// we do not lose precision with floating point rounding.
+#[derive(Debug, PartialEq, Clone)]
+pub struct FixedPoint {
+    pub span: SourceSpan,
+    pub whole: u64,
+    pub femptos: u64,
+}
+
+impl FixedPoint {
+    pub const FRACTIONAL_UNITS: u64 = 1_000_000_000_000_000;
+
+    pub fn parse(input: &str) -> Result<FixedPoint, &'static str> {
+        // IEC 61131 allows underscores in numbers so remove those before we try to parse.
+        let value: String = input
+            .chars()
+            .filter(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+
+        // We want to handle left and right of the decimal as integers, so start by splitting into
+        // the two parts if there is a period character.
+        match value.split_once('.') {
+            Some((whole, decimal)) => {
+                let whole = whole
+                    .parse::<u64>()
+                    .map_err(|e| "floating point whole not valid")?;
+
+                // The maximum value for a u64 integer is:
+                //   18446744073709551615
+                // This has up to 20 digits of precision, but we allow for only 15 to avoid wrapping
+                // when parsing and so that there is a nice name. That means the decimal part can be at most
+                //    999999999999999
+                // To parse this, we need the add post-fix zeros as necessary so that we have the right
+                // precision and then we can parse this as an u64 directly.
+
+                // Check that we have not already exceeded the precision
+                if decimal.len() > 15 {
+                    return Err("floating point decimal excessive precision");
+                }
+
+                let mut decimal = decimal.to_owned();
+
+                // Add post-fix zeros as necessary
+                let number_of_zeros_to_add = 15 - decimal.len();
+                let post_fix_zeros = "0".to_owned().repeat(number_of_zeros_to_add);
+                decimal.push_str(post_fix_zeros.as_str());
+
+                // Now parse this value as a u64
+                let decimal = decimal
+                    .parse::<u64>()
+                    .map_err(|e| "floating point decimal not valid")?;
+
+                Ok(FixedPoint {
+                    span: SourceSpan::default(),
+                    whole,
+                    femptos: decimal,
+                })
+            }
+            None => {
+                // There is no decimal point so this is essentially a whole number
+                Ok(FixedPoint {
+                    span: SourceSpan::default(),
+                    whole: value.parse::<u64>().map_err(|e| "u64")?,
+                    femptos: 0,
+                })
+            }
+        }
+    }
+}
+
+impl From<Integer> for FixedPoint {
+    fn from(value: Integer) -> Self {
+        FixedPoint {
+            span: value.span,
+            whole: value.value as u64,
+            femptos: 0,
+        }
+    }
+}
+
 /// See section 2.2.1.
 #[derive(Debug, PartialEq, Clone)]
 pub struct RealLiteral {
@@ -375,54 +459,6 @@ pub struct CharacterStringLiteral {
 
 impl CharacterStringLiteral {
     pub fn new(value: Vec<char>) -> Self {
-        Self { value }
-    }
-}
-
-// See section 2.2.2
-#[derive(Debug, PartialEq, Clone)]
-pub struct DurationLiteral {
-    pub value: Duration,
-}
-
-impl DurationLiteral {
-    pub fn new(value: Duration) -> Self {
-        Self { value }
-    }
-}
-
-// See section 2.2.3
-#[derive(Debug, PartialEq, Clone)]
-pub struct TimeOfDayLiteral {
-    value: Time,
-}
-
-impl TimeOfDayLiteral {
-    pub fn new(value: Time) -> Self {
-        Self { value }
-    }
-}
-
-// See section 2.2.3
-#[derive(Debug, PartialEq, Clone)]
-pub struct DateLiteral {
-    value: Date,
-}
-
-impl DateLiteral {
-    pub fn new(value: Date) -> Self {
-        Self { value }
-    }
-}
-
-// See section 2.2.3
-#[derive(Debug, PartialEq, Clone)]
-pub struct DateAndTimeLiteral {
-    value: PrimitiveDateTime,
-}
-
-impl DateAndTimeLiteral {
-    pub fn new(value: PrimitiveDateTime) -> Self {
         Self { value }
     }
 }

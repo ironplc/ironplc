@@ -6,6 +6,7 @@
 
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Id;
+use ironplc_dsl::time::*;
 use ironplc_dsl::{diagnostic::Diagnostic, visitor::Visitor};
 use paste::paste;
 
@@ -142,7 +143,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &DurationLiteral,
     ) -> Result<Self::Value, Diagnostic> {
         // Always write out as milliseconds. The largest unit is allowed to be "out of range"
-        let val = format!("TIME#{}ms", node.value.whole_milliseconds());
+        let val = format!("TIME#{}ms", node.interval.whole_milliseconds());
         self.write_ws(val.as_str());
         Ok(())
     }
