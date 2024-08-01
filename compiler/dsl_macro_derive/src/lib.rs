@@ -1,9 +1,9 @@
 //! Provides a derive macro that implements recursive visit and
 //! fold operations onto structs and enumerations.
-
+//!
 //! This derive macro make several assumptions about the the
 //! visit/fold structs and language elements:
-
+//!
 //! 1. for the visit struct, for each type, there exist a method
 //!    with the prototype `visit_type_name`
 //! 2. for the fold struct, for each type, there exist a method
@@ -12,18 +12,18 @@
 //!    Box, Option, Vec)
 //! 4. variants in a struct are either unity or have a single
 //!    item (no tuples)
-
+//!
 //! Satisfying the above, this macro generates appropriate
 //! visit and fold functions to recursively walk the syntax tree
 //! for each item within a struct and each variant in an enumeration.
-
+//!
 //! Any item that should be not walked must be marked with the
 //! attribute:
-
+//!
 //! `
 //! #[derive(ignore)]
 //! `
-
+//!
 //! I am unaware of a way to enforce the assumptions other
 //! than at build time.
 use convert_case::{Case, Casing};
