@@ -229,6 +229,7 @@ END_FUNCTION";
     }
 
     #[test]
+<<<<<<< HEAD
     fn parse_program_when_fixed_point_duration_then_ok() {
         let program = "
 FUNCTION fun:TIME
@@ -265,6 +266,8 @@ END_FUNCTION";
     }
 
     #[test]
+=======
+>>>>>>> d46c147 (Fix parsing of real literals)
     fn parse_when_first_steps_function_block_counter_fbd_then_builds_structure() {
         let src = read_shared_resource("first_steps_function_block_counter_fbd.st");
         let expected = new_library(LibraryElementKind::FunctionBlockDeclaration(
