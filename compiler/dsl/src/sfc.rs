@@ -6,6 +6,7 @@ use core::fmt;
 use crate::common::*;
 use crate::core::Id;
 use crate::textual::*;
+use crate::time::*;
 
 use crate::fold::Fold;
 use crate::visitor::Visitor;

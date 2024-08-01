@@ -4,7 +4,6 @@
 extern crate ironplc_dsl as dsl;
 
 mod lexer;
-mod mapper;
 mod parser;
 mod preprocessor;
 mod xform_assign_file_id;

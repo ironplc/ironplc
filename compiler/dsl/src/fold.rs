@@ -12,6 +12,7 @@ use crate::configuration::*;
 use crate::core::*;
 use crate::sfc::*;
 use crate::textual::*;
+use crate::time::*;
 use paste::paste;
 
 /// Defines a macro for the Fold struct that dispatches folding
