@@ -6,6 +6,7 @@
 //!
 //! The transformation succeeds when all ambiguous expression elements
 //! resolve to a declared type.
+use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::textual::*;
@@ -124,8 +125,12 @@ impl Fold<Diagnostic> for DeclarationResolver {
                         // that we should have found earlier to identify the type
                         self.current_type = self.find_type(&named.name).clone();
                     }
-                    SymbolicVariableKind::Array(_) => todo!(),
-                    SymbolicVariableKind::Structured(_) => todo!(),
+                    SymbolicVariableKind::Array(arr) => {
+                        Err(Diagnostic::todo_with_span(arr.span(), file!(), line!()))?
+                    }
+                    SymbolicVariableKind::Structured(st) => {
+                        Err(Diagnostic::todo_with_span(st.span(), file!(), line!()))?
+                    }
                 }
             }
         }

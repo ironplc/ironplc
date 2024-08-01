@@ -77,6 +77,16 @@ impl fmt::Display for SymbolicVariableKind {
     }
 }
 
+impl Located for SymbolicVariableKind {
+    fn span(&self) -> SourceSpan {
+        match self {
+            SymbolicVariableKind::Named(named) => named.span(),
+            SymbolicVariableKind::Array(array) => array.span(),
+            SymbolicVariableKind::Structured(structured) => structured.span(),
+        }
+    }
+}
+
 impl Variable {
     pub fn named(name: &str) -> Variable {
         Variable::Symbolic(SymbolicVariableKind::Named(NamedVariable {
@@ -105,6 +115,12 @@ impl fmt::Display for NamedVariable {
     }
 }
 
+impl Located for NamedVariable {
+    fn span(&self) -> SourceSpan {
+        self.name.span()
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct ArrayVariable {
     /// The variable that is being accessed by subscript (the array).
@@ -124,6 +140,12 @@ impl fmt::Display for ArrayVariable {
     }
 }
 
+impl Located for ArrayVariable {
+    fn span(&self) -> SourceSpan {
+        self.subscripted_variable.as_ref().span()
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct StructuredVariable {
     pub record: Box<SymbolicVariableKind>,
@@ -133,6 +155,12 @@ pub struct StructuredVariable {
 impl fmt::Display for StructuredVariable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!("{} {}", self.record.as_ref(), self.field))
+    }
+}
+
+impl Located for StructuredVariable {
+    fn span(&self) -> SourceSpan {
+        SourceSpan::join2(self.record.as_ref(), &self.field)
     }
 }
 

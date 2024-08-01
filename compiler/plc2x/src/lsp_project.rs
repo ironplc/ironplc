@@ -131,6 +131,7 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::HexDigits => None,
             TokenType::OctDigits => None,
             TokenType::BinDigits => None,
+            TokenType::RealLiteral => None,
             TokenType::Digits => None,
             TokenType::Type => Some(KEYWORD_INDEX),
             TokenType::EndType => Some(KEYWORD_INDEX),
