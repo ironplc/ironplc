@@ -337,6 +337,25 @@ pub struct RealLiteral {
     pub data_type: Option<ElementaryTypeName>,
 }
 
+impl RealLiteral {
+    pub fn try_parse(a: &str, tn: Option<ElementaryTypeName>) -> Result<Self, &'static str> {
+        let (r, remainder): (Vec<_>, Vec<_>) = a
+            .chars()
+            .filter(|c| *c != '_')
+            .partition(|c| c.is_ascii_digit() || *c == '.' || *c == 'E' || *c == 'e' || *c == '-');
+        if !remainder.is_empty() {
+            return Err("Non-real characters");
+        }
+        let r: String = r.into_iter().collect();
+        f64::from_str(r.as_str())
+            .map(|value| RealLiteral {
+                value,
+                data_type: tn,
+            })
+            .map_err(|e| "real")
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct BooleanLiteral {
     pub value: Boolean,

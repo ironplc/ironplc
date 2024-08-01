@@ -21,6 +21,7 @@ pub mod stages;
 mod stdlib;
 mod symbol_graph;
 mod symbol_table;
+mod type_table;
 mod xform_resolve_late_bound_data_decl;
 mod xform_resolve_late_bound_expr_kind;
 mod xform_resolve_late_bound_type_initializer;
