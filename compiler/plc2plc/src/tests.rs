@@ -13,8 +13,6 @@ mod test {
 
     pub fn read_resource(name: &'static str) -> String {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        // TODO move these resources to a common directory so that they can be used
-        // by more than one set of tests without crossing module boundaries
         path.push("resources/test");
         path.push(name);
 

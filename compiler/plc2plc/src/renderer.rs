@@ -896,10 +896,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_id(&node.name)?;
         self.write_ws("(");
 
-        if let Some(_interval) = node.interval {
+        if let Some(interval) = &node.interval {
             self.write_ws("INTERNAL");
             self.write_ws(":=");
-            // TODO visit duration
+            self.visit_duration_literal(interval)?;
             self.write_ws(",");
         }
 
