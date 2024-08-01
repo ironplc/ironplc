@@ -163,7 +163,6 @@ impl<'a> LspServer<'a> {
             }
             Err(req) => req,
         };
-        // TODO handle requests
         ""
     }
 
@@ -246,7 +245,6 @@ impl<'a> LspServer<'a> {
             };
 
         ""
-        // TODO other possible messages
     }
 
     fn cast_notification<T>(

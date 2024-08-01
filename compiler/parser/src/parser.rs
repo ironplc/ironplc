@@ -169,6 +169,7 @@ enum VarDeclarations {
     // NonRetentive(Vec<VarDecl>),
     // Temp(Vec<VarDecl>),
     Incomplete(Vec<IncomplVarDecl>),
+    Access(Vec<VarDecl>,)
 }
 
 impl VarDeclarations {
@@ -1153,7 +1154,7 @@ parser! {
     // B.1.5.3 Program declaration
     rule program_type_name() -> Id = identifier()
     // TODO program_access_decls
-    pub rule program_declaration() -> ProgramDeclaration = tok(TokenType::Program) _ p:program_type_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other } / located:located_var_declarations() { located } ) ** _ _ body:function_block_body() _ tok(TokenType::EndProgram) {
+    pub rule program_declaration() -> ProgramDeclaration = tok(TokenType::Program) _ p:program_type_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other } / located:located_var_declarations() { located } / access:access_declarations()) ** _ _ body:function_block_body() _ tok(TokenType::EndProgram) {
       let variables = VarDeclarations::unzip(decls);
       ProgramDeclaration {
         name: p,
@@ -1163,12 +1164,12 @@ parser! {
       }
     }
     // TODO
-    //rule program_access_decls() -> Vec<ProgramAccessDecl> = tok(TokenType::VarAccess) _ decls:semisep_oneplus(<program_access_decl()>) _ tok(TokenType::EndVar)
-    //rule program_access_decl() -> ProgramAccessDecl = access_name() _ tok(TokenType::Colon) _ symbolic_variable() _ tok(TokenType::Colon) _ non_generic_type_name() direction()? {
-    //  ProgramAccessDecl {
-    //
-    //  }
-    //}
+    rule program_access_decls() -> VarDeclarations = tok(TokenType::VarAccess) _ decls:semisep_oneplus(<program_access_decl()>) _ tok(TokenType::EndVar) {
+      VarDeclarations::Access(decls)
+    }
+    rule program_access_decl() -> VarDecl = access_name() _ tok(TokenType::Colon) _ symbolic_variable() _ tok(TokenType::Colon) _ non_generic_type_name() direction()? {
+      VarDecl { identifier: todo!(), var_type: VariableType::Access, qualifier: todo!(), initializer: todo!() }
+    }
 
     // B.1.6 Sequential function chart elements
     pub rule sequential_function_chart() -> Vec<Network> = networks:sfc_network() ++ _ { networks }
