@@ -83,6 +83,12 @@ mod test {
     }
 
     #[test]
+    fn parse_program_then_ok() {
+        let res: Result<Library, Diagnostic> = parse_resource("program.st");
+        assert!(res.is_ok())
+    }
+
+    #[test]
     fn parse_program_when_has_comment_then_ok() {
         let source = "
         TYPE
@@ -378,6 +384,7 @@ END_FUNCTION";
                 VarDecl::simple("AVCnt", "REAL"),
                 VarDecl::simple("_TMP_AverageVal17_OUT", "REAL"),
             ],
+            access_variables: vec![],
             body: FunctionBlockBodyKind::stmts(vec![
                 StmtKind::fb_call_mapped("CounterST0", vec![("Reset", "Reset")]),
                 StmtKind::structured_assignment("Cnt1", "CounterST0", "OUT"),

@@ -55,7 +55,7 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
                 let mut seen_values: HashSet<&Id> = HashSet::new();
                 for current in &spec.values {
                     // TODO this needs to be updated - this doesn't do
-                    // a comparision that includes the type of the enumeration
+                    // a comparison that includes the type of the enumeration
                     let seen = seen_values.get(&current.value);
                     match seen {
                         Some(first) => {
