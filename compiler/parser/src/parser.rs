@@ -169,7 +169,8 @@ enum VarDeclarations {
     // NonRetentive(Vec<VarDecl>),
     // Temp(Vec<VarDecl>),
     Incomplete(Vec<IncomplVarDecl>),
-    Access(Vec<VarDecl>,)
+    ProgramAccess(Vec<ProgramAccessDecl>),
+    ConfigAccess(Vec<AccessDeclaration>),
 }
 
 impl VarDeclarations {
@@ -201,10 +202,57 @@ impl VarDeclarations {
                 VarDeclarations::Incomplete(v) => {
                     vars.append(&mut v.into_iter().map(|var| var.into()).collect());
                 }
+                VarDeclarations::ProgramAccess(_) => {
+                    // Omitted
+                }
+                VarDeclarations::ConfigAccess(_) => {
+                    // Omitted
+                }
             }
         }
 
         vars
+    }
+
+    pub fn unzip_with_access(
+        mut decls: Vec<VarDeclarations>,
+    ) -> (Vec<VarDecl>, Vec<ProgramAccessDecl>) {
+        let mut vars = Vec::new();
+        let mut access_vars = Vec::new();
+
+        for decl in decls.drain(..) {
+            match decl {
+                VarDeclarations::Inputs(mut i) => {
+                    vars.append(&mut i);
+                }
+                VarDeclarations::Outputs(mut o) => {
+                    vars.append(&mut o);
+                }
+                VarDeclarations::Inouts(mut inouts) => {
+                    vars.append(&mut inouts);
+                }
+                VarDeclarations::Located(mut l) => {
+                    vars.append(&mut l);
+                }
+                VarDeclarations::Var(mut v) => {
+                    vars.append(&mut v);
+                }
+                VarDeclarations::External(mut v) => {
+                    vars.append(&mut v);
+                }
+                VarDeclarations::Incomplete(v) => {
+                    vars.append(&mut v.into_iter().map(|var| var.into()).collect());
+                }
+                VarDeclarations::ProgramAccess(mut v) => {
+                    access_vars.append(&mut v);
+                }
+                VarDeclarations::ConfigAccess(_v) => {
+                    // Omitted
+                }
+            }
+        }
+
+        (vars, access_vars)
     }
 
     pub fn map(
@@ -1154,21 +1202,26 @@ parser! {
     // B.1.5.3 Program declaration
     rule program_type_name() -> Id = identifier()
     // TODO program_access_decls
-    pub rule program_declaration() -> ProgramDeclaration = tok(TokenType::Program) _ p:program_type_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { other } / located:located_var_declarations() { located } / access:access_declarations()) ** _ _ body:function_block_body() _ tok(TokenType::EndProgram) {
-      let variables = VarDeclarations::unzip(decls);
+    pub rule program_declaration() -> ProgramDeclaration = tok(TokenType::Program) _ p:program_type_name() _ decls:(access:program_access_decls() { access } / io:io_var_declarations() { io } / other:other_var_declarations() { other } / located:located_var_declarations() { located }) ** _ _ body:function_block_body() _ tok(TokenType::EndProgram) {
+      let (variables, access_variables) = VarDeclarations::unzip_with_access(decls);
       ProgramDeclaration {
         name: p,
         variables,
-        // TODO more
+        access_variables,
         body,
       }
     }
     // TODO
     rule program_access_decls() -> VarDeclarations = tok(TokenType::VarAccess) _ decls:semisep_oneplus(<program_access_decl()>) _ tok(TokenType::EndVar) {
-      VarDeclarations::Access(decls)
+      VarDeclarations::ProgramAccess(decls)
     }
-    rule program_access_decl() -> VarDecl = access_name() _ tok(TokenType::Colon) _ symbolic_variable() _ tok(TokenType::Colon) _ non_generic_type_name() direction()? {
-      VarDecl { identifier: todo!(), var_type: VariableType::Access, qualifier: todo!(), initializer: todo!() }
+    rule program_access_decl() -> ProgramAccessDecl = access_name:access_name() _ tok(TokenType::Colon) _ symbolic_variable:symbolic_variable() _ tok(TokenType::Colon) _ type_name:non_generic_type_name() _ direction:direction()? {
+      ProgramAccessDecl {
+        access_name,
+        symbolic_variable,
+        type_name,
+        direction,
+      }
     }
 
     // B.1.6 Sequential function chart elements
@@ -1292,7 +1345,7 @@ parser! {
     // TODO need to have more than one
     rule single_resource_declaration() -> (Vec<TaskConfiguration>, Vec<ProgramConfiguration>) = t:semisep(<task_configuration()>)? _ p:semisep_oneplus(<program_configuration()>) { (t.unwrap_or_default(), p) }
     rule resource_name() -> Id = identifier()
-    rule access_declarations() -> Vec<AccessDeclaration> = tok(TokenType::VarAccess) _ decls:semisep_oneplus(<access_declaration()>) _ tok(TokenType::EndVar) { decls }
+    rule access_declarations() -> VarDeclarations = tok(TokenType::VarAccess) _ decls:semisep_oneplus(<access_declaration()>) _ tok(TokenType::EndVar) { VarDeclarations::ConfigAccess(decls) }
     rule access_declaration() -> AccessDeclaration = identifier:access_name() _ tok(TokenType::Colon) _ path:access_path() _ tok(TokenType::Colon) _ type_name:non_generic_type_name() _ direction:direction()? {
       AccessDeclaration {
         identifier,

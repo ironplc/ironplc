@@ -15,7 +15,7 @@ use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
 use dsl_macro_derive::Recurse;
 
-use crate::configuration::ConfigurationDeclaration;
+use crate::configuration::{ConfigurationDeclaration, Direction};
 use crate::core::{Id, Located, SourceSpan};
 use crate::fold::Fold;
 use crate::sfc::{Network, Sfc};
@@ -1032,6 +1032,15 @@ pub trait HasVariables {
     fn variables(&self) -> &Vec<VarDecl>;
 }
 
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub struct ProgramAccessDecl {
+    pub access_name: Id,
+    pub symbolic_variable: SymbolicVariableKind,
+    pub type_name: Type,
+    #[recurse(ignore)]
+    pub direction: Option<Direction>,
+}
+
 /// Declaration (that does not permit a location).
 ///
 /// See section 2.4.3.
@@ -1607,7 +1616,7 @@ pub struct ProgramDeclaration {
     pub name: Id,
     pub variables: Vec<VarDecl>,
     // TODO located variables
-    // TODO other stuff here
+    pub access_variables: Vec<ProgramAccessDecl>,
     pub body: FunctionBlockBodyKind,
 }
 
