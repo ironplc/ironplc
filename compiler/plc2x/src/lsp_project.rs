@@ -248,7 +248,6 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::RightArrow => Some(KEYWORD_INDEX),
         };
 
-        // TODO fix this mapping
         token_type.map(|token_type| SemanticToken {
             delta_line: val.0.line as u32,
             delta_start: val.0.col as u32,

@@ -431,6 +431,40 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_signed_integer(&node.end)
     }
 
+    fn visit_program_access_decl(
+        &mut self,
+        node: &ProgramAccessDecl,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.newline();
+
+        self.write_ws("VAR_ACCESS");
+
+        self.newline();
+        self.indent();
+
+        self.visit_id(&node.access_name)?;
+        self.write_ws(":");
+        self.visit_symbolic_variable_kind(&node.symbolic_variable)?;
+        self.write_ws(":");
+        self.visit_type(&node.type_name)?;
+
+        if let Some(dir) = &node.direction {
+            let dir = match dir {
+                dsl::configuration::Direction::ReadWrite => "READ_WRITE",
+                dsl::configuration::Direction::ReadOnly => "READ_ONLY",
+            };
+            self.write_ws(dir);
+        }
+
+        self.write(";");
+        self.newline();
+        self.outdent();
+
+        self.write_ws("END_VAR");
+        self.newline();
+        Ok(())
+    }
+
     // 2.4.3
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         self.newline();
@@ -705,6 +739,9 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         for var in node.variables.iter() {
             self.visit_var_decl(var)?;
+        }
+        for var in node.access_variables.iter() {
+            self.visit_program_access_decl(var)?;
         }
 
         node.body.recurse_visit(self)?;
@@ -1205,7 +1242,9 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &dsl::textual::StructuredVariable,
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_symbolic_variable_kind(&node.record)?;
-        self.write_ws(".");
-        self.visit_id(&node.field)
+        self.write(".");
+        self.write(node.field.original().as_str());
+
+        Ok(())
     }
 }

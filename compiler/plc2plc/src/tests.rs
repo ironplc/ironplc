@@ -68,6 +68,13 @@ mod test {
     }
 
     #[test]
+    fn write_to_string_program() {
+        let rendered = parse_and_render_resource("program.st");
+        let expected = read_resource("program_rendered.st");
+        assert_eq!(rendered, expected);
+    }
+
+    #[test]
     fn write_to_string_sfc() {
         let rendered = parse_and_render_resource("sfc.st");
         let expected = read_resource("sfc_rendered.st");

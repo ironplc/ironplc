@@ -209,6 +209,8 @@ pub trait Visitor<E> {
     // 2.4.2.1
     dispatch!(Subrange);
 
+    dispatch!(ProgramAccessDecl);
+
     // 2.4.3
     dispatch!(VarDecl);
 
@@ -447,6 +449,7 @@ mod test {
             elements: vec![LibraryElementKind::ProgramDeclaration(ProgramDeclaration {
                 name: Id::from("plc_prg"),
                 variables: vec![VarDecl::simple("Reset", "BOOL").with_type(VariableType::Input)],
+                access_variables: vec![],
                 body: FunctionBlockBodyKind::stmts(vec![StmtKind::fb_assign(
                     "AverageVal",
                     vec!["Cnt1", "Cnt2"],

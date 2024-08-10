@@ -157,6 +157,8 @@ pub trait Fold<E> {
     // 2.4.2.1
     dispatch!(Subrange);
 
+    dispatch!(ProgramAccessDecl);
+
     // 2.4.3
     dispatch!(VarDecl);
 

@@ -97,7 +97,6 @@ pub enum TokenType {
     #[token("..")]
     Range,
 
-    // TODO It would be nice for this to be associated with a type
     #[token("#")]
     Hash,
 
