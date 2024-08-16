@@ -168,7 +168,7 @@ impl DateLiteral {
         let year = self.value.year();
         let month = self.value.month();
         let day = self.value.day();
-        return (year, month.into(), day);
+        (year, month.into(), day)
     }
 }
 
@@ -188,7 +188,7 @@ impl DateAndTimeLiteral {
         let year = self.value.year();
         let month = self.value.month();
         let day = self.value.day();
-        return (year, month.into(), day);
+        (year, month.into(), day)
     }
 
     /// Returns the hour, minute, second and millisecond from the literal.
