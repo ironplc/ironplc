@@ -1615,7 +1615,6 @@ impl Located for FunctionBlockDeclaration {
 pub struct ProgramDeclaration {
     pub name: Id,
     pub variables: Vec<VarDecl>,
-    // TODO located variables
     pub access_variables: Vec<ProgramAccessDecl>,
     pub body: FunctionBlockBodyKind,
 }

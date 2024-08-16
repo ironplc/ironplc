@@ -145,17 +145,30 @@ impl TimeOfDayLiteral {
     pub fn new(value: Time) -> Self {
         Self { value }
     }
+
+    /// Returns the hour, minute, second and millisecond from the literal.
+    pub fn hmsm(&self) -> (u8, u8, u8, u32) {
+        self.value.as_hms_micro()
+    }
 }
 
 // See section 2.2.3
 #[derive(Debug, PartialEq, Clone)]
 pub struct DateLiteral {
-    value: Date,
+    pub value: Date,
 }
 
 impl DateLiteral {
     pub fn new(value: Date) -> Self {
         Self { value }
+    }
+
+    /// Returns the year, month, day from the literal.
+    pub fn ymd(&self) -> (i32, u8, u8) {
+        let year = self.value.year();
+        let month = self.value.month();
+        let day = self.value.day();
+        (year, month.into(), day)
     }
 }
 
@@ -168,5 +181,18 @@ pub struct DateAndTimeLiteral {
 impl DateAndTimeLiteral {
     pub fn new(value: PrimitiveDateTime) -> Self {
         Self { value }
+    }
+
+    /// Returns the year, month, day from the literal.
+    pub fn ymd(&self) -> (i32, u8, u8) {
+        let year = self.value.year();
+        let month = self.value.month();
+        let day = self.value.day();
+        (year, month.into(), day)
+    }
+
+    /// Returns the hour, minute, second and millisecond from the literal.
+    pub fn hmsm(&self) -> (u8, u8, u8, u32) {
+        self.value.as_hms_micro()
     }
 }

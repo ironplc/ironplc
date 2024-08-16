@@ -150,25 +150,38 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
     fn visit_time_of_day_literal(
         &mut self,
-        _node: &TimeOfDayLiteral,
+        node: &TimeOfDayLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        // TODO
-        self.write_ws("TIME_OF_DAY#12:00:00.00");
+        let (hr, min, sec, milli) = node.hmsm();
+        self.write_ws(
+            format!(
+                "TIME_OF_DAY#{:0>2}:{:0>2}:{:0>2}.{:0>2}",
+                hr, min, sec, milli
+            )
+            .as_str(),
+        );
         Ok(())
     }
 
-    fn visit_date_literal(&mut self, _node: &DateLiteral) -> Result<Self::Value, Diagnostic> {
-        // TODO
-        self.write_ws("DATE#2000-01-01");
+    fn visit_date_literal(&mut self, node: &DateLiteral) -> Result<Self::Value, Diagnostic> {
+        let (year, month, day) = node.ymd();
+        self.write_ws(format!("DATE#{:0>4}-{:0>2}-{:0>2}", year, month, day).as_str());
         Ok(())
     }
 
     fn visit_date_and_time_literal(
         &mut self,
-        _node: &DateAndTimeLiteral,
+        node: &DateAndTimeLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        // TODO
-        self.write_ws("DATE_AND_TIME#2000-01-01-12:00:00.00");
+        let (hr, min, sec, milli) = node.hmsm();
+        let (year, month, day) = node.ymd();
+        self.write_ws(
+            format!(
+                "DATE_AND_TIME#{:0>4}-{:0>2}-{:0>2}-{:0>2}:{:0>2}:{:0>2}.{:0>2}",
+                year, month, day, hr, min, sec, milli
+            )
+            .as_str(),
+        );
         Ok(())
     }
 
