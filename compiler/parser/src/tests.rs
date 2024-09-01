@@ -83,6 +83,12 @@ mod test {
     }
 
     #[test]
+    fn parse_configuration() {
+        let res: Result<Library, Diagnostic> = parse_resource("configuration.st");
+        assert!(res.is_ok())
+    }
+
+    #[test]
     fn parse_program_then_ok() {
         let res: Result<Library, Diagnostic> = parse_resource("program.st");
         assert!(res.is_ok())

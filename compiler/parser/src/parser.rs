@@ -408,6 +408,7 @@ parser! {
 
     // Lists of separated items with required ending separator
     rule periodsep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ period() _)) _ period() {v}
+    rule periodsep_no_trailing<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ period() _)) {v}
     rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v}
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
     rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) comma() {v}
@@ -1307,7 +1308,7 @@ parser! {
     rule configuration_name() -> Id = identifier()
     rule resource_type_name() -> Id = identifier()
     // TODO this is missing some
-    pub rule configuration_declaration() -> ConfigurationDeclaration = tok(TokenType::Configuration) _ n:configuration_name() _ g:global_var_declarations()? _ r:resource_declaration() i:instance_specific_initializations()? _ tok(TokenType::EndConfiguration) {
+    pub rule configuration_declaration() -> ConfigurationDeclaration = tok(TokenType::Configuration) _ n:configuration_name() _ g:global_var_declarations()? _ r:resource_declaration() _ i:instance_specific_initializations()? _ tok(TokenType::EndConfiguration) {
       let g = g.unwrap_or_default();
       // TODO this should really be multiple items
       let r = vec![r];
@@ -1446,17 +1447,26 @@ parser! {
       gv:global_var_reference() { ProgramConnectionSinkKind::GlobalVarReference(gv) }
       / dv:direct_variable() { ProgramConnectionSinkKind::DirectVariable(dv) }
     rule instance_specific_initializations() -> Vec<InstanceInitKind> = tok(TokenType::VarConfig) _ init:semisep_oneplus(<instance_specific_init()>) _ tok(TokenType::EndVar) { init }
-    rule instance_specific_init() -> InstanceInitKind =
-      resource_name() tok(TokenType::Period) program_name() tok(TokenType::Period) periodsep(<fb_name()>) variable_name() location()? tok(TokenType::Colon) located_var_spec_init() {
-        InstanceInitKind::FunctionBlockInit(FunctionBlockInit {
-
-        })
-      }
-      / resource_name() tok(TokenType::Period) program_name() tok(TokenType::Period) periodsep(<fb_name()>) fb_name() _ tok(TokenType::Colon) _ function_block_type_name() _ tok(TokenType::Assignment) _ structure_initialization() {
-        InstanceInitKind::LocatedVarInit(LocatedVarInit {
-
-        })
-      }
+    rule instance_specific_init() -> InstanceInitKind = instance_specific_init__fb_init() / instance_specific_init__located()
+    rule instance_specific_init__located() -> InstanceInitKind = resource_name:resource_name() tok(TokenType::Period) program_name:program_name() tok(TokenType::Period) fb_path:periodsep_no_trailing(<identifier()>) _ address:location()? _ tok(TokenType::Colon) _ initializer:located_var_spec_init() {
+      InstanceInitKind::LocatedVarInit(LocatedVarInit {
+        resource_name,
+        program_name,
+        fb_path,
+        address,
+        initializer,
+      })
+    }
+    rule instance_specific_init__fb_init() -> InstanceInitKind = resource_name:resource_name() tok(TokenType::Period) program_name:program_name() tok(TokenType::Period) fb_path:periodsep_no_trailing(<identifier()>) _ fb_name:identifier() _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ tok(TokenType::Assignment) _ initializer:structure_initialization() {
+      InstanceInitKind::FunctionBlockInit(FunctionBlockInit {
+        resource_name,
+        program_name,
+        fb_path,
+        fb_name,
+        type_name,
+        initializer,
+      })
+    }
 
     // B 2.1 Instruction List
     // TODO this entire section
