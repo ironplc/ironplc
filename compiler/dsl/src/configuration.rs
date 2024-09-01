@@ -6,9 +6,9 @@ use time::Duration;
 use crate::{
     common::{
         AddressAssignment, ConstantKind, EnumeratedValue, HasVariables, InitialValueAssignmentKind,
-        Type, VarDecl,
+        StructureElementInit, Type, VarDecl,
     },
-    core::Id,
+    core::{Id, Located},
     textual::SymbolicVariableKind,
     time::DurationLiteral,
 };
@@ -175,10 +175,19 @@ pub struct GlobalVarReference {
 
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct FunctionBlockInit {
-    // TODO
+    pub resource_name: Id,
+    pub program_name: Id,
+    pub fb_path: Vec<Id>,
+    pub fb_name: Id,
+    pub type_name: Type,
+    pub initializer: Vec<StructureElementInit>,
 }
 
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct LocatedVarInit {
-    // TODO
+    pub resource_name: Id,
+    pub program_name: Id,
+    pub fb_path: Vec<Id>,
+    pub address: Option<AddressAssignment>,
+    pub initializer: InitialValueAssignmentKind,
 }

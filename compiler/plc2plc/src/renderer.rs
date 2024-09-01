@@ -4,6 +4,7 @@
 //! The writer is useful for debugging the parser and to understand the
 //! internal representation.
 
+use dsl::configuration::LocatedVarInit;
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Id;
 use ironplc_dsl::time::*;
@@ -21,6 +22,22 @@ macro_rules! visit_comma_separated {
                     $self.[<visit_ $struct_name:snake>](item)?;
                     if it.peek().is_some() {
                         $self.write_ws(",");
+                    }
+                }
+            }
+        }
+    };
+}
+
+macro_rules! write_period_separated {
+    ($self:ident, $iter:expr) => {
+        paste! {
+            {
+                let mut it = $iter.peekable();
+                while let Some(item) = it.next() {
+                    $self.write(item);
+                    if it.peek().is_some() {
+                        $self.write(".");
                     }
                 }
             }
@@ -931,7 +948,79 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         }
         self.outdent();
 
+        self.indent();
+        for fb_init in node.fb_inits.iter() {
+            self.visit_function_block_init(fb_init)?;
+        }
+        self.outdent();
+
+        self.indent();
+        for loc_var_init in node.located_var_inits.iter() {
+            self.visit_located_var_init(loc_var_init)?;
+        }
+
+        self.outdent();
+        self.newline();
+
         self.write_ws("END_CONFIGURATION");
+        self.newline();
+        Ok(())
+    }
+
+    fn visit_function_block_init(
+        &mut self,
+        node: &dsl::configuration::FunctionBlockInit,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("VAR_CONFIG");
+        self.newline();
+
+        self.indent();
+
+        let mut vars: Vec<&String> = Vec::new();
+        vars.push(node.resource_name.original());
+        vars.push(node.program_name.original());
+        vars.extend(node.fb_path.iter().map(|v| v.original()));
+
+        write_period_separated!(self, vars.iter());
+
+        self.write_ws(":");
+
+        self.outdent();
+        self.newline();
+
+        self.write_ws("END_VAR");
+        self.newline();
+        Ok(())
+    }
+
+    fn visit_located_var_init(&mut self, node: &LocatedVarInit) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("VAR_CONFIG");
+
+        self.indent();
+        self.newline();
+
+        let mut vars: Vec<&String> = Vec::new();
+        vars.push(node.resource_name.original());
+        vars.push(node.program_name.original());
+        vars.extend(node.fb_path.iter().map(|v| v.original()));
+
+        write_period_separated!(self, vars.iter());
+
+        if let Some(loc) = &node.address {
+            self.write_ws("AT");
+            self.visit_address_assignment(loc)?;
+        }
+
+        self.write_ws(":");
+
+        self.visit_initial_value_assignment_kind(&node.initializer)?;
+
+        self.write_ws(";");
+
+        self.outdent();
+        self.newline();
+
+        self.write_ws("END_VAR");
         self.newline();
         Ok(())
     }
