@@ -4,6 +4,9 @@
       PROGRAM plc_task_instance WITH plc_task : plc_prg ;
    END_RESOURCE
    VAR_CONFIG
+Some.FunctionBlock.Item.Path : FB_TYPE_NAME := ( ELEM := VAL );
+   END_VAR
+   VAR_CONFIG
 Some.Located.Item.Path AT %QB1 : BYTE ;
    END_VAR
 

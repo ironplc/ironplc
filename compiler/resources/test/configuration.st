@@ -6,6 +6,7 @@ CONFIGURATION config
 
   VAR_CONFIG
     Some.Located.Item.Path AT %QB1: BYTE;
+    Some.FunctionBlock.Item.Path : FB_TYPE_NAME := (ELEM := VAL);
   END_VAR
 END_CONFIGURATION
 
