@@ -985,6 +985,16 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         self.write_ws(":");
 
+        self.visit_type(&node.type_name)?;
+
+        self.write_ws(":=");
+
+        self.write_ws("(");
+
+        visit_comma_separated!(self, node.initializer.iter(), StructureElementInit);
+
+        self.write_ws(");");
+
         self.outdent();
         self.newline();
 
