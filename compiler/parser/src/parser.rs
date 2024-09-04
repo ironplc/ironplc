@@ -408,6 +408,7 @@ parser! {
 
     // Lists of separated items with required ending separator
     rule periodsep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ period() _)) _ period() {v}
+    rule periodsep_oneplus_no_trailing<T>(x: rule<T>) -> Vec<T> = v:(x() ++ period()) {v}
     rule periodsep_no_trailing<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ period() _)) {v}
     rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v}
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
@@ -1457,12 +1458,13 @@ parser! {
         initializer,
       })
     }
-    rule instance_specific_init__fb_init() -> InstanceInitKind = resource_name:resource_name() tok(TokenType::Period) program_name:program_name() tok(TokenType::Period) fb_path:periodsep_no_trailing(<identifier()>) _ fb_name:identifier() _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ tok(TokenType::Assignment) _ initializer:structure_initialization() {
+    rule instance_specific_init__fb_init() -> InstanceInitKind = resource_name:resource_name() tok(TokenType::Period) program_name:program_name() tok(TokenType::Period) fb_path:periodsep_oneplus_no_trailing(<identifier()>) _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ tok(TokenType::Assignment) _ initializer:structure_initialization() {
       InstanceInitKind::FunctionBlockInit(FunctionBlockInit {
         resource_name,
         program_name,
         fb_path,
-        fb_name,
+        // TODO fix me
+        fb_name: Id::from(""),
         type_name,
         initializer,
       })
