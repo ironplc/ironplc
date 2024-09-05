@@ -459,7 +459,7 @@ END_FUNCTION";
         ));
         let res = parse_program(src.as_str(), &FileId::default()).unwrap();
         assert_eq!(res, expected);
-        format!("{:?}", res.clone());
+        print!("{:?}", res.clone());
     }
 
     #[test]
@@ -496,7 +496,7 @@ END_FUNCTION";
 
         let res = parse_program(src.as_str(), &FileId::default()).unwrap();
         assert_eq!(res, expected);
-        format!("{:?}", res.clone());
+        print!("{:?}", res.clone());
     }
 
     #[test]
@@ -591,7 +591,7 @@ END_FUNCTION";
         ));
         let res = parse_program(src.as_str(), &FileId::default()).unwrap();
         assert_eq!(res, expected);
-        format!("{:?}", res.clone());
+        print!("{:?}", res.clone());
     }
 
     // TODO add this as a test
