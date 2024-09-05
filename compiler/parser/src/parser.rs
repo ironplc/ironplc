@@ -456,7 +456,6 @@ parser! {
     rule signed_integer() -> SignedInteger = signed_integer__positive() / signed_integer__negative()
     rule integer__string() -> &'input str = n:tok(TokenType::Digits) { n.text.as_str() }
     rule integer__string_simplified() -> String = n:integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit()).collect() }
-    // TODO
     rule integer() -> Integer = n:integer__string() {? Integer::new(n, SourceSpan::default()) }
     rule binary_integer() -> Integer =  n:tok(TokenType::BinDigits) {? Integer::try_binary(n.text.as_str()) }
     rule octal_integer() -> Integer = n:tok(TokenType::OctDigits) {? Integer::try_octal(n.text.as_str()) }
@@ -1396,8 +1395,7 @@ parser! {
     rule task_initialization_priority() -> u32 = id_eq("PRIORITY") _ tok(TokenType::Assignment) _ i:integer() {? i.value.try_into().map_err(|e| "priority") }
     // TODO there are more here, but only supporting Constant for now
     pub rule data_source() -> ConstantKind = constant:constant() { constant }
-    // TODO more options here
-    pub rule program_configuration() -> ProgramConfiguration = tok(TokenType::Program) _ name:program_name() task_name:( _ tok(TokenType::With) _ t:task_name() { t })? _ tok(TokenType::Colon) _ pt:program_type_name() elements:(_ tok(TokenType::LeftParen) _ e:prog_conf_elements() _ tok(TokenType::RightParen) { e })? {
+    pub rule program_configuration() -> ProgramConfiguration = tok(TokenType::Program) _ storage:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ name:program_name() task_name:( _ tok(TokenType::With) _ t:task_name() { t })? _ tok(TokenType::Colon) _ pt:program_type_name() elements:(_ tok(TokenType::LeftParen) _ e:prog_conf_elements() _ tok(TokenType::RightParen) { e })? {
       let mut sources: Vec<ProgramConnectionSource> = Vec::new();
       let mut sinks: Vec<ProgramConnectionSink> = Vec::new();
       let mut fb_tasks: Vec<FunctionBlockTask> = Vec::new();
@@ -1414,6 +1412,7 @@ parser! {
 
       ProgramConfiguration {
         name,
+        storage,
         task_name,
         type_name: pt,
         fb_tasks,

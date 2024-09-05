@@ -5,8 +5,8 @@ use time::Duration;
 
 use crate::{
     common::{
-        AddressAssignment, ConstantKind, EnumeratedValue, HasVariables, InitialValueAssignmentKind,
-        StructureElementInit, Type, VarDecl,
+        AddressAssignment, ConstantKind, DeclarationQualifier, EnumeratedValue, HasVariables,
+        InitialValueAssignmentKind, StructureElementInit, Type, VarDecl,
     },
     core::{Id, Located},
     textual::SymbolicVariableKind,
@@ -54,6 +54,8 @@ impl HasVariables for ResourceDeclaration {
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct ProgramConfiguration {
     pub name: Id,
+    #[recurse(ignore)]
+    pub storage: Option<DeclarationQualifier>,
     pub task_name: Option<Id>,
     pub type_name: Id,
     pub fb_tasks: Vec<FunctionBlockTask>,
