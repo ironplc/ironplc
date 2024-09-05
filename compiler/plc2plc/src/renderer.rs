@@ -917,6 +917,17 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &dsl::configuration::ProgramConfiguration,
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("PROGRAM");
+
+        if let Some(storage) = &node.storage {
+            let storage = match storage {
+                DeclarationQualifier::Unspecified => "",
+                DeclarationQualifier::Constant => "",
+                DeclarationQualifier::Retain => "RETAIN",
+                DeclarationQualifier::NonRetain => "NON_RETAIN",
+            };
+            self.write_ws(storage);
+        }
+
         self.visit_id(&node.name)?;
 
         if let Some(task) = &node.task_name {

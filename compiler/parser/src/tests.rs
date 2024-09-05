@@ -445,6 +445,7 @@ END_FUNCTION";
                     }],
                     programs: vec![ProgramConfiguration {
                         name: Id::from("plc_task_instance"),
+                        storage: None,
                         task_name: Option::Some(Id::from("plc_task")),
                         type_name: Id::from("plc_prg"),
                         fb_tasks: vec![],
@@ -458,7 +459,7 @@ END_FUNCTION";
         ));
         let res = parse_program(src.as_str(), &FileId::default()).unwrap();
         assert_eq!(res, expected);
-        format!("{:?}", res.clone());
+        print!("{:?}", res.clone());
     }
 
     #[test]
@@ -495,7 +496,7 @@ END_FUNCTION";
 
         let res = parse_program(src.as_str(), &FileId::default()).unwrap();
         assert_eq!(res, expected);
-        format!("{:?}", res.clone());
+        print!("{:?}", res.clone());
     }
 
     #[test]
@@ -590,7 +591,7 @@ END_FUNCTION";
         ));
         let res = parse_program(src.as_str(), &FileId::default()).unwrap();
         assert_eq!(res, expected);
-        format!("{:?}", res.clone());
+        print!("{:?}", res.clone());
     }
 
     // TODO add this as a test
