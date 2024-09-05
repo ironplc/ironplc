@@ -287,7 +287,6 @@ fn expand_struct_recurse_fold(name: &Ident, fields: &FieldsNamed) -> Result<Toke
 
         if is_ignored(&f.attrs).expect("Attribute not permitted") {
             return quote! {
-                // TODO this probably doesn't handle errors
                 #name: self.#name
             }
         }

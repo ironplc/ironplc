@@ -445,6 +445,7 @@ END_FUNCTION";
                     }],
                     programs: vec![ProgramConfiguration {
                         name: Id::from("plc_task_instance"),
+                        storage: None,
                         task_name: Option::Some(Id::from("plc_task")),
                         type_name: Id::from("plc_prg"),
                         fb_tasks: vec![],
