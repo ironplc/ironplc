@@ -1069,7 +1069,7 @@ impl VarDecl {
             identifier: VariableIdentifier::new_symbol(name),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
-            initializer: InitialValueAssignmentKind::simple_uninitialized(type_name),
+            initializer: InitialValueAssignmentKind::simple_uninitialized(Type::from(type_name)),
         }
     }
 
@@ -1424,9 +1424,9 @@ pub enum InitialValueAssignmentKind {
 
 impl InitialValueAssignmentKind {
     /// Creates an initial value with
-    pub fn simple_uninitialized(type_name: &str) -> Self {
+    pub fn simple_uninitialized(type_name: Type) -> Self {
         InitialValueAssignmentKind::Simple(SimpleInitializer {
-            type_name: Type::from(type_name),
+            type_name,
             initial_value: None,
         })
     }
