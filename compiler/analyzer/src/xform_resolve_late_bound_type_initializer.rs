@@ -277,7 +277,9 @@ END_FUNCTION_BLOCK
                         type_name: Type::from("the_struct"),
                         elements: vec![StructureElementDeclaration {
                             name: Id::from("member"),
-                            init: InitialValueAssignmentKind::simple_uninitialized("BOOL"),
+                            init: InitialValueAssignmentKind::simple_uninitialized(Type::from(
+                                "BOOL",
+                            )),
                         }],
                     },
                 )),

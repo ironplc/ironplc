@@ -54,6 +54,13 @@ mod test {
     }
 
     #[test]
+    fn write_to_string_inout_var_decl() {
+        let rendered = parse_and_render_resource("inout_var_decl.st");
+        let expected = read_resource("inout_var_decl_rendered.st");
+        assert_eq!(rendered, expected);
+    }
+
+    #[test]
     fn write_to_string_literal() {
         let rendered = parse_and_render_resource("literal.st");
         let expected = read_resource("literal_rendered.st");

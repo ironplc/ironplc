@@ -167,7 +167,6 @@ enum VarDeclarations {
     // TODO
     // Retentive(Vec<VarDecl>),
     // NonRetentive(Vec<VarDecl>),
-    // Temp(Vec<VarDecl>),
     Incomplete(Vec<IncomplVarDecl>),
     ProgramAccess(Vec<ProgramAccessDecl>),
     ConfigAccess(Vec<AccessDeclaration>),
@@ -692,8 +691,8 @@ parser! {
     rule enumerated_spec_init__with_value() -> (EnumeratedSpecificationKind, EnumeratedValue) = spec:enumerated_specification() _ tok(TokenType::Assignment) _ def:enumerated_value() {
       (spec, def)
     }
-    rule enumerated_spec_init__with_values() -> (EnumeratedSpecificationKind, Option<EnumeratedValue>) = spec:enumerated_specification__only_values() _ default:(tok(TokenType::Assignment) _ d:enumerated_value() { d })? {
-      (spec, default)
+    rule enumerated_spec_init__with_values() -> (EnumeratedSpecificationKind, Option<EnumeratedValue>) = values:enumerated_specification__only_values() _ default:(tok(TokenType::Assignment) _ d:enumerated_value() { d })? {
+      (EnumeratedSpecificationKind::values(values), default)
     }
     rule enumerated_spec_init() -> EnumeratedSpecificationInit = spec:enumerated_specification() _ default:(tok(TokenType::Assignment) _ d:enumerated_value() { d })? {
       EnumeratedSpecificationInit {
@@ -702,8 +701,8 @@ parser! {
       }
     }
     // TODO this doesn't support type name as a value
-    rule enumerated_specification__only_values() -> EnumeratedSpecificationKind  =
-      tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { EnumeratedSpecificationKind::values(v) }
+    rule enumerated_specification__only_values() -> Vec<EnumeratedValue>  =
+      tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { v }
     rule enumerated_specification() -> EnumeratedSpecificationKind  =
       tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { EnumeratedSpecificationKind::values(v) }
       / name:enumerated_type_name() { EnumeratedSpecificationKind::TypeName(name) }
@@ -952,10 +951,10 @@ parser! {
     // TODO edge_declaration
     rule input_declaration() -> Vec<UntypedVarDecl> = var_init_decl()
     rule edge_declaration() -> () = var1_list() _ tok(TokenType::Colon) _ tok(TokenType::Bool) _ (tok(TokenType::REdge) / tok(TokenType::FEdge))? {}
+
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    // TODO add in subrange_spec_init(), enumerated_spec_init()
     rule var_init_decl() -> Vec<UntypedVarDecl> = structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() /  var1_init_decl__with_ambiguous_struct()
     rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(a:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
@@ -1000,13 +999,40 @@ parser! {
     pub rule output_declarations() -> Vec<VarDecl> = tok(TokenType::VarOutput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::flat_map(declarations, VariableType::Output, qualifier)
     }
-    pub rule input_output_declarations() -> Vec<VarDecl> = tok(TokenType::VarInOut) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
-      VarDeclarations::flat_map(declarations, VariableType::InOut,  qualifier)
+    pub rule input_output_declarations() -> Vec<VarDecl> = tok(TokenType::VarInOut) _ declarations:semisep(<var_declaration()>) _ tok(TokenType::EndVar) {
+      VarDeclarations::flat_map(declarations, VariableType::InOut,  None)
     }
-    // TODO temp_var_decl
-    // rule var_declaration() -> Vec<VarDecl> = temp_var_decl() / fb_name_decl()
-    // rule temp_var_decl() -> Vec<VarDecl> = var1_declaration() / array_var_declaration() / structured_var_declaration() / string_var_declaration()
-    // rule var1_declaration() -> Blah = var1_list() _ tok(TokenType::Colon) _ (simple_specification() / subrange_specification() / enumerated_specification())
+    // TODO fb_name_decl
+    rule var_declaration() -> Vec<UntypedVarDecl> = temp_var_decl() // fb_name_decl()
+    rule temp_var_decl() -> Vec<UntypedVarDecl> = var1_declaration() / array_var_declaration() / structured_var_declaration() / string_var_declaration()
+    rule var1_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(spec:subrange_specification__with_range() {InitialValueAssignmentKind::Subrange(spec)} / values:enumerated_specification__only_values()  {InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer{ values, initial_value: None})} / spec:simple_specification() { InitialValueAssignmentKind::LateResolvedType(spec)} ) {
+      // TODO this could eventually cause duplicated definitions because
+      // multiple variables have the same type declaration
+      names.iter().map(|identifier| {
+        UntypedVarDecl {
+          name: identifier.clone(),
+          initializer: init.clone(),
+        }
+      }).collect()
+    }
+    rule array_var_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ spec:array_specification() {
+      names.iter().map(|identifier| {
+        let init = ArrayInitialValueAssignment { spec: spec.clone(), initial_values: vec![] };
+        UntypedVarDecl {
+          name: identifier.clone(),
+          initializer: InitialValueAssignmentKind::Array(init),
+        }
+      }).collect()
+    }
+    rule structured_var_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ name:structure_type_name() {
+      names.iter().map(|identifier| {
+        let init = StructureInitializationDeclaration { type_name: name.clone(), elements_init: vec![] };
+        UntypedVarDecl {
+          name: identifier.clone(),
+          initializer: InitialValueAssignmentKind::Structure(init),
+        }
+      }).collect()
+    }
     rule var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) {DeclarationQualifier::Constant})? _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }

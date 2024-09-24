@@ -33,6 +33,12 @@ mod test {
     }
 
     #[test]
+    fn parse_inout_variable_declarations() {
+        let res = parse_resource("inout_var_decl.st");
+        assert!(res.is_ok())
+    }
+
+    #[test]
     fn parse_strings() {
         let res = parse_resource("strings.st");
         assert!(res.is_ok())
