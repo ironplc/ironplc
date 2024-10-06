@@ -39,6 +39,12 @@ mod test {
     }
 
     #[test]
+    fn parse_input_variable_declarations() {
+        let res = parse_resource("input_var_decl.st");
+        assert!(res.is_ok())
+    }
+
+    #[test]
     fn parse_strings() {
         let res = parse_resource("strings.st");
         assert!(res.is_ok())
@@ -240,6 +246,7 @@ END_FUNCTION";
                         })),
                     }),
                 }],
+                edge_variables: vec![],
                 body: vec![StmtKind::simple_assignment("fun", "InputsNumber")],
             },
         ));
@@ -276,6 +283,7 @@ END_FUNCTION";
                         })),
                     }),
                 }],
+                edge_variables: vec![],
                 body: vec![StmtKind::simple_assignment("fun", "tv")],
             },
         ));
@@ -304,6 +312,7 @@ END_FUNCTION";
                     VarDecl::simple("_TMP_ADD4_OUT", "INT"),
                     VarDecl::simple("_TMP_SEL7_OUT", "INT"),
                 ],
+                edge_variables: vec![],
                 body: FunctionBlockBodyKind::stmts(vec![
                     StmtKind::simple_assignment("Cnt", "_TMP_SEL7_OUT"),
                     StmtKind::simple_assignment("OUT", "Cnt"),
@@ -341,6 +350,7 @@ END_FUNCTION";
                         }),
                     },
                 ],
+                edge_variables: vec![],
                 body: vec![StmtKind::assignment(
                     Variable::named("AverageVal"),
                     ExprKind::binary(
@@ -485,6 +495,7 @@ END_FUNCTION";
                     VarDecl::enumerated("LEVEL", "LOGLEVEL", "INFO").with_type(VariableType::Input),
                     VarDecl::simple("TRIG0", "BOOL"),
                 ],
+                edge_variables: vec![],
                 body: FunctionBlockBodyKind::stmts(vec![
                     StmtKind::if_then(
                         ExprKind::compare(
@@ -525,6 +536,7 @@ END_FUNCTION";
                         }),
                     },
                 ],
+                edge_variables: vec![],
                 body: FunctionBlockBodyKind::sfc(vec![Network {
                     initial_step: Step {
                         name: Id::from("Start"),

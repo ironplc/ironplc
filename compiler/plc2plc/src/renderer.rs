@@ -542,6 +542,42 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
+    // 2.4.3
+    fn visit_edge_var_decl(&mut self, node: &EdgeVarDecl) -> Result<Self::Value, Diagnostic> {
+        self.newline();
+
+        self.write_ws("VAR_INPUT");
+
+        match node.qualifier {
+            DeclarationQualifier::Unspecified => {}
+            DeclarationQualifier::Constant => self.write_ws("CONSTANT"),
+            DeclarationQualifier::Retain => self.write_ws("RETAIN"),
+            DeclarationQualifier::NonRetain => self.write_ws("NON_RETAIN"),
+        }
+
+        self.newline();
+
+        self.indent();
+        self.visit_id(&node.identifier)?;
+
+        self.write_ws(":");
+        self.write_ws("BOOL");
+
+        let direction = match node.direction {
+            EdgeDirection::Rising => "R_EDGE",
+            EdgeDirection::Falling => "F_EDGE",
+        };
+        self.write_ws(direction);
+
+        self.write(";");
+        self.newline();
+        self.outdent();
+
+        self.write_ws("END_VAR");
+        self.newline();
+        Ok(())
+    }
+
     // 2.4.3.1
     fn visit_address_assignment(
         &mut self,
@@ -714,12 +750,23 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws(":");
         self.visit_type(&node.return_type)?;
 
-        self.indent();
-        for item in node.variables.iter() {
-            self.visit_var_decl(item)?;
+        if !node.variables.is_empty() {
+            self.indent();
+            for item in node.variables.iter() {
+                self.visit_var_decl(item)?;
+            }
+            self.outdent();
+            self.newline();
         }
-        self.outdent();
-        self.newline();
+
+        if !node.edge_variables.is_empty() {
+            self.indent();
+            for item in node.edge_variables.iter() {
+                self.visit_edge_var_decl(item)?;
+            }
+            self.outdent();
+            self.newline();
+        }
 
         self.indent();
         for stmt in node.body.iter() {
