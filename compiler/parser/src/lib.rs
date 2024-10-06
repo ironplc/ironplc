@@ -6,6 +6,7 @@ extern crate ironplc_dsl as dsl;
 mod lexer;
 mod parser;
 mod preprocessor;
+mod vars;
 mod xform_assign_file_id;
 
 use crate::parser::parse_library;

@@ -1041,7 +1041,7 @@ pub struct ProgramAccessDecl {
     pub direction: Option<Direction>,
 }
 
-/// Declaration (that does not permit a location).
+/// Variable declaration.
 ///
 /// See section 2.4.3.
 #[derive(Clone, Debug, PartialEq, Recurse)]
@@ -1132,6 +1132,7 @@ impl VarDecl {
             initializer: InitialValueAssignmentKind::FunctionBlock(
                 FunctionBlockInitialValueAssignment {
                     type_name: Type::from(type_name),
+                    init: vec![],
                 },
             ),
         }
@@ -1214,6 +1215,18 @@ pub enum VariableType {
     Global,
     /// Configurations for communication channels.
     Access,
+}
+
+/// Declaration (that does not permit a location).
+///
+/// See section 2.4.3.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub struct EdgeVarDecl {
+    pub identifier: Id,
+    #[recurse(ignore)]
+    pub direction: EdgeDirection,
+    #[recurse(ignore)]
+    pub qualifier: DeclarationQualifier,
 }
 
 /// Ways of identifying variable data objects. These are used
@@ -1510,6 +1523,8 @@ pub struct FunctionBlockInitialValueAssignment {
     // in other languages, so the correct representation here is a type and not
     // an identifier.
     pub type_name: Type,
+    // The initializer may be empty
+    pub init: Vec<StructureElementInit>,
 }
 
 /// See section 2.4.3.2. #6
@@ -1540,6 +1555,12 @@ pub struct StringSpecification {
     pub keyword_span: SourceSpan,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum EdgeDirection {
+    Rising,
+    Falling,
+}
+
 /// Container for top-level elements that are valid top-level declarations in
 /// a library.
 ///
@@ -1566,6 +1587,7 @@ pub struct FunctionDeclaration {
     pub name: Id,
     pub return_type: Type,
     pub variables: Vec<VarDecl>,
+    pub edge_variables: Vec<EdgeVarDecl>,
     pub body: Vec<StmtKind>,
 }
 
@@ -1589,6 +1611,7 @@ pub struct FunctionBlockDeclaration {
     // identifier.
     pub name: Id,
     pub variables: Vec<VarDecl>,
+    pub edge_variables: Vec<EdgeVarDecl>,
     pub body: FunctionBlockBodyKind,
     pub span: SourceSpan,
 }
