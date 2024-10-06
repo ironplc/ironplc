@@ -162,6 +162,8 @@ pub trait Fold<E> {
     // 2.4.3
     dispatch!(VarDecl);
 
+    dispatch!(EdgeVarDecl);
+
     // 2.4.3.1
     dispatch!(AddressAssignment);
 

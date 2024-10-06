@@ -144,7 +144,10 @@ impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
                 // This allows passing the transformation stage to show other errors.
                 if is_unsupported_standard_type(&name) {
                     return Ok(InitialValueAssignmentKind::FunctionBlock(
-                        FunctionBlockInitialValueAssignment { type_name: name },
+                        FunctionBlockInitialValueAssignment {
+                            type_name: name,
+                            init: vec![],
+                        },
                     ));
                 }
 
@@ -162,7 +165,10 @@ impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
                         }
                         TypeDefinitionKind::FunctionBlock => {
                             Ok(InitialValueAssignmentKind::FunctionBlock(
-                                FunctionBlockInitialValueAssignment { type_name: name },
+                                FunctionBlockInitialValueAssignment {
+                                    type_name: name,
+                                    init: vec![],
+                                },
                             ))
                         }
                         TypeDefinitionKind::Structure => Ok(InitialValueAssignmentKind::Structure(
@@ -236,12 +242,14 @@ END_FUNCTION_BLOCK
                 LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
                     name: Id::from("called"),
                     variables: vec![],
+                    edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
                     span: SourceSpan::default(),
                 }),
                 LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
                     name: Id::from("caller"),
                     variables: vec![VarDecl::function_block("fb_var", "called")],
+                    edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
                     span: SourceSpan::default(),
                 }),
@@ -286,6 +294,7 @@ END_FUNCTION_BLOCK
                 LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
                     name: Id::from("caller"),
                     variables: vec![VarDecl::structure("the_var", "the_struct")],
+                    edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
                     span: SourceSpan::default(),
                 }),
@@ -328,6 +337,7 @@ END_FUNCTION_BLOCK
                 LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
                     name: Id::from("caller"),
                     variables: vec![VarDecl::uninitialized_enumerated("the_var", "values")],
+                    edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
                     span: SourceSpan::default(),
                 }),
