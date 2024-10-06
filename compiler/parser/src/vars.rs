@@ -16,7 +16,6 @@ use dsl::{
 pub struct UntypedVarDecl {
     pub name: Id,
     pub initializer: InitialValueAssignmentKind,
-    pub edge: Option<EdgeDirection>,
 }
 
 #[derive(Clone)]

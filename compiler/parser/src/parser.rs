@@ -724,7 +724,6 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: init.clone(),
-          edge: None,
         }
       }).collect()
     }
@@ -735,7 +734,6 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Array(init.clone()),
-          edge: None,
         }
       }).collect()
     }
@@ -745,7 +743,6 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
-          edge: None,
         }
       }).collect()
     }
@@ -754,7 +751,6 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
-          edge: None,
         }
       }).collect()
     }
@@ -763,7 +759,6 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment { type_name: type_name.clone(), init: init.clone().unwrap_or_else(Vec::new) }),
-          edge: None,
         }
       }).collect()
     }
@@ -784,7 +779,6 @@ parser! {
         UntypedVarDecl {
           name: identifier.clone(),
           initializer: init.clone(),
-          edge: None,
         }
       }).collect()
     }
@@ -794,7 +788,6 @@ parser! {
         UntypedVarDecl {
           name: identifier.clone(),
           initializer: InitialValueAssignmentKind::Array(init),
-          edge: None,
         }
       }).collect()
     }
@@ -804,7 +797,7 @@ parser! {
         UntypedVarDecl {
           name: identifier.clone(),
           initializer: InitialValueAssignmentKind::Structure(init),
-          edge: None,
+
         }
       }).collect()
     }
@@ -890,7 +883,6 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::String(spec.clone()),
-          edge: None,
         }
       }).collect()
     }
@@ -907,7 +899,6 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::String(spec.clone()),
-          edge: None,
         }
       }).collect()
     }
