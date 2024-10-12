@@ -12,7 +12,7 @@ mod xform_assign_file_id;
 use crate::parser::parse_library;
 use dsl::{core::FileId, diagnostic::Diagnostic};
 use ironplc_dsl::common::Library;
-use lexer::tokenize;
+use lexer::{insert_keyword_statement_terminators, tokenize};
 use preprocessor::preprocess;
 use token::Token;
 
@@ -27,7 +27,11 @@ pub mod token;
 /// that will give the context of what was wrong in the location with the error.
 pub fn tokenize_program(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>) {
     let source = preprocess(source);
-    tokenize(&source, file_id)
+    let (tokens, errors) = tokenize(&source, file_id);
+
+    let tokens = insert_keyword_statement_terminators(tokens, file_id);
+
+    (tokens, errors)
 }
 
 /// Parse a full IEC 61131 program.
