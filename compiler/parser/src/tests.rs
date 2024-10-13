@@ -107,6 +107,12 @@ mod test {
     }
 
     #[test]
+    fn parse_if_then_ok() {
+        let res: Result<Library, Diagnostic> = parse_resource("if.st");
+        assert!(res.is_ok())
+    }
+
+    #[test]
     fn parse_program_when_has_comment_then_ok() {
         let source = "
         TYPE
