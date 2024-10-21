@@ -622,12 +622,9 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_type(&node.type_name)?;
 
-        match &node.initial_value {
-            Some(iv) => {
-                self.write_ws(":=");
-                self.visit_constant_kind(iv)?;
-            }
-            None => {}
+        if let Some(iv) =  &node.initial_value {
+            self.write_ws(":=");
+            self.visit_constant_kind(iv)?;
         }
 
         Ok(())
@@ -728,9 +725,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &DirectVariableIdentifier,
     ) -> Result<Self::Value, Diagnostic> {
-        match &node.name {
-            Some(name) => self.visit_id(name)?,
-            None => {}
+        if let Some(name) = &node.name {
+            self.visit_id(name)?;
         }
 
         self.write_ws("AT");
