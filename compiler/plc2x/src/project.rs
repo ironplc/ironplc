@@ -10,7 +10,7 @@ use ironplc_dsl::{
     core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
-use ironplc_parser::{token::Token, tokenize_program};
+use ironplc_parser::{options::ParseOptions, token::Token, tokenize_program};
 use ironplc_problems::Problem;
 use log::{info, trace, warn};
 
@@ -136,7 +136,7 @@ impl Project for FileBackedProject {
         let source = self.sources.get(file_id);
 
         match source {
-            Some(src) => tokenize_program(src.as_string(), file_id),
+            Some(src) => tokenize_program(src.as_string(), file_id, &ParseOptions::default()),
             None => (
                 vec![],
                 vec![Diagnostic::problem(

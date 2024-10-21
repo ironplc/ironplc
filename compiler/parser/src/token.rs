@@ -71,6 +71,9 @@ pub enum TokenType {
     Whitespace,
 
     #[regex(r"\(\*(?:[^*]|\*[^\)])*\*\)", priority = 0)]
+    // TODO The following is common but not valid. We want to recognize the token
+    // so that we can generate meaningful errors.
+    #[regex(r"//[^\r\n]*(\r\n|\n)?", priority = 0)]
     Comment,
 
     // Grouping and other markers

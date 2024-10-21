@@ -12,7 +12,7 @@ use ironplc_dsl::{
     core::FileId,
     diagnostic::{Diagnostic, Label},
 };
-use ironplc_parser::parse_program;
+use ironplc_parser::{options::ParseOptions, parse_program};
 use ironplc_problems::Problem;
 use log::{debug, trace};
 
@@ -44,7 +44,11 @@ impl Source {
     }
     pub fn library(&mut self) -> Result<&Library, Vec<&Diagnostic>> {
         if self.library.is_none() {
-            self.library = Some(parse_program(self.data.borrow(), &self.file_id))
+            self.library = Some(parse_program(
+                self.data.borrow(),
+                &self.file_id,
+                &ParseOptions::default(),
+            ))
         }
 
         match &self.library {

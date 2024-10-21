@@ -1,0 +1,7 @@
+=====
+P0031
+=====
+
+.. problem-summary:: P0032
+
+The compiler encountered a C-style comment (:code:`//`) in the source.

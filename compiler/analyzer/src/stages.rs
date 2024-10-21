@@ -110,6 +110,7 @@ mod tests {
     use crate::stages::analyze;
     use ironplc_dsl::common::Library;
     use ironplc_dsl::core::FileId;
+    use ironplc_parser::options::ParseOptions;
     use ironplc_parser::parse_program;
     use ironplc_test::read_shared_resource;
 
@@ -149,8 +150,10 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let program1 = parse_program(&program1, &FileId::default()).unwrap();
-        let program2 = parse_program(&program2, &FileId::default()).unwrap();
+        let program1 =
+            parse_program(&program1, &FileId::default(), &ParseOptions::default()).unwrap();
+        let program2 =
+            parse_program(&program2, &FileId::default(), &ParseOptions::default()).unwrap();
 
         let result = analyze(&vec![&program1, &program2]);
         assert!(result.is_ok())
@@ -158,6 +161,6 @@ END_FUNCTION_BLOCK";
 
     fn parse_shared_library(name: &'static str) -> Library {
         let src = read_shared_resource(name);
-        parse_program(&src, &FileId::default()).unwrap()
+        parse_program(&src, &FileId::default(), &ParseOptions::default()).unwrap()
     }
 }

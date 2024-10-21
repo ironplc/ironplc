@@ -6,6 +6,7 @@ mod test {
 
     use dsl::core::FileId;
 
+    use ironplc_parser::options::ParseOptions;
     use ironplc_parser::parse_program;
     use ironplc_test::read_shared_resource;
 
@@ -21,7 +22,7 @@ mod test {
 
     pub fn parse_and_render_resource(name: &'static str) -> String {
         let source = read_shared_resource(name);
-        let library = parse_program(&source, &FileId::default()).unwrap();
+        let library = parse_program(&source, &FileId::default(), &ParseOptions::default()).unwrap();
         write_to_string(&library).unwrap()
     }
 
