@@ -622,7 +622,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_type(&node.type_name)?;
 
-        if let Some(iv) =  &node.initial_value {
+        if let Some(iv) = &node.initial_value {
             self.write_ws(":=");
             self.visit_constant_kind(iv)?;
         }
