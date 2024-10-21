@@ -12,7 +12,7 @@ use ironplc_dsl::{
     core::FileId,
     diagnostic::{Diagnostic, Label},
 };
-use ironplc_parser::tokenize_program;
+use ironplc_parser::{options::ParseOptions, tokenize_program};
 use ironplc_plc2plc::write_to_string;
 use ironplc_problems::Problem;
 use log::{debug, error, trace};
@@ -85,7 +85,8 @@ pub fn tokenize(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> 
 
     // Write the set
     for src in project.sources() {
-        let (tokens, diagnostics) = tokenize_program(src.as_string(), src.file_id());
+        let (tokens, diagnostics) =
+            tokenize_program(src.as_string(), src.file_id(), &ParseOptions::default());
 
         let tokens = tokens
             .iter()

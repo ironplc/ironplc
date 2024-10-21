@@ -205,6 +205,7 @@ impl Fold<Diagnostic> for DeclarationResolver {
 mod tests {
     use super::apply;
     use ironplc_dsl::core::FileId;
+    use ironplc_parser::options::ParseOptions;
 
     #[test]
     fn apply_when_assign_enum_variant_then_ok() {
@@ -220,7 +221,9 @@ FUNCTION_BLOCK FB_EXAMPLE
     Color := Green;
 END_FUNCTION_BLOCK";
 
-        let library = ironplc_parser::parse_program(program, &FileId::default()).unwrap();
+        let library =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
         print!("{:?}", library);
         let result = apply(library);
 

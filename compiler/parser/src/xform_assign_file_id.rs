@@ -35,7 +35,7 @@ mod tests {
         core::FileId,
     };
 
-    use crate::parse_program;
+    use crate::{options::ParseOptions, parse_program};
 
     use super::apply;
 
@@ -47,7 +47,12 @@ LEVEL : (CRITICAL) := CRITICAL;
 END_TYPE
                 ";
 
-        let input = parse_program(program, &FileId::from_string("input")).unwrap();
+        let input = parse_program(
+            program,
+            &FileId::from_string("input"),
+            &ParseOptions::default(),
+        )
+        .unwrap();
         let expected_fid = FileId::from_string("output");
         let library = apply(input, &expected_fid).unwrap();
 
