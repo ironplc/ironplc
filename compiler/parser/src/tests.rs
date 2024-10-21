@@ -19,11 +19,18 @@ mod test {
     use ironplc_test::read_shared_resource;
     use time::Duration;
 
+    use crate::options::ParseOptions;
     use crate::parse_program;
 
     pub fn parse_resource(name: &'static str) -> Result<Library, Diagnostic> {
         let source = read_shared_resource(name);
-        parse_program(&source, &FileId::default())
+        parse_program(&source, &FileId::default(), &ParseOptions::default())
+    }
+
+    fn parse_text(source: &'static str) -> Library {
+        let result = parse_program(&source, &FileId::default(), &ParseOptions::default());
+        assert!(result.is_ok());
+        result.unwrap()
     }
 
     #[test]
@@ -122,7 +129,7 @@ mod test {
             END_STRUCT;
         END_TYPE";
 
-        let res = parse_program(source, &FileId::default()).unwrap();
+        let res = parse_text(source);
         assert_eq!(1, res.elements.len());
     }
 
@@ -136,8 +143,7 @@ mod test {
            END_STRUCT;
         END_TYPE";
 
-        let res = parse_program(program, &FileId::default());
-        assert!(res.is_ok());
+        parse_text(program);
     }
 
     #[test]
@@ -150,8 +156,7 @@ mod test {
            END_STRUCT;
         END_TYPE";
 
-        let res = parse_program(program, &FileId::default());
-        assert!(res.is_ok());
+        parse_text(program);
     }
 
     #[test]
@@ -164,7 +169,7 @@ mod test {
             END_STRUCT;
         END_TYPE";
 
-        let res = parse_program(program, &FileId::default());
+        let res = parse_program(program, &FileId::default(), &ParseOptions::default());
         assert!(res.is_err());
 
         let err = res.unwrap_err();
@@ -184,7 +189,7 @@ mod test {
             END_STRUCT;
         END_TYPE";
 
-        let res = parse_program(program, &FileId::default());
+        let res = parse_program(program, &FileId::default(), &ParseOptions::default());
         assert!(res.is_err());
 
         let err = res.unwrap_err();
@@ -197,7 +202,7 @@ mod test {
         let program = "ACTION
         END_ACTION";
 
-        let res = parse_program(program, &FileId::default());
+        let res = parse_program(program, &FileId::default(), &ParseOptions::default());
         assert!(res.is_err());
 
         let err = res.unwrap_err();
@@ -218,8 +223,7 @@ VAR1 := DWORD#16#0000FFFF;
 
 END_FUNCTION";
 
-        let res = parse_program(program, &FileId::default());
-        assert!(res.is_ok());
+        parse_text(program);
     }
 
     #[test]
@@ -234,7 +238,7 @@ END_VAR
 fun := InputsNumber;
 
 END_FUNCTION";
-        let res = parse_program(program, &FileId::default()).unwrap();
+        let res = parse_text(program);
 
         let expected = new_library(LibraryElementKind::FunctionDeclaration(
             FunctionDeclaration {
@@ -271,7 +275,7 @@ END_VAR
 fun := tv;
 
 END_FUNCTION";
-        let res = parse_program(program, &FileId::default()).unwrap();
+        let actual = parse_text(program);
 
         let expected = new_library(LibraryElementKind::FunctionDeclaration(
             FunctionDeclaration {
@@ -293,12 +297,12 @@ END_FUNCTION";
                 body: vec![StmtKind::simple_assignment("fun", "tv")],
             },
         ));
-        assert_eq!(res, expected);
+        assert_eq!(actual, expected);
     }
 
     #[test]
     fn parse_when_first_steps_function_block_counter_fbd_then_builds_structure() {
-        let src = read_shared_resource("first_steps_function_block_counter_fbd.st");
+        let actual = parse_resource("first_steps_function_block_counter_fbd.st").unwrap();
         let expected = new_library(LibraryElementKind::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("CounterFBD"),
@@ -326,13 +330,12 @@ END_FUNCTION";
                 span: SourceSpan::default(),
             },
         ));
-        let res = parse_program(src.as_str(), &FileId::default()).unwrap();
-        assert_eq!(res, expected);
+        assert_eq!(actual, expected);
     }
 
     #[test]
     fn parse_when_first_steps_func_avg_val_then_builds_structure() {
-        let src = read_shared_resource("first_steps_func_avg_val.st");
+        let actual = parse_resource("first_steps_func_avg_val.st").unwrap();
         let expected = new_library(LibraryElementKind::FunctionDeclaration(
             FunctionDeclaration {
                 name: Id::from("AverageVal"),
@@ -388,13 +391,12 @@ END_FUNCTION";
                 )],
             },
         ));
-        let program = parse_program(src.as_str(), &FileId::default()).unwrap();
-        assert_eq!(program, expected)
+        assert_eq!(actual, expected)
     }
 
     #[test]
     fn parse_when_first_steps_program_declaration_then_builds_structure() {
-        let src = read_shared_resource("first_steps_program.st");
+        let actual = parse_resource("first_steps_program.st").unwrap();
         let expected = new_library(LibraryElementKind::ProgramDeclaration(ProgramDeclaration {
             name: Id::from("plc_prg"),
             variables: vec![
@@ -432,15 +434,12 @@ END_FUNCTION";
                 StmtKind::structured_assignment("Cnt5", "CounterLD0", "Out"),
             ]),
         }));
-        assert_eq!(
-            parse_program(src.as_str(), &FileId::default()).unwrap(),
-            expected
-        )
+        assert_eq!(actual, expected)
     }
 
     #[test]
     fn parse_when_first_steps_configuration_then_builds_structure() {
-        let src = read_shared_resource("first_steps_configuration.st");
+        let actual = parse_resource("first_steps_configuration.st").unwrap();
         let expected = new_library(LibraryElementKind::ConfigurationDeclaration(
             ConfigurationDeclaration {
                 name: Id::from("config"),
@@ -479,15 +478,13 @@ END_FUNCTION";
                 located_var_inits: vec![],
             },
         ));
-        let res = parse_program(src.as_str(), &FileId::default()).unwrap();
-        assert_eq!(res, expected);
-        print!("{:?}", res.clone());
+        assert_eq!(actual, expected);
     }
 
     #[test]
     fn parse_when_first_steps_function_block_logger_then_test_apply_when_names_correct_then_passes()
     {
-        let src = read_shared_resource("first_steps_function_block_logger.st");
+        let actual = parse_resource("first_steps_function_block_logger.st").unwrap();
         let expected = new_library(LibraryElementKind::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("LOGGER"),
@@ -517,14 +514,12 @@ END_FUNCTION";
             },
         ));
 
-        let res = parse_program(src.as_str(), &FileId::default()).unwrap();
-        assert_eq!(res, expected);
-        print!("{:?}", res.clone());
+        assert_eq!(actual, expected);
     }
 
     #[test]
     fn parse_when_first_steps_function_block_counter_sfc_then_builds_structure() {
-        let src = read_shared_resource("first_steps_function_block_counter_sfc.st");
+        let actual = parse_resource("first_steps_function_block_counter_sfc.st").unwrap();
         let expected = new_library(LibraryElementKind::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
                 name: Id::from("CounterSFC"),
@@ -613,9 +608,7 @@ END_FUNCTION";
                 span: SourceSpan::default(),
             },
         ));
-        let res = parse_program(src.as_str(), &FileId::default()).unwrap();
-        assert_eq!(res, expected);
-        print!("{:?}", res.clone());
+        assert_eq!(actual, expected);
     }
 
     // TODO add this as a test
@@ -629,7 +622,7 @@ END_FUNCTION";
 
     #[test]
     fn parse_when_first_steps_data_type_decl_then_builds_structure() {
-        let src = read_shared_resource("first_steps_data_type_decl.st");
+        let actual = parse_resource("first_steps_data_type_decl.st").unwrap();
         let expected = new_library(LibraryElementKind::DataTypeDeclaration(
             DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
                 type_name: Type::from("LOGLEVEL"),
@@ -639,10 +632,7 @@ END_FUNCTION";
                 ),
             }),
         ));
-        assert_eq!(
-            parse_program(src.as_str(), &FileId::default()).unwrap(),
-            expected
-        )
+        assert_eq!(actual, expected)
     }
 
     #[cfg(test)]

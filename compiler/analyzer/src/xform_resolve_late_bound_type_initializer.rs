@@ -218,6 +218,7 @@ mod tests {
         common::*,
         core::{FileId, Id, SourceSpan},
     };
+    use ironplc_parser::options::ParseOptions;
     use ironplc_problems::Problem;
 
     #[test]
@@ -234,7 +235,9 @@ FUNCTION_BLOCK caller
     
 END_FUNCTION_BLOCK
         ";
-        let input = ironplc_parser::parse_program(program, &FileId::default()).unwrap();
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
         let result = apply(input).unwrap();
 
         let expected = Library {
@@ -275,7 +278,9 @@ FUNCTION_BLOCK caller
     
 END_FUNCTION_BLOCK
         ";
-        let input = ironplc_parser::parse_program(program, &FileId::default()).unwrap();
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
         let result = apply(input).unwrap();
 
         let expected = Library {
@@ -318,7 +323,9 @@ FUNCTION_BLOCK caller
     
 END_FUNCTION_BLOCK
         ";
-        let input = ironplc_parser::parse_program(program, &FileId::default()).unwrap();
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
         let result = apply(input).unwrap();
 
         let expected = Library {
@@ -366,7 +373,9 @@ FUNCTION_BLOCK caller
     
 END_FUNCTION_BLOCK
         ";
-        let input = ironplc_parser::parse_program(program, &FileId::default()).unwrap();
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
         let result = apply(input);
         assert!(result.is_err());
 

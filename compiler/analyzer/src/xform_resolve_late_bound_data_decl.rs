@@ -221,6 +221,7 @@ impl Fold<Diagnostic> for DeclarationResolver {
 mod tests {
     use super::apply;
     use ironplc_dsl::{common::*, core::FileId};
+    use ironplc_parser::options::ParseOptions;
 
     #[test]
     fn apply_when_ambiguous_enum_then_resolves_type() {
@@ -230,7 +231,9 @@ LEVEL : (CRITICAL) := CRITICAL;
 LEVEL_ALIAS : LEVEL;
 END_TYPE
         ";
-        let input = ironplc_parser::parse_program(program, &FileId::default()).unwrap();
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
         let library = apply(input).unwrap();
 
         let expected = Library {
@@ -268,7 +271,9 @@ LEVEL : (CRITICAL) := CRITICAL;
 LEVEL_ALIAS : LEVEL;
 END_TYPE
         ";
-        let input = ironplc_parser::parse_program(program, &FileId::default()).unwrap();
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
         let result = apply(input);
 
         assert!(result.is_err())

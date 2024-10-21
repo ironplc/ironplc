@@ -30,4 +30,5 @@ P0028,UnsupportedEncoding,File encoding is not supported
 P0029,UnsupportedStdLibType,Referenced type is valid but not implemented
 P0030,NoContent,Set of valid source files has no content
 P0031,UnexpectedToken,Unmatched character sequence in source text
+P0032,CStyleComment,C-style comment not allowed
 P9999,NotImplemented,Capability is not implemented (yet!)
