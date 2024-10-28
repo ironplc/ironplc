@@ -1,10 +1,13 @@
-//! Semantic rule that checks POU hierarchy rules.
+//! Transformation rule that changes the order of declarations
+//! so that items only have a reference to an already declared item.
+//!
+//! The transformation succeeds when:
+//! 1. there are no cycles and
+//! 2. the calls respect the POU hierarchy.
 //!
 //! Program can call function or function block
 //! Function block can call function or other function block
 //! Function can call other functions
-//!
-//! In all cases, recursion is never allowed.
 //!
 //! ## Passes
 //!
@@ -39,74 +42,139 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 use petgraph::{
-    algo::is_cyclic_directed,
+    algo::toposort,
     stable_graph::{NodeIndex, StableDiGraph},
 };
 use std::collections::HashMap;
 
-use crate::result::SemanticResult;
+pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
+    // Walk to build a graph of types, POUs and their relationships
+    let mut visitor = RuleGraphReferenceableSymbols::new();
+    visitor.walk(&lib).map_err(|e| vec![e])?;
 
-pub fn apply(lib: &Library) -> SemanticResult {
-    // Walk to build a graph of POUs and their relationships
-    let mut visitor = RulePousNoCycles::new();
-    visitor.walk(lib).map_err(|e| vec![e])?;
+    toposort(&visitor.graph, None).map_err(|err| {
+        let id_in_cycle = visitor.index_to_id.get(&err.node_id());
 
-    // Check if there are cycles in the graph.
-    // TODO report what the cycle is
-    if is_cyclic_directed(&visitor.graph) {
-        let span = SourceSpan::range(0, 0).with_file_id(&FileId::default());
-        return Err(vec![Diagnostic::problem(
+        let span = match id_in_cycle {
+            Some(id) => id.span.clone(),
+            None => SourceSpan::range(0, 0).with_file_id(&FileId::default()),
+        };
+
+        vec![Diagnostic::problem(
             Problem::RecursiveCycle,
             // TODO wrong location
             Label::span(span, "Cycle"),
-        )]);
-    }
+        )]
+    })?;
 
     // TODO Check the relative calls that it obeys rules
 
-    Ok(())
+    Ok(lib)
 }
 
-struct RulePousNoCycles {
-    // Represents the POUs in the library as a directed graph.
-    // Each node is a single POU.
+struct RuleGraphReferenceableSymbols {
+    // Represents the types and POUs in the library as a directed graph.
+    // Each node is a single type or POU.
     graph: StableDiGraph<(), (), u32>,
 
     // Represents the context while visiting. Tracks the name of the current
     // POU.
     current_from: Option<Id>,
 
-    nodes: HashMap<Id, NodeIndex>,
+    // Maps between the identifier for some element and the index
+    // of tht item in the graph.
+    id_to_index: HashMap<Id, NodeIndex>,
+    index_to_id: HashMap<NodeIndex, Id>,
 }
-impl RulePousNoCycles {
+impl RuleGraphReferenceableSymbols {
     fn new() -> Self {
-        RulePousNoCycles {
+        RuleGraphReferenceableSymbols {
             graph: StableDiGraph::new(),
             current_from: None,
-            nodes: HashMap::new(),
+            id_to_index: HashMap::new(),
+            index_to_id: HashMap::new(),
         }
     }
 
     fn add_node(&mut self, id: &Id) -> NodeIndex<u32> {
-        match self.nodes.get(id) {
-            Some(node) => *node,
+        let index = match self.id_to_index.get(id) {
+            Some(existing_index) => *existing_index,
             None => {
-                let node = self.graph.add_node(());
-                self.nodes.insert(id.clone(), node);
-                node
+                let new_index = self.graph.add_node(());
+                self.id_to_index.insert(id.clone(), new_index);
+                new_index
+            }
+        };
+
+        match self.index_to_id.get(&index) {
+            Some(_id) => {
+                // Already exists
+            }
+            None => {
+                self.index_to_id.insert(index, id.clone());
             }
         }
+
+        index
     }
 }
 
-impl Visitor<Diagnostic> for RulePousNoCycles {
+impl Visitor<Diagnostic> for RuleGraphReferenceableSymbols {
     type Value = ();
+
+    fn visit_enumeration_declaration(
+        &mut self,
+        node: &EnumerationDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        let from = self.add_node(&node.type_name.name);
+
+        if let EnumeratedSpecificationKind::TypeName(parent) = &node.spec_init.spec {
+            let to = self.add_node(&parent.name);
+            self.graph.add_edge(from, to, ());
+        };
+        node.recurse_visit(self)
+    }
+
+    fn visit_subrange_declaration(
+        &mut self,
+        node: &SubrangeDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        let from = self.add_node(&node.type_name.name);
+
+        if let SubrangeSpecificationKind::Type(parent) = &node.spec {
+            let to = self.add_node(&parent.name);
+            self.graph.add_edge(from, to, ());
+        };
+        node.recurse_visit(self)
+    }
+
+    fn visit_array_declaration(
+        &mut self,
+        node: &ArrayDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        let from = self.add_node(&node.type_name.name);
+
+        if let ArraySpecificationKind::Type(parent) = &node.spec {
+            let to = self.add_node(&parent.name);
+            self.graph.add_edge(from, to, ());
+        };
+        node.recurse_visit(self)
+    }
+
+    fn visit_structure_declaration(
+        &mut self,
+        node: &StructureDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.add_node(&node.type_name.name);
+        node.recurse_visit(self)
+    }
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.name.clone());
+        self.add_node(&node.name);
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -117,6 +185,7 @@ impl Visitor<Diagnostic> for RulePousNoCycles {
         node: &FunctionDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.name.clone());
+        self.add_node(&node.name);
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -127,6 +196,7 @@ impl Visitor<Diagnostic> for RulePousNoCycles {
         node: &ProgramDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.name.clone());
+        self.add_node(&node.name);
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -167,7 +237,7 @@ mod tests {
         END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
-        let result = apply(&library);
+        let result = apply(library);
         assert!(result.is_err());
     }
 
@@ -189,7 +259,7 @@ mod tests {
         END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
-        let result = apply(&library);
+        let result = apply(library);
         assert!(result.is_ok());
     }
 
@@ -212,7 +282,7 @@ mod tests {
         END_FUNCTION";
 
         let library = parse_and_resolve_types(program);
-        let result = apply(&library);
+        let result = apply(library);
         assert!(result.is_ok());
     }
 }

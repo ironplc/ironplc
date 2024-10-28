@@ -39,7 +39,7 @@ milestones are the current plan to achieve that loveable product.
 * ✅ Build documentation website
 * ✅ Implement semantic analyzer for multiple IEC 61131-3 structured text file
 * ✅ Implement a tokenizer to enable syntax highlighting
-* Enable working with multiple files via Visual Studio Code Extension
+* ✅ Enable working with multiple files via Visual Studio Code Extension
 
 ## Usage
 
