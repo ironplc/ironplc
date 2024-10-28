@@ -12,12 +12,12 @@ use log::debug;
 use crate::{
     ironplc_dsl::common::Library, result::SemanticResult, rule_decl_struct_element_unique_names,
     rule_decl_subrange_limits, rule_enumeration_values_unique, rule_function_block_invocation,
-    rule_pous_no_cycles, rule_program_task_definition_exists, rule_unsupported_stdlib_type,
+    rule_program_task_definition_exists, rule_unsupported_stdlib_type,
     rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
     rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, type_table,
     xform_resolve_late_bound_data_decl, xform_resolve_late_bound_expr_kind,
-    xform_resolve_late_bound_type_initializer,
+    xform_resolve_late_bound_type_initializer, xform_toposort_declarations,
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
@@ -34,6 +34,7 @@ pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
         )]);
     }
     let library = resolve_types(sources)?;
+    let library = xform_toposort_declarations::apply(library)?;
     let result = semantic(&library);
 
     // TODO this is currently in progress. It isn't clear to me yet how this will influence
@@ -76,7 +77,6 @@ pub(crate) fn semantic(library: &Library) -> SemanticResult {
         rule_decl_subrange_limits::apply,
         rule_enumeration_values_unique::apply,
         rule_function_block_invocation::apply,
-        rule_pous_no_cycles::apply,
         rule_program_task_definition_exists::apply,
         rule_use_declared_enumerated_value::apply,
         rule_use_declared_symbolic_var::apply,
