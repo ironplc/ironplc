@@ -9,7 +9,7 @@ mod rule_decl_struct_element_unique_names;
 mod rule_decl_subrange_limits;
 mod rule_enumeration_values_unique;
 mod rule_function_block_invocation;
-mod rule_pous_no_cycles;
+
 mod rule_program_task_definition_exists;
 mod rule_unsupported_stdlib_type;
 mod rule_use_declared_enumerated_value;
@@ -25,6 +25,7 @@ mod type_table;
 mod xform_resolve_late_bound_data_decl;
 mod xform_resolve_late_bound_expr_kind;
 mod xform_resolve_late_bound_type_initializer;
+mod xform_toposort_declarations;
 
 #[cfg(test)]
 mod test_helpers;
