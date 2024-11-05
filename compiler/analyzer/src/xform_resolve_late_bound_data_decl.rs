@@ -13,7 +13,7 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::visitor::Visitor;
 use ironplc_problems::Problem;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// The classes of types that this transform resolves.
 #[derive(Clone)]
@@ -64,6 +64,7 @@ struct TypeDeclResolver {
     graph: SymbolGraph<LateResolvableTypeDecl>,
     roots: Vec<(SymbolNode, LateResolvableTypeDecl)>,
     index_to_id: HashMap<SymbolNode, Type>,
+    declared_types: HashSet<Type>,
 }
 
 impl TypeDeclResolver {
@@ -72,6 +73,7 @@ impl TypeDeclResolver {
             graph: SymbolGraph::new(),
             roots: vec![],
             index_to_id: HashMap::new(),
+            declared_types: HashSet::new(),
         }
     }
 
@@ -92,26 +94,37 @@ impl TypeDeclResolver {
     /// If the name already exists, returns an diagnostic indicating the
     /// name conflict.
     fn add(&mut self, item: &Type, item_kind: LateResolvableTypeDecl) -> Result<(), Diagnostic> {
-        if !self.graph.contains_node(item) {
-            let added = self.graph.add_node(item, item_kind);
-            let data = self.graph.data(item);
-            self.roots.push((
-                added,
-                data.map_or_else(|| LateResolvableTypeDecl::Unspecified, |v| v.clone()),
-            ));
-            self.index_to_id.insert(added, item.clone());
-            Ok(())
-        } else {
-            let existing = self
-                .graph
-                .get_node(item)
-                .map(|kv| kv.0)
-                .expect("Expected key");
-            Err(Diagnostic::problem(
-                Problem::DeclarationNameDuplicated,
-                Label::span(item.span(), "Duplicate declaration"),
-            )
-            .with_secondary(Label::span(existing.span(), "First declaration")))
+        let node = self.graph.get_node(item);
+        match node {
+            None => {
+                let added = self.graph.add_node(item, item_kind);
+                let data = self.graph.data(item);
+                self.roots.push((
+                    added,
+                    data.map_or_else(|| LateResolvableTypeDecl::Unspecified, |v| v.clone()),
+                ));
+                self.index_to_id.insert(added, item.clone());
+                self.declared_types.insert(item.clone());
+                Ok(())
+            }
+            Some(existing) => {
+                if self.declared_types.contains(existing.0) {
+                    return Err(Diagnostic::problem(
+                        Problem::DeclarationNameDuplicated,
+                        Label::span(item.span(), "Duplicate declaration"),
+                    )
+                    .with_secondary(Label::span(existing.0.span(), "First declaration")));
+                } else {
+                    let data = self.graph.data(item);
+                    self.roots.push((
+                        *existing.1,
+                        data.map_or_else(|| LateResolvableTypeDecl::Unspecified, |v| v.clone()),
+                    ));
+                    self.index_to_id.insert(*existing.1, item.clone());
+                    self.declared_types.insert(item.clone());
+                }
+                Ok(())
+            }
         }
     }
 }
