@@ -34,7 +34,6 @@ pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
         )]);
     }
     let library = resolve_types(sources)?;
-    let library = xform_toposort_declarations::apply(library)?;
     let result = semantic(&library);
 
     // TODO this is currently in progress. It isn't clear to me yet how this will influence
@@ -55,6 +54,7 @@ pub(crate) fn resolve_types(sources: &[&Library]) -> Result<Library, Vec<Diagnos
     }
 
     let xforms: Vec<fn(Library) -> Result<Library, Vec<Diagnostic>>> = vec![
+        xform_toposort_declarations::apply,
         xform_resolve_late_bound_data_decl::apply,
         xform_resolve_late_bound_expr_kind::apply,
         xform_resolve_late_bound_type_initializer::apply,

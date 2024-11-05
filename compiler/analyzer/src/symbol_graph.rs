@@ -21,11 +21,6 @@ impl<N> SymbolGraph<N> {
         }
     }
 
-    /// Returns `true` if the graph contains a node for the specified id.
-    pub fn contains_node(&self, id: &Type) -> bool {
-        self.nodes.contains_key(id)
-    }
-
     pub fn add_node(&mut self, id: &Type, data: N) -> SymbolNode {
         let nodes = &self.nodes;
         match nodes.get(id) {

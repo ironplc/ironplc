@@ -49,48 +49,126 @@ use std::collections::HashMap;
 
 pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
     // Walk to build a graph of types, POUs and their relationships
-    let mut visitor = RuleGraphReferenceableSymbols::new();
-    visitor.walk(&lib).map_err(|e| vec![e])?;
+    let mut data_type_visitor = RuleGraphReferenceableElements::new();
+    data_type_visitor.walk(&lib).map_err(|e| vec![e])?;
+    let sorted_ids = data_type_visitor
+        .declarations
+        .sorted_ids()
+        .map_err(|err| vec![err])?;
 
-    toposort(&visitor.graph, None).map_err(|err| {
-        let id_in_cycle = visitor.index_to_id.get(&err.node_id());
+    // Split based on the type so that we put all of the data type declarations
+    // at the beginning.
+    let mut postfix_types = Vec::new();
+    let mut types_by_name: HashMap<Id, DataTypeDeclarationKind> = HashMap::new();
+    let mut elems_by_name: HashMap<Id, LibraryElementKind> = HashMap::new();
+    for element in lib.elements {
+        match element {
+            LibraryElementKind::DataTypeDeclaration(decl) => {
+                match decl {
+                    DataTypeDeclarationKind::Enumeration(decl) => {
+                        types_by_name.insert(
+                            decl.type_name.name.clone(),
+                            DataTypeDeclarationKind::Enumeration(decl),
+                        );
+                    }
+                    DataTypeDeclarationKind::Subrange(decl) => {
+                        types_by_name.insert(
+                            decl.type_name.name.clone(),
+                            DataTypeDeclarationKind::Subrange(decl),
+                        );
+                    }
+                    DataTypeDeclarationKind::Simple(decl) => {
+                        // Can refer to other declarations, but does not have any declarations itself
+                        postfix_types.push(LibraryElementKind::DataTypeDeclaration(
+                            DataTypeDeclarationKind::Simple(decl),
+                        ));
+                    }
+                    DataTypeDeclarationKind::Array(decl) => {
+                        types_by_name.insert(
+                            decl.type_name.name.clone(),
+                            DataTypeDeclarationKind::Array(decl),
+                        );
+                    }
+                    DataTypeDeclarationKind::Structure(decl) => {
+                        types_by_name.insert(
+                            decl.type_name.name.clone(),
+                            DataTypeDeclarationKind::Structure(decl),
+                        );
+                    }
+                    DataTypeDeclarationKind::StructureInitialization(decl) => {
+                        types_by_name.insert(
+                            decl.type_name.name.clone(),
+                            DataTypeDeclarationKind::StructureInitialization(decl),
+                        );
+                    }
+                    DataTypeDeclarationKind::String(decl) => {
+                        // Can refer to other declarations, but does not have any declarations itself
+                        postfix_types.push(LibraryElementKind::DataTypeDeclaration(
+                            DataTypeDeclarationKind::String(decl),
+                        ));
+                    }
+                    DataTypeDeclarationKind::LateBound(decl) => {
+                        types_by_name.insert(
+                            decl.data_type_name.name.clone(),
+                            DataTypeDeclarationKind::LateBound(decl),
+                        );
+                    }
+                }
+            }
+            LibraryElementKind::FunctionDeclaration(decl) => {
+                elems_by_name.insert(
+                    decl.name.clone(),
+                    LibraryElementKind::FunctionDeclaration(decl),
+                );
+            }
+            LibraryElementKind::FunctionBlockDeclaration(decl) => {
+                elems_by_name.insert(
+                    decl.name.clone(),
+                    LibraryElementKind::FunctionBlockDeclaration(decl),
+                );
+            }
+            LibraryElementKind::ProgramDeclaration(decl) => {
+                elems_by_name.insert(
+                    decl.name.clone(),
+                    LibraryElementKind::ProgramDeclaration(decl),
+                );
+            }
+            LibraryElementKind::ConfigurationDeclaration(decl) => {
+                elems_by_name.insert(
+                    decl.name.clone(),
+                    LibraryElementKind::ConfigurationDeclaration(decl),
+                );
+            }
+        }
+    }
 
-        let span = match id_in_cycle {
-            Some(id) => id.span.clone(),
-            None => SourceSpan::range(0, 0).with_file_id(&FileId::default()),
-        };
+    // Merge things back together
+    let mut elements = Vec::new();
+    elements.extend(sorted_ids.iter().filter_map(|id| {
+        types_by_name
+            .remove(id)
+            .map(LibraryElementKind::DataTypeDeclaration)
+    }));
+    elements.extend(postfix_types);
+    elements.extend(sorted_ids.iter().filter_map(|id| elems_by_name.remove(id)));
 
-        vec![Diagnostic::problem(
-            Problem::RecursiveCycle,
-            // TODO wrong location
-            Label::span(span, "Cycle"),
-        )]
-    })?;
-
-    // TODO Check the relative calls that it obeys rules
-
-    Ok(lib)
+    Ok(Library { elements })
 }
 
-struct RuleGraphReferenceableSymbols {
+struct DeclarationsGraph {
     // Represents the types and POUs in the library as a directed graph.
     // Each node is a single type or POU.
     graph: StableDiGraph<(), (), u32>,
-
-    // Represents the context while visiting. Tracks the name of the current
-    // POU.
-    current_from: Option<Id>,
 
     // Maps between the identifier for some element and the index
     // of tht item in the graph.
     id_to_index: HashMap<Id, NodeIndex>,
     index_to_id: HashMap<NodeIndex, Id>,
 }
-impl RuleGraphReferenceableSymbols {
+impl DeclarationsGraph {
     fn new() -> Self {
-        RuleGraphReferenceableSymbols {
+        Self {
             graph: StableDiGraph::new(),
-            current_from: None,
             id_to_index: HashMap::new(),
             index_to_id: HashMap::new(),
         }
@@ -117,21 +195,72 @@ impl RuleGraphReferenceableSymbols {
 
         index
     }
+
+    fn sorted_ids(&self) -> Result<Vec<Id>, Diagnostic> {
+        let sorted_nodes = toposort(&self.graph, None).map_err(|err| {
+            let id_in_cycle = self.index_to_id.get(&err.node_id());
+
+            let span = match id_in_cycle {
+                Some(id) => id.span.clone(),
+                None => SourceSpan::range(0, 0).with_file_id(&FileId::default()),
+            };
+
+            Diagnostic::problem(
+                Problem::RecursiveCycle,
+                // TODO wrong location
+                Label::span(span, "Cycle"),
+            )
+        })?;
+        let sorted_ids: Vec<Id> = sorted_nodes
+            .iter()
+            .map(|node| self.index_to_id.get(node).unwrap().clone())
+            .collect();
+        Ok(sorted_ids)
+    }
 }
 
-impl Visitor<Diagnostic> for RuleGraphReferenceableSymbols {
+struct RuleGraphReferenceableElements {
+    declarations: DeclarationsGraph,
+    // Represents the context while visiting. Tracks the name of the current
+    // POU.
+    current_from: Option<Id>,
+}
+impl RuleGraphReferenceableElements {
+    fn new() -> Self {
+        Self {
+            declarations: DeclarationsGraph::new(),
+            current_from: None,
+        }
+    }
+}
+
+impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
     type Value = ();
+
+    // Type declarations
+
+    fn visit_late_bound_declaration(
+        &mut self,
+        node: &LateBoundDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        let this = self.declarations.add_node(&node.data_type_name.name);
+        let depends_on = self.declarations.add_node(&node.base_type_name.name);
+        self.declarations.graph.add_edge(depends_on, this, ());
+
+        node.recurse_visit(self)
+    }
 
     fn visit_enumeration_declaration(
         &mut self,
         node: &EnumerationDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        let from = self.add_node(&node.type_name.name);
+        let this = self.declarations.add_node(&node.type_name.name);
 
         if let EnumeratedSpecificationKind::TypeName(parent) = &node.spec_init.spec {
-            let to = self.add_node(&parent.name);
-            self.graph.add_edge(from, to, ());
+            let depends_on = self.declarations.add_node(&parent.name);
+            self.declarations.graph.add_edge(depends_on, this, ());
         };
+
         node.recurse_visit(self)
     }
 
@@ -139,12 +268,13 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableSymbols {
         &mut self,
         node: &SubrangeDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        let from = self.add_node(&node.type_name.name);
+        let this = self.declarations.add_node(&node.type_name.name);
 
         if let SubrangeSpecificationKind::Type(parent) = &node.spec {
-            let to = self.add_node(&parent.name);
-            self.graph.add_edge(from, to, ());
+            let depends_on = self.declarations.add_node(&parent.name);
+            self.declarations.graph.add_edge(depends_on, this, ());
         };
+
         node.recurse_visit(self)
     }
 
@@ -152,12 +282,13 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableSymbols {
         &mut self,
         node: &ArrayDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        let from = self.add_node(&node.type_name.name);
+        let this = self.declarations.add_node(&node.type_name.name);
 
         if let ArraySpecificationKind::Type(parent) = &node.spec {
-            let to = self.add_node(&parent.name);
-            self.graph.add_edge(from, to, ());
+            let depends_on = self.declarations.add_node(&parent.name);
+            self.declarations.graph.add_edge(depends_on, this, ());
         };
+
         node.recurse_visit(self)
     }
 
@@ -165,8 +296,21 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableSymbols {
         &mut self,
         node: &StructureDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.add_node(&node.type_name.name);
+        self.declarations.add_node(&node.type_name.name);
         node.recurse_visit(self)
+    }
+
+    // POU declarations
+
+    fn visit_function_declaration(
+        &mut self,
+        node: &FunctionDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.current_from = Some(node.name.clone());
+        self.declarations.add_node(&node.name);
+        let res = node.recurse_visit(self);
+        self.current_from = None;
+        res
     }
 
     fn visit_function_block_declaration(
@@ -174,18 +318,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableSymbols {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.name.clone());
-        self.add_node(&node.name);
-        let res = node.recurse_visit(self);
-        self.current_from = None;
-        res
-    }
-
-    fn visit_function_declaration(
-        &mut self,
-        node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
-        self.current_from = Some(node.name.clone());
-        self.add_node(&node.name);
+        self.declarations.add_node(&node.name);
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -196,7 +329,18 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableSymbols {
         node: &ProgramDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.name.clone());
-        self.add_node(&node.name);
+        self.declarations.add_node(&node.name);
+        let res = node.recurse_visit(self);
+        self.current_from = None;
+        res
+    }
+
+    fn visit_configuration_declaration(
+        &mut self,
+        node: &ironplc_dsl::configuration::ConfigurationDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.current_from = Some(node.name.clone());
+        self.declarations.add_node(&node.name);
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -209,9 +353,9 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableSymbols {
         // Current context has a reference to this function block
         match &self.current_from {
             Some(from) => {
-                let from = self.add_node(&from.clone());
-                let to = self.add_node(&init.type_name.name);
-                self.graph.add_edge(from, to, ());
+                let from = self.declarations.add_node(&from.clone());
+                let to = self.declarations.add_node(&init.type_name.name);
+                self.declarations.graph.add_edge(from, to, ());
             }
             None => return Err(Diagnostic::todo(file!(), line!())),
         }
@@ -225,6 +369,17 @@ mod tests {
     use super::*;
 
     use crate::test_helpers::parse_and_resolve_types;
+
+    macro_rules! cast {
+        ($target: expr, $pat: path) => {{
+            if let $pat(a) = $target {
+                // #1
+                a
+            } else {
+                panic!("mismatch variant when cast to {}", stringify!($pat)); // #2
+            }
+        }};
+    }
 
     #[test]
     fn apply_when_function_block_recursive_call_in_self_then_return_error() {
@@ -284,5 +439,27 @@ mod tests {
         let library = parse_and_resolve_types(program);
         let result = apply(library);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_nested_enumeration_types() {
+        let program = "
+TYPE
+LEVEL_ALIAS : LEVEL;
+LEVEL : (CRITICAL) := CRITICAL;
+END_TYPE";
+
+        let library = parse_and_resolve_types(program);
+        println!("{:?}", library);
+
+        let decl = library.elements.get(0).unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Enumeration);
+        assert_eq!(decl.type_name, Type::from("LEVEL"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Enumeration);
+        assert_eq!(decl.type_name, Type::from("LEVEL_ALIAS"));
     }
 }
