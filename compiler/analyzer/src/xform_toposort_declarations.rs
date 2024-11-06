@@ -296,8 +296,11 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &StructureDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
+        self.current_from = Some(node.type_name.name.clone());
         self.declarations.add_node(&node.type_name.name);
-        node.recurse_visit(self)
+        let res = node.recurse_visit(self);
+        self.current_from = None;
+        res
     }
 
     // POU declarations
@@ -353,7 +356,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         // Current context has a reference to this function block
         match &self.current_from {
             Some(from) => {
-                let from = self.declarations.add_node(&from.clone());
+                let from = self.declarations.add_node(from);
                 let to = self.declarations.add_node(&init.type_name.name);
                 self.declarations.graph.add_edge(from, to, ());
             }
@@ -362,13 +365,48 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
 
         Ok(())
     }
+
+    fn visit_initial_value_assignment_kind(
+        &mut self,
+        node: &InitialValueAssignmentKind,
+    ) -> Result<Self::Value, Diagnostic> {
+        match &self.current_from {
+            Some(from) => {
+                match node {
+                    InitialValueAssignmentKind::None(_) => {}
+                    InitialValueAssignmentKind::Simple(_) => {}
+                    InitialValueAssignmentKind::String(_) => {}
+                    InitialValueAssignmentKind::EnumeratedValues(_) => {}
+                    InitialValueAssignmentKind::EnumeratedType(_) => {}
+                    InitialValueAssignmentKind::FunctionBlock(fb) => {
+                        // We only care about these because these may be references to a function block
+                        let from = self.declarations.add_node(from);
+                        let to = self.declarations.add_node(&fb.type_name.name);
+                        self.declarations.graph.add_edge(from, to, ());
+                    }
+                    InitialValueAssignmentKind::Subrange(_) => {}
+                    InitialValueAssignmentKind::Structure(_) => {}
+                    InitialValueAssignmentKind::Array(_) => {}
+                    InitialValueAssignmentKind::LateResolvedType(lrt) => {
+                        // We nly care about these because these may be references to a function block
+                        let from = self.declarations.add_node(from);
+                        let to = self.declarations.add_node(&lrt.name);
+                        self.declarations.graph.add_edge(from, to, ());
+                    }
+                }
+            }
+            None => return Err(Diagnostic::todo(file!(), line!())),
+        }
+
+        node.recurse_visit(self)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use crate::test_helpers::parse_and_resolve_types;
+    use crate::test_helpers::parse_only;
 
     macro_rules! cast {
         ($target: expr, $pat: path) => {{
@@ -391,9 +429,12 @@ mod tests {
 
         END_FUNCTION_BLOCK";
 
-        let library = parse_and_resolve_types(program);
+        let library = parse_only(program);
         let result = apply(library);
-        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().get(0).unwrap().code,
+            Problem::RecursiveCycle.code().to_string()
+        );
     }
 
     #[test]
@@ -413,7 +454,7 @@ mod tests {
 
         END_FUNCTION_BLOCK";
 
-        let library = parse_and_resolve_types(program);
+        let library = parse_only(program);
         let result = apply(library);
         assert!(result.is_ok());
     }
@@ -436,7 +477,7 @@ mod tests {
             Caller := FALSE;
         END_FUNCTION";
 
-        let library = parse_and_resolve_types(program);
+        let library = parse_only(program);
         let result = apply(library);
         assert!(result.is_ok());
     }
@@ -449,8 +490,8 @@ LEVEL_ALIAS : LEVEL;
 LEVEL : (CRITICAL) := CRITICAL;
 END_TYPE";
 
-        let library = parse_and_resolve_types(program);
-        println!("{:?}", library);
+        let library = parse_only(program);
+        let library = apply(library).unwrap();
 
         let decl = library.elements.get(0).unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
@@ -459,7 +500,7 @@ END_TYPE";
 
         let decl = library.elements.get(1).unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
-        let decl = cast!(decl, DataTypeDeclarationKind::Enumeration);
-        assert_eq!(decl.type_name, Type::from("LEVEL_ALIAS"));
+        let decl = cast!(decl, DataTypeDeclarationKind::LateBound);
+        assert_eq!(decl.data_type_name, Type::from("LEVEL_ALIAS"));
     }
 }
