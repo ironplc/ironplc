@@ -366,36 +366,38 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         Ok(())
     }
 
-    fn visit_initial_value_assignment_kind(&mut self,node: &InitialValueAssignmentKind) -> Result<Self::Value,Diagnostic> {
+    fn visit_initial_value_assignment_kind(
+        &mut self,
+        node: &InitialValueAssignmentKind,
+    ) -> Result<Self::Value, Diagnostic> {
         match &self.current_from {
             Some(from) => {
                 match node {
-                    InitialValueAssignmentKind::None(_) => {},
-                    InitialValueAssignmentKind::Simple(_) => {},
-                    InitialValueAssignmentKind::String(_) => {},
-                    InitialValueAssignmentKind::EnumeratedValues(_) => {},
-                    InitialValueAssignmentKind::EnumeratedType(_) => {},
+                    InitialValueAssignmentKind::None(_) => {}
+                    InitialValueAssignmentKind::Simple(_) => {}
+                    InitialValueAssignmentKind::String(_) => {}
+                    InitialValueAssignmentKind::EnumeratedValues(_) => {}
+                    InitialValueAssignmentKind::EnumeratedType(_) => {}
                     InitialValueAssignmentKind::FunctionBlock(fb) => {
                         // We only care about these because these may be references to a function block
                         let from = self.declarations.add_node(from);
                         let to = self.declarations.add_node(&fb.type_name.name);
                         self.declarations.graph.add_edge(from, to, ());
-                    },
-                    InitialValueAssignmentKind::Subrange(_) => {},
-                    InitialValueAssignmentKind::Structure(_) => {},
-                    InitialValueAssignmentKind::Array(_) => {},
+                    }
+                    InitialValueAssignmentKind::Subrange(_) => {}
+                    InitialValueAssignmentKind::Structure(_) => {}
+                    InitialValueAssignmentKind::Array(_) => {}
                     InitialValueAssignmentKind::LateResolvedType(lrt) => {
                         // We nly care about these because these may be references to a function block
                         let from = self.declarations.add_node(from);
                         let to = self.declarations.add_node(&lrt.name);
                         self.declarations.graph.add_edge(from, to, ());
-                    },
+                    }
                 }
             }
             None => return Err(Diagnostic::todo(file!(), line!())),
         }
 
-        
         node.recurse_visit(self)
     }
 }
@@ -404,7 +406,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
 mod tests {
     use super::*;
 
-    use crate::test_helpers:: parse_only;
+    use crate::test_helpers::parse_only;
 
     macro_rules! cast {
         ($target: expr, $pat: path) => {{
@@ -429,7 +431,10 @@ mod tests {
 
         let library = parse_only(program);
         let result = apply(library);
-        assert_eq!(result.unwrap_err().get(0).unwrap().code, Problem::RecursiveCycle.code().to_string());
+        assert_eq!(
+            result.unwrap_err().get(0).unwrap().code,
+            Problem::RecursiveCycle.code().to_string()
+        );
     }
 
     #[test]

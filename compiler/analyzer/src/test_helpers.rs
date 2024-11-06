@@ -9,7 +9,6 @@ pub fn parse_only(program: &str) -> Library {
     parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap()
 }
 
-
 #[cfg(test)]
 pub fn parse_and_resolve_types(program: &str) -> Library {
     use ironplc_parser::{options::ParseOptions, parse_program};
