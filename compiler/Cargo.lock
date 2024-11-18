@@ -242,7 +242,7 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "dsl_macro_derive"
-version = "0.87.0"
+version = "0.88.0"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -371,7 +371,7 @@ dependencies = [
 
 [[package]]
 name = "ironplc-analyzer"
-version = "0.87.0"
+version = "0.88.0"
 dependencies = [
  "fixedbitset",
  "ironplc-dsl",
@@ -385,7 +385,7 @@ dependencies = [
 
 [[package]]
 name = "ironplc-dsl"
-version = "0.87.0"
+version = "0.88.0"
 dependencies = [
  "dsl_macro_derive",
  "ironplc-problems",
@@ -398,7 +398,7 @@ dependencies = [
 
 [[package]]
 name = "ironplc-parser"
-version = "0.87.0"
+version = "0.88.0"
 dependencies = [
  "ironplc-dsl",
  "ironplc-problems",
@@ -411,7 +411,7 @@ dependencies = [
 
 [[package]]
 name = "ironplc-plc2plc"
-version = "0.87.0"
+version = "0.88.0"
 dependencies = [
  "dsl_macro_derive",
  "ironplc-dsl",
@@ -422,18 +422,18 @@ dependencies = [
 
 [[package]]
 name = "ironplc-problems"
-version = "0.87.0"
+version = "0.88.0"
 dependencies = [
  "csv",
 ]
 
 [[package]]
 name = "ironplc-test"
-version = "0.87.0"
+version = "0.88.0"
 
 [[package]]
 name = "ironplcc"
-version = "0.87.0"
+version = "0.88.0"
 dependencies = [
  "assert_cmd",
  "clap",
