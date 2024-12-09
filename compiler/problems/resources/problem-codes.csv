@@ -17,7 +17,7 @@ P0015,VariableUndefined,Variable not defined before used
 P0016,ConstantMustHaveInitializer,Variable is constant but does not define value
 P0017,FunctionBlockNotConstant,CONSTANT qualifier is not permitted for function block instance type
 P0018,VariableMustBeConst,External var is global constant and must be declared constant
-P0019,DeclarationNameDuplicated,Declaration name is duplicated
+P0019,TypeDeclNameDuplicated,Type declaration name is duplicated
 P0020,DefinitionNameDuplicated,Definition name is duplicated
 P0021,FunctionBlockNotInScope,Function block invocation is not a variable in scope
 P0022,UndeclaredUnknownType,Unknown type
@@ -31,4 +31,5 @@ P0029,UnsupportedStdLibType,Referenced type is valid but not implemented
 P0030,NoContent,Set of valid source files has no content
 P0031,UnexpectedToken,Unmatched character sequence in source text
 P0032,CStyleComment,C-style comment not allowed
+P0033,PouDeclNameDuplicated,Pou declaration name is duplicated
 P9999,NotImplemented,Capability is not implemented (yet!)
