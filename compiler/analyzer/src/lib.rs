@@ -1,5 +1,6 @@
 // Allow large errors because this is a compiler - we expect large errors.
 #![allow(clippy::result_large_err)]
+#![allow(clippy::needless_lifetimes)]
 
 extern crate ironplc_dsl;
 extern crate ironplc_parser;
@@ -9,7 +10,7 @@ mod rule_decl_struct_element_unique_names;
 mod rule_decl_subrange_limits;
 mod rule_enumeration_values_unique;
 mod rule_function_block_invocation;
-
+mod rule_pou_hierarchy;
 mod rule_program_task_definition_exists;
 mod rule_unsupported_stdlib_type;
 mod rule_use_declared_enumerated_value;

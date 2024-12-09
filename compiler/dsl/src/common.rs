@@ -54,9 +54,9 @@ pub enum Boolean {
     False,
 }
 
-/// Numeric liberals declared by 2.2.1. Numeric literals define
-/// how data is expressed and are distinct from but associated with
-/// data types.
+// Numeric liberals declared by 2.2.1. Numeric literals define
+// how data is expressed and are distinct from but associated with
+// data types.
 
 /// Integer liberal. The representation is of the largest possible integer
 /// and later bound to smaller types depend on context.
@@ -1405,7 +1405,7 @@ impl fmt::Display for AddressAssignment {
     }
 }
 
-/// Container for variable specifications.
+// Container for variable specifications.
 
 /// Container for initial value assignments. The initial value specifies a
 /// "coarse grained assignment",

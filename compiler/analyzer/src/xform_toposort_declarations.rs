@@ -41,6 +41,7 @@ use ironplc_dsl::{
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
+use log::debug;
 use petgraph::{
     algo::toposort,
     stable_graph::{NodeIndex, StableDiGraph},
@@ -55,6 +56,8 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
         .declarations
         .sorted_ids()
         .map_err(|err| vec![err])?;
+
+    debug!("Sorted identifiers {:?}", sorted_ids);
 
     // Split based on the type so that we put all of the data type declarations
     // at the beginning.
@@ -388,10 +391,10 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                     InitialValueAssignmentKind::Structure(_) => {}
                     InitialValueAssignmentKind::Array(_) => {}
                     InitialValueAssignmentKind::LateResolvedType(lrt) => {
-                        // We nly care about these because these may be references to a function block
+                        // We only care about these because these may be references to a function block
                         let from = self.declarations.add_node(from);
                         let to = self.declarations.add_node(&lrt.name);
-                        self.declarations.graph.add_edge(from, to, ());
+                        self.declarations.graph.add_edge(to, from, ());
                     }
                 }
             }
@@ -455,31 +458,15 @@ mod tests {
         END_FUNCTION_BLOCK";
 
         let library = parse_only(program);
-        let result = apply(library);
-        assert!(result.is_ok());
-    }
+        let library = apply(library).unwrap();
 
-    #[test]
-    fn apply_when_function_invokes_function_block_then_error() {
-        let program = "
-        FUNCTION_BLOCK Callee
-            VAR
-               IN1: BOOL;
-            END_VAR
+        let decl = library.elements.get(0).unwrap();
+        let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
+        assert_eq!(decl.name, Id::from("Callee"));
 
-        END_FUNCTION_BLOCK
-        
-        FUNCTION Caller : BOOL
-            VAR
-                CalleeInstance : Callee;
-            END_VAR
-
-            Caller := FALSE;
-        END_FUNCTION";
-
-        let library = parse_only(program);
-        let result = apply(library);
-        assert!(result.is_ok());
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
+        assert_eq!(decl.name, Id::from("Caller"));
     }
 
     #[test]
