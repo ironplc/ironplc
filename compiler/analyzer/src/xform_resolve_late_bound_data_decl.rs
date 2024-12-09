@@ -110,7 +110,7 @@ impl TypeDeclResolver {
             Some(existing) => {
                 if self.declared_types.contains(existing.0) {
                     return Err(Diagnostic::problem(
-                        Problem::DeclarationNameDuplicated,
+                        Problem::TypeDeclNameDuplicated,
                         Label::span(item.span(), "Duplicate declaration"),
                     )
                     .with_secondary(Label::span(existing.0.span(), "First declaration")));
