@@ -17,7 +17,7 @@ struct TransformFileId<'a> {
     file_id: &'a FileId,
 }
 
-impl<'a> Fold<Diagnostic> for TransformFileId<'a> {
+impl Fold<Diagnostic> for TransformFileId<'_> {
     fn fold_source_span(&mut self, node: SourceSpan) -> Result<SourceSpan, Diagnostic> {
         Ok(SourceSpan {
             start: node.start,

@@ -28,7 +28,7 @@ mod test {
     }
 
     fn parse_text(source: &'static str) -> Library {
-        let result = parse_program(&source, &FileId::default(), &ParseOptions::default());
+        let result = parse_program(source, &FileId::default(), &ParseOptions::default());
         assert!(result.is_ok());
         result.unwrap()
     }

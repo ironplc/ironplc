@@ -68,7 +68,7 @@ impl SymbolTable<'_, Type, TypeDefinitionKind> {
     }
 }
 
-impl<'a> Visitor<Diagnostic> for SymbolTable<'a, Type, TypeDefinitionKind> {
+impl Visitor<Diagnostic> for SymbolTable<'_, Type, TypeDefinitionKind> {
     type Value = ();
 
     fn visit_data_type_declaration_kind(
@@ -124,7 +124,7 @@ struct TypeResolver<'a> {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl<'a> Fold<Diagnostic> for TypeResolver<'a> {
+impl Fold<Diagnostic> for TypeResolver<'_> {
     fn fold_initial_value_assignment_kind(
         &mut self,
         node: InitialValueAssignmentKind,

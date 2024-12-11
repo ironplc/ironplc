@@ -14,5 +14,5 @@ pub fn parse_and_resolve_types(program: &str) -> Library {
     use ironplc_parser::{options::ParseOptions, parse_program};
 
     let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-    resolve_types(&vec![&library]).unwrap()
+    resolve_types(&[&library]).unwrap()
 }
