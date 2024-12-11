@@ -96,7 +96,7 @@ enum ProgramConfigurationKind {
 /// elements by `&T` reference, which is `Copy`.
 pub struct SliceByRef<'a, T>(pub &'a [T]);
 
-impl<'a, T> Parse for SliceByRef<'a, T> {
+impl<T> Parse for SliceByRef<'_, T> {
     type PositionRepr = usize;
     fn start(&self) -> usize {
         0

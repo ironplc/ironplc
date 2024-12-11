@@ -92,6 +92,6 @@ END_TYPE";
         END_TYPE";
 
         let res = preprocess(program);
-        assert!(res.len() > 0);
+        assert!(!res.is_empty());
     }
 }

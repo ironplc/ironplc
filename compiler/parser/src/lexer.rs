@@ -92,10 +92,10 @@ mod test {
     use ironplc_test::read_shared_resource;
     use logos::{Lexer, Logos};
 
-    fn assert_no_err<'a>(lexer: &mut Lexer<'a, TokenType>) {
+    fn assert_no_err(lexer: &mut Lexer<'_, TokenType>) {
         while let Some(tok) = lexer.next() {
             println!("{:?} {:?}", tok, lexer.slice());
-            assert!(!tok.is_err(), "{}", lexer.slice());
+            assert!(tok.is_ok(), "{}", lexer.slice());
         }
     }
 
