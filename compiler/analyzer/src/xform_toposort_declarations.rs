@@ -435,7 +435,7 @@ mod tests {
         let library = parse_only(program);
         let result = apply(library);
         assert_eq!(
-            result.unwrap_err().get(0).unwrap().code,
+            result.unwrap_err().first().unwrap().code,
             Problem::RecursiveCycle.code().to_string()
         );
     }
@@ -460,7 +460,7 @@ mod tests {
         let library = parse_only(program);
         let library = apply(library).unwrap();
 
-        let decl = library.elements.get(0).unwrap();
+        let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
         assert_eq!(decl.name, Id::from("Callee"));
 
@@ -480,7 +480,7 @@ END_TYPE";
         let library = parse_only(program);
         let library = apply(library).unwrap();
 
-        let decl = library.elements.get(0).unwrap();
+        let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::Enumeration);
         assert_eq!(decl.type_name, Type::from("LEVEL"));

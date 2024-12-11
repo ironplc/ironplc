@@ -1,7 +1,5 @@
 // Allow large errors because this is a compiler - we expect large errors.
 #![allow(clippy::result_large_err)]
-#![allow(clippy::needless_lifetimes)]
-
 extern crate ironplc_dsl as dsl;
 
 mod lexer;

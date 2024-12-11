@@ -65,7 +65,7 @@ pub fn apply(lib: &Library) -> SemanticResult {
 struct FindGlobalConstVars<'a> {
     global_consts: &'a mut HashSet<Id>,
 }
-impl<'a> Visitor<Diagnostic> for FindGlobalConstVars<'a> {
+impl Visitor<Diagnostic> for FindGlobalConstVars<'_> {
     type Value = ();
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         if node.qualifier == DeclarationQualifier::Constant {
@@ -83,7 +83,7 @@ impl<'a> Visitor<Diagnostic> for FindGlobalConstVars<'a> {
 struct RuleExternalGlobalConst<'a> {
     global_consts: &'a mut HashSet<Id>,
 }
-impl<'a> Visitor<Diagnostic> for RuleExternalGlobalConst<'a> {
+impl Visitor<Diagnostic> for RuleExternalGlobalConst<'_> {
     type Value = ();
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {

@@ -118,21 +118,21 @@ mod tests {
     #[test]
     fn analyze_when_first_steps_then_result_is_ok() {
         let lib = parse_shared_library("first_steps.st");
-        let res = analyze(&vec![&lib]);
+        let res = analyze(&[&lib]);
         assert!(res.is_ok());
     }
 
     #[test]
     fn analyze_when_first_steps_semantic_error_then_result_is_err() {
         let lib = parse_shared_library("first_steps_semantic_error.st");
-        let res = analyze(&vec![&lib]);
+        let res = analyze(&[&lib]);
         assert!(res.is_err())
     }
 
     #[test]
     fn analyze_2() {
         let lib = parse_shared_library("main.st");
-        let res = analyze(&vec![&lib]);
+        let res = analyze(&[&lib]);
         assert!(res.is_ok());
     }
 
@@ -152,11 +152,11 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let program1 =
-            parse_program(&program1, &FileId::default(), &ParseOptions::default()).unwrap();
+            parse_program(program1, &FileId::default(), &ParseOptions::default()).unwrap();
         let program2 =
-            parse_program(&program2, &FileId::default(), &ParseOptions::default()).unwrap();
+            parse_program(program2, &FileId::default(), &ParseOptions::default()).unwrap();
 
-        let result = analyze(&vec![&program1, &program2]);
+        let result = analyze(&[&program1, &program2]);
         assert!(result.is_ok())
     }
 
