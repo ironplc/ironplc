@@ -1,5 +1,6 @@
 # Use the typescript image because Typescript is the most challenging to setup.
-FROM mcr.microsoft.com/devcontainers/typescript-node:18
+# See https://github.com/devcontainers/images/tree/main/src/typescript-node for variants
+FROM mcr.microsoft.com/devcontainers/typescript-node:22
 
 # Install the Python and Sphinx for documentation
 RUN apt-get update
