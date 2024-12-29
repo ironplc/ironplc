@@ -27,11 +27,19 @@ cargo run check plc2x\resources\test\first_steps.st
 
 ### Making Changes
 
-`ironplcc` has an large set of tests. Use `just` to execute them:
+`ironplcc` has a large set of tests. Use `just` to execute them:
 
 ```sh
 just
 ```
+
+### Checking Coverage
+
+The `ironplcc` development environment is set up to produce and
+visualize test coverage in Visual Studio Code.
+
+1. Use `just coverage` to produce the coverage information
+1. Use commands `Coverage Gutters: Watch` or `Coverage Gutters: Display` to load the coverage into Visual Studio Code
 
 ### Debugging the Parser
 
