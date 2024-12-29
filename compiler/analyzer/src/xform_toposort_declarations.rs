@@ -34,6 +34,7 @@
 //!    END_VAR
 //! END_FUNCTION_BLOCK
 //! ```
+use core::fmt;
 use ironplc_dsl::{
     common::*,
     core::{FileId, Id, SourceSpan},
@@ -44,6 +45,7 @@ use ironplc_problems::Problem;
 use log::debug;
 use petgraph::{
     algo::toposort,
+    dot::{Config, Dot},
     stable_graph::{NodeIndex, StableDiGraph},
 };
 use std::collections::HashMap;
@@ -52,6 +54,9 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
     // Walk to build a graph of types, POUs and their relationships
     let mut data_type_visitor = RuleGraphReferenceableElements::new();
     data_type_visitor.walk(&lib).map_err(|e| vec![e])?;
+
+    debug!("Sorted declarations {:?}", data_type_visitor.declarations);
+
     let sorted_ids = data_type_visitor
         .declarations
         .sorted_ids()
@@ -61,7 +66,6 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
 
     // Split based on the type so that we put all of the data type declarations
     // at the beginning.
-    let mut postfix_types = Vec::new();
     let mut types_by_name: HashMap<Id, DataTypeDeclarationKind> = HashMap::new();
     let mut elems_by_name: HashMap<Id, LibraryElementKind> = HashMap::new();
     for element in lib.elements {
@@ -82,9 +86,10 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
                     }
                     DataTypeDeclarationKind::Simple(decl) => {
                         // Can refer to other declarations, but does not have any declarations itself
-                        postfix_types.push(LibraryElementKind::DataTypeDeclaration(
+                        types_by_name.insert(
+                            decl.type_name.name.clone(),
                             DataTypeDeclarationKind::Simple(decl),
-                        ));
+                        );
                     }
                     DataTypeDeclarationKind::Array(decl) => {
                         types_by_name.insert(
@@ -106,9 +111,10 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
                     }
                     DataTypeDeclarationKind::String(decl) => {
                         // Can refer to other declarations, but does not have any declarations itself
-                        postfix_types.push(LibraryElementKind::DataTypeDeclaration(
+                        types_by_name.insert(
+                            decl.type_name.name.clone(),
                             DataTypeDeclarationKind::String(decl),
-                        ));
+                        );
                     }
                     DataTypeDeclarationKind::LateBound(decl) => {
                         types_by_name.insert(
@@ -152,7 +158,6 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
             .remove(id)
             .map(LibraryElementKind::DataTypeDeclaration)
     }));
-    elements.extend(postfix_types);
     elements.extend(sorted_ids.iter().filter_map(|id| elems_by_name.remove(id)));
 
     Ok(Library { elements })
@@ -161,13 +166,14 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
 struct DeclarationsGraph {
     // Represents the types and POUs in the library as a directed graph.
     // Each node is a single type or POU.
-    graph: StableDiGraph<(), (), u32>,
+    graph: StableDiGraph<Id, (), u32>,
 
     // Maps between the identifier for some element and the index
     // of tht item in the graph.
     id_to_index: HashMap<Id, NodeIndex>,
     index_to_id: HashMap<NodeIndex, Id>,
 }
+
 impl DeclarationsGraph {
     fn new() -> Self {
         Self {
@@ -181,7 +187,7 @@ impl DeclarationsGraph {
         let index = match self.id_to_index.get(id) {
             Some(existing_index) => *existing_index,
             None => {
-                let new_index = self.graph.add_node(());
+                let new_index = self.graph.add_node(id.clone());
                 self.id_to_index.insert(id.clone(), new_index);
                 new_index
             }
@@ -219,6 +225,13 @@ impl DeclarationsGraph {
             .map(|node| self.index_to_id.get(node).unwrap().clone())
             .collect();
         Ok(sorted_ids)
+    }
+}
+
+impl fmt::Debug for DeclarationsGraph {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let dotfile = Dot::with_config(&self.graph, &[Config::EdgeNoLabel]);
+        write!(f, "Graph: {:?}", dotfile)
     }
 }
 
@@ -298,6 +311,17 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
     fn visit_structure_declaration(
         &mut self,
         node: &StructureDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.current_from = Some(node.type_name.name.clone());
+        self.declarations.add_node(&node.type_name.name);
+        let res = node.recurse_visit(self);
+        self.current_from = None;
+        res
+    }
+
+    fn visit_string_declaration(
+        &mut self,
+        node: &StringDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.type_name.name.clone());
         self.declarations.add_node(&node.type_name.name);
@@ -417,7 +441,11 @@ mod tests {
                 // #1
                 a
             } else {
-                panic!("mismatch variant when cast to {}", stringify!($pat)); // #2
+                panic!(
+                    "mismatch variant when cast to {} for {:?}",
+                    stringify!($pat),
+                    $target
+                ); // #2
             }
         }};
     }
@@ -489,5 +517,27 @@ END_TYPE";
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::LateBound);
         assert_eq!(decl.data_type_name, Type::from("LEVEL_ALIAS"));
+    }
+
+    #[test]
+    fn apply_when_nested_string_types() {
+        let program = "
+TYPE
+TYPE_NAME_ALIAS : TYPE_NAME;
+TYPE_NAME : STRING(5);
+END_TYPE";
+
+        let library = parse_only(program);
+        let library = apply(library).unwrap();
+
+        let decl = library.elements.first().unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::String);
+        assert_eq!(decl.type_name, Type::from("TYPE_NAME"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::LateBound);
+        assert_eq!(decl.data_type_name, Type::from("TYPE_NAME_ALIAS"));
     }
 }
