@@ -319,6 +319,28 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         res
     }
 
+    fn visit_structure_initialization_declaration(
+        &mut self,
+        node: &StructureInitializationDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.current_from = Some(node.type_name.name.clone());
+        self.declarations.add_node(&node.type_name.name);
+        let res = node.recurse_visit(self);
+        self.current_from = None;
+        res
+    }
+
+    fn visit_simple_declaration(
+        &mut self,
+        node: &SimpleDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.current_from = Some(node.type_name.name.clone());
+        self.declarations.add_node(&node.type_name.name);
+        let res = node.recurse_visit(self);
+        self.current_from = None;
+        res
+    }
+
     fn visit_string_declaration(
         &mut self,
         node: &StringDeclaration,
@@ -539,5 +561,134 @@ END_TYPE";
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::LateBound);
         assert_eq!(decl.data_type_name, Type::from("TYPE_NAME_ALIAS"));
+    }
+
+    #[test]
+    fn apply_when_nested_subrange_types() {
+        let program = "
+TYPE
+TYPE_NAME_ALIAS : TYPE_NAME;
+TYPE_NAME : INT (1..128);
+END_TYPE";
+
+        let library = parse_only(program);
+        let library = apply(library).unwrap();
+
+        let decl = library.elements.first().unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Subrange);
+        assert_eq!(decl.type_name, Type::from("TYPE_NAME"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::LateBound);
+        assert_eq!(decl.data_type_name, Type::from("TYPE_NAME_ALIAS"));
+    }
+
+    #[test]
+    fn apply_when_array_of_enum_types() {
+        let program = "
+TYPE
+COLORS_ARRAY : ARRAY[1..2] OF COLOR;
+COLOR : (RED, GREEN, BLUE);
+END_TYPE";
+
+        let library = parse_only(program);
+        let library = apply(library).unwrap();
+
+        let decl = library.elements.first().unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Enumeration);
+        assert_eq!(decl.type_name, Type::from("COLOR"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Array);
+        assert_eq!(decl.type_name, Type::from("COLORS_ARRAY"));
+    }
+
+    #[test]
+    fn apply_when_nested_simple_types() {
+        let program = "
+TYPE
+DEFAULT_2 : DEFAULT_1 := 2;
+DEFAULT_1 : INT := 1;
+END_TYPE";
+
+        let library = parse_only(program);
+        let library = apply(library).unwrap();
+
+        let decl = library.elements.first().unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Simple);
+        assert_eq!(decl.type_name, Type::from("DEFAULT_1"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Simple);
+        assert_eq!(decl.type_name, Type::from("DEFAULT_2"));
+    }
+
+    #[test]
+    fn apply_when_nested_structure_types() {
+        let program = "
+TYPE
+
+OUTER_STRUCT : STRUCT
+   MEMBER : INNER_STRUCT;
+END_STRUCT;
+
+INNER_STRUCT: STRUCT
+   MEMBER : ENUM_TYPE;
+END_STRUCT;
+
+ENUM_TYPE : (A, B, C);
+
+END_TYPE";
+
+        let library = parse_only(program);
+        let library = apply(library).unwrap();
+
+        let decl = library.elements.first().unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Enumeration);
+        assert_eq!(decl.type_name, Type::from("ENUM_TYPE"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Structure);
+        assert_eq!(decl.type_name, Type::from("INNER_STRUCT"));
+
+        let decl = library.elements.get(2).unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Structure);
+        assert_eq!(decl.type_name, Type::from("OUTER_STRUCT"));
+    }
+
+    #[test]
+    fn apply_when_initialized_structure_types() {
+        let program = "
+TYPE
+
+INIT_STRUCT : MY_STRUCT := (MEMBER := 2);
+
+MY_STRUCT : STRUCT
+   MEMBER : INT := 1;
+END_STRUCT;
+
+END_TYPE";
+
+        let library = parse_only(program);
+        let library = apply(library).unwrap();
+
+        let decl = library.elements.first().unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Structure);
+        assert_eq!(decl.type_name, Type::from("MY_STRUCT"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::StructureInitialization);
+        assert_eq!(decl.type_name, Type::from("INIT_STRUCT"));
     }
 }
