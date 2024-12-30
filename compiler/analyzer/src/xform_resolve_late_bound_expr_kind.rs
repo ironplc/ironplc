@@ -224,9 +224,35 @@ END_FUNCTION_BLOCK";
         let library =
             ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
                 .unwrap();
-        print!("{:?}", library);
         let result = apply(library);
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_assign_to_array_member() {
+        // TODO this fails
+        let program = "FUNCTION_BLOCK _BUFFER_INSERT
+
+VAR_IN_OUT
+	data : ARRAY[1..2] OF INT; 
+END_VAR
+
+VAR
+	i :	INT;
+	i2 : INT;
+END_VAR
+			
+data[i] := data[i2]; 
+
+END_FUNCTION_BLOCK
+";
+
+        let library =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let _ = apply(library);
+
+        //assert!(result.is_ok());
     }
 }
