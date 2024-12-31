@@ -1,5 +1,5 @@
 ==================
-Compiler Reference
+Compiler reference
 ==================
 
 The program :program:`ironplcc` (:program:`ironplcc.exe` on Windows) is IronPLC’s

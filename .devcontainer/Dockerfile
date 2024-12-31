@@ -7,7 +7,7 @@ RUN apt-get update
 RUN apt-get install -y python3-sphinx python3-pip curl xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libdrm2 libgtk-3-0 libgbm1 libasound2 nsis
 
 # Install required Sphinx extensions for the documentation
-RUN pip3 install --break-system-packages furo sphinx-inline-tabs sphinx_copybutton esbonio
+RUN pip3 install --break-system-packages furo sphinx-inline-tabs sphinx_copybutton esbonio sphinx-design
 
 # Install Rust. This installs "globally" which is highly discouraged
 # but we claim this is Ok because in this container we only have one user.

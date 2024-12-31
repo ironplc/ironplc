@@ -1,6 +1,6 @@
-===========
-Quick start
-===========
+====================
+Quick start tutorial
+====================
 
 Let's start your IronPLC journey! IronPLC is still expanding
 so you journey will be quick. In this chapter, we'll discuss:
@@ -14,5 +14,3 @@ so you journey will be quick. In this chapter, we'll discuss:
 
    Installation <installation>
    Hello, World! <helloworld>
-   Update <update>
-

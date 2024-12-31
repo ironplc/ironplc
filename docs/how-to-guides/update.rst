@@ -1,6 +1,6 @@
-======
-Update
-======
+==============
+Update IronPLC
+==============
 
 There is normally a new IronPLC release every Monday. There is no
 automatic mechanism to distribute updates.
