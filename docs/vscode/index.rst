@@ -1,5 +1,5 @@
-Visual Studio Code Reference
-============================
+Visual Studio Code extension reference
+======================================
 
 .. toctree::
    :maxdepth: 1
