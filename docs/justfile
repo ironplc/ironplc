@@ -6,7 +6,7 @@ default: compile
 ci: setup compile
 
 setup:
-  pip3 install furo sphinx-inline-tabs sphinx-copybutton pytz
+  pip3 install furo sphinx-inline-tabs sphinx-copybutton pytz sphinx-design
 
 compile:
   sphinx-build -a -W -n -b html . _build
