@@ -12,8 +12,8 @@ use ironplc_dsl::visitor::Visitor;
 use ironplc_problems::Problem;
 use log::trace;
 
+use crate::scoped_table::{ScopedTable, Value};
 use crate::stdlib::{is_elementary_type, is_unsupported_standard_type};
-use crate::symbol_table::{SymbolTable, Value};
 
 /// Derived data types declared.
 ///
@@ -34,7 +34,7 @@ enum TypeDefinitionKind {
 impl Value for TypeDefinitionKind {}
 
 pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
-    let mut type_to_type_kind: SymbolTable<Type, TypeDefinitionKind> = SymbolTable::new();
+    let mut type_to_type_kind: ScopedTable<Type, TypeDefinitionKind> = ScopedTable::new();
 
     // Walk the entire library to find the types. We don't need
     // to keep track of contexts because types are global scoped.
@@ -54,7 +54,7 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
     result
 }
 
-impl SymbolTable<'_, Type, TypeDefinitionKind> {
+impl ScopedTable<'_, Type, TypeDefinitionKind> {
     fn add_if_new(&mut self, to_add: &Type, kind: TypeDefinitionKind) -> Result<(), Diagnostic> {
         if let Some(existing) = self.try_add(to_add, kind) {
             return Err(Diagnostic::problem(
@@ -68,7 +68,7 @@ impl SymbolTable<'_, Type, TypeDefinitionKind> {
     }
 }
 
-impl Visitor<Diagnostic> for SymbolTable<'_, Type, TypeDefinitionKind> {
+impl Visitor<Diagnostic> for ScopedTable<'_, Type, TypeDefinitionKind> {
     type Value = ();
 
     fn visit_data_type_declaration_kind(
@@ -120,7 +120,7 @@ impl Visitor<Diagnostic> for SymbolTable<'_, Type, TypeDefinitionKind> {
 }
 
 struct TypeResolver<'a> {
-    types: SymbolTable<'a, Type, TypeDefinitionKind>,
+    types: ScopedTable<'a, Type, TypeDefinitionKind>,
     diagnostics: Vec<Diagnostic>,
 }
 

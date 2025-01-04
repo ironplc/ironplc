@@ -48,11 +48,11 @@ use ironplc_problems::Problem;
 
 use crate::{
     result::SemanticResult,
-    symbol_table::{self, Key, SymbolTable, Value},
+    scoped_table::{self, Key, ScopedTable, Value},
 };
 
 pub fn apply(lib: &Library) -> SemanticResult {
-    let mut visitor: SymbolTable<Id, DummyNode> = symbol_table::SymbolTable::new();
+    let mut visitor: ScopedTable<Id, DummyNode> = scoped_table::ScopedTable::new();
 
     visitor.walk(lib).map_err(|e| vec![e])
 }
@@ -64,7 +64,7 @@ impl Value for DummyNode {}
 impl Key for Id {}
 impl Key for Type {}
 
-impl Visitor<Diagnostic> for SymbolTable<'_, Id, DummyNode> {
+impl Visitor<Diagnostic> for ScopedTable<'_, Id, DummyNode> {
     type Value = ();
 
     fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Diagnostic> {
