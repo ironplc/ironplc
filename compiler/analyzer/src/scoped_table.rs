@@ -9,7 +9,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use crate::symbol_table::{self, NodeData, SymbolTable};
+//! use crate::scoped_table::{self, NodeData, SymbolTable};
 //! use ironplc_dsl::dsl::Library;
 //! use ironplc_dsl::visitor::Visitor;
 //!
@@ -87,16 +87,16 @@ impl<'a, K: Key, V: 'a + Value> fmt::Debug for Scope<'a, K, V> {
     }
 }
 
-pub struct SymbolTable<'a, K: Key, V: 'a + Value> {
+pub struct ScopedTable<'a, K: Key, V: 'a + Value> {
     stack: LinkedList<Scope<'a, K, V>>,
 }
 
-impl<'a, K: Key, V: 'a + Value> SymbolTable<'a, K, V> {
+impl<'a, K: Key, V: 'a + Value> ScopedTable<'a, K, V> {
     /// Creates an empty `SymbolTable`.
     pub fn new() -> Self {
         let mut stack = LinkedList::new();
         stack.push_back(Scope::new());
-        SymbolTable { stack }
+        Self { stack }
     }
 
     /// Enters a new scope.
@@ -167,7 +167,7 @@ impl<'a, K: Key, V: 'a + Value> SymbolTable<'a, K, V> {
     }
 }
 
-impl<'a, K: Key, V: 'a + Value> fmt::Debug for SymbolTable<'a, K, V> {
+impl<'a, K: Key, V: 'a + Value> fmt::Debug for ScopedTable<'a, K, V> {
     // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&self.stack, f)
