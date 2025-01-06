@@ -15,16 +15,34 @@ existing development environment any time soon. Even so, we'd love if you give
 it a try, let us know what you think, fix a bug, or even become a regular
 contributor. IronPLC is MIT licensed and we aim to keep it that way.
 
-============================
-How to I start with IronPLC?
-============================
+.. grid:: 2
 
-Follow the steps in the :doc:`quickstart/index` guide to get started.
+    .. grid-item-card::  Tutorials
+
+        Start here as a new developer:
+
+        * :doc:`quickstart/index`
+
+    .. grid-item-card::  How-to guides
+
+        Step-by-step guides for using IronPLC.
+
+        * :ref:`how to guides target`
+   
+.. grid:: 2
+
+   .. grid-item-card::  Reference
+
+        Technical reference material, for
+        
+        * :doc:`compiler/index`
+        * :doc:`vscode/index`
 
 .. toctree::
    :maxdepth: 1
    :hidden:
 
    Quick start <quickstart/index>
-   Compiler <compiler/index>
-   Visual Studio Code Extension <vscode/index>
+   How-to guides <how-to-guides/index>
+   Compiler reference <compiler/index>
+   Visual Studio Code extension reference <vscode/index>
