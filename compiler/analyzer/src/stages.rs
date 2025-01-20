@@ -10,13 +10,16 @@ use ironplc_problems::Problem;
 use log::debug;
 
 use crate::{
-    ironplc_dsl::common::Library, result::SemanticResult, rule_decl_struct_element_unique_names,
-    rule_decl_subrange_limits, rule_enumeration_values_unique, rule_function_block_invocation,
-    rule_pou_hierarchy, rule_program_task_definition_exists, rule_unsupported_stdlib_type,
+    ironplc_dsl::common::Library,
+    result::SemanticResult,
+    rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
+    rule_enumeration_values_unique, rule_function_block_invocation, rule_pou_hierarchy,
+    rule_program_task_definition_exists, rule_unsupported_stdlib_type,
     rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
     rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
-    rule_var_decl_global_const_requires_external_const, type_table,
-    xform_resolve_late_bound_data_decl, xform_resolve_late_bound_expr_kind,
+    rule_var_decl_global_const_requires_external_const,
+    type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
+    type_table, xform_resolve_decl_environment, xform_resolve_late_bound_expr_kind,
     xform_resolve_late_bound_type_initializer, xform_toposort_declarations,
 };
 
@@ -53,16 +56,24 @@ pub(crate) fn resolve_types(sources: &[&Library]) -> Result<Library, Vec<Diagnos
         library = library.extend((*x).clone());
     }
 
-    let xforms: Vec<fn(Library) -> Result<Library, Vec<Diagnostic>>> = vec![
-        xform_toposort_declarations::apply,
-        xform_resolve_late_bound_data_decl::apply,
+    let mut type_environment = TypeEnvironmentBuilder::new()
+        .with_elementary_types()
+        .build()
+        .map_err(|err| vec![err])?;
+
+    let mut library = xform_toposort_declarations::apply(library)?;
+
+    let xforms: Vec<fn(Library, &mut TypeEnvironment) -> Result<Library, Vec<Diagnostic>>> = vec![
+        xform_resolve_decl_environment::apply,
         xform_resolve_late_bound_expr_kind::apply,
         xform_resolve_late_bound_type_initializer::apply,
     ];
 
     for xform in xforms {
-        library = xform(library)?
+        library = xform(library, &mut type_environment)?
     }
+
+    println!("{:?}", type_environment);
 
     Ok(library)
 }
