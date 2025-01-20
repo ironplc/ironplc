@@ -13,7 +13,12 @@ use ironplc_dsl::textual::*;
 use ironplc_dsl::{common::*, core::Id};
 use std::collections::HashMap;
 
-pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
+use crate::type_environment::TypeEnvironment;
+
+pub fn apply(
+    lib: Library,
+    _type_environment: &mut TypeEnvironment,
+) -> Result<Library, Vec<Diagnostic>> {
     // Resolve the types. This is a single fold of the library
     let mut resolver = DeclarationResolver {
         names_to_types: HashMap::new(),
@@ -203,6 +208,8 @@ impl Fold<Diagnostic> for DeclarationResolver {
 
 #[cfg(test)]
 mod tests {
+    use crate::type_environment::TypeEnvironmentBuilder;
+
     use super::apply;
     use ironplc_dsl::core::FileId;
     use ironplc_parser::options::ParseOptions;
@@ -224,7 +231,11 @@ END_FUNCTION_BLOCK";
         let library =
             ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
                 .unwrap();
-        let result = apply(library);
+        let mut type_environment = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let result = apply(library, &mut type_environment);
 
         assert!(result.is_ok());
     }
@@ -251,7 +262,11 @@ END_FUNCTION_BLOCK
         let library =
             ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
                 .unwrap();
-        let _ = apply(library);
+        let mut type_environment = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let _ = apply(library, &mut type_environment);
 
         //assert!(result.is_ok());
     }

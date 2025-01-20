@@ -31,5 +31,7 @@ P0029,UnsupportedStdLibType,Referenced type is valid but not implemented
 P0030,NoContent,Set of valid source files has no content
 P0031,UnexpectedToken,Unmatched character sequence in source text
 P0032,CStyleComment,C-style comment not allowed
-P0033,PouDeclNameDuplicated,Pou declaration name is duplicated
+P0033,PouDeclNameDuplicated,POU declaration name is duplicated
+P0034,UnexpectedElement,Element is not permitted at this compiler state
+P0035,ParentEnumNotDeclared,Parent enumeration is not declared
 P9999,NotImplemented,Capability is not implemented (yet!)
