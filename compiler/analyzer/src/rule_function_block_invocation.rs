@@ -108,7 +108,7 @@ struct RuleFunctionBlockUse<'a> {
 }
 impl<'a> RuleFunctionBlockUse<'a> {
     fn new(decls: &'a HashMap<Id, &'a FunctionBlockDeclaration>) -> Self {
-        RuleFunctionBlockUse {
+        Self {
             function_blocks: decls,
             var_to_fb: HashMap::new(),
         }

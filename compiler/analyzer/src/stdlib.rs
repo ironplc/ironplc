@@ -29,39 +29,3 @@ static STANDARD_LIBRARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
 pub(crate) fn is_unsupported_standard_type(ty: &Type) -> bool {
     STANDARD_LIBRARY_TYPES_LOWER_CASE.contains(&ty.name.lower_case().to_string())
 }
-
-static ELEMENTARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
-    // signed_integer_type_name
-    "sint",
-    "int",
-    "dint",
-    "lint",
-    // unsigned_integer_type_name
-    "usint",
-    "uint",
-    "udint",
-    "ulint",
-    // real_type_name
-    "real",
-    "lreal",
-    // date_type_name
-    "date",
-    "time_of_day",
-    "tod",
-    "date_and_time",
-    "dt",
-    // bit_string_type_name
-    "bool",
-    "byte",
-    "word",
-    "dword",
-    "lword",
-    // remaining elementary_type_name
-    "string",
-    "wstring",
-    "time"
-};
-
-pub(crate) fn is_elementary_type(ty: &Type) -> bool {
-    ELEMENTARY_TYPES_LOWER_CASE.contains(&ty.name.lower_case().to_string())
-}

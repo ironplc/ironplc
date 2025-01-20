@@ -13,7 +13,8 @@ use ironplc_problems::Problem;
 use log::trace;
 
 use crate::scoped_table::{ScopedTable, Value};
-use crate::stdlib::{is_elementary_type, is_unsupported_standard_type};
+use crate::stdlib::is_unsupported_standard_type;
+use crate::type_environment::{TypeClass, TypeEnvironment};
 
 /// Derived data types declared.
 ///
@@ -33,7 +34,10 @@ enum TypeDefinitionKind {
 
 impl Value for TypeDefinitionKind {}
 
-pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
+pub fn apply(
+    lib: Library,
+    type_environment: &mut TypeEnvironment,
+) -> Result<Library, Vec<Diagnostic>> {
     let mut type_to_type_kind: ScopedTable<Type, TypeDefinitionKind> = ScopedTable::new();
 
     // Walk the entire library to find the types. We don't need
@@ -43,6 +47,7 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
     // Set the types for each item.
     let mut resolver = TypeResolver {
         types: type_to_type_kind,
+        type_environment,
         diagnostics: vec![],
     };
     let result = resolver.fold_library(lib).map_err(|e| vec![e]);
@@ -121,6 +126,7 @@ impl Visitor<Diagnostic> for ScopedTable<'_, Type, TypeDefinitionKind> {
 
 struct TypeResolver<'a> {
     types: ScopedTable<'a, Type, TypeDefinitionKind>,
+    type_environment: &'a TypeEnvironment,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -133,11 +139,13 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
             // TODO this needs to handle struct definitions
             InitialValueAssignmentKind::LateResolvedType(name) => {
                 // Element types resolve to the known type.
-                if is_elementary_type(&name) {
-                    return Ok(InitialValueAssignmentKind::Simple(SimpleInitializer {
-                        type_name: name,
-                        initial_value: None,
-                    }));
+                if let Some(ty) = self.type_environment.get(&name) {
+                    if ty.class == TypeClass::Simple {
+                        return Ok(InitialValueAssignmentKind::Simple(SimpleInitializer {
+                            type_name: name,
+                            initial_value: None,
+                        }));
+                    }
                 }
 
                 // Unsupported standard types resolve to a known type that we will detect later.
@@ -213,6 +221,8 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::type_environment::TypeEnvironment;
+
     use super::apply;
     use ironplc_dsl::{
         common::*,
@@ -238,7 +248,8 @@ END_FUNCTION_BLOCK
         let input =
             ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
                 .unwrap();
-        let result = apply(input).unwrap();
+        let mut type_environment = TypeEnvironment::new();
+        let result = apply(input, &mut type_environment).unwrap();
 
         let expected = Library {
             elements: vec![
@@ -281,7 +292,8 @@ END_FUNCTION_BLOCK
         let input =
             ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
                 .unwrap();
-        let result = apply(input).unwrap();
+        let mut type_environment = TypeEnvironment::new();
+        let result = apply(input, &mut type_environment).unwrap();
 
         let expected = Library {
             elements: vec![
@@ -326,7 +338,8 @@ END_FUNCTION_BLOCK
         let input =
             ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
                 .unwrap();
-        let result = apply(input).unwrap();
+        let mut type_environment = TypeEnvironment::new();
+        let result = apply(input, &mut type_environment).unwrap();
 
         let expected = Library {
             elements: vec![
@@ -376,7 +389,8 @@ END_FUNCTION_BLOCK
         let input =
             ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
                 .unwrap();
-        let result = apply(input);
+        let mut type_environment = TypeEnvironment::new();
+        let result = apply(input, &mut type_environment);
         assert!(result.is_err());
 
         let err = result.unwrap_err();
