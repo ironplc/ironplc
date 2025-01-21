@@ -59,17 +59,11 @@ jobs:
     name: Label GitHub Release as Prerelease
     # In order to do a smoke test, we need a public accessible release
     needs: [release, build-platform-package, build-vscode-extension]
-    runs-on: ubuntu-latest
-    if: ${{ !inputs.dryrun }}
-    steps:
-      # Save artifacts
-      - name: Label GitHub Release as pre-release
-        uses: irongut/EditRelease@v1.2.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          id: ${{ needs.release.outputs.gh-release-id }}
-          prerelease: true
-          draft: false
+    uses: ./.github/workflows/partial_publish_prerelease.yaml
+    with:
+      commit-tag: ${{ needs.release.outputs.commit-tag }}
+      gh-release-id: ${{ needs.release.outputs.gh-release-id }}
+      version: ${{ needs.release.outputs.version }}
 
   smoke-test:
     name: End to End Smoke Test
