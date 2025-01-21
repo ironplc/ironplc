@@ -106,12 +106,17 @@ jobs:
           if-no-files-found: error
       - name: Upload Compiler Installer to GitHub Release
         if: ${{ inputs.gh-release-tag }}
-        uses: softprops/action-gh-release@v2
+        uses: svenstaro/upload-release-action@v2
         with:
-          files: |
-            compiler/${{ matrix.artifact }}
-            compiler/${{ matrix.artifact }}.sha256
-          token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: ${{ inputs.gh-release-tag }}
-          fail_on_unmatched_files: true
-          draft: true
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: ${{ inputs.gh-release-tag }}
+          asset_name: ${{ matrix.artifact }}
+          file: compiler/${{ matrix.artifact }}
+      - name: Upload Compiler Installer SHA256 to GitHub Release
+        if: ${{ inputs.gh-release-tag }}
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: ${{ inputs.gh-release-tag }}
+          asset_name: ${{ matrix.artifact }}.sha256
+          file: compiler/${{ matrix.artifact }}.sha256
