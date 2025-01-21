@@ -89,6 +89,14 @@ jobs:
           name: ${{ inputs.artifact-name }}
           path: integrations/vscode/ironplc-vscode-extension.vsix
           if-no-files-found: error
+      - name: Upload VSIX to GibHub Release
+        if: ${{ inputs.gh-release-tag }}
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: ${{ inputs.gh-release-tag }}
+          asset_name: ironplc-vscode-extension.vsix
+          file: integrations/vscode/ironplc-vscode-extension.vsix
       - name: Upload VSIX to GitHub Release
         if: ${{ inputs.gh-release-tag }}
         uses: softprops/action-gh-release@v2
