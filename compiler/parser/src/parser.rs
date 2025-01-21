@@ -196,6 +196,9 @@ parser! {
       Id::from(i.text.as_str())
         .with_position(i.span.clone())
     }
+    // We want to be more flexible on identifiers for variable names
+    // because it is common to use variable names that are reserved names
+    rule variable_identifier() -> Id = identifier() / t:tok(TokenType::Step) { Id::from(t.text.as_str()) } / t:tok(TokenType::On) { Id::from(t.text.as_str()) } / t:tok(TokenType::REdge) { Id::from(t.text.as_str()) } / t:tok(TokenType::FEdge) { Id::from(t.text.as_str()) }
     rule type_name() -> Type = i:identifier() { Type::from_id(&i) }
 
     // B.1.2 Constants
@@ -642,7 +645,7 @@ parser! {
     //rule symbolic_variable() -> SymbolicVariableKind =
     //  multi_element_variable()
     //  / name:variable_name() { SymbolicVariableKind::Named(NamedVariable{name}) }
-    rule symbolic_variable() -> SymbolicVariableKind = name:identifier() elements:(tok(TokenType::Period) id:identifier() { Element::StructSelector(id) } / sub:subscript_list() {Element::ArraySelector(sub)})* {
+    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) id:identifier() { Element::StructSelector(id) } / sub:subscript_list() {Element::ArraySelector(sub)})* {
       // Start by assuming that the top is just a named variable
       let mut head = SymbolicVariableKind::Named(NamedVariable { name });
 
@@ -668,7 +671,7 @@ parser! {
 
       head
     }
-    rule variable_name() -> Id = identifier()
+    rule variable_name() -> Id = variable_identifier()
 
     // B.1.4.1 Directly represented variables
     // There is no location_prefix or size_prefix rule because it would be ambiguous when the % prefix normally
