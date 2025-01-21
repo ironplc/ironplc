@@ -97,15 +97,3 @@ jobs:
           tag: ${{ inputs.gh-release-tag }}
           asset_name: ironplc-vscode-extension.vsix
           file: integrations/vscode/ironplc-vscode-extension.vsix
-      - name: Upload VSIX to GitHub Release
-        if: ${{ inputs.gh-release-tag }}
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            integrations/vscode/ironplc-vscode-extension.vsix
-          token: "${{ secrets.GITHUB_TOKEN }}"
-          tag_name: ${{ inputs.gh-release-tag }}
-          fail_on_unmatched_files: true
-          draft: true
-
-

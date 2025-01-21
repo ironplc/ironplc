@@ -1,0 +1,35 @@
+name: Publish Pre-release
+on:
+  # Allow triggering directly
+  workflow_dispatch:
+    inputs:
+      gh-release-id:
+        required: false
+        type: string
+        default: ""
+        description: 'The Github Release ID to set as pre-release'
+
+  # Allow using this workflow from another workflow
+  workflow_call:
+    inputs:
+      gh-release-id:
+        required: false
+        type: string
+        description: 'The Github Release tag to publish to'
+
+jobs:
+  publish-prerelease:
+    name: Label GitHub Release as Prerelease
+    # In order to do a smoke test, we need a public accessible release
+    needs: [release, build-platform-package, build-vscode-extension]
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.dryrun }}
+    steps:
+      # Update the release
+      - name: Label GitHub Release as pre-release
+        uses: irongut/EditRelease@v1.2.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          id: ${{ inputs.gh-release-id }}
+          prerelease: true
+          draft: false
