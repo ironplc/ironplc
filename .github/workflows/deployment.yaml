@@ -61,9 +61,7 @@ jobs:
     needs: [release, build-platform-package, build-vscode-extension]
     uses: ./.github/workflows/partial_publish_prerelease.yaml
     with:
-      commit-tag: ${{ needs.release.outputs.commit-tag }}
       gh-release-id: ${{ needs.release.outputs.gh-release-id }}
-      version: ${{ needs.release.outputs.version }}
 
   smoke-test:
     name: End to End Smoke Test
