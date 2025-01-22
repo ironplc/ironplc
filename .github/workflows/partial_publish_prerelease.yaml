@@ -8,6 +8,12 @@ on:
         type: string
         default: ""
         description: 'The Github Release ID to set as pre-release'
+      dryrun:
+        required: true
+        type: boolean
+        default: true
+        description: 'If set, run as a dry run and do not create the release artifacts'
+
 
   # Allow using this workflow from another workflow
   workflow_call:
@@ -16,12 +22,14 @@ on:
         required: false
         type: string
         description: 'The Github Release tag to publish to'
+      dryrun:
+        type: boolean
+        description: 'If set, run as a dry run and do not create the release artifacts'
+        default: true
 
 jobs:
   publish-prerelease:
     name: Label GitHub Release as Prerelease
-    # In order to do a smoke test, we need a public accessible release
-    needs: [release, build-platform-package, build-vscode-extension]
     runs-on: ubuntu-latest
     if: ${{ !inputs.dryrun }}
     steps:

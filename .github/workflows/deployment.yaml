@@ -61,6 +61,7 @@ jobs:
     needs: [release, build-platform-package, build-vscode-extension]
     uses: ./.github/workflows/partial_publish_prerelease.yaml
     with:
+      dryrun: ${{ !!inputs.dryrun }}
       gh-release-id: ${{ needs.release.outputs.gh-release-id }}
 
   smoke-test:
