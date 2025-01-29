@@ -55,7 +55,7 @@ get-next-version type:
     step=patch
   fi
 
-  base=$(git tag 2>/dev/null| tail -n 1)
+  base=$(git tag --sort=v:refname 2>/dev/null| tail -n 1)
 
   MAJOR=`echo $base | sed -e "s#$RE#\1#"`
   MINOR=`echo $base | sed -e "s#$RE#\2#"`
