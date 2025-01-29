@@ -31,10 +31,10 @@ jobs:
   publish-prerelease:
     name: Label GitHub Release as Prerelease
     runs-on: ubuntu-latest
-    if: ${{ !inputs.dryrun }}
     steps:
       # Update the release
       - name: Label GitHub Release as pre-release
+        if: ${{ !inputs.dryrun }}
         uses: irongut/EditRelease@v1.2.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
