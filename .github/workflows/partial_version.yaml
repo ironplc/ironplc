@@ -104,6 +104,6 @@ jobs:
             with:
               token: "${{ secrets.GITHUB_TOKEN }}"
               tag_name: v${{ steps.nextversion.outputs.version }}
-              draft: true
-              prerelease: false
+              draft: false
+              prerelease: true
     
