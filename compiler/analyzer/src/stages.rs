@@ -19,8 +19,8 @@ use crate::{
     rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
-    type_table, xform_resolve_decl_environment, xform_resolve_late_bound_expr_kind,
-    xform_resolve_late_bound_type_initializer, xform_toposort_declarations,
+    type_table, xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
+    xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
@@ -64,7 +64,7 @@ pub(crate) fn resolve_types(sources: &[&Library]) -> Result<Library, Vec<Diagnos
     let mut library = xform_toposort_declarations::apply(library)?;
 
     let xforms: Vec<fn(Library, &mut TypeEnvironment) -> Result<Library, Vec<Diagnostic>>> = vec![
-        xform_resolve_decl_environment::apply,
+        xform_resolve_type_decl_environment::apply,
         xform_resolve_late_bound_expr_kind::apply,
         xform_resolve_late_bound_type_initializer::apply,
     ];

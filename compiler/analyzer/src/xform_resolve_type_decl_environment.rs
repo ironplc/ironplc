@@ -88,6 +88,9 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // Enumeration declaration can define a set of values
         // or rename another enumeration.
         if let EnumeratedSpecificationKind::TypeName(base_type_name) = &node.spec_init.spec {
+            // If this is a rename of another type, then that other type must already exist.
+            // It should exist because we did a topological sort so that if it exists, then we
+            // would have handled it already.
             if self.get(base_type_name).is_none() {
                 return Err(Diagnostic::problem(
                     Problem::ParentEnumNotDeclared,
@@ -139,9 +142,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
     }
 }
 
-/*
 #[cfg(test)]
 mod tests {
+    use crate::type_environment::TypeEnvironment;
+
     use super::apply;
     use ironplc_dsl::{common::*, core::FileId};
     use ironplc_parser::options::ParseOptions;
@@ -157,7 +161,8 @@ END_TYPE
         let input =
             ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
                 .unwrap();
-        let library = apply(input).unwrap();
+        let mut env = TypeEnvironment::new();
+        let library = apply(input, &mut env).unwrap();
 
         let expected = Library {
             elements: vec![
@@ -191,15 +196,29 @@ END_TYPE
 TYPE
 LEVEL : (CRITICAL) := CRITICAL;
 LEVEL : (CRITICAL) := CRITICAL;
-LEVEL_ALIAS : LEVEL;
 END_TYPE
         ";
         let input =
             ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
                 .unwrap();
-        let result = apply(input);
+        let mut env = TypeEnvironment::new();
+        let result = apply(input, &mut env);
+        let result = result.unwrap_err();
+        assert_eq!("P0019", result.get(0).unwrap().code);
+    }
 
-        assert!(result.is_err())
+    #[test]
+    fn apply_when_declares_stdlib_type_then_error() {
+        let program = "
+TYPE
+LREAL : REAL;
+END_TYPE
+        ";
+        let result =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap_err();
+        // This doesn't actually fail due to this transform but something should
+        // catch this.
+        assert_eq!("P0002", result.code);
     }
 }
- */
