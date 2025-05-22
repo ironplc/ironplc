@@ -367,6 +367,7 @@ pub enum UnaryOp {
 ///
 /// See section 3.3.2.
 #[derive(Debug, PartialEq, Clone, Recurse)]
+#[allow(clippy::large_enum_variant)]
 pub enum StmtKind {
     Assignment(Assignment),
     // Function and function block control
