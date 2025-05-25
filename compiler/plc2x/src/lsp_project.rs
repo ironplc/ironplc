@@ -1,5 +1,8 @@
 //! Adapts data types between what is required by the compiler
 //! and the language server protocol.
+use std::path::PathBuf;
+use std::str::FromStr;
+
 use ironplc_dsl::core::FileId;
 use ironplc_parser::token::{Token, TokenType};
 use log::error;
@@ -7,9 +10,13 @@ use lsp_types::{
     CodeDescription, Diagnostic, DiagnosticSeverity, NumberOrString, SemanticTokenType,
     WorkspaceFolder,
 };
-use lsp_types::{SemanticToken, Url};
+use lsp_types::{SemanticToken, Uri};
 
 use crate::project::Project;
+
+fn to_path_buf(uri: &Uri) -> Result<PathBuf, ()> {
+    Ok(PathBuf::from(uri.path().as_str()))
+}
 
 /// The LSP project provides a view onto a project that accepts
 /// and returns LSP types.
@@ -23,26 +30,29 @@ impl LspProject {
     }
 
     pub(crate) fn initialize(&mut self, folder: &WorkspaceFolder) {
-        let path = folder.uri.to_file_path();
+        let path = to_path_buf(&folder.uri);
         if let Ok(path) = path {
             self.wrapped.initialize(&path);
         } else {
-            error!("URL must be convertible to a file path {}", folder.uri);
+            error!(
+                "URL must be convertible to a file path {}",
+                folder.uri.as_str()
+            );
         }
     }
 
-    pub(crate) fn change_text_document(&mut self, url: &Url, content: String) {
-        let path = url.to_file_path();
+    pub(crate) fn change_text_document(&mut self, uri: &Uri, content: String) {
+        let path = to_path_buf(uri);
         if let Ok(path) = path {
             let file_id = FileId::from_path(&path);
             self.wrapped.change_text_document(&file_id, content);
         } else {
-            error!("URL must be convertible to a file path {}", url);
+            error!("URL must be convertible to a file path {}", uri.as_str());
         }
     }
 
-    pub(crate) fn tokenize(&self, url: &Url) -> Result<Vec<SemanticToken>, Vec<Diagnostic>> {
-        let path = url.to_file_path();
+    pub(crate) fn tokenize(&self, uri: &Uri) -> Result<Vec<SemanticToken>, Vec<Diagnostic>> {
+        let path = to_path_buf(uri);
         if let Ok(path) = path {
             let file_id = FileId::from_path(&path);
 
@@ -62,14 +72,14 @@ impl LspProject {
                 .filter_map(|tok| LspTokenType(tok).into())
                 .collect());
         } else {
-            error!("URL must be convertible to a file path {}", url);
+            error!("URL must be convertible to a file path {}", uri.as_str());
         }
 
         Err(vec![])
     }
 
-    pub(crate) fn semantic(&mut self, url: &Url) -> Vec<lsp_types::Diagnostic> {
-        let path = url.to_file_path();
+    pub(crate) fn semantic(&mut self, uri: &Uri) -> Vec<lsp_types::Diagnostic> {
+        let path = to_path_buf(uri);
         if let Ok(path) = path {
             let file_id = FileId::from_path(&path);
             let semantic_result = self.wrapped.semantic();
@@ -83,7 +93,7 @@ impl LspProject {
                     .collect(),
             };
         } else {
-            error!("URL must be convertible to a file path {}", url);
+            error!("URL must be convertible to a file path {:?}", uri);
         }
 
         vec![]
@@ -266,7 +276,7 @@ fn map_diagnostic(
     let description = diagnostic.description();
     let range = map_label(&diagnostic.primary, project);
 
-    let code_description = match Url::parse(
+    let code_description = match Uri::from_str(
         format!(
             "https://www.ironplc.com/compiler/problems/{}.html",
             diagnostic.code
@@ -334,10 +344,12 @@ fn map_label(label: &ironplc_dsl::diagnostic::Label, project: &dyn Project) -> l
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
     use ironplc_dsl::core::SourceSpan;
     use ironplc_parser::token::{Token, TokenType};
     use ironplc_test::read_shared_resource;
-    use lsp_types::{SemanticToken, Url};
+    use lsp_types::{SemanticToken, Uri};
 
     use crate::project::FileBackedProject;
 
@@ -357,14 +369,14 @@ mod test {
     #[test]
     fn tokenize_when_no_document_then_error() {
         let proj = new_empty_project();
-        let url = Url::parse("http://example.com").unwrap();
+        let url = Uri::from_str("http://example.com").unwrap();
         assert!(proj.tokenize(&url).is_err());
     }
 
     #[test]
     fn tokenize_when_has_document_then_not_empty_tokens() {
         let mut proj = new_empty_project();
-        let url = Url::parse(FAKE_PATH).unwrap();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
         proj.change_text_document(&url, "TYPE TEXT_EMPTY : STRING [1]; END_TYPE".to_owned());
 
         let result = proj.tokenize(&url);
@@ -374,7 +386,7 @@ mod test {
     #[test]
     fn tokenize_when_first_steps_then_has_tokens() {
         let mut proj = new_empty_project();
-        let url = Url::parse(FAKE_PATH).unwrap();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
         let content = read_shared_resource("first_steps.st");
         proj.change_text_document(&url, content);
 
