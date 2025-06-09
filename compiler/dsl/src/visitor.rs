@@ -434,7 +434,7 @@ mod test {
 
         fn visit_late_bound(&mut self, node: &LateBound) -> Result<(), ()> {
             let mut dst = &mut self.names;
-            dst.push_back(node.name.to_string());
+            dst.push_back(node.value.to_string());
             Ok(())
         }
 
