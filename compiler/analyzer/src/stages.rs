@@ -10,17 +10,7 @@ use ironplc_problems::Problem;
 use log::debug;
 
 use crate::{
-    ironplc_dsl::common::Library,
-    result::SemanticResult,
-    rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
-    rule_enumeration_values_unique, rule_function_block_invocation, rule_pou_hierarchy,
-    rule_program_task_definition_exists, rule_unsupported_stdlib_type,
-    rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
-    rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
-    rule_var_decl_global_const_requires_external_const,
-    type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
-    type_table, xform_resolve_decl_environment, xform_resolve_late_bound_expr_kind,
-    xform_resolve_late_bound_type_initializer, xform_toposort_declarations,
+    ironplc_dsl::common::Library, result::SemanticResult, rule_decl_struct_element_unique_names, rule_decl_subrange_limits, rule_enumeration_values_unique, rule_function_block_invocation, rule_pou_hierarchy, rule_program_task_definition_exists, rule_unsupported_stdlib_type, rule_use_declared_enumerated_value, rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb, rule_var_decl_global_const_requires_external_const, symbol_environment::{SymbolEnvironment, SymbolEnvironmentBuilder}, type_environment::{TypeEnvironment, TypeEnvironmentBuilder}, xform_resolve_decl_environment, xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer, xform_resolve_symbol_environment, xform_toposort_declarations
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
@@ -28,7 +18,7 @@ use crate::{
 /// Returns `Ok(Library)` if analysis succeeded (containing a possibly new library) that is
 /// the merge of the inputs.
 /// Returns `Err(Diagnostic)` if analysis did not succeed.
-pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
+pub fn analyze(sources: &[&Library]) -> Result<Library, Vec<Diagnostic>> {
     if sources.is_empty() {
         let span = SourceSpan::range(0, 0).with_file_id(&FileId::default());
         return Err(vec![Diagnostic::problem(
@@ -36,19 +26,19 @@ pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
             Label::span(span, "First location"),
         )]);
     }
-    let library = resolve_types(sources)?;
-    let result = semantic(&library);
+    let (library, type_environment) = create_type_environment(sources)?;
+    debug!("Type environment: {:?}", type_environment);
 
-    // TODO this is currently in progress. It isn't clear to me yet how this will influence
-    // semantic analysis, but it should because the type table should influence rule checking.
-    // For now, this is just after the rules as they were originally written.
-    let type_table_result = type_table::apply(&library)?;
-    debug!("{:?}", type_table_result);
+    let (library, symbol_environment) = create_symbol_environment(library, &type_environment)?;
+    debug!("Symbol environment: {:?}", symbol_environment);
+
+    let result = semantic(library, &type_environment, &symbol_environment);
+    debug!("Analysis result: {:?}", result);
 
     result
 }
 
-pub(crate) fn resolve_types(sources: &[&Library]) -> Result<Library, Vec<Diagnostic>> {
+pub(crate) fn create_type_environment(sources: &[&Library]) -> Result<(Library, TypeEnvironment), Vec<Diagnostic>> {
     // We want to analyze this as a complete set, so we need to join the items together
     // into a single library. Extend owns the item so after this we are free to modify
     let mut library = Library::new();
@@ -56,33 +46,42 @@ pub(crate) fn resolve_types(sources: &[&Library]) -> Result<Library, Vec<Diagnos
         library = library.extend((*x).clone());
     }
 
+    // Create the structure that will be the type environment
     let mut type_environment = TypeEnvironmentBuilder::new()
         .with_elementary_types()
         .build()
         .map_err(|err| vec![err])?;
 
-    let mut library = xform_toposort_declarations::apply(library)?;
+    // Sort the items in the library so definitions are guaranteed to exist before
+    // references (or if they do not exist, are guaranteed to not exist)
+    let library = xform_toposort_declarations::apply(library)?;
 
-    let xforms: Vec<fn(Library, &mut TypeEnvironment) -> Result<Library, Vec<Diagnostic>>> = vec![
-        xform_resolve_decl_environment::apply,
-        xform_resolve_late_bound_expr_kind::apply,
-        xform_resolve_late_bound_type_initializer::apply,
-    ];
+    // Now build the environment - this returns a new version of the library
+    // because we may modify the library elements as we go along
+    let library = xform_resolve_decl_environment::apply(library, &mut type_environment)?;
 
-    for xform in xforms {
-        library = xform(library, &mut type_environment)?
-    }
+    Ok((library, type_environment))
+}
 
-    println!("{:?}", type_environment);
+pub(crate) fn create_symbol_environment(library: Library, type_environment: &TypeEnvironment) -> Result<(Library, SymbolEnvironment), Vec<Diagnostic>> {
+    // Create the structure that will be the symbol environment
+    let mut symbol_environment = SymbolEnvironmentBuilder::new()
+        .build()
+        .map_err(|err| vec![err])?;
 
-    Ok(library)
+    let library = xform_resolve_symbol_environment::apply(library, &type_environment, &mut symbol_environment)?;
+
+    Ok((library, symbol_environment))
 }
 
 /// Semantic implements semantic analysis (stage 3).
 ///
 /// Returns `Ok(())` if the library is free of semantic errors.
 /// Returns `Err(String)` if the library contains a semantic error.
-pub(crate) fn semantic(library: &Library) -> SemanticResult {
+pub(crate) fn semantic(library: Library, type_environment: &TypeEnvironment, _symbol_environment: &SymbolEnvironment) -> Result<Library, Vec<Diagnostic>> {
+    let library = xform_resolve_late_bound_expr_kind::apply(library, type_environment)?;
+    let library = xform_resolve_late_bound_type_initializer::apply(library, type_environment)?;
+
     let functions: Vec<fn(&Library) -> SemanticResult> = vec![
         rule_decl_struct_element_unique_names::apply,
         rule_decl_subrange_limits::apply,
@@ -100,7 +99,7 @@ pub(crate) fn semantic(library: &Library) -> SemanticResult {
 
     let mut all_diagnostics = vec![];
     for func in functions {
-        match func(library) {
+        match func(&library) {
             Ok(_) => {
                 // Nothing to do here
             }
@@ -114,7 +113,7 @@ pub(crate) fn semantic(library: &Library) -> SemanticResult {
         return Err(all_diagnostics);
     }
 
-    Ok(())
+    Ok(library)
 }
 
 #[cfg(test)]

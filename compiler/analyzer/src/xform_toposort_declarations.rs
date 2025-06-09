@@ -132,7 +132,7 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
             }
             LibraryElementKind::FunctionBlockDeclaration(decl) => {
                 elems_by_name.insert(
-                    decl.name.clone(),
+                    decl.name.name.clone(),
                     LibraryElementKind::FunctionBlockDeclaration(decl),
                 );
             }
@@ -369,8 +369,8 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.current_from = Some(node.name.clone());
-        self.declarations.add_node(&node.name);
+        self.current_from = Some(node.name.name.clone());
+        self.declarations.add_node(&node.name.name);
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -512,11 +512,11 @@ mod tests {
 
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
-        assert_eq!(decl.name, Id::from("Callee"));
+        assert_eq!(decl.name, Type::from("Callee"));
 
         let decl = library.elements.get(1).unwrap();
         let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
-        assert_eq!(decl.name, Id::from("Caller"));
+        assert_eq!(decl.name, Type::from("Caller"));
     }
 
     #[test]

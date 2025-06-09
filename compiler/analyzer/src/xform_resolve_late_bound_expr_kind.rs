@@ -6,24 +6,26 @@
 //!
 //! The transformation succeeds when all ambiguous expression elements
 //! resolve to a declared type.
+use std::collections::HashMap;
+
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::textual::*;
 use ironplc_dsl::{common::*, core::Id};
-use std::collections::HashMap;
 
-use crate::type_environment::TypeEnvironment;
+use crate::type_environment::{TypeClass, TypeEnvironment};
 
 pub fn apply(
     lib: Library,
-    _type_environment: &mut TypeEnvironment,
+    type_environment: &TypeEnvironment,
 ) -> Result<Library, Vec<Diagnostic>> {
     // Resolve the types. This is a single fold of the library
     let mut resolver = DeclarationResolver {
-        names_to_types: HashMap::new(),
-        current_type: VariableType::None,
         diagnostics: Vec::new(),
+        type_environment,
+        assignment_target: None,
+        variables: HashMap::new(),
     };
     let result = resolver.fold_library(lib).map_err(|e| vec![e]);
 
@@ -48,52 +50,101 @@ enum VariableType {
     LateResolvedType,
 }
 
-struct DeclarationResolver {
-    // Defines the desired type for each identifier
-    names_to_types: HashMap<Id, VariableType>,
-    current_type: VariableType,
+struct DeclarationResolver<'a> {
+    assignment_target: Option<Variable>,
+    variables: HashMap<Id, Type>,
     diagnostics: Vec<Diagnostic>,
+    type_environment:  &'a TypeEnvironment,
 }
 
-impl DeclarationResolver {
+impl<'a> DeclarationResolver<'a> {
     fn insert(&mut self, node: &VarDecl) {
-        let var_type = match node.initializer {
-            InitialValueAssignmentKind::None(_) => VariableType::None,
-            InitialValueAssignmentKind::Simple(_) => VariableType::Simple,
-            InitialValueAssignmentKind::String(_) => VariableType::String,
-            InitialValueAssignmentKind::EnumeratedValues(_) => VariableType::EnumeratedValues,
-            InitialValueAssignmentKind::EnumeratedType(_) => VariableType::EnumeratedType,
-            InitialValueAssignmentKind::FunctionBlock(_) => VariableType::FunctionBlock,
-            InitialValueAssignmentKind::Subrange(_) => VariableType::Subrange,
-            InitialValueAssignmentKind::Structure(_) => VariableType::Structure,
-            InitialValueAssignmentKind::Array(_) => VariableType::Array,
-            InitialValueAssignmentKind::LateResolvedType(_) => VariableType::LateResolvedType,
-        };
-        match &node.identifier {
-            VariableIdentifier::Symbol(id) => {
-                self.names_to_types.insert(id.clone(), var_type);
-            }
-            VariableIdentifier::Direct(direct) => {
-                if let Some(name) = &direct.name {
-                    self.names_to_types.insert(name.clone(), var_type);
-                }
+        // Gets the name of the type for this variable.
+        if let Some(type_name) = node.type_name() {
+            if let VariableIdentifier::Symbol(name) = &node.identifier {
+                // Add this mapping into context
+                self.variables.insert(name.clone(), type_name);
             }
         }
     }
 
-    fn find_type(&self, name: &Id) -> &VariableType {
-        self.names_to_types.get(name).unwrap_or(&VariableType::None)
+    fn get_type(&self, target: &SymbolicVariableKind) -> Result<&Type, Diagnostic> {
+        // Get the variable name
+        let variable: Option<&Type> = match target {
+            SymbolicVariableKind::Named(named_var) => {
+                // If this is just a variable name, then we have the type already
+                // from the scope (unless this is global?)
+                return self.variables.get(&named_var.name).ok_or_else(|| {
+                    let diagnostic = Diagnostic::todo_with_id(&named_var.name, file!(), line!());
+                    for var in self.variables {
+                        diagnostic = diagnostic.with_secondary_id(var.0.span(), "Variable");
+                    }
+                    diagnostic
+                        
+                });
+            },
+            SymbolicVariableKind::Array(arr) => {
+                // If this is array, then we need to look up based on the container
+                return Err(Diagnostic::todo_with_span(arr.span(), file!(), line!()));
+            },
+            SymbolicVariableKind::Structured(structure) => {
+                // For now, just go one level into a structure
+                if let SymbolicVariableKind::Named(container) = structure.record.as_ref() {
+                    // This is the name of the variable
+                    return self.variables.get(&container.name);
+                }
+                return Err(Diagnostic::todo_with_span(structure.span(), file!(), line!()));
+            }
+        };
+    }
+
+    fn replace_late_bound_expr(&self, node: LateBound) -> Result<ironplc_dsl::textual::ExprKind, Diagnostic> {
+        // What variable are we trying to assign this value to?
+        let symbolic_type = match self.assignment_target.as_ref() {
+            Some(target_variable) => {
+                // We need this to be a symbolic variable to resolve the type.
+                let target_symbolic_variable = match target_variable {
+                    Variable::Direct(address_assignment) => return Err(Diagnostic::todo_with_id(&node.value, file!(), line!())),
+                    Variable::Symbolic(symbolic_variable_kind) => symbolic_variable_kind,
+                };
+                let target_type = self.get_type(&target_symbolic_variable)?;
+                target_type
+            },
+            None => {
+                // This might be a direct variable reference.
+                let variable_type = self.variables.get(&node.value).ok_or_else(|| Diagnostic::todo_with_id(&node.value, file!(), line!()))?;
+                variable_type
+            },
+        };
+
+        let attrs = self.type_environment.get(symbolic_type).ok_or_else(|| Diagnostic::todo_with_id(&node.value, file!(), line!()))?;
+
+        let replaced_type = match attrs.class {
+            TypeClass::Simple => Ok(ExprKind::Variable(Variable::Symbolic(
+                SymbolicVariableKind::Named(NamedVariable { name: node.value }),
+            ))),
+            TypeClass::Enumeration => Ok(ExprKind::EnumeratedValue(EnumeratedValue {
+                type_name: None,
+                value: node.value,
+            })),
+            TypeClass::Structure => Err(Diagnostic::todo_with_id(&node.value, file!(), line!())),
+            TypeClass::FunctionBlock => Err(Diagnostic::todo_with_id(&node.value, file!(), line!())),
+            TypeClass::FunctionBlockOutput(_) => Err(Diagnostic::todo_with_id(&node.value, file!(), line!())),
+        };
+
+        replaced_type
     }
 }
 
-impl Fold<Diagnostic> for DeclarationResolver {
+impl<'a> Fold<Diagnostic> for DeclarationResolver<'a> {
     fn fold_function_declaration(
         &mut self,
         node: FunctionDeclaration,
     ) -> Result<FunctionDeclaration, Diagnostic> {
+        self.variables = HashMap::new();
         node.variables.iter().for_each(|v| self.insert(v));
         let result = node.recurse_fold(self);
-        self.names_to_types.clear();
+        self.variables.clear();
         result
     }
 
@@ -101,50 +152,36 @@ impl Fold<Diagnostic> for DeclarationResolver {
         &mut self,
         node: FunctionBlockDeclaration,
     ) -> Result<FunctionBlockDeclaration, Diagnostic> {
+        self.variables = HashMap::new();
         node.variables.iter().for_each(|v| self.insert(v));
         let result = node.recurse_fold(self);
-        self.names_to_types.clear();
+        self.variables.clear();
         result
     }
+
     fn fold_program_declaration(
         &mut self,
         node: ProgramDeclaration,
     ) -> Result<ProgramDeclaration, Diagnostic> {
+        self.variables = HashMap::new();
         node.variables.iter().for_each(|v| self.insert(v));
         let result = node.recurse_fold(self);
-        self.names_to_types.clear();
+        self.variables.clear();
         result
     }
+
     fn fold_assignment(
         &mut self,
         node: ironplc_dsl::textual::Assignment,
     ) -> Result<ironplc_dsl::textual::Assignment, Diagnostic> {
-        // Check the type of the target. We will later use that to assign
-        // any late types in the expression.
-        match &node.target {
-            Variable::Direct(_) => self.current_type = VariableType::None,
-            Variable::Symbolic(symbolic_kind) => {
-                match symbolic_kind {
-                    SymbolicVariableKind::Named(named) => {
-                        // An assignment to a named variable. Look up the variable
-                        // that we should have found earlier to identify the type
-                        self.current_type = self.find_type(&named.name).clone();
-                    }
-                    SymbolicVariableKind::Array(arr) => {
-                        Err(Diagnostic::todo_with_span(arr.span(), file!(), line!()))?
-                    }
-                    SymbolicVariableKind::Structured(st) => {
-                        Err(Diagnostic::todo_with_span(st.span(), file!(), line!()))?
-                    }
-                }
-            }
-        }
+        // Keep track of what we are assigning to. That can help figure out the types in the expression.
+        self.assignment_target = Some(node.target.clone());
 
         // Now recurse into the node so that we can replace any late bound expression elements
         let result = node.recurse_fold(self);
 
         // Done with this assignment, so reset the current type
-        self.current_type = VariableType::None;
+        self.assignment_target = None;
 
         result
     }
@@ -178,29 +215,8 @@ impl Fold<Diagnostic> for DeclarationResolver {
             ExprKind::Function(node) => {
                 node.recurse_fold(self).map(|v| Ok(ExprKind::Function(v)))?
             }
-            ExprKind::LateBound(node) => match self.current_type {
-                VariableType::None => {
-                    // TODO this is likely not right in all cases
-                    Ok(ExprKind::Variable(Variable::Symbolic(
-                        SymbolicVariableKind::Named(NamedVariable { name: node.name }),
-                    )))
-                }
-                VariableType::Simple => Ok(ExprKind::Variable(Variable::Symbolic(
-                    SymbolicVariableKind::Named(NamedVariable { name: node.name }),
-                ))),
-                VariableType::String => Err(Diagnostic::todo(file!(), line!())),
-                VariableType::EnumeratedValues => Err(Diagnostic::todo(file!(), line!())),
-                VariableType::EnumeratedType => Ok(ExprKind::EnumeratedValue(EnumeratedValue {
-                    type_name: None,
-                    value: node.name,
-                })),
-                VariableType::FunctionBlock => Err(Diagnostic::todo(file!(), line!())),
-                VariableType::Subrange => Err(Diagnostic::todo(file!(), line!())),
-                VariableType::Structure => Err(Diagnostic::todo(file!(), line!())),
-                VariableType::Array => Ok(ExprKind::Variable(Variable::Symbolic(
-                    SymbolicVariableKind::Named(NamedVariable { name: node.name }),
-                ))),
-                VariableType::LateResolvedType => Err(Diagnostic::todo(file!(), line!())),
+            ExprKind::LateBound(node) => {
+                self.replace_late_bound_expr(node)
             },
         }
     }
@@ -231,13 +247,15 @@ END_FUNCTION_BLOCK";
         let library =
             ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
                 .unwrap();
+        println!("{:?}", &library);
         let mut type_environment = TypeEnvironmentBuilder::new()
             .with_elementary_types()
             .build()
             .unwrap();
         let result = apply(library, &mut type_environment);
+        println!("{:?}", &result.unwrap());
 
-        assert!(result.is_ok());
+        //assert!(result.is_ok());
     }
 
     #[test]

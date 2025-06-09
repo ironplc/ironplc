@@ -1,4 +1,3 @@
-use crate::stages::resolve_types;
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::FileId;
 
@@ -13,6 +12,8 @@ pub fn parse_only(program: &str) -> Library {
 pub fn parse_and_resolve_types(program: &str) -> Library {
     use ironplc_parser::{options::ParseOptions, parse_program};
 
+    use crate::stages::create_type_environment;
+
     let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-    resolve_types(&[&library]).unwrap()
+    create_type_environment(&[&library]).unwrap().0
 }
