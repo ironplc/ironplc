@@ -93,7 +93,7 @@ pub fn apply(lib: &Library) -> SemanticResult {
         }
     }
 
-    // Walk the library to find all references to function blocks
+    // Walk the library to find all references to function blocksx
     let mut visitor = RuleFunctionBlockUse::new(&function_blocks);
     visitor.walk(lib).map_err(|e| vec![e])
 }
@@ -101,13 +101,13 @@ pub fn apply(lib: &Library) -> SemanticResult {
 struct RuleFunctionBlockUse<'a> {
     // Map of the name of a function block declaration to the
     // declaration itself.
-    function_blocks: &'a HashMap<Id, &'a FunctionBlockDeclaration>,
+    function_blocks: &'a HashMap<Type, &'a FunctionBlockDeclaration>,
 
     // Map of variable name to the function block name that is the implementation
-    var_to_fb: HashMap<Id, Id>,
+    var_to_fb: HashMap<Id, Type>,
 }
 impl<'a> RuleFunctionBlockUse<'a> {
-    fn new(decls: &'a HashMap<Id, &'a FunctionBlockDeclaration>) -> Self {
+    fn new(decls: &'a HashMap<Type, &'a FunctionBlockDeclaration>) -> Self {
         Self {
             function_blocks: decls,
             var_to_fb: HashMap::new(),
@@ -144,7 +144,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
                 Problem::FunctionCallMixedArgTypes,
                 Label::span(fb_call.span(), "Function "),
             )
-            .with_context_id("function", &function_block.name));
+            .with_context_type("function", &function_block.name));
         }
 
         // Check that the names and types match. Unassigned values are
@@ -159,7 +159,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
                             Problem::FunctionInvocationMissingInput,
                             Label::span(fb_call.span(), "Function block invocation"),
                         )
-                        .with_context_id("invocation", &function_block.name)
+                        .with_context_type("invocation", &function_block.name)
                         .with_context_id("undefined input", &name.name)
                         .with_secondary(Label::span(
                             function_block.span(),
@@ -179,7 +179,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
                     Problem::FunctionInvocationRequiresFormal,
                     Label::span(fb_call.span(), "Function block invocation"),
                 )
-                .with_context_id("invocation", &function_block.name)
+                .with_context_type("invocation", &function_block.name)
                 .with_context("required", &format!("{}", num_required_inputs))
                 .with_context("actual", &format!("{}", non_formal.len())));
             }
@@ -195,7 +195,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
                         Problem::FunctionInvocationUndefinedOutput,
                         Label::span(fb_call.span(), "Function block invocation"),
                     )
-                    .with_context_id("invocation", &function_block.name)
+                    .with_context_type("invocation", &function_block.name)
                     .with_context_id("source", &output.src)
                     .with_context("target", &output.tgt.to_string()))
                 }
@@ -246,7 +246,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
         if let InitialValueAssignmentKind::FunctionBlock(fbi) = &node.initializer {
             if let Some(id) = node.identifier.symbolic_id() {
                 self.var_to_fb
-                    .insert(id.clone(), fbi.type_name.name.clone());
+                    .insert(id.clone(), fbi.type_name.clone());
             }
         }
         Ok(())
