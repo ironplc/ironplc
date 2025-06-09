@@ -117,10 +117,7 @@ impl Visitor<Diagnostic> for ScopedTable<'_, Type, TypeDefinitionKind> {
     ) -> Result<(), Diagnostic> {
         // Other items are types, but in the case of a function block declaration, this is
         // actually an identifier, so treat identifier and type as equivalent in this context.
-        self.add_if_new(
-            &node.name,
-            TypeDefinitionKind::FunctionBlock,
-        )
+        self.add_if_new(&node.name, TypeDefinitionKind::FunctionBlock)
     }
 }
 
