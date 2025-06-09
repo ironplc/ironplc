@@ -182,23 +182,23 @@ impl Fold<Diagnostic> for DeclarationResolver {
                 VariableType::None => {
                     // TODO this is likely not right in all cases
                     Ok(ExprKind::Variable(Variable::Symbolic(
-                        SymbolicVariableKind::Named(NamedVariable { name: node.name }),
+                        SymbolicVariableKind::Named(NamedVariable { name: node.value }),
                     )))
                 }
                 VariableType::Simple => Ok(ExprKind::Variable(Variable::Symbolic(
-                    SymbolicVariableKind::Named(NamedVariable { name: node.name }),
+                    SymbolicVariableKind::Named(NamedVariable { name: node.value }),
                 ))),
                 VariableType::String => Err(Diagnostic::todo(file!(), line!())),
                 VariableType::EnumeratedValues => Err(Diagnostic::todo(file!(), line!())),
                 VariableType::EnumeratedType => Ok(ExprKind::EnumeratedValue(EnumeratedValue {
                     type_name: None,
-                    value: node.name,
+                    value: node.value,
                 })),
                 VariableType::FunctionBlock => Err(Diagnostic::todo(file!(), line!())),
                 VariableType::Subrange => Err(Diagnostic::todo(file!(), line!())),
                 VariableType::Structure => Err(Diagnostic::todo(file!(), line!())),
                 VariableType::Array => Ok(ExprKind::Variable(Variable::Symbolic(
-                    SymbolicVariableKind::Named(NamedVariable { name: node.name }),
+                    SymbolicVariableKind::Named(NamedVariable { name: node.value }),
                 ))),
                 VariableType::LateResolvedType => Err(Diagnostic::todo(file!(), line!())),
             },

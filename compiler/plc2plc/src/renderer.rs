@@ -781,7 +781,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("FUNCTION_BLOCK");
-        self.visit_id(&node.name)?;
+        self.visit_id(&node.name.name)?;
         self.newline();
 
         self.indent();

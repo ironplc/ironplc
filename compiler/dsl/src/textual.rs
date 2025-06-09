@@ -3,7 +3,7 @@
 //! See section 3.
 use crate::common::{
     AddressAssignment, ConstantKind, EnumeratedValue, IntegerLiteral, LateBoundDeclaration,
-    SignedInteger, Subrange,
+    SignedInteger, Subrange, Type,
 };
 use crate::core::{Id, Located, SourceSpan};
 use std::cmp::Ordering;
@@ -224,7 +224,7 @@ pub struct Function {
 
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct LateBound {
-    pub name: Id,
+    pub value: Id,
 }
 
 /// Expression that yields a value derived from the input(s) to the expression.
@@ -260,7 +260,7 @@ impl ExprKind {
 
     pub fn late_bound(name: &str) -> ExprKind {
         ExprKind::LateBound(LateBound {
-            name: Id::from(name),
+            value: Id::from(name),
         })
     }
 
@@ -423,21 +423,21 @@ impl StmtKind {
             }),
         )
     }
-    pub fn fb_call_mapped(fb_name: &str, inputs: Vec<(&str, &str)>) -> StmtKind {
+    pub fn fb_call_mapped(fb_instance_name: &str, inputs: Vec<(&str, &str)>) -> StmtKind {
         let assignments = inputs
             .into_iter()
             .map(|pair| {
                 ParamAssignmentKind::named(
                     pair.0,
                     ExprKind::LateBound(LateBound {
-                        name: Id::from(pair.1),
+                        value: Id::from(pair.1),
                     }),
                 )
             })
             .collect::<Vec<ParamAssignmentKind>>();
 
         StmtKind::FbCall(FbCall {
-            var_name: Id::from(fb_name),
+            var_name: Id::from(fb_instance_name),
             params: assignments,
             position: SourceSpan::default(),
         })
@@ -451,7 +451,7 @@ impl StmtKind {
         StmtKind::Assignment(Assignment {
             target: Variable::named(target),
             value: ExprKind::LateBound(LateBound {
-                name: Id::from(src),
+                value: Id::from(src),
             }),
         })
     }

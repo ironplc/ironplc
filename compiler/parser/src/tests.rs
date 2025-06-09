@@ -305,7 +305,7 @@ END_FUNCTION";
         let actual = parse_resource("first_steps_function_block_counter_fbd.st").unwrap();
         let expected = new_library(LibraryElementKind::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
-                name: Id::from("CounterFBD"),
+                name: Type::from("CounterFBD"),
                 variables: vec![
                     VarDecl::simple("Reset", "BOOL").with_type(VariableType::Input),
                     VarDecl::simple("OUT", "INT").with_type(VariableType::Output),
@@ -487,7 +487,7 @@ END_FUNCTION";
         let actual = parse_resource("first_steps_function_block_logger.st").unwrap();
         let expected = new_library(LibraryElementKind::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
-                name: Id::from("LOGGER"),
+                name: Type::from("LOGGER"),
                 variables: vec![
                     VarDecl::simple("TRIG", "BOOL").with_type(VariableType::Input),
                     VarDecl::string(
@@ -522,7 +522,7 @@ END_FUNCTION";
         let actual = parse_resource("first_steps_function_block_counter_sfc.st").unwrap();
         let expected = new_library(LibraryElementKind::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
-                name: Id::from("CounterSFC"),
+                name: Type::from("CounterSFC"),
                 variables: vec![
                     VarDecl::simple("Reset", "BOOL").with_type(VariableType::Input),
                     VarDecl::simple("OUT", "INT").with_type(VariableType::Output),

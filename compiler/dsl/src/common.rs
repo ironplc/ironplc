@@ -665,6 +665,12 @@ pub struct LateBoundDeclaration {
     pub base_type_name: Type,
 }
 
+impl Located for LateBoundDeclaration {
+    fn span(&self) -> SourceSpan {
+        SourceSpan::join2(&self.data_type_name, &self.base_type_name)
+    }
+}
+
 /// See section 2.3.3.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct EnumerationDeclaration {
@@ -1178,6 +1184,36 @@ impl VarDecl {
         self.qualifier = qualifier;
         self
     }
+
+    pub fn type_name(&self) -> Option<Type> {
+        match &self.initializer {
+            InitialValueAssignmentKind::None(source_span) => None,
+            InitialValueAssignmentKind::Simple(simple_initializer) => {
+                Some(simple_initializer.type_name.clone())
+            }
+            InitialValueAssignmentKind::String(string_initializer) => {
+                Some(string_initializer.type_name())
+            }
+            // TODO The enumerated values doesn't have a named type - we probably want to create a type name here
+            InitialValueAssignmentKind::EnumeratedValues(enumerated_values_initializer) => None,
+            InitialValueAssignmentKind::EnumeratedType(enumerated_initial_value_assignment) => {
+                Some(enumerated_initial_value_assignment.type_name.clone())
+            }
+            InitialValueAssignmentKind::FunctionBlock(function_block_initial_value_assignment) => {
+                Some(function_block_initial_value_assignment.type_name.clone())
+            }
+            InitialValueAssignmentKind::Subrange(subrange_specification_kind) => {
+                match subrange_specification_kind {
+                    // TODO should generate a type name for these anonymous types
+                    SubrangeSpecificationKind::Specification(subrange_specification) => None,
+                    SubrangeSpecificationKind::Type(type_name) => Some(type_name.clone()),
+                }
+            }
+            InitialValueAssignmentKind::Structure(structure_initialization_declaration) => todo!(),
+            InitialValueAssignmentKind::Array(array_initial_value_assignment) => todo!(),
+            InitialValueAssignmentKind::LateResolvedType(type_name) => Some(type_name.clone()),
+        }
+    }
 }
 
 /// Keywords for declarations.
@@ -1511,6 +1547,15 @@ pub struct StringInitializer {
     pub keyword_span: SourceSpan,
 }
 
+impl StringInitializer {
+    pub fn type_name(&self) -> Type {
+        match self.width {
+            StringType::String => Type::from("string"),
+            StringType::WString => Type::from("wstring"),
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Debug, Recurse)]
 pub struct EnumeratedValuesInitializer {
     pub values: Vec<EnumeratedValue>,
@@ -1606,10 +1651,7 @@ impl HasVariables for FunctionDeclaration {
 /// See section 2.5.2.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct FunctionBlockDeclaration {
-    // It would be possible to declare this as a Type (instead of as an Identifier).
-    // In this context though, the name acts more as an identifier so we use the
-    // identifier.
-    pub name: Id,
+    pub name: Type,
     pub variables: Vec<VarDecl>,
     pub edge_variables: Vec<EdgeVarDecl>,
     pub body: FunctionBlockBodyKind,
