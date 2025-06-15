@@ -89,7 +89,7 @@ impl Visitor<Diagnostic> for ScopedTable<'_, Id, DummyNode> {
         node: &FunctionBlockDeclaration,
     ) -> Result<(), Diagnostic> {
         self.enter();
-        self.add(&node.name, DummyNode {});
+        self.add(&node.name.name, DummyNode {});
         let ret = node.recurse_visit(self);
         self.exit();
         ret

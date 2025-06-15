@@ -201,7 +201,10 @@ impl<'a> LspServer<'a> {
         let _notification =
             match Self::cast_notification::<notification::DidOpenTextDocument>(notification) {
                 Ok(params) => {
-                    trace!("DidChangeTextDocument {}", params.text_document.uri);
+                    trace!(
+                        "DidChangeTextDocument {}",
+                        params.text_document.uri.as_str()
+                    );
                     let contents = params.text_document.text;
                     let uri = params.text_document.uri;
                     let version = params.text_document.version;
@@ -224,7 +227,10 @@ impl<'a> LspServer<'a> {
         let _notification =
             match Self::cast_notification::<notification::DidChangeTextDocument>(notification) {
                 Ok(params) => {
-                    trace!("DidChangeTextDocument {}", params.text_document.uri);
+                    trace!(
+                        "DidChangeTextDocument {}",
+                        params.text_document.uri.as_str()
+                    );
                     let contents = params.content_changes.into_iter().next().unwrap().text;
                     let uri = params.text_document.uri;
                     let version = params.text_document.version;
@@ -281,10 +287,10 @@ mod test {
     use core::time::Duration;
     use lsp_server::{Connection, Message, RequestId};
     use lsp_server::{Notification, Response};
-    use lsp_types::notification;
     use lsp_types::DidChangeTextDocumentParams;
-    use lsp_types::Url;
+    use lsp_types::Uri;
     use lsp_types::VersionedTextDocumentIdentifier;
+    use lsp_types::{notification, WorkDoneProgressParams};
     use lsp_types::{
         request, ClientCapabilities, InitializeParams, InitializeResult, InitializedParams,
         PublishDiagnosticsParams, TextDocumentContentChangeEvent,
@@ -292,6 +298,7 @@ mod test {
     use serde::de::DeserializeOwned;
     use serde::Serialize;
     use std::collections::HashMap;
+    use std::str::FromStr;
 
     use crate::lsp_project::LspProject;
     use crate::project::{FileBackedProject, Project};
@@ -347,11 +354,15 @@ mod test {
                     window: None,
                     general: None,
                     experimental: None,
+                    notebook_document: None,
                 },
                 trace: None,
                 workspace_folders: None,
                 client_info: None,
                 locale: None,
+                work_done_progress_params: WorkDoneProgressParams {
+                    work_done_token: None,
+                },
             };
 
             let initialize_id = server.send_request::<request::Initialize>(init);
@@ -434,7 +445,7 @@ mod test {
         server.send_notification::<notification::DidChangeTextDocument>(
             DidChangeTextDocumentParams {
                 text_document: VersionedTextDocumentIdentifier {
-                    uri: Url::parse("file://example.net/a/b.html").unwrap(),
+                    uri: Uri::from_str("file://example.net/a/b.html").unwrap(),
                     version: 1,
                 },
                 content_changes: vec![TextDocumentContentChangeEvent {

@@ -207,6 +207,11 @@ impl Diagnostic {
         self
     }
 
+    pub fn with_secondary_id(mut self, id: &Id, message: impl Into<String>) -> Self {
+        self.secondary.push(Label::span(id.span(), message));
+        self
+    }
+
     /// Returns the description for the diagnostic. This may add in other
     /// data in addition that is part of the diagnostic.
     pub fn description(&self) -> String {

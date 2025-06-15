@@ -176,8 +176,6 @@ parser! {
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
     rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) comma() {v}
 
-    // TODO this should be a list of standard function block names
-    rule STANDARD_FUNCTION_BLOCK_NAME() = id_eq("END_VAR")
 
     pub rule library() -> Vec<LibraryElementKind> = traced(<library__impl()>)
     //pub rule library() -> Vec<LibraryElementKind> = library__impl()
@@ -977,7 +975,7 @@ parser! {
     // IEC 61131 defines separate standard and derived function block names,
     // but we don't need that distinction here.
     rule function_block_type_name() -> Type = type_name()
-    rule derived_function_block_name() -> Id = !STANDARD_FUNCTION_BLOCK_NAME() i:identifier() { i }
+    rule derived_function_block_name() -> Type = type_name()
     rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
@@ -1337,7 +1335,7 @@ parser! {
           function
         }
       / id:identifier() _ !(tok(TokenType::LeftParen) / tok(TokenType::LeftBracket) / tok(TokenType::Period)) {
-        ExprKind::LateBound(LateBound{ name: id })
+        ExprKind::LateBound(LateBound{ value: id })
       }
       / variable:variable() {
         ExprKind::Variable(variable)

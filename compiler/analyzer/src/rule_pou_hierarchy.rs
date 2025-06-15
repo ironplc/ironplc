@@ -107,7 +107,7 @@ impl Visitor<Diagnostic> for HierarchyVisitor {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         if let Some(existing) = self.pou_types.insert(
-            node.name.clone(),
+            node.name.name.clone(),
             (PouKind::FunctionBlock, node.name.span()),
         ) {
             self.problems.push(

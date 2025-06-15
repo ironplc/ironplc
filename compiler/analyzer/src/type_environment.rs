@@ -40,7 +40,7 @@ static ELEMENTARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
     // remaining elementary_type_name
     "string",
     "wstring",
-    "time"
+    "time",
 };
 
 #[derive(Debug, PartialEq)]

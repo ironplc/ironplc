@@ -117,10 +117,7 @@ impl Visitor<Diagnostic> for ScopedTable<'_, Type, TypeDefinitionKind> {
     ) -> Result<(), Diagnostic> {
         // Other items are types, but in the case of a function block declaration, this is
         // actually an identifier, so treat identifier and type as equivalent in this context.
-        self.add_if_new(
-            &Type::from_id(&node.name),
-            TypeDefinitionKind::FunctionBlock,
-        )
+        self.add_if_new(&node.name, TypeDefinitionKind::FunctionBlock)
     }
 }
 
@@ -254,14 +251,14 @@ END_FUNCTION_BLOCK
         let expected = Library {
             elements: vec![
                 LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: Id::from("called"),
+                    name: Type::from("called"),
                     variables: vec![],
                     edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
                     span: SourceSpan::default(),
                 }),
                 LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: Id::from("caller"),
+                    name: Type::from("caller"),
                     variables: vec![VarDecl::function_block("fb_var", "called")],
                     edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
@@ -309,7 +306,7 @@ END_FUNCTION_BLOCK
                     },
                 )),
                 LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: Id::from("caller"),
+                    name: Type::from("caller"),
                     variables: vec![VarDecl::structure("the_var", "the_struct")],
                     edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
@@ -355,7 +352,7 @@ END_FUNCTION_BLOCK
                     },
                 )),
                 LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: Id::from("caller"),
+                    name: Type::from("caller"),
                     variables: vec![VarDecl::uninitialized_enumerated("the_var", "values")],
                     edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
