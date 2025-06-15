@@ -52,16 +52,16 @@ pub enum TypeClass {
 
 #[derive(Debug)]
 pub(crate) struct TypeEnvironment {
-    table: HashMap<Type, TypeDescription>,
+    table: HashMap<Type, TypeAttributes>,
 }
 
 #[derive(Debug)]
-pub struct TypeDescription {
+pub struct TypeAttributes {
     pub span: SourceSpan,
     pub class: TypeClass,
 }
 
-impl Located for TypeDescription {
+impl Located for TypeAttributes {
     fn span(&self) -> ironplc_dsl::core::SourceSpan {
         self.span.clone()
     }
@@ -82,7 +82,7 @@ impl TypeEnvironment {
     pub(crate) fn insert(
         &mut self,
         type_name: &Type,
-        symbol: TypeDescription,
+        symbol: TypeAttributes,
     ) -> Result<(), Diagnostic> {
         self.table.insert(type_name.clone(), symbol).map_or_else(
             || Ok(()),
@@ -97,7 +97,7 @@ impl TypeEnvironment {
     }
 
     /// Gets the type from the environment.
-    pub(crate) fn get(&self, type_name: &Type) -> Option<&TypeDescription> {
+    pub(crate) fn get(&self, type_name: &Type) -> Option<&TypeAttributes> {
         self.table.get(type_name)
     }
 }
@@ -124,7 +124,7 @@ impl TypeEnvironmentBuilder {
             for name in ELEMENTARY_TYPES_LOWER_CASE.iter() {
                 env.insert(
                     &Type::from(name),
-                    TypeDescription {
+                    TypeAttributes {
                         span: SourceSpan::default(),
                         class: TypeClass::Simple,
                     },

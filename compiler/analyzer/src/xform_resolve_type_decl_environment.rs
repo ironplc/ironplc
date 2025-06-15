@@ -11,7 +11,7 @@
 //!
 //! The transformation succeeds when all data type declarations
 //! resolve to a declared type.
-use crate::type_environment::{TypeClass, TypeDescription, TypeEnvironment};
+use crate::type_environment::{TypeAttributes, TypeClass, TypeEnvironment};
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -72,7 +72,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // just need to insert this into the type environment.
         self.insert(
             &node.type_name,
-            TypeDescription {
+            TypeAttributes {
                 // TODO
                 span: node.type_name.span(),
                 class: TypeClass::Simple,
@@ -102,7 +102,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
 
         self.insert(
             &node.type_name,
-            TypeDescription {
+            TypeAttributes {
                 // TODO
                 span: node.type_name.span(),
                 class: TypeClass::Enumeration,
@@ -117,7 +117,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
     ) -> Result<StructureDeclaration, Diagnostic> {
         self.insert(
             &node.type_name,
-            TypeDescription {
+            TypeAttributes {
                 // TODO
                 span: node.type_name.span(),
                 class: TypeClass::Structure,
