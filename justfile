@@ -96,6 +96,12 @@ _version-unix version:
   cd integrations/vscode && just version {{version}}
   cd docs && just version {{version}}
 
+commit-branch authorname authoremail branchmessage:
+  git config --global user.name "{{authorname}}"
+  git config --global user.email "{{authoremail}}"
+  git checkout -b {{branch}}
+  git commit -a -m "{{message}}"
+
 commit-version authorname authoremail version:
   git config --global user.name "{{authorname}}"
   git config --global user.email "{{authoremail}}"

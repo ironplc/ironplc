@@ -8,10 +8,10 @@ on:
         type: boolean
         default: false
         description: 'If set true, then publish the website'
-      commit-tag:
+      commit-ref:
         required: false
         type: string
-        description: 'If not empty, then run for the specified tag'
+        description: 'If not empty, then run for the specified branch name or tag'
   
   # Allow using this workflow from another workflow
   workflow_call:
@@ -20,10 +20,10 @@ on:
         required: true
         type: boolean
         description: 'If set true, then publish the website'
-      commit-tag:
+      commit-ref:
         required: false
         type: string
-        description: 'If not empty, then run for the specified tag'
+        description: 'If not empty, then run for the specified branch name or tag'
 
 jobs:
   docs:
@@ -34,14 +34,14 @@ jobs:
         working-directory: ./docs
     steps:
       # Fetch input artifacts and code
-      - name: Checkout tag ${{ inputs.commit-tag }}
+      - name: Checkout branch or tag ${{ inputs.commit-ref }}
         uses: actions/checkout@v4
-        if: ${{ inputs.commit-tag }}
+        if: ${{ inputs.commit-ref }}
         with:
-          ref: ${{ inputs.commit-tag  }}
+          ref: ${{ inputs.commit-ref  }}
       - name: Checkout HEAD
         uses: actions/checkout@v4
-        if: ${{ !inputs.commit-tag }}
+        if: ${{ !inputs.commit-ref }}
 
       # Configure the execution environment
       - uses: taiki-e/install-action@just

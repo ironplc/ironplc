@@ -1,0 +1,26 @@
+name: Timestamp
+on:
+
+  # Allow using this workflow from another workflow
+  workflow_call:
+    outputs:
+      yyyy-mm-dd-hh-mm-ss:
+        description: The identifier for the Github release - a unique number
+        value: ${{ jobs.main.outputs.yyyy-mm-dd-hh-mm-ss }}
+
+jobs:
+    main:
+        name: Determine the current timestamp
+        # Only needs to run on one platform because this is defining
+        # the container for the release rather than building the artifacts
+        runs-on: ubuntu-latest
+
+        outputs:
+          # The identifier for the Github release - a unique number
+          yyyy-mm-dd-hh-mm-ss: ${{ steps.timestamp.outputs.CURRENT_TIMESTAMP }}
+
+        steps:
+            - name: Determine current time
+              id: timestamp
+              run: echo "CURRENT_TIMESTAMP=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT 
+          
