@@ -1,0 +1,63 @@
+# Defines a update build for the project. When triggered,
+# create a new change that updates dependencies.
+
+# The essential strategy is:
+#    1. Update the dependencies
+#    2. Run tests
+#    2. Create the changes
+
+on:
+  # Automatically try to update every Sunmday at 19:00
+  # The idea is we do this a day before the weekly build so that the weekly build
+  # contains updated dependencies.
+  schedule:
+      - cron: '0 19 * * 0'
+  # Allow triggering directly
+  workflow_dispatch:
+    inputs:
+      dryrun:
+        type: boolean
+        description: 'If set, run as a dry run and do not create the release artifacts'
+        default: true
+
+name: IronPLC Update Dependencies
+
+jobs:
+  timestamp:
+    name: Determine current time
+    uses: ./.github/workflows/partial_timestamp.yaml
+
+  update-dependencies:
+    name: Update Dependencies
+    needs: [timestamp]
+    uses: ./.github/workflows/partial_update_dependencies.yaml
+    with:
+      dryrun: ${{ !!inputs.dryrun }}
+      branch-name: ${{ format('feature/AUTO-UPDATE-{0}', needs.timestamp.yyyy-mm-dd-hh-mm-ss)  }}
+
+  build-vscode-extension:
+    name: Build Visual Studio Code Extension
+    needs: [update-dependencies]
+    uses: ./.github/workflows/partial_vscode_extension.yaml
+    with:
+      commit-ref: ${{ needs.update-dependencies.outputs.commit-ref }}
+      gh-release-tag: ""
+      artifact-name: vscode-extension
+    
+  build-platform-package:
+    name: Build Compiler and Associated Installers
+    needs: [update-dependencies]
+    uses: ./.github/workflows/partial_compiler.yaml
+    with:
+      commit-ref: ${{ needs.update-dependencies.outputs.commit-ref }}
+      gh-release-tag: ""
+
+  build-docs:
+    name: Build Website
+    needs: [update-dependencies]
+    # The website doesn't depend on these but we don't publish
+    # if those are failing so we depend on those.
+    uses: ./.github/workflows/partial_website.yaml
+    with:
+      commit-ref: ${{ needs.update-dependencies.outputs.commit-ref }}
+      publish: false

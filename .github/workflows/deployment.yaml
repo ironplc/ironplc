@@ -42,7 +42,7 @@ jobs:
     needs: [release]
     uses: ./.github/workflows/partial_vscode_extension.yaml
     with:
-      commit-tag: ${{ needs.release.outputs.commit-tag }}
+      commit-ref: ${{ needs.release.outputs.commit-tag }}
       gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
       artifact-name: ironplc-vscode-extension.vsix
     
@@ -51,7 +51,7 @@ jobs:
     needs: [release]
     uses: ./.github/workflows/partial_compiler.yaml
     with:
-      commit-tag: ${{ needs.release.outputs.commit-tag }}
+      commit-ref: ${{ needs.release.outputs.commit-tag }}
       gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
       version: ${{ needs.release.outputs.version }}
 
@@ -87,7 +87,7 @@ jobs:
     uses: ./.github/workflows/partial_website.yaml
     with:
       publish: ${{ !inputs.dryrun }}
-      commit-tag: ${{ needs.release.outputs.commit-tag }}
+      commit-ref: ${{ needs.release.outputs.commit-tag }}
 
   publish-release:
     name: Publish Release
