@@ -1,0 +1,49 @@
+name: Update Dependencies
+on:
+  workflow_call:
+    inputs:
+      dryrun:
+        type: boolean
+        description: 'If set, run as a dry run and do not create the branch'
+        default: true
+
+      branch-name:
+        type: string
+        description: 'The name of the branch that will contain the updated dependencies'
+
+    outputs:
+      commit-ref:
+        description: 'A commit reference that contains the updated dependencies'
+        value: ${{ jobs.update-dependencies.outputs.commit-ref }}
+
+jobs:
+    update-dependencies:
+        name: Update Dependencies
+
+        runs-on: ubuntu-latest
+
+        outputs:
+          commit-ref: ${{ inputs.branch-name }}
+
+        steps:
+          # Checkout the repository including the tags
+          - uses: actions/checkout@v4
+            with:
+              fetch-depth: 0
+              # This is a workaround for branch protections. In general, we want to
+              # protect branches from changes, but we'll take the publish as special
+              # because we need to create a new version number. This allows making
+              # changes to the repository without removing the branch protections.
+              token: ${{secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN}}
+
+          # Configure the execution environment
+          - uses: taiki-e/install-action@just
+          - uses: actions-rust-lang/setup-rust-toolchain@v1
+          - uses: actions/setup-node@v4
+
+          # Execute build recipe
+          - name: Update dependencies
+            run: just update
+          - name: Commit branch to repository
+            if: ${{ !inputs.dryrun }}
+            run: just commit-branch "Continuous Integration" "garretfick@users.noreply.github.com" {{ inputs.branch-name }} "Update dependencies"

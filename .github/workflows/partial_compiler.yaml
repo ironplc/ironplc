@@ -3,7 +3,7 @@ on:
   # Allow triggering directly
   workflow_dispatch:
     inputs:
-      commit-tag:
+      commit-ref:
         required: false
         type: string
         description: 'If not empty, then run for the specified tag'
@@ -21,7 +21,7 @@ on:
   # Allow using this workflow from another workflow
   workflow_call:
     inputs:
-      commit-tag:
+      commit-ref:
         required: false
         type: string
         description: 'If not empty, then run for the specified tag'
@@ -65,14 +65,14 @@ jobs:
 
     steps:
       # Checkout the repository/fetch input artifacts
-      - name: Checkout tag ${{ inputs.commit-tag }}
+      - name: Checkout branch or tag ${{ inputs.commit-ref }}
         uses: actions/checkout@v4
-        if: ${{ inputs.commit-tag }}
+        if: ${{ inputs.commit-ref }}
         with:
-          ref: ${{ inputs.commit-tag  }}
+          ref: ${{ inputs.commit-ref  }}
       - name: Checkout HEAD
         uses: actions/checkout@v4
-        if: ${{ !inputs.commit-tag }}
+        if: ${{ !inputs.commit-ref }}
 
       # Configure the execution environment
       - uses: taiki-e/install-action@just
