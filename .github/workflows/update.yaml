@@ -33,7 +33,9 @@ jobs:
     uses: ./.github/workflows/partial_update_dependencies.yaml
     with:
       dryrun: ${{ !!inputs.dryrun }}
-      branch-name: ${{ format('feature/AUTO-UPDATE-{0}', needs.timestamp.yyyy-mm-dd-hh-mm-ss)  }}
+      branch-name: ${{ format('feature/AUTO-UPDATE-{0}', needs.timestamp.outputs.yyyy-mm-dd-hh-mm-ss)  }}
+    secrets:
+      IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN: ${{ secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN }}
 
   build-vscode-extension:
     name: Build Visual Studio Code Extension

@@ -45,6 +45,9 @@ _ci-publish-workflow-windows:
 _ci-publish-workflow-unix:
   act workflow_dispatch --workflows ./.github/workflows/publish.yaml --verbose
 
+ci-update-dependencies-workflow:
+  act workflow_dispatch --workflows ./.github/workflows/update.yaml --verbose
+
 get-next-version type:
   #! /bin/bash
   RE='[^0-9]*\([0-9]*\)[.]\([0-9]*\)[.]\([0-9]*\)\([0-9A-Za-z-]*\)'
@@ -96,7 +99,7 @@ _version-unix version:
   cd integrations/vscode && just version {{version}}
   cd docs && just version {{version}}
 
-commit-branch authorname authoremail branchmessage:
+commit-branch authorname authoremail branch message:
   git config --global user.name "{{authorname}}"
   git config --global user.email "{{authoremail}}"
   git checkout -b {{branch}}
