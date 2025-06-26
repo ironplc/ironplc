@@ -50,4 +50,4 @@ jobs:
             run: just update
           - name: Commit branch to repository
             if: ${{ !inputs.dryrun }}
-            run: just commit-branch "Continuous Integration" "garretfick@users.noreply.github.com" {{ inputs.branch-name }} "Update dependencies"
+            run: just commit-branch "Continuous Integration" "garretfick@users.noreply.github.com" ${{ inputs.branch-name }} "Update dependencies"
