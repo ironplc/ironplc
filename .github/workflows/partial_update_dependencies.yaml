@@ -51,3 +51,7 @@ jobs:
           - name: Commit branch to repository
             if: ${{ !inputs.dryrun }}
             run: just commit-branch "Continuous Integration" "garretfick@users.noreply.github.com" ${{ inputs.branch-name }} "Update dependencies"
+          - name: Push commit to the repository
+            if: ${{ !inputs.dryrun }}
+            run: |
+              git push
