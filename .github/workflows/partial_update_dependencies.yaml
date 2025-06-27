@@ -54,4 +54,4 @@ jobs:
           - name: Push commit to the repository
             if: ${{ !inputs.dryrun }}
             run: |
-              git push
+              git push --set-upstream origin ${{ inputs.branch-name }}
