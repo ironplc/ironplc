@@ -52,8 +52,8 @@ impl From<SymbolicVariableKind> for Variable {
 impl fmt::Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Variable::Direct(assignment) => f.write_fmt(format_args!("{}", assignment)),
-            Variable::Symbolic(named) => f.write_fmt(format_args!("{}", named)),
+            Variable::Direct(assignment) => f.write_fmt(format_args!("{assignment}")),
+            Variable::Symbolic(named) => f.write_fmt(format_args!("{named}")),
         }
     }
 }
@@ -68,10 +68,10 @@ pub enum SymbolicVariableKind {
 impl fmt::Display for SymbolicVariableKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SymbolicVariableKind::Named(named) => f.write_fmt(format_args!("{}", named)),
-            SymbolicVariableKind::Array(array) => f.write_fmt(format_args!("{}", array)),
+            SymbolicVariableKind::Named(named) => f.write_fmt(format_args!("{named}")),
+            SymbolicVariableKind::Array(array) => f.write_fmt(format_args!("{array}")),
             SymbolicVariableKind::Structured(structured) => {
-                f.write_fmt(format_args!("{}", structured))
+                f.write_fmt(format_args!("{structured}"))
             }
         }
     }

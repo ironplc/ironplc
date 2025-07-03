@@ -46,7 +46,7 @@ fn start_with_connection(connection: Connection, project: LspProject) -> Result<
 
     match initialize_params.workspace_folders {
         Some(folders) => {
-            debug!("Initialize server with workspace folders {:?}", folders);
+            debug!("Initialize server with workspace folders {folders:?}");
             if let Some(folder) = folders.first() {
                 server.project.initialize(folder);
             }
@@ -144,7 +144,7 @@ impl<'a> LspServer<'a> {
 
                 match token_result {
                     Ok(tokens) => {
-                        trace!("SemanticTokensFullRequest Success Response {:?}", tokens);
+                        trace!("SemanticTokensFullRequest Success Response {tokens:?}");
                         self.send_response::<request::SemanticTokensFullRequest>(
                             req_id,
                             Some(SemanticTokensResult::Tokens(SemanticTokens {
@@ -154,7 +154,7 @@ impl<'a> LspServer<'a> {
                         );
                     }
                     Err(diagnostic) => {
-                        trace!("SemanticTokensFullRequest Error Response {:?}", diagnostic);
+                        trace!("SemanticTokensFullRequest Error Response {diagnostic:?}");
                         self.send_response::<request::SemanticTokensFullRequest>(req_id, None);
                     }
                 }

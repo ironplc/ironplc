@@ -204,7 +204,7 @@ END_TYPE
         let mut env = TypeEnvironment::new();
         let result = apply(input, &mut env);
         let result = result.unwrap_err();
-        assert_eq!("P0019", result.get(0).unwrap().code);
+        assert_eq!("P0019", result.first().unwrap().code);
     }
 
     #[test]

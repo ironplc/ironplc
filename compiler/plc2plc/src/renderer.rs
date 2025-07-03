@@ -170,19 +170,13 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &TimeOfDayLiteral,
     ) -> Result<Self::Value, Diagnostic> {
         let (hr, min, sec, milli) = node.hmsm();
-        self.write_ws(
-            format!(
-                "TIME_OF_DAY#{:0>2}:{:0>2}:{:0>2}.{:0>2}",
-                hr, min, sec, milli
-            )
-            .as_str(),
-        );
+        self.write_ws(format!("TIME_OF_DAY#{hr:0>2}:{min:0>2}:{sec:0>2}.{milli:0>2}").as_str());
         Ok(())
     }
 
     fn visit_date_literal(&mut self, node: &DateLiteral) -> Result<Self::Value, Diagnostic> {
         let (year, month, day) = node.ymd();
-        self.write_ws(format!("DATE#{:0>4}-{:0>2}-{:0>2}", year, month, day).as_str());
+        self.write_ws(format!("DATE#{year:0>4}-{month:0>2}-{day:0>2}").as_str());
         Ok(())
     }
 
@@ -194,8 +188,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         let (year, month, day) = node.ymd();
         self.write_ws(
             format!(
-                "DATE_AND_TIME#{:0>4}-{:0>2}-{:0>2}-{:0>2}:{:0>2}:{:0>2}.{:0>2}",
-                year, month, day, hr, min, sec, milli
+                "DATE_AND_TIME#{year:0>4}-{month:0>2}-{day:0>2}-{hr:0>2}:{min:0>2}:{sec:0>2}.{milli:0>2}"
             )
             .as_str(),
         );

@@ -127,7 +127,7 @@ pub enum ActionQualifier {
 
 impl fmt::Display for ActionQualifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -182,7 +182,7 @@ pub enum TimedQualifier {
 
 impl fmt::Display for TimedQualifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 

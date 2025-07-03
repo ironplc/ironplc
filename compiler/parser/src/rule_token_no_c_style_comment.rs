@@ -31,7 +31,11 @@ pub fn apply(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnos
 mod test {
     use dsl::core::SourceSpan;
 
-    use crate::{options::ParseOptions, rule_token_no_c_style_comment::apply, token::{Token, TokenType}};
+    use crate::{
+        options::ParseOptions,
+        rule_token_no_c_style_comment::apply,
+        token::{Token, TokenType},
+    };
 
     #[test]
     fn apply_when_has_cstyle_comment_and_not_allowed_then_error() {

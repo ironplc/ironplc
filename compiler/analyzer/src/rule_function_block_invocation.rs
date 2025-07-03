@@ -180,7 +180,7 @@ impl<'a> RuleFunctionBlockUse<'a> {
                     Label::span(fb_call.span(), "Function block invocation"),
                 )
                 .with_context_type("invocation", &function_block.name)
-                .with_context("required", &format!("{}", num_required_inputs))
+                .with_context("required", &format!("{num_required_inputs}"))
                 .with_context("actual", &format!("{}", non_formal.len())));
             }
         }

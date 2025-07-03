@@ -535,3 +535,210 @@ impl TokenType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::FileId;
+    use dsl::core::SourceSpan;
+
+    #[test]
+    fn test_token_describe() {
+        let token = Token {
+            token_type: TokenType::Identifier,
+            span: SourceSpan {
+                start: 0,
+                end: 5,
+                file_id: FileId::new(),
+            },
+            line: 1,
+            col: 2,
+            text: "hello".to_string(),
+        };
+        let desc = token.describe();
+        assert!(desc.contains("Identifier"));
+        assert!(desc.contains("hello"));
+        assert!(desc.contains("Ln 1,Col 2"));
+    }
+
+    #[test]
+    fn test_token_describe_with_newlines() {
+        let token = Token {
+            token_type: TokenType::Newline,
+            span: SourceSpan {
+                start: 0,
+                end: 1,
+                file_id: FileId::new(),
+            },
+            line: 3,
+            col: 1,
+            text: "\n".to_string(),
+        };
+        let desc = token.describe();
+        assert!(desc.contains("\\n"));
+    }
+
+    #[test]
+    fn test_token_describe_variants() {
+        use TokenType::*;
+        let file_id = FileId::new();
+        let span = SourceSpan {
+            start: 0,
+            end: 1,
+            file_id,
+        };
+        let cases = vec![
+            (Newline, "\\n"),
+            (Whitespace, " "),
+            (Comment, "(* comment *)"),
+            (LeftParen, "("),
+            (RightParen, ")"),
+            (LeftBrace, "{"),
+            (RightBrace, "}"),
+            (LeftBracket, "["),
+            (RightBracket, "]"),
+            (Comma, ","),
+            (Semicolon, ";"),
+            (Colon, ":"),
+            (Period, "."),
+            (Range, ".."),
+            (Hash, "#"),
+            (SingleByteString, "'abc'"),
+            (DoubleByteString, "\"abc\""),
+            (Identifier, "ident"),
+            (HexDigits, "16#A1"),
+            (OctDigits, "8#77"),
+            (BinDigits, "2#01"),
+            (FloatingPoint, "1.23e4"),
+            (FixedPoint, "1.23"),
+            (Digits, "123"),
+            (Action, "ACTION"),
+            (EndAction, "END_ACTION"),
+            (Array, "ARRAY"),
+            (Of, "OF"),
+            (At, "AT"),
+            (Case, "CASE"),
+            (Else, "ELSE"),
+            (EndCase, "END_CASE"),
+            (Constant, "CONSTANT"),
+            (Configuration, "CONFIGURATION"),
+            (EndConfiguration, "END_CONFIGURATION"),
+            (En, "EN"),
+            (Eno, "ENO"),
+            (Exit, "EXIT"),
+            (False, "FALSE"),
+            (FEdge, "F_EDGE"),
+            (For, "FOR"),
+            (To, "TO"),
+            (By, "BY"),
+            (Do, "DO"),
+            (EndFor, "END_FOR"),
+            (Function, "FUNCTION"),
+            (EndFunction, "END_FUNCTION"),
+            (FunctionBlock, "FUNCTION_BLOCK"),
+            (EndFunctionBlock, "END_FUNCTION_BLOCK"),
+            (If, "IF"),
+            (Then, "THEN"),
+            (Elsif, "ELSIF"),
+            (EndIf, "END_IF"),
+            (InitialStep, "INITIAL_STEP"),
+            (EndStep, "END_STEP"),
+            (Program, "PROGRAM"),
+            (With, "WITH"),
+            (EndProgram, "END_PROGRAM"),
+            (REdge, "R_EDGE"),
+            (ReadOnly, "READ_ONLY"),
+            (ReadWrite, "READ_WRITE"),
+            (Repeat, "REPEAT"),
+            (Until, "UNTIL"),
+            (EndRepeat, "END_REPEAT"),
+            (Resource, "RESOURCE"),
+            (On, "ON"),
+            (EndResource, "END_RESOURCE"),
+            (Retain, "RETAIN"),
+            (NonRetain, "NON_RETAIN"),
+            (Return, "RETURN"),
+            (Step, "STEP"),
+            (Struct, "STRUCT"),
+            (EndStruct, "END_STRUCT"),
+            (Task, "TASK"),
+            (EndTask, "END_TASK"),
+            (Transition, "TRANSITION"),
+            (From, "FROM"),
+            (EndTransition, "END_TRANSITION"),
+            (True, "TRUE"),
+            (Type, "TYPE"),
+            (EndType, "END_TYPE"),
+            (Var, "VAR"),
+            (EndVar, "END_VAR"),
+            (VarInput, "VAR_INPUT"),
+            (VarOutput, "VAR_OUTPUT"),
+            (VarInOut, "VAR_IN_OUT"),
+            (VarTemp, "VAR_TEMP"),
+            (VarExternal, "VAR_EXTERNAL"),
+            (VarAccess, "VAR_ACCESS"),
+            (VarConfig, "VAR_CONFIG"),
+            (VarGlobal, "VAR_GLOBAL"),
+            (While, "WHILE"),
+            (EndWhile, "END_WHILE"),
+            (Bool, "BOOL"),
+            (Sint, "SINT"),
+            (Int, "INT"),
+            (Dint, "DINT"),
+            (Lint, "LINT"),
+            (Usint, "USINT"),
+            (Uint, "UINT"),
+            (Udint, "UDINT"),
+            (Ulint, "ULINT"),
+            (Real, "REAL"),
+            (Lreal, "LREAL"),
+            (Time, "TIME"),
+            (Date, "DATE"),
+            (TimeOfDay, "TIME_OF_DAY"),
+            (DateAndTime, "DATE_AND_TIME"),
+            (String, "STRING"),
+            (Byte, "BYTE"),
+            (Word, "WORD"),
+            (Dword, "DWORD"),
+            (Lword, "LWORD"),
+            (WString, "WSTRING"),
+            (DirectAddressIncomplete, "%I*"),
+            (DirectAddress, "%I0.0"),
+            (Or, "OR"),
+            (Xor, "XOR"),
+            (And, "AND"),
+            (Equal, "="),
+            (NotEqual, "<>"),
+            (Less, "<"),
+            (Greater, ">"),
+            (LessEqual, "<="),
+            (GreaterEqual, ">="),
+            (Div, "/"),
+            (Star, "*"),
+            (Plus, "+"),
+            (Minus, "-"),
+            (Mod, "MOD"),
+            (Power, "**"),
+            (Not, "NOT"),
+            (Assignment, ":="),
+            (RightArrow, "=>"),
+        ];
+        for (token_type, text) in cases {
+            let token = Token {
+                token_type,
+                span: span.clone(),
+                line: 1,
+                col: 1,
+                text: text.to_string(),
+            };
+            let desc = token.describe();
+            // Check that the variant name or text appears in the description
+            assert!(
+                desc.contains(&format!("{:?}", token.token_type)),
+                "Missing {:?} in {}",
+                token.token_type,
+                desc
+            );
+        }
+    }
+}

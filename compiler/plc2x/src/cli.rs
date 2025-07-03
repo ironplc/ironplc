@@ -31,7 +31,7 @@ pub fn check(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
 
     // Analyze the set
     if let Err(err) = project.semantic() {
-        trace!("Errors {:?}", err);
+        trace!("Errors {err:?}");
         handle_diagnostics(&err, Some(&project), suppress_output);
         return Err(String::from("Error during analysis"));
     }
@@ -60,7 +60,7 @@ pub fn echo(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
                     String::from("Error echo source")
                 })?;
 
-                print!("{}", output);
+                print!("{output}");
             }
             Err(diagnostics) => {
                 let diagnostics: Vec<Diagnostic> = diagnostics.into_iter().cloned().collect();
@@ -94,8 +94,8 @@ pub fn tokenize(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> 
             .trim_start()
             .to_string();
 
-        debug!("{}", tokens);
-        println!("{}", tokens);
+        debug!("{tokens}");
+        println!("{tokens}");
 
         if !diagnostics.is_empty() {
             println!("Number of errors {}", diagnostics.len());
@@ -109,7 +109,7 @@ pub fn tokenize(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> 
 }
 
 fn create_project(paths: &[PathBuf], suppress_output: bool) -> Result<FileBackedProject, String> {
-    trace!("Reading paths {:?}", paths);
+    trace!("Reading paths {paths:?}");
     let mut files: Vec<PathBuf> = vec![];
     let mut had_error = false;
 
@@ -233,7 +233,7 @@ fn handle_diagnostics(
             let diagnostic = map_diagnostic(d, &files_to_ids);
 
             let _ = term::emit(&mut writer.lock(), &config, &files, &diagnostic).map_err(|err| {
-                error!("Failed writing to terminal: {}", err);
+                error!("Failed writing to terminal: {err}");
                 1usize
             });
         });

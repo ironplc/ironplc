@@ -62,7 +62,7 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
         .sorted_ids()
         .map_err(|err| vec![err])?;
 
-    debug!("Sorted identifiers {:?}", sorted_ids);
+    debug!("Sorted identifiers {sorted_ids:?}");
 
     // Split based on the type so that we put all of the data type declarations
     // at the beginning.
@@ -231,7 +231,7 @@ impl DeclarationsGraph {
 impl fmt::Debug for DeclarationsGraph {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let dotfile = Dot::with_config(&self.graph, &[Config::EdgeNoLabel]);
-        write!(f, "Graph: {:?}", dotfile)
+        write!(f, "Graph: {dotfile:?}")
     }
 }
 

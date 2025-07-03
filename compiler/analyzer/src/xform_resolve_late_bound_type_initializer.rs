@@ -64,7 +64,7 @@ impl ScopedTable<'_, Type, TypeDefinitionKind> {
         if let Some(existing) = self.try_add(to_add, kind) {
             return Err(Diagnostic::problem(
                 Problem::DefinitionNameDuplicated,
-                Label::span(to_add.span(), format!("Duplicated definition {}", to_add)),
+                Label::span(to_add.span(), format!("Duplicated definition {to_add}")),
             )
             .with_secondary(Label::span(existing.0.span(), "First definition")));
         }
