@@ -170,12 +170,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &TimeOfDayLiteral,
     ) -> Result<Self::Value, Diagnostic> {
         let (hr, min, sec, milli) = node.hmsm();
-        self.write_ws(
-            format!(
-                "TIME_OF_DAY#{hr:0>2}:{min:0>2}:{sec:0>2}.{milli:0>2}"
-            )
-            .as_str(),
-        );
+        self.write_ws(format!("TIME_OF_DAY#{hr:0>2}:{min:0>2}:{sec:0>2}.{milli:0>2}").as_str());
         Ok(())
     }
 
