@@ -392,3 +392,36 @@ impl VarDeclarations {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod test {
+    use dsl::{
+        common::{AddressAssignment, Type, VariableSpecificationKind},
+        core::{Id, SourceSpan},
+    };
+
+    use crate::vars::{IncomplVarDecl, VarDeclarations};
+
+    #[test]
+    fn incomplete_to_incomplete_qualified() {
+        let decls = vec![IncomplVarDecl {
+            name: Id::from("A"),
+            qualifier: dsl::common::DeclarationQualifier::Unspecified,
+            loc: AddressAssignment {
+                location: dsl::common::LocationPrefix::I,
+                size: dsl::common::SizePrefix::B,
+                address: vec![],
+                position: SourceSpan::default(),
+            },
+            spec: VariableSpecificationKind::Ambiguous(Type::from("typ")),
+        }];
+
+        let decls =
+            VarDeclarations::map_incomplete(decls, &dsl::common::DeclarationQualifier::Constant);
+
+        assert_eq!(
+            dsl::common::DeclarationQualifier::Constant,
+            decls.get(0).unwrap().qualifier
+        );
+    }
+}

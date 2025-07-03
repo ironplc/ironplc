@@ -196,4 +196,3 @@ impl Diagnostic {
         file_ids
     }
 }
-

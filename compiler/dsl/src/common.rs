@@ -1750,3 +1750,172 @@ impl Library {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constant_kind_partial_eq_and_clone() {
+        let int1 = ConstantKind::IntegerLiteral(IntegerLiteral {
+            value: SignedInteger::new("42", SourceSpan::default()).unwrap(),
+            data_type: None,
+        });
+        let int2 = int1.clone();
+        assert_eq!(int1, int2);
+        let int3 = ConstantKind::IntegerLiteral(IntegerLiteral {
+            value: SignedInteger::new("43", SourceSpan::default()).unwrap(),
+            data_type: None,
+        });
+        assert_ne!(int1, int3);
+    }
+
+    #[test]
+    fn test_integer_partial_eq_and_clone() {
+        let i1 = Integer::new("123", SourceSpan::default()).unwrap();
+        let i2 = i1.clone();
+        assert_eq!(i1, i2);
+        let i3 = Integer::new("124", SourceSpan::default()).unwrap();
+        assert_ne!(i1, i3);
+    }
+
+    #[test]
+    fn test_signed_integer_partial_eq_and_clone() {
+        let s1 = SignedInteger::new("-5", SourceSpan::default()).unwrap();
+        let s2 = s1.clone();
+        assert_eq!(s1, s2);
+        let s3 = SignedInteger::new("5", SourceSpan::default()).unwrap();
+        assert_ne!(s1, s3);
+    }
+
+    #[test]
+    fn test_boolean_partial_eq_and_clone() {
+        let b1 = Boolean::True;
+        let b2 = b1.clone();
+        assert_eq!(b1, b2);
+        let b3 = Boolean::False;
+        assert_ne!(b1, b3);
+    }
+
+    #[test]
+    fn test_integer_literal_partial_eq_and_clone() {
+        let il1 = IntegerLiteral {
+            value: SignedInteger::new("7", SourceSpan::default()).unwrap(),
+            data_type: None,
+        };
+        let il2 = il1.clone();
+        assert_eq!(il1, il2);
+        let il3 = IntegerLiteral {
+            value: SignedInteger::new("8", SourceSpan::default()).unwrap(),
+            data_type: None,
+        };
+        assert_ne!(il1, il3);
+    }
+
+    #[test]
+    fn test_real_literal_partial_eq_and_clone() {
+        let rl1 = RealLiteral {
+            value: 1.23,
+            data_type: None,
+        };
+        let rl2 = rl1.clone();
+        assert_eq!(rl1, rl2);
+        let rl3 = RealLiteral {
+            value: 2.34,
+            data_type: None,
+        };
+        assert_ne!(rl1, rl3);
+    }
+
+    #[test]
+    fn test_boolean_literal_partial_eq_and_clone() {
+        let bl1 = BooleanLiteral {
+            value: Boolean::True,
+        };
+        let bl2 = bl1.clone();
+        assert_eq!(bl1, bl2);
+        let bl3 = BooleanLiteral {
+            value: Boolean::False,
+        };
+        assert_ne!(bl1, bl3);
+    }
+
+    #[test]
+    fn test_character_string_literal_partial_eq_and_clone() {
+        let csl1 = CharacterStringLiteral {
+            value: vec!['a', 'b', 'c'],
+        };
+        let csl2 = csl1.clone();
+        assert_eq!(csl1, csl2);
+        let csl3 = CharacterStringLiteral {
+            value: vec!['x', 'y', 'z'],
+        };
+        assert_ne!(csl1, csl3);
+    }
+
+    #[test]
+    fn test_bit_string_literal_partial_eq_and_clone() {
+        let int = Integer::new("255", SourceSpan::default()).unwrap();
+        let bsl1 = BitStringLiteral {
+            value: int.clone(),
+            data_type: None,
+        };
+        let bsl2 = bsl1.clone();
+        assert_eq!(bsl1, bsl2);
+        let bsl3 = BitStringLiteral {
+            value: Integer::new("0", SourceSpan::default()).unwrap(),
+            data_type: None,
+        };
+        assert_ne!(bsl1, bsl3);
+    }
+
+    #[test]
+    fn test_type_partial_eq_and_clone() {
+        let t1 = Type::from("MYTYPE");
+        let t2 = t1.clone();
+        assert_eq!(t1, t2);
+        let t3 = Type::from("OTHERTYPE");
+        assert_ne!(t1, t3);
+    }
+
+    #[test]
+    fn test_elementary_type_name_partial_eq_and_clone() {
+        let e1 = ElementaryTypeName::BOOL;
+        let e2 = e1.clone();
+        assert_eq!(e1, e2);
+        let e3 = ElementaryTypeName::INT;
+        assert_ne!(e1, e3);
+    }
+
+    #[test]
+    fn test_data_type_declaration_kind_partial_eq_and_clone() {
+        let enum_decl = EnumerationDeclaration {
+            type_name: Type::from("ENUM"),
+            spec_init: EnumeratedSpecificationInit::values_and_default(vec!["A", "B"], "A"),
+        };
+        let d1 = DataTypeDeclarationKind::Enumeration(enum_decl.clone());
+        let d2 = d1.clone();
+        assert_eq!(d1, d2);
+        let d3 = DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
+            type_name: Type::from("ENUM"),
+            spec_init: EnumeratedSpecificationInit::values_and_default(vec!["A", "B"], "B"),
+        });
+        assert_ne!(d1, d3);
+    }
+
+    #[test]
+    fn test_library_partial_eq_and_clone() {
+        let lib1 = Library { elements: vec![] };
+        let lib2 = lib1.clone();
+        assert_eq!(lib1, lib2);
+        let lib3 = Library {
+            elements: vec![LibraryElementKind::DataTypeDeclaration(
+                DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
+                    type_name: Type::from("ENUM"),
+                    spec_init: EnumeratedSpecificationInit::values_and_default(vec!["A"], "A"),
+                }),
+            )],
+        };
+        assert_ne!(lib1, lib3);
+    }
+}
