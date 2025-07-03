@@ -63,3 +63,15 @@ pub fn configure(verbosity: u8) -> Result<(), String> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+    use crate::logger::configure;
+
+    #[test]
+    fn configure_when_verbosity_is_5_then_return_err() {
+        let result = configure(5);
+
+        assert!(result.is_err());
+    }
+}
