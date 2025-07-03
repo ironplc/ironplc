@@ -105,7 +105,7 @@ impl Diagnostic {
             Problem::NotImplemented,
             Label::span(
                 SourceSpan::default(),
-                format!("Not implemented at {}#L{}", file, line),
+                format!("Not implemented at {file}#L{line}"),
             ),
         )
     }
@@ -119,7 +119,7 @@ impl Diagnostic {
     pub fn todo_with_id(id: &Id, file: &str, line: u32) -> Self {
         Diagnostic::problem(
             Problem::NotImplemented,
-            Label::span(id.span(), format!("Not implemented at {}#L{}", file, line)),
+            Label::span(id.span(), format!("Not implemented at {file}#L{line}")),
         )
     }
 
@@ -132,7 +132,7 @@ impl Diagnostic {
     pub fn todo_with_type(ty: &Type, file: &str, line: u32) -> Self {
         Diagnostic::problem(
             Problem::NotImplemented,
-            Label::span(ty.span(), format!("Not implemented at {}#L{}", file, line)),
+            Label::span(ty.span(), format!("Not implemented at {file}#L{line}")),
         )
     }
 
@@ -145,7 +145,7 @@ impl Diagnostic {
     pub fn todo_with_span(span: SourceSpan, file: &str, line: u32) -> Self {
         Diagnostic::problem(
             Problem::NotImplemented,
-            Label::span(span, format!("Not implemented at {}#L{}", file, line)),
+            Label::span(span, format!("Not implemented at {file}#L{line}")),
         )
     }
 
@@ -156,17 +156,17 @@ impl Diagnostic {
     /// forms part of the main description and does not need to be related to
     /// a position in a source file.
     pub fn with_context(mut self, description: &str, item: &String) -> Self {
-        self.described.push(format!("{}={}", description, item));
+        self.described.push(format!("{description}={item}"));
         self
     }
 
     pub fn with_context_id(mut self, description: &str, item: &Id) -> Self {
-        self.described.push(format!("{}={}", description, item));
+        self.described.push(format!("{description}={item}"));
         self
     }
 
     pub fn with_context_type(mut self, description: &str, item: &Type) -> Self {
-        self.described.push(format!("{}={}", description, item));
+        self.described.push(format!("{description}={item}"));
         self
     }
 

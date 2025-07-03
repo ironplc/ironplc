@@ -421,7 +421,7 @@ mod test {
 
         assert_eq!(
             dsl::common::DeclarationQualifier::Constant,
-            decls.get(0).unwrap().qualifier
+            decls.first().unwrap().qualifier
         );
     }
 }

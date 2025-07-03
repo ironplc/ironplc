@@ -360,7 +360,7 @@ fn type_to_visitor_method_name(ty: &syn::Type) -> String {
     };
 
     let name = name.to_string().to_case(Case::Snake);
-    format!("visit_{}", name)
+    format!("visit_{name}")
 }
 
 fn type_to_fold_method_name(ty: &syn::Type) -> String {
@@ -377,7 +377,7 @@ fn type_to_fold_method_name(ty: &syn::Type) -> String {
     };
 
     let name = name.to_string().to_case(Case::Snake);
-    format!("fold_{}", name)
+    format!("fold_{name}")
 }
 
 /// Returns the "interior" type from the given type. This works for well-defined

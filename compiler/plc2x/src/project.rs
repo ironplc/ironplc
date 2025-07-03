@@ -80,7 +80,7 @@ impl Project for FileBackedProject {
     ///
     /// TODO this is not definitely not the right architecture.
     fn initialize(&mut self, dir: &Path) -> Vec<Diagnostic> {
-        info!("Initialize project from path {:?}", dir);
+        info!("Initialize project from path {dir:?}");
 
         self.sources.clear();
 

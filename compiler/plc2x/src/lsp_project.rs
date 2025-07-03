@@ -93,7 +93,7 @@ impl LspProject {
                     .collect(),
             };
         } else {
-            error!("URL must be convertible to a file path {:?}", uri);
+            error!("URL must be convertible to a file path {uri:?}");
         }
 
         vec![]

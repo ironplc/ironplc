@@ -76,7 +76,7 @@ pub fn main() -> Result<(), String> {
         Action::Echo { files } => cli::echo(&files, false),
         Action::Tokenize { files } => cli::tokenize(&files, false),
         Action::Version => {
-            println!("ironplcc version {}", VERSION);
+            println!("ironplcc version {VERSION}");
             Ok(())
         }
     }

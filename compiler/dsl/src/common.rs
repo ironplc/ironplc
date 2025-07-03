@@ -313,9 +313,9 @@ impl fmt::Display for SignedInteger {
 impl From<SignedInteger> for String {
     fn from(value: SignedInteger) -> Self {
         if value.is_neg {
-            format!("-{}", value)
+            format!("-{value}")
         } else {
-            format!("{}", value)
+            format!("{value}")
         }
     }
 }
