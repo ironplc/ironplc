@@ -29,7 +29,7 @@ fn create_problems() -> Result<(), Box<dyn Error>> {
     src_path.push("problem-codes.csv");
 
     let src = fs::read_to_string(src_path).expect("Unable to read 'problem-codes.csv'");
-    println!("{}", src);
+    println!("{src}");
     let src = src.as_bytes();
 
     // Read the file into the definition (we'll iterate over the structs more than once)
@@ -37,16 +37,16 @@ fn create_problems() -> Result<(), Box<dyn Error>> {
     let mut rdr = csv::Reader::from_reader(src);
     for result in rdr.records() {
         let record = result?;
-        println!("{:?}", record);
+        println!("{record:?}");
         let code = record
             .get(0)
-            .ok_or_else(|| format!("Record {:?} is not valid at column 0", record))?;
+            .ok_or_else(|| format!("Record {record:?} is not valid at column 0"))?;
         let name = record
             .get(1)
-            .ok_or_else(|| format!("Record {:?} is not valid at column 1", record))?;
+            .ok_or_else(|| format!("Record {record:?} is not valid at column 1"))?;
         let message = record
             .get(2)
-            .ok_or_else(|| format!("Record {:?} is not valid at column 2", record))?;
+            .ok_or_else(|| format!("Record {record:?} is not valid at column 2"))?;
         defs.push(ProblemDef {
             code: code.to_string(),
             name: name.to_string(),
@@ -57,11 +57,11 @@ fn create_problems() -> Result<(), Box<dyn Error>> {
     // Create the output directory and file problems.rs that will have the definitions
     let mut out_path = PathBuf::from(env::var("OUT_DIR")?);
     fs::create_dir_all(out_path.clone())
-        .map_err(|e| format!("Unable to create directory 'problems': {}", e))?;
+        .map_err(|e| format!("Unable to create directory 'problems': {e}"))?;
 
     out_path.push("problems.rs");
     let mut out =
-        File::create(out_path).map_err(|e| format!("Unable to create 'problems.rs': {}", e))?;
+        File::create(out_path).map_err(|e| format!("Unable to create 'problems.rs': {e}"))?;
 
     // Create the enumeration definition
     out.write_all(b"pub enum Problem {\n")?;
@@ -112,7 +112,7 @@ fn create_problems() -> Result<(), Box<dyn Error>> {
 
 fn main() {
     if let Err(err) = create_problems() {
-        println!("problem generating problems.rs: {}", err);
+        println!("problem generating problems.rs: {err}");
         process::exit(1);
     }
 }

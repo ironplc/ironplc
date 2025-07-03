@@ -43,7 +43,7 @@ pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
     // semantic analysis, but it should because the type table should influence rule checking.
     // For now, this is just after the rules as they were originally written.
     let type_table_result = type_table::apply(&library)?;
-    debug!("{:?}", type_table_result);
+    debug!("{type_table_result:?}");
 
     result
 }
@@ -73,7 +73,7 @@ pub(crate) fn resolve_types(sources: &[&Library]) -> Result<Library, Vec<Diagnos
         library = xform(library, &mut type_environment)?
     }
 
-    println!("{:?}", type_environment);
+    println!("{type_environment:?}");
 
     Ok(library)
 }

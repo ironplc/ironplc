@@ -17,8 +17,7 @@ mod test {
         path.push("resources/test");
         path.push(name);
 
-        fs::read_to_string(path.clone())
-            .unwrap_or_else(|_| panic!("Unable to read file {:?}", path))
+        fs::read_to_string(path.clone()).unwrap_or_else(|_| panic!("Unable to read file {path:?}"))
     }
 
     pub fn parse_and_render_resource(name: &'static str) -> String {
