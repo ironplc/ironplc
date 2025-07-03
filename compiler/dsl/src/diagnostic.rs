@@ -12,29 +12,6 @@ use std::{fs::File, ops::Range};
 use crate::common::Type;
 use crate::core::{FileId, Id, Located, SourceSpan};
 
-/// A position marker that has both line and offset information.
-#[derive(Debug)]
-pub struct QualifiedPosition {
-    /// Line (1-indexed)
-    pub line: usize,
-
-    /// Column (1-indexed)
-    pub column: usize,
-
-    /// Byte offset from start of string (0-indexed)
-    pub offset: usize,
-}
-
-impl QualifiedPosition {
-    pub fn new(line: usize, column: usize, offset: usize) -> Self {
-        Self {
-            line,
-            column,
-            offset,
-        }
-    }
-}
-
 /// A position marker that only has an offset in a file.
 #[derive(Debug, Clone)]
 pub struct Location {
@@ -42,15 +19,6 @@ pub struct Location {
     pub start: usize,
     /// Byte offset from end of string (0-indexed)
     pub end: usize,
-}
-
-impl std::fmt::Display for Location {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Location")
-            .field("start", &self.start)
-            .field("end", &self.end)
-            .finish()
-    }
 }
 
 /// A label that refers to some range in a file and possibly associated
@@ -207,11 +175,6 @@ impl Diagnostic {
         self
     }
 
-    pub fn with_secondary_id(mut self, id: &Id, message: impl Into<String>) -> Self {
-        self.secondary.push(Label::span(id.span(), message));
-        self
-    }
-
     /// Returns the description for the diagnostic. This may add in other
     /// data in addition that is part of the diagnostic.
     pub fn description(&self) -> String {
@@ -234,8 +197,3 @@ impl Diagnostic {
     }
 }
 
-impl From<Diagnostic> for () {
-    fn from(value: Diagnostic) -> Self {
-        // Just drop the diagnostic!
-    }
-}
