@@ -18,9 +18,10 @@ use crate::{
     rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
     rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const,
+    symbol_environment::SymbolEnvironment,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
     type_table, xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
-    xform_resolve_type_decl_environment, xform_toposort_declarations,
+    xform_resolve_symbol_environment, xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
@@ -36,7 +37,7 @@ pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
             Label::span(span, "First location"),
         )]);
     }
-    let library = resolve_types(sources)?;
+    let (library, _symbol_environment) = resolve_types(sources)?;
     let result = semantic(&library);
 
     // TODO this is currently in progress. It isn't clear to me yet how this will influence
@@ -48,7 +49,7 @@ pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
     result
 }
 
-pub(crate) fn resolve_types(sources: &[&Library]) -> Result<Library, Vec<Diagnostic>> {
+pub(crate) fn resolve_types(sources: &[&Library]) -> Result<(Library, SymbolEnvironment), Vec<Diagnostic>> {
     // We want to analyze this as a complete set, so we need to join the items together
     // into a single library. Extend owns the item so after this we are free to modify
     let mut library = Library::new();
@@ -60,6 +61,8 @@ pub(crate) fn resolve_types(sources: &[&Library]) -> Result<Library, Vec<Diagnos
         .with_elementary_types()
         .build()
         .map_err(|err| vec![err])?;
+
+    let mut symbol_environment = SymbolEnvironment::new();
 
     let mut library = xform_toposort_declarations::apply(library)?;
 
@@ -73,9 +76,13 @@ pub(crate) fn resolve_types(sources: &[&Library]) -> Result<Library, Vec<Diagnos
         library = xform(library, &mut type_environment)?
     }
 
-    println!("{type_environment:?}");
+    // Resolve symbols after types are resolved
+    library = xform_resolve_symbol_environment::apply(library, &type_environment, &mut symbol_environment)?;
 
-    Ok(library)
+    debug!("{type_environment:?}");
+    debug!("{symbol_environment:?}");
+
+    Ok((library, symbol_environment))
 }
 
 /// Semantic implements semantic analysis (stage 3).

@@ -51,7 +51,7 @@ pub enum TypeClass {
 }
 
 #[derive(Debug)]
-pub(crate) struct TypeEnvironment {
+pub struct TypeEnvironment {
     table: HashMap<Type, TypeAttributes>,
 }
 
