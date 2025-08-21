@@ -28,6 +28,7 @@ jobs:
 
         outputs:
           commit-ref: ${{ inputs.branch-name }}
+          branch-name: ${{ inputs.branch-name }}
 
         steps:
           # Checkout the repository including the tags

@@ -63,3 +63,18 @@ jobs:
     with:
       commit-ref: ${{ needs.update-dependencies.outputs.commit-ref }}
       publish: false
+
+  merge-changes:
+    name: Merge Changes
+    needs: [build-vscode-extension, build-platform-package, build-docs]
+    steps:
+      - name: Checkout branch ${{ needs.update-dependencies.outputs.branch-name }}
+        uses: actions/checkout@v4
+        if: ${{ needs.update-dependencies.outputs.branch-name }}
+        with:
+          ref: ${{ needs.update-dependencies.outputs.branch-name }}
+          token: ${{secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN}}
+      - name: Merge Changes
+        if: ${{ !inputs.dryrun }}
+        run: |
+          git push origin ${{ needs.update-dependencies.outputs.branch-name }}:main
