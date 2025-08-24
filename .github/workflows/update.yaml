@@ -7,7 +7,7 @@
 #    2. Create the changes
 
 on:
-  # Automatically try to update every Sunmday at 19:00
+  # Automatically try to update every Sunday at 19:00
   # The idea is we do this a day before the weekly build so that the weekly build
   # contains updated dependencies.
   schedule:
@@ -67,6 +67,7 @@ jobs:
   merge-changes:
     name: Merge Changes
     needs: [build-vscode-extension, build-platform-package, build-docs]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout branch ${{ needs.update-dependencies.outputs.branch-name }}
         uses: actions/checkout@v4
