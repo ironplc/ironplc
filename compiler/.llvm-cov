@@ -1,0 +1,29 @@
+# Configuration for cargo-llvm-cov
+# Exclude generated code and annotations from coverage
+
+# Exclude specific line patterns (like annotations)
+exclude-lines = [
+    "#\\[derive\\(",
+    "#\\[cfg\\(",
+    "#\\[allow\\(",
+    "#\\[deny\\(",
+    "#\\[warn\\(",
+    "#\\[inline\\(",
+    "#\\[test\\(",
+    "#\\[bench\\(",
+    "#\\[ignore\\(",
+    "#\\[should_panic\\(",
+    "#\\[no_mangle\\(",
+    "#\\[repr\\(",
+    "#\\[derive\\(",
+    "#\\[serde\\(",
+    "#\\[tokio\\(",
+    "#\\[async_trait\\(",
+    "#\\[test_case\\(",
+    "#\\[parameterized\\(",
+]
+
+# Coverage thresholds
+fail-under-lines = 85
+fail-under-functions = 80
+fail-under-regions = 80
