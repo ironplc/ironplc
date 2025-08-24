@@ -21,10 +21,12 @@ mod rule_var_decl_global_const_requires_external_const;
 mod scoped_table;
 pub mod stages;
 mod stdlib;
+mod symbol_environment;
 mod type_environment;
 mod type_table;
 mod xform_resolve_late_bound_expr_kind;
 mod xform_resolve_late_bound_type_initializer;
+mod xform_resolve_symbol_environment;
 mod xform_resolve_type_decl_environment;
 mod xform_toposort_declarations;
 
