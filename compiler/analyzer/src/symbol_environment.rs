@@ -13,6 +13,7 @@ pub enum ScopeKind {
 
 /// Represents the kind of symbol
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum SymbolKind {
     /// Variable declaration
     Variable,
@@ -69,6 +70,7 @@ impl SymbolInfo {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_data_type(mut self, data_type: String) -> Self {
         self.data_type = Some(data_type);
         self
@@ -79,6 +81,7 @@ impl SymbolInfo {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_visibility_scope(mut self, visibility_scope: ScopeKind) -> Self {
         self.visibility_scope = visibility_scope;
         self
@@ -169,6 +172,7 @@ impl SymbolEnvironment {
     }
 
     /// Get all symbols in a specific scope
+    #[allow(dead_code)]
     pub fn get_scope_symbols(&self, scope: &ScopeKind) -> Option<&HashMap<Id, SymbolInfo>> {
         match scope {
             ScopeKind::Global => Some(&self.global_symbols),
@@ -177,11 +181,13 @@ impl SymbolEnvironment {
     }
 
     /// Check if a symbol exists in the given scope
+    #[allow(dead_code)]
     pub fn contains(&self, name: &Id, scope: &ScopeKind) -> bool {
         self.find(name, scope).is_some()
     }
 
     /// Get a symbol by name and scope (alias for find)
+    #[allow(dead_code)]
     pub fn get(&self, name: &Id, scope: &ScopeKind) -> Option<&SymbolInfo> {
         self.find(name, scope)
     }
@@ -192,11 +198,13 @@ impl SymbolEnvironment {
     }
 
     /// Get all scoped symbols
+    #[allow(dead_code)]
     pub fn get_scoped_symbols(&self) -> &HashMap<ScopeKind, HashMap<Id, SymbolInfo>> {
         &self.scoped_symbols
     }
 
     /// Clear the resolution cache (useful after modifications)
+    #[allow(dead_code)]
     pub fn clear_cache(&mut self) {
         self.resolution_cache.clear();
     }
@@ -276,6 +284,8 @@ impl SymbolEnvironment {
     }
 
     /// Validate that a symbol reference is valid in the given scope
+    #[allow(dead_code)]
+    #[allow(unused_variables)]
     pub fn validate_symbol_reference(&self, name: &Id, scope: &ScopeKind) -> Result<(), String> {
         if let Some(symbol) = self.find_in_scope_hierarchy(name, scope) {
             // Symbol exists and is accessible from this scope
@@ -310,6 +320,8 @@ impl SymbolEnvironment {
     }
 
     /// Get all symbols that are accessible from a given scope
+    #[allow(dead_code)]
+    #[allow(unused_variables)]
     pub fn get_accessible_symbols(&self, scope: &ScopeKind) -> Vec<(&Id, &SymbolInfo)> {
         let mut accessible = Vec::new();
         

@@ -45,6 +45,7 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
 
     // TODO fn visit_program_access_decl
 
+    #[allow(unused_assignments)]
     fn visit_var_decl(&mut self,node: &ironplc_dsl::common::VarDecl) -> Result<Self::Value,Diagnostic> {
         // Some types of variables are references to other variables.
         // TODO Stage these so that we can update references to them but not actually declare them here
