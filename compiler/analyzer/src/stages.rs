@@ -21,7 +21,8 @@ use crate::{
     symbol_environment::SymbolEnvironment,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
     type_table, xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
-    xform_resolve_symbol_environment, xform_resolve_type_decl_environment, xform_toposort_declarations,
+    xform_resolve_symbol_environment, xform_resolve_type_decl_environment,
+    xform_toposort_declarations,
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
@@ -49,7 +50,9 @@ pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
     result
 }
 
-pub(crate) fn resolve_types(sources: &[&Library]) -> Result<(Library, SymbolEnvironment), Vec<Diagnostic>> {
+pub(crate) fn resolve_types(
+    sources: &[&Library],
+) -> Result<(Library, SymbolEnvironment), Vec<Diagnostic>> {
     // We want to analyze this as a complete set, so we need to join the items together
     // into a single library. Extend owns the item so after this we are free to modify
     let mut library = Library::new();
@@ -77,7 +80,11 @@ pub(crate) fn resolve_types(sources: &[&Library]) -> Result<(Library, SymbolEnvi
     }
 
     // Resolve symbols after types are resolved
-    library = xform_resolve_symbol_environment::apply(library, &type_environment, &mut symbol_environment)?;
+    library = xform_resolve_symbol_environment::apply(
+        library,
+        &type_environment,
+        &mut symbol_environment,
+    )?;
 
     // Generate and display useful symbol table information
     debug!("Type Environment:");
@@ -85,7 +92,7 @@ pub(crate) fn resolve_types(sources: &[&Library]) -> Result<(Library, SymbolEnvi
 
     debug!("Symbol Environment:");
     debug!("{symbol_environment:?}");
-    
+
     Ok((library, symbol_environment))
 }
 
