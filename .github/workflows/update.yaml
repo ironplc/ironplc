@@ -67,6 +67,7 @@ jobs:
   merge-changes:
     name: Merge Changes
     needs: [build-vscode-extension, build-platform-package, build-docs]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout branch ${{ needs.update-dependencies.outputs.branch-name }}
         uses: actions/checkout@v4
