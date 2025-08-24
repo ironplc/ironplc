@@ -1,5 +1,6 @@
 // Allow large errors because this is a compiler - we expect large errors.
 #![allow(clippy::result_large_err)]
+#[allow(dead_code)]
 
 extern crate ironplc_dsl;
 extern crate ironplc_parser;
