@@ -128,7 +128,7 @@ impl SymbolEnvironment {
             ScopeKind::Named(scope_name) => {
                 let scope_symbols = self.scoped_symbols
                     .entry(ScopeKind::Named(scope_name.clone()))
-                    .or_insert_with(HashMap::new);
+                    .or_default();
                 
                 // Check for duplicate symbols in the same scope
                 if let Some(_existing) = scope_symbols.get(name) {
@@ -193,6 +193,7 @@ impl SymbolEnvironment {
     }
 
     /// Get all global symbols
+    #[allow(dead_code)]
     pub fn get_global_symbols(&self) -> &HashMap<Id, SymbolInfo> {
         &self.global_symbols
     }
@@ -210,6 +211,7 @@ impl SymbolEnvironment {
     }
 
     /// Get the total number of symbols in the environment
+    #[allow(dead_code)]
     pub fn total_symbols(&self) -> usize {
         let global_count = self.global_symbols.len();
         let scoped_count: usize = self.scoped_symbols.values().map(|scope| scope.len()).sum();
@@ -217,6 +219,7 @@ impl SymbolEnvironment {
     }
 
     /// Generate a comprehensive summary of the symbol table
+    #[allow(dead_code)]
     pub fn generate_summary(&self) -> String {
         let mut summary = String::new();
         
@@ -246,16 +249,17 @@ impl SymbolEnvironment {
         let global_count = self.global_symbols.len();
         let scoped_count: usize = self.scoped_symbols.values().map(|scope| scope.len()).sum();
         
-        summary.push_str(&format!("\n📊 Summary Statistics:\n"));
-        summary.push_str(&format!("  • Total symbols: {}\n", total_symbols));
-        summary.push_str(&format!("  • Global symbols: {}\n", global_count));
-        summary.push_str(&format!("  • Scoped symbols: {}\n", scoped_count));
+        summary.push_str("\n📊 Summary Statistics:\n");
+        summary.push_str(&format!("  • Total symbols: {total_symbols}\n"));
+        summary.push_str(&format!("  • Global symbols: {global_count}\n"));
+        summary.push_str(&format!("  • Scoped symbols: {scoped_count}\n"));
         summary.push_str(&format!("  • Number of scopes: {}\n", self.scoped_symbols.len()));
         
         summary
     }
 
     /// Get detailed information about a specific symbol
+    #[allow(dead_code)]
     pub fn get_symbol_details(&self, name: &Id, scope: &ScopeKind) -> Option<String> {
         if let Some(symbol) = self.find(name, scope) {
             let scope_name = match &symbol.scope {
@@ -341,6 +345,7 @@ impl SymbolEnvironment {
     }
 
     /// Check for duplicate symbol declarations and return detailed information
+    #[allow(dead_code)]
     pub fn check_for_duplicates(&self) -> Vec<String> {
         let mut duplicates = Vec::new();
         
@@ -373,6 +378,7 @@ impl SymbolEnvironment {
     }
 
     /// Get symbol statistics for analysis and debugging
+    #[allow(dead_code)]
     pub fn get_statistics(&self) -> std::collections::HashMap<String, usize> {
         let mut stats = std::collections::HashMap::new();
         
@@ -390,59 +396,6 @@ impl SymbolEnvironment {
         }
         
         stats
-    }
-
-    /// Example of how semantic rules can use the symbol table
-    /// This method demonstrates practical usage of the symbol table
-    pub fn demonstrate_semantic_analysis(&self) -> String {
-        let mut analysis = String::new();
-        analysis.push_str("🔍 Semantic Analysis Demonstration:\n");
-        
-        // Check for common semantic issues
-        let mut issues = Vec::new();
-        
-        // Check if any function blocks have no input parameters
-        for (name, symbol) in &self.global_symbols {
-            if symbol.kind == SymbolKind::FunctionBlock {
-                let scope = ScopeKind::Named(name.clone());
-                if let Some(scope_symbols) = self.scoped_symbols.get(&scope) {
-                    let input_params: Vec<_> = scope_symbols.values()
-                        .filter(|s| s.kind == SymbolKind::Parameter)
-                        .collect();
-                    
-                    if input_params.is_empty() {
-                        issues.push(format!("Function block '{}' has no input parameters", name.original()));
-                    }
-                }
-            }
-        }
-        
-        // Check for symbols that might be unused (example heuristic)
-        for (scope, symbols) in &self.scoped_symbols {
-            let scope_name = match scope {
-                ScopeKind::Global => "global scope".to_string(),
-                ScopeKind::Named(id) => format!("scope '{}'", id.original()),
-            };
-            
-            for (name, symbol) in symbols {
-                // This is just an example - in real semantic analysis you'd check actual usage
-                if symbol.kind == SymbolKind::Variable && name.original().starts_with("_TMP_") {
-                    issues.push(format!("Temporary variable '{}' in {} (likely auto-generated)", 
-                        name.original(), scope_name));
-                }
-            }
-        }
-        
-        if issues.is_empty() {
-            analysis.push_str("✅ No obvious semantic issues detected\n");
-        } else {
-            analysis.push_str("⚠️  Potential semantic issues:\n");
-            for issue in issues {
-                analysis.push_str(&format!("  • {}\n", issue));
-            }
-        }
-        
-        analysis
     }
 }
 
