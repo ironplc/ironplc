@@ -7,7 +7,7 @@
 #    2. Create the changes
 
 on:
-  # Automatically try to update every Sunmday at 19:00
+  # Automatically try to update every Sunday at 19:00
   # The idea is we do this a day before the weekly build so that the weekly build
   # contains updated dependencies.
   schedule:

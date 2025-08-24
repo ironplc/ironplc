@@ -200,6 +200,238 @@ impl SymbolEnvironment {
     pub fn clear_cache(&mut self) {
         self.resolution_cache.clear();
     }
+
+    /// Get the total number of symbols in the environment
+    pub fn total_symbols(&self) -> usize {
+        let global_count = self.global_symbols.len();
+        let scoped_count: usize = self.scoped_symbols.values().map(|scope| scope.len()).sum();
+        global_count + scoped_count
+    }
+
+    /// Generate a comprehensive summary of the symbol table
+    pub fn generate_summary(&self) -> String {
+        let mut summary = String::new();
+        
+        // Global symbols summary
+        summary.push_str(&format!("📚 Global Symbols ({}):\n", self.global_symbols.len()));
+        for (name, symbol) in &self.global_symbols {
+            summary.push_str(&format!("  • {}: {:?} at {:?}\n", 
+                name.original(), symbol.kind, symbol.span));
+        }
+        
+        // Scoped symbols summary
+        summary.push_str(&format!("\n🔧 Scoped Symbols ({} scopes):\n", self.scoped_symbols.len()));
+        for (scope, symbols) in &self.scoped_symbols {
+            let scope_name = match scope {
+                ScopeKind::Global => "Global".to_string(),
+                ScopeKind::Named(id) => format!("Named({})", id.original()),
+            };
+            summary.push_str(&format!("  📍 {} ({} symbols):\n", scope_name, symbols.len()));
+            for (name, symbol) in symbols {
+                summary.push_str(&format!("    • {}: {:?} at {:?}\n", 
+                    name.original(), symbol.kind, symbol.span));
+            }
+        }
+        
+        // Statistics
+        let total_symbols = self.total_symbols();
+        let global_count = self.global_symbols.len();
+        let scoped_count: usize = self.scoped_symbols.values().map(|scope| scope.len()).sum();
+        
+        summary.push_str(&format!("\n📊 Summary Statistics:\n"));
+        summary.push_str(&format!("  • Total symbols: {}\n", total_symbols));
+        summary.push_str(&format!("  • Global symbols: {}\n", global_count));
+        summary.push_str(&format!("  • Scoped symbols: {}\n", scoped_count));
+        summary.push_str(&format!("  • Number of scopes: {}\n", self.scoped_symbols.len()));
+        
+        summary
+    }
+
+    /// Get detailed information about a specific symbol
+    pub fn get_symbol_details(&self, name: &Id, scope: &ScopeKind) -> Option<String> {
+        if let Some(symbol) = self.find(name, scope) {
+            let scope_name = match &symbol.scope {
+                ScopeKind::Global => "Global".to_string(),
+                ScopeKind::Named(id) => format!("Named({})", id.original()),
+            };
+            
+            let visibility_name = match &symbol.visibility_scope {
+                ScopeKind::Global => "Global".to_string(),
+                ScopeKind::Named(id) => format!("Named({})", id.original()),
+            };
+            
+            Some(format!(
+                "Symbol: {}\n  Kind: {:?}\n  Scope: {}\n  Visibility: {}\n  External: {}\n  Data Type: {:?}\n  Location: {:?}",
+                name.original(),
+                symbol.kind,
+                scope_name,
+                visibility_name,
+                symbol.is_external,
+                symbol.data_type,
+                symbol.span
+            ))
+        } else {
+            None
+        }
+    }
+
+    /// Validate that a symbol reference is valid in the given scope
+    pub fn validate_symbol_reference(&self, name: &Id, scope: &ScopeKind) -> Result<(), String> {
+        if let Some(symbol) = self.find_in_scope_hierarchy(name, scope) {
+            // Symbol exists and is accessible from this scope
+            Ok(())
+        } else {
+            // Symbol not found - generate helpful error message
+            let scope_name = match scope {
+                ScopeKind::Global => "global scope".to_string(),
+                ScopeKind::Named(id) => format!("scope '{}'", id.original()),
+            };
+            
+            // Check if symbol exists in other scopes for better error messages
+            if let Some(global_symbol) = self.global_symbols.get(name) {
+                Err(format!("Symbol '{}' exists in global scope but is not accessible from {}", 
+                    name.original(), scope_name))
+            } else {
+                // Check if symbol exists in any named scope
+                for (named_scope, symbols) in &self.scoped_symbols {
+                    if let Some(symbol) = symbols.get(name) {
+                        let named_scope_name = match named_scope {
+                            ScopeKind::Global => "global scope".to_string(),
+                            ScopeKind::Named(id) => format!("scope '{}'", id.original()),
+                        };
+                        return Err(format!("Symbol '{}' exists in {} but is not accessible from {}", 
+                            name.original(), named_scope_name, scope_name));
+                    }
+                }
+                
+                Err(format!("Symbol '{}' is not declared in {}", name.original(), scope_name))
+            }
+        }
+    }
+
+    /// Get all symbols that are accessible from a given scope
+    pub fn get_accessible_symbols(&self, scope: &ScopeKind) -> Vec<(&Id, &SymbolInfo)> {
+        let mut accessible = Vec::new();
+        
+        // Add global symbols (always accessible)
+        for (name, symbol) in &self.global_symbols {
+            accessible.push((name, symbol));
+        }
+        
+        // Add symbols from the current scope
+        if let Some(scope_symbols) = self.scoped_symbols.get(scope) {
+            for (name, symbol) in scope_symbols {
+                accessible.push((name, symbol));
+            }
+        }
+        
+        accessible
+    }
+
+    /// Check for duplicate symbol declarations and return detailed information
+    pub fn check_for_duplicates(&self) -> Vec<String> {
+        let mut duplicates = Vec::new();
+        
+        // Check for duplicate global symbols
+        let mut global_names = std::collections::HashSet::new();
+        for (name, symbol) in &self.global_symbols {
+            if !global_names.insert(name.original()) {
+                duplicates.push(format!("Duplicate global symbol '{}' declared at {:?}", 
+                    name.original(), symbol.span));
+            }
+        }
+        
+        // Check for duplicate symbols within each scope
+        for (scope, symbols) in &self.scoped_symbols {
+            let scope_name = match scope {
+                ScopeKind::Global => "global scope".to_string(),
+                ScopeKind::Named(id) => format!("scope '{}'", id.original()),
+            };
+            
+            let mut scope_names = std::collections::HashSet::new();
+            for (name, symbol) in symbols {
+                if !scope_names.insert(name.original()) {
+                    duplicates.push(format!("Duplicate symbol '{}' in {} declared at {:?}", 
+                        name.original(), scope_name, symbol.span));
+                }
+            }
+        }
+        
+        duplicates
+    }
+
+    /// Get symbol statistics for analysis and debugging
+    pub fn get_statistics(&self) -> std::collections::HashMap<String, usize> {
+        let mut stats = std::collections::HashMap::new();
+        
+        // Count symbols by kind
+        for symbol in self.global_symbols.values() {
+            let kind_name = format!("{:?}", symbol.kind);
+            *stats.entry(kind_name).or_insert(0) += 1;
+        }
+        
+        for symbols in self.scoped_symbols.values() {
+            for symbol in symbols.values() {
+                let kind_name = format!("{:?}", symbol.kind);
+                *stats.entry(kind_name).or_insert(0) += 1;
+            }
+        }
+        
+        stats
+    }
+
+    /// Example of how semantic rules can use the symbol table
+    /// This method demonstrates practical usage of the symbol table
+    pub fn demonstrate_semantic_analysis(&self) -> String {
+        let mut analysis = String::new();
+        analysis.push_str("🔍 Semantic Analysis Demonstration:\n");
+        
+        // Check for common semantic issues
+        let mut issues = Vec::new();
+        
+        // Check if any function blocks have no input parameters
+        for (name, symbol) in &self.global_symbols {
+            if symbol.kind == SymbolKind::FunctionBlock {
+                let scope = ScopeKind::Named(name.clone());
+                if let Some(scope_symbols) = self.scoped_symbols.get(&scope) {
+                    let input_params: Vec<_> = scope_symbols.values()
+                        .filter(|s| s.kind == SymbolKind::Parameter)
+                        .collect();
+                    
+                    if input_params.is_empty() {
+                        issues.push(format!("Function block '{}' has no input parameters", name.original()));
+                    }
+                }
+            }
+        }
+        
+        // Check for symbols that might be unused (example heuristic)
+        for (scope, symbols) in &self.scoped_symbols {
+            let scope_name = match scope {
+                ScopeKind::Global => "global scope".to_string(),
+                ScopeKind::Named(id) => format!("scope '{}'", id.original()),
+            };
+            
+            for (name, symbol) in symbols {
+                // This is just an example - in real semantic analysis you'd check actual usage
+                if symbol.kind == SymbolKind::Variable && name.original().starts_with("_TMP_") {
+                    issues.push(format!("Temporary variable '{}' in {} (likely auto-generated)", 
+                        name.original(), scope_name));
+                }
+            }
+        }
+        
+        if issues.is_empty() {
+            analysis.push_str("✅ No obvious semantic issues detected\n");
+        } else {
+            analysis.push_str("⚠️  Potential semantic issues:\n");
+            for issue in issues {
+                analysis.push_str(&format!("  • {}\n", issue));
+            }
+        }
+        
+        analysis
+    }
 }
 
 impl Default for SymbolEnvironment {

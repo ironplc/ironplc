@@ -18,7 +18,7 @@ use crate::{
     rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
     rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const,
-    symbol_environment::SymbolEnvironment,
+    symbol_environment::{SymbolEnvironment, ScopeKind},
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
     type_table, xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
     xform_resolve_symbol_environment, xform_resolve_type_decl_environment, xform_toposort_declarations,
@@ -79,8 +79,47 @@ pub(crate) fn resolve_types(sources: &[&Library]) -> Result<(Library, SymbolEnvi
     // Resolve symbols after types are resolved
     library = xform_resolve_symbol_environment::apply(library, &type_environment, &mut symbol_environment)?;
 
-    debug!("{type_environment:?}");
-    debug!("{symbol_environment:?}");
+    // Generate and display useful symbol table information
+    println!("🔍 Type Environment:");
+    println!("{type_environment:?}");
+    
+    println!("\n🔍 Symbol Table Summary:");
+    let symbol_summary = symbol_environment.generate_summary();
+    println!("{}", symbol_summary);
+    
+    // Check for duplicate symbols
+    let duplicates = symbol_environment.check_for_duplicates();
+    if !duplicates.is_empty() {
+        println!("\n⚠️  Duplicate Symbol Warnings:");
+        for duplicate in &duplicates {
+            println!("  {}", duplicate);
+        }
+    } else {
+        println!("\n✅ No duplicate symbols found");
+    }
+    
+    // Show symbol statistics
+    let stats = symbol_environment.get_statistics();
+    if !stats.is_empty() {
+        println!("\n📊 Symbol Statistics:");
+        for (kind, count) in stats {
+            println!("  • {}: {}", kind, count);
+        }
+    }
+    
+    // Demonstrate semantic analysis capabilities
+    let semantic_demo = symbol_environment.demonstrate_semantic_analysis();
+    println!("\n{}", semantic_demo);
+    
+    // Show some specific symbol examples for debugging
+    let global_symbols = symbol_environment.get_global_symbols();
+    if !global_symbols.is_empty() {
+        let first_symbol = global_symbols.iter().next().unwrap();
+        println!("\n📋 Example Symbol Details:");
+        if let Some(details) = symbol_environment.get_symbol_details(first_symbol.0, &ScopeKind::Global) {
+            println!("{}", details);
+        }
+    }
 
     Ok((library, symbol_environment))
 }
