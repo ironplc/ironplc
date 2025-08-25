@@ -20,6 +20,10 @@ on:
         description: 'A commit reference that contains the updated dependencies'
         value: ${{ jobs.update-dependencies.outputs.commit-ref }}
 
+      branch-name:
+        description: 'A commit reference that contains the updated dependencies'
+        value: ${{ inputs.branch-name }}
+
 jobs:
     update-dependencies:
         name: Update Dependencies
