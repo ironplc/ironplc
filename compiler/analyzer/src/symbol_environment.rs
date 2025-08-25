@@ -1,3 +1,4 @@
+use ironplc_dsl::common::Type;
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::Diagnostic;
 use std::collections::HashMap;
@@ -54,6 +55,11 @@ pub struct SymbolInfo {
     pub is_external: bool,
     /// The data type of the symbol (if applicable)
     pub data_type: Option<String>,
+    /// For enumeration values, the type name of the enumeration
+    /// TODO this should probably be a new struct that is a TypeRef
+    /// so that we can distinguish between the actual place of the declaration
+    /// and a reference to the declaration.
+    pub enum_type: Option<Type>,
     /// Source location information
     pub span: ironplc_dsl::core::SourceSpan,
 }
@@ -66,6 +72,7 @@ impl SymbolInfo {
             visibility_scope: scope,
             is_external: false,
             data_type: None,
+            enum_type: None,
             span,
         }
     }
@@ -84,6 +91,12 @@ impl SymbolInfo {
     #[allow(dead_code)]
     pub fn with_visibility_scope(mut self, visibility_scope: ScopeKind) -> Self {
         self.visibility_scope = visibility_scope;
+        self
+    }
+
+    /// Set the enumeration type for enumeration value symbols
+    pub fn with_enum_type(mut self, enum_type: Type) -> Self {
+        self.enum_type = Some(enum_type);
         self
     }
 }
@@ -136,6 +149,33 @@ impl SymbolEnvironment {
                     // For now, allow redefinition (this might be needed for forward declarations)
                     // TODO: Implement proper duplicate detection
                 }
+
+                scope_symbols.insert(name.clone(), symbol_info);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Insert an enumeration value with its type information
+    pub fn insert_enumeration_value(
+        &mut self,
+        name: &Id,
+        enum_type: &Type,
+        scope: &ScopeKind,
+    ) -> Result<(), Diagnostic> {
+        let symbol_info = SymbolInfo::new(SymbolKind::EnumerationValue, scope.clone(), name.span())
+            .with_enum_type(enum_type.clone());
+
+        match scope {
+            ScopeKind::Global => {
+                self.global_symbols.insert(name.clone(), symbol_info);
+            }
+            ScopeKind::Named(scope_name) => {
+                let scope_symbols = self
+                    .scoped_symbols
+                    .entry(ScopeKind::Named(scope_name.clone()))
+                    .or_default();
 
                 scope_symbols.insert(name.clone(), symbol_info);
             }
@@ -334,6 +374,37 @@ impl SymbolEnvironment {
 
         accessible
     }
+
+    /// Get all enumeration values for a specific enumeration type
+    pub fn get_enumeration_values_for_type(&self, enum_type: &Type) -> Vec<&Id> {
+        let mut values = Vec::new();
+
+        // Check global symbols
+        for (name, symbol) in &self.global_symbols {
+            if matches!(symbol.kind, SymbolKind::EnumerationValue) {
+                if let Some(ref symbol_enum_type) = symbol.enum_type {
+                    if symbol_enum_type == enum_type {
+                        values.push(name);
+                    }
+                }
+            }
+        }
+
+        // Check scoped symbols
+        for scope_symbols in self.scoped_symbols.values() {
+            for (name, symbol) in scope_symbols {
+                if matches!(symbol.kind, SymbolKind::EnumerationValue) {
+                    if let Some(ref symbol_enum_type) = symbol.enum_type {
+                        if symbol_enum_type == enum_type {
+                            values.push(name);
+                        }
+                    }
+                }
+            }
+        }
+
+        values
+    }
 }
 
 impl Default for SymbolEnvironment {
@@ -357,7 +428,7 @@ mod tests {
     use ironplc_dsl::core::Id;
 
     #[test]
-    fn test_symbol_environment_basic_operations() {
+    fn symbol_environment_basic_operations_when_inserting_and_finding_symbols_then_works_correctly() {
         let mut env = SymbolEnvironment::new();
 
         // Test inserting global symbols
@@ -391,7 +462,7 @@ mod tests {
     }
 
     #[test]
-    fn test_symbol_environment_scope_management() {
+    fn symbol_environment_scope_management_when_managing_scopes_then_symbols_are_in_correct_scopes() {
         let mut env = SymbolEnvironment::new();
 
         let global_id = Id::from("GLOBAL");
@@ -426,7 +497,7 @@ mod tests {
     }
 
     #[test]
-    fn test_symbol_info_builder_methods() {
+    fn symbol_info_builder_methods_when_using_builder_pattern_then_creates_correct_symbol_info() {
         let span = ironplc_dsl::core::SourceSpan::default();
         let mut symbol_info = SymbolInfo::new(SymbolKind::Variable, ScopeKind::Global, span);
 
@@ -445,7 +516,7 @@ mod tests {
     }
 
     #[test]
-    fn test_total_symbols_count() {
+    fn total_symbols_count_when_counting_symbols_then_returns_correct_total() {
         let mut env = SymbolEnvironment::new();
 
         // Initially empty
@@ -470,7 +541,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_scope_symbols() {
+    fn get_scope_symbols_when_getting_symbols_from_scope_then_returns_correct_symbols() {
         let mut env = SymbolEnvironment::new();
 
         // Test global scope
@@ -505,7 +576,7 @@ mod tests {
     }
 
     #[test]
-    fn test_contains_and_get_methods() {
+    fn contains_and_get_methods_when_checking_symbol_existence_then_returns_correct_results() {
         let mut env = SymbolEnvironment::new();
 
         let id1 = Id::from("GLOBAL_VAR");
@@ -530,7 +601,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_global_and_scoped_symbols() {
+    fn get_global_and_scoped_symbols_when_getting_all_symbols_then_returns_correct_symbols() {
         let mut env = SymbolEnvironment::new();
 
         // Initially empty
@@ -577,7 +648,7 @@ mod tests {
     }
 
     #[test]
-    fn test_clear_cache() {
+    fn clear_cache_when_clearing_cache_then_symbols_are_removed() {
         let mut env = SymbolEnvironment::new();
 
         // clear_cache should not panic even when empty
@@ -594,7 +665,7 @@ mod tests {
     }
 
     #[test]
-    fn test_default_implementation() {
+    fn default_implementation_when_creating_default_then_creates_empty_environment() {
         let env = SymbolEnvironment::default();
 
         // Default should create an empty environment
@@ -608,7 +679,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_accessible_symbols() {
+    fn get_accessible_symbols_when_getting_accessible_symbols_then_returns_correct_symbols() {
         let mut env = SymbolEnvironment::new();
 
         // Add global symbols
@@ -644,7 +715,7 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_summary() {
+    fn generate_summary_when_generating_summary_then_returns_correct_summary() {
         let mut env = SymbolEnvironment::new();
 
         // Test empty summary
@@ -678,7 +749,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_symbol_details() {
+    fn get_symbol_details_when_getting_symbol_details_then_returns_correct_details() {
         let mut env = SymbolEnvironment::new();
 
         // Test getting details for non-existent symbol
@@ -717,7 +788,7 @@ mod tests {
     }
 
     #[test]
-    fn test_debug_implementation() {
+    fn debug_implementation_when_debugging_then_formats_correctly() {
         let mut env = SymbolEnvironment::new();
 
         // Test debug output for empty environment
@@ -738,7 +809,7 @@ mod tests {
     }
 
     #[test]
-    fn test_scope_kind_variants() {
+    fn scope_kind_variants_when_creating_scope_kinds_then_creates_correct_variants() {
         // Test Global scope
         let global_scope = ScopeKind::Global;
         assert_eq!(global_scope, ScopeKind::Global);
@@ -757,7 +828,7 @@ mod tests {
     }
 
     #[test]
-    fn test_edge_cases_and_error_conditions() {
+    fn edge_cases_and_error_conditions_when_handling_edge_cases_then_handles_correctly() {
         let mut env = SymbolEnvironment::new();
 
         // Test inserting same symbol multiple times (should not panic)
@@ -792,7 +863,7 @@ mod tests {
     }
 
     #[test]
-    fn test_symbol_info_span_and_scope() {
+    fn symbol_info_span_and_scope_when_creating_symbol_info_then_has_correct_span_and_scope() {
         let span = ironplc_dsl::core::SourceSpan::default();
         let scope = ScopeKind::Named(Id::from("TEST_FUNCTION"));
 

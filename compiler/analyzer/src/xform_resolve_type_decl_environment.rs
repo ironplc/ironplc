@@ -33,8 +33,7 @@ impl TypeEnvironment {
     ) -> Result<DataTypeDeclarationKind, Diagnostic> {
         // At this point we should have a type for the late bound declaration
         // so we can replace the late bound declaration with the correct type
-        let existing = self.get(&node.base_type_name);
-        let existing = existing.unwrap();
+        let existing = self.get(&node.base_type_name).unwrap();
 
         match existing.class {
             TypeClass::Simple => Ok(DataTypeDeclarationKind::Simple(SimpleDeclaration {
@@ -76,6 +75,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // TODO
                 span: node.type_name.span(),
                 class: TypeClass::Simple,
+                base_type: None,
             },
         )?;
         Ok(node)
@@ -106,8 +106,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // TODO
                 span: node.type_name.span(),
                 class: TypeClass::Enumeration,
+                base_type: None,
             },
         )?;
+
         Ok(node)
     }
 
@@ -121,6 +123,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // TODO
                 span: node.type_name.span(),
                 class: TypeClass::Structure,
+                base_type: None,
             },
         )?;
         Ok(node)
@@ -130,14 +133,49 @@ impl Fold<Diagnostic> for TypeEnvironment {
         &mut self,
         node: DataTypeDeclarationKind,
     ) -> Result<DataTypeDeclarationKind, Diagnostic> {
-        // The only type we care about here is late bound. We want to transform that
-        // into a different type and need to return a different data type declaration
-        // kind to do that. So, check the type and only handle it here if it is
-        // a late bound kind.
-        if let DataTypeDeclarationKind::LateBound(lb) = node {
-            self.transform_late_bound_declaration(lb)
-        } else {
-            node.recurse_fold(self)
+        match node {
+            DataTypeDeclarationKind::LateBound(lb) => {
+                let result = self.transform_late_bound_declaration(lb)?;
+
+                // If the LateBound was transformed into an Enumeration, we need to add it to the TypeEnvironment
+                if let DataTypeDeclarationKind::Enumeration(enum_decl) = &result {
+                    self.insert(
+                        &enum_decl.type_name,
+                        TypeAttributes {
+                            span: enum_decl.type_name.span(),
+                            class: TypeClass::Enumeration,
+                            base_type: Some(match &enum_decl.spec_init.spec {
+                                EnumeratedSpecificationKind::TypeName(base_type) => {
+                                    base_type.clone()
+                                }
+                                _ => unreachable!(
+                                    "LateBound should always resolve to TypeName variant"
+                                ),
+                            }),
+                        },
+                    )?;
+                }
+
+                Ok(result)
+            }
+            DataTypeDeclarationKind::Enumeration(enum_decl) => {
+                let enum_decl = self.fold_enumeration_declaration(enum_decl)?;
+                Ok(DataTypeDeclarationKind::Enumeration(enum_decl))
+            }
+            _ => node.recurse_fold(self),
+        }
+    }
+
+    fn fold_library_element_kind(
+        &mut self,
+        node: LibraryElementKind,
+    ) -> Result<LibraryElementKind, Diagnostic> {
+        match node {
+            LibraryElementKind::DataTypeDeclaration(kind) => {
+                let kind = self.fold_data_type_declaration_kind(kind)?;
+                Ok(LibraryElementKind::DataTypeDeclaration(kind))
+            }
+            _ => node.recurse_fold(self),
         }
     }
 }
