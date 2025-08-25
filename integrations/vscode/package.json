@@ -100,8 +100,8 @@
     "test:functional": "node ./out/test/functional/runTest.js"
   },
   "devDependencies": {
-    "@stylistic/eslint-plugin": "^2.12.1",
-    "@stylistic/eslint-plugin-ts": "^2.12.1",
+    "@stylistic/eslint-plugin": "^5",
+    "@stylistic/eslint-plugin-ts": "^4",
     "@types/mocha": "^10.0.0",
     "@types/node": "22.x",
     "@types/vscode": "^1.75.0",
@@ -116,6 +116,6 @@
     "typescript": "^5.1.6"
   },
   "dependencies": {
-    "vscode-languageclient": "^8.1.0"
+    "vscode-languageclient": "^9"
   }
 }
