@@ -219,9 +219,9 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
             &node.spec_init.spec
         {
             for value in &values.values {
-                self.env.insert(
+                self.env.insert_enumeration_value(
                     &value.value,
-                    SymbolKind::EnumerationValue,
+                    &node.type_name,
                     &ScopeKind::Global,
                 )?;
             }

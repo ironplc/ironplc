@@ -30,12 +30,11 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::Located,
+    core::{Id, Located},
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
-use std::collections::{HashMap, HashSet};
 
 use crate::{
     result::SemanticResult, symbol_environment::SymbolEnvironment,
@@ -44,87 +43,56 @@ use crate::{
 
 pub fn apply(
     lib: &Library,
-    _type_environment: &TypeEnvironment,
-    _symbol_environment: &SymbolEnvironment,
+    type_environment: &TypeEnvironment,
+    symbol_environment: &SymbolEnvironment,
 ) -> SemanticResult {
-    // Collect the data type definitions from the library into a map so that
-    // we can quickly look up invocations
-    let mut enum_defs = HashMap::new();
-    for elem in lib.elements.iter() {
-        if let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
-            enum_dec,
-        )) = elem
-        {
-            enum_defs.insert(enum_dec.type_name.clone(), enum_dec);
-        }
-    }
-
     // Walk the library to find all references to enumerations
     // checking that all references use an enumeration value
     // that is part of the enumeration
-    let mut visitor = RuleDeclaredEnumeratedValues::new(&enum_defs);
+    let mut visitor = RuleDeclaredEnumeratedValues::new(type_environment, symbol_environment);
     visitor.walk(lib).map_err(|e| vec![e])
 }
 
 struct RuleDeclaredEnumeratedValues<'a> {
-    enum_defs: &'a HashMap<Type, &'a EnumerationDeclaration>,
+    type_environment: &'a TypeEnvironment,
+    symbol_environment: &'a SymbolEnvironment,
 }
+
 impl<'a> RuleDeclaredEnumeratedValues<'a> {
-    fn new(enum_defs: &'a HashMap<Type, &'a EnumerationDeclaration>) -> Self {
-        RuleDeclaredEnumeratedValues { enum_defs }
+    fn new(
+        type_environment: &'a TypeEnvironment,
+        symbol_environment: &'a SymbolEnvironment,
+    ) -> Self {
+        RuleDeclaredEnumeratedValues {
+            type_environment,
+            symbol_environment,
+        }
     }
 
     /// Returns enumeration values for a given enumeration type name.
     ///
-    /// Recursively finds the enumeration values when one enumeration
-    /// declaration is an alias of another enumeration declaration.
+    /// Uses the TypeEnvironment to resolve aliases and the SymbolEnvironment to find values.
+    /// Handles alias chains by following references to base enumeration types.
     ///
-    /// Returns Ok containing the list of enumeration values.
+    /// Returns Ok containing the list of valid enumeration value IDs.
     ///
     /// # Errors
     ///
     /// Returns Err(String) description of the error if:
     ///
     /// * a type name does not exist
-    /// * recursive type name
-    fn find_enum_declaration_values(
-        &self,
-        type_name: &'a Type,
-    ) -> Result<&Vec<EnumeratedValue>, Diagnostic> {
-        // Keep track of names we've seen before so that we can be sure that
-        // the loop terminates
-        let mut seen_names = HashSet::new();
+    /// * the type is not an enumeration
+    /// * there's a circular reference in the alias chain
+    fn find_enum_declaration_values(&self, type_name: &Type) -> Result<Vec<&Id>, Diagnostic> {
+        // Resolve any aliases to get the base enumeration type
+        let base_type = self.type_environment.resolve_enumeration_alias(type_name)?;
 
-        let mut name = type_name;
-        loop {
-            match self.enum_defs.get(name) {
-                Some(def) => {
-                    seen_names.insert(name);
-                    // The definition might be the final definition, or it
-                    // might be a reference to another name
-                    match &def.spec_init.spec {
-                        EnumeratedSpecificationKind::TypeName(n) => name = n,
-                        EnumeratedSpecificationKind::Values(values) => return Ok(&values.values),
-                    }
-                }
-                None => {
-                    return Err(Diagnostic::problem(
-                        Problem::EnumNotDeclared,
-                        Label::span(name.span(), "Enumeration reference"),
-                    )
-                    .with_context_type("name", name))
-                }
-            }
+        // Get all enumeration values for the base type from the symbol environment
+        let enum_values = self
+            .symbol_environment
+            .get_enumeration_values_for_type(&base_type);
 
-            // Check that our next name is new and we haven't seen it before
-            if seen_names.contains(name) {
-                return Err(Diagnostic::problem(
-                    Problem::EnumRecursive,
-                    Label::span(name.span(), "Current enumeration"),
-                )
-                .with_context_type("type", name));
-            }
-        }
+        Ok(enum_values)
     }
 }
 
@@ -137,10 +105,8 @@ impl Visitor<Diagnostic> for RuleDeclaredEnumeratedValues<'_> {
     ) -> Result<Self::Value, Diagnostic> {
         let defined_values = self.find_enum_declaration_values(&init.type_name)?;
         if let Some(value) = &init.initial_value {
-            // TODO this is using the Id, but not the full enumerated value
-            // and we don't have declared appropriate comparison between things
-            // that are known but partially declared
-            if !defined_values.contains(value) {
+            // Check if the value is in the list of defined enumeration values
+            if !defined_values.iter().any(|id| **id == value.value) {
                 return Err(Diagnostic::problem(
                     Problem::EnumValueNotDefined,
                     Label::span(value.span(), "Expected value in enumeration"),
@@ -155,9 +121,10 @@ impl Visitor<Diagnostic> for RuleDeclaredEnumeratedValues<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
-    use crate::test_helpers::parse_and_resolve_types;
+    use crate::stages::analyze;
+    use ironplc_dsl::core::FileId;
+    use ironplc_parser::{options::ParseOptions, parse_program};
 
     #[test]
     fn apply_when_var_init_undefined_enum_value_then_error() {
@@ -172,10 +139,8 @@ LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
+        let result = analyze(&[&library]);
 
         assert!(result.is_err());
     }
@@ -193,10 +158,8 @@ LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
+        let result = analyze(&[&library]);
 
         assert!(result.is_ok());
     }
@@ -216,10 +179,8 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
+        let result = analyze(&[&library]);
 
         assert!(result.is_ok());
     }

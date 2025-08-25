@@ -38,11 +38,7 @@ pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
             Label::span(span, "First location"),
         )]);
     }
-    let (library, symbol_environment) = resolve_types(sources)?;
-    let type_environment = TypeEnvironmentBuilder::new()
-        .with_elementary_types()
-        .build()
-        .map_err(|err| vec![err])?;
+    let (library, type_environment, symbol_environment) = resolve_types(sources)?;
     let result = semantic(&library, &type_environment, &symbol_environment);
 
     // TODO this is currently in progress. It isn't clear to me yet how this will influence
@@ -56,7 +52,7 @@ pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
 
 pub(crate) fn resolve_types(
     sources: &[&Library],
-) -> Result<(Library, SymbolEnvironment), Vec<Diagnostic>> {
+) -> Result<(Library, TypeEnvironment, SymbolEnvironment), Vec<Diagnostic>> {
     // We want to analyze this as a complete set, so we need to join the items together
     // into a single library. Extend owns the item so after this we are free to modify
     let mut library = Library::new();
@@ -97,7 +93,7 @@ pub(crate) fn resolve_types(
     debug!("Symbol Environment:");
     debug!("{symbol_environment:?}");
 
-    Ok((library, symbol_environment))
+    Ok((library, type_environment, symbol_environment))
 }
 
 /// Semantic implements semantic analysis (stage 3).
