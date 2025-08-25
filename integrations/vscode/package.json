@@ -6,7 +6,8 @@
   "version": "0.127.0",
   "icon": "images/logo.png",
   "engines": {
-    "vscode": "^1.75.0"
+    "vscode": "^1.75.0",
+    "node": ">=22.0.0"
   },
   "license": "MIT",
   "author": {
