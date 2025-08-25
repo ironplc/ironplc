@@ -35,4 +35,5 @@ P0033,PouDeclNameDuplicated,POU declaration name is duplicated
 P0034,UnexpectedElement,Element is not permitted at this compiler state
 P0035,ParentEnumNotDeclared,Parent enumeration is not declared
 P0036,SymbolDeclDuplicated,Symbol declaration name is duplicated
+P0037,RecursiveTypeCycle,Library has a recursive cycle in resolving type names
 P9999,NotImplemented,Capability is not implemented (yet!)
