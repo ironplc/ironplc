@@ -25,9 +25,16 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::result::SemanticResult;
+use crate::{
+    result::SemanticResult, symbol_environment::SymbolEnvironment,
+    type_environment::TypeEnvironment,
+};
 
-pub fn apply(lib: &Library) -> SemanticResult {
+pub fn apply(
+    lib: &Library,
+    _type_environment: &TypeEnvironment,
+    _symbol_environment: &SymbolEnvironment,
+) -> SemanticResult {
     let mut visitor = RuleDeclSubrangeLimits {
         diagnostics: Vec::new(),
     };
@@ -79,7 +86,9 @@ TYPE
 END_TYPE";
 
         let library = parse_and_resolve_types(program);
-        let result = apply(&library);
+        let type_env = TypeEnvironment::new();
+        let symbol_env = SymbolEnvironment::new();
+        let result = apply(&library, &type_env, &symbol_env);
 
         assert!(result.is_ok());
     }
@@ -92,7 +101,9 @@ TYPE
 END_TYPE";
 
         let library = parse_and_resolve_types(program);
-        let result = apply(&library);
+        let type_env = TypeEnvironment::new();
+        let symbol_env = SymbolEnvironment::new();
+        let result = apply(&library, &type_env, &symbol_env);
 
         assert!(result.is_err());
     }
