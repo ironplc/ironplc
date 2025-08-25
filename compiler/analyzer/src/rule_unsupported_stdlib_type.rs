@@ -19,9 +19,16 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::{result::SemanticResult, stdlib::is_unsupported_standard_type};
+use crate::{
+    result::SemanticResult, stdlib::is_unsupported_standard_type,
+    symbol_environment::SymbolEnvironment, type_environment::TypeEnvironment,
+};
 
-pub fn apply(lib: &Library) -> SemanticResult {
+pub fn apply(
+    lib: &Library,
+    _type_environment: &TypeEnvironment,
+    _symbol_environment: &SymbolEnvironment,
+) -> SemanticResult {
     let mut visitor = RuleUnsupportedStdLibType {
         diagnostics: Vec::new(),
     };
@@ -71,7 +78,9 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let input = parse_and_resolve_types(program);
-        let result = apply(&input);
+        let type_env = TypeEnvironment::new();
+        let symbol_env = SymbolEnvironment::new();
+        let result = apply(&input, &type_env, &symbol_env);
 
         assert!(result.is_err());
         let err = result.unwrap_err();

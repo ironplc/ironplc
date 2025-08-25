@@ -38,8 +38,12 @@ pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
             Label::span(span, "First location"),
         )]);
     }
-    let (library, _symbol_environment) = resolve_types(sources)?;
-    let result = semantic(&library);
+    let (library, symbol_environment) = resolve_types(sources)?;
+    let type_environment = TypeEnvironmentBuilder::new()
+        .with_elementary_types()
+        .build()
+        .map_err(|err| vec![err])?;
+    let result = semantic(&library, &type_environment, &symbol_environment);
 
     // TODO this is currently in progress. It isn't clear to me yet how this will influence
     // semantic analysis, but it should because the type table should influence rule checking.
@@ -100,8 +104,12 @@ pub(crate) fn resolve_types(
 ///
 /// Returns `Ok(())` if the library is free of semantic errors.
 /// Returns `Err(String)` if the library contains a semantic error.
-pub(crate) fn semantic(library: &Library) -> SemanticResult {
-    let functions: Vec<fn(&Library) -> SemanticResult> = vec![
+pub(crate) fn semantic(
+    library: &Library,
+    type_environment: &TypeEnvironment,
+    symbol_environment: &SymbolEnvironment,
+) -> SemanticResult {
+    let functions: Vec<fn(&Library, &TypeEnvironment, &SymbolEnvironment) -> SemanticResult> = vec![
         rule_decl_struct_element_unique_names::apply,
         rule_decl_subrange_limits::apply,
         rule_enumeration_values_unique::apply,
@@ -118,7 +126,7 @@ pub(crate) fn semantic(library: &Library) -> SemanticResult {
 
     let mut all_diagnostics = vec![];
     for func in functions {
-        match func(library) {
+        match func(library, type_environment, symbol_environment) {
             Ok(_) => {
                 // Nothing to do here
             }

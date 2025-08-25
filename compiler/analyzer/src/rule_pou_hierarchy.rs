@@ -42,9 +42,16 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::result::SemanticResult;
+use crate::{
+    result::SemanticResult, symbol_environment::SymbolEnvironment,
+    type_environment::TypeEnvironment,
+};
 
-pub fn apply(lib: &Library) -> SemanticResult {
+pub fn apply(
+    lib: &Library,
+    _type_environment: &TypeEnvironment,
+    _symbol_environment: &SymbolEnvironment,
+) -> SemanticResult {
     let mut hierarchy_visitor = HierarchyVisitor::new();
     hierarchy_visitor.walk(lib).map_err(|e| vec![e])?;
 
@@ -189,7 +196,10 @@ impl Visitor<Diagnostic> for HierarchyVisitor {
 
 #[cfg(test)]
 mod tests {
-    use crate::{rule_pou_hierarchy::apply, test_helpers::parse_and_resolve_types};
+    use crate::{
+        rule_pou_hierarchy::apply, symbol_environment::SymbolEnvironment,
+        test_helpers::parse_and_resolve_types, type_environment::TypeEnvironment,
+    };
 
     #[test]
     fn apply_when_function_invokes_function_block_then_error() {
@@ -210,7 +220,9 @@ mod tests {
         END_FUNCTION";
 
         let library = parse_and_resolve_types(program);
-        let _ = apply(&library);
+        let type_env = TypeEnvironment::new();
+        let symbol_env = SymbolEnvironment::new();
+        let _ = apply(&library, &type_env, &symbol_env);
         // TODO
         // assert!(result.is_ok());
     }
