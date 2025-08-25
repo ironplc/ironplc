@@ -428,7 +428,8 @@ mod tests {
     use ironplc_dsl::core::Id;
 
     #[test]
-    fn symbol_environment_basic_operations_when_inserting_and_finding_symbols_then_works_correctly() {
+    fn symbol_environment_basic_operations_when_inserting_and_finding_symbols_then_works_correctly()
+    {
         let mut env = SymbolEnvironment::new();
 
         // Test inserting global symbols
@@ -462,7 +463,8 @@ mod tests {
     }
 
     #[test]
-    fn symbol_environment_scope_management_when_managing_scopes_then_symbols_are_in_correct_scopes() {
+    fn symbol_environment_scope_management_when_managing_scopes_then_symbols_are_in_correct_scopes()
+    {
         let mut env = SymbolEnvironment::new();
 
         let global_id = Id::from("GLOBAL");

@@ -163,10 +163,7 @@ impl TypeEnvironment {
     /// * Returns an error if there's a circular reference in the alias chain
     /// * Returns an error if the type is not found
     /// * Returns an error if the type is not an enumeration
-    pub(crate) fn resolve_enumeration_alias(
-        &self,
-        type_name: &Type,
-    ) -> Result<Type, Diagnostic> {
+    pub(crate) fn resolve_enumeration_alias(&self, type_name: &Type) -> Result<Type, Diagnostic> {
         let base_type = self.resolve_alias(type_name)?;
         if self.is_enumeration(&base_type) {
             Ok(base_type)
@@ -250,14 +247,15 @@ mod tests {
         // Test alias resolution
         let resolved = env.resolve_alias(&alias_type).unwrap();
         assert_eq!(resolved, base_type.clone());
-        
+
         // Test base type resolution (should return itself)
         let resolved = env.resolve_alias(&base_type).unwrap();
         assert_eq!(resolved, base_type);
     }
 
     #[test]
-    fn resolve_enumeration_alias_when_type_is_enumeration_alias_then_resolves_to_base_enumeration() {
+    fn resolve_enumeration_alias_when_type_is_enumeration_alias_then_resolves_to_base_enumeration()
+    {
         let mut env = TypeEnvironment::new();
 
         // Add a base enumeration type
@@ -288,7 +286,7 @@ mod tests {
         // Test enumeration alias resolution
         let resolved = env.resolve_enumeration_alias(&alias_type).unwrap();
         assert_eq!(resolved, base_type.clone());
-        
+
         // Test base type resolution (should return itself)
         let resolved = env.resolve_enumeration_alias(&base_type).unwrap();
         assert_eq!(resolved, base_type);
