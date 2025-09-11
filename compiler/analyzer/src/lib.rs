@@ -12,7 +12,7 @@ mod rule_function_block_invocation;
 mod rule_pou_hierarchy;
 mod rule_program_task_definition_exists;
 
-pub mod memory_layout;
+mod memory_layout;
 mod rule_unsupported_stdlib_type;
 mod rule_use_declared_enumerated_value;
 mod rule_use_declared_symbolic_var;
@@ -21,7 +21,7 @@ mod rule_var_decl_const_not_fb;
 mod rule_var_decl_global_const_requires_external_const;
 mod scoped_table;
 pub mod stages;
-pub mod static_allocation;
+mod static_allocation;
 mod stdlib;
 pub mod symbol_environment;
 pub mod type_environment;

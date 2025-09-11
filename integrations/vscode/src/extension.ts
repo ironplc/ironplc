@@ -63,7 +63,7 @@ function createClient(compilerFilePath: string, config: vscode.WorkspaceConfigur
     args.push('--log-file', logFile);
   }
 
-  args.push(['lsp']);
+  args.push('lsp');
   console.debug('Extension "ironplc" starting with args: ' + args);
 
   const application = {
