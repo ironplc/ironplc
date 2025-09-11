@@ -174,7 +174,7 @@ endtoend-smoke-test compiler-version extension-version extension-name:
 
   # Create the settings.json with the configuration to enable trace level logging (that's the 4 -v's)
   New-Item "{{env_var('APPDATA')}}\Code\User\settings.json" -Force
-  Set-Content "{{env_var('APPDATA')}}\Code\User\settings.json" '{ "security.workspace.trust.enabled": false, "ironplc.logLevel": "TRACE" }'
+  Set-Content "{{env_var('APPDATA')}}\Code\User\settings.json" '{ "security.workspace.trust.enabled": false, "ironplc.logLevel": "TRACE", "ironplc.logFile": "{{env_var('LOCALAPPDATA')}}\Temp\ironplcc\ironplcc.log" }'
   Get-Content "{{env_var('APPDATA')}}\Code\User\settings.json"
 
   # Open an example file that is part of the compiler - this is a hard coded path

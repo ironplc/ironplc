@@ -50,10 +50,20 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 function createClient(compilerFilePath: string, config: vscode.WorkspaceConfiguration) {
+  let args = [];
+
+  // Add the log level
   const logLevel = config.get<string>('logLevel', 'ERROR');
   const logVerbosity = VERBOSITY.get(logLevel) || [];
+  args.push(...logVerbosity);
 
-  const args = logVerbosity.concat(['lsp']);
+  // Override the log file if set
+  const logFile = config.get<string>('logFile', '');
+  if (logFile) {
+    args.push('--log-file', logFile);
+  }
+
+  args.push('lsp');
   console.debug('Extension "ironplc" starting with args: ' + args);
 
   const application = {

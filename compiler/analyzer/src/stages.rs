@@ -17,20 +17,43 @@ use crate::{
     rule_program_task_definition_exists, rule_unsupported_stdlib_type,
     rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
     rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
-    rule_var_decl_global_const_requires_external_const,
+    rule_var_decl_global_const_requires_external_const, static_allocation,
     symbol_environment::SymbolEnvironment,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
-    type_table, xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
+    xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
     xform_resolve_symbol_environment, xform_resolve_type_decl_environment,
     xform_toposort_declarations,
 };
+
+/// Analyze compiles the set of files as a self-contained and complete unit.
+///
+/// Returns `Ok(Library)` if analysis succeeded (containing a possibly new library) that is
+/// the merge of the inputs.
+/// Returns `Err(Diagnostic)` if analysis did not succeed.
+pub fn compile(
+    _library: &Library,
+    _type_environment: &TypeEnvironment,
+    symbol_environment: &SymbolEnvironment,
+) -> Result<(), Vec<Diagnostic>> {
+    // Generate static allocation information for all variables
+    let static_allocation_info =
+        static_allocation::generate_static_allocation_info(symbol_environment);
+
+    // Output the static allocation information using debug! macro
+    debug!("Static Allocation Information:");
+    debug!("{}", static_allocation_info);
+
+    Ok(())
+}
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
 ///
 /// Returns `Ok(Library)` if analysis succeeded (containing a possibly new library) that is
 /// the merge of the inputs.
 /// Returns `Err(Diagnostic)` if analysis did not succeed.
-pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
+pub fn analyze(
+    sources: &[&Library],
+) -> Result<(Library, TypeEnvironment, SymbolEnvironment), Vec<Diagnostic>> {
     if sources.is_empty() {
         let span = SourceSpan::range(0, 0).with_file_id(&FileId::default());
         return Err(vec![Diagnostic::problem(
@@ -39,15 +62,9 @@ pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
         )]);
     }
     let (library, type_environment, symbol_environment) = resolve_types(sources)?;
-    let result = semantic(&library, &type_environment, &symbol_environment);
+    semantic(&library, &type_environment, &symbol_environment)?;
 
-    // TODO this is currently in progress. It isn't clear to me yet how this will influence
-    // semantic analysis, but it should because the type table should influence rule checking.
-    // For now, this is just after the rules as they were originally written.
-    let type_table_result = type_table::apply(&library)?;
-    debug!("{type_table_result:?}");
-
-    result
+    Ok((library, type_environment, symbol_environment))
 }
 
 pub(crate) fn resolve_types(

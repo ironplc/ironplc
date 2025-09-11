@@ -52,7 +52,7 @@
           "editPresentation": "singlelineText"
         },
         "ironplc.logLevel": {
-          "markdownDescription": "Log level for the language server provider.",
+          "markdownDescription": "Log level for the IronPLC compiler.",
           "type": "string",
           "default": "ERROR",
           "enum": [
@@ -62,6 +62,12 @@
             "DEBUG",
             "TRACE"
           ]
+        },
+        "ironplc.logFile": {
+          "markdownDescription": "Log file for the IronPLC compiler.",
+          "type": "string",
+          "default": "",
+          "editPresentation": "singlelineText"
         }
       }
     },

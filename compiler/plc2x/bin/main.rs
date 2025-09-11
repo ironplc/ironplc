@@ -17,6 +17,10 @@ struct Args {
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
 
+    /// Sets the logging to write to a file.
+    #[arg(short, long)]
+    log_file: Option<PathBuf>,
+
     /// Selects the subcommand.
     #[command(subcommand)]
     action: Action,
@@ -52,6 +56,8 @@ enum Action {
         /// Files to tokenize.
         files: Vec<PathBuf>,
     },
+    /// The compile action
+    Compile { files: Vec<PathBuf> },
     /// Run in Language Server Protocol mode to integrate with development tools.
     Lsp {
         #[arg(long)]
@@ -65,7 +71,7 @@ pub fn main() -> Result<(), String> {
     // The Err variant is a String so that the command line shows a nice message.
     let args = Args::parse();
 
-    logger::configure(args.verbose)?;
+    logger::configure(args.verbose, args.log_file)?;
 
     match args.action {
         Action::Lsp { stdio: _ } => {
@@ -75,6 +81,7 @@ pub fn main() -> Result<(), String> {
         Action::Check { files } => cli::check(&files, false),
         Action::Echo { files } => cli::echo(&files, false),
         Action::Tokenize { files } => cli::tokenize(&files, false),
+        Action::Compile { files } => cli::compile(&files, false),
         Action::Version => {
             println!("ironplcc version {VERSION}");
             Ok(())
