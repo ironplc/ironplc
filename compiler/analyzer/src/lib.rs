@@ -12,6 +12,7 @@ mod rule_function_block_invocation;
 mod rule_pou_hierarchy;
 mod rule_program_task_definition_exists;
 
+pub mod memory_layout;
 mod rule_unsupported_stdlib_type;
 mod rule_use_declared_enumerated_value;
 mod rule_use_declared_symbolic_var;
@@ -20,15 +21,19 @@ mod rule_var_decl_const_not_fb;
 mod rule_var_decl_global_const_requires_external_const;
 mod scoped_table;
 pub mod stages;
+pub mod static_allocation;
 mod stdlib;
-mod symbol_environment;
-mod type_environment;
-mod type_table;
+pub mod symbol_environment;
+pub mod type_environment;
 mod xform_resolve_late_bound_expr_kind;
 mod xform_resolve_late_bound_type_initializer;
 mod xform_resolve_symbol_environment;
 mod xform_resolve_type_decl_environment;
 mod xform_toposort_declarations;
+
+// Re-export commonly used types
+pub use symbol_environment::SymbolEnvironment;
+pub use type_environment::TypeEnvironment;
 
 #[cfg(test)]
 mod test_helpers;

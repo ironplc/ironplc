@@ -108,6 +108,19 @@ pub fn tokenize(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> 
     Ok(())
 }
 
+pub fn compile(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
+    let mut project = create_project(paths, suppress_output)?;
+
+    // Analyze the set
+    if let Err(err) = project.compile() {
+        trace!("Errors {err:?}");
+        handle_diagnostics(&err, Some(&project), suppress_output);
+        return Err(String::from("Error during compilation"));
+    }
+
+    Ok(())
+}
+
 fn create_project(paths: &[PathBuf], suppress_output: bool) -> Result<FileBackedProject, String> {
     trace!("Reading paths {paths:?}");
     let mut files: Vec<PathBuf> = vec![];

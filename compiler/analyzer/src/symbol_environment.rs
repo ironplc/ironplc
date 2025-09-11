@@ -62,6 +62,21 @@ pub struct SymbolInfo {
     pub enum_type: Option<Type>,
     /// Source location information
     pub span: ironplc_dsl::core::SourceSpan,
+    /// Memory layout information for statically allocated variables
+    pub memory_layout: Option<MemoryLayout>,
+}
+
+/// Memory layout information for a statically allocated variable
+#[derive(Debug, Clone)]
+pub struct MemoryLayout {
+    /// Offset in bytes from the start of the scope's memory region
+    pub offset: usize,
+    /// Size of the variable in bytes
+    pub size: usize,
+    /// Alignment requirement in bytes (for proper memory layout)
+    pub alignment: usize,
+    /// Whether this variable is a constant (affects memory placement)
+    pub is_constant: bool,
 }
 
 impl SymbolInfo {
@@ -74,6 +89,7 @@ impl SymbolInfo {
             data_type: None,
             enum_type: None,
             span,
+            memory_layout: None,
         }
     }
 
@@ -97,6 +113,12 @@ impl SymbolInfo {
     /// Set the enumeration type for enumeration value symbols
     pub fn with_enum_type(mut self, enum_type: Type) -> Self {
         self.enum_type = Some(enum_type);
+        self
+    }
+
+    /// Set memory layout information for this symbol
+    pub fn with_memory_layout(mut self, memory_layout: MemoryLayout) -> Self {
+        self.memory_layout = Some(memory_layout);
         self
     }
 }

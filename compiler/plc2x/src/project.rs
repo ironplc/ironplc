@@ -5,8 +5,9 @@
 
 use std::{collections::HashMap, fs, path::Path};
 
-use ironplc_analyzer::stages::analyze;
+use ironplc_analyzer::{stages::analyze, SymbolEnvironment, TypeEnvironment};
 use ironplc_dsl::{
+    common::Library,
     core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
@@ -32,6 +33,9 @@ pub trait Project {
 
     /// Requests semantic analysis for the project.
     fn semantic(&mut self) -> Result<(), Vec<Diagnostic>>;
+
+    // Requests compilation for the project.
+    fn compile(&mut self) -> Result<(), Vec<Diagnostic>>;
 
     /// Gets the sources that are the project.
     fn sources(&self) -> Vec<&Source>;
@@ -72,6 +76,46 @@ impl FileBackedProject {
 
     pub fn get(&self, file_id: &FileId) -> Option<&Source> {
         self.sources.get(file_id)
+    }
+
+    fn semantic_impl(
+        &mut self,
+    ) -> Result<(Library, TypeEnvironment, SymbolEnvironment), Vec<Diagnostic>> {
+        let library_results: Vec<_> = self
+            .sources
+            .iter_mut()
+            .map(|source| source.1.library())
+            .collect();
+
+        // We would like to do "best effort" semantic analysis. So, we will do
+        // semantic analysis on the items we can analyze, and the provide full
+        // diagnostics for any problems
+        let mut all_libraries = vec![];
+        let mut all_diagnostics: Vec<Diagnostic> = vec![];
+        for library_result in library_results {
+            match library_result {
+                Ok(library) => {
+                    all_libraries.push(library);
+                }
+                Err(diagnostics) => {
+                    for diagnostic in diagnostics {
+                        all_diagnostics.push(diagnostic.clone());
+                    }
+                }
+            }
+        }
+
+        // Do the analysis
+        match analyze(&all_libraries) {
+            Ok((library, type_environment, symbol_environment)) => {
+                Ok((library, type_environment, symbol_environment))
+            }
+            Err(diagnostics) => {
+                // If we had an error, then add more diagnostics to any that we already had
+                all_diagnostics.extend(diagnostics);
+                Err(all_diagnostics)
+            }
+        }
     }
 }
 
@@ -179,6 +223,19 @@ impl Project for FileBackedProject {
                 // If we had an error, then add more diagnostics to any that we already had
                 all_diagnostics.extend(diagnostics);
                 Err(all_diagnostics)
+            }
+        }
+    }
+
+    fn compile(&mut self) -> Result<(), Vec<Diagnostic>> {
+        let (library, type_environment, symbol_environment) = self.semantic_impl()?;
+
+        // Do the compilation
+        match ironplc_analyzer::stages::compile(&library, &type_environment, &symbol_environment) {
+            Ok(_) => Ok(()),
+            Err(diagnostics) => {
+                // If we had an error, then add more diagnostics to any that we already had
+                Err(diagnostics)
             }
         }
     }
