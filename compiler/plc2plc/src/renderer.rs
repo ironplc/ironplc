@@ -233,18 +233,18 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &LateBoundDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_type(&node.data_type_name)?;
+        self.visit_type_name(&node.data_type_name)?;
 
         self.write_ws(":");
 
-        self.visit_type(&node.base_type_name)
+        self.visit_type_name(&node.base_type_name)
     }
 
     fn visit_enumeration_declaration(
         &mut self,
         node: &EnumerationDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_type(&node.type_name)?;
+        self.visit_type_name(&node.type_name)?;
 
         self.write_ws(":");
 
@@ -281,7 +281,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &SubrangeDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_type(&node.type_name)?;
+        self.visit_type_name(&node.type_name)?;
 
         self.write_ws(":");
 
@@ -311,7 +311,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &StructureDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_type(&node.type_name)?;
+        self.visit_type_name(&node.type_name)?;
 
         self.write_ws(":");
 
@@ -345,7 +345,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &StructureInitializationDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_type(&node.type_name)?;
+        self.visit_type_name(&node.type_name)?;
 
         if !node.elements_init.is_empty() {
             self.write_ws(":=");
@@ -375,7 +375,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &ArrayDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_type(&node.type_name)?;
+        self.visit_type_name(&node.type_name)?;
 
         self.write_ws(":");
 
@@ -389,7 +389,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &StringDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_type(&node.type_name)?;
+        self.visit_type_name(&node.type_name)?;
 
         self.write_ws(":");
 
@@ -424,7 +424,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &ArraySpecificationKind,
     ) -> Result<Self::Value, Diagnostic> {
         match &node {
-            ArraySpecificationKind::Type(id) => self.visit_type(id)?,
+            ArraySpecificationKind::Type(id) => self.visit_type_name(id)?,
             ArraySpecificationKind::Subranges(subranges) => {
                 self.visit_array_subranges(subranges)?;
             }
@@ -441,7 +441,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("]");
         self.write_ws("OF");
 
-        self.visit_type(&node.type_name)
+        self.visit_type_name(&node.type_name)
     }
 
     // 2.4.2.1
@@ -469,7 +469,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws(":");
         self.visit_symbolic_variable_kind(&node.symbolic_variable)?;
         self.write_ws(":");
-        self.visit_type(&node.type_name)?;
+        self.visit_type_name(&node.type_name)?;
 
         if let Some(dir) = &node.direction {
             let dir = match dir {
@@ -613,7 +613,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &SimpleInitializer,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_type(&node.type_name)?;
+        self.visit_type_name(&node.type_name)?;
 
         if let Some(iv) = &node.initial_value {
             self.write_ws(":=");
@@ -681,7 +681,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &FunctionBlockInitialValueAssignment,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_type(&node.type_name)
+        self.visit_type_name(&node.type_name)
     }
 
     // 2.4.3.2
@@ -704,7 +704,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &EnumeratedInitialValueAssignment,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_type(&node.type_name)?;
+        self.visit_type_name(&node.type_name)?;
 
         if let Some(init) = &node.initial_value {
             self.write_ws(":=");
@@ -737,7 +737,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("FUNCTION");
         self.visit_id(&node.name)?;
         self.write_ws(":");
-        self.visit_type(&node.return_type)?;
+        self.visit_type_name(&node.return_type)?;
 
         if !node.variables.is_empty() {
             self.indent();
@@ -1032,7 +1032,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         self.write_ws(":");
 
-        self.visit_type(&node.type_name)?;
+        self.visit_type_name(&node.type_name)?;
 
         self.write_ws(":=");
 

@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use ironplc_dsl::{
-    common::Type,
+    common::TypeName,
     core::{Located, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
@@ -55,12 +55,12 @@ pub struct TypeAttributes {
     pub span: SourceSpan,
     pub class: TypeClass,
     /// For alias types, stores the base type name
-    pub base_type: Option<Type>,
+    pub base_type: Option<TypeName>,
 }
 
 #[derive(Debug)]
 pub struct TypeEnvironment {
-    table: HashMap<Type, TypeAttributes>,
+    table: HashMap<TypeName, TypeAttributes>,
 }
 
 impl Located for TypeAttributes {
@@ -83,7 +83,7 @@ impl TypeEnvironment {
     /// and does not insert the type.
     pub(crate) fn insert(
         &mut self,
-        type_name: &Type,
+        type_name: &TypeName,
         symbol: TypeAttributes,
     ) -> Result<(), Diagnostic> {
         self.table.insert(type_name.clone(), symbol).map_or_else(
@@ -99,12 +99,12 @@ impl TypeEnvironment {
     }
 
     /// Gets the type from the environment.
-    pub(crate) fn get(&self, type_name: &Type) -> Option<&TypeAttributes> {
+    pub(crate) fn get(&self, type_name: &TypeName) -> Option<&TypeAttributes> {
         self.table.get(type_name)
     }
 
     /// Checks if a type is an enumeration.
-    pub(crate) fn is_enumeration(&self, type_name: &Type) -> bool {
+    pub(crate) fn is_enumeration(&self, type_name: &TypeName) -> bool {
         self.table
             .get(type_name)
             .map(|attrs| matches!(attrs.class, TypeClass::Enumeration))
@@ -123,7 +123,7 @@ impl TypeEnvironment {
     /// # Errors
     /// * Returns an error if there's a circular reference in the alias chain
     /// * Returns an error if the type is not found
-    pub(crate) fn resolve_alias(&self, type_name: &Type) -> Result<Type, Diagnostic> {
+    pub(crate) fn resolve_alias(&self, type_name: &TypeName) -> Result<TypeName, Diagnostic> {
         let mut visited = std::collections::HashSet::new();
         let mut current = type_name.clone();
 
@@ -163,7 +163,7 @@ impl TypeEnvironment {
     /// * Returns an error if there's a circular reference in the alias chain
     /// * Returns an error if the type is not found
     /// * Returns an error if the type is not an enumeration
-    pub(crate) fn resolve_enumeration_alias(&self, type_name: &Type) -> Result<Type, Diagnostic> {
+    pub(crate) fn resolve_enumeration_alias(&self, type_name: &TypeName) -> Result<TypeName, Diagnostic> {
         let base_type = self.resolve_alias(type_name)?;
         if self.is_enumeration(&base_type) {
             Ok(base_type)
@@ -198,7 +198,7 @@ impl TypeEnvironmentBuilder {
         if self.has_elementary_types {
             for name in ELEMENTARY_TYPES_LOWER_CASE.iter() {
                 env.insert(
-                    &Type::from(name),
+                    &TypeName::from(name),
                     TypeAttributes {
                         span: SourceSpan::default(),
                         class: TypeClass::Simple,
@@ -220,7 +220,7 @@ mod tests {
         let mut env = TypeEnvironment::new();
 
         // Add a base type
-        let base_type = Type::from("BASE");
+        let base_type = TypeName::from("BASE");
         env.insert(
             &base_type,
             TypeAttributes {
@@ -232,7 +232,7 @@ mod tests {
         .unwrap();
 
         // Add an alias type
-        let alias_type = Type::from("ALIAS");
+        let alias_type = TypeName::from("ALIAS");
         let base_type_clone = base_type.clone();
         env.insert(
             &alias_type,
@@ -259,7 +259,7 @@ mod tests {
         let mut env = TypeEnvironment::new();
 
         // Add a base enumeration type
-        let base_type = Type::from("BASE");
+        let base_type = TypeName::from("BASE");
         env.insert(
             &base_type,
             TypeAttributes {
@@ -271,7 +271,7 @@ mod tests {
         .unwrap();
 
         // Add an alias type
-        let alias_type = Type::from("ALIAS");
+        let alias_type = TypeName::from("ALIAS");
         let base_type_clone = base_type.clone();
         env.insert(
             &alias_type,
@@ -297,8 +297,8 @@ mod tests {
         let mut env = TypeEnvironment::new();
 
         // Create a circular reference: A -> B -> A
-        let type_a = Type::from("A");
-        let type_b = Type::from("B");
+        let type_a = TypeName::from("A");
+        let type_b = TypeName::from("B");
 
         env.insert(
             &type_a,
@@ -331,9 +331,9 @@ mod tests {
         let mut env = TypeEnvironment::new();
 
         // Create a deeper circular reference: A -> B -> C -> A
-        let type_a = Type::from("A");
-        let type_b = Type::from("B");
-        let type_c = Type::from("C");
+        let type_a = TypeName::from("A");
+        let type_b = TypeName::from("B");
+        let type_c = TypeName::from("C");
 
         env.insert(
             &type_a,
@@ -376,7 +376,7 @@ mod tests {
         let mut env = TypeEnvironment::new();
 
         // Add a simple type (not enumeration)
-        let simple_type = Type::from("SIMPLE");
+        let simple_type = TypeName::from("SIMPLE");
         env.insert(
             &simple_type,
             TypeAttributes {

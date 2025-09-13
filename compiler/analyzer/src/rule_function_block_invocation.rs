@@ -108,13 +108,13 @@ pub fn apply(
 struct RuleFunctionBlockUse<'a> {
     // Map of the name of a function block declaration to the
     // declaration itself.
-    function_blocks: &'a HashMap<Type, &'a FunctionBlockDeclaration>,
+    function_blocks: &'a HashMap<TypeName, &'a FunctionBlockDeclaration>,
 
     // Map of variable name to the function block name that is the implementation
-    var_to_fb: HashMap<Id, Type>,
+    var_to_fb: HashMap<Id, TypeName>,
 }
 impl<'a> RuleFunctionBlockUse<'a> {
-    fn new(decls: &'a HashMap<Type, &'a FunctionBlockDeclaration>) -> Self {
+    fn new(decls: &'a HashMap<TypeName, &'a FunctionBlockDeclaration>) -> Self {
         Self {
             function_blocks: decls,
             var_to_fb: HashMap::new(),

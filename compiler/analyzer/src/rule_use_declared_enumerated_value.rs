@@ -83,7 +83,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
     /// * a type name does not exist
     /// * the type is not an enumeration
     /// * there's a circular reference in the alias chain
-    fn find_enum_declaration_values(&self, type_name: &Type) -> Result<Vec<&Id>, Diagnostic> {
+    fn find_enum_declaration_values(&self, type_name: &TypeName) -> Result<Vec<&Id>, Diagnostic> {
         // Resolve any aliases to get the base enumeration type
         let base_type = self.type_environment.resolve_enumeration_alias(type_name)?;
 
