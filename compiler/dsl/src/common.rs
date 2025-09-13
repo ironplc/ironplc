@@ -1075,7 +1075,9 @@ impl VarDecl {
             identifier: VariableIdentifier::new_symbol(name),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
-            initializer: InitialValueAssignmentKind::simple_uninitialized(TypeName::from(type_name)),
+            initializer: InitialValueAssignmentKind::simple_uninitialized(TypeName::from(
+                type_name,
+            )),
         }
     }
 

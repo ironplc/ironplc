@@ -163,7 +163,10 @@ impl TypeEnvironment {
     /// * Returns an error if there's a circular reference in the alias chain
     /// * Returns an error if the type is not found
     /// * Returns an error if the type is not an enumeration
-    pub(crate) fn resolve_enumeration_alias(&self, type_name: &TypeName) -> Result<TypeName, Diagnostic> {
+    pub(crate) fn resolve_enumeration_alias(
+        &self,
+        type_name: &TypeName,
+    ) -> Result<TypeName, Diagnostic> {
         let base_type = self.resolve_alias(type_name)?;
         if self.is_enumeration(&base_type) {
             Ok(base_type)

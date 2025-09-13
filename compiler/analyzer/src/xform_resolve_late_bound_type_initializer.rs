@@ -60,7 +60,11 @@ pub fn apply(
 }
 
 impl ScopedTable<'_, TypeName, TypeDefinitionKind> {
-    fn add_if_new(&mut self, to_add: &TypeName, kind: TypeDefinitionKind) -> Result<(), Diagnostic> {
+    fn add_if_new(
+        &mut self,
+        to_add: &TypeName,
+        kind: TypeDefinitionKind,
+    ) -> Result<(), Diagnostic> {
         if let Some(existing) = self.try_add(to_add, kind) {
             return Err(Diagnostic::problem(
                 Problem::DefinitionNameDuplicated,
