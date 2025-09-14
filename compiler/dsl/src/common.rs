@@ -477,11 +477,11 @@ pub struct BitStringLiteral {
 /// because it is convenient to treat types and other identifiers
 /// separately.
 #[derive(Clone, Debug, PartialEq, Recurse)]
-pub struct Type {
+pub struct TypeName {
     pub name: Id,
 }
 
-impl Type {
+impl TypeName {
     /// Converts a `&str` into an `Identifier`.
     pub fn from(str: &str) -> Self {
         Self {
@@ -494,21 +494,21 @@ impl Type {
     }
 }
 
-impl Eq for Type {}
+impl Eq for TypeName {}
 
-impl Hash for Type {
+impl Hash for TypeName {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
     }
 }
 
-impl Located for Type {
+impl Located for TypeName {
     fn span(&self) -> SourceSpan {
         self.name.span()
     }
 }
 
-impl fmt::Display for Type {
+impl fmt::Display for TypeName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!("{}", &self.name))
     }
@@ -598,30 +598,30 @@ impl From<ElementaryTypeName> for Id {
     }
 }
 
-impl From<ElementaryTypeName> for Type {
-    fn from(value: ElementaryTypeName) -> Type {
+impl From<ElementaryTypeName> for TypeName {
+    fn from(value: ElementaryTypeName) -> TypeName {
         match value {
-            ElementaryTypeName::BOOL => Type::from("BOOL"),
-            ElementaryTypeName::SINT => Type::from("SINT"),
-            ElementaryTypeName::INT => Type::from("INT"),
-            ElementaryTypeName::DINT => Type::from("DINT"),
-            ElementaryTypeName::LINT => Type::from("LINT"),
-            ElementaryTypeName::USINT => Type::from("USINT"),
-            ElementaryTypeName::UINT => Type::from("UINT"),
-            ElementaryTypeName::UDINT => Type::from("UDINT"),
-            ElementaryTypeName::ULINT => Type::from("ULINT"),
-            ElementaryTypeName::REAL => Type::from("REAL"),
-            ElementaryTypeName::LREAL => Type::from("LREAL"),
-            ElementaryTypeName::TIME => Type::from("TIME"),
-            ElementaryTypeName::DATE => Type::from("DATE"),
-            ElementaryTypeName::TimeOfDay => Type::from("TIME_OF_DAY"),
-            ElementaryTypeName::DateAndTime => Type::from("DATE_AND_TIME"),
-            ElementaryTypeName::STRING => Type::from("STRING"),
-            ElementaryTypeName::BYTE => Type::from("BYTE"),
-            ElementaryTypeName::WORD => Type::from("WORD"),
-            ElementaryTypeName::DWORD => Type::from("DWORD"),
-            ElementaryTypeName::LWORD => Type::from("LWORD"),
-            ElementaryTypeName::WSTRING => Type::from("WSTRING"),
+            ElementaryTypeName::BOOL => TypeName::from("BOOL"),
+            ElementaryTypeName::SINT => TypeName::from("SINT"),
+            ElementaryTypeName::INT => TypeName::from("INT"),
+            ElementaryTypeName::DINT => TypeName::from("DINT"),
+            ElementaryTypeName::LINT => TypeName::from("LINT"),
+            ElementaryTypeName::USINT => TypeName::from("USINT"),
+            ElementaryTypeName::UINT => TypeName::from("UINT"),
+            ElementaryTypeName::UDINT => TypeName::from("UDINT"),
+            ElementaryTypeName::ULINT => TypeName::from("ULINT"),
+            ElementaryTypeName::REAL => TypeName::from("REAL"),
+            ElementaryTypeName::LREAL => TypeName::from("LREAL"),
+            ElementaryTypeName::TIME => TypeName::from("TIME"),
+            ElementaryTypeName::DATE => TypeName::from("DATE"),
+            ElementaryTypeName::TimeOfDay => TypeName::from("TIME_OF_DAY"),
+            ElementaryTypeName::DateAndTime => TypeName::from("DATE_AND_TIME"),
+            ElementaryTypeName::STRING => TypeName::from("STRING"),
+            ElementaryTypeName::BYTE => TypeName::from("BYTE"),
+            ElementaryTypeName::WORD => TypeName::from("WORD"),
+            ElementaryTypeName::DWORD => TypeName::from("DWORD"),
+            ElementaryTypeName::LWORD => TypeName::from("LWORD"),
+            ElementaryTypeName::WSTRING => TypeName::from("WSTRING"),
         }
     }
 }
@@ -657,12 +657,12 @@ pub enum DataTypeDeclarationKind {
 pub struct LateBoundDeclaration {
     /// The type name of this declaration. Other library elements
     /// refer to this this type with this name.
-    pub data_type_name: Type,
+    pub data_type_name: TypeName,
     /// The referenced type name.
     ///
     /// For example, if this is an alias then this is the underlying
     /// type.
-    pub base_type_name: Type,
+    pub base_type_name: TypeName,
 }
 
 impl Located for LateBoundDeclaration {
@@ -674,7 +674,7 @@ impl Located for LateBoundDeclaration {
 /// See section 2.3.3.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct EnumerationDeclaration {
-    pub type_name: Type,
+    pub type_name: TypeName,
     // TODO need to understand when the context name matters in the definition
     pub spec_init: EnumeratedSpecificationInit,
 }
@@ -703,7 +703,7 @@ impl EnumeratedSpecificationInit {
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub enum EnumeratedSpecificationKind {
     /// Enumeration declaration that renames another enumeration.
-    TypeName(Type),
+    TypeName(TypeName),
     /// Enumeration declaration that provides a list of values.
     ///
     /// Order of the values is important because the order declares the
@@ -742,7 +742,7 @@ pub struct EnumeratedSpecificationValues {
 /// See section 2.3.3.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct EnumeratedValue {
-    pub type_name: Option<Type>,
+    pub type_name: Option<TypeName>,
     pub value: Id,
 }
 
@@ -771,7 +771,7 @@ impl Located for EnumeratedValue {
 /// See section 2.3.3.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct SubrangeDeclaration {
-    pub type_name: Type,
+    pub type_name: TypeName,
     pub spec: SubrangeSpecificationKind,
     pub default: Option<SignedInteger>,
 }
@@ -783,7 +783,7 @@ pub struct SubrangeDeclaration {
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub enum SubrangeSpecificationKind {
     Specification(SubrangeSpecification),
-    Type(Type),
+    Type(TypeName),
 }
 
 /// The specification for a subrange. The specification restricts an integer
@@ -804,14 +804,14 @@ pub struct SubrangeSpecification {
 /// See section 2.3.3.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct SimpleDeclaration {
-    pub type_name: Type,
+    pub type_name: TypeName,
     pub spec_and_init: InitialValueAssignmentKind,
 }
 
 /// Derived data type that
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct ArrayDeclaration {
-    pub type_name: Type,
+    pub type_name: TypeName,
     pub spec: ArraySpecificationKind,
     pub init: Vec<ArrayInitialElementKind>,
 }
@@ -872,7 +872,7 @@ impl Repeated {
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct StructureDeclaration {
     /// The name of the structure.
-    pub type_name: Type,
+    pub type_name: TypeName,
     /// The elements (components) of the structure declaration.
     pub elements: Vec<StructureElementDeclaration>,
 }
@@ -889,7 +889,7 @@ pub struct StructureElementDeclaration {
 /// See section 2.3.3.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct StructureInitializationDeclaration {
-    pub type_name: Type,
+    pub type_name: TypeName,
     pub elements_init: Vec<StructureElementInit>,
 }
 
@@ -916,7 +916,7 @@ pub enum StringType {
 /// See section 2.3.3.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct StringDeclaration {
-    pub type_name: Type,
+    pub type_name: TypeName,
     pub length: Integer,
     /// The size of a single 'character'
     #[recurse(ignore)]
@@ -1011,14 +1011,14 @@ impl TryFrom<&str> for SizePrefix {
 /// Array specification defines a size/shape of an array.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub enum ArraySpecificationKind {
-    Type(Type),
+    Type(TypeName),
     Subranges(ArraySubranges),
 }
 
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct ArraySubranges {
     pub ranges: Vec<Subrange>,
-    pub type_name: Type,
+    pub type_name: TypeName,
 }
 
 /// Subrange of an array.
@@ -1042,7 +1042,7 @@ pub trait HasVariables {
 pub struct ProgramAccessDecl {
     pub access_name: Id,
     pub symbolic_variable: SymbolicVariableKind,
-    pub type_name: Type,
+    pub type_name: TypeName,
     #[recurse(ignore)]
     pub direction: Option<Direction>,
 }
@@ -1075,7 +1075,9 @@ impl VarDecl {
             identifier: VariableIdentifier::new_symbol(name),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
-            initializer: InitialValueAssignmentKind::simple_uninitialized(Type::from(type_name)),
+            initializer: InitialValueAssignmentKind::simple_uninitialized(TypeName::from(
+                type_name,
+            )),
         }
     }
 
@@ -1102,7 +1104,7 @@ impl VarDecl {
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::EnumeratedType(
                 EnumeratedInitialValueAssignment {
-                    type_name: Type::from(type_name),
+                    type_name: TypeName::from(type_name),
                     initial_value: None,
                 },
             ),
@@ -1118,7 +1120,7 @@ impl VarDecl {
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::EnumeratedType(
                 EnumeratedInitialValueAssignment {
-                    type_name: Type::from(type_name),
+                    type_name: TypeName::from(type_name),
                     initial_value: Some(EnumeratedValue {
                         type_name: None,
                         value: Id::from(initial_value),
@@ -1137,7 +1139,7 @@ impl VarDecl {
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::FunctionBlock(
                 FunctionBlockInitialValueAssignment {
-                    type_name: Type::from(type_name),
+                    type_name: TypeName::from(type_name),
                     init: vec![],
                 },
             ),
@@ -1152,7 +1154,7 @@ impl VarDecl {
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::Structure(
                 StructureInitializationDeclaration {
-                    type_name: Type::from(type_name),
+                    type_name: TypeName::from(type_name),
                     elements_init: vec![],
                 },
             ),
@@ -1169,7 +1171,7 @@ impl VarDecl {
             identifier: VariableIdentifier::new_symbol(name),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
-            initializer: InitialValueAssignmentKind::LateResolvedType(Type::from(type_name)),
+            initializer: InitialValueAssignmentKind::LateResolvedType(TypeName::from(type_name)),
         }
     }
 
@@ -1185,7 +1187,7 @@ impl VarDecl {
         self
     }
 
-    pub fn type_name(&self) -> Option<Type> {
+    pub fn type_name(&self) -> Option<TypeName> {
         match &self.initializer {
             InitialValueAssignmentKind::None(source_span) => None,
             InitialValueAssignmentKind::Simple(simple_initializer) => {
@@ -1468,12 +1470,12 @@ pub enum InitialValueAssignmentKind {
     Array(ArrayInitialValueAssignment),
     /// Type that is ambiguous until have discovered type
     /// definitions. Value is the name of the type.
-    LateResolvedType(Type),
+    LateResolvedType(TypeName),
 }
 
 impl InitialValueAssignmentKind {
     /// Creates an initial value with
-    pub fn simple_uninitialized(type_name: Type) -> Self {
+    pub fn simple_uninitialized(type_name: TypeName) -> Self {
         InitialValueAssignmentKind::Simple(SimpleInitializer {
             type_name,
             initial_value: None,
@@ -1483,7 +1485,7 @@ impl InitialValueAssignmentKind {
     /// Creates an initial value from the initializer.
     pub fn simple(type_name: &str, value: ConstantKind) -> Self {
         InitialValueAssignmentKind::Simple(SimpleInitializer {
-            type_name: Type::from(type_name),
+            type_name: TypeName::from(type_name),
             initial_value: Some(value),
         })
     }
@@ -1519,13 +1521,13 @@ pub enum StructInitialValueAssignmentKind {
 
 #[derive(Clone, PartialEq, Debug, Recurse)]
 pub struct EnumeratedInitialValueAssignment {
-    pub type_name: Type,
+    pub type_name: TypeName,
     pub initial_value: Option<EnumeratedValue>,
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]
 pub struct SimpleInitializer {
-    pub type_name: Type,
+    pub type_name: TypeName,
     pub initial_value: Option<ConstantKind>,
 }
 
@@ -1548,10 +1550,10 @@ pub struct StringInitializer {
 }
 
 impl StringInitializer {
-    pub fn type_name(&self) -> Type {
+    pub fn type_name(&self) -> TypeName {
         match self.width {
-            StringType::String => Type::from("string"),
-            StringType::WString => Type::from("wstring"),
+            StringType::String => TypeName::from("string"),
+            StringType::WString => TypeName::from("wstring"),
         }
     }
 }
@@ -1567,7 +1569,7 @@ pub struct FunctionBlockInitialValueAssignment {
     // In this context, the name is referring to a type, much like a function pointer
     // in other languages, so the correct representation here is a type and not
     // an identifier.
-    pub type_name: Type,
+    pub type_name: TypeName,
     // The initializer may be empty
     pub init: Vec<StructureElementInit>,
 }
@@ -1581,7 +1583,7 @@ pub struct ArrayInitialValueAssignment {
 
 #[derive(Clone, PartialEq, Debug, Recurse)]
 pub enum VariableSpecificationKind {
-    Simple(Type),
+    Simple(TypeName),
     Subrange(SubrangeSpecificationKind),
     Enumerated(EnumeratedSpecificationKind),
     Array(ArraySpecificationKind),
@@ -1589,7 +1591,7 @@ pub enum VariableSpecificationKind {
     String(StringSpecification),
     WString(StringSpecification),
     // Represents simple, subrange or structure
-    Ambiguous(Type),
+    Ambiguous(TypeName),
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]
@@ -1630,7 +1632,7 @@ pub enum LibraryElementKind {
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct FunctionDeclaration {
     pub name: Id,
-    pub return_type: Type,
+    pub return_type: TypeName,
     pub variables: Vec<VarDecl>,
     pub edge_variables: Vec<EdgeVarDecl>,
     pub body: Vec<StmtKind>,
@@ -1651,7 +1653,7 @@ impl HasVariables for FunctionDeclaration {
 /// See section 2.5.2.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct FunctionBlockDeclaration {
-    pub name: Type,
+    pub name: TypeName,
     pub variables: Vec<VarDecl>,
     pub edge_variables: Vec<EdgeVarDecl>,
     pub body: FunctionBlockBodyKind,
@@ -1871,10 +1873,10 @@ mod tests {
 
     #[test]
     fn test_type_partial_eq_and_clone() {
-        let t1 = Type::from("MYTYPE");
+        let t1 = TypeName::from("MYTYPE");
         let t2 = t1.clone();
         assert_eq!(t1, t2);
-        let t3 = Type::from("OTHERTYPE");
+        let t3 = TypeName::from("OTHERTYPE");
         assert_ne!(t1, t3);
     }
 
@@ -1890,14 +1892,14 @@ mod tests {
     #[test]
     fn test_data_type_declaration_kind_partial_eq_and_clone() {
         let enum_decl = EnumerationDeclaration {
-            type_name: Type::from("ENUM"),
+            type_name: TypeName::from("ENUM"),
             spec_init: EnumeratedSpecificationInit::values_and_default(vec!["A", "B"], "A"),
         };
         let d1 = DataTypeDeclarationKind::Enumeration(enum_decl.clone());
         let d2 = d1.clone();
         assert_eq!(d1, d2);
         let d3 = DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
-            type_name: Type::from("ENUM"),
+            type_name: TypeName::from("ENUM"),
             spec_init: EnumeratedSpecificationInit::values_and_default(vec!["A", "B"], "B"),
         });
         assert_ne!(d1, d3);
@@ -1911,7 +1913,7 @@ mod tests {
         let lib3 = Library {
             elements: vec![LibraryElementKind::DataTypeDeclaration(
                 DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
-                    type_name: Type::from("ENUM"),
+                    type_name: TypeName::from("ENUM"),
                     spec_init: EnumeratedSpecificationInit::values_and_default(vec!["A"], "A"),
                 }),
             )],

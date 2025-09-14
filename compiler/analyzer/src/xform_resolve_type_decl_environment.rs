@@ -206,7 +206,7 @@ END_TYPE
             elements: vec![
                 LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
                     EnumerationDeclaration {
-                        type_name: Type::from("LEVEL"),
+                        type_name: TypeName::from("LEVEL"),
                         spec_init: EnumeratedSpecificationInit::values_and_default(
                             vec!["CRITICAL"],
                             "CRITICAL",
@@ -215,9 +215,9 @@ END_TYPE
                 )),
                 LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
                     EnumerationDeclaration {
-                        type_name: Type::from("LEVEL_ALIAS"),
+                        type_name: TypeName::from("LEVEL_ALIAS"),
                         spec_init: EnumeratedSpecificationInit {
-                            spec: EnumeratedSpecificationKind::TypeName(Type::from("LEVEL")),
+                            spec: EnumeratedSpecificationKind::TypeName(TypeName::from("LEVEL")),
                             default: None,
                         },
                     },

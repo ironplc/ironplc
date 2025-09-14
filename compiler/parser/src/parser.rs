@@ -197,7 +197,7 @@ parser! {
     // We want to be more flexible on identifiers for variable names
     // because it is common to use variable names that are reserved names
     rule variable_identifier() -> Id = identifier() / t:tok(TokenType::Step) { Id::from(t.text.as_str()) } / t:tok(TokenType::On) { Id::from(t.text.as_str()) } / t:tok(TokenType::REdge) { Id::from(t.text.as_str()) } / t:tok(TokenType::FEdge) { Id::from(t.text.as_str()) }
-    rule type_name() -> Type = i:identifier() { Type::from_id(&i) }
+    rule type_name() -> TypeName = i:identifier() { TypeName::from_id(&i) }
 
     // B.1.2 Constants
     rule constant() -> ConstantKind =
@@ -332,8 +332,8 @@ parser! {
     // B.1.3 Data types
     // This should match generic_type_name, but that's unnecessary because
     // these are all just identifiers
-    rule data_type_name() -> Type = non_generic_type_name()
-    rule non_generic_type_name() -> Type = et:elementary_type_name() { et.into() } / derived_type_name()
+    rule data_type_name() -> TypeName = non_generic_type_name()
+    rule non_generic_type_name() -> TypeName = et:elementary_type_name() { et.into() } / derived_type_name()
 
     // B.1.3.1 Elementary data types
     rule elementary_type_name() -> ElementaryTypeName =
@@ -359,13 +359,13 @@ parser! {
     // TODO review this section for missing rules
     // All of these are aliases for identifiers, which means the single_element_type_name will just match first
     // I've left in just in case the definition changes.
-    rule derived_type_name() -> Type = single_element_type_name() / array_type_name() / structure_type_name() / string_type_name()
-    rule single_element_type_name() -> Type = simple_type_name() / subrange_type_name() / enumerated_type_name()
-    rule simple_type_name() -> Type = type_name()
-    rule subrange_type_name() -> Type = type_name()
-    rule enumerated_type_name() -> Type = type_name()
-    rule array_type_name() -> Type = type_name()
-    rule structure_type_name() -> Type = type_name()
+    rule derived_type_name() -> TypeName = single_element_type_name() / array_type_name() / structure_type_name() / string_type_name()
+    rule single_element_type_name() -> TypeName = simple_type_name() / subrange_type_name() / enumerated_type_name()
+    rule simple_type_name() -> TypeName = type_name()
+    rule subrange_type_name() -> TypeName = type_name()
+    rule enumerated_type_name() -> TypeName = type_name()
+    rule array_type_name() -> TypeName = type_name()
+    rule structure_type_name() -> TypeName = type_name()
     rule data_type_declaration() -> Vec<DataTypeDeclarationKind> = tok(TokenType::Type) _ declarations:semisep(<type_declaration()>) _ tok(TokenType::EndType) { declarations }
     /// the type_declaration also bring in from single_element_type_declaration so that we can match in an order
     /// that identifies the type
@@ -410,7 +410,7 @@ parser! {
         initial_value: Some(constant),
       })
     }
-    rule simple_specification() -> Type = et:elementary_type_name() { et.into() } / simple_type_name()
+    rule simple_specification() -> TypeName = et:elementary_type_name() { et.into() } / simple_type_name()
     rule subrange_type_declaration__with_range() -> SubrangeDeclaration = type_name:subrange_type_name() _ tok(TokenType::Colon) _ spec:subrange_spec_init__with_range() {
       SubrangeDeclaration {
         type_name,
@@ -522,7 +522,7 @@ parser! {
     rule structure_declaration() -> StructureDeclaration = tok(TokenType::Struct) _ elements:semisep_oneplus(<structure_element_declaration()>) _ tok(TokenType::EndStruct) {
       StructureDeclaration {
         // Requires a value but we don't know the name until one level up
-        type_name: Type::from(""),
+        type_name: TypeName::from(""),
         elements,
       }
     }
@@ -618,7 +618,7 @@ parser! {
       // cases have captures all cases with a value. This can be simple, enumerated or struct
       InitialValueAssignmentKind::LateResolvedType(i)
     }
-    rule string_type_name() -> Type = type_name()
+    rule string_type_name() -> TypeName = type_name()
     rule string_type_declaration() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) _ tok(TokenType::LeftBracket) _ length:integer() _ tok(TokenType::RightBracket) _ init:(tok(TokenType::Assignment) _ str:character_string() {str})? {
       StringDeclaration {
         type_name,
@@ -974,8 +974,8 @@ parser! {
     // B.1.5.2 Function blocks
     // IEC 61131 defines separate standard and derived function block names,
     // but we don't need that distinction here.
-    rule function_block_type_name() -> Type = type_name()
-    rule derived_function_block_name() -> Type = type_name()
+    rule function_block_type_name() -> TypeName = type_name()
+    rule derived_function_block_name() -> TypeName = type_name()
     rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);

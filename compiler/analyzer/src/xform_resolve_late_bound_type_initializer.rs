@@ -38,7 +38,7 @@ pub fn apply(
     lib: Library,
     type_environment: &mut TypeEnvironment,
 ) -> Result<Library, Vec<Diagnostic>> {
-    let mut type_to_type_kind: ScopedTable<Type, TypeDefinitionKind> = ScopedTable::new();
+    let mut type_to_type_kind: ScopedTable<TypeName, TypeDefinitionKind> = ScopedTable::new();
 
     // Walk the entire library to find the types. We don't need
     // to keep track of contexts because types are global scoped.
@@ -59,8 +59,12 @@ pub fn apply(
     result
 }
 
-impl ScopedTable<'_, Type, TypeDefinitionKind> {
-    fn add_if_new(&mut self, to_add: &Type, kind: TypeDefinitionKind) -> Result<(), Diagnostic> {
+impl ScopedTable<'_, TypeName, TypeDefinitionKind> {
+    fn add_if_new(
+        &mut self,
+        to_add: &TypeName,
+        kind: TypeDefinitionKind,
+    ) -> Result<(), Diagnostic> {
         if let Some(existing) = self.try_add(to_add, kind) {
             return Err(Diagnostic::problem(
                 Problem::DefinitionNameDuplicated,
@@ -73,7 +77,7 @@ impl ScopedTable<'_, Type, TypeDefinitionKind> {
     }
 }
 
-impl Visitor<Diagnostic> for ScopedTable<'_, Type, TypeDefinitionKind> {
+impl Visitor<Diagnostic> for ScopedTable<'_, TypeName, TypeDefinitionKind> {
     type Value = ();
 
     fn visit_data_type_declaration_kind(
@@ -122,7 +126,7 @@ impl Visitor<Diagnostic> for ScopedTable<'_, Type, TypeDefinitionKind> {
 }
 
 struct TypeResolver<'a> {
-    types: ScopedTable<'a, Type, TypeDefinitionKind>,
+    types: ScopedTable<'a, TypeName, TypeDefinitionKind>,
     type_environment: &'a TypeEnvironment,
     diagnostics: Vec<Diagnostic>,
 }
@@ -251,14 +255,14 @@ END_FUNCTION_BLOCK
         let expected = Library {
             elements: vec![
                 LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: Type::from("called"),
+                    name: TypeName::from("called"),
                     variables: vec![],
                     edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
                     span: SourceSpan::default(),
                 }),
                 LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: Type::from("caller"),
+                    name: TypeName::from("caller"),
                     variables: vec![VarDecl::function_block("fb_var", "called")],
                     edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
@@ -296,17 +300,17 @@ END_FUNCTION_BLOCK
             elements: vec![
                 LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Structure(
                     StructureDeclaration {
-                        type_name: Type::from("the_struct"),
+                        type_name: TypeName::from("the_struct"),
                         elements: vec![StructureElementDeclaration {
                             name: Id::from("member"),
-                            init: InitialValueAssignmentKind::simple_uninitialized(Type::from(
+                            init: InitialValueAssignmentKind::simple_uninitialized(TypeName::from(
                                 "BOOL",
                             )),
                         }],
                     },
                 )),
                 LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: Type::from("caller"),
+                    name: TypeName::from("caller"),
                     variables: vec![VarDecl::structure("the_var", "the_struct")],
                     edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
@@ -342,7 +346,7 @@ END_FUNCTION_BLOCK
             elements: vec![
                 LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
                     EnumerationDeclaration {
-                        type_name: Type::from("values"),
+                        type_name: TypeName::from("values"),
                         spec_init: EnumeratedSpecificationInit {
                             spec: EnumeratedSpecificationKind::from_values(vec![
                                 "val1", "val2", "val3",
@@ -352,7 +356,7 @@ END_FUNCTION_BLOCK
                     },
                 )),
                 LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
-                    name: Type::from("caller"),
+                    name: TypeName::from("caller"),
                     variables: vec![VarDecl::uninitialized_enumerated("the_var", "values")],
                     edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),

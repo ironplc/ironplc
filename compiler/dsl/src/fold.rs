@@ -93,7 +93,7 @@ pub trait Fold<E> {
 
     dispatch!(ConstantKind);
 
-    dispatch!(Type);
+    dispatch!(TypeName);
 
     // 2.3.3.1
     dispatch!(DataTypeDeclarationKind);

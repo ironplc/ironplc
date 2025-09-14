@@ -396,7 +396,7 @@ impl VarDeclarations {
 #[cfg(test)]
 mod test {
     use dsl::{
-        common::{AddressAssignment, Type, VariableSpecificationKind},
+        common::{AddressAssignment, TypeName, VariableSpecificationKind},
         core::{Id, SourceSpan},
     };
 
@@ -413,7 +413,7 @@ mod test {
                 address: vec![],
                 position: SourceSpan::default(),
             },
-            spec: VariableSpecificationKind::Ambiguous(Type::from("typ")),
+            spec: VariableSpecificationKind::Ambiguous(TypeName::from("typ")),
         }];
 
         let decls =

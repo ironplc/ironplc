@@ -1,4 +1,4 @@
-use ironplc_dsl::common::Type;
+use ironplc_dsl::common::TypeName;
 use phf::{phf_set, Set};
 
 static STANDARD_LIBRARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
@@ -26,6 +26,6 @@ static STANDARD_LIBRARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
     // TODO there is more in IEC 61131-5
 };
 
-pub(crate) fn is_unsupported_standard_type(ty: &Type) -> bool {
+pub(crate) fn is_unsupported_standard_type(ty: &TypeName) -> bool {
     STANDARD_LIBRARY_TYPES_LOWER_CASE.contains(&ty.name.lower_case().to_string())
 }
