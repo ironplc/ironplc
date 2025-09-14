@@ -140,7 +140,7 @@ pub trait Visitor<E> {
     // TODO where is this?
     leaf!(BitStringLiteral);
 
-    dispatch!(Type);
+    dispatch!(TypeName);
 
     // 2.2
     dispatch!(ConstantKind);

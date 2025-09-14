@@ -68,7 +68,7 @@ struct DummyNode {}
 impl Value for DummyNode {}
 
 impl Key for Id {}
-impl Key for Type {}
+impl Key for TypeName {}
 
 impl Visitor<Diagnostic> for ScopedTable<'_, Id, DummyNode> {
     type Value = ();

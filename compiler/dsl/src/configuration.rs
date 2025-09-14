@@ -6,7 +6,7 @@ use time::Duration;
 use crate::{
     common::{
         AddressAssignment, ConstantKind, DeclarationQualifier, EnumeratedValue, HasVariables,
-        InitialValueAssignmentKind, StructureElementInit, Type, VarDecl,
+        InitialValueAssignmentKind, StructureElementInit, TypeName, VarDecl,
     },
     core::{Id, Located},
     textual::SymbolicVariableKind,
@@ -86,7 +86,7 @@ impl HasVariables for ConfigurationDeclaration {
 pub struct AccessDeclaration {
     pub identifier: Id,
     pub path: AccessPathKind,
-    pub type_name: Type,
+    pub type_name: TypeName,
     #[recurse(ignore)]
     pub direction: Option<Direction>,
 }
@@ -181,7 +181,7 @@ pub struct FunctionBlockInit {
     pub program_name: Id,
     pub fb_path: Vec<Id>,
     pub fb_name: Id,
-    pub type_name: Type,
+    pub type_name: TypeName,
     pub initializer: Vec<StructureElementInit>,
 }
 

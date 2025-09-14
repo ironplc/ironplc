@@ -9,7 +9,7 @@ use ironplc_problems::Problem;
 use std::collections::HashSet;
 use std::{fs::File, ops::Range};
 
-use crate::common::Type;
+use crate::common::TypeName;
 use crate::core::{FileId, Id, Located, SourceSpan};
 
 /// A position marker that only has an offset in a file.
@@ -129,7 +129,7 @@ impl Diagnostic {
     ///
     /// Unlike other uses of problem, the location in this is related to the compiler
     /// rather than the IEC 61131-3 source.
-    pub fn todo_with_type(ty: &Type, file: &str, line: u32) -> Self {
+    pub fn todo_with_type(ty: &TypeName, file: &str, line: u32) -> Self {
         Diagnostic::problem(
             Problem::NotImplemented,
             Label::span(ty.span(), format!("Not implemented at {file}#L{line}")),
@@ -165,7 +165,7 @@ impl Diagnostic {
         self
     }
 
-    pub fn with_context_type(mut self, description: &str, item: &Type) -> Self {
+    pub fn with_context_type(mut self, description: &str, item: &TypeName) -> Self {
         self.described.push(format!("{description}={item}"));
         self
     }

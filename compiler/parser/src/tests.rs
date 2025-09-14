@@ -5,7 +5,7 @@ mod test {
         ConstantKind, DataTypeDeclarationKind, DeclarationQualifier, EnumeratedSpecificationInit,
         EnumerationDeclaration, FunctionBlockBodyKind, FunctionBlockDeclaration,
         FunctionDeclaration, InitialValueAssignmentKind, Library, LibraryElementKind,
-        ProgramDeclaration, RealLiteral, SimpleInitializer, Type, VarDecl, VariableIdentifier,
+        ProgramDeclaration, RealLiteral, SimpleInitializer, TypeName, VarDecl, VariableIdentifier,
         VariableType,
     };
     use dsl::configuration::{
@@ -243,13 +243,13 @@ END_FUNCTION";
         let expected = new_library(LibraryElementKind::FunctionDeclaration(
             FunctionDeclaration {
                 name: Id::from("fun"),
-                return_type: Type::from("DWORD"),
+                return_type: TypeName::from("DWORD"),
                 variables: vec![VarDecl {
                     identifier: VariableIdentifier::new_symbol("InputsNumber"),
                     var_type: VariableType::Var,
                     qualifier: DeclarationQualifier::Unspecified,
                     initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
-                        type_name: Type::from("REAL"),
+                        type_name: TypeName::from("REAL"),
                         initial_value: Some(ConstantKind::RealLiteral(RealLiteral {
                             value: -0.5,
                             data_type: None,
@@ -280,13 +280,13 @@ END_FUNCTION";
         let expected = new_library(LibraryElementKind::FunctionDeclaration(
             FunctionDeclaration {
                 name: Id::from("fun"),
-                return_type: Type::from("TIME"),
+                return_type: TypeName::from("TIME"),
                 variables: vec![VarDecl {
                     identifier: VariableIdentifier::new_symbol("tv"),
                     var_type: VariableType::Var,
                     qualifier: DeclarationQualifier::Unspecified,
                     initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
-                        type_name: Type::from("TIME"),
+                        type_name: TypeName::from("TIME"),
                         initial_value: Some(ConstantKind::Duration(DurationLiteral {
                             interval: Duration::milliseconds(1200),
                             span: SourceSpan::default(),
@@ -305,7 +305,7 @@ END_FUNCTION";
         let actual = parse_resource("first_steps_function_block_counter_fbd.st").unwrap();
         let expected = new_library(LibraryElementKind::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
-                name: Type::from("CounterFBD"),
+                name: TypeName::from("CounterFBD"),
                 variables: vec![
                     VarDecl::simple("Reset", "BOOL").with_type(VariableType::Input),
                     VarDecl::simple("OUT", "INT").with_type(VariableType::Output),
@@ -315,7 +315,7 @@ END_FUNCTION";
                         var_type: VariableType::External,
                         qualifier: DeclarationQualifier::Constant,
                         initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
-                            type_name: Type::from("INT"),
+                            type_name: TypeName::from("INT"),
                             initial_value: None,
                         }),
                     },
@@ -339,7 +339,7 @@ END_FUNCTION";
         let expected = new_library(LibraryElementKind::FunctionDeclaration(
             FunctionDeclaration {
                 name: Id::from("AverageVal"),
-                return_type: Type::from("REAL"),
+                return_type: TypeName::from("REAL"),
                 variables: vec![
                     VarDecl::simple("Cnt1", "INT").with_type(VariableType::Input),
                     VarDecl::simple("Cnt2", "INT").with_type(VariableType::Input),
@@ -351,7 +351,7 @@ END_FUNCTION";
                         var_type: VariableType::Var,
                         qualifier: DeclarationQualifier::Unspecified,
                         initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
-                            type_name: Type::from("REAL"),
+                            type_name: TypeName::from("REAL"),
                             initial_value: Some(ConstantKind::RealLiteral(RealLiteral {
                                 value: 5.1,
                                 data_type: None,
@@ -448,7 +448,7 @@ END_FUNCTION";
                     var_type: VariableType::Global,
                     qualifier: DeclarationQualifier::Constant,
                     initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
-                        type_name: Type::from("INT"),
+                        type_name: TypeName::from("INT"),
                         initial_value: Some(ConstantKind::integer_literal("17").unwrap()),
                     }),
                 }],
@@ -487,7 +487,7 @@ END_FUNCTION";
         let actual = parse_resource("first_steps_function_block_logger.st").unwrap();
         let expected = new_library(LibraryElementKind::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
-                name: Type::from("LOGGER"),
+                name: TypeName::from("LOGGER"),
                 variables: vec![
                     VarDecl::simple("TRIG", "BOOL").with_type(VariableType::Input),
                     VarDecl::string(
@@ -522,7 +522,7 @@ END_FUNCTION";
         let actual = parse_resource("first_steps_function_block_counter_sfc.st").unwrap();
         let expected = new_library(LibraryElementKind::FunctionBlockDeclaration(
             FunctionBlockDeclaration {
-                name: Type::from("CounterSFC"),
+                name: TypeName::from("CounterSFC"),
                 variables: vec![
                     VarDecl::simple("Reset", "BOOL").with_type(VariableType::Input),
                     VarDecl::simple("OUT", "INT").with_type(VariableType::Output),
@@ -532,7 +532,7 @@ END_FUNCTION";
                         var_type: VariableType::External,
                         qualifier: DeclarationQualifier::Constant,
                         initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
-                            type_name: Type::from("INT"),
+                            type_name: TypeName::from("INT"),
                             initial_value: None,
                         }),
                     },
@@ -625,7 +625,7 @@ END_FUNCTION";
         let actual = parse_resource("first_steps_data_type_decl.st").unwrap();
         let expected = new_library(LibraryElementKind::DataTypeDeclaration(
             DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
-                type_name: Type::from("LOGLEVEL"),
+                type_name: TypeName::from("LOGLEVEL"),
                 spec_init: EnumeratedSpecificationInit::values_and_default(
                     vec!["CRITICAL", "WARNING", "INFO", "DEBUG"],
                     "INFO",

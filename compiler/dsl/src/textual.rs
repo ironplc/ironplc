@@ -3,7 +3,7 @@
 //! See section 3.
 use crate::common::{
     AddressAssignment, ConstantKind, EnumeratedValue, IntegerLiteral, LateBoundDeclaration,
-    SignedInteger, Subrange, Type,
+    SignedInteger, Subrange, TypeName,
 };
 use crate::core::{Id, Located, SourceSpan};
 use std::cmp::Ordering;
