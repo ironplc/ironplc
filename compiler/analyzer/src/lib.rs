@@ -27,6 +27,7 @@ mod type_table;
 mod xform_resolve_late_bound_expr_kind;
 mod xform_resolve_late_bound_type_initializer;
 mod xform_resolve_symbol_environment;
+mod xform_resolve_type_aliases;
 mod xform_resolve_type_decl_environment;
 mod xform_toposort_declarations;
 

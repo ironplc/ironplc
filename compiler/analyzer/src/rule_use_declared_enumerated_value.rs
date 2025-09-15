@@ -84,15 +84,18 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
     /// * the type is not an enumeration
     /// * there's a circular reference in the alias chain
     fn find_enum_declaration_values(&self, type_name: &TypeName) -> Result<Vec<&Id>, Diagnostic> {
-        // Resolve any aliases to get the base enumeration type
-        let base_type = self.type_environment.resolve_enumeration_alias(type_name)?;
+        // Check if the type exists and is an enumeration
+        if !self.type_environment.is_enumeration(type_name) {
+            return Err(Diagnostic::problem(
+                Problem::EnumNotDeclared,
+                Label::span(type_name.span(), "Type is not an enumeration"),
+            ));
+        }
 
-        // Get all enumeration values for the base type from the symbol environment
-        let enum_values = self
+        // Get all enumeration values for the type from the symbol environment
+        Ok(self
             .symbol_environment
-            .get_enumeration_values_for_type(&base_type);
-
-        Ok(enum_values)
+            .get_enumeration_values_for_type(type_name))
     }
 }
 

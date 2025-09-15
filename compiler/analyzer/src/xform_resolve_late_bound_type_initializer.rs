@@ -14,7 +14,7 @@ use log::trace;
 
 use crate::scoped_table::{ScopedTable, Value};
 use crate::stdlib::is_unsupported_standard_type;
-use crate::type_environment::{TypeClass, TypeEnvironment};
+use crate::type_environment::TypeEnvironment;
 
 /// Derived data types declared.
 ///
@@ -141,7 +141,7 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
             InitialValueAssignmentKind::LateResolvedType(name) => {
                 // Element types resolve to the known type.
                 if let Some(ty) = self.type_environment.get(&name) {
-                    if ty.class == TypeClass::Simple {
+                    if ty.representation.is_primitive() {
                         return Ok(InitialValueAssignmentKind::Simple(SimpleInitializer {
                             type_name: name,
                             initial_value: None,
