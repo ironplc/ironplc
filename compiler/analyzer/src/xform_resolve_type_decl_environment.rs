@@ -166,12 +166,19 @@ impl Fold<Diagnostic> for TypeEnvironment {
         Ok(node)
     }
 
-    fn fold_string_declaration(&mut self, node: StringDeclaration) -> Result<StringDeclaration, Diagnostic>  {
-        self.insert_type(&node.type_name, TypeAttributes {
-            span: node.type_name.span(),
-            representation: IntermediateType::String { max_len: Some(node.length.value) }
-        },
-    )?;
+    fn fold_string_declaration(
+        &mut self,
+        node: StringDeclaration,
+    ) -> Result<StringDeclaration, Diagnostic> {
+        self.insert_type(
+            &node.type_name,
+            TypeAttributes {
+                span: node.type_name.span(),
+                representation: IntermediateType::String {
+                    max_len: Some(node.length.value),
+                },
+            },
+        )?;
         Ok(node)
     }
 
@@ -220,7 +227,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
                         Problem::ArrayElementTypeNotDeclared,
                         Label::span(node.type_name.span(), "Array declaration"),
                     )
-                    .with_secondary(Label::span(subranges.type_name.span(), "Array element type name")));
+                    .with_secondary(Label::span(
+                        subranges.type_name.span(),
+                        "Array element type name",
+                    )));
                 }
 
                 // Get the base type representation
@@ -507,10 +517,10 @@ END_TYPE
             ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
                 .unwrap();
 
-                let mut env = TypeEnvironmentBuilder::new()
-                .with_elementary_types()
-                .build()
-                .unwrap();
-            let _library = apply(input, &mut env).unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let _library = apply(input, &mut env).unwrap();
     }
 }
