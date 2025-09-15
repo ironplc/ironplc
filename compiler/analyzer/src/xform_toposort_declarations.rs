@@ -304,11 +304,11 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
             ArraySpecificationKind::Type(parent) => {
                 let depends_on = self.declarations.add_node(&parent.name);
                 self.declarations.graph.add_edge(depends_on, this, ());
-            },
+            }
             ArraySpecificationKind::Subranges(array_subranges) => {
                 let depends_on = self.declarations.add_node(&array_subranges.type_name.name);
                 self.declarations.graph.add_edge(depends_on, this, ());
-            },
+            }
         }
 
         node.recurse_visit(self)
@@ -740,7 +740,7 @@ END_TYPE";
         let library = parse_only(program);
         let library = apply(library).unwrap();
 
-        println!("{:?}", library);
+        println!("{library:?}");
 
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
