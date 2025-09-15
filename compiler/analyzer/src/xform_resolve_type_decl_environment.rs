@@ -166,6 +166,15 @@ impl Fold<Diagnostic> for TypeEnvironment {
         Ok(node)
     }
 
+    fn fold_string_declaration(&mut self, node: StringDeclaration) -> Result<StringDeclaration, Diagnostic>  {
+        self.insert_type(&node.type_name, TypeAttributes {
+            span: node.type_name.span(),
+            representation: IntermediateType::String { max_len: Some(node.length.value) }
+        },
+    )?;
+        Ok(node)
+    }
+
     fn fold_structure_declaration(
         &mut self,
         node: StructureDeclaration,
@@ -208,10 +217,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // Array with subranges - check if the base type exists
                 if self.get(&subranges.type_name).is_none() {
                     return Err(Diagnostic::problem(
-                        Problem::ParentTypeNotDeclared,
-                        Label::span(node.type_name.span(), "Array base type not found"),
+                        Problem::ArrayElementTypeNotDeclared,
+                        Label::span(node.type_name.span(), "Array declaration"),
                     )
-                    .with_secondary(Label::span(subranges.type_name.span(), "Base type name")));
+                    .with_secondary(Label::span(subranges.type_name.span(), "Array element type name")));
                 }
 
                 // Get the base type representation
@@ -481,5 +490,27 @@ END_TYPE
             }
             _ => panic!("Expected Array type"),
         }
+    }
+
+    #[test]
+    fn apply_when_array_element_is_string_type_then_ok() {
+        let program = "
+TYPE
+  oscat_STRING10               : STRING(10);
+END_TYPE
+
+TYPE
+  oscat_ELEMENT_WEEKDAYS	: ARRAY [1..7] OF oscat_STRING10;
+END_TYPE
+        ";
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+
+                let mut env = TypeEnvironmentBuilder::new()
+                .with_elementary_types()
+                .build()
+                .unwrap();
+            let _library = apply(input, &mut env).unwrap();
     }
 }

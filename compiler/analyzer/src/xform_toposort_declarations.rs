@@ -300,10 +300,16 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
     ) -> Result<Self::Value, Diagnostic> {
         let this = self.declarations.add_node(&node.type_name.name);
 
-        if let ArraySpecificationKind::Type(parent) = &node.spec {
-            let depends_on = self.declarations.add_node(&parent.name);
-            self.declarations.graph.add_edge(depends_on, this, ());
-        };
+        match &node.spec {
+            ArraySpecificationKind::Type(parent) => {
+                let depends_on = self.declarations.add_node(&parent.name);
+                self.declarations.graph.add_edge(depends_on, this, ());
+            },
+            ArraySpecificationKind::Subranges(array_subranges) => {
+                let depends_on = self.declarations.add_node(&array_subranges.type_name.name);
+                self.declarations.graph.add_edge(depends_on, this, ());
+            },
+        }
 
         node.recurse_visit(self)
     }
@@ -690,5 +696,60 @@ END_TYPE";
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::StructureInitialization);
         assert_eq!(decl.type_name, TypeName::from("INIT_STRUCT"));
+    }
+
+    #[test]
+    fn apply_when_array_element_is_struct_then_ok() {
+        let program = "TYPE subrange_element_type :
+  STRUCT
+	DAY : SINT;
+  END_STRUCT;
+END_TYPE
+
+TYPE
+  array_container 	: ARRAY [0..29] OF subrange_element_type;
+END_TYPE";
+
+        let library = parse_only(program);
+        let library = apply(library).unwrap();
+
+        let decl = library.elements.first().unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Structure);
+        assert_eq!(decl.type_name, TypeName::from("subrange_element_type"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Array);
+        assert_eq!(decl.type_name, TypeName::from("array_container"));
+    }
+
+    #[test]
+    fn apply_when_array_element_is_struct_needs_reorder_then_ok() {
+        let program = "
+TYPE
+  array_container 	: ARRAY [0..29] OF subrange_element_type;
+END_TYPE
+
+TYPE subrange_element_type :
+  STRUCT
+	DAY : SINT;
+  END_STRUCT;
+END_TYPE";
+
+        let library = parse_only(program);
+        let library = apply(library).unwrap();
+
+        println!("{:?}", library);
+
+        let decl = library.elements.first().unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Structure);
+        assert_eq!(decl.type_name, TypeName::from("subrange_element_type"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Array);
+        assert_eq!(decl.type_name, TypeName::from("array_container"));
     }
 }
