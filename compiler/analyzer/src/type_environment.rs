@@ -62,7 +62,7 @@ pub enum IntermediateType {
     Date,
 
     String {
-        max_len: Option<u32>,
+        max_len: Option<u128>,
     },
 
     // User-defined types
@@ -177,7 +177,7 @@ impl TypeEnvironment {
     ) -> Result<(), Diagnostic> {
         let base_intermediate_type = self.table.get(base_type_name).ok_or_else(|| {
             Diagnostic::problem(
-                Problem::ParentTypeNotDeclared,
+                Problem::AliasParentTypeNotDeclared,
                 Label::span(type_name.span(), "Type name"),
             )
             .with_secondary(Label::span(base_type_name.span(), "Missing declaration"))
