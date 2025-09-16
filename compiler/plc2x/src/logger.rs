@@ -4,14 +4,14 @@ use log::trace;
 use log::LevelFilter;
 use std::fs::File;
 use std::io::Write;
-use std::{env, fs};
+use std::path::PathBuf;
 use time::OffsetDateTime;
 
 /// Configures the log with the specified verbosity.
 ///
 /// Higher verbosity results in additional log messages
 /// up to a maximum verbosity level.
-pub fn configure(verbosity: u8) -> Result<(), String> {
+pub fn configure(verbosity: u8, log_file: Option<PathBuf>) -> Result<(), String> {
     let log_level = match verbosity {
         0 => LevelFilter::Error,
         1 => LevelFilter::Warn,
@@ -23,30 +23,24 @@ pub fn configure(verbosity: u8) -> Result<(), String> {
 
     trace!("Logger verbosity {log_level}");
 
-    // Determine the output log file - first the path then then file
-    // This path is important for the end-to-end smoke test.
-    let log_location = env::temp_dir().join("ironplcc");
-    fs::create_dir_all(&log_location).map_err(|e| {
-        format!(
-            "Unable to create log file {}. {}",
-            log_location.display(),
-            e
-        )
-    })?;
+    let mut builder = Builder::new();
 
-    let log_location = log_location.join("ironplcc.log");
-    let file = File::create(&log_location).map_err(|e| {
-        format!(
-            "Unable to create log file {}. {}",
-            log_location.display(),
-            e
-        )
-    })?;
+    if let Some(log_location) = log_file {
+        let file = File::create(&log_location).map_err(|e| {
+            format!(
+                "Unable to create log file {}. {}",
+                log_location.display(),
+                e
+            )
+        })?;
 
-    // Configure the logger with this file as the output target
-    let target = Box::new(file);
-    Builder::new()
-        .target(env_logger::Target::Pipe(target))
+        // Configure the logger with this file as the output target
+        let target = Box::new(file);
+
+        builder.target(env_logger::Target::Pipe(target));
+    }
+
+    builder
         .format(|buf, record| {
             writeln!(
                 buf,
@@ -70,7 +64,7 @@ mod test {
 
     #[test]
     fn configure_when_verbosity_is_5_then_return_err() {
-        let result = configure(5);
+        let result = configure(5, None);
 
         assert!(result.is_err());
     }

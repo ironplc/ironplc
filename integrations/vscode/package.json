@@ -3,7 +3,7 @@
   "displayName": "IronPLC",
   "publisher": "ironplc",
   "description": "IronPLC is the beginning of a development environment for IEC 61131-3.",
-  "version": "0.130.0",
+  "version": "0.131.0",
   "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0",
@@ -52,7 +52,7 @@
           "editPresentation": "singlelineText"
         },
         "ironplc.logLevel": {
-          "markdownDescription": "Log level for the language server provider.",
+          "markdownDescription": "Log level for the IronPLC compiler.",
           "type": "string",
           "default": "ERROR",
           "enum": [
@@ -62,6 +62,12 @@
             "DEBUG",
             "TRACE"
           ]
+        },
+        "ironplc.logFile": {
+          "markdownDescription": "Log file for the IronPLC compiler.",
+          "type": "string",
+          "default": "",
+          "editPresentation": "singlelineText"
         }
       }
     },
