@@ -17,6 +17,10 @@ struct Args {
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
 
+    /// Sets the logging to write to a file.
+    #[arg(short, long)]
+    log_file: Option<PathBuf>,
+
     /// Selects the subcommand.
     #[command(subcommand)]
     action: Action,
@@ -65,7 +69,7 @@ pub fn main() -> Result<(), String> {
     // The Err variant is a String so that the command line shows a nice message.
     let args = Args::parse();
 
-    logger::configure(args.verbose)?;
+    logger::configure(args.verbose, args.log_file)?;
 
     match args.action {
         Action::Lsp { stdio: _ } => {
