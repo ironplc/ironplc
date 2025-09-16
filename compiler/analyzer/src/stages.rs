@@ -21,8 +21,8 @@ use crate::{
     symbol_environment::SymbolEnvironment,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
     type_table, xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
-    xform_resolve_symbol_environment, xform_resolve_type_decl_environment,
-    xform_toposort_declarations,
+    xform_resolve_symbol_environment, xform_resolve_type_aliases,
+    xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
@@ -85,6 +85,10 @@ pub(crate) fn resolve_types(
         &type_environment,
         &mut symbol_environment,
     )?;
+
+    // Resolve type aliases by duplicating values
+    library =
+        xform_resolve_type_aliases::apply(library, &type_environment, &mut symbol_environment)?;
 
     // Generate and display useful symbol table information
     debug!("Type Environment:");

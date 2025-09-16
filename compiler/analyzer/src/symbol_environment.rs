@@ -60,6 +60,8 @@ pub struct SymbolInfo {
     /// so that we can distinguish between the actual place of the declaration
     /// and a reference to the declaration.
     pub enum_type: Option<TypeName>,
+    /// For structure fields, the type name of the structure
+    pub struct_type: Option<TypeName>,
     /// Source location information
     pub span: ironplc_dsl::core::SourceSpan,
 }
@@ -73,6 +75,7 @@ impl SymbolInfo {
             is_external: false,
             data_type: None,
             enum_type: None,
+            struct_type: None,
             span,
         }
     }
@@ -97,6 +100,12 @@ impl SymbolInfo {
     /// Set the enumeration type for enumeration value symbols
     pub fn with_enum_type(mut self, enum_type: TypeName) -> Self {
         self.enum_type = Some(enum_type);
+        self
+    }
+
+    /// Set the structure type for structure field symbols
+    pub fn with_struct_type(mut self, struct_type: TypeName) -> Self {
+        self.struct_type = Some(struct_type);
         self
     }
 }
@@ -181,6 +190,88 @@ impl SymbolEnvironment {
             }
         }
 
+        Ok(())
+    }
+
+    /// Insert a structure field with its type information
+    pub fn insert_structure_field(
+        &mut self,
+        name: &Id,
+        struct_type: &TypeName,
+        scope: &ScopeKind,
+    ) -> Result<(), Diagnostic> {
+        let symbol_info = SymbolInfo::new(SymbolKind::StructureElement, scope.clone(), name.span())
+            .with_struct_type(struct_type.clone());
+
+        match scope {
+            ScopeKind::Global => {
+                self.global_symbols.insert(name.clone(), symbol_info);
+            }
+            ScopeKind::Named(scope_name) => {
+                let scope_symbols = self
+                    .scoped_symbols
+                    .entry(ScopeKind::Named(scope_name.clone()))
+                    .or_default();
+
+                scope_symbols.insert(name.clone(), symbol_info);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Duplicate enumeration values from one type to another (for aliases)
+    pub fn duplicate_enumeration_values_for_alias(
+        &mut self,
+        source_type: &TypeName,
+        alias_type: &TypeName,
+    ) -> Result<(), Diagnostic> {
+        // Find all enumeration values for the source type and collect them
+        let source_values: Vec<Id> = self
+            .get_enumeration_values_for_type(source_type)
+            .iter()
+            .map(|id| (*id).clone())
+            .collect();
+
+        // Duplicate each value with the alias type
+        for value_name in source_values {
+            self.insert_enumeration_value(&value_name, alias_type, &ScopeKind::Global)?;
+        }
+
+        Ok(())
+    }
+
+    /// Duplicate structure field symbols from one type to another (for aliases)
+    pub fn duplicate_structure_fields_for_alias(
+        &mut self,
+        source_type: &TypeName,
+        alias_type: &TypeName,
+    ) -> Result<(), Diagnostic> {
+        // Find all structure field symbols for the source type and collect them
+        let source_fields: Vec<Id> = self
+            .get_structure_fields_for_type(source_type)
+            .iter()
+            .map(|id| (*id).clone())
+            .collect();
+
+        // Duplicate each field with the alias type
+        for field_name in source_fields {
+            self.insert_structure_field(&field_name, alias_type, &ScopeKind::Global)?;
+        }
+
+        Ok(())
+    }
+
+    /// Duplicate array element type information from one type to another (for aliases)
+    pub fn duplicate_array_elements_for_alias(
+        &mut self,
+        _source_type: &TypeName,
+        _alias_type: &TypeName,
+    ) -> Result<(), Diagnostic> {
+        // For arrays, we don't need to duplicate symbols like we do for enumerations
+        // and structures, since arrays don't have named elements that need to be
+        // accessible through the alias. The array type itself is what gets aliased.
+        // Array elements are accessed by index, not by name.
         Ok(())
     }
 
@@ -404,6 +495,37 @@ impl SymbolEnvironment {
         }
 
         values
+    }
+
+    /// Get all structure fields for a specific structure type
+    pub fn get_structure_fields_for_type(&self, struct_type: &TypeName) -> Vec<&Id> {
+        let mut fields = Vec::new();
+
+        // Check global symbols
+        for (name, symbol) in &self.global_symbols {
+            if matches!(symbol.kind, SymbolKind::StructureElement) {
+                if let Some(ref symbol_struct_type) = symbol.struct_type {
+                    if symbol_struct_type == struct_type {
+                        fields.push(name);
+                    }
+                }
+            }
+        }
+
+        // Check scoped symbols
+        for scope_symbols in self.scoped_symbols.values() {
+            for (name, symbol) in scope_symbols {
+                if matches!(symbol.kind, SymbolKind::StructureElement) {
+                    if let Some(ref symbol_struct_type) = symbol.struct_type {
+                        if symbol_struct_type == struct_type {
+                            fields.push(name);
+                        }
+                    }
+                }
+            }
+        }
+
+        fields
     }
 }
 
