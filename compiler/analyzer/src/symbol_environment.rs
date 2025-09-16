@@ -794,7 +794,7 @@ mod tests {
         let mut env = SymbolEnvironment::new();
 
         // Test debug output for empty environment
-        let debug_output = format!("{:?}", env);
+        let debug_output = format!("{env:?}");
         assert!(debug_output.contains("SymbolEnvironment"));
         assert!(debug_output.contains("global_symbols"));
         assert!(debug_output.contains("scoped_symbols"));
@@ -804,7 +804,7 @@ mod tests {
         env.insert(&id, SymbolKind::Variable, &ScopeKind::Global)
             .unwrap();
 
-        let debug_output = format!("{:?}", env);
+        let debug_output = format!("{env:?}");
         assert!(debug_output.contains("SymbolEnvironment"));
         assert!(debug_output.contains("global_symbols"));
         assert!(debug_output.contains("scoped_symbols"));
