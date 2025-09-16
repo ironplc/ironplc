@@ -1,4 +1,4 @@
-use ironplc_dsl::common::Type;
+use ironplc_dsl::common::TypeName;
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::Diagnostic;
 use std::collections::HashMap;
@@ -59,7 +59,7 @@ pub struct SymbolInfo {
     /// TODO this should probably be a new struct that is a TypeRef
     /// so that we can distinguish between the actual place of the declaration
     /// and a reference to the declaration.
-    pub enum_type: Option<Type>,
+    pub enum_type: Option<TypeName>,
     /// Source location information
     pub span: ironplc_dsl::core::SourceSpan,
 }
@@ -95,7 +95,7 @@ impl SymbolInfo {
     }
 
     /// Set the enumeration type for enumeration value symbols
-    pub fn with_enum_type(mut self, enum_type: Type) -> Self {
+    pub fn with_enum_type(mut self, enum_type: TypeName) -> Self {
         self.enum_type = Some(enum_type);
         self
     }
@@ -161,7 +161,7 @@ impl SymbolEnvironment {
     pub fn insert_enumeration_value(
         &mut self,
         name: &Id,
-        enum_type: &Type,
+        enum_type: &TypeName,
         scope: &ScopeKind,
     ) -> Result<(), Diagnostic> {
         let symbol_info = SymbolInfo::new(SymbolKind::EnumerationValue, scope.clone(), name.span())
@@ -376,7 +376,7 @@ impl SymbolEnvironment {
     }
 
     /// Get all enumeration values for a specific enumeration type
-    pub fn get_enumeration_values_for_type(&self, enum_type: &Type) -> Vec<&Id> {
+    pub fn get_enumeration_values_for_type(&self, enum_type: &TypeName) -> Vec<&Id> {
         let mut values = Vec::new();
 
         // Check global symbols

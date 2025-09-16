@@ -512,11 +512,11 @@ mod tests {
 
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
-        assert_eq!(decl.name, Type::from("Callee"));
+        assert_eq!(decl.name, TypeName::from("Callee"));
 
         let decl = library.elements.get(1).unwrap();
         let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
-        assert_eq!(decl.name, Type::from("Caller"));
+        assert_eq!(decl.name, TypeName::from("Caller"));
     }
 
     #[test]
@@ -533,12 +533,12 @@ END_TYPE";
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::Enumeration);
-        assert_eq!(decl.type_name, Type::from("LEVEL"));
+        assert_eq!(decl.type_name, TypeName::from("LEVEL"));
 
         let decl = library.elements.get(1).unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::LateBound);
-        assert_eq!(decl.data_type_name, Type::from("LEVEL_ALIAS"));
+        assert_eq!(decl.data_type_name, TypeName::from("LEVEL_ALIAS"));
     }
 
     #[test]
@@ -555,12 +555,12 @@ END_TYPE";
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::String);
-        assert_eq!(decl.type_name, Type::from("TYPE_NAME"));
+        assert_eq!(decl.type_name, TypeName::from("TYPE_NAME"));
 
         let decl = library.elements.get(1).unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::LateBound);
-        assert_eq!(decl.data_type_name, Type::from("TYPE_NAME_ALIAS"));
+        assert_eq!(decl.data_type_name, TypeName::from("TYPE_NAME_ALIAS"));
     }
 
     #[test]
@@ -577,12 +577,12 @@ END_TYPE";
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::Subrange);
-        assert_eq!(decl.type_name, Type::from("TYPE_NAME"));
+        assert_eq!(decl.type_name, TypeName::from("TYPE_NAME"));
 
         let decl = library.elements.get(1).unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::LateBound);
-        assert_eq!(decl.data_type_name, Type::from("TYPE_NAME_ALIAS"));
+        assert_eq!(decl.data_type_name, TypeName::from("TYPE_NAME_ALIAS"));
     }
 
     #[test]
@@ -599,12 +599,12 @@ END_TYPE";
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::Enumeration);
-        assert_eq!(decl.type_name, Type::from("COLOR"));
+        assert_eq!(decl.type_name, TypeName::from("COLOR"));
 
         let decl = library.elements.get(1).unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::Array);
-        assert_eq!(decl.type_name, Type::from("COLORS_ARRAY"));
+        assert_eq!(decl.type_name, TypeName::from("COLORS_ARRAY"));
     }
 
     #[test]
@@ -621,12 +621,12 @@ END_TYPE";
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::Simple);
-        assert_eq!(decl.type_name, Type::from("DEFAULT_1"));
+        assert_eq!(decl.type_name, TypeName::from("DEFAULT_1"));
 
         let decl = library.elements.get(1).unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::Simple);
-        assert_eq!(decl.type_name, Type::from("DEFAULT_2"));
+        assert_eq!(decl.type_name, TypeName::from("DEFAULT_2"));
     }
 
     #[test]
@@ -652,17 +652,17 @@ END_TYPE";
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::Enumeration);
-        assert_eq!(decl.type_name, Type::from("ENUM_TYPE"));
+        assert_eq!(decl.type_name, TypeName::from("ENUM_TYPE"));
 
         let decl = library.elements.get(1).unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::Structure);
-        assert_eq!(decl.type_name, Type::from("INNER_STRUCT"));
+        assert_eq!(decl.type_name, TypeName::from("INNER_STRUCT"));
 
         let decl = library.elements.get(2).unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::Structure);
-        assert_eq!(decl.type_name, Type::from("OUTER_STRUCT"));
+        assert_eq!(decl.type_name, TypeName::from("OUTER_STRUCT"));
     }
 
     #[test]
@@ -684,11 +684,11 @@ END_TYPE";
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::Structure);
-        assert_eq!(decl.type_name, Type::from("MY_STRUCT"));
+        assert_eq!(decl.type_name, TypeName::from("MY_STRUCT"));
 
         let decl = library.elements.get(1).unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::StructureInitialization);
-        assert_eq!(decl.type_name, Type::from("INIT_STRUCT"));
+        assert_eq!(decl.type_name, TypeName::from("INIT_STRUCT"));
     }
 }
