@@ -88,13 +88,13 @@ jobs:
           choco install nsis --no-progress
         
       # Execute build recipe
-      - name: Build the compiler
+      - name: Build the Compiler
         run: just ci
       - name: Create installer package
         run: just package ${{ inputs.version }} ${{ matrix.artifact }} ${{ matrix.rust_target }}
 
       # Save output artifacts
-      - name: Upload compiler installer to build artifacts
+      - name: Upload Compiler Installer to Build Artifacts
         if: ${{ inputs.gh-release-tag }}
         uses: actions/upload-artifact@v4
         with:
