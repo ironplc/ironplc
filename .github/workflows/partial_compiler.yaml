@@ -83,9 +83,10 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - name: Install NSIS
         if: ${{ matrix.os == 'windows-2025' }}
-        uses: repolevedavaj/install-nsis@v1.0.3
+        shell: powershell
+        run: |
+          choco install nsis --no-progress
         
-
       # Execute build recipe
       - name: Build the compiler
         run: just ci
