@@ -47,10 +47,10 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          - os: windows-latest
+          - os: windows-2025
             artifact: ironplcc-x86_64-windows.exe
             rust_target: x86_64-pc-windows-msvc
-          - os: windows-latest
+          - os: windows-2025
             artifact: ironplcc-aarch64-windows.exe
             rust_target: aarch64-pc-windows-msvc
           - os: ubuntu-latest
@@ -81,15 +81,20 @@ jobs:
           components: rustfmt, clippy
           target: ${{ matrix.rust_target }}
       - uses: taiki-e/install-action@cargo-llvm-cov
-
+      - name: Install NSIS
+        if: ${{ matrix.os == 'windows-2025' }}
+        shell: powershell
+        run: |
+          choco install nsis --no-progress
+        
       # Execute build recipe
-      - name: Build the compiler
+      - name: Build the Compiler
         run: just ci
       - name: Create installer package
         run: just package ${{ inputs.version }} ${{ matrix.artifact }} ${{ matrix.rust_target }}
 
       # Save output artifacts
-      - name: Upload compiler installer to build artifacts
+      - name: Upload Compiler Installer to Build Artifacts
         if: ${{ inputs.gh-release-tag }}
         uses: actions/upload-artifact@v4
         with:
