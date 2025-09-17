@@ -1,6 +1,6 @@
-//! Type environment stores the type definitions. The type
-//! environment contains both types defined by the language
-//! and user-defined types.
+//! Type environment describes "what is needed to implement the type
+//! as machine code". The type environment contains both types defined
+//! by the language and user-defined types.
 use std::collections::HashMap;
 
 use ironplc_dsl::{
@@ -9,53 +9,118 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
 };
 use ironplc_problems::Problem;
-use phf::{phf_set, Set};
 
-static ELEMENTARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
+static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 23] = [
     // signed_integer_type_name
-    "sint",
-    "int",
-    "dint",
-    "lint",
+    ("sint", IntermediateType::Int { size: 8 }),
+    ("int", IntermediateType::Int { size: 16 }),
+    ("dint", IntermediateType::Int { size: 32 }),
+    ("lint", IntermediateType::Int { size: 64 }),
     // unsigned_integer_type_name
-    "usint",
-    "uint",
-    "udint",
-    "ulint",
+    ("usint", IntermediateType::UInt { size: 8 }),
+    ("uint", IntermediateType::UInt { size: 16 }),
+    ("udint", IntermediateType::UInt { size: 32 }),
+    ("ulint", IntermediateType::UInt { size: 64 }),
     // real_type_name
-    "real",
-    "lreal",
+    ("real", IntermediateType::Real { size: 32 }),
+    ("lreal", IntermediateType::Real { size: 64 }),
     // date_type_name
-    "date",
-    "time_of_day",
-    "tod",
-    "date_and_time",
-    "dt",
+    ("date", IntermediateType::Date),
+    ("time_of_day", IntermediateType::Time),
+    ("tod", IntermediateType::Time),
+    ("date_and_time", IntermediateType::Date),
+    ("dt", IntermediateType::Date),
     // bit_string_type_name
-    "bool",
-    "byte",
-    "word",
-    "dword",
-    "lword",
+    ("bool", IntermediateType::Bool),
+    ("byte", IntermediateType::Bytes { size: 8 }),
+    ("word", IntermediateType::Bytes { size: 16 }),
+    ("dword", IntermediateType::Bytes { size: 32 }),
+    ("lword", IntermediateType::Bytes { size: 64 }),
     // remaining elementary_type_name
-    "string",
-    "wstring",
-    "time",
-};
+    ("string", IntermediateType::String { max_len: None }),
+    ("wstring", IntermediateType::String { max_len: None }),
+    ("time", IntermediateType::Time),
+];
 
-#[derive(Debug, PartialEq)]
-pub enum TypeClass {
-    Simple,
-    Enumeration,
-    Structure,
+#[derive(Debug, Clone, PartialEq)]
+pub enum IntermediateType {
+    // Elementary types
+    Bool,
+    Int {
+        size: u8,
+    }, // 8, 16, 32, 64 bits
+    UInt {
+        size: u8,
+    },
+    Real {
+        size: u8,
+    }, // 32, 64 bits
+    Bytes {
+        size: u8,
+    },
+    Time,
+    Date,
+
+    String {
+        max_len: Option<u128>,
+    },
+
+    // User-defined types
+    Enumeration {
+        underlying_type: Box<IntermediateType>, // Usually Int { size: 8 }
+    },
+    Structure {
+        fields: Vec<IntermediateStructField>,
+    },
+    Array {
+        element_type: Box<IntermediateType>,
+        size: Option<u32>, // Fixed size or dynamic
+    },
 }
 
-#[derive(Debug)]
+impl IntermediateType {
+    /// Returns if the type is a primitive type.
+    pub fn is_primitive(&self) -> bool {
+        matches!(
+            self,
+            IntermediateType::Bool
+                | IntermediateType::Int { .. }
+                | IntermediateType::Real { .. }
+                | IntermediateType::String { .. }
+                | IntermediateType::Time
+                | IntermediateType::Date
+        )
+    }
+
+    /// Returns if the type is an enumeration.
+    pub fn is_enumeration(&self) -> bool {
+        matches!(self, IntermediateType::Enumeration { .. })
+    }
+
+    /// Returns if the type is a structure.
+    pub fn is_structure(&self) -> bool {
+        matches!(self, IntermediateType::Structure { .. })
+    }
+
+    /// Returns if the type is an array.
+    pub fn is_array(&self) -> bool {
+        matches!(self, IntermediateType::Array { .. })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IntermediateStructField {
+    pub name: TypeName,
+    pub field_type: IntermediateType,
+    pub offset: u32, // For memory layout
+}
+
+#[derive(Debug, Clone)]
 pub struct TypeAttributes {
+    /// The location in source code that defined the type.
+    /// TODO this should be unnecessary since the TypeName already has a span.
     pub span: SourceSpan,
-    pub class: TypeClass,
-    /// For alias types, stores the base type name
-    pub base_type: Option<TypeName>,
+    pub representation: IntermediateType,
 }
 
 #[derive(Debug)]
@@ -71,7 +136,7 @@ impl Located for TypeAttributes {
 
 impl TypeEnvironment {
     /// Initializes a new instance of the type environment.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             table: HashMap::new(),
         }
@@ -79,9 +144,9 @@ impl TypeEnvironment {
 
     /// Adds the type into the environment.
     ///
-    /// Returns a diagnostics if a type already exists with the name
+    /// Returns an error if a type already exists with the name
     /// and does not insert the type.
-    pub(crate) fn insert(
+    pub fn insert_type(
         &mut self,
         type_name: &TypeName,
         symbol: TypeAttributes,
@@ -98,114 +163,79 @@ impl TypeEnvironment {
         )
     }
 
+    /// Adds an alias type into the environment.
+    ///
+    /// Returns an error if a type already exists with the name
+    /// and does not insert the type.
+    ///
+    /// Returns an error if the base type is not already in the type
+    /// environment.
+    pub fn insert_alias(
+        &mut self,
+        type_name: &TypeName,
+        base_type_name: &TypeName,
+    ) -> Result<(), Diagnostic> {
+        let base_intermediate_type = self.table.get(base_type_name).ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::AliasParentTypeNotDeclared,
+                Label::span(type_name.span(), "Type name"),
+            )
+            .with_secondary(Label::span(base_type_name.span(), "Missing declaration"))
+        })?;
+
+        self.insert_type(type_name, base_intermediate_type.clone())
+    }
+
     /// Gets the type from the environment.
-    pub(crate) fn get(&self, type_name: &TypeName) -> Option<&TypeAttributes> {
+    pub fn get(&self, type_name: &TypeName) -> Option<&TypeAttributes> {
         self.table.get(type_name)
     }
 
-    /// Checks if a type is an enumeration.
-    pub(crate) fn is_enumeration(&self, type_name: &TypeName) -> bool {
+    /// Returns if the type is an enumeration.
+    pub fn is_enumeration(&self, name: &TypeName) -> bool {
         self.table
-            .get(type_name)
-            .map(|attrs| matches!(attrs.class, TypeClass::Enumeration))
+            .get(name)
+            .map(|ty| ty.representation.is_enumeration())
             .unwrap_or(false)
     }
 
-    /// Gets the base type for an alias type, following the alias chain.
-    /// Returns the final non-alias type in the chain.
-    ///
-    /// # Arguments
-    /// * `type_name` - The type to resolve
-    ///
-    /// # Returns
-    /// * `Ok(base_type)` - The resolved type (could be the original type if no alias)
-    ///
-    /// # Errors
-    /// * Returns an error if there's a circular reference in the alias chain
-    /// * Returns an error if the type is not found
-    pub(crate) fn resolve_alias(&self, type_name: &TypeName) -> Result<TypeName, Diagnostic> {
-        let mut visited = std::collections::HashSet::new();
-        let mut current = type_name.clone();
+    // Note: removed is_structure(name) to avoid duplicate API with representation helpers
 
-        while let Some(attrs) = self.table.get(&current) {
-            if let Some(ref base_type) = attrs.base_type {
-                // Check for circular references
-                if !visited.insert(current.clone()) {
-                    return Err(Diagnostic::problem(
-                        Problem::RecursiveTypeCycle,
-                        Label::span(current.span(), "Circular type reference detected"),
-                    ));
-                }
-                current = base_type.clone();
-            } else {
-                // This is not an alias, return it as the base type
-                return Ok(current);
-            }
-        }
-
-        // Type not found
-        Err(Diagnostic::problem(
-            Problem::UndeclaredUnknownType,
-            Label::span(type_name.span(), "Type not found"),
-        ))
-    }
-
-    /// Gets the base type for an enumeration, resolving any aliases.
-    /// This is a convenience method that combines alias resolution with enumeration checking.
-    ///
-    /// # Arguments
-    /// * `type_name` - The type to resolve
-    ///
-    /// # Returns
-    /// * `Ok(base_type)` if the type resolves to an enumeration
-    ///
-    /// # Errors
-    /// * Returns an error if there's a circular reference in the alias chain
-    /// * Returns an error if the type is not found
-    /// * Returns an error if the type is not an enumeration
-    pub(crate) fn resolve_enumeration_alias(
-        &self,
-        type_name: &TypeName,
-    ) -> Result<TypeName, Diagnostic> {
-        let base_type = self.resolve_alias(type_name)?;
-        if self.is_enumeration(&base_type) {
-            Ok(base_type)
-        } else {
-            Err(Diagnostic::problem(
-                Problem::EnumNotDeclared,
-                Label::span(base_type.span(), "Type is not an enumeration"),
-            )
-            .with_context_type("name", &base_type))
-        }
+    /// An iterator for all types in the environment
+    pub fn iter(&self) -> impl Iterator<Item = (&TypeName, &TypeAttributes)> {
+        self.table.iter()
     }
 }
 
-pub(crate) struct TypeEnvironmentBuilder {
+pub struct TypeEnvironmentBuilder {
     has_elementary_types: bool,
 }
 
 impl TypeEnvironmentBuilder {
+    /// Initializes a new instance of the type environment builder.
     pub fn new() -> Self {
         Self {
             has_elementary_types: false,
         }
     }
 
+    /// Adds the elementary types to the type environment.
+    /// The elementary types are the types that are built into the language.
     pub fn with_elementary_types(mut self) -> Self {
         self.has_elementary_types = true;
         self
     }
 
+    /// Builds the type environment.
     pub fn build(self) -> Result<TypeEnvironment, Diagnostic> {
         let mut env = TypeEnvironment::new();
         if self.has_elementary_types {
-            for name in ELEMENTARY_TYPES_LOWER_CASE.iter() {
-                env.insert(
+            for (name, representation) in ELEMENTARY_TYPES_LOWER_CASE.iter() {
+                env.insert_type(
                     &TypeName::from(name),
                     TypeAttributes {
                         span: SourceSpan::default(),
-                        class: TypeClass::Simple,
-                        base_type: None,
+                        representation: representation.clone(),
                     },
                 )?;
             }
@@ -219,180 +249,50 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolve_alias_when_type_is_alias_then_resolves_to_base_type() {
+    fn insert_type_when_type_already_exists_then_error() {
         let mut env = TypeEnvironment::new();
+        assert!(env
+            .insert_type(
+                &TypeName::from("TYPE"),
+                TypeAttributes {
+                    span: SourceSpan::default(),
+                    representation: IntermediateType::Bool,
+                }
+            )
+            .is_ok());
 
-        // Add a base type
-        let base_type = TypeName::from("BASE");
-        env.insert(
-            &base_type,
-            TypeAttributes {
-                span: SourceSpan::default(),
-                class: TypeClass::Enumeration,
-                base_type: None,
-            },
-        )
-        .unwrap();
-
-        // Add an alias type
-        let alias_type = TypeName::from("ALIAS");
-        let base_type_clone = base_type.clone();
-        env.insert(
-            &alias_type,
-            TypeAttributes {
-                span: SourceSpan::default(),
-                class: TypeClass::Enumeration,
-                base_type: Some(base_type_clone),
-            },
-        )
-        .unwrap();
-
-        // Test alias resolution
-        let resolved = env.resolve_alias(&alias_type).unwrap();
-        assert_eq!(resolved, base_type.clone());
-
-        // Test base type resolution (should return itself)
-        let resolved = env.resolve_alias(&base_type).unwrap();
-        assert_eq!(resolved, base_type);
+        assert!(env
+            .insert_type(
+                &TypeName::from("TYPE"),
+                TypeAttributes {
+                    span: SourceSpan::default(),
+                    representation: IntermediateType::Bool,
+                }
+            )
+            .is_err());
     }
 
     #[test]
-    fn resolve_enumeration_alias_when_type_is_enumeration_alias_then_resolves_to_base_enumeration()
-    {
+    fn insert_alias_when_type_already_exists_then_ok() {
         let mut env = TypeEnvironment::new();
-
-        // Add a base enumeration type
-        let base_type = TypeName::from("BASE");
-        env.insert(
-            &base_type,
+        env.insert_type(
+            &TypeName::from("TYPE"),
             TypeAttributes {
                 span: SourceSpan::default(),
-                class: TypeClass::Enumeration,
-                base_type: None,
+                representation: IntermediateType::Bool,
             },
         )
         .unwrap();
-
-        // Add an alias type
-        let alias_type = TypeName::from("ALIAS");
-        let base_type_clone = base_type.clone();
-        env.insert(
-            &alias_type,
-            TypeAttributes {
-                span: SourceSpan::default(),
-                class: TypeClass::Enumeration,
-                base_type: Some(base_type_clone),
-            },
-        )
-        .unwrap();
-
-        // Test enumeration alias resolution
-        let resolved = env.resolve_enumeration_alias(&alias_type).unwrap();
-        assert_eq!(resolved, base_type.clone());
-
-        // Test base type resolution (should return itself)
-        let resolved = env.resolve_enumeration_alias(&base_type).unwrap();
-        assert_eq!(resolved, base_type);
+        assert!(env
+            .insert_alias(&TypeName::from("TYPE_ALIAS"), &TypeName::from("TYPE"))
+            .is_ok());
     }
 
     #[test]
-    fn resolve_alias_when_circular_reference_two_levels_then_returns_error() {
+    fn insert_alias_when_type_doesnt_exist_then_error() {
         let mut env = TypeEnvironment::new();
-
-        // Create a circular reference: A -> B -> A
-        let type_a = TypeName::from("A");
-        let type_b = TypeName::from("B");
-
-        env.insert(
-            &type_a,
-            TypeAttributes {
-                span: SourceSpan::default(),
-                class: TypeClass::Enumeration,
-                base_type: Some(type_b.clone()),
-            },
-        )
-        .unwrap();
-
-        env.insert(
-            &type_b,
-            TypeAttributes {
-                span: SourceSpan::default(),
-                class: TypeClass::Enumeration,
-                base_type: Some(type_a.clone()),
-            },
-        )
-        .unwrap();
-
-        // This should detect the circular reference
-        let result = env.resolve_alias(&type_a);
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, Problem::RecursiveTypeCycle.code());
-    }
-
-    #[test]
-    fn resolve_alias_when_circular_reference_three_levels_then_returns_error() {
-        let mut env = TypeEnvironment::new();
-
-        // Create a deeper circular reference: A -> B -> C -> A
-        let type_a = TypeName::from("A");
-        let type_b = TypeName::from("B");
-        let type_c = TypeName::from("C");
-
-        env.insert(
-            &type_a,
-            TypeAttributes {
-                span: SourceSpan::default(),
-                class: TypeClass::Enumeration,
-                base_type: Some(type_b.clone()),
-            },
-        )
-        .unwrap();
-
-        env.insert(
-            &type_b,
-            TypeAttributes {
-                span: SourceSpan::default(),
-                class: TypeClass::Enumeration,
-                base_type: Some(type_c.clone()),
-            },
-        )
-        .unwrap();
-
-        env.insert(
-            &type_c,
-            TypeAttributes {
-                span: SourceSpan::default(),
-                class: TypeClass::Enumeration,
-                base_type: Some(type_a.clone()),
-            },
-        )
-        .unwrap();
-
-        // This should detect the circular reference
-        let result = env.resolve_alias(&type_a);
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, Problem::RecursiveTypeCycle.code());
-    }
-
-    #[test]
-    fn resolve_enumeration_alias_when_type_is_not_enumeration_then_returns_error() {
-        let mut env = TypeEnvironment::new();
-
-        // Add a simple type (not enumeration)
-        let simple_type = TypeName::from("SIMPLE");
-        env.insert(
-            &simple_type,
-            TypeAttributes {
-                span: SourceSpan::default(),
-                class: TypeClass::Simple,
-                base_type: None,
-            },
-        )
-        .unwrap();
-
-        // Test that non-enumeration types return an error
-        let result = env.resolve_enumeration_alias(&simple_type);
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, Problem::EnumNotDeclared.code());
+        assert!(env
+            .insert_alias(&TypeName::from("TYPE_ALIAS"), &TypeName::from("TYPE"))
+            .is_err());
     }
 }
