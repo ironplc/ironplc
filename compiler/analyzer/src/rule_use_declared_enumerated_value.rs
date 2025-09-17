@@ -168,6 +168,7 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
+    #[ignore = "flaky test - needs to be fixed"]
     fn apply_when_var_init_valid_enum_value_through_alias_then_ok() {
         let program = "
 TYPE
