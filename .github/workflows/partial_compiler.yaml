@@ -83,7 +83,8 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - name: Install NSIS
         if: ${{ matrix.os == 'windows-2025' }}
-        uses: insani-org/nsis-installer@v1
+        uses: repolevedavaj/install-nsis@v1.0.3
+        
 
       # Execute build recipe
       - name: Build the compiler
