@@ -46,6 +46,13 @@ package-windows-on-linux version filename:
 _package-windows version filename target:
   cargo build --release --target {{target}}
 
+  # Directory listing 1
+  dir "C:\\Program Files (x86)\\NSIS\\"
+  # Directory listing 2
+  dir "C:\]ProgramData\\chocolatey\\lib\\nsis"
+  # Print log file contents
+  type "C:\\ProgramData\\chocolatey\\logs\\chocolatey.log"
+
   # makensis will write to the directory with the NSI file or the absolute path
   # provided. It is pretty difficult to do this with justfile.
   "C:\\Program Files (x86)\\NSIS\\makensis" -DARTIFACTSDIR=".\target\{{target}}\release" -DOUTFILE="{{filename}}" -DVERSION="{{version}}" "setup.nsi"
