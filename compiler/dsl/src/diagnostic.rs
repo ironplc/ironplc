@@ -149,6 +149,21 @@ impl Diagnostic {
         )
     }
 
+    /// Creates an "internal error" diagnostic associated with a file and line in the Rust
+    /// source code.
+    ///
+    /// Unlike other uses of problem, the location in this is related to the compiler
+    /// rather than the IEC 61131-3 source.
+    pub fn internal_error(file: &str, line: u32) -> Self {
+        Diagnostic::problem(
+            Problem::InternalError,
+            Label::span(
+                SourceSpan::default(),
+                format!("Internal error at {file}#L{line} indicates a bug in the compiler"),
+            ),
+        )
+    }
+
     /// Adds to the problem description (primary text) additional context
     /// about the problem.
     ///

@@ -63,7 +63,7 @@ pub fn echo(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
                 print!("{output}");
             }
             Err(diagnostics) => {
-                let diagnostics: Vec<Diagnostic> = diagnostics.into_iter().cloned().collect();
+                let diagnostics: Vec<Diagnostic> = diagnostics;
                 // TODO this needs to be improved but will wait for changes to source
                 handle_diagnostics(&diagnostics, None, suppress_output);
 
