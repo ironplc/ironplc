@@ -62,7 +62,7 @@ on:
 jobs:
   endtoend:
     name: End to End Smoke Test Job
-    runs-on: windows-latest
+    runs-on: windows-2025
 
     steps:
       # Fetch input artifacts and code

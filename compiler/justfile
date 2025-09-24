@@ -48,7 +48,7 @@ _package-windows version filename target:
 
   # makensis will write to the directory with the NSI file or the absolute path
   # provided. It is pretty difficult to do this with justfile.
-  makensis -DARTIFACTSDIR=".\target\{{target}}\release" -DOUTFILE="{{filename}}" -DVERSION="{{version}}" "setup.nsi"
+  & "C:\\Program Files (x86)\\NSIS\\Bin\\makensis" /DARTIFACTSDIR=".\target\{{target}}\release" /DOUTFILE="{{filename}}" /DVERSION="{{version}}" "setup.nsi"
   # Some versions of Windows do something funky with the path so that
   # Get-FileHash is not available. The prefix makes sure we run with a
   # compatible PowerShell instance.
