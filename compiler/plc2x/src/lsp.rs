@@ -119,7 +119,10 @@ impl<'a> LspServer<'a> {
                     }
                     self.handle_request(req);
                 }
-                lsp_server::Message::Response(_) => todo!(),
+                lsp_server::Message::Response(_) => {
+                    // LSP responses are typically handled by the client, not the server
+                    // For now, we just ignore them
+                }
                 lsp_server::Message::Notification(notification) => {
                     self.handle_notification(&notification);
                 }

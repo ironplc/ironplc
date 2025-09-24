@@ -42,7 +42,7 @@ impl Source {
     pub fn file_id(&self) -> &FileId {
         &self.file_id
     }
-    pub fn library(&mut self) -> Result<&Library, Vec<&Diagnostic>> {
+    pub fn library(&mut self) -> Result<&Library, Vec<Diagnostic>> {
         if self.library.is_none() {
             self.library = Some(parse_program(
                 self.data.borrow(),
@@ -54,12 +54,12 @@ impl Source {
         match &self.library {
             Some(result) => match result {
                 Ok(library) => Ok(library),
-                Err(diagnostic) => Err(vec![diagnostic]),
+                Err(diagnostic) => Err(vec![diagnostic.clone()]),
             },
             None => {
-                // this will crash the program. While it is should not be possible to
-                // get here, this is a bad practice but I need to refactor source first.
-                todo!()
+                // This should not be possible to reach since we set self.library above
+                // Return an error diagnostic instead of panicking
+                Err(vec![Diagnostic::internal_error(file!(), line!())])
             }
         }
     }
