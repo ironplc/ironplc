@@ -157,7 +157,10 @@ impl Diagnostic {
     pub fn internal_error(file: &str, line: u32) -> Self {
         Diagnostic::problem(
             Problem::InternalError,
-            Label::span(SourceSpan::default(), format!("Internal error at {file}#L{line} indicates a bug in the compiler")),
+            Label::span(
+                SourceSpan::default(),
+                format!("Internal error at {file}#L{line} indicates a bug in the compiler"),
+            ),
         )
     }
 
