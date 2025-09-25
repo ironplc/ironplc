@@ -196,7 +196,7 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
         <div class="visually-hidden">Toggle table of contents sidebar</div>
         <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
       </label>
@@ -265,6 +265,10 @@
 <li class="toctree-l3"><a class="reference internal" href="P0035.html">P0035</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P0036.html">P0036</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P0037.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0038.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0039.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0040.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P9998.html">P9998</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P9999.html">P9999</a></li>
 </ul>
 </li>
@@ -315,7 +319,7 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
             <div class="visually-hidden">Toggle table of contents sidebar</div>
             <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
           </label>
@@ -333,6 +337,28 @@
 <dt><strong>Message</strong></dt><dd><p>Program task configuration reference not defined</p>
 </dd>
 </dl>
+<p>This error occurs when a program configuration references a task that is not defined in the resource.</p>
+<section id="example">
+<h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
+<p>The following code will generate error P0011:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">CONFIGURATION</span> <span class="n">config</span>
+    <span class="n">RESOURCE</span> <span class="n">resource1</span> <span class="n">ON</span> <span class="n">PLC</span>
+       <span class="n">PROGRAM</span> <span class="n">plc_task_instance</span> <span class="n">WITH</span> <span class="n">plc_task</span> <span class="p">:</span> <span class="n">plc_prg</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">plc_task</span> <span class="ow">not</span> <span class="n">defined</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">END_RESOURCE</span>
+<span class="n">END_CONFIGURATION</span>
+</pre></div>
+</div>
+<p>The program <code class="docutils literal notranslate"><span class="pre">plc_task_instance</span></code> references a task named <code class="docutils literal notranslate"><span class="pre">plc_task</span></code>, but this task is not defined in the resource.</p>
+<p>To fix this error, define the task before referencing it:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">CONFIGURATION</span> <span class="n">config</span>
+    <span class="n">RESOURCE</span> <span class="n">resource1</span> <span class="n">ON</span> <span class="n">PLC</span>
+       <span class="n">TASK</span> <span class="n">plc_task</span><span class="p">(</span><span class="n">INTERVAL</span> <span class="o">:=</span> <span class="n">T</span><span class="c1">#100ms, PRIORITY := 1);  (* Define the task *)</span>
+       <span class="n">PROGRAM</span> <span class="n">plc_task_instance</span> <span class="n">WITH</span> <span class="n">plc_task</span> <span class="p">:</span> <span class="n">plc_prg</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">task</span> <span class="ow">is</span> <span class="n">now</span> <span class="n">defined</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">END_RESOURCE</span>
+<span class="n">END_CONFIGURATION</span>
+</pre></div>
+</div>
+</section>
 </section>
 
         </article>
@@ -386,8 +412,27 @@
         
       </footer>
     </div>
-    <aside class="toc-drawer no-toc">
+    <aside class="toc-drawer">
       
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">P0011</a><ul>
+<li><a class="reference internal" href="#example">Example</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
       
       
     </aside>

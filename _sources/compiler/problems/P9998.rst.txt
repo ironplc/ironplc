@@ -1,0 +1,13 @@
+=====
+P9999
+=====
+
+.. problem-summary:: P9998
+
+Analyzing the IEC 61131-3 source failed because the compiler encountered an
+internal error. This is a bug in the compiler.
+
+Please report the issue to `IronPLC GitHub issues`_.
+
+.. _IronPLC GitHub issues: https://github.com/ironplc/ironplc/issues/new?template=todo_report.md
+

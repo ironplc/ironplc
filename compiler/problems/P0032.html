@@ -196,7 +196,7 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
         <div class="visually-hidden">Toggle table of contents sidebar</div>
         <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
       </label>
@@ -265,6 +265,10 @@
 <li class="toctree-l3"><a class="reference internal" href="P0035.html">P0035</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P0036.html">P0036</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P0037.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0038.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0039.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0040.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P9998.html">P9998</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P9999.html">P9999</a></li>
 </ul>
 </li>
@@ -315,7 +319,7 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
             <div class="visually-hidden">Toggle table of contents sidebar</div>
             <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
           </label>
@@ -333,7 +337,36 @@
 <dt><strong>Message</strong></dt><dd><p>C-style comment not allowed</p>
 </dd>
 </dl>
-<p>The compiler encountered a C-style comment (<code class="code docutils literal notranslate"><span class="pre">//</span></code>) in the source.</p>
+<p>This error occurs when C-style comments (<code class="docutils literal notranslate"><span class="pre">//</span></code>) are used in the code, which are not allowed in IEC 61131-3.</p>
+<section id="example">
+<h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
+<p>The following code will generate error P0032:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION_BLOCK</span> <span class="n">Example</span>
+<span class="n">VAR</span>
+    <span class="n">Counter</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+<span class="n">END_VAR</span>
+
+<span class="o">//</span> <span class="n">This</span> <span class="ow">is</span> <span class="n">a</span> <span class="n">C</span><span class="o">-</span><span class="n">style</span> <span class="n">comment</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">C</span><span class="o">-</span><span class="n">style</span> <span class="n">comments</span> <span class="ow">not</span> <span class="n">allowed</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">Counter</span> <span class="o">:=</span> <span class="n">Counter</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+<span class="n">END_FUNCTION_BLOCK</span>
+</pre></div>
+</div>
+<p>The code uses <code class="docutils literal notranslate"><span class="pre">//</span></code> for comments, which is C-style syntax and not valid in IEC 61131-3.</p>
+<p>To fix this error, you have two options:</p>
+<p><strong>Option 1: Use proper IEC 61131-3 comment syntax</strong></p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION_BLOCK</span> <span class="n">Example</span>
+<span class="n">VAR</span>
+    <span class="n">Counter</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+<span class="n">END_VAR</span>
+
+<span class="p">(</span><span class="o">*</span> <span class="n">This</span> <span class="ow">is</span> <span class="n">a</span> <span class="n">proper</span> <span class="n">IEC</span> <span class="mi">61131</span><span class="o">-</span><span class="mi">3</span> <span class="n">comment</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">Counter</span> <span class="o">:=</span> <span class="n">Counter</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+<span class="n">END_FUNCTION_BLOCK</span>
+</pre></div>
+</div>
+<p><strong>Option 2: Enable C-style comments with command line option</strong></p>
+<p>If you prefer to use C-style comments, you can enable them with the <code class="docutils literal notranslate"><span class="pre">--allow-c-style-comments</span></code> command line option when running the compiler.</p>
+</section>
 </section>
 
         </article>
@@ -387,8 +420,27 @@
         
       </footer>
     </div>
-    <aside class="toc-drawer no-toc">
+    <aside class="toc-drawer">
       
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">P0032</a><ul>
+<li><a class="reference internal" href="#example">Example</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
       
       
     </aside>

@@ -196,7 +196,7 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
         <div class="visually-hidden">Toggle table of contents sidebar</div>
         <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
       </label>
@@ -265,6 +265,10 @@
 <li class="toctree-l3"><a class="reference internal" href="P0035.html">P0035</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P0036.html">P0036</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P0037.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0038.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0039.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0040.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P9998.html">P9998</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P9999.html">P9999</a></li>
 </ul>
 </li>
@@ -315,7 +319,7 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
             <div class="visually-hidden">Toggle table of contents sidebar</div>
             <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
           </label>
@@ -333,6 +337,23 @@
 <dt><strong>Message</strong></dt><dd><p>Subrange declaration minimum value is not less than the maximum</p>
 </dd>
 </dl>
+<p>This error occurs when a subrange declaration has a minimum value that is not strictly less than the maximum value.</p>
+<section id="example">
+<h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
+<p>The following code will generate error P0004:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
+    <span class="n">INVALID_RANGE</span> <span class="p">:</span> <span class="n">INT</span><span class="p">(</span><span class="mf">10.</span><span class="o">.-</span><span class="mi">10</span><span class="p">);</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">minimum</span> <span class="p">(</span><span class="mi">10</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">maximum</span> <span class="p">(</span><span class="o">-</span><span class="mi">10</span><span class="p">)</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_TYPE</span>
+</pre></div>
+</div>
+<p>The subrange declaration has a minimum value of 10 and maximum value of -10, but the minimum must be strictly less than the maximum.</p>
+<p>To fix this error, ensure the minimum value is less than the maximum value:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
+    <span class="n">VALID_RANGE</span> <span class="p">:</span> <span class="n">INT</span><span class="p">(</span><span class="o">-</span><span class="mf">10..10</span><span class="p">);</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">minimum</span> <span class="p">(</span><span class="o">-</span><span class="mi">10</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">maximum</span> <span class="p">(</span><span class="mi">10</span><span class="p">)</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_TYPE</span>
+</pre></div>
+</div>
+</section>
 </section>
 
         </article>
@@ -386,8 +407,27 @@
         
       </footer>
     </div>
-    <aside class="toc-drawer no-toc">
+    <aside class="toc-drawer">
       
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">P0004</a><ul>
+<li><a class="reference internal" href="#example">Example</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
       
       
     </aside>

@@ -4,3 +4,31 @@ P0011
 
 .. problem-summary:: P0011
 
+This error occurs when a program configuration references a task that is not defined in the resource.
+
+Example
+-------
+
+The following code will generate error P0011:
+
+.. code-block::
+
+   CONFIGURATION config
+       RESOURCE resource1 ON PLC
+          PROGRAM plc_task_instance WITH plc_task : plc_prg;  (* Error: plc_task not defined *)
+       END_RESOURCE
+   END_CONFIGURATION
+
+The program ``plc_task_instance`` references a task named ``plc_task``, but this task is not defined in the resource.
+
+To fix this error, define the task before referencing it:
+
+.. code-block::
+
+   CONFIGURATION config
+       RESOURCE resource1 ON PLC
+          TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);  (* Define the task *)
+          PROGRAM plc_task_instance WITH plc_task : plc_prg;  (* Correct: task is now defined *)
+       END_RESOURCE
+   END_CONFIGURATION
+

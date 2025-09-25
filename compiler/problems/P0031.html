@@ -196,7 +196,7 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
         <div class="visually-hidden">Toggle table of contents sidebar</div>
         <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
       </label>
@@ -265,6 +265,10 @@
 <li class="toctree-l3"><a class="reference internal" href="P0035.html">P0035</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P0036.html">P0036</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P0037.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0038.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0039.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0040.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P9998.html">P9998</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P9999.html">P9999</a></li>
 </ul>
 </li>
@@ -315,7 +319,7 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
             <div class="visually-hidden">Toggle table of contents sidebar</div>
             <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
           </label>
@@ -334,6 +338,27 @@
 </dd>
 </dl>
 <p>The compiler encountered an unexpected token while parsing the source text.</p>
+<p>This error occurs when the parser encounters text that is not valid IEC 61131-3 syntax.</p>
+<section id="example">
+<h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
+<p>The following code will generate error P0031:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
+    <span class="n">CUSTOM_STRUCT</span> <span class="p">:</span> <span class="n">STRUCT</span><span class="o">&amp;</span>   <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">Invalid</span> <span class="n">character</span> <span class="s1">&#39;&amp;&#39;</span> <span class="o">*</span><span class="p">)</span>
+        <span class="n">NAME</span><span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+    <span class="n">END_STRUCT</span><span class="p">;</span>
+<span class="n">END_TYPE</span>
+</pre></div>
+</div>
+<p>The parser encountered the <code class="docutils literal notranslate"><span class="pre">&amp;</span></code> character in an unexpected position where it expected valid identifier characters.</p>
+<p>To fix this error, remove the invalid character and use valid IEC 61131-3 syntax:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
+    <span class="n">CUSTOM_STRUCT</span> <span class="p">:</span> <span class="n">STRUCT</span>   <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">No</span> <span class="n">invalid</span> <span class="n">characters</span> <span class="o">*</span><span class="p">)</span>
+        <span class="n">NAME</span><span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+    <span class="n">END_STRUCT</span><span class="p">;</span>
+<span class="n">END_TYPE</span>
+</pre></div>
+</div>
+</section>
 </section>
 
         </article>
@@ -387,8 +412,27 @@
         
       </footer>
     </div>
-    <aside class="toc-drawer no-toc">
+    <aside class="toc-drawer">
       
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">P0031</a><ul>
+<li><a class="reference internal" href="#example">Example</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
       
       
     </aside>
