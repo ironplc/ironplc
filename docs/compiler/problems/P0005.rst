@@ -4,3 +4,26 @@ P0005
 
 .. problem-summary:: P0005
 
+This error occurs when an enumeration type declaration has duplicate values.
+
+Example
+-------
+
+The following code will generate error P0005:
+
+.. code-block::
+
+   TYPE
+       LOGLEVEL : (CRITICAL, CRITICAL) := CRITICAL;  (* Error: Duplicate value *)
+   END_TYPE
+
+The enumeration has two values with the same name ``CRITICAL``, which is not allowed.
+
+To fix this error, ensure all enumeration values are unique:
+
+.. code-block::
+
+   TYPE
+       LOGLEVEL : (CRITICAL, WARNING, INFO, DEBUG) := INFO;  (* All values unique *)
+   END_TYPE
+
