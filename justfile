@@ -173,8 +173,10 @@ endtoend-smoke-test compiler-version extension-version extension-name:
   Get-Content -Path "{{env_var('USERPROFILE')}}\.vscode\extensions\extensions.json"
 
   # Create the settings.json with the configuration to enable trace level logging (that's the 4 -v's)
+  # It would be better to use the temp directory, but that generates forward slashes that need to be escaped
+  # and escaping them is a challenge. This avoid the problem.
   New-Item "{{env_var('APPDATA')}}\Code\User\settings.json" -Force
-  Set-Content "{{env_var('APPDATA')}}\Code\User\settings.json" '{ "security.workspace.trust.enabled": false, "ironplc.logLevel": "TRACE", "ironplc.logFile": "{{env_var('LOCALAPPDATA')}}\Temp\ironplcc.log" }'
+  Set-Content "{{env_var('APPDATA')}}\Code\User\settings.json" '{ "security.workspace.trust.enabled": false, "ironplc.logLevel": "TRACE", "ironplc.logFile": "C:\\ironplcc.log" }'
   Get-Content "{{env_var('APPDATA')}}\Code\User\settings.json"
 
   # Open an example file that is part of the compiler - this is a hard coded path
@@ -186,9 +188,8 @@ endtoend-smoke-test compiler-version extension-version extension-name:
   # Check that the log file was created (indicating that VS Code correctly started the
   # ironplcc language server). This path is a well-known path
   Start-Sleep -s 30
-  Get-ChildItem "{{env_var('LOCALAPPDATA')}}\Temp\"
-  Get-ChildItem "{{env_var('LOCALAPPDATA')}}\Temp\ironplcc"
-  IF (Test-Path "{{env_var('LOCALAPPDATA')}}\Temp\ironplcc\ironplcc.log" -PathType Leaf) { exit 0 } ELSE { exit 1 }
+  Get-ChildItem "{{env_var('LOCALAPPDATA')}}"
+  IF (Test-Path "{{env_var('LOCALAPPDATA')}}\ironplcc.log" -PathType Leaf) { exit 0 } ELSE { exit 1 }
 
 _endtoend-smoke-unix:
   @echo "endtoend-smoke is not implemented for Unix family"
