@@ -161,6 +161,7 @@ endtoend-smoke-test compiler-version extension-version extension-name:
   # VS code does have a command line to install an extension, but after
   # many tries, I think it is broken, so instead, just install directly
   # Expands to a folder called "ironplc\extension"
+  # Some versions of Expand-Archive only work with the ZIP file extension
   Copy-Item -Path "ironplc.vsix" -Destination "ironplc.zip"
   Expand-Archive ironplc.zip
   # Move the folder 
@@ -189,8 +190,8 @@ endtoend-smoke-test compiler-version extension-version extension-name:
   # Check that the log file was created (indicating that VS Code correctly started the
   # ironplcc language server). This path is a well-known path
   Start-Sleep -s 30
-  Get-ChildItem "{{env_var('LOCALAPPDATA')}}"
-  IF (Test-Path "{{env_var('LOCALAPPDATA')}}\ironplcc.log" -PathType Leaf) { exit 0 } ELSE { exit 1 }
+  Get-ChildItem "C:\\"
+  IF (Test-Path "C:\\ironplcc.log" -PathType Leaf) { exit 0 } ELSE { exit 1 }
 
 _endtoend-smoke-unix:
   @echo "endtoend-smoke is not implemented for Unix family"
