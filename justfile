@@ -161,7 +161,8 @@ endtoend-smoke-test compiler-version extension-version extension-name:
   # VS code does have a command line to install an extension, but after
   # many tries, I think it is broken, so instead, just install directly
   # Expands to a folder called "ironplc\extension"
-  Expand-Archive ironplc.vsix
+  Copy-Item -Path "ironplc.vsix" -Destination "ironplc.zip"
+  Expand-Archive ironplc.zip
   # Move the folder 
   New-Item -ItemType Directory -Force -Path "{{env_var('USERPROFILE')}}\.vscode\extensions\"
   Move-Item ironplc\extension "{{env_var('USERPROFILE')}}\.vscode\extensions\{{extension-name}}-{{extension-version}}"
