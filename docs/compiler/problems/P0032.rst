@@ -4,4 +4,41 @@ P0032
 
 .. problem-summary:: P0032
 
-The compiler encountered a C-style comment (:code:`//`) in the source.
+This error occurs when C-style comments (``//``) are used in the code, which are not allowed in IEC 61131-3.
+
+Example
+-------
+
+The following code will generate error P0032:
+
+.. code-block::
+
+   FUNCTION_BLOCK Example
+   VAR
+       Counter : INT;
+   END_VAR
+   
+   // This is a C-style comment  (* Error: C-style comments not allowed *)
+   Counter := Counter + 1;
+   END_FUNCTION_BLOCK
+
+The code uses ``//`` for comments, which is C-style syntax and not valid in IEC 61131-3.
+
+To fix this error, you have two options:
+
+**Option 1: Use proper IEC 61131-3 comment syntax**
+
+.. code-block::
+
+   FUNCTION_BLOCK Example
+   VAR
+       Counter : INT;
+   END_VAR
+   
+   (* This is a proper IEC 61131-3 comment *)
+   Counter := Counter + 1;
+   END_FUNCTION_BLOCK
+
+**Option 2: Enable C-style comments with command line option**
+
+If you prefer to use C-style comments, you can enable them with the ``--allow-c-style-comments`` command line option when running the compiler.

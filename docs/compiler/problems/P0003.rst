@@ -4,3 +4,32 @@ P0003
 
 .. problem-summary:: P0003
 
+This error occurs when a structure type declaration has duplicate element names.
+
+Example
+-------
+
+The following code will generate error P0003:
+
+.. code-block::
+
+   TYPE
+       CUSTOM_STRUCT : STRUCT
+           NAME: BOOL;
+           NAME: BOOL;  (* Error: Duplicate element name *)
+       END_STRUCT;
+   END_TYPE
+
+The structure has two elements with the same name ``NAME``, which is not allowed.
+
+To fix this error, ensure all element names in a structure are unique:
+
+.. code-block::
+
+   TYPE
+       CUSTOM_STRUCT : STRUCT
+           NAME1: BOOL;
+           NAME2: BOOL;  (* Different name *)
+       END_STRUCT;
+   END_TYPE
+
