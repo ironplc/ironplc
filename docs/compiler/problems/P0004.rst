@@ -14,7 +14,7 @@ The following code will generate error P0004:
 .. code-block::
 
    TYPE
-       INVALID_RANGE : INT(10..-10);  (* Error: minimum (10) >= maximum (-10) *)
+       InvalidRange : INT(10..-10);  (* Error: minimum (10) >= maximum (-10) *)
    END_TYPE
 
 The subrange declaration has a minimum value of 10 and maximum value of -10, but the minimum must be strictly less than the maximum.
@@ -24,6 +24,6 @@ To fix this error, ensure the minimum value is less than the maximum value:
 .. code-block::
 
    TYPE
-       VALID_RANGE : INT(-10..10);  (* Correct: minimum (-10) < maximum (10) *)
+       ValidRange : INT(-10..10);  (* Correct: minimum (-10) < maximum (10) *)
    END_TYPE
 

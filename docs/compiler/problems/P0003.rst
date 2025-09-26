@@ -14,22 +14,22 @@ The following code will generate error P0003:
 .. code-block::
 
    TYPE
-       CUSTOM_STRUCT : STRUCT
-           NAME: BOOL;
-           NAME: BOOL;  (* Error: Duplicate element name *)
+       CustomStruct : STRUCT
+           Name: BOOL;
+           Name: BOOL;  (* Error: Duplicate element name *)
        END_STRUCT;
    END_TYPE
 
-The structure has two elements with the same name ``NAME``, which is not allowed.
+The structure has two elements with the same name ``Name``, which is not allowed.
 
 To fix this error, ensure all element names in a structure are unique:
 
 .. code-block::
 
    TYPE
-       CUSTOM_STRUCT : STRUCT
-           NAME1: BOOL;
-           NAME2: BOOL;  (* Different name *)
+       CustomStruct : STRUCT
+           Name1: BOOL;
+           Name2: BOOL;  (* Different name *)
        END_STRUCT;
    END_TYPE
 

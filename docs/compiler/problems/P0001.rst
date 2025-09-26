@@ -15,8 +15,8 @@ The following code will generate error P0001:
 
    TYPE
    (* A comment that is never closed
-       CUSTOM_STRUCT : STRUCT 
-           NAME: BOOL;
+       CustomStruct : STRUCT 
+           Name: BOOL;
        END_STRUCT;
    END_TYPE
 
@@ -28,8 +28,8 @@ To fix this error, properly close the comment:
 
    TYPE
    (* A comment that is properly closed *)
-       CUSTOM_STRUCT : STRUCT 
-           NAME: BOOL;
+       CustomStruct : STRUCT 
+           Name: BOOL;
        END_STRUCT;
    END_TYPE
 

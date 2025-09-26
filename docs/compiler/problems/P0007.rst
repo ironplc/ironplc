@@ -4,3 +4,44 @@ P0007
 
 .. problem-summary:: P0007
 
+This error occurs when a function block invocation assigns a named (formal) input that is not defined in the function block.
+
+Example
+-------
+
+The following code will generate error P0007:
+
+.. code-block::
+
+   FUNCTION_BLOCK Callee
+   VAR_INPUT
+       Input1: BOOL;
+   END_VAR
+   END_FUNCTION_BLOCK
+   
+   FUNCTION_BLOCK Caller
+   VAR
+       FbInstance : Callee;
+   END_VAR
+   FbInstance(InvalidInput := TRUE);  (* Error: InvalidInput not defined *)
+   END_FUNCTION_BLOCK
+
+The function block invocation references ``InvalidInput`` which is not defined in the ``Callee`` function block.
+
+To fix this error, use only the defined input names:
+
+.. code-block::
+
+   FUNCTION_BLOCK Callee
+   VAR_INPUT
+       Input1: BOOL;
+   END_VAR
+   END_FUNCTION_BLOCK
+   
+   FUNCTION_BLOCK Caller
+   VAR
+       FbInstance : Callee;
+   END_VAR
+   FbInstance(Input1 := TRUE);  (* Correct: Input1 is defined *)
+   END_FUNCTION_BLOCK
+
