@@ -17,13 +17,13 @@ The following code will generate error P0018:
        VAR_GLOBAL CONSTANT
            ResetCounterValue : INT := 17;
        END_VAR
-       RESOURCE resource1 ON PLC
+       RESOURCE res ON PLC
            TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
-           PROGRAM plc_task_instance WITH plc_task : plc_prg;
+           PROGRAM plc_task_instance WITH plc_task : main;
        END_RESOURCE
    END_CONFIGURATION
 
-   FUNCTION_BLOCK func
+   FUNCTION_BLOCK Func
        VAR_EXTERNAL
            ResetCounterValue : INT;  (* Error: Missing CONSTANT qualifier *)
        END_VAR
@@ -39,13 +39,13 @@ To fix this error, add the ``CONSTANT`` qualifier to the external variable decla
        VAR_GLOBAL CONSTANT
            ResetCounterValue : INT := 17;
        END_VAR
-       RESOURCE resource1 ON PLC
+       RESOURCE res ON PLC
            TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
-           PROGRAM plc_task_instance WITH plc_task : plc_prg;
+           PROGRAM plc_task_instance WITH plc_task : main;
        END_RESOURCE
    END_CONFIGURATION
 
-   FUNCTION_BLOCK func
+   FUNCTION_BLOCK Func
        VAR_EXTERNAL CONSTANT
            ResetCounterValue : INT;  (* Correct: CONSTANT qualifier added *)
        END_VAR

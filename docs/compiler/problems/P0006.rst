@@ -15,19 +15,19 @@ The following code will generate error P0006:
 
    FUNCTION_BLOCK Callee
    VAR_INPUT
-   IN1: BOOL;
-   IN2: BOOL;
+       Input1: BOOL;
+       Input2: BOOL;
    END_VAR
    END_FUNCTION_BLOCK
    
    FUNCTION_BLOCK Caller
    VAR
-   FB_INSTANCE : Callee;
+       FbInstance : Callee;
    END_VAR
-   FB_INSTANCE(IN1 := TRUE, FALSE);  (* Error: Mixed formal and non-formal arguments *)
+   FbInstance(Input1 := TRUE, FALSE);  (* Error: Mixed formal and non-formal arguments *)
    END_FUNCTION_BLOCK
 
-The function block invocation mixes named input ``IN1 := TRUE`` with positional input ``FALSE``, which is not allowed.
+The function block invocation mixes named input ``Input1 := TRUE`` with positional input ``FALSE``, which is not allowed.
 
 To fix this error, use either all named or all positional arguments:
 
@@ -35,15 +35,15 @@ To fix this error, use either all named or all positional arguments:
 
    FUNCTION_BLOCK Callee
    VAR_INPUT
-   IN1: BOOL;
-   IN2: BOOL;
+       Input1: BOOL;
+       Input2: BOOL;
    END_VAR
    END_FUNCTION_BLOCK
    
    FUNCTION_BLOCK Caller
    VAR
-   FB_INSTANCE : Callee;
+       FbInstance : Callee;
    END_VAR
-   FB_INSTANCE(IN1 := TRUE, IN2 := FALSE);  (* Correct: All named arguments *)
+   FbInstance(Input1 := TRUE, Input2 := FALSE);  (* Correct: All named arguments *)
    END_FUNCTION_BLOCK
 

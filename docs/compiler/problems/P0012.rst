@@ -15,29 +15,29 @@ The following code will generate error P0012:
 
    TYPE
        MyStruct : STRUCT
-           field1: BOOL;
+           Field1: BOOL;
        END_STRUCT;
    END_TYPE
 
    FUNCTION_BLOCK Example
    VAR_INPUT
-       level : MyStruct := CRITICAL;  (* Error: MyStruct is not an enumeration *)
+       Level : MyStruct := CRITICAL;  (* Error: MyStruct is not an enumeration *)
    END_VAR
    END_FUNCTION_BLOCK
 
-The variable ``level`` is assigned an enumeration value ``CRITICAL``, but ``MyStruct`` is declared as a structure, not an enumeration.
+The variable ``Level`` is assigned an enumeration value ``CRITICAL``, but ``MyStruct`` is declared as a structure, not an enumeration.
 
 To fix this error, use the correct enumeration type:
 
 .. code-block::
 
    TYPE
-       LOGLEVEL : (CRITICAL, WARNING, INFO, DEBUG) := INFO;
+       LogLevel : (CRITICAL, WARNING, INFO, DEBUG) := INFO;
    END_TYPE
 
    FUNCTION_BLOCK Example
    VAR_INPUT
-       level : LOGLEVEL := CRITICAL;  (* Correct: LOGLEVEL is an enumeration *)
+       Level : LogLevel := CRITICAL;  (* Correct: LogLevel is an enumeration *)
    END_VAR
    END_FUNCTION_BLOCK
 

@@ -15,18 +15,18 @@ The following code will generate error P0007:
 
    FUNCTION_BLOCK Callee
    VAR_INPUT
-   IN1: BOOL;
+       Input1: BOOL;
    END_VAR
    END_FUNCTION_BLOCK
    
    FUNCTION_BLOCK Caller
    VAR
-   FB_INSTANCE : Callee;
+       FbInstance : Callee;
    END_VAR
-   FB_INSTANCE(INVALID_INPUT := TRUE);  (* Error: INVALID_INPUT not defined *)
+   FbInstance(InvalidInput := TRUE);  (* Error: InvalidInput not defined *)
    END_FUNCTION_BLOCK
 
-The function block invocation references ``INVALID_INPUT`` which is not defined in the ``Callee`` function block.
+The function block invocation references ``InvalidInput`` which is not defined in the ``Callee`` function block.
 
 To fix this error, use only the defined input names:
 
@@ -34,14 +34,14 @@ To fix this error, use only the defined input names:
 
    FUNCTION_BLOCK Callee
    VAR_INPUT
-   IN1: BOOL;
+       Input1: BOOL;
    END_VAR
    END_FUNCTION_BLOCK
    
    FUNCTION_BLOCK Caller
    VAR
-   FB_INSTANCE : Callee;
+       FbInstance : Callee;
    END_VAR
-   FB_INSTANCE(IN1 := TRUE);  (* Correct: IN1 is defined *)
+   FbInstance(Input1 := TRUE);  (* Correct: Input1 is defined *)
    END_FUNCTION_BLOCK
 

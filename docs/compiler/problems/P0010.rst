@@ -27,7 +27,7 @@ To fix this error, break the cycle by using a different approach:
 
    FUNCTION_BLOCK Callee
    VAR
-       IN1: BOOL;
+       Input1: BOOL;
    END_VAR
    END_FUNCTION_BLOCK
 

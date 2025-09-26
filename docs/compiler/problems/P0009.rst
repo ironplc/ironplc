@@ -15,19 +15,19 @@ The following code will generate error P0009:
 
    FUNCTION_BLOCK Callee
    VAR_OUTPUT
-   OUT1: BOOL;
+       Output1: BOOL;
    END_VAR
    END_FUNCTION_BLOCK
    
    FUNCTION_BLOCK Caller
    VAR
-   FB_INSTANCE : Callee;
-   INVALID_OUTPUT : BOOL;
+       FbInstance : Callee;
+       InvalidOutput : BOOL;
    END_VAR
-   FB_INSTANCE(OUT1 => INVALID_OUTPUT);  (* Error: INVALID_OUTPUT not an output *)
+   FbInstance(Output1 => InvalidOutput);  (* Error: InvalidOutput not an output *)
    END_FUNCTION_BLOCK
 
-The function block invocation tries to assign to ``INVALID_OUTPUT`` which is not defined as an output variable of the ``Callee`` function block.
+The function block invocation tries to assign to ``InvalidOutput`` which is not defined as an output variable of the ``Callee`` function block.
 
 To fix this error, use only the defined output variables:
 
@@ -35,15 +35,15 @@ To fix this error, use only the defined output variables:
 
    FUNCTION_BLOCK Callee
    VAR_OUTPUT
-   OUT1: BOOL;
+       Output1: BOOL;
    END_VAR
    END_FUNCTION_BLOCK
    
    FUNCTION_BLOCK Caller
    VAR
-   FB_INSTANCE : Callee;
-   VALID_OUTPUT : BOOL;
+       FbInstance : Callee;
+       ValidOutput : BOOL;
    END_VAR
-   FB_INSTANCE(OUT1 => VALID_OUTPUT);  (* Correct: OUT1 is defined as output *)
+   FbInstance(Output1 => ValidOutput);  (* Correct: Output1 is defined as output *)
    END_FUNCTION_BLOCK
 
