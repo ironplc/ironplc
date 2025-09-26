@@ -4,3 +4,40 @@ P0012
 
 .. problem-summary:: P0012
 
+This error occurs when a type is referenced as an enumeration but is not declared as an enumeration type.
+
+Example
+-------
+
+The following code will generate error P0012:
+
+.. code-block::
+
+   TYPE
+       MyStruct : STRUCT
+           Field1: BOOL;
+       END_STRUCT;
+   END_TYPE
+
+   FUNCTION_BLOCK Example
+   VAR_INPUT
+       Level : MyStruct := CRITICAL;  (* Error: MyStruct is not an enumeration *)
+   END_VAR
+   END_FUNCTION_BLOCK
+
+The variable ``Level`` is assigned an enumeration value ``CRITICAL``, but ``MyStruct`` is declared as a structure, not an enumeration.
+
+To fix this error, use the correct enumeration type:
+
+.. code-block::
+
+   TYPE
+       LogLevel : (CRITICAL, WARNING, INFO, DEBUG) := INFO;
+   END_TYPE
+
+   FUNCTION_BLOCK Example
+   VAR_INPUT
+       Level : LogLevel := CRITICAL;  (* Correct: LogLevel is an enumeration *)
+   END_VAR
+   END_FUNCTION_BLOCK
+
