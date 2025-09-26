@@ -4,3 +4,36 @@ P0002
 
 .. problem-summary:: P0002
 
+This error occurs when there is a syntax error in the Structured Text code that prevents the parser from understanding the program structure.
+
+Example
+-------
+
+The following code will generate error P0002:
+
+.. code-block::
+
+   FUNCTION_BLOCK CounterLD
+   VAR_INPUT
+       Reset : BOOL  (* Error: Missing semicolon *)
+   END_VAR
+   VAR_OUTPUT
+       Out : INT;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+The function block declaration is missing a semicolon after the input variable declaration.
+
+To fix this error, add the missing semicolon:
+
+.. code-block::
+
+   FUNCTION_BLOCK CounterLD
+   VAR_INPUT
+       Reset : BOOL;  (* Correct: Semicolon added *)
+   END_VAR
+   VAR_OUTPUT
+       Out : INT;
+   END_VAR
+   END_FUNCTION_BLOCK
+

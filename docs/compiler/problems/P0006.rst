@@ -4,3 +4,46 @@ P0006
 
 .. problem-summary:: P0006
 
+This error occurs when a function block invocation mixes named (formal) and positional (non-formal) input arguments.
+
+Example
+-------
+
+The following code will generate error P0006:
+
+.. code-block::
+
+   FUNCTION_BLOCK Callee
+   VAR_INPUT
+   IN1: BOOL;
+   IN2: BOOL;
+   END_VAR
+   END_FUNCTION_BLOCK
+   
+   FUNCTION_BLOCK Caller
+   VAR
+   FB_INSTANCE : Callee;
+   END_VAR
+   FB_INSTANCE(IN1 := TRUE, FALSE);  (* Error: Mixed formal and non-formal arguments *)
+   END_FUNCTION_BLOCK
+
+The function block invocation mixes named input ``IN1 := TRUE`` with positional input ``FALSE``, which is not allowed.
+
+To fix this error, use either all named or all positional arguments:
+
+.. code-block::
+
+   FUNCTION_BLOCK Callee
+   VAR_INPUT
+   IN1: BOOL;
+   IN2: BOOL;
+   END_VAR
+   END_FUNCTION_BLOCK
+   
+   FUNCTION_BLOCK Caller
+   VAR
+   FB_INSTANCE : Callee;
+   END_VAR
+   FB_INSTANCE(IN1 := TRUE, IN2 := FALSE);  (* Correct: All named arguments *)
+   END_FUNCTION_BLOCK
+

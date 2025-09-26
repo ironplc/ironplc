@@ -4,3 +4,46 @@ P0009
 
 .. problem-summary:: P0009
 
+This error occurs when a function block invocation assigns an output that is not an output variable of the function block.
+
+Example
+-------
+
+The following code will generate error P0009:
+
+.. code-block::
+
+   FUNCTION_BLOCK Callee
+   VAR_OUTPUT
+   OUT1: BOOL;
+   END_VAR
+   END_FUNCTION_BLOCK
+   
+   FUNCTION_BLOCK Caller
+   VAR
+   FB_INSTANCE : Callee;
+   INVALID_OUTPUT : BOOL;
+   END_VAR
+   FB_INSTANCE(OUT1 => INVALID_OUTPUT);  (* Error: INVALID_OUTPUT not an output *)
+   END_FUNCTION_BLOCK
+
+The function block invocation tries to assign to ``INVALID_OUTPUT`` which is not defined as an output variable of the ``Callee`` function block.
+
+To fix this error, use only the defined output variables:
+
+.. code-block::
+
+   FUNCTION_BLOCK Callee
+   VAR_OUTPUT
+   OUT1: BOOL;
+   END_VAR
+   END_FUNCTION_BLOCK
+   
+   FUNCTION_BLOCK Caller
+   VAR
+   FB_INSTANCE : Callee;
+   VALID_OUTPUT : BOOL;
+   END_VAR
+   FB_INSTANCE(OUT1 => VALID_OUTPUT);  (* Correct: OUT1 is defined as output *)
+   END_FUNCTION_BLOCK
+

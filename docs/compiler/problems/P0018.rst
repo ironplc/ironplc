@@ -4,3 +4,50 @@ P0018
 
 .. problem-summary:: P0018
 
+This error occurs when a function block references a global constant variable but does not declare it as constant in the external variable declaration.
+
+Example
+-------
+
+The following code will generate error P0018:
+
+.. code-block::
+
+   CONFIGURATION config
+       VAR_GLOBAL CONSTANT
+           ResetCounterValue : INT := 17;
+       END_VAR
+       RESOURCE resource1 ON PLC
+           TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+           PROGRAM plc_task_instance WITH plc_task : plc_prg;
+       END_RESOURCE
+   END_CONFIGURATION
+
+   FUNCTION_BLOCK func
+       VAR_EXTERNAL
+           ResetCounterValue : INT;  (* Error: Missing CONSTANT qualifier *)
+       END_VAR
+   END_FUNCTION_BLOCK
+
+The function block references the global constant ``ResetCounterValue`` but does not declare it as ``CONSTANT`` in the external variable declaration.
+
+To fix this error, add the ``CONSTANT`` qualifier to the external variable declaration:
+
+.. code-block::
+
+   CONFIGURATION config
+       VAR_GLOBAL CONSTANT
+           ResetCounterValue : INT := 17;
+       END_VAR
+       RESOURCE resource1 ON PLC
+           TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+           PROGRAM plc_task_instance WITH plc_task : plc_prg;
+       END_RESOURCE
+   END_CONFIGURATION
+
+   FUNCTION_BLOCK func
+       VAR_EXTERNAL CONSTANT
+           ResetCounterValue : INT;  (* Correct: CONSTANT qualifier added *)
+       END_VAR
+   END_FUNCTION_BLOCK
+

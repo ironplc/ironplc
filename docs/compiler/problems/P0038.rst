@@ -3,3 +3,27 @@ P0038
 =====
 
 .. problem-summary:: P0038
+
+This error occurs when a type alias references a parent type that has not been declared.
+
+Example
+-------
+
+The following code will generate error P0038:
+
+.. code-block::
+
+   TYPE
+       MyAlias : UndeclaredParentType;  (* Error: UndeclaredParentType is not declared *)
+   END_TYPE
+
+The type alias ``MyAlias`` references ``UndeclaredParentType`` which has not been declared.
+
+To fix this error, declare the parent type before creating the alias:
+
+.. code-block::
+
+   TYPE
+       BaseType : INT;
+       MyAlias : BaseType;  (* Correct: BaseType is now declared *)
+   END_TYPE
