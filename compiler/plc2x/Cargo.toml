@@ -19,6 +19,7 @@ ironplc-parser = { path = "../parser", version = "0.134.0" }
 ironplc-dsl = { path = "../dsl", version = "0.134.0" }
 ironplc-problems = { path = "../problems", version = "0.134.0" }
 ironplc-plc2plc = { path = "../plc2plc", version = "0.134.0" }
+ironplc-sources = { path = "../sources", version = "0.134.0" }
 ironplc-test = { path = "../test", version = "0.134.0" }
 
 time = "0.3.17"

@@ -7,6 +7,7 @@ members = [
     "dsl_macro_derive",
     "parser",
     "problems",
+    "sources",
     "test"
 ]
 resolver = "2"
