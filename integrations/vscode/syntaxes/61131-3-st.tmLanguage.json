@@ -3,14 +3,30 @@
   "name": "IEC 61131-3 Structured Text",
   "scopeName": "source.61131-3-st",
   "patterns": [
-    { "include": "#comments" },
-    { "include": "#strings" },
-    { "include": "#numbers" },
-    { "include": "#keywords" },
-    { "include": "#types" },
-    { "include": "#operators" },
-    { "include": "#identifiers" },
-    { "include": "#punctuation" }
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#identifiers"
+    },
+    {
+      "include": "#punctuation"
+    }
   ],
   "repository": {
     "comments": {
@@ -20,17 +36,23 @@
           "begin": "\\(\\*",
           "end": "\\*\\)",
           "beginCaptures": {
-            "0": { "name": "punctuation.definition.comment.begin.st" }
+            "0": {
+              "name": "punctuation.definition.comment.begin.st"
+            }
           },
           "endCaptures": {
-            "0": { "name": "punctuation.definition.comment.end.st" }
+            "0": {
+              "name": "punctuation.definition.comment.end.st"
+            }
           }
         },
         {
           "name": "comment.line.double-slash.st",
           "match": "//.*$",
           "captures": {
-            "0": { "name": "punctuation.definition.comment.st" }
+            "0": {
+              "name": "punctuation.definition.comment.st"
+            }
           }
         }
       ]
@@ -41,14 +63,18 @@
           "name": "string.quoted.single.st",
           "match": "'[^']*'",
           "captures": {
-            "0": { "name": "punctuation.definition.string.st" }
+            "0": {
+              "name": "punctuation.definition.string.st"
+            }
           }
         },
         {
-          "name": "string.quoted.double.st", 
+          "name": "string.quoted.double.st",
           "match": "\"[^\"]*\"",
           "captures": {
-            "0": { "name": "punctuation.definition.string.st" }
+            "0": {
+              "name": "punctuation.definition.string.st"
+            }
           }
         }
       ]
@@ -84,7 +110,7 @@
           "match": "(?i)\\b(?:IF|THEN|ELSIF|ELSE|END_IF|CASE|OF|END_CASE)\\b"
         },
         {
-          "name": "keyword.control.loop.st", 
+          "name": "keyword.control.loop.st",
           "match": "(?i)\\b(?:FOR|TO|BY|DO|END_FOR|WHILE|END_WHILE|REPEAT|UNTIL|END_REPEAT)\\b"
         },
         {
@@ -132,7 +158,7 @@
           "match": "(?i)\\b(?:BOOL|SINT|INT|DINT|LINT|USINT|UINT|UDINT|ULINT)\\b"
         },
         {
-          "name": "storage.type.primitive.real.st", 
+          "name": "storage.type.primitive.real.st",
           "match": "(?i)\\b(?:REAL|LREAL)\\b"
         },
         {
@@ -208,7 +234,7 @@
           "match": "[\\[\\]]"
         },
         {
-          "name": "punctuation.section.parens.st", 
+          "name": "punctuation.section.parens.st",
           "match": "[\\(\\)]"
         },
         {

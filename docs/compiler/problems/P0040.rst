@@ -3,3 +3,35 @@ P0040
 =====
 
 .. problem-summary:: P0040
+
+This error occurs when an array declaration references an element type that has not been declared.
+
+Example
+-------
+
+The following code will generate error P0040:
+
+.. code-block::
+
+   TYPE
+       DataArray : ARRAY[1..10] OF UndeclaredElementType;  (* Error: Element type not declared *)
+   END_TYPE
+
+The array ``DataArray`` references ``UndeclaredElementType`` as its element type, but this type has not been declared.
+
+To fix this error, declare the element type first:
+
+.. code-block::
+
+   TYPE
+       ElementType : INT;
+       DataArray : ARRAY[1..10] OF ElementType;  (* Correct: Element type declared *)
+   END_TYPE
+
+Alternatively, use a built-in type:
+
+.. code-block::
+
+   TYPE
+       DataArray : ARRAY[1..10] OF INT;  (* Correct: INT is a built-in type *)
+   END_TYPE
