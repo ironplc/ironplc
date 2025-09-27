@@ -16,6 +16,13 @@ use ironplc_parser::{options::ParseOptions, parse_program};
 use ironplc_problems::Problem;
 use log::{debug, trace};
 
+/// Represents the type of source file
+#[derive(Debug, Clone, PartialEq)]
+enum FileType {
+    StructuredText,
+    StructuredTextXml,
+}
+
 /// The contents of a source file.
 #[derive(Debug)]
 pub struct Source {
@@ -32,6 +39,17 @@ impl Source {
             library: None,
         }
     }
+
+    /// Determines the file type based on the file extension
+    fn file_type(&self) -> FileType {
+        let path: PathBuf = self.file_id.to_string().into();
+        match path.extension().and_then(|ext| ext.to_str()) {
+            Some(ext) if ext.eq_ignore_ascii_case("xml") => FileType::StructuredTextXml,
+            Some(ext) if ext.eq_ignore_ascii_case("st") => FileType::StructuredText,
+            Some(ext) if ext.eq_ignore_ascii_case("iec") => FileType::StructuredText,
+            _ => FileType::StructuredText, // Default to ST for unknown extensions
+        }
+    }
     pub fn try_from_file_id(item: &FileId) -> Result<Source, Diagnostic> {
         let path: PathBuf = item.to_string().into();
         path_to_source(&path).map(|src| Source::new(src, item))
@@ -44,11 +62,19 @@ impl Source {
     }
     pub fn library(&mut self) -> Result<&Library, Vec<Diagnostic>> {
         if self.library.is_none() {
-            self.library = Some(parse_program(
-                self.data.borrow(),
-                &self.file_id,
-                &ParseOptions::default(),
-            ))
+            self.library = Some(match self.file_type() {
+                FileType::StructuredText => {
+                    parse_program(self.data.borrow(), &self.file_id, &ParseOptions::default())
+                }
+                FileType::StructuredTextXml => {
+                    // For XML files, return an empty Library as requested
+                    debug!(
+                        "XML file detected, returning empty library for {}",
+                        self.file_id
+                    );
+                    Ok(Library::new())
+                }
+            })
         }
 
         match &self.library {
