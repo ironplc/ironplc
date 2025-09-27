@@ -92,7 +92,9 @@ impl Project for FileBackedProject {
                     .filter_map(Result::ok)
                     .filter(|f| {
                         f.path().extension().is_some_and(|ext| {
-                            ext.eq_ignore_ascii_case("st") || ext.eq_ignore_ascii_case("iec")
+                            ext.eq_ignore_ascii_case("st")
+                                || ext.eq_ignore_ascii_case("iec")
+                                || ext.eq_ignore_ascii_case("xml")
                         })
                     })
                     .for_each(|f| {
@@ -228,5 +230,24 @@ mod test {
     fn analyze_when_not_valid_then_err() {
         let mut project = FileBackedProject::default();
         project.change_text_document(&FileId::default(), "AAA".to_owned());
+    }
+
+    #[test]
+    fn xml_file_returns_empty_library() {
+        let mut project = FileBackedProject::default();
+        let xml_content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<project>
+    <name>Test Project</name>
+</project>"#;
+
+        let file_id = FileId::from_string("test.xml");
+        project.change_text_document(&file_id, xml_content.to_owned());
+
+        let source = project.sources_mut().into_iter().next().unwrap();
+        let library_result = source.library();
+
+        assert!(library_result.is_ok());
+        let library = library_result.unwrap();
+        assert_eq!(0, library.elements.len()); // Should be empty
     }
 }
