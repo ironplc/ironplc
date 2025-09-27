@@ -39,5 +39,6 @@ P0037,RecursiveTypeCycle,Library has a recursive cycle in resolving type names
 P0038,ParentTypeNotDeclared,Parent type is not declared
 P0039,AliasParentTypeNotDeclared,Alias parent type is not declared
 P0040,ArrayElementTypeNotDeclared,Array element type is not declared
+P0041,UnsupportedFileType,File type is not supported
 P9998,InternalError,Internal error indicating a bug in the compiler
 P9999,NotImplemented,Capability is not implemented (yet!)

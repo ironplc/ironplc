@@ -3,7 +3,7 @@
 //!
 //! The trait enables easy testing of the language server protocol integration.
 
-use std::{collections::HashMap, fs, path::Path};
+use std::path::Path;
 
 use ironplc_analyzer::stages::analyze;
 use ironplc_dsl::{
@@ -12,9 +12,8 @@ use ironplc_dsl::{
 };
 use ironplc_parser::{options::ParseOptions, token::Token, tokenize_program};
 use ironplc_problems::Problem;
-use log::{info, trace, warn};
-
-use crate::source::Source;
+use ironplc_sources::{Source, SourceProject};
+use log::trace;
 
 /// A project consisting of one or more files.
 ///
@@ -43,8 +42,8 @@ pub trait Project {
 
 /// A project is a collection of files used together as a single unit.
 pub struct FileBackedProject {
-    /// The user-supplied source files for the project
-    sources: HashMap<FileId, Source>,
+    /// The underlying source project
+    source_project: SourceProject,
 }
 
 impl Default for FileBackedProject {
@@ -56,86 +55,41 @@ impl Default for FileBackedProject {
 impl FileBackedProject {
     pub fn new() -> Self {
         FileBackedProject {
-            sources: HashMap::new(),
+            source_project: SourceProject::new(),
         }
     }
 
     pub fn push(&mut self, file_id: FileId) -> Result<(), Diagnostic> {
-        match Source::try_from_file_id(&file_id) {
-            Ok(src) => {
-                self.change_text_document(&file_id, src.as_string().to_string());
-                Ok(())
-            }
-            Err(err) => Err(err),
-        }
+        self.source_project.add_file(file_id)
     }
 
     pub fn get(&self, file_id: &FileId) -> Option<&Source> {
-        self.sources.get(file_id)
+        self.source_project.get_source(file_id)
     }
 }
 
 impl Project for FileBackedProject {
     /// Create a new project from the files in the specified directory.
-    ///
-    /// TODO this is not definitely not the right architecture.
     fn initialize(&mut self, dir: &Path) -> Vec<Diagnostic> {
-        info!("Initialize project from path {dir:?}");
-
-        self.sources.clear();
-
-        match fs::read_dir(dir) {
-            Ok(files) => {
-                let mut errors = vec![];
-
-                files
-                    .filter_map(Result::ok)
-                    .filter(|f| {
-                        f.path().extension().is_some_and(|ext| {
-                            ext.eq_ignore_ascii_case("st")
-                                || ext.eq_ignore_ascii_case("iec")
-                                || ext.eq_ignore_ascii_case("xml")
-                        })
-                    })
-                    .for_each(|f| {
-                        let path = FileId::from_dir_entry(f);
-                        match self.push(path) {
-                            Ok(_) => {}
-                            Err(err) => errors.push(err),
-                        }
-                    });
-
-                errors
-            }
-            Err(err) => {
-                warn!("Unable to read directory '{}': {}", dir.display(), err);
-                let problem = Diagnostic::problem(
-                    Problem::CannotReadDirectory,
-                    Label::file(FileId::from_path(dir), err.to_string()),
-                );
-                vec![problem]
-            }
-        }
+        self.source_project.initialize_from_directory(dir)
     }
 
     fn change_text_document(&mut self, file_id: &FileId, content: String) {
         trace!(
             "Change text document sources initial length is {}",
-            self.sources.len()
+            self.source_project.len()
         );
 
-        self.sources
-            .insert(file_id.clone(), Source::new(content, file_id));
+        self.source_project.add_source(file_id.clone(), content);
 
         trace!(
             "Change text document sources new length is {}",
-            self.sources.len()
+            self.source_project.len()
         );
     }
 
     fn tokenize(&self, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>) {
-        trace!("Sources are {:?}", self.sources);
-        let source = self.sources.get(file_id);
+        let source = self.source_project.get_source(file_id);
 
         match source {
             Some(src) => tokenize_program(src.as_string(), file_id, &ParseOptions::default()),
@@ -150,19 +104,15 @@ impl Project for FileBackedProject {
     }
 
     fn semantic(&mut self) -> Result<(), Vec<Diagnostic>> {
-        let library_results: Vec<_> = self
-            .sources
-            .iter_mut()
-            .map(|source| source.1.library())
-            .collect();
-
         // We would like to do "best effort" semantic analysis. So, we will do
         // semantic analysis on the items we can analyze, and the provide full
         // diagnostics for any problems
         let mut all_libraries = vec![];
         let mut all_diagnostics: Vec<Diagnostic> = vec![];
-        for library_result in library_results {
-            match library_result {
+
+        // Process each source individually to avoid borrowing issues
+        for source in self.source_project.sources_mut() {
+            match source.library() {
                 Ok(library) => {
                     all_libraries.push(library);
                 }
@@ -186,15 +136,15 @@ impl Project for FileBackedProject {
     }
 
     fn sources(&self) -> Vec<&Source> {
-        self.sources.values().collect()
+        self.source_project.sources()
     }
 
     fn sources_mut(&mut self) -> Vec<&mut Source> {
-        self.sources.values_mut().collect()
+        self.source_project.sources_mut()
     }
 
     fn find(&self, file_id: &FileId) -> Option<&Source> {
-        self.sources.get(file_id)
+        self.source_project.get_source(file_id)
     }
 }
 
