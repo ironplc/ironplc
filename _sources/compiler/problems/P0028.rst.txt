@@ -4,6 +4,48 @@ P0028
 
 .. problem-summary:: P0028
 
-IEC 61131-3 files must be encoded with a ISO/IEC 10646-1 compatible
-character set. The referenced file is not a text file or the text contains
-incompatible characters.
+This error occurs when a source file is not encoded with a supported character encoding. IEC 61131-3 files must be encoded with an ISO/IEC 10646-1 compatible character set (such as UTF-8 or Windows-1252).
+
+Example
+-------
+
+This error typically occurs when:
+
+1. The file is a binary file (not a text file)
+2. The file uses an unsupported text encoding
+3. The file contains invalid or corrupted character data
+
+.. code-block:: bash
+
+   # Examples that would cause this error:
+   ironplcc check binary_file.st                  # Binary file, not text
+   ironplcc check file_with_invalid_encoding.st   # Unsupported encoding
+
+To fix this error, ensure that your source files are:
+
+- Saved as text files (not binary)
+- Encoded in UTF-8 (recommended) or Windows-1252
+- Free of corrupted character data
+
+.. code-block:: bash
+
+   # Convert file to UTF-8 encoding (Linux/macOS)
+   iconv -f ISO-8859-1 -t UTF-8 input.st > output.st
+   
+   # Or save the file with UTF-8 encoding in your text editor
+
+Example of a properly encoded Structured Text file:
+
+.. code-block::
+
+   (* This file should be saved with UTF-8 encoding *)
+   FUNCTION_BLOCK ValidEncoding
+   VAR_INPUT
+       InputData : BOOL;
+   END_VAR
+   VAR_OUTPUT
+       OutputData : BOOL;
+   END_VAR
+   
+   OutputData := InputData;
+   END_FUNCTION_BLOCK

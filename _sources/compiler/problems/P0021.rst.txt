@@ -22,7 +22,7 @@ The following code will generate error P0021:
    END_VAR
    END_FUNCTION_BLOCK
    
-   PROGRAM Main
+   PROGRAM main
    VAR
        CallerInstance : Caller;
    END_VAR
@@ -45,7 +45,7 @@ To fix this error, ensure the variable being invoked is a function block instanc
    END_VAR
    END_FUNCTION_BLOCK
    
-   PROGRAM Main
+   PROGRAM main
    VAR
        CallerInstance : Caller;
    END_VAR

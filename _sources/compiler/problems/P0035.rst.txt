@@ -3,3 +3,27 @@ P0035
 =====
 
 .. problem-summary:: P0035
+
+This error occurs when an enumeration type extends from a parent enumeration that has not been declared.
+
+Example
+-------
+
+The following code will generate error P0035:
+
+.. code-block::
+
+   TYPE
+       ChildEnum : (VALUE1, VALUE2) EXTENDS UndeclaredParentEnum;  (* Error: Parent enum not declared *)
+   END_TYPE
+
+The enumeration ``ChildEnum`` tries to extend ``UndeclaredParentEnum`` which has not been declared.
+
+To fix this error, declare the parent enumeration first:
+
+.. code-block::
+
+   TYPE
+       BaseEnum : (BASE_VALUE1, BASE_VALUE2);
+       ChildEnum : (VALUE1, VALUE2) EXTENDS BaseEnum;  (* Correct: Parent enum declared *)
+   END_TYPE

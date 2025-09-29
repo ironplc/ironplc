@@ -1,14 +1,14 @@
 <!doctype html>
 <html class="no-js" lang="en" data-content_root="../../">
-  <head><meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="P0014" href="P0014.html" /><link rel="prev" title="P0012" href="P0012.html" />
+<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="P0014" href="P0014.html"><link rel="prev" title="P0012" href="P0012.html">
 
-    <!-- Generated with Sphinx 8.2.3 and Furo 2025.07.19 -->
+    <!-- Generated with Sphinx 8.2.3 and Furo 2025.09.25 -->
         <title>P0013 - IronPLC documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=d111a655" />
-    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=25af2a20" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=580074bf" />
     <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../_static/sphinx-design.min.css?v=95c83b7e" />
@@ -32,8 +32,8 @@
   }
   @media not print {
     body[data-theme="dark"] {
-      --color-code-background: #2b2b2b;
-  --color-code-foreground: #f8f8f2;
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
   --color-brand-primary: #ed9d13;
   --color-brand-content: #58d3ff;
   --color-announcement-background: #711818de;
@@ -42,8 +42,8 @@
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
-        --color-code-background: #2b2b2b;
-  --color-code-foreground: #f8f8f2;
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
   --color-brand-primary: #ed9d13;
   --color-brand-content: #58d3ff;
   --color-announcement-background: #711818de;
@@ -162,14 +162,10 @@
   </symbol>
 </svg>
 
-<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
-<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
-<label class="overlay sidebar-overlay" for="__navigation">
-  <div class="visually-hidden">Hide navigation sidebar</div>
-</label>
-<label class="overlay toc-overlay" for="__toc">
-  <div class="visually-hidden">Hide table of contents sidebar</div>
-</label>
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
 
 <a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
 
@@ -179,8 +175,7 @@
   <header class="mobile-header">
     <div class="header-left">
       <label class="nav-overlay-icon" for="__navigation">
-        <div class="visually-hidden">Toggle site navigation sidebar</div>
-        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
       </label>
     </div>
     <div class="header-center">
@@ -188,17 +183,15 @@
     </div>
     <div class="header-right">
       <div class="theme-toggle-container theme-toggle-header">
-        <button class="theme-toggle">
-          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
           <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
           <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
           <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
-        <div class="visually-hidden">Toggle table of contents sidebar</div>
-        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
       </label>
     </div>
   </header>
@@ -216,18 +209,18 @@
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <ul class="current">
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../quickstart/index.html">Quick start</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of Quick start</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../quickstart/index.html">Quick start</a><input aria-label="Toggle navigation of Quick start" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../quickstart/installation.html">Installation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../quickstart/helloworld.html">Hello, World!</a></li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../how-to-guides/index.html">How-to guides</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of How-to guides</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../how-to-guides/index.html">How-to guides</a><input aria-label="Toggle navigation of How-to guides" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../how-to-guides/update.html">Update IronPLC on your computer</a></li>
 </ul>
 </li>
-<li class="toctree-l1 current has-children"><a class="reference internal" href="../index.html">Compiler reference</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of Compiler reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l1 current has-children"><a class="reference internal" href="../index.html">Compiler reference</a><input aria-label="Toggle navigation of Compiler reference" checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="../basicusage.html">Basic Usage</a></li>
-<li class="toctree-l2 current has-children"><a class="reference internal" href="index.html">Problems</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of Problems</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="index.html">Problems</a><input aria-label="Toggle navigation of Problems" checked="" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l3"><a class="reference internal" href="P0001.html">P0001</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P0002.html">P0002</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P0003.html">P0003</a></li>
@@ -265,17 +258,18 @@
 <li class="toctree-l3"><a class="reference internal" href="P0035.html">P0035</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P0036.html">P0036</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P0037.html">P0037</a></li>
-<li class="toctree-l3"><a class="reference internal" href="P0038.html">P0037</a></li>
-<li class="toctree-l3"><a class="reference internal" href="P0039.html">P0037</a></li>
-<li class="toctree-l3"><a class="reference internal" href="P0040.html">P0037</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0038.html">P0038</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0039.html">P0039</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0040.html">P0040</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P0041.html">P0041</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P9998.html">P9998</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P9999.html">P9999</a></li>
 </ul>
 </li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../vscode/index.html">Visual Studio Code extension reference</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of Visual Studio Code extension reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../../vscode/problems/index.html">Problems</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of Problems</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../vscode/index.html">Visual Studio Code extension reference</a><input aria-label="Toggle navigation of Visual Studio Code extension reference" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../vscode/problems/index.html">Problems</a><input aria-label="Toggle navigation of Problems" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../vscode/problems/E0001.html">E0001</a></li>
 </ul>
 </li>
@@ -311,17 +305,15 @@
     <span class="visually-hidden">Edit this page</span>
   </a>
 </div><div class="theme-toggle-container theme-toggle-content">
-            <button class="theme-toggle">
-              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
               <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
               <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
               <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
-            <div class="visually-hidden">Toggle table of contents sidebar</div>
-            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
           </label>
         </div>
         <article role="main" id="furo-main-content">
@@ -337,6 +329,37 @@
 <dt><strong>Message</strong></dt><dd><p>Recursive enumeration for type</p>
 </dd>
 </dl>
+<p>This error occurs when there is a recursive enumeration definition, where an enumeration type references itself either directly or indirectly.</p>
+<section id="example">
+<h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
+<p>The following code will generate error P0013:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
+    <span class="n">RecursiveEnum</span> <span class="p">:</span> <span class="n">RecursiveEnum</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">Enumeration</span> <span class="n">references</span> <span class="n">itself</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_TYPE</span>
+</pre></div>
+</div>
+<p>The enumeration <code class="docutils literal notranslate"><span class="pre">RecursiveEnum</span></code> references itself in its own definition, creating a recursive cycle.</p>
+<p>Another example of indirect recursion:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
+    <span class="n">EnumA</span> <span class="p">:</span> <span class="n">EnumB</span><span class="p">;</span>
+    <span class="n">EnumB</span> <span class="p">:</span> <span class="n">EnumA</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">Indirect</span> <span class="n">recursive</span> <span class="n">enumeration</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_TYPE</span>
+</pre></div>
+</div>
+<p>To fix this error, define the enumeration with actual values instead of self-references:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
+    <span class="n">StatusEnum</span> <span class="p">:</span> <span class="p">(</span><span class="n">IDLE</span><span class="p">,</span> <span class="n">RUNNING</span><span class="p">,</span> <span class="n">STOPPED</span><span class="p">,</span> <span class="n">ERROR</span><span class="p">)</span> <span class="o">:=</span> <span class="n">IDLE</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">Proper</span> <span class="n">enumeration</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_TYPE</span>
+</pre></div>
+</div>
+<p>Or use a base type for type aliases:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
+    <span class="n">BaseEnum</span> <span class="p">:</span> <span class="p">(</span><span class="n">VALUE1</span><span class="p">,</span> <span class="n">VALUE2</span><span class="p">,</span> <span class="n">VALUE3</span><span class="p">)</span> <span class="o">:=</span> <span class="n">VALUE1</span><span class="p">;</span>
+    <span class="n">AliasEnum</span> <span class="p">:</span> <span class="n">BaseEnum</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">References</span> <span class="n">a</span> <span class="n">proper</span> <span class="n">enumeration</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_TYPE</span>
+</pre></div>
+</div>
+</section>
 </section>
 
         </article>
@@ -390,8 +413,27 @@
         
       </footer>
     </div>
-    <aside class="toc-drawer no-toc">
+    <aside class="toc-drawer">
       
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">P0013</a><ul>
+<li><a class="reference internal" href="#example">Example</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
       
       
     </aside>
