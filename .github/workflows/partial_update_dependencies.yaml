@@ -22,7 +22,7 @@ on:
 
       branch-name:
         description: 'A commit reference that contains the updated dependencies'
-        value: ${{ inputs.branch-name }}
+        value: ${{ jobs.update-dependencies.outputs.branch-name }}
 
 jobs:
     update-dependencies:
