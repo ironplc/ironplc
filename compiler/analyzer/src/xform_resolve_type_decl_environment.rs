@@ -113,7 +113,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // TODO self.insert_type(&node.type_name, )
             }
             InitialValueAssignmentKind::String(string_initializer) => {
-                self.insert_type(&node.type_name, string::from(&string_initializer))?;
+                self.insert_type(&node.type_name, string::from(string_initializer))?;
             }
             InitialValueAssignmentKind::EnumeratedValues(enumerated_values_initializer) => {
                 let attributes = enumeration::try_from_values(enumerated_values_initializer)?;

@@ -36,7 +36,7 @@ impl ByteSized {
         }
     }
 
-    pub fn into_bytes(&self) -> u8 {
+    pub fn as_bytes(&self) -> u8 {
         match self {
             ByteSized::B8 => 1,
             ByteSized::B16 => 2,
@@ -184,9 +184,9 @@ impl IntermediateType {
     pub fn size_in_bytes(&self) -> u8 {
         match self {
             IntermediateType::Bool => 1,
-            IntermediateType::Int { size } | IntermediateType::UInt { size } => size.into_bytes(),
-            IntermediateType::Real { size } => size.into_bytes(),
-            IntermediateType::Bytes { size } => size.into_bytes(),
+            IntermediateType::Int { size } | IntermediateType::UInt { size } => size.as_bytes(),
+            IntermediateType::Real { size } => size.as_bytes(),
+            IntermediateType::Bytes { size } => size.as_bytes(),
             IntermediateType::Subrange { base_type, .. } => base_type.size_in_bytes(),
             IntermediateType::Enumeration { underlying_type } => underlying_type.size_in_bytes(),
             _ => todo!(), // Complex types don't have a simple bit size
