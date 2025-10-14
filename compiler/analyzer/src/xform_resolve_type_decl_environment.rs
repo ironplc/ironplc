@@ -356,8 +356,8 @@ impl Fold<Diagnostic> for TypeEnvironment {
 
 #[cfg(test)]
 mod tests {
+    use crate::intermediate_type::{ByteSized, IntermediateType};
     use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
-    use crate::intermediate_type::{IntermediateType, ByteSized};
 
     use super::apply;
     use ironplc_dsl::{common::*, core::FileId};
@@ -515,9 +515,15 @@ END_TYPE
         use ironplc_dsl::diagnostic::Diagnostic;
 
         /// Helper function to parse 61131-3 code and apply type resolution with elementary types
-        fn parse_and_apply_with_elementary_types(program: &str) -> (Result<Library, Vec<Diagnostic>>, TypeEnvironment) {
-            let input = ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
-                .unwrap();
+        fn parse_and_apply_with_elementary_types(
+            program: &str,
+        ) -> (Result<Library, Vec<Diagnostic>>, TypeEnvironment) {
+            let input = ironplc_parser::parse_program(
+                program,
+                &FileId::default(),
+                &ParseOptions::default(),
+            )
+            .unwrap();
             let mut env = TypeEnvironmentBuilder::new()
                 .with_elementary_types()
                 .build()
@@ -527,9 +533,15 @@ END_TYPE
         }
 
         /// Helper function to parse 61131-3 code and apply type resolution with empty environment
-        fn parse_and_apply_with_empty_env(program: &str) -> (Result<Library, Vec<Diagnostic>>, TypeEnvironment) {
-            let input = ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
-                .unwrap();
+        fn parse_and_apply_with_empty_env(
+            program: &str,
+        ) -> (Result<Library, Vec<Diagnostic>>, TypeEnvironment) {
+            let input = ironplc_parser::parse_program(
+                program,
+                &FileId::default(),
+                &ParseOptions::default(),
+            )
+            .unwrap();
             let mut env = TypeEnvironment::new();
             let result = apply(input, &mut env);
             (result, env)
@@ -549,7 +561,9 @@ END_TYPE
             let my_int_type = env.get(&TypeName::from("MY_INT")).unwrap();
             assert!(matches!(
                 &my_int_type.representation,
-                IntermediateType::Int { size: ByteSized::B16 }
+                IntermediateType::Int {
+                    size: ByteSized::B16
+                }
             ));
         }
 
@@ -563,7 +577,10 @@ END_TYPE
             let (result, _env) = parse_and_apply_with_empty_env(program);
             assert!(result.is_err());
             let error = result.unwrap_err();
-            assert_eq!(Problem::ParentTypeNotDeclared.code(), error.first().unwrap().code);
+            assert_eq!(
+                Problem::ParentTypeNotDeclared.code(),
+                error.first().unwrap().code
+            );
         }
 
         #[test]
@@ -580,7 +597,9 @@ END_TYPE
             let my_real_type = env.get(&TypeName::from("MY_REAL")).unwrap();
             assert!(matches!(
                 &my_real_type.representation,
-                IntermediateType::Real { size: ByteSized::B32 }
+                IntermediateType::Real {
+                    size: ByteSized::B32
+                }
             ));
         }
 
@@ -596,7 +615,10 @@ END_TYPE
 
             // Verify the alias was created
             let my_bool_type = env.get(&TypeName::from("MY_BOOL")).unwrap();
-            assert!(matches!(&my_bool_type.representation, IntermediateType::Bool));
+            assert!(matches!(
+                &my_bool_type.representation,
+                IntermediateType::Bool
+            ));
         }
 
         #[test]
@@ -631,7 +653,9 @@ END_TYPE
             let my_dint_type = env.get(&TypeName::from("MY_DINT")).unwrap();
             assert!(matches!(
                 &my_dint_type.representation,
-                IntermediateType::Int { size: ByteSized::B32 }
+                IntermediateType::Int {
+                    size: ByteSized::B32
+                }
             ));
         }
 
@@ -647,7 +671,10 @@ END_TYPE
 
             // Verify the alias was created
             let my_time_type = env.get(&TypeName::from("MY_TIME")).unwrap();
-            assert!(matches!(&my_time_type.representation, IntermediateType::Time));
+            assert!(matches!(
+                &my_time_type.representation,
+                IntermediateType::Time
+            ));
         }
 
         #[test]
@@ -666,16 +693,23 @@ END_TYPE
             let my_int_type = env.get(&TypeName::from("MY_INT")).unwrap();
             assert!(matches!(
                 &my_int_type.representation,
-                IntermediateType::Int { size: ByteSized::B16 }
+                IntermediateType::Int {
+                    size: ByteSized::B16
+                }
             ));
 
             let my_bool_type = env.get(&TypeName::from("MY_BOOL")).unwrap();
-            assert!(matches!(&my_bool_type.representation, IntermediateType::Bool));
+            assert!(matches!(
+                &my_bool_type.representation,
+                IntermediateType::Bool
+            ));
 
             let my_real_type = env.get(&TypeName::from("MY_REAL")).unwrap();
             assert!(matches!(
                 &my_real_type.representation,
-                IntermediateType::Real { size: ByteSized::B32 }
+                IntermediateType::Real {
+                    size: ByteSized::B32
+                }
             ));
         }
 
@@ -693,7 +727,9 @@ END_TYPE
             let my_byte_type = env.get(&TypeName::from("MY_BYTE")).unwrap();
             assert!(matches!(
                 &my_byte_type.representation,
-                IntermediateType::Bytes { size: ByteSized::B8 }
+                IntermediateType::Bytes {
+                    size: ByteSized::B8
+                }
             ));
         }
     }
