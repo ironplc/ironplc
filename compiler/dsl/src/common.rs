@@ -734,6 +734,24 @@ pub struct EnumeratedSpecificationValues {
     pub values: Vec<EnumeratedValue>,
 }
 
+pub trait HasEnumeratedValues {
+    fn values(&self) -> &Vec<EnumeratedValue>;
+    fn values_span(&self) -> SourceSpan;
+}
+
+impl HasEnumeratedValues for EnumeratedSpecificationValues {
+    fn values(&self) -> &Vec<EnumeratedValue> {
+        &self.values
+    }
+    fn values_span(&self) -> SourceSpan {
+        // TODO
+        match self.values.first() {
+            Some(first) => first.span(),
+            None => SourceSpan::default(),
+        }
+    }
+}
+
 /// A particular value in a enumeration.
 ///
 /// May include a type name (especially where the enumeration would be
@@ -1460,6 +1478,7 @@ pub enum InitialValueAssignmentKind {
     /// Some types allow no initializer and this avoids nesting of the
     /// enumeration with an Option enumeration.
     None(SourceSpan),
+    /// Represents an initializer that is a constant.
     Simple(SimpleInitializer),
     String(StringInitializer),
     EnumeratedValues(EnumeratedValuesInitializer),
@@ -1549,6 +1568,12 @@ pub struct StringInitializer {
     pub keyword_span: SourceSpan,
 }
 
+impl Located for StringInitializer {
+    fn span(&self) -> SourceSpan {
+        self.keyword_span.clone()
+    }
+}
+
 impl StringInitializer {
     pub fn type_name(&self) -> TypeName {
         match self.width {
@@ -1562,6 +1587,30 @@ impl StringInitializer {
 pub struct EnumeratedValuesInitializer {
     pub values: Vec<EnumeratedValue>,
     pub initial_value: Option<EnumeratedValue>,
+}
+
+impl Located for EnumeratedValuesInitializer {
+    fn span(&self) -> SourceSpan {
+        let first = self.values.first();
+        let last = self.values.last();
+
+        if let Some(f) = first {
+            if let Some(l) = last {
+                return SourceSpan::join2(f, l);
+            }
+            return f.span();
+        }
+        SourceSpan::default()
+    }
+}
+
+impl HasEnumeratedValues for EnumeratedValuesInitializer {
+    fn values(&self) -> &Vec<EnumeratedValue> {
+        &self.values
+    }
+    fn values_span(&self) -> SourceSpan {
+        self.span()
+    }
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]

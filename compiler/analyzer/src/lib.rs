@@ -4,6 +4,7 @@
 extern crate ironplc_dsl;
 extern crate ironplc_parser;
 
+mod intermediate_type;
 mod result;
 mod rule_decl_struct_element_unique_names;
 mod rule_decl_subrange_limits;
@@ -11,7 +12,6 @@ mod rule_enumeration_values_unique;
 mod rule_function_block_invocation;
 mod rule_pou_hierarchy;
 mod rule_program_task_definition_exists;
-
 mod rule_unsupported_stdlib_type;
 mod rule_use_declared_enumerated_value;
 mod rule_use_declared_symbolic_var;
@@ -30,6 +30,9 @@ mod xform_resolve_symbol_environment;
 mod xform_resolve_type_aliases;
 mod xform_resolve_type_decl_environment;
 mod xform_toposort_declarations;
+
+// Type declaration environment helper modules
+mod intermediates;
 
 #[cfg(test)]
 mod test_helpers;

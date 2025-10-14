@@ -10,20 +10,72 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
+use crate::intermediate_type::{ByteSized, IntermediateType};
+
 static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 23] = [
     // signed_integer_type_name
-    ("sint", IntermediateType::Int { size: 8 }),
-    ("int", IntermediateType::Int { size: 16 }),
-    ("dint", IntermediateType::Int { size: 32 }),
-    ("lint", IntermediateType::Int { size: 64 }),
+    (
+        "sint",
+        IntermediateType::Int {
+            size: ByteSized::B8,
+        },
+    ),
+    (
+        "int",
+        IntermediateType::Int {
+            size: ByteSized::B16,
+        },
+    ),
+    (
+        "dint",
+        IntermediateType::Int {
+            size: ByteSized::B32,
+        },
+    ),
+    (
+        "lint",
+        IntermediateType::Int {
+            size: ByteSized::B64,
+        },
+    ),
     // unsigned_integer_type_name
-    ("usint", IntermediateType::UInt { size: 8 }),
-    ("uint", IntermediateType::UInt { size: 16 }),
-    ("udint", IntermediateType::UInt { size: 32 }),
-    ("ulint", IntermediateType::UInt { size: 64 }),
+    (
+        "usint",
+        IntermediateType::UInt {
+            size: ByteSized::B8,
+        },
+    ),
+    (
+        "uint",
+        IntermediateType::UInt {
+            size: ByteSized::B16,
+        },
+    ),
+    (
+        "udint",
+        IntermediateType::UInt {
+            size: ByteSized::B32,
+        },
+    ),
+    (
+        "ulint",
+        IntermediateType::UInt {
+            size: ByteSized::B64,
+        },
+    ),
     // real_type_name
-    ("real", IntermediateType::Real { size: 32 }),
-    ("lreal", IntermediateType::Real { size: 64 }),
+    (
+        "real",
+        IntermediateType::Real {
+            size: ByteSized::B32,
+        },
+    ),
+    (
+        "lreal",
+        IntermediateType::Real {
+            size: ByteSized::B64,
+        },
+    ),
     // date_type_name
     ("date", IntermediateType::Date),
     ("time_of_day", IntermediateType::Time),
@@ -32,88 +84,35 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 23] = [
     ("dt", IntermediateType::Date),
     // bit_string_type_name
     ("bool", IntermediateType::Bool),
-    ("byte", IntermediateType::Bytes { size: 8 }),
-    ("word", IntermediateType::Bytes { size: 16 }),
-    ("dword", IntermediateType::Bytes { size: 32 }),
-    ("lword", IntermediateType::Bytes { size: 64 }),
+    (
+        "byte",
+        IntermediateType::Bytes {
+            size: ByteSized::B8,
+        },
+    ),
+    (
+        "word",
+        IntermediateType::Bytes {
+            size: ByteSized::B16,
+        },
+    ),
+    (
+        "dword",
+        IntermediateType::Bytes {
+            size: ByteSized::B32,
+        },
+    ),
+    (
+        "lword",
+        IntermediateType::Bytes {
+            size: ByteSized::B64,
+        },
+    ),
     // remaining elementary_type_name
     ("string", IntermediateType::String { max_len: None }),
     ("wstring", IntermediateType::String { max_len: None }),
     ("time", IntermediateType::Time),
 ];
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum IntermediateType {
-    // Elementary types
-    Bool,
-    Int {
-        size: u8,
-    }, // 8, 16, 32, 64 bits
-    UInt {
-        size: u8,
-    },
-    Real {
-        size: u8,
-    }, // 32, 64 bits
-    Bytes {
-        size: u8,
-    },
-    Time,
-    Date,
-
-    String {
-        max_len: Option<u128>,
-    },
-
-    // User-defined types
-    Enumeration {
-        underlying_type: Box<IntermediateType>, // Usually Int { size: 8 }
-    },
-    Structure {
-        fields: Vec<IntermediateStructField>,
-    },
-    Array {
-        element_type: Box<IntermediateType>,
-        size: Option<u32>, // Fixed size or dynamic
-    },
-}
-
-impl IntermediateType {
-    /// Returns if the type is a primitive type.
-    pub fn is_primitive(&self) -> bool {
-        matches!(
-            self,
-            IntermediateType::Bool
-                | IntermediateType::Int { .. }
-                | IntermediateType::Real { .. }
-                | IntermediateType::String { .. }
-                | IntermediateType::Time
-                | IntermediateType::Date
-        )
-    }
-
-    /// Returns if the type is an enumeration.
-    pub fn is_enumeration(&self) -> bool {
-        matches!(self, IntermediateType::Enumeration { .. })
-    }
-
-    /// Returns if the type is a structure.
-    pub fn is_structure(&self) -> bool {
-        matches!(self, IntermediateType::Structure { .. })
-    }
-
-    /// Returns if the type is an array.
-    pub fn is_array(&self) -> bool {
-        matches!(self, IntermediateType::Array { .. })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct IntermediateStructField {
-    pub name: TypeName,
-    pub field_type: IntermediateType,
-    pub offset: u32, // For memory layout
-}
 
 #[derive(Debug, Clone)]
 pub struct TypeAttributes {
@@ -294,5 +293,165 @@ mod tests {
         assert!(env
             .insert_alias(&TypeName::from("TYPE_ALIAS"), &TypeName::from("TYPE"))
             .is_err());
+    }
+
+    #[test]
+    fn intermediate_type_helper_methods_work_correctly() {
+        // Test primitive types
+        assert!(IntermediateType::Bool.is_primitive());
+        assert!(IntermediateType::Int {
+            size: ByteSized::B16
+        }
+        .is_primitive());
+        assert!(IntermediateType::UInt {
+            size: ByteSized::B32
+        }
+        .is_primitive());
+        assert!(IntermediateType::Real {
+            size: ByteSized::B64
+        }
+        .is_primitive());
+        assert!(IntermediateType::String { max_len: Some(10) }.is_primitive());
+        assert!(IntermediateType::Time.is_primitive());
+        assert!(IntermediateType::Date.is_primitive());
+
+        // Test non-primitive types
+        assert!(!IntermediateType::Enumeration {
+            underlying_type: Box::new(IntermediateType::Int {
+                size: ByteSized::B8
+            })
+        }
+        .is_primitive());
+        assert!(!IntermediateType::Structure { fields: vec![] }.is_primitive());
+        assert!(!IntermediateType::Array {
+            element_type: Box::new(IntermediateType::Int {
+                size: ByteSized::B16
+            }),
+            size: Some(10)
+        }
+        .is_primitive());
+
+        // Test numeric types
+        assert!(IntermediateType::Int {
+            size: ByteSized::B16
+        }
+        .is_numeric());
+        assert!(IntermediateType::UInt {
+            size: ByteSized::B32
+        }
+        .is_numeric());
+        assert!(IntermediateType::Real {
+            size: ByteSized::B64
+        }
+        .is_numeric());
+        assert!(!IntermediateType::Bool.is_numeric());
+        assert!(!IntermediateType::String { max_len: Some(10) }.is_numeric());
+
+        // Test integer types
+        assert!(IntermediateType::Int {
+            size: ByteSized::B16
+        }
+        .is_integer());
+        assert!(IntermediateType::UInt {
+            size: ByteSized::B32
+        }
+        .is_integer());
+        assert!(!IntermediateType::Real {
+            size: ByteSized::B64
+        }
+        .is_integer());
+        assert!(!IntermediateType::Bool.is_integer());
+
+        // Test subrange types
+        let subrange = IntermediateType::Subrange {
+            base_type: Box::new(IntermediateType::Int {
+                size: ByteSized::B16,
+            }),
+            min_value: 1,
+            max_value: 100,
+        };
+        assert!(subrange.is_subrange());
+        assert!(!subrange.is_primitive());
+
+        // Test function block types
+        let fb_type = IntermediateType::FunctionBlock {
+            name: "MyFB".to_string(),
+        };
+        assert!(fb_type.is_function_block());
+        assert!(!fb_type.is_primitive());
+
+        // Test function types
+        let func_type = IntermediateType::Function {
+            return_type: Some(Box::new(IntermediateType::Int {
+                size: ByteSized::B16,
+            })),
+            parameters: vec![],
+        };
+        assert!(func_type.is_function());
+        assert!(!func_type.is_primitive());
+    }
+
+    #[test]
+    fn type_environment_builder_with_elementary_types() {
+        let env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+
+        // Check that elementary types are present
+        assert!(env.get(&TypeName::from("bool")).is_some());
+        assert!(env.get(&TypeName::from("int")).is_some());
+        assert!(env.get(&TypeName::from("real")).is_some());
+        assert!(env.get(&TypeName::from("string")).is_some());
+        assert!(env.get(&TypeName::from("time")).is_some());
+        assert!(env.get(&TypeName::from("date")).is_some());
+
+        // Check specific type representations
+        let int_type = env.get(&TypeName::from("int")).unwrap();
+        assert!(matches!(
+            &int_type.representation,
+            IntermediateType::Int {
+                size: ByteSized::B16
+            }
+        ));
+
+        let bool_type = env.get(&TypeName::from("bool")).unwrap();
+        assert!(matches!(&bool_type.representation, IntermediateType::Bool));
+    }
+
+    #[test]
+    fn type_environment_is_enumeration_helper() {
+        let mut env = TypeEnvironment::new();
+
+        // Add an enumeration type
+        env.insert_type(
+            &TypeName::from("MY_ENUM"),
+            TypeAttributes {
+                span: SourceSpan::default(),
+                representation: IntermediateType::Enumeration {
+                    underlying_type: Box::new(IntermediateType::Int {
+                        size: ByteSized::B8,
+                    }),
+                },
+            },
+        )
+        .unwrap();
+
+        // Add a non-enumeration type
+        env.insert_type(
+            &TypeName::from("MY_INT"),
+            TypeAttributes {
+                span: SourceSpan::default(),
+                representation: IntermediateType::Int {
+                    size: ByteSized::B16,
+                },
+            },
+        )
+        .unwrap();
+
+        // Test the helper method
+        assert!(env.is_enumeration(&TypeName::from("MY_ENUM")));
+        assert!(!env.is_enumeration(&TypeName::from("MY_INT")));
+        assert!(!env.is_enumeration(&TypeName::from("NONEXISTENT")));
     }
 }

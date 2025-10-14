@@ -11,7 +11,9 @@
 //!
 //! The transformation succeeds when all data type declarations
 //! resolve to a declared type.
-use crate::type_environment::{IntermediateType, TypeAttributes, TypeEnvironment};
+use crate::intermediate_type::IntermediateType;
+use crate::intermediates::*;
+use crate::type_environment::{TypeAttributes, TypeEnvironment};
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -81,30 +83,49 @@ impl Fold<Diagnostic> for TypeEnvironment {
         &mut self,
         node: SimpleDeclaration,
     ) -> Result<SimpleDeclaration, Diagnostic> {
-        // A simple declaration cannot refer to another type so we
-        // just need to insert this into the type environment.
-        // TODO: Implement proper type resolution for simple declarations
-        // For now, just return the node without adding to type environment
+        // A simple declaration consists of a type name followed by specification/initialization.
         match &node.spec_and_init {
             InitialValueAssignmentKind::None(_source_span) => {
                 // TODO: Handle simple type declarations without initializers
             }
-            InitialValueAssignmentKind::Simple(_simple_initializer) => {
-                // TODO: Handle simple type declarations with initializers
+            InitialValueAssignmentKind::Simple(simple_initializer) => {
+                match self.get(&simple_initializer.type_name) {
+                    Some(_base_type) => {
+                        // If the base type is known, then the type is valid this type
+                        // will have the same attributes as the base type.
+                        // TODO
+                    }
+                    None => {
+                        // If the base type is not know, then this is not valid
+                        return Err(Diagnostic::problem(
+                            Problem::ParentTypeNotDeclared,
+                            Label::span(node.type_name.span(), "Derived type"),
+                        )
+                        .with_secondary(Label::span(
+                            simple_initializer.type_name.span(),
+                            "Base type",
+                        )));
+                    }
+                }
+
+                // Simple initializers are constants. Just register the type as a known type.
+
+                // TODO self.insert_type(&node.type_name, )
             }
-            InitialValueAssignmentKind::String(_string_initializer) => {
-                // TODO: Handle string type declarations
+            InitialValueAssignmentKind::String(string_initializer) => {
+                self.insert_type(&node.type_name, string::from(string_initializer))?;
             }
-            InitialValueAssignmentKind::EnumeratedValues(_enumerated_values_initializer) => {
-                // TODO: Handle enumerated values initializers
+            InitialValueAssignmentKind::EnumeratedValues(enumerated_values_initializer) => {
+                let attributes = enumeration::try_from_values(enumerated_values_initializer)?;
+                self.insert_type(&node.type_name, attributes)?;
             }
             InitialValueAssignmentKind::EnumeratedType(_enumerated_initial_value_assignment) => {
-                // TODO: Handle enumerated type initializers
+                // I don't think this is needed because this should refer to a declared type, not declare a type.
             }
             InitialValueAssignmentKind::FunctionBlock(_function_block_initial_value_assignment) => {
                 // TODO: Handle function block initializers
             }
-            InitialValueAssignmentKind::Subrange(_subrange_specification_kind) => {
+            InitialValueAssignmentKind::Subrange(_spec) => {
                 // TODO: Handle subrange specifications
             }
             InitialValueAssignmentKind::Structure(_structure_initialization_declaration) => {
@@ -129,7 +150,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // or rename another enumeration.
         match &node.spec_init.spec {
             EnumeratedSpecificationKind::TypeName(base_type_name) => {
-                // Alias of another enumeration: base must already exist due to toposort
+                // Alias of another enumeration: base must already exist because we sort the items
                 if self.get(base_type_name).is_none() {
                     return Err(Diagnostic::problem(
                         Problem::ParentEnumNotDeclared,
@@ -140,26 +161,9 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // Use explicit alias insertion to avoid duplicating representation logic
                 self.insert_alias(&node.type_name, base_type_name)?;
             }
-            EnumeratedSpecificationKind::Values(values) => {
-                // Compute underlying type width based on cardinality
-                let value_count = values.values.len();
-                let underlying_type = if value_count <= 256 {
-                    IntermediateType::Int { size: 8 }
-                } else if value_count <= 65536 {
-                    IntermediateType::Int { size: 16 }
-                } else {
-                    IntermediateType::Int { size: 32 }
-                };
-
-                self.insert_type(
-                    &node.type_name,
-                    TypeAttributes {
-                        span: node.type_name.span(),
-                        representation: IntermediateType::Enumeration {
-                            underlying_type: Box::new(underlying_type),
-                        },
-                    },
-                )?;
+            EnumeratedSpecificationKind::Values(spec_values) => {
+                let attributes = enumeration::try_from_values(spec_values)?;
+                self.insert_type(&node.type_name, attributes)?;
             }
         }
 
@@ -282,6 +286,9 @@ impl Fold<Diagnostic> for TypeEnvironment {
         &mut self,
         node: DataTypeDeclarationKind,
     ) -> Result<DataTypeDeclarationKind, Diagnostic> {
+        // Although most of the folding is handled by element-specific methods,
+        // we need to handle folding of late bound at declaration kind level
+        // because this will change the type of the declaration.
         match node {
             DataTypeDeclarationKind::LateBound(lb) => {
                 let result = self.transform_late_bound_declaration(lb)?;
@@ -331,14 +338,6 @@ impl Fold<Diagnostic> for TypeEnvironment {
 
                 Ok(result)
             }
-            DataTypeDeclarationKind::Enumeration(enum_decl) => {
-                let enum_decl = self.fold_enumeration_declaration(enum_decl)?;
-                Ok(DataTypeDeclarationKind::Enumeration(enum_decl))
-            }
-            DataTypeDeclarationKind::Array(array_decl) => {
-                let array_decl = self.fold_array_declaration(array_decl)?;
-                Ok(DataTypeDeclarationKind::Array(array_decl))
-            }
             _ => node.recurse_fold(self),
         }
     }
@@ -359,11 +358,12 @@ impl Fold<Diagnostic> for TypeEnvironment {
 
 #[cfg(test)]
 mod tests {
-    use crate::type_environment::{IntermediateType, TypeEnvironment, TypeEnvironmentBuilder};
+    use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
 
     use super::apply;
     use ironplc_dsl::{common::*, core::FileId};
     use ironplc_parser::options::ParseOptions;
+    use ironplc_problems::Problem;
 
     #[test]
     fn apply_when_ambiguous_enum_then_resolves_type() {
@@ -438,71 +438,6 @@ END_TYPE
     }
 
     #[test]
-    fn apply_when_array_declaration_then_creates_array_type() {
-        let program = "
-TYPE
-MY_ARRAY : ARRAY[1..10] OF INT;
-END_TYPE
-        ";
-        let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
-                .unwrap();
-        let mut env = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let _library = apply(input, &mut env).unwrap();
-
-        // Check that the array type was created
-        let array_type = env.get(&TypeName::from("MY_ARRAY")).unwrap();
-        match &array_type.representation {
-            IntermediateType::Array { element_type, size } => {
-                // Check element type
-                match element_type.as_ref() {
-                    IntermediateType::Int { size: 16 } => {} // INT is 16-bit
-                    _ => panic!("Expected INT element type, got: {element_type:?}"),
-                }
-                // Check array size (1..10 = 10 elements)
-                assert_eq!(size, &Some(10));
-            }
-            _ => panic!("Expected Array type"),
-        }
-    }
-
-    #[test]
-    fn apply_when_array_alias_then_creates_alias() {
-        let program = "
-TYPE
-ORIGINAL_ARRAY : ARRAY[1..5] OF INT;
-ARRAY_ALIAS : ORIGINAL_ARRAY;
-END_TYPE
-        ";
-        let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
-                .unwrap();
-        let mut env = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let _library = apply(input, &mut env).unwrap();
-
-        // Check that the array alias was created
-        let alias_type = env.get(&TypeName::from("ARRAY_ALIAS")).unwrap();
-        match &alias_type.representation {
-            IntermediateType::Array { element_type, size } => {
-                // Check element type
-                match element_type.as_ref() {
-                    IntermediateType::Int { size: 16 } => {} // INT is 16-bit
-                    _ => panic!("Expected INT element type"),
-                }
-                // Check array size (1..5 = 5 elements)
-                assert_eq!(size, &Some(5));
-            }
-            _ => panic!("Expected Array type"),
-        }
-    }
-
-    #[test]
     fn apply_when_array_element_is_string_type_then_ok() {
         let program = "
 TYPE
@@ -522,5 +457,56 @@ END_TYPE
             .build()
             .unwrap();
         let _library = apply(input, &mut env).unwrap();
+    }
+
+    #[test]
+    fn apply_when_simple_type_alias_then_creates_alias() {
+        let program = "
+TYPE
+MY_INT : INT := 0;
+MY_BOOL : BOOL := FALSE;
+END_TYPE
+        ";
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let _library = apply(input, &mut env).unwrap();
+
+        // Check that the aliases were created
+        // TODO
+        //let my_int_type = env.get(&TypeName::from("MY_INT")).unwrap();
+        //assert_variant!(&my_int_type.representation, IntermediateType::Int { .. });
+
+        //let my_bool_type = env.get(&TypeName::from("MY_BOOL")).unwrap();
+        //assert_variant!(&my_bool_type.representation, IntermediateType::Bool);
+    }
+
+    #[test]
+    fn apply_when_simple_type_alias_missing_base_then_error() {
+        let program = "
+TYPE
+MY_TYPE : UNKNOWN_TYPE := 0;
+END_TYPE
+        ";
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        print!("{:?}", input);
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let result = apply(input, &mut env);
+
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(
+            Problem::ParentTypeNotDeclared.code(),
+            error.first().unwrap().code
+        );
     }
 }

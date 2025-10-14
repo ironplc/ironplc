@@ -40,5 +40,12 @@ P0038,ParentTypeNotDeclared,Parent type is not declared
 P0039,AliasParentTypeNotDeclared,Alias parent type is not declared
 P0040,ArrayElementTypeNotDeclared,Array element type is not declared
 P0041,UnsupportedFileType,File type is not supported
+P0042,SimpleTypeDeclMissingInit,Simple type declaration requires an initializer
+P0043,SubrangeBaseTypeNotNumeric,Subrange base type must be numeric
+P0044,SubrangeOutOfBounds,Subrange is outside base type bounds
+P0045,StructFieldMissingType,Structure field missing type specification
+P0046,NestedStructuresNotSupported,Nested structures not supported
+P0047,InvalidSimpleTypeDecl,Invalid simple type declaration
+P0048,EnumerationTooManyValues,Enumeration has too many unique values
 P9998,InternalError,Internal error indicating a bug in the compiler
 P9999,NotImplemented,Capability is not implemented (yet!)
