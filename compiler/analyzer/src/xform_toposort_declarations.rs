@@ -461,22 +461,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
 mod tests {
     use super::*;
 
-    use crate::test_helpers::parse_only;
-
-    macro_rules! cast {
-        ($target: expr, $pat: path) => {{
-            if let $pat(a) = $target {
-                // #1
-                a
-            } else {
-                panic!(
-                    "mismatch variant when cast to {} for {:?}",
-                    stringify!($pat),
-                    $target
-                ); // #2
-            }
-        }};
-    }
+    use crate::{cast, test_helpers::parse_only};
 
     #[test]
     fn apply_when_function_block_recursive_call_in_self_then_return_error() {
