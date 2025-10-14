@@ -94,11 +94,18 @@ impl Fold<Diagnostic> for TypeEnvironment {
                         // If the base type is known, then the type is valid this type
                         // will have the same attributes as the base type.
                         // TODO
-                    },
+                    }
                     None => {
                         // If the base type is not know, then this is not valid
-                        return Err(Diagnostic::problem(Problem::ParentTypeNotDeclared, Label::span(node.type_name.span(), "Derived type")).with_secondary(Label::span(simple_initializer.type_name.span(), "Base type")))
-                    },
+                        return Err(Diagnostic::problem(
+                            Problem::ParentTypeNotDeclared,
+                            Label::span(node.type_name.span(), "Derived type"),
+                        )
+                        .with_secondary(Label::span(
+                            simple_initializer.type_name.span(),
+                            "Base type",
+                        )));
+                    }
                 }
 
                 // Simple initializers are constants. Just register the type as a known type.
@@ -497,6 +504,9 @@ END_TYPE
 
         assert!(result.is_err());
         let error = result.unwrap_err();
-        assert_eq!(Problem::ParentTypeNotDeclared.code(), error.first().unwrap().code);
+        assert_eq!(
+            Problem::ParentTypeNotDeclared.code(),
+            error.first().unwrap().code
+        );
     }
 }

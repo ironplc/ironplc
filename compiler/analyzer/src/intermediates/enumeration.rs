@@ -47,7 +47,7 @@ mod tests {
     use ironplc_problems::Problem;
 
     use crate::{
-        type_environment::TypeEnvironmentBuilder, xform_resolve_type_decl_environment::apply
+        type_environment::TypeEnvironmentBuilder, xform_resolve_type_decl_environment::apply,
     };
 
     #[test]
