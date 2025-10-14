@@ -8,8 +8,9 @@
 //! - Arrays: duplicate array element type information
 //! - Other types: handle as needed
 
+use crate::intermediate_type::IntermediateType;
 use crate::symbol_environment::SymbolEnvironment;
-use crate::type_environment::{IntermediateType, TypeEnvironment};
+use crate::type_environment::TypeEnvironment;
 use ironplc_dsl::common::*;
 use ironplc_dsl::diagnostic::Diagnostic;
 
