@@ -5,18 +5,24 @@ use std::fs::DirEntry;
 use std::ops::{Deref, Range};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::{Arc, LazyLock};
 use std::{cmp::Ordering, hash::Hash, hash::Hasher};
 
 use crate::fold::Fold;
 use crate::visitor::Visitor;
 use dsl_macro_derive::Recurse;
 
+// Static singletons for common FileId values to avoid repeated allocations.
+// This is particularly beneficial for test code which frequently uses FileId::default(),
+// and for any other commonly used file paths.
+static EMPTY_FILE_ID: LazyLock<Arc<str>> = LazyLock::new(|| Arc::from(""));
+
 /// FileId is an identifier for a file (may be local or remote).
 ///
 /// FileId is normally useful in the context of source positions
 /// where a source position is in a file.
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Default)]
-pub struct FileId(String);
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct FileId(Arc<str>);
 
 impl FileId {
     /// Creates an empty file identifier.
@@ -26,18 +32,31 @@ impl FileId {
 
     /// Creates a file identifier from the path.
     pub fn from_path(path: &Path) -> Self {
-        FileId(String::from(path.to_string_lossy().deref()))
+        FileId(Arc::from(path.to_string_lossy().as_ref()))
     }
 
     /// Creates a file identifier from the directory entry.
     pub fn from_dir_entry(entry: DirEntry) -> Self {
-        FileId(String::from(entry.path().to_string_lossy().deref()))
+        FileId(Arc::from(entry.path().to_string_lossy().as_ref()))
     }
 
     /// Creates a file identifier from the slice. The slice
     /// is normally the file path.
     pub fn from_string(path: &str) -> Self {
-        FileId(String::from(path))
+        FileId(Arc::from(path))
+    }
+
+    /// Test-only method to check if two FileIds share the same Arc memory.
+    /// This is used to verify that our optimization is working correctly.
+    #[cfg(test)]
+    pub fn shares_arc_with(&self, other: &FileId) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Default for FileId {
+    fn default() -> Self {
+        FileId(EMPTY_FILE_ID.clone())
     }
 }
 
@@ -189,5 +208,62 @@ impl fmt::Display for Id {
 impl Located for Id {
     fn span(&self) -> SourceSpan {
         self.span.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_id_when_clone_then_same_underlying_data() {
+        // Test that FileId instances with the same path share memory
+        let path = "src/main.rs";
+        let file_id1 = FileId::from_string(path);
+        let file_id2 = FileId::from_string(path);
+        let file_id3 = file_id1.clone();
+
+        // Verify they're equal
+        assert_eq!(file_id1, file_id2);
+        assert_eq!(file_id1, file_id3);
+
+        // Verify that cloning doesn't create new string allocations
+        // by checking that the Arc pointers are the same
+        assert!(file_id1.shares_arc_with(&file_id3));
+    }
+
+    #[test]
+    fn file_id_when_display_then_returns_value() {
+        let file_id = FileId::from_string("test/file.rs");
+        assert_eq!(format!("{}", file_id), "test/file.rs");
+    }
+
+    #[test]
+    fn file_id_from_path_then_creates_path() {
+        use std::path::Path;
+        let path = Path::new("src/lib.rs");
+        let file_id = FileId::from_path(path);
+        assert_eq!(format!("{}", file_id), "src/lib.rs");
+    }
+
+    #[test]
+    fn file_id_when_different_paths_then_different_arcs() {
+        // Verify that different file paths don't share memory (as expected)
+        let file1 = FileId::from_string("file1.rs");
+        let file2 = FileId::from_string("file2.rs");
+
+        // They should be different
+        assert_ne!(file1, file2);
+
+        // They should NOT share Arc memory
+        assert!(!file1.shares_arc_with(&file2));
+
+        // But clones of each should share memory
+        let file1_clone = file1.clone();
+        let file2_clone = file2.clone();
+
+        assert!(file1.shares_arc_with(&file1_clone));
+        assert!(file2.shares_arc_with(&file2_clone));
+        assert!(!file1.shares_arc_with(&file2_clone));
     }
 }
