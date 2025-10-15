@@ -29,11 +29,7 @@ impl Fold<Diagnostic> for TransformFileId<'_> {
 
 #[cfg(test)]
 mod tests {
-    use dsl::core::Located;
-    use ironplc_dsl::{
-        common::{DataTypeDeclarationKind, LibraryElementKind},
-        core::FileId,
-    };
+    use ironplc_dsl::core::FileId;
 
     use crate::{options::ParseOptions, parse_program};
 
@@ -56,20 +52,81 @@ END_TYPE
         let expected_fid = FileId::from_string("output");
         let library = apply(input, &expected_fid).unwrap();
 
-        let data_type = match library.elements.first().unwrap() {
-            LibraryElementKind::DataTypeDeclaration(dt) => dt,
-            _ => panic!(),
+        // Use a more direct approach: collect all spans and verify they have the expected FileId
+        // This avoids the need for complex pattern matching
+        use ironplc_dsl::fold::Fold;
+        
+        let mut spans = Vec::new();
+        struct SpanCollector<'a> {
+            spans: &'a mut Vec<ironplc_dsl::core::SourceSpan>,
+        }
+        
+        impl Fold<()> for SpanCollector<'_> {
+            fn fold_source_span(&mut self, node: ironplc_dsl::core::SourceSpan) -> Result<ironplc_dsl::core::SourceSpan, ()> {
+                self.spans.push(node.clone());
+                Ok(node)
+            }
+        }
+        
+        let mut collector = SpanCollector { spans: &mut spans };
+        let _ = collector.fold_library(library);
+
+        // Find the span that matches our expected position (the type name "LEVEL")
+        let type_name_span = spans.iter()
+            .find(|span| span.start == 6 && span.end == 11)
+            .expect("Should find the type name span");
+
+        assert_eq!(expected_fid, type_name_span.file_id);
+
+
+    }
+
+    #[test]
+    fn apply_assigns_same_file_id_to_all_spans() {
+        use ironplc_dsl::fold::Fold;
+
+        let program = "
+TYPE
+LEVEL : (CRITICAL) := CRITICAL;
+OTHER : (A, B, C) := A;
+END_TYPE
+                ";
+
+        let input = parse_program(
+            program,
+            &FileId::from_string("input"),
+            &ParseOptions::default(),
+        )
+        .unwrap();
+        let expected_fid = FileId::from_string("shared_file.rs");
+        let library = apply(input, &expected_fid).unwrap();
+
+        // Collect all FileIds from the AST
+        let mut file_ids = Vec::new();
+        struct FileIdCollector<'a> {
+            file_ids: &'a mut Vec<FileId>,
+        }
+
+        impl Fold<()> for FileIdCollector<'_> {
+            fn fold_source_span(
+                &mut self,
+                node: ironplc_dsl::core::SourceSpan,
+            ) -> Result<ironplc_dsl::core::SourceSpan, ()> {
+                self.file_ids.push(node.file_id.clone());
+                Ok(node)
+            }
+        }
+
+        let mut collector = FileIdCollector {
+            file_ids: &mut file_ids,
         };
+        let _ = collector.fold_library(library);
 
-        let enum_type = match data_type {
-            DataTypeDeclarationKind::Enumeration(enum_data_type) => enum_data_type,
-            _ => panic!(),
-        };
+        // Verify all FileIds are equal (the Arc sharing is tested in the dsl crate)
+        assert!(!file_ids.is_empty(), "Should have collected some FileIds");
 
-        let span = enum_type.type_name.span();
-
-        assert_eq!(6, span.start);
-        assert_eq!(11, span.end);
-        assert_eq!(expected_fid, span.file_id);
+        for file_id in &file_ids {
+            assert_eq!(*file_id, expected_fid);
+        }
     }
 }

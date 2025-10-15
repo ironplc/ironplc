@@ -221,6 +221,19 @@ mod tests {
     }
 
     #[test]
+    fn get_source_when_added_by_file_id_then_returns_the_item() {
+        let mut project = SourceProject::new();
+        let file_id = FileId::from_string("test.st");
+        project.add_source(file_id.clone(), "content".to_string());
+
+        // Get the source and verify FileId equality
+        let source = project.get_source(&file_id).unwrap();
+
+        // Both the HashMap key and the Source's internal file_id should be equal
+        assert_eq!(file_id, *source.file_id());
+    }
+
+    #[test]
     fn initialize_from_nonexistent_directory() {
         let mut project = SourceProject::new();
         let diagnostics = project.initialize_from_directory(Path::new("/nonexistent/directory"));
