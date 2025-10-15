@@ -55,30 +55,32 @@ END_TYPE
         // Use a more direct approach: collect all spans and verify they have the expected FileId
         // This avoids the need for complex pattern matching
         use ironplc_dsl::fold::Fold;
-        
+
         let mut spans = Vec::new();
         struct SpanCollector<'a> {
             spans: &'a mut Vec<ironplc_dsl::core::SourceSpan>,
         }
-        
+
         impl Fold<()> for SpanCollector<'_> {
-            fn fold_source_span(&mut self, node: ironplc_dsl::core::SourceSpan) -> Result<ironplc_dsl::core::SourceSpan, ()> {
+            fn fold_source_span(
+                &mut self,
+                node: ironplc_dsl::core::SourceSpan,
+            ) -> Result<ironplc_dsl::core::SourceSpan, ()> {
                 self.spans.push(node.clone());
                 Ok(node)
             }
         }
-        
+
         let mut collector = SpanCollector { spans: &mut spans };
         let _ = collector.fold_library(library);
 
         // Find the span that matches our expected position (the type name "LEVEL")
-        let type_name_span = spans.iter()
+        let type_name_span = spans
+            .iter()
             .find(|span| span.start == 6 && span.end == 11)
             .expect("Should find the type name span");
 
         assert_eq!(expected_fid, type_name_span.file_id);
-
-
     }
 
     #[test]
