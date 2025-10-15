@@ -17,3 +17,4 @@ encoding_rs = "0.8"
 
 [dev-dependencies]
 ironplc-test = { path = "../test", version = "0.137.0" }
+tempfile = "3.8"
