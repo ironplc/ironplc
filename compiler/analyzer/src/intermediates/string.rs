@@ -1,6 +1,6 @@
 use crate::{intermediate_type::IntermediateType, type_environment::TypeAttributes};
 
-use ironplc_dsl::common::StringInitializer;
+use ironplc_dsl::common::{StringDeclaration, StringInitializer};
 use ironplc_dsl::core::Located;
 
 pub fn from(initializer: &StringInitializer) -> TypeAttributes {
@@ -13,13 +13,23 @@ pub fn from(initializer: &StringInitializer) -> TypeAttributes {
     }
 }
 
+pub fn from_decl(decl: &StringDeclaration) -> TypeAttributes {
+    TypeAttributes {
+        span: decl.type_name.span(),
+        representation: IntermediateType::String {
+            max_len: Some(decl.length.value),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use ironplc_dsl::core::FileId;
+    use ironplc_dsl::{common::TypeName, core::FileId};
     use ironplc_parser::options::ParseOptions;
 
     use crate::{
-        type_environment::TypeEnvironmentBuilder, xform_resolve_type_decl_environment::apply,
+        intermediate_type::IntermediateType, type_environment::TypeEnvironmentBuilder,
+        xform_resolve_type_decl_environment::apply,
     };
 
     #[test]
@@ -39,10 +49,10 @@ END_TYPE
         let _library = apply(input, &mut env).unwrap();
 
         // Check that the string type was created
-
-        // TODO
-        //let my_string_type = env.get(&TypeName::from("MY_STRING")).unwrap();
-        //let max_len = assert_string!(&my_string_type.representation);
-        //assert_eq!(max_len, &Some(50));
+        let my_string_type = env.get(&TypeName::from("MY_STRING")).unwrap();
+        assert!(matches!(
+            &my_string_type.representation,
+            IntermediateType::String { max_len: Some(50) }
+        ));
     }
 }

@@ -168,4 +168,27 @@ END_TYPE
         assert!(attributes.representation.is_enumeration());
         assert_eq!(1, attributes.representation.size_in_bytes());
     }
+
+    #[test]
+    fn apply_when_enum_redefines_enum_then_creates_alias() {
+        let program = "
+TYPE
+LEVEL : (LOW, MEDIUM, HIGH) := LOW;
+LEVEL2 : LEVEL;
+END_TYPE
+        ";
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let _library = apply(input, &mut env).unwrap();
+
+        // Check that the enumeration type was created
+        let attributes = env.get(&TypeName::from("LEVEL2")).unwrap();
+        assert!(attributes.representation.is_enumeration());
+        assert_eq!(1, attributes.representation.size_in_bytes());
+    }
 }
