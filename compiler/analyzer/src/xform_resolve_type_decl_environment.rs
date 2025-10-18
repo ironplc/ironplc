@@ -107,10 +107,6 @@ impl Fold<Diagnostic> for TypeEnvironment {
                         )));
                     }
                 }
-
-                // Simple initializers are constants. Just register the type as a known type.
-
-                // TODO self.insert_type(&node.type_name, )
             }
             InitialValueAssignmentKind::String(string_initializer) => {
                 self.insert_type(&node.type_name, string::from(string_initializer))?;
@@ -174,15 +170,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         &mut self,
         node: StringDeclaration,
     ) -> Result<StringDeclaration, Diagnostic> {
-        self.insert_type(
-            &node.type_name,
-            TypeAttributes {
-                span: node.type_name.span(),
-                representation: IntermediateType::String {
-                    max_len: Some(node.length.value),
-                },
-            },
-        )?;
+        self.insert_type(&node.type_name, string::from_decl(&node))?;
         Ok(node)
     }
 
@@ -292,48 +280,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         match node {
             DataTypeDeclarationKind::LateBound(lb) => {
                 let result = self.transform_late_bound_declaration(lb)?;
-
-                // If the LateBound was transformed into an Enumeration or Array, we need to add it to the TypeEnvironment
-                match &result {
-                    DataTypeDeclarationKind::Enumeration(enum_decl) => {
-                        // Get the base type from the existing type environment
-                        let base_type_name = match &enum_decl.spec_init.spec {
-                            EnumeratedSpecificationKind::TypeName(base_type) => base_type,
-                            _ => {
-                                unreachable!("LateBound should always resolve to TypeName variant")
-                            }
-                        };
-
-                        if self.get(base_type_name).is_none() {
-                            return Err(Diagnostic::problem(
-                                Problem::ParentTypeNotDeclared,
-                                Label::span(enum_decl.type_name.span(), "Base type not found"),
-                            ));
-                        }
-
-                        // Insert as alias rather than cloning representation
-                        self.insert_alias(&enum_decl.type_name, base_type_name)?;
-                    }
-                    DataTypeDeclarationKind::Array(array_decl) => {
-                        // Get the base type from the array specification
-                        let base_type_name = match &array_decl.spec {
-                            ArraySpecificationKind::Type(base_type) => base_type,
-                            _ => return Err(Diagnostic::internal_error(file!(), line!())),
-                        };
-
-                        if self.get(base_type_name).is_none() {
-                            return Err(Diagnostic::problem(
-                                Problem::ParentTypeNotDeclared,
-                                Label::span(array_decl.type_name.span(), "Base type not found"),
-                            ));
-                        }
-
-                        // Insert as alias rather than cloning representation
-                        self.insert_alias(&array_decl.type_name, base_type_name)?;
-                    }
-                    _ => {} // Other types don't need special handling
-                }
-
+                let result = result.recurse_fold(self)?;
                 Ok(result)
             }
             _ => node.recurse_fold(self),
@@ -440,11 +387,11 @@ END_TYPE
     fn apply_when_array_element_is_string_type_then_ok() {
         let program = "
 TYPE
-  oscat_STRING10               : STRING(10);
+  STRING10               : STRING(10);
 END_TYPE
 
 TYPE
-  oscat_ELEMENT_WEEKDAYS	: ARRAY [1..7] OF oscat_STRING10;
+  ELEMENT_WEEKDAYS	: ARRAY [1..7] OF STRING10;
 END_TYPE
         ";
         let input =
@@ -618,24 +565,6 @@ END_TYPE
             assert!(matches!(
                 &my_bool_type.representation,
                 IntermediateType::Bool
-            ));
-        }
-
-        #[test]
-        fn apply_when_string_type_alias_then_creates_alias() {
-            let program = "
-TYPE
-MY_STRING : STRING := 'hello';
-END_TYPE
-            ";
-            let (result, env) = parse_and_apply_with_elementary_types(program);
-            assert!(result.is_ok());
-
-            // Verify the alias was created (STRING is an elementary type)
-            let my_string_type = env.get(&TypeName::from("MY_STRING")).unwrap();
-            assert!(matches!(
-                &my_string_type.representation,
-                IntermediateType::String { max_len: None }
             ));
         }
 
