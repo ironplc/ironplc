@@ -307,6 +307,7 @@ mod tests {
     use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
 
     use super::apply;
+    use ironplc_dsl::diagnostic::Diagnostic;
     use ironplc_dsl::{common::*, core::FileId};
     use ironplc_parser::options::ParseOptions;
     use ironplc_problems::Problem;
@@ -319,11 +320,8 @@ LEVEL : (CRITICAL) := CRITICAL;
 LEVEL_ALIAS : LEVEL;
 END_TYPE
         ";
-        let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
-                .unwrap();
-        let mut env = TypeEnvironment::new();
-        let library = apply(input, &mut env).unwrap();
+        let (result, _env) = parse_and_apply_with_elementary_types(program);
+        let result = result.unwrap();
 
         let expected = Library {
             elements: vec![
@@ -348,7 +346,7 @@ END_TYPE
             ],
         };
 
-        assert_eq!(library, expected)
+        assert_eq!(result, expected)
     }
 
     #[test]
@@ -387,7 +385,7 @@ END_TYPE
     fn apply_when_array_element_is_string_type_then_ok() {
         let program = "
 TYPE
-  STRING10               : STRING(10);
+  STRING10 : STRING(10);
 END_TYPE
 
 TYPE
@@ -413,22 +411,21 @@ MY_INT : INT := 0;
 MY_BOOL : BOOL := FALSE;
 END_TYPE
         ";
-        let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
-                .unwrap();
-        let mut env = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let _library = apply(input, &mut env).unwrap();
+        let (_result, env) = parse_and_apply_with_elementary_types(program);
 
-        // Check that the aliases were created
-        // TODO
-        //let my_int_type = env.get(&TypeName::from("MY_INT")).unwrap();
-        //assert_variant!(&my_int_type.representation, IntermediateType::Int { .. });
+        let my_int_type = env.get(&TypeName::from("MY_INT")).unwrap();
+        assert!(matches!(
+            &my_int_type.representation,
+            IntermediateType::Int {
+                size: ByteSized::B16
+            }
+        ));
 
-        //let my_bool_type = env.get(&TypeName::from("MY_BOOL")).unwrap();
-        //assert_variant!(&my_bool_type.representation, IntermediateType::Bool);
+        let my_bool_type = env.get(&TypeName::from("MY_BOOL")).unwrap();
+        assert!(matches!(
+            &my_bool_type.representation,
+            IntermediateType::Bool
+        ));
     }
 
     #[test]
@@ -437,16 +434,9 @@ END_TYPE
 TYPE
 MY_TYPE : UNKNOWN_TYPE := 0;
 END_TYPE
+
         ";
-        let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
-                .unwrap();
-        print!("{:?}", input);
-        let mut env = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let result = apply(input, &mut env);
+        let (result, _env) = parse_and_apply_with_elementary_types(program);
 
         assert!(result.is_err());
         let error = result.unwrap_err();
@@ -456,210 +446,198 @@ END_TYPE
         );
     }
 
-    // Integration tests for simple type declarations using the apply function
-    mod simple_declaration_integration_tests {
-        use super::*;
-        use ironplc_dsl::diagnostic::Diagnostic;
-
-        /// Helper function to parse 61131-3 code and apply type resolution with elementary types
-        fn parse_and_apply_with_elementary_types(
-            program: &str,
-        ) -> (Result<Library, Vec<Diagnostic>>, TypeEnvironment) {
-            let input = ironplc_parser::parse_program(
-                program,
-                &FileId::default(),
-                &ParseOptions::default(),
-            )
-            .unwrap();
-            let mut env = TypeEnvironmentBuilder::new()
-                .with_elementary_types()
-                .build()
-                .unwrap();
-            let result = apply(input, &mut env);
-            (result, env)
-        }
-
-        /// Helper function to parse 61131-3 code and apply type resolution with empty environment
-        fn parse_and_apply_with_empty_env(
-            program: &str,
-        ) -> (Result<Library, Vec<Diagnostic>>, TypeEnvironment) {
-            let input = ironplc_parser::parse_program(
-                program,
-                &FileId::default(),
-                &ParseOptions::default(),
-            )
-            .unwrap();
-            let mut env = TypeEnvironment::new();
-            let result = apply(input, &mut env);
-            (result, env)
-        }
-
-        #[test]
-        fn apply_when_int_type_alias_then_creates_alias() {
-            let program = "
+    #[test]
+    fn apply_when_int_type_alias_then_creates_alias() {
+        let program = "
 TYPE
 MY_INT : INT := 42;
 END_TYPE
-            ";
-            let (result, env) = parse_and_apply_with_elementary_types(program);
-            assert!(result.is_ok());
+        ";
+        let (result, env) = parse_and_apply_with_elementary_types(program);
+        assert!(result.is_ok());
 
-            // Verify the alias was created
-            let my_int_type = env.get(&TypeName::from("MY_INT")).unwrap();
-            assert!(matches!(
-                &my_int_type.representation,
-                IntermediateType::Int {
-                    size: ByteSized::B16
-                }
-            ));
-        }
+        // Verify the alias was created
+        let my_int_type = env.get(&TypeName::from("MY_INT")).unwrap();
+        assert!(matches!(
+            &my_int_type.representation,
+            IntermediateType::Int {
+                size: ByteSized::B16
+            }
+        ));
+    }
 
-        #[test]
-        fn apply_when_invalid_base_type_then_error() {
-            let program = "
+    #[test]
+    fn apply_when_invalid_base_type_then_error() {
+        let program = "
 TYPE
 MY_TYPE : UNKNOWN_TYPE := 0;
 END_TYPE
-            ";
-            let (result, _env) = parse_and_apply_with_empty_env(program);
-            assert!(result.is_err());
-            let error = result.unwrap_err();
-            assert_eq!(
-                Problem::ParentTypeNotDeclared.code(),
-                error.first().unwrap().code
-            );
-        }
+        ";
+        let (result, _env) = parse_and_apply_with_empty_env(program);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(
+            Problem::ParentTypeNotDeclared.code(),
+            error.first().unwrap().code
+        );
+    }
 
-        #[test]
-        fn apply_when_real_type_alias_then_creates_alias() {
-            let program = "
+    #[test]
+    fn apply_when_real_type_alias_then_creates_alias() {
+        let program = "
 TYPE
 MY_REAL : REAL := 3.14;
 END_TYPE
-            ";
-            let (result, env) = parse_and_apply_with_elementary_types(program);
-            assert!(result.is_ok());
+        ";
+        let (result, env) = parse_and_apply_with_elementary_types(program);
+        assert!(result.is_ok());
 
-            // Verify the alias was created
-            let my_real_type = env.get(&TypeName::from("MY_REAL")).unwrap();
-            assert!(matches!(
-                &my_real_type.representation,
-                IntermediateType::Real {
-                    size: ByteSized::B32
-                }
-            ));
-        }
+        // Verify the alias was created
+        let my_real_type = env.get(&TypeName::from("MY_REAL")).unwrap();
+        assert!(matches!(
+            &my_real_type.representation,
+            IntermediateType::Real {
+                size: ByteSized::B32
+            }
+        ));
+    }
 
-        #[test]
-        fn apply_when_bool_type_alias_then_creates_alias() {
-            let program = "
+    #[test]
+    fn apply_when_bool_type_alias_then_creates_alias() {
+        let program = "
 TYPE
 MY_BOOL : BOOL := TRUE;
 END_TYPE
-            ";
-            let (result, env) = parse_and_apply_with_elementary_types(program);
-            assert!(result.is_ok());
+        ";
+        let (result, env) = parse_and_apply_with_elementary_types(program);
+        assert!(result.is_ok());
 
-            // Verify the alias was created
-            let my_bool_type = env.get(&TypeName::from("MY_BOOL")).unwrap();
-            assert!(matches!(
-                &my_bool_type.representation,
-                IntermediateType::Bool
-            ));
-        }
+        // Verify the alias was created
+        let my_bool_type = env.get(&TypeName::from("MY_BOOL")).unwrap();
+        assert!(matches!(
+            &my_bool_type.representation,
+            IntermediateType::Bool
+        ));
+    }
 
-        #[test]
-        fn apply_when_dint_type_alias_then_creates_alias() {
-            let program = "
+    #[test]
+    fn apply_when_dint_type_alias_then_creates_alias() {
+        let program = "
 TYPE
 MY_DINT : DINT := 1000;
 END_TYPE
-            ";
-            let (result, env) = parse_and_apply_with_elementary_types(program);
-            assert!(result.is_ok());
+        ";
+        let (result, env) = parse_and_apply_with_elementary_types(program);
+        assert!(result.is_ok());
 
-            // Verify the alias was created
-            let my_dint_type = env.get(&TypeName::from("MY_DINT")).unwrap();
-            assert!(matches!(
-                &my_dint_type.representation,
-                IntermediateType::Int {
-                    size: ByteSized::B32
-                }
-            ));
-        }
+        // Verify the alias was created
+        let my_dint_type = env.get(&TypeName::from("MY_DINT")).unwrap();
+        assert!(matches!(
+            &my_dint_type.representation,
+            IntermediateType::Int {
+                size: ByteSized::B32
+            }
+        ));
+    }
 
-        #[test]
-        fn apply_when_time_type_alias_then_creates_alias() {
-            let program = "
+    #[test]
+    fn apply_when_time_type_alias_then_creates_alias() {
+        let program = "
 TYPE
 MY_TIME : TIME := T#5s;
 END_TYPE
-            ";
-            let (result, env) = parse_and_apply_with_elementary_types(program);
-            assert!(result.is_ok());
+        ";
+        let (result, env) = parse_and_apply_with_elementary_types(program);
+        assert!(result.is_ok());
 
-            // Verify the alias was created
-            let my_time_type = env.get(&TypeName::from("MY_TIME")).unwrap();
-            assert!(matches!(
-                &my_time_type.representation,
-                IntermediateType::Time
-            ));
-        }
+        // Verify the alias was created
+        let my_time_type = env.get(&TypeName::from("MY_TIME")).unwrap();
+        assert!(matches!(
+            &my_time_type.representation,
+            IntermediateType::Time
+        ));
+    }
 
-        #[test]
-        fn apply_when_multiple_type_aliases_then_creates_all_aliases() {
-            let program = "
+    #[test]
+    fn apply_when_multiple_type_aliases_then_creates_all_aliases() {
+        let program = "
 TYPE
 MY_INT : INT := 42;
 MY_BOOL : BOOL := FALSE;
 MY_REAL : REAL := 2.71;
 END_TYPE
-            ";
-            let (result, env) = parse_and_apply_with_elementary_types(program);
-            assert!(result.is_ok());
+        ";
+        let (result, env) = parse_and_apply_with_elementary_types(program);
+        assert!(result.is_ok());
 
-            // Verify all aliases were created
-            let my_int_type = env.get(&TypeName::from("MY_INT")).unwrap();
-            assert!(matches!(
-                &my_int_type.representation,
-                IntermediateType::Int {
-                    size: ByteSized::B16
-                }
-            ));
+        // Verify all aliases were created
+        let my_int_type = env.get(&TypeName::from("MY_INT")).unwrap();
+        assert!(matches!(
+            &my_int_type.representation,
+            IntermediateType::Int {
+                size: ByteSized::B16
+            }
+        ));
 
-            let my_bool_type = env.get(&TypeName::from("MY_BOOL")).unwrap();
-            assert!(matches!(
-                &my_bool_type.representation,
-                IntermediateType::Bool
-            ));
+        let my_bool_type = env.get(&TypeName::from("MY_BOOL")).unwrap();
+        assert!(matches!(
+            &my_bool_type.representation,
+            IntermediateType::Bool
+        ));
 
-            let my_real_type = env.get(&TypeName::from("MY_REAL")).unwrap();
-            assert!(matches!(
-                &my_real_type.representation,
-                IntermediateType::Real {
-                    size: ByteSized::B32
-                }
-            ));
-        }
+        let my_real_type = env.get(&TypeName::from("MY_REAL")).unwrap();
+        assert!(matches!(
+            &my_real_type.representation,
+            IntermediateType::Real {
+                size: ByteSized::B32
+            }
+        ));
+    }
 
-        #[test]
-        fn apply_when_byte_type_alias_then_creates_alias() {
-            let program = "
+    #[test]
+    fn apply_when_byte_type_alias_then_creates_alias() {
+        let program = "
 TYPE
 MY_BYTE : BYTE := 16#FF;
 END_TYPE
-            ";
-            let (result, env) = parse_and_apply_with_elementary_types(program);
-            assert!(result.is_ok());
+        ";
+        let (result, env) = parse_and_apply_with_elementary_types(program);
+        assert!(result.is_ok());
 
-            // Verify the alias was created
-            let my_byte_type = env.get(&TypeName::from("MY_BYTE")).unwrap();
-            assert!(matches!(
-                &my_byte_type.representation,
-                IntermediateType::Bytes {
-                    size: ByteSized::B8
-                }
-            ));
-        }
+        // Verify the alias was created
+        let my_byte_type = env.get(&TypeName::from("MY_BYTE")).unwrap();
+        assert!(matches!(
+            &my_byte_type.representation,
+            IntermediateType::Bytes {
+                size: ByteSized::B8
+            }
+        ));
+    }
+
+    /// Helper function to parse 61131-3 code and apply type resolution with elementary types
+    fn parse_and_apply_with_elementary_types(
+        program: &str,
+    ) -> (Result<Library, Vec<Diagnostic>>, TypeEnvironment) {
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let result = apply(input, &mut env);
+        (result, env)
+    }
+
+    /// Helper function to parse 61131-3 code and apply type resolution with empty environment
+    fn parse_and_apply_with_empty_env(
+        program: &str,
+    ) -> (Result<Library, Vec<Diagnostic>>, TypeEnvironment) {
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironment::new();
+        let result = apply(input, &mut env);
+        (result, env)
     }
 }
