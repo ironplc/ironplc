@@ -77,7 +77,7 @@ impl LibraryRenderer {
     fn write_ws(&mut self, val: &str) {
         if self.buffer.ends_with('\n') {
             self.buffer.push_str("   ".repeat(self.indents).as_str());
-        } else if !self.buffer.ends_with(' ') {
+        } else if !self.buffer.ends_with(' ') && !self.buffer.is_empty() {
             self.buffer.push(' ');
         }
         self.buffer.push_str(val);
