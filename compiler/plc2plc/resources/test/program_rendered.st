@@ -1,4 +1,4 @@
- PROGRAM main
+PROGRAM main
 
 VAR
    Button AT %IX1 : BOOL;

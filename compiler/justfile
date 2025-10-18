@@ -16,7 +16,7 @@ test:
 
 # Run tests and produce coverage report
 coverage:
-  cargo llvm-cov --all-features --workspace --fail-under-lines 85 --show-missing-lines --lcov --output-path lcov.info
+  cargo llvm-cov --ignore-filename-regex "cargo|dsl_macro_derive|rustup" --all-features --workspace --fail-under-lines 85 --show-missing-lines --lcov --output-path lcov.info
 
 # Fix linting errors.
 format:
