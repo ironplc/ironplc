@@ -123,4 +123,30 @@ mod test {
         let expected = read_resource("var_decl_rendered.st");
         assert_eq!(rendered, expected);
     }
+
+    #[test]
+    fn write_to_string_late_bound_declaration() {
+        use ironplc_dsl::common::{
+            DataTypeDeclarationKind, LateBoundDeclaration, Library, LibraryElementKind, TypeName,
+        };
+
+        // Create a library with a late bound declaration in code
+        let late_bound_decl = LateBoundDeclaration {
+            data_type_name: TypeName::from("MY_ALIAS"),
+            base_type_name: TypeName::from("INT"),
+        };
+
+        let library = Library {
+            elements: vec![LibraryElementKind::DataTypeDeclaration(
+                DataTypeDeclarationKind::LateBound(late_bound_decl),
+            )],
+        };
+
+        // Render the library to string
+        let result = crate::write_to_string(&library).unwrap();
+
+        // Expected output should be a TYPE declaration with the alias
+        let expected = "TYPE\n   MY_ALIAS : INT ;\nEND_TYPE\n";
+        assert_eq!(result, expected);
+    }
 }
