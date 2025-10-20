@@ -1,4 +1,4 @@
- PROGRAM fb
+PROGRAM fb
 
 VAR CONSTANT
    E : REAL := 2.718;

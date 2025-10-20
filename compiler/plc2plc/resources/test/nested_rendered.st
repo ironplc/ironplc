@@ -1,4 +1,4 @@
- FUNCTION fun : BOOL
+FUNCTION fun : BOOL
    VAR_INPUT
       var1 : BYTE;
    END_VAR

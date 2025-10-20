@@ -1,4 +1,4 @@
- FUNCTION_BLOCK sfc
+FUNCTION_BLOCK sfc
 
    VAR_INPUT
       IN : BOOL;
