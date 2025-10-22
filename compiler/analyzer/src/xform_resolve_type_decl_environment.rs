@@ -192,6 +192,24 @@ impl Fold<Diagnostic> for TypeEnvironment {
         Ok(node)
     }
 
+    fn fold_subrange_declaration(
+        &mut self,
+        node: SubrangeDeclaration,
+    ) -> Result<SubrangeDeclaration, Diagnostic> {
+        let result = subrange::try_from(&node.type_name, &node.spec, self)?;
+
+        match result {
+            subrange::IntermediateResult::Type(attributes) => {
+                self.insert_type(&node.type_name, attributes)?;
+            }
+            subrange::IntermediateResult::Alias(base_type_name) => {
+                self.insert_alias(&node.type_name, &base_type_name)?;
+            }
+        }
+
+        Ok(node)
+    }
+
     fn fold_array_declaration(
         &mut self,
         node: ArrayDeclaration,
