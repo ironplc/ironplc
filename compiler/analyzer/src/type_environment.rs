@@ -114,7 +114,7 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 23] = [
     ("time", IntermediateType::Time),
 ];
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeAttributes {
     /// The location in source code that defined the type.
     /// TODO this should be unnecessary since the TypeName already has a span.
