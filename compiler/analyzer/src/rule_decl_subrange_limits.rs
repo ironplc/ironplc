@@ -100,11 +100,16 @@ TYPE
     INVALID_RANGE : INT(10..-10);
 END_TYPE";
 
-        let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        // With the new implementation, invalid subranges are caught during type resolution
+        // The parse_and_resolve_types function will now fail, so we need to handle this differently
+        use crate::stages::resolve_types;
+        use ironplc_dsl::core::FileId;
+        use ironplc_parser::{options::ParseOptions, parse_program};
 
+        let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
+        let result = resolve_types(&[&library]);
+
+        // Should fail during type resolution due to invalid subrange
         assert!(result.is_err());
     }
 }
