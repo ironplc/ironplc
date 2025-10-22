@@ -62,20 +62,12 @@ pub fn try_from(
             if min_value > max_value {
                 return Err(Diagnostic::problem(
                     Problem::SubrangeMinStrictlyLessMax,
-                    Label::span(
-                        node_name.span(),
-                        "Subrange instance",
-                    ),
+                    Label::span(node_name.span(), "Subrange instance"),
                 ));
             }
 
             // Validate range is within base type bounds
-            validate_subrange_bounds(
-                &base_type.representation,
-                min_value,
-                max_value,
-                node_name,
-            )?;
+            validate_subrange_bounds(&base_type.representation, min_value, max_value, node_name)?;
 
             Ok(IntermediateResult::Type(TypeAttributes {
                 span: node_name.span(),
@@ -103,8 +95,6 @@ pub fn try_from(
         }
     }
 }
-
-
 
 /// Validates that subrange bounds are within the limits of the base type
 fn validate_subrange_bounds(
@@ -161,65 +151,115 @@ fn validate_subrange_bounds(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironplc_parser::options::ParseOptions;
-    use ironplc_dsl::core::{FileId, SourceSpan};
+    use crate::intermediate_type::{ByteSized, IntermediateType};
     use crate::type_environment::TypeEnvironmentBuilder;
     use crate::xform_resolve_type_decl_environment::apply;
-    use crate::intermediate_type::{ByteSized, IntermediateType};
     use ironplc_dsl::common::TypeName;
+    use ironplc_dsl::core::{FileId, SourceSpan};
+    use ironplc_parser::options::ParseOptions;
 
     // Tests for validate_subrange_bounds method
     #[test]
     fn validate_subrange_bounds_with_various_types_then_validates_correctly() {
         // Test SINT bounds
-        let sint_type = IntermediateType::Int { size: ByteSized::B8 };
+        let sint_type = IntermediateType::Int {
+            size: ByteSized::B8,
+        };
         assert!(validate_subrange_bounds(&sint_type, -128, 127, &TypeName::from("TEST")).is_ok());
         assert!(validate_subrange_bounds(&sint_type, -129, 127, &TypeName::from("TEST")).is_err());
         assert!(validate_subrange_bounds(&sint_type, -128, 128, &TypeName::from("TEST")).is_err());
 
         // Test INT bounds
-        let int_type = IntermediateType::Int { size: ByteSized::B16 };
-        assert!(validate_subrange_bounds(&int_type, -32768, 32767, &TypeName::from("TEST")).is_ok());
-        assert!(validate_subrange_bounds(&int_type, -32769, 32767, &TypeName::from("TEST")).is_err());
-        assert!(validate_subrange_bounds(&int_type, -32768, 32768, &TypeName::from("TEST")).is_err());
+        let int_type = IntermediateType::Int {
+            size: ByteSized::B16,
+        };
+        assert!(
+            validate_subrange_bounds(&int_type, -32768, 32767, &TypeName::from("TEST")).is_ok()
+        );
+        assert!(
+            validate_subrange_bounds(&int_type, -32769, 32767, &TypeName::from("TEST")).is_err()
+        );
+        assert!(
+            validate_subrange_bounds(&int_type, -32768, 32768, &TypeName::from("TEST")).is_err()
+        );
 
         // Test DINT bounds
-        let dint_type = IntermediateType::Int { size: ByteSized::B32 };
-        assert!(validate_subrange_bounds(&dint_type, -2147483648, 2147483647, &TypeName::from("TEST")).is_ok());
+        let dint_type = IntermediateType::Int {
+            size: ByteSized::B32,
+        };
+        assert!(validate_subrange_bounds(
+            &dint_type,
+            -2147483648,
+            2147483647,
+            &TypeName::from("TEST")
+        )
+        .is_ok());
 
         // Test LINT bounds
-        let lint_type = IntermediateType::Int { size: ByteSized::B64 };
-        assert!(validate_subrange_bounds(&lint_type, i64::MIN as i128, i64::MAX as i128, &TypeName::from("TEST")).is_ok());
+        let lint_type = IntermediateType::Int {
+            size: ByteSized::B64,
+        };
+        assert!(validate_subrange_bounds(
+            &lint_type,
+            i64::MIN as i128,
+            i64::MAX as i128,
+            &TypeName::from("TEST")
+        )
+        .is_ok());
 
         // Test USINT bounds
-        let usint_type = IntermediateType::UInt { size: ByteSized::B8 };
+        let usint_type = IntermediateType::UInt {
+            size: ByteSized::B8,
+        };
         assert!(validate_subrange_bounds(&usint_type, 0, 255, &TypeName::from("TEST")).is_ok());
         assert!(validate_subrange_bounds(&usint_type, -1, 255, &TypeName::from("TEST")).is_err());
         assert!(validate_subrange_bounds(&usint_type, 0, 256, &TypeName::from("TEST")).is_err());
 
         // Test UINT bounds
-        let uint_type = IntermediateType::UInt { size: ByteSized::B16 };
+        let uint_type = IntermediateType::UInt {
+            size: ByteSized::B16,
+        };
         assert!(validate_subrange_bounds(&uint_type, 0, 65535, &TypeName::from("TEST")).is_ok());
         assert!(validate_subrange_bounds(&uint_type, -1, 65535, &TypeName::from("TEST")).is_err());
         assert!(validate_subrange_bounds(&uint_type, 0, 65536, &TypeName::from("TEST")).is_err());
 
         // Test UDINT bounds
-        let udint_type = IntermediateType::UInt { size: ByteSized::B32 };
-        assert!(validate_subrange_bounds(&udint_type, 0, 4294967295, &TypeName::from("TEST")).is_ok());
+        let udint_type = IntermediateType::UInt {
+            size: ByteSized::B32,
+        };
+        assert!(
+            validate_subrange_bounds(&udint_type, 0, 4294967295, &TypeName::from("TEST")).is_ok()
+        );
 
         // Test ULINT bounds
-        let ulint_type = IntermediateType::UInt { size: ByteSized::B64 };
-        assert!(validate_subrange_bounds(&ulint_type, 0, u64::MAX as i128, &TypeName::from("TEST")).is_ok());
+        let ulint_type = IntermediateType::UInt {
+            size: ByteSized::B64,
+        };
+        assert!(validate_subrange_bounds(
+            &ulint_type,
+            0,
+            u64::MAX as i128,
+            &TypeName::from("TEST")
+        )
+        .is_ok());
 
         // Test nested subrange bounds
         let nested_subrange = IntermediateType::Subrange {
-            base_type: Box::new(IntermediateType::Int { size: ByteSized::B16 }),
+            base_type: Box::new(IntermediateType::Int {
+                size: ByteSized::B16,
+            }),
             min_value: 10,
             max_value: 100,
         };
-        assert!(validate_subrange_bounds(&nested_subrange, 20, 80, &TypeName::from("TEST")).is_ok());
-        assert!(validate_subrange_bounds(&nested_subrange, 5, 80, &TypeName::from("TEST")).is_err());
-        assert!(validate_subrange_bounds(&nested_subrange, 20, 150, &TypeName::from("TEST")).is_err());
+        assert!(
+            validate_subrange_bounds(&nested_subrange, 20, 80, &TypeName::from("TEST")).is_ok()
+        );
+        assert!(
+            validate_subrange_bounds(&nested_subrange, 5, 80, &TypeName::from("TEST")).is_err()
+        );
+        assert!(
+            validate_subrange_bounds(&nested_subrange, 20, 150, &TypeName::from("TEST")).is_err()
+        );
     }
 
     #[test]
@@ -232,11 +272,15 @@ mod tests {
     #[test]
     fn validate_subrange_bounds_with_edge_cases_then_validates_correctly() {
         // Test edge case: min equals max
-        let int_type = IntermediateType::Int { size: ByteSized::B16 };
+        let int_type = IntermediateType::Int {
+            size: ByteSized::B16,
+        };
         assert!(validate_subrange_bounds(&int_type, 50, 50, &TypeName::from("TEST")).is_ok());
 
         // Test edge case: full range
-        assert!(validate_subrange_bounds(&int_type, -32768, 32767, &TypeName::from("TEST")).is_ok());
+        assert!(
+            validate_subrange_bounds(&int_type, -32768, 32767, &TypeName::from("TEST")).is_ok()
+        );
 
         // Test edge case: single value ranges
         assert!(validate_subrange_bounds(&int_type, 0, 0, &TypeName::from("TEST")).is_ok());
@@ -245,18 +289,27 @@ mod tests {
 
     #[test]
     fn try_from_with_direct_subrange_specification_then_creates_type() {
-        let env = TypeEnvironmentBuilder::new().with_elementary_types().build().unwrap();
+        let env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
 
         // Create a subrange specification: INT (1..100)
         let spec = SubrangeSpecificationKind::Specification(SubrangeSpecification {
             type_name: ElementaryTypeName::INT,
             subrange: Subrange {
                 start: SignedInteger {
-                    value: Integer { span: SourceSpan::default(), value: 1 },
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 1,
+                    },
                     is_neg: false,
                 },
                 end: SignedInteger {
-                    value: Integer { span: SourceSpan::default(), value: 100 },
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 100,
+                    },
                     is_neg: false,
                 },
             },
@@ -264,13 +317,18 @@ mod tests {
 
         let result = try_from(&TypeName::from("MY_RANGE"), &spec, &env);
         assert!(result.is_ok());
-        
+
         let attrs = match result.unwrap() {
             IntermediateResult::Type(attrs) => attrs,
             _ => unreachable!("Expected Type result"),
         };
         assert!(attrs.representation.is_subrange());
-        if let IntermediateType::Subrange { min_value, max_value, .. } = attrs.representation {
+        if let IntermediateType::Subrange {
+            min_value,
+            max_value,
+            ..
+        } = attrs.representation
+        {
             assert_eq!(min_value, 1);
             assert_eq!(max_value, 100);
         }
@@ -281,21 +339,27 @@ mod tests {
         let mut env = TypeEnvironment::new();
 
         // First create a base subrange type
-        env.insert_type(&TypeName::from("BASE_RANGE"), TypeAttributes {
-            span: SourceSpan::default(),
-            representation: IntermediateType::Subrange {
-                base_type: Box::new(IntermediateType::Int { size: ByteSized::B16 }),
-                min_value: 1,
-                max_value: 100,
+        env.insert_type(
+            &TypeName::from("BASE_RANGE"),
+            TypeAttributes {
+                span: SourceSpan::default(),
+                representation: IntermediateType::Subrange {
+                    base_type: Box::new(IntermediateType::Int {
+                        size: ByteSized::B16,
+                    }),
+                    min_value: 1,
+                    max_value: 100,
+                },
             },
-        }).unwrap();
+        )
+        .unwrap();
 
         // Create an alias specification: BASE_RANGE
         let spec = SubrangeSpecificationKind::Type(TypeName::from("BASE_RANGE"));
 
         let result = try_from(&TypeName::from("ALIAS_RANGE"), &spec, &env);
         assert!(result.is_ok());
-        
+
         let base_name = match result.unwrap() {
             IntermediateResult::Alias(base_name) => base_name,
             _ => unreachable!("Expected Alias result"),
@@ -313,21 +377,30 @@ mod tests {
         let result = try_from(&TypeName::from("ALIAS_RANGE"), &spec, &env);
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn try_from_with_invalid_range_then_p0004_error() {
-        let env = TypeEnvironmentBuilder::new().with_elementary_types().build().unwrap();
+        let env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
 
         // Create an invalid subrange specification: INT (100..1) - min > max
         let spec = SubrangeSpecificationKind::Specification(SubrangeSpecification {
             type_name: ElementaryTypeName::INT,
             subrange: Subrange {
                 start: SignedInteger {
-                    value: Integer { span: SourceSpan::default(), value: 100 },
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 100,
+                    },
                     is_neg: false,
                 },
                 end: SignedInteger {
-                    value: Integer { span: SourceSpan::default(), value: 1 },
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 1,
+                    },
                     is_neg: false,
                 },
             },
@@ -341,18 +414,27 @@ mod tests {
 
     #[test]
     fn try_from_with_out_of_bounds_range_then_p0044_error() {
-        let env = TypeEnvironmentBuilder::new().with_elementary_types().build().unwrap();
+        let env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
 
         // Create an out-of-bounds subrange specification: SINT (-200..200) - exceeds SINT bounds
         let spec = SubrangeSpecificationKind::Specification(SubrangeSpecification {
             type_name: ElementaryTypeName::SINT,
             subrange: Subrange {
                 start: SignedInteger {
-                    value: Integer { span: SourceSpan::default(), value: 200 },
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 200,
+                    },
                     is_neg: true,
                 },
                 end: SignedInteger {
-                    value: Integer { span: SourceSpan::default(), value: 200 },
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 200,
+                    },
                     is_neg: false,
                 },
             },
@@ -366,7 +448,6 @@ mod tests {
 
     #[test]
     fn try_from_with_missing_base_type_then_p0038_error() {
-        
         let env = TypeEnvironment::new(); // Empty environment without elementary types
 
         // Create a subrange specification with missing base type
@@ -374,11 +455,17 @@ mod tests {
             type_name: ElementaryTypeName::INT,
             subrange: Subrange {
                 start: SignedInteger {
-                    value: Integer { span: SourceSpan::default(), value: 1 },
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 1,
+                    },
                     is_neg: false,
                 },
                 end: SignedInteger {
-                    value: Integer { span: SourceSpan::default(), value: 100 },
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 100,
+                    },
                     is_neg: false,
                 },
             },
@@ -393,23 +480,33 @@ mod tests {
     #[test]
     fn try_from_with_non_numeric_base_type_then_perror() {
         let mut env = TypeEnvironment::new();
-        
+
         // Add a non-numeric type
-        env.insert_type(&TypeName::from("string"), TypeAttributes {
-            span: SourceSpan::default(),
-            representation: IntermediateType::String { max_len: None },
-        }).unwrap();
+        env.insert_type(
+            &TypeName::from("string"),
+            TypeAttributes {
+                span: SourceSpan::default(),
+                representation: IntermediateType::String { max_len: None },
+            },
+        )
+        .unwrap();
 
         // Create a subrange specification with non-numeric base type
         let spec = SubrangeSpecificationKind::Specification(SubrangeSpecification {
             type_name: ElementaryTypeName::STRING,
             subrange: Subrange {
                 start: SignedInteger {
-                    value: Integer { span: SourceSpan::default(), value: 1 },
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 1,
+                    },
                     is_neg: false,
                 },
                 end: SignedInteger {
-                    value: Integer { span: SourceSpan::default(), value: 100 },
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 100,
+                    },
                     is_neg: false,
                 },
             },
@@ -419,33 +516,47 @@ mod tests {
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert_eq!(Problem::SubrangeBaseTypeNotNumeric.code(), error.code);
-    } 
+    }
 
     #[test]
     fn apply_when_subrange_declaration_then_creates_subrange_type() {
-        
         let program = "
 TYPE
 MY_RANGE : INT (1..100) := 50;
 SMALL_RANGE : SINT (-10..10) := 0;
 END_TYPE
         ";
-        let input = ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let mut env = TypeEnvironmentBuilder::new().with_elementary_types().build().unwrap();
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
         let result = apply(input, &mut env);
         assert!(result.is_ok());
 
         // Check that the subrange types were created
         let my_range_type = env.get(&TypeName::from("MY_RANGE")).unwrap();
         assert!(my_range_type.representation.is_subrange());
-        if let IntermediateType::Subrange { min_value, max_value, .. } = &my_range_type.representation {
+        if let IntermediateType::Subrange {
+            min_value,
+            max_value,
+            ..
+        } = &my_range_type.representation
+        {
             assert_eq!(*min_value, 1);
             assert_eq!(*max_value, 100);
         }
 
         let small_range_type = env.get(&TypeName::from("SMALL_RANGE")).unwrap();
         assert!(small_range_type.representation.is_subrange());
-        if let IntermediateType::Subrange { min_value, max_value, .. } = &small_range_type.representation {
+        if let IntermediateType::Subrange {
+            min_value,
+            max_value,
+            ..
+        } = &small_range_type.representation
+        {
             assert_eq!(*min_value, -10);
             assert_eq!(*max_value, 10);
         }
@@ -453,15 +564,19 @@ END_TYPE
 
     #[test]
     fn apply_when_subrange_alias_then_creates_alias() {
-        
         let program = "
 TYPE
 BASE_RANGE : INT (1..100) := 50;
 ALIAS_RANGE : BASE_RANGE := 25;
 END_TYPE
         ";
-        let input = ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let mut env = TypeEnvironmentBuilder::new().with_elementary_types().build().unwrap();
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
         let result = apply(input, &mut env);
         assert!(result.is_ok());
 
@@ -476,34 +591,48 @@ END_TYPE
 
     #[test]
     fn apply_when_subrange_invalid_range_then_error() {
-        
         let program = "
 TYPE
 INVALID_RANGE : INT (100..1) := 50;
 END_TYPE
         ";
-        let input = ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let mut env = TypeEnvironmentBuilder::new().with_elementary_types().build().unwrap();
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
         let result = apply(input, &mut env);
         assert!(result.is_err());
         let error = result.unwrap_err();
-        assert_eq!(Problem::SubrangeMinStrictlyLessMax.code(), error.first().unwrap().code);
+        assert_eq!(
+            Problem::SubrangeMinStrictlyLessMax.code(),
+            error.first().unwrap().code
+        );
     }
 
     #[test]
     fn apply_when_subrange_out_of_bounds_then_error() {
-        
         let program = "
 TYPE
 OUT_OF_BOUNDS : SINT (-200..200) := 0;
 END_TYPE
         ";
-        let input = ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let mut env = TypeEnvironmentBuilder::new().with_elementary_types().build().unwrap();
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
         let result = apply(input, &mut env);
-        
+
         let error = result.unwrap_err();
-        assert_eq!(Problem::SubrangeOutOfBounds.code(), error.first().unwrap().code);
+        assert_eq!(
+            Problem::SubrangeOutOfBounds.code(),
+            error.first().unwrap().code
+        );
     }
 
     #[test]
@@ -513,17 +642,21 @@ TYPE
 ALIAS_RANGE : MISSING_RANGE := 25;
 END_TYPE
         ";
-        let input = ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
         let mut env = TypeEnvironment::new();
         let result = apply(input, &mut env);
-        
+
         let error = result.unwrap_err();
-        assert_eq!(Problem::ParentTypeNotDeclared.code(), error.first().unwrap().code);
+        assert_eq!(
+            Problem::ParentTypeNotDeclared.code(),
+            error.first().unwrap().code
+        );
     }
 
     #[test]
     fn apply_when_subrange_memory_size_then_inherits_base_type_size() {
-        
         let program = "
 TYPE
 SINT_RANGE : SINT (1..10) := 5;
@@ -531,8 +664,13 @@ INT_RANGE : INT (1..1000) := 500;
 DINT_RANGE : DINT (1..1000000) := 500000;
 END_TYPE
         ";
-        let input = ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let mut env = TypeEnvironmentBuilder::new().with_elementary_types().build().unwrap();
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
         let result = apply(input, &mut env);
         assert!(result.is_ok());
 
@@ -549,7 +687,6 @@ END_TYPE
 
     #[test]
     fn apply_when_nested_subrange_aliases_then_creates_all_aliases() {
-        
         let program = "
 TYPE
 BASE_RANGE : INT (1..100) := 50;
@@ -557,8 +694,13 @@ ALIAS1 : BASE_RANGE := 25;
 ALIAS2 : ALIAS1 := 75;
 END_TYPE
         ";
-        let input = ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let mut env = TypeEnvironmentBuilder::new().with_elementary_types().build().unwrap();
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
         let result = apply(input, &mut env);
         assert!(result.is_ok());
 
@@ -584,8 +726,13 @@ UINT_RANGE : UINT (0..65535) := 32768;
 UDINT_RANGE : UDINT (0..4294967295) := 2147483648;
 END_TYPE
         ";
-        let input = ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let mut env = TypeEnvironmentBuilder::new().with_elementary_types().build().unwrap();
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
         let result = apply(input, &mut env);
         assert!(result.is_ok());
 
