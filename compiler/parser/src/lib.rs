@@ -2,6 +2,7 @@
 #![allow(clippy::result_large_err)]
 extern crate ironplc_dsl as dsl;
 
+pub mod enhanced_error;
 mod lexer;
 pub mod options;
 mod parser;
@@ -12,6 +13,7 @@ mod xform_assign_file_id;
 mod xform_tokens;
 
 use crate::parser::parse_library;
+use crate::parser::parse_library_enhanced;
 use dsl::{core::FileId, diagnostic::Diagnostic};
 use ironplc_dsl::common::Library;
 use lexer::tokenize;
@@ -22,6 +24,24 @@ use xform_tokens::insert_keyword_statement_terminators;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod enhanced_error_tests;
+#[cfg(test)]
+mod enhanced_error_property_tests;
+#[cfg(test)]
+mod backward_compatibility_tests;
+#[cfg(test)]
+mod lexer_enhancement_tests;
+#[cfg(test)]
+mod parser_extension_tests;
+#[cfg(test)]
+mod integration_property_tests;
+#[cfg(test)]
+mod validation_property_tests;
+#[cfg(test)]
+mod comprehensive_integration_tests;
+#[cfg(test)]
+mod esstee_backward_compatibility_tests;
 pub mod token;
 
 /// Tokenize a IEC 61131 program.
@@ -83,4 +103,25 @@ pub fn parse_program(
     // The parser does not know how to assign the file identifier, so transform the input as
     // a post-processing step.
     xform_assign_file_id::apply(library, file_id)
+}
+
+/// Parse a full IEC 61131 program with enhanced error reporting.
+/// Returns multiple diagnostics for comprehensive error reporting.
+pub fn parse_program_enhanced(
+    source: &str,
+    file_id: &FileId,
+    options: &ParseOptions,
+) -> Result<Library, Vec<Diagnostic>> {
+    let result = tokenize_program(source, file_id, options);
+    if !result.1.is_empty() {
+        return Err(result.1);
+    }
+
+    let library = parse_library_enhanced(result.0)
+        .map(|elements| Library { elements })
+        .map_err(|diagnostics| diagnostics)?;
+
+    // The parser does not know how to assign the file identifier, so transform the input as
+    // a post-processing step.
+    xform_assign_file_id::apply(library, file_id).map_err(|e| vec![e])
 }

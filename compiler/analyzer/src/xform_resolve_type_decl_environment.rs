@@ -15,7 +15,7 @@ use crate::intermediate_type::IntermediateType;
 use crate::intermediates::*;
 use crate::type_environment::{TypeAttributes, TypeEnvironment};
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::Located;
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_problems::Problem;
@@ -35,7 +35,15 @@ impl TypeEnvironment {
     ) -> Result<DataTypeDeclarationKind, Diagnostic> {
         // At this point we should have a type for the late bound declaration
         // so we can replace the late bound declaration with the correct type
-        let existing = self.get(&node.base_type_name).unwrap();
+        let existing = match self.get(&node.base_type_name) {
+            Some(existing) => existing,
+            None => {
+                return Err(Diagnostic::problem(
+                    Problem::ParentTypeNotDeclared,
+                    Label::span(node.base_type_name.span(), "Base type not found"),
+                ));
+            }
+        };
 
         if existing.representation.is_primitive() {
             Ok(DataTypeDeclarationKind::Simple(SimpleDeclaration {
@@ -73,6 +81,139 @@ impl TypeEnvironment {
                     init: vec![],
                 })),
                 _ => todo!(),
+            }
+        }
+    }
+
+    fn convert_type_definition_to_data_type_declaration(
+        &mut self,
+        type_def: TypeDefinition,
+    ) -> Result<DataTypeDeclarationKind, Diagnostic> {
+        use ironplc_dsl::common::*;
+        
+        match type_def.base_type {
+            DataTypeSpecificationKind::Elementary(elem_type) => {
+                match elem_type {
+                    ElementaryTypeName::StringWithLength(len) => {
+                        // String with length should create a StringDeclaration
+                        Ok(DataTypeDeclarationKind::String(StringDeclaration {
+                            type_name: type_def.name,
+                            length: Integer {
+                                span: SourceSpan::default(),
+                                value: len as u128,
+                            },
+                            width: StringType::String,
+                            init: match type_def.default_value {
+                                Some(ConstantKind::CharacterString(s)) => {
+                                    Some(s.value.iter().collect::<String>())
+                                }
+                                _ => None,
+                            },
+                        }))
+                    }
+                    _ => {
+                        // Other elementary types create simple declarations
+                        Ok(DataTypeDeclarationKind::Simple(SimpleDeclaration {
+                            type_name: type_def.name,
+                            spec_and_init: InitialValueAssignmentKind::Simple(SimpleInitializer {
+                                type_name: TypeName::from(match elem_type {
+                                    ElementaryTypeName::BOOL => "BOOL",
+                                    ElementaryTypeName::INT => "INT",
+                                    ElementaryTypeName::DINT => "DINT",
+                                    ElementaryTypeName::REAL => "REAL",
+                                    ElementaryTypeName::TIME => "TIME",
+                                    ElementaryTypeName::BYTE => "BYTE",
+                                    _ => "UNKNOWN", // Handle other elementary types
+                                }),
+                                initial_value: type_def.default_value,
+                            }),
+                        }))
+                    }
+                }
+            }
+            DataTypeSpecificationKind::UserDefined(type_name) => {
+                // Type alias to another user-defined type
+                Ok(DataTypeDeclarationKind::LateBound(LateBoundDeclaration {
+                    data_type_name: type_def.name,
+                    base_type_name: type_name,
+                }))
+            }
+            DataTypeSpecificationKind::Enumeration(enum_spec) => {
+                Ok(DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
+                    type_name: type_def.name,
+                    spec_init: EnumeratedSpecificationInit {
+                        spec: EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues {
+                            values: enum_spec.values,
+                        }),
+                        default: match type_def.default_value {
+                            Some(ConstantKind::CharacterString(s)) => {
+                                // Convert string to enumerated value
+                                Some(EnumeratedValue {
+                                    type_name: None,
+                                    value: Id::from(&s.value.iter().collect::<String>()),
+                                })
+                            }
+                            _ => None,
+                        },
+                    },
+                }))
+            }
+            DataTypeSpecificationKind::Subrange(subrange_spec) => {
+                Ok(DataTypeDeclarationKind::Subrange(SubrangeDeclaration {
+                    type_name: type_def.name,
+                    spec: SubrangeSpecificationKind::Specification(SubrangeSpecification {
+                        type_name: subrange_spec.base_type,
+                        subrange: Subrange {
+                            start: subrange_spec.lower_bound,
+                            end: subrange_spec.upper_bound,
+                        },
+                    }),
+                    default: match type_def.default_value {
+                        Some(ConstantKind::IntegerLiteral(int_lit)) => Some(int_lit.value),
+                        _ => None,
+                    },
+                }))
+            }
+            DataTypeSpecificationKind::Array(array_spec) => {
+                // Convert ArraySpecification to ArraySpecificationKind
+                let array_subranges = ArraySubranges {
+                    ranges: array_spec.bounds.into_iter().map(|bounds| {
+                        Subrange {
+                            start: bounds.lower,
+                            end: bounds.upper,
+                        }
+                    }).collect(),
+                    type_name: match array_spec.element_type.as_ref() {
+                        DataTypeSpecificationKind::Elementary(elem_type) => {
+                            TypeName::from(elem_type.as_id().original())
+                        }
+                        DataTypeSpecificationKind::UserDefined(type_name) => type_name.clone(),
+                        _ => TypeName::from("UNKNOWN"), // Fallback for complex types
+                    },
+                };
+                
+                Ok(DataTypeDeclarationKind::Array(ArrayDeclaration {
+                    type_name: type_def.name,
+                    spec: ArraySpecificationKind::Subranges(array_subranges),
+                    init: vec![], // TODO: Handle array initialization if needed
+                }))
+            }
+            DataTypeSpecificationKind::String(string_spec) => {
+                // Convert string specification to string declaration
+                Ok(DataTypeDeclarationKind::String(StringDeclaration {
+                    type_name: type_def.name,
+                    length: Integer {
+                        span: SourceSpan::default(),
+                        value: 80, // Default string length
+                    },
+                    width: StringType::String, // Default to regular string
+                    init: match type_def.default_value {
+                        Some(ConstantKind::CharacterString(s)) => {
+                            Some(s.value.iter().collect::<String>())
+                        }
+                        _ => None,
+                    },
+                }))
             }
         }
     }
@@ -313,6 +454,19 @@ impl Fold<Diagnostic> for TypeEnvironment {
             LibraryElementKind::DataTypeDeclaration(kind) => {
                 let kind = self.fold_data_type_declaration_kind(kind)?;
                 Ok(LibraryElementKind::DataTypeDeclaration(kind))
+            }
+            LibraryElementKind::TypeDefinitionBlock(block) => {
+                // Convert TypeDefinitionBlock to individual DataTypeDeclarations
+                // and process each one to populate the type environment
+                for type_def in &block.definitions {
+                    let data_type_decl = self.convert_type_definition_to_data_type_declaration(type_def.clone())?;
+                    // Process the converted declaration to add it to the type environment
+                    self.fold_data_type_declaration_kind(data_type_decl)?;
+                }
+                
+                // Return the original TypeDefinitionBlock as a placeholder
+                // since we've already processed all the definitions
+                Ok(LibraryElementKind::TypeDefinitionBlock(block))
             }
             _ => node.recurse_fold(self),
         }

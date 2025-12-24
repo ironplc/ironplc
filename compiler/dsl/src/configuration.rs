@@ -16,11 +16,12 @@ use crate::{
 use crate::fold::Fold;
 use crate::visitor::Visitor;
 use dsl_macro_derive::Recurse;
+use serde::Serialize;
 
 /// Resource assigns tasks to a particular CPU.
 ///
 /// See section 2.7.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct ResourceDeclaration {
     /// Symbolic name for a CPU
     pub name: Id,
@@ -51,7 +52,7 @@ impl HasVariables for ResourceDeclaration {
 /// But when used, we really need to treat them separately, so we split them up in the object model.
 ///
 /// See section 2.7.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct ProgramConfiguration {
     pub name: Id,
     #[recurse(ignore)]
@@ -66,7 +67,7 @@ pub struct ProgramConfiguration {
 /// Configuration declaration.
 ///
 /// See section 2.7.2.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct ConfigurationDeclaration {
     pub name: Id,
     pub global_var: Vec<VarDecl>,
@@ -82,7 +83,7 @@ impl HasVariables for ConfigurationDeclaration {
 }
 
 /// See section 2.7.2.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct AccessDeclaration {
     pub identifier: Id,
     pub path: AccessPathKind,
@@ -92,21 +93,21 @@ pub struct AccessDeclaration {
 }
 
 /// See section 2.7.2.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub enum AccessPathKind {
     Direct(DirectAccessPath),
     Symbolic(SymbolicAccessPath),
 }
 
 /// See section 2.7.2.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct DirectAccessPath {
     pub resource_name: Option<Id>,
     pub variable: AddressAssignment,
 }
 
 /// See section 2.7.2.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct SymbolicAccessPath {
     pub resource_name: Option<Id>,
     pub program_name: Option<Id>,
@@ -117,7 +118,7 @@ pub struct SymbolicAccessPath {
 /// The direction indicates whether communication services can use the value.
 ///
 /// See section 2.7.2.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum Direction {
     ReadWrite,
     ReadOnly,
@@ -126,7 +127,7 @@ pub enum Direction {
 /// Task configuration.
 ///
 /// See section 2.7.2.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct TaskConfiguration {
     pub name: Id,
     #[recurse(ignore)]
@@ -136,19 +137,19 @@ pub struct TaskConfiguration {
     pub interval: Option<DurationLiteral>,
 }
 
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct FunctionBlockTask {
     pub fb_name: Id,
     pub task_name: Id,
 }
 
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct ProgramConnectionSource {
     pub dst: SymbolicVariableKind,
     pub src: ProgramConnectionSourceKind,
 }
 
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub enum ProgramConnectionSourceKind {
     Constant(ConstantKind),
     EnumeratedValue(EnumeratedValue),
@@ -156,26 +157,26 @@ pub enum ProgramConnectionSourceKind {
     DirectVariable(AddressAssignment),
 }
 
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct ProgramConnectionSink {
     pub src: SymbolicVariableKind,
     pub dst: ProgramConnectionSinkKind,
 }
 
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub enum ProgramConnectionSinkKind {
     GlobalVarReference(GlobalVarReference),
     DirectVariable(AddressAssignment),
 }
 
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct GlobalVarReference {
     pub resource_name: Option<Id>,
     pub global_var_name: Id,
     pub structure_element_name: Option<Id>,
 }
 
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct FunctionBlockInit {
     pub resource_name: Id,
     pub program_name: Id,
@@ -185,7 +186,7 @@ pub struct FunctionBlockInit {
     pub initializer: Vec<StructureElementInit>,
 }
 
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct LocatedVarInit {
     pub resource_name: Id,
     pub program_name: Id,

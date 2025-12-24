@@ -59,3 +59,13 @@ pub fn parse_and_resolve_types(program: &str) -> Library {
     let (library, _type_environment, _symbol_environment) = resolve_types(&[&library]).unwrap();
     library
 }
+
+#[cfg(test)]
+pub fn parse_and_analyze(program: &str) -> Result<(), Vec<ironplc_dsl::diagnostic::Diagnostic>> {
+    use ironplc_parser::{options::ParseOptions, parse_program};
+    use crate::stages::semantic;
+
+    let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
+    let (library, type_environment, symbol_environment) = resolve_types(&[&library]).unwrap();
+    semantic(&library, &type_environment, &symbol_environment)
+}

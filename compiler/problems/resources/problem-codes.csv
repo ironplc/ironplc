@@ -47,5 +47,25 @@ P0045,StructFieldMissingType,Structure field missing type specification
 P0046,NestedStructuresNotSupported,Nested structures not supported
 P0047,InvalidSimpleTypeDecl,Invalid simple type declaration
 P0048,EnumerationTooManyValues,Enumeration has too many unique values
+P0049,InvalidExternalAnnotation,Invalid external function annotation syntax
+P0050,InvalidReferenceAnnotation,Invalid reference parameter annotation syntax
+P0051,MalformedClassDeclaration,Malformed class declaration syntax
+P0052,MalformedMethodDeclaration,Malformed method declaration syntax
+P0053,MalformedActionBlock,Malformed action block declaration
+P0054,InvalidReferenceOperation,Invalid reference type operation
+P0055,InvalidContinueStatement,Continue statement used outside of loop context
+P0056,InvalidRangeConstraint,Invalid range constraint specification
+P0057,TypeMismatchError,Type mismatch in assignment or operation
+P0058,NullPointerDereference,Attempt to dereference null pointer
+P0059,RangeConstraintViolation,Value violates range constraint
+P0060,InvalidReferenceAssignment,Invalid reference type assignment
+P0061,ExternalFunctionTypeMismatch,External function parameter or return type mismatch
+P0062,ClassMemberNotFound,Class member not found
+P0063,MethodNotFound,Method not found in class
+P0064,ActionNotFound,Action not found in action block
+P0065,InvalidThisContext,Invalid use of 'this' outside class method
+P0066,RuntimeArrayBoundsCheck,Runtime array bounds check required
+P0067,RuntimeNullPointerCheck,Runtime null pointer check required
+P0068,RuntimeRangeConstraintCheck,Runtime range constraint check required
 P9998,InternalError,Internal error indicating a bug in the compiler
 P9999,NotImplemented,Capability is not implemented (yet!)

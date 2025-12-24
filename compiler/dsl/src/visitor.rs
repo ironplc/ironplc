@@ -122,6 +122,9 @@ pub trait Visitor<E> {
     // 2.2.2
     leaf!(BooleanLiteral);
 
+    // Null literal for reference types
+    leaf!(NullLiteral);
+
     // 2.2.2
     leaf!(CharacterStringLiteral);
 
@@ -141,6 +144,7 @@ pub trait Visitor<E> {
     leaf!(BitStringLiteral);
 
     dispatch!(TypeName);
+    leaf!(ElementaryTypeName);
 
     // 2.2
     dispatch!(ConstantKind);
@@ -153,6 +157,9 @@ pub trait Visitor<E> {
 
     // 2.3.3.1
     dispatch!(EnumerationDeclaration);
+
+    // Reference type declarations
+    dispatch!(ReferenceDeclaration);
 
     dispatch!(InitialValueAssignmentKind);
 
@@ -256,6 +263,24 @@ pub trait Visitor<E> {
     dispatch!(FunctionBlockDeclaration);
 
     dispatch!(FunctionBlockBodyKind);
+
+    // Class declarations
+    dispatch!(ClassDeclaration);
+    dispatch!(MethodDeclaration);
+
+    // Action block declarations
+    dispatch!(ActionBlockDeclaration);
+    dispatch!(ActionDeclaration);
+
+    // Global variable and type definition declarations
+    dispatch!(GlobalVariableDeclaration);
+    dispatch!(TypeDefinitionBlock);
+    dispatch!(TypeDefinition);
+    dispatch!(DataTypeSpecificationKind);
+    dispatch!(EnumerationSpecification);
+    dispatch!(ArraySpecification);
+    dispatch!(ArrayBounds);
+    dispatch!(EnhancedSubrangeSpecification);
 
     // 2.5.3
     dispatch!(ProgramDeclaration);
@@ -396,6 +421,8 @@ pub trait Visitor<E> {
     dispatch!(ArrayVariable);
 
     dispatch!(StructuredVariable);
+
+    dispatch!(DereferenceVariable);
 }
 
 mod test {
@@ -457,6 +484,7 @@ mod test {
                     vec!["Cnt1", "Cnt2"],
                     "_TMP_AverageVal17_OUT",
                 )]),
+                actions: None,
             })],
         };
 

@@ -13,4 +13,8 @@ This chapter describes how to use the command line interface.
    :maxdepth: 1
 
    Basic Usage <basicusage>
+   Extended Syntax <extended-syntax>
+   Enhanced Syntax Support <enhanced-syntax-support>
+   Performance Guide <performance-guide>
+   Grammar Specification <grammar-specification>
    Problems <problems/index>

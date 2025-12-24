@@ -238,6 +238,17 @@ impl TypeEnvironmentBuilder {
                     },
                 )?;
             }
+            
+            // Add built-in function blocks that require String allocation
+            env.insert_type(
+                &TypeName::from("ton"),
+                TypeAttributes {
+                    span: SourceSpan::default(),
+                    representation: IntermediateType::FunctionBlock { 
+                        name: "TON".to_string() 
+                    },
+                },
+            )?;
         }
         Ok(env)
     }

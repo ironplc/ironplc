@@ -15,10 +15,101 @@
 //! * parser rule names in all capital letters are not production rules
 extern crate peg;
 
+use crate::enhanced_error::{CompilerError, ErrorCollector, SuggestionEngine};
 use dsl::core::SourceSpan;
 use dsl::diagnostic::Diagnostic;
 use dsl::diagnostic::Label;
 use ironplc_problems::Problem;
+
+/// Validates external function annotation syntax
+fn validate_external_annotation(annotation: &Token) -> Result<(), &'static str> {
+    match annotation.token_type {
+        TokenType::ExternalAnnotation => {
+            if annotation.text != "{external}" {
+                return Err("Invalid external annotation syntax");
+            }
+        }
+        TokenType::AtExternal => {
+            if annotation.text != "@EXTERNAL" {
+                return Err("Invalid external annotation syntax");
+            }
+        }
+        _ => return Err("Invalid external annotation token type"),
+    }
+    Ok(())
+}
+
+/// Validates reference parameter annotation syntax
+fn validate_reference_annotation(annotation: &Token) -> Result<(), &'static str> {
+    if annotation.token_type != TokenType::RefAnnotation {
+        return Err("Invalid reference annotation token type");
+    }
+    if annotation.text != "{ref}" {
+        return Err("Invalid reference annotation syntax");
+    }
+    Ok(())
+}
+
+/// Validates class declaration structure
+fn validate_class_declaration(name: &Id, elements: &[ClassElement]) -> Result<(), &'static str> {
+    if name.original.is_empty() {
+        return Err("Class name cannot be empty");
+    }
+    
+    // Check for duplicate method names
+    let mut method_names = std::collections::HashSet::new();
+    for element in elements {
+        if let ClassElement::Method(method) = element {
+            if !method_names.insert(&method.name.original) {
+                return Err("Duplicate method name in class");
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+/// Validates method declaration structure
+fn validate_method_declaration(name: &Id, _return_type: &Option<TypeName>) -> Result<(), &'static str> {
+    if name.original.is_empty() {
+        return Err("Method name cannot be empty");
+    }
+    
+    // Additional method validation can be added here
+    Ok(())
+}
+
+/// Validates action block structure
+fn validate_action_block(actions: &[ActionDeclaration]) -> Result<(), &'static str> {
+    if actions.is_empty() {
+        return Err("Action block cannot be empty");
+    }
+    
+    // Check for duplicate action names
+    let mut action_names = std::collections::HashSet::new();
+    for action in actions {
+        if !action_names.insert(&action.name.original) {
+            return Err("Duplicate action name");
+        }
+    }
+    
+    Ok(())
+}
+
+/// Validates reference type operations
+fn validate_reference_operation(operation: &str, _context: &str) -> Result<(), &'static str> {
+    match operation {
+        "&" => {
+            // Address-of operator validation - basic syntax check
+            Ok(())
+        }
+        "^" => {
+            // Dereference operator validation - basic syntax check
+            Ok(())
+        }
+        _ => Err("Unknown reference operation"),
+    }
+}
 use peg::parser;
 use peg::Parse;
 use peg::ParseElem;
@@ -59,6 +150,590 @@ pub fn parse_library(tokens: Vec<Token>) -> Result<Vec<LibraryElementKind>, Diag
     })
 }
 
+/// Enhanced parsing function that collects multiple errors and provides suggestions
+pub fn parse_library_enhanced(tokens: Vec<Token>) -> Result<Vec<LibraryElementKind>, Vec<Diagnostic>> {
+    let mut error_collector = ErrorCollector::new();
+    let suggestion_engine = SuggestionEngine::new();
+    
+    // First attempt normal parsing
+    match plc_parser::library(&SliceByRef(&tokens[..])) {
+        Ok(result) => Ok(result),
+        Err(e) => {
+            let token_index = e.location;
+            let expected_tokens: Vec<String> = Vec::from_iter(e.expected.tokens().map(|s| s.to_string()));
+            
+            if let Some(actual) = tokens.get(token_index - 1) {
+                // Enhanced error categorization and reporting
+                let error = categorize_and_create_error(&actual, &expected_tokens, &suggestion_engine);
+                error_collector.add_error(error);
+            }
+            
+            // Enhanced error recovery and continuation parsing
+            perform_error_recovery_parsing(&tokens, token_index, &mut error_collector, &suggestion_engine);
+            
+            Err(error_collector.to_diagnostics())
+        }
+    }
+}
+
+/// Enhanced error categorization that provides specific error types for new syntax constructs
+fn categorize_and_create_error(
+    actual_token: &Token,
+    expected_tokens: &[String],
+    suggestion_engine: &SuggestionEngine,
+) -> CompilerError {
+    let token_text = &actual_token.text;
+    let location = actual_token.span.clone();
+    
+    // Check for specific new syntax construct errors
+    if is_var_global_error(token_text, expected_tokens) {
+        return create_var_global_error(token_text, location, suggestion_engine);
+    }
+    
+    if is_type_definition_error(token_text, expected_tokens) {
+        return create_type_definition_error(token_text, location, suggestion_engine);
+    }
+    
+    if is_enumeration_error(token_text, expected_tokens) {
+        return create_enumeration_error(token_text, location, suggestion_engine);
+    }
+    
+    if is_array_type_error(token_text, expected_tokens) {
+        return create_array_type_error(token_text, location, suggestion_engine);
+    }
+    
+    if is_subrange_error(token_text, expected_tokens) {
+        return create_subrange_error(token_text, location, suggestion_engine);
+    }
+    
+    // Check if this might be an unsupported feature
+    if is_unsupported_feature(token_text, expected_tokens) {
+        let feature = identify_unsupported_feature(token_text);
+        let suggestion = suggestion_engine.get_suggestion(&feature).cloned();
+        let workaround = suggestion_engine.get_workaround(&feature).cloned();
+        
+        return CompilerError::unsupported_feature(
+            feature,
+            location,
+            suggestion,
+            workaround,
+        );
+    }
+    
+    // Regular syntax error with enhanced reporting
+    let suggestion = generate_syntax_suggestion(expected_tokens, token_text);
+    
+    CompilerError::syntax_error(
+        expected_tokens.to_vec(),
+        token_text.replace('\n', "\\n").replace('\r', "\\r"),
+        location,
+        suggestion,
+    )
+}
+
+/// Check if this is a VAR_GLOBAL related error
+fn is_var_global_error(token_text: &str, expected_tokens: &[String]) -> bool {
+    let upper_text = token_text.to_uppercase();
+    upper_text.contains("VAR_GLOBAL") || 
+    upper_text.contains("END_VAR") ||
+    expected_tokens.iter().any(|t| t.to_uppercase().contains("VAR_GLOBAL") || t.to_uppercase().contains("END_VAR"))
+}
+
+/// Create specific VAR_GLOBAL error with appropriate error type
+fn create_var_global_error(
+    token_text: &str,
+    location: SourceSpan,
+    suggestion_engine: &SuggestionEngine,
+) -> CompilerError {
+    let upper_text = token_text.to_uppercase();
+    
+    let error_type = if upper_text.contains("VAR_GLOBAL") && !upper_text.contains("END_VAR") {
+        crate::enhanced_error::GlobalVarErrorType::MissingEndVar
+    } else if upper_text.contains("VAR_GLOBAL") {
+        crate::enhanced_error::GlobalVarErrorType::MalformedVarGlobal
+    } else {
+        crate::enhanced_error::GlobalVarErrorType::InvalidVariableDeclaration
+    };
+    
+    CompilerError::GlobalVarError {
+        error_type,
+        location,
+    }
+}
+
+/// Check if this is a TYPE...END_TYPE related error
+fn is_type_definition_error(token_text: &str, expected_tokens: &[String]) -> bool {
+    let upper_text = token_text.to_uppercase();
+    (upper_text.contains("TYPE") && !upper_text.contains("END_TYPE")) ||
+    upper_text.contains("END_TYPE") ||
+    expected_tokens.iter().any(|t| {
+        let t_upper = t.to_uppercase();
+        t_upper.contains("TYPE") || t_upper.contains("END_TYPE")
+    })
+}
+
+/// Create specific TYPE definition error
+fn create_type_definition_error(
+    token_text: &str,
+    location: SourceSpan,
+    _suggestion_engine: &SuggestionEngine,
+) -> CompilerError {
+    let upper_text = token_text.to_uppercase();
+    
+    let error_type = if upper_text.contains("TYPE") && !upper_text.contains("END_TYPE") {
+        crate::enhanced_error::TypeDefinitionErrorType::MissingEndType
+    } else if upper_text.contains("TYPE") {
+        crate::enhanced_error::TypeDefinitionErrorType::MalformedTypeBlock
+    } else {
+        crate::enhanced_error::TypeDefinitionErrorType::InvalidTypeDefinition
+    };
+    
+    CompilerError::TypeDefinitionError {
+        error_type,
+        location,
+    }
+}
+
+/// Check if this is an enumeration related error
+fn is_enumeration_error(token_text: &str, expected_tokens: &[String]) -> bool {
+    token_text.contains('(') && !token_text.contains(')') ||
+    token_text.contains(')') && !token_text.contains('(') ||
+    expected_tokens.iter().any(|t| t.contains('(') || t.contains(')'))
+}
+
+/// Create specific enumeration error
+fn create_enumeration_error(
+    token_text: &str,
+    location: SourceSpan,
+    _suggestion_engine: &SuggestionEngine,
+) -> CompilerError {
+    let error_type = if token_text.contains('(') && !token_text.contains(')') {
+        crate::enhanced_error::EnumerationErrorType::MissingClosingParen
+    } else if token_text == "()" {
+        crate::enhanced_error::EnumerationErrorType::EmptyEnumeration
+    } else {
+        crate::enhanced_error::EnumerationErrorType::MalformedEnumeration
+    };
+    
+    CompilerError::EnumerationError {
+        error_type,
+        location,
+    }
+}
+
+/// Check if this is an array type related error
+fn is_array_type_error(token_text: &str, expected_tokens: &[String]) -> bool {
+    let upper_text = token_text.to_uppercase();
+    upper_text.contains("ARRAY") ||
+    token_text.contains('[') && !token_text.contains(']') ||
+    token_text.contains(']') && !token_text.contains('[') ||
+    expected_tokens.iter().any(|t| {
+        let t_upper = t.to_uppercase();
+        t_upper.contains("ARRAY") || t.contains('[') || t.contains(']')
+    })
+}
+
+/// Create specific array type error
+fn create_array_type_error(
+    token_text: &str,
+    location: SourceSpan,
+    _suggestion_engine: &SuggestionEngine,
+) -> CompilerError {
+    let error_type = if token_text.contains('[') && !token_text.contains(']') {
+        crate::enhanced_error::ArrayTypeErrorType::InvalidBounds
+    } else if token_text.to_uppercase().contains("ARRAY") {
+        crate::enhanced_error::ArrayTypeErrorType::MalformedArrayDeclaration
+    } else {
+        crate::enhanced_error::ArrayTypeErrorType::InvalidDimensions
+    };
+    
+    CompilerError::ArrayTypeError {
+        error_type,
+        location,
+    }
+}
+
+/// Check if this is a subrange related error
+fn is_subrange_error(token_text: &str, expected_tokens: &[String]) -> bool {
+    token_text.contains("..") ||
+    token_text.contains('(') && token_text.contains("..") ||
+    expected_tokens.iter().any(|t| t.contains("..") || (t.contains('(') && t.contains("..")))
+}
+
+/// Create specific subrange error
+fn create_subrange_error(
+    token_text: &str,
+    location: SourceSpan,
+    _suggestion_engine: &SuggestionEngine,
+) -> CompilerError {
+    let error_type = if token_text.contains("..") {
+        // Try to parse the range to see if it's invalid
+        if let Some(range_part) = extract_range_from_token(token_text) {
+            if is_invalid_range(&range_part) {
+                crate::enhanced_error::SubrangeErrorType::MinGreaterThanMax
+            } else {
+                crate::enhanced_error::SubrangeErrorType::InvalidRange
+            }
+        } else {
+            crate::enhanced_error::SubrangeErrorType::MalformedSubrange
+        }
+    } else {
+        crate::enhanced_error::SubrangeErrorType::InvalidRange
+    };
+    
+    CompilerError::SubrangeError {
+        error_type,
+        location,
+    }
+}
+
+/// Extract range part from token text (e.g., "INT(10..1)" -> "10..1")
+fn extract_range_from_token(token_text: &str) -> Option<String> {
+    if let Some(start) = token_text.find("..") {
+        // Look for numbers around the ".."
+        let before_range = &token_text[..start];
+        let after_range = &token_text[start + 2..];
+        
+        // Extract the last number before ".."
+        let min_str = before_range.chars()
+            .rev()
+            .take_while(|c| c.is_ascii_digit() || *c == '-')
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect::<String>();
+            
+        // Extract the first number after ".."
+        let max_str = after_range.chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '-')
+            .collect::<String>();
+            
+        if !min_str.is_empty() && !max_str.is_empty() {
+            return Some(format!("{}..{}", min_str, max_str));
+        }
+    }
+    None
+}
+
+/// Check if a range is invalid (min > max)
+fn is_invalid_range(range_str: &str) -> bool {
+    if let Some(dot_pos) = range_str.find("..") {
+        let min_str = &range_str[..dot_pos];
+        let max_str = &range_str[dot_pos + 2..];
+        
+        if let (Ok(min), Ok(max)) = (min_str.parse::<i32>(), max_str.parse::<i32>()) {
+            return min > max;
+        }
+    }
+    false
+}
+
+/// Enhanced error recovery that attempts to continue parsing and collect multiple errors
+fn perform_error_recovery_parsing(
+    tokens: &[Token],
+    start_index: usize,
+    error_collector: &mut ErrorCollector,
+    suggestion_engine: &SuggestionEngine,
+) {
+    // Implement sophisticated error recovery strategies
+    recover_from_block_errors(tokens, start_index, error_collector, suggestion_engine);
+    recover_from_declaration_errors(tokens, start_index, error_collector, suggestion_engine);
+    recover_from_syntax_errors(tokens, start_index, error_collector, suggestion_engine);
+}
+
+/// Recover from block-level errors (VAR_GLOBAL, TYPE, etc.)
+fn recover_from_block_errors(
+    tokens: &[Token],
+    start_index: usize,
+    error_collector: &mut ErrorCollector,
+    _suggestion_engine: &SuggestionEngine,
+) {
+    let mut i = start_index;
+    while i < tokens.len() && error_collector.errors().len() < 10 {
+        let token = &tokens[i];
+        let upper_text = token.text.to_uppercase();
+        
+        // Check for unterminated VAR_GLOBAL blocks
+        if upper_text == "VAR_GLOBAL" {
+            if !has_matching_end_var(&tokens[i..]) {
+                let error = CompilerError::GlobalVarError {
+                    error_type: crate::enhanced_error::GlobalVarErrorType::MissingEndVar,
+                    location: token.span.clone(),
+                };
+                error_collector.add_error(error);
+            }
+        }
+        
+        // Check for unterminated TYPE blocks
+        if upper_text == "TYPE" {
+            if !has_matching_end_type(&tokens[i..]) {
+                let error = CompilerError::TypeDefinitionError {
+                    error_type: crate::enhanced_error::TypeDefinitionErrorType::MissingEndType,
+                    location: token.span.clone(),
+                };
+                error_collector.add_error(error);
+            }
+        }
+        
+        i += 1;
+    }
+}
+
+/// Recover from declaration-level errors
+fn recover_from_declaration_errors(
+    tokens: &[Token],
+    start_index: usize,
+    error_collector: &mut ErrorCollector,
+    _suggestion_engine: &SuggestionEngine,
+) {
+    let mut i = start_index;
+    while i < tokens.len() && error_collector.errors().len() < 10 {
+        let token = &tokens[i];
+        
+        // Check for malformed enumeration syntax
+        if token.text == "(" {
+            if let Some(enum_error) = check_enumeration_syntax(&tokens[i..]) {
+                error_collector.add_error(enum_error);
+            }
+        }
+        
+        // Check for malformed array syntax
+        if token.text == "[" {
+            if let Some(array_error) = check_array_syntax(&tokens[i..]) {
+                error_collector.add_error(array_error);
+            }
+        }
+        
+        // Check for malformed subrange syntax
+        if token.text.contains("..") {
+            if let Some(subrange_error) = check_subrange_syntax(token) {
+                error_collector.add_error(subrange_error);
+            }
+        }
+        
+        i += 1;
+    }
+}
+
+/// Recover from general syntax errors
+fn recover_from_syntax_errors(
+    tokens: &[Token],
+    start_index: usize,
+    error_collector: &mut ErrorCollector,
+    _suggestion_engine: &SuggestionEngine,
+) {
+    // Look for common syntax patterns that indicate missing elements
+    let mut i = start_index;
+    while i < tokens.len() && error_collector.errors().len() < 15 {
+        let token = &tokens[i];
+        
+        // Check for missing semicolons (identifier followed by identifier without colon)
+        if i + 1 < tokens.len() {
+            let next_token = &tokens[i + 1];
+            if token.token_type == crate::token::TokenType::Identifier &&
+               next_token.token_type == crate::token::TokenType::Identifier {
+                // This might indicate a missing colon or semicolon
+                let error = CompilerError::syntax_error(
+                    vec![":".to_string(), ";".to_string()],
+                    format!("{} {}", token.text, next_token.text),
+                    SourceSpan::join(&token.span, &next_token.span),
+                    Some("Missing colon for type declaration or semicolon to end statement".to_string()),
+                );
+                error_collector.add_error(error);
+            }
+        }
+        
+        i += 1;
+    }
+}
+
+/// Check if there's a matching END_VAR for a VAR_GLOBAL
+fn has_matching_end_var(tokens: &[Token]) -> bool {
+    tokens.iter().take(50).any(|t| t.text.to_uppercase() == "END_VAR")
+}
+
+/// Check if there's a matching END_TYPE for a TYPE
+fn has_matching_end_type(tokens: &[Token]) -> bool {
+    tokens.iter().take(50).any(|t| t.text.to_uppercase() == "END_TYPE")
+}
+
+/// Check enumeration syntax and return error if malformed
+fn check_enumeration_syntax(tokens: &[Token]) -> Option<CompilerError> {
+    let mut paren_count = 0;
+    let mut found_identifier = false;
+    let start_span = tokens[0].span.clone();
+    
+    for (i, token) in tokens.iter().enumerate().take(20) {
+        if token.text == "(" {
+            paren_count += 1;
+        } else if token.text == ")" {
+            paren_count -= 1;
+            if paren_count == 0 {
+                return None; // Found matching closing paren
+            }
+        } else if token.token_type == crate::token::TokenType::Identifier {
+            found_identifier = true;
+        }
+        
+        // If we've gone too far without finding closing paren
+        if i > 15 && paren_count > 0 && found_identifier {
+            return Some(CompilerError::EnumerationError {
+                error_type: crate::enhanced_error::EnumerationErrorType::MissingClosingParen,
+                location: start_span,
+            });
+        }
+    }
+    
+    if paren_count > 0 && found_identifier {
+        Some(CompilerError::EnumerationError {
+            error_type: crate::enhanced_error::EnumerationErrorType::MissingClosingParen,
+            location: start_span,
+        })
+    } else {
+        None
+    }
+}
+
+/// Check array syntax and return error if malformed
+fn check_array_syntax(tokens: &[Token]) -> Option<CompilerError> {
+    let mut bracket_count = 0;
+    let start_span = tokens[0].span.clone();
+    
+    for (i, token) in tokens.iter().enumerate().take(20) {
+        if token.text == "[" {
+            bracket_count += 1;
+        } else if token.text == "]" {
+            bracket_count -= 1;
+            if bracket_count == 0 {
+                return None; // Found matching closing bracket
+            }
+        }
+        
+        // If we've gone too far without finding closing bracket
+        if i > 15 && bracket_count > 0 {
+            return Some(CompilerError::ArrayTypeError {
+                error_type: crate::enhanced_error::ArrayTypeErrorType::InvalidBounds,
+                location: start_span,
+            });
+        }
+    }
+    
+    if bracket_count > 0 {
+        Some(CompilerError::ArrayTypeError {
+            error_type: crate::enhanced_error::ArrayTypeErrorType::InvalidBounds,
+            location: start_span,
+        })
+    } else {
+        None
+    }
+}
+
+/// Check subrange syntax and return error if malformed
+fn check_subrange_syntax(token: &Token) -> Option<CompilerError> {
+    if let Some(range_str) = extract_range_from_token(&token.text) {
+        if is_invalid_range(&range_str) {
+            return Some(CompilerError::SubrangeError {
+                error_type: crate::enhanced_error::SubrangeErrorType::MinGreaterThanMax,
+                location: token.span.clone(),
+            });
+        }
+    }
+    None
+}
+
+/// Check if a token represents an unsupported feature
+fn is_unsupported_feature(token_text: &str, expected: &[String]) -> bool {
+    // Check for known unsupported features
+    let unsupported_keywords = [
+        "VAR_GLOBAL", "END_VAR", "TYPE", "END_TYPE", "STRUCT", "END_STRUCT",
+        "ARRAY", "STRING(", "TON", "CASE", "OF", "END_CASE", "SUBRANGE"
+    ];
+    
+    for keyword in &unsupported_keywords {
+        if token_text.to_uppercase().contains(&keyword.to_uppercase()) {
+            return true;
+        }
+    }
+    
+    // Check if expected tokens suggest we're in an unsupported context
+    for exp in expected {
+        if exp.contains("VAR_GLOBAL") || exp.contains("TYPE") || exp.contains("STRUCT") || 
+           exp.contains("ARRAY") || exp.contains("CASE") || exp.contains("SUBRANGE") {
+            return true;
+        }
+    }
+    
+    false
+}
+
+/// Identify the specific unsupported feature
+fn identify_unsupported_feature(token_text: &str) -> String {
+    let upper_text = token_text.to_uppercase();
+    
+    if upper_text.contains("VAR_GLOBAL") {
+        "VAR_GLOBAL".to_string()
+    } else if upper_text.contains("TYPE") && !upper_text.contains("END_TYPE") {
+        "TYPE".to_string()
+    } else if upper_text.contains("STRUCT") {
+        "STRUCT".to_string()
+    } else if upper_text.contains("ARRAY") {
+        "ARRAY".to_string()
+    } else if upper_text.starts_with("STRING(") {
+        "STRING(n)".to_string()
+    } else if upper_text.contains("TON") {
+        "TON".to_string()
+    } else if upper_text.contains("CASE") {
+        "CASE".to_string()
+    } else if upper_text.contains("SUBRANGE") || upper_text.contains("..") {
+        "SUBRANGE".to_string()
+    } else {
+        format!("Unknown feature: {}", token_text)
+    }
+}
+
+/// Generate helpful syntax suggestions based on expected tokens
+fn generate_syntax_suggestion(expected: &[String], found: &str) -> Option<String> {
+    // Common syntax error patterns and suggestions
+    if expected.contains(&"END".to_string()) && !found.to_uppercase().contains("END") {
+        return Some("Missing END keyword to close block".to_string());
+    }
+    
+    if expected.contains(&";".to_string()) {
+        return Some("Missing semicolon to terminate statement".to_string());
+    }
+    
+    if expected.contains(&":".to_string()) {
+        return Some("Missing colon after label or type declaration".to_string());
+    }
+    
+    if expected.contains(&"=".to_string()) {
+        return Some("Missing assignment operator".to_string());
+    }
+    
+    // Check for common typos
+    let found_upper = found.to_uppercase();
+    if found_upper == "BEGINN" || found_upper == "BIGIN" {
+        return Some("Did you mean 'BEGIN'?".to_string());
+    }
+    
+    if found_upper == "PROGRAMM" {
+        return Some("Did you mean 'PROGRAM'?".to_string());
+    }
+    
+    None
+}
+
+/// Attempt to collect additional errors by continuing parsing (legacy function - replaced by enhanced error recovery)
+fn collect_additional_errors(
+    tokens: &[Token],
+    start_index: usize,
+    error_collector: &mut ErrorCollector,
+    suggestion_engine: &SuggestionEngine,
+) {
+    // Delegate to the enhanced error recovery system
+    perform_error_recovery_parsing(tokens, start_index, error_collector, suggestion_engine);
+}
+
 enum StatementsOrEmpty {
     Statements(Vec<StmtKind>),
     Empty(),
@@ -78,11 +753,17 @@ fn flatten_statements(mut items: Vec<StatementsOrEmpty>) -> Vec<StmtKind> {
 enum Element {
     StructSelector(Id),
     ArraySelector(Vec<ExprKind>),
+    Dereference,
 }
 
 enum InstanceInitKind {
     FunctionBlockInit(FunctionBlockInit),
     LocatedVarInit(LocatedVarInit),
+}
+
+enum ClassElement {
+    Variables(Vec<VarDecl>),
+    Method(Box<MethodDeclaration>),
 }
 
 enum ProgramConfigurationKind {
@@ -132,7 +813,7 @@ parser! {
         #[cfg(any(feature = "debug", feature = "trace"))]
         println!("[PARSER INFO_START]\nNumber of parsed tokens: {}\n[PARSER INFO_STOP]\n", input.len());
         #[cfg(any(feature = "debug", feature = "trace"))]
-        println!("[PEG_INPUT_START]\n{}\n[PEG_TRACE_START]", input.iter().fold(String::new(), |s1, s2| s1 + "\n" + s2.to_string().as_str()).trim_start().to_string());
+        println!("[PEG_INPUT_START]\n{}\n[PEG_TRACE_START]", input.iter().fold(String::new(), |s1, s2| s1 + "\n" + s2.to_string().as_str()).trim_start());
     })
     e:e()? {?
         #[cfg(feature = "trace")]
@@ -165,7 +846,7 @@ parser! {
     rule comma() -> () = tok(TokenType::Comma) ()
     rule whitespace() -> () = tok(TokenType::Whitespace) {} / tok(TokenType::Newline) {}
 
-    rule comment() -> () = tok(TokenType::Comment) ()
+    rule comment() -> () = tok(TokenType::Comment) () / tok(TokenType::LineComment) ()
     rule _ = (whitespace() / comment())*
 
     // Lists of separated items with required ending separator
@@ -174,6 +855,13 @@ parser! {
     rule periodsep_no_trailing<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ period() _)) {v}
     rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v}
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
+    rule semisep_optional_trailing<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon()? {v}
+    // More forgiving version that allows missing semicolons between items but still requires progress
+    rule semisep_forgiving<T>(x: rule<T>) -> Vec<T> = first:x() rest:(_ semicolon()? _ x:x() {x})* _ semicolon()? { 
+        let mut result = vec![first];
+        result.extend(rest);
+        result
+    }
     rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) comma() {v}
 
 
@@ -183,11 +871,15 @@ parser! {
 
     // B.0 Programming model
     rule library_element_declaration() -> Vec<LibraryElementKind> =
-      data_types:data_type_declaration() { data_types.into_iter().map(LibraryElementKind::DataTypeDeclaration).collect() }
+      tdb:type_definition_block() { vec![LibraryElementKind::TypeDefinitionBlock(tdb)] }
+      / data_types:data_type_declaration() { data_types.into_iter().map(LibraryElementKind::DataTypeDeclaration).collect() }
+      / gvd:global_variable_declaration() { vec![LibraryElementKind::GlobalVariableDeclaration(gvd)] }
       / fd:function_declaration() { vec![LibraryElementKind::FunctionDeclaration(fd)] }
       / fbd:function_block_declaration() { vec![LibraryElementKind::FunctionBlockDeclaration(fbd)] }
       / pd:program_declaration() { vec![LibraryElementKind::ProgramDeclaration(pd)] }
       / cd:configuration_declaration() { vec![LibraryElementKind::ConfigurationDeclaration(cd)] }
+      / class:class_declaration() { vec![LibraryElementKind::ClassDeclaration(class)] }
+      / action_block:action_block_declaration() { vec![LibraryElementKind::ActionBlockDeclaration(action_block)] }
 
     // B.1.1 Letters, digits and identifier
     rule identifier() -> Id = i:tok(TokenType::Identifier) {
@@ -204,12 +896,14 @@ parser! {
         real:real_literal() { ConstantKind::RealLiteral(real) }
         / integer:integer_literal() { ConstantKind::IntegerLiteral(integer) }
         / c:character_string() { ConstantKind::CharacterString(CharacterStringLiteral::new(c)) }
+        / time_literal:time_literal_token() { ConstantKind::Duration(time_literal) }
         / duration:duration() { ConstantKind::Duration(duration) }
         / t:time_of_day() { ConstantKind::TimeOfDay(t) }
         / d:date() { ConstantKind::Date(d) }
         / date_time:date_and_time() { ConstantKind::DateAndTime(date_time) }
         / bit_string:bit_string_literal() { ConstantKind::BitStringLiteral(bit_string) }
         / boolean:boolean_literal() { ConstantKind::Boolean(boolean) }
+        / null:null_literal() { ConstantKind::Null(null) }
 
     // B.1.2.1 Numeric literals
     // numeric_literal omitted because it only appears in constant so we do not need to create a type for it
@@ -255,6 +949,12 @@ parser! {
       / tok(TokenType::True) { BooleanLiteral::new(Boolean::True) }
       / tok(TokenType::Bool) tok(TokenType::Hash) tok(TokenType::False) { BooleanLiteral::new(Boolean::False) }
       / tok(TokenType::False) { BooleanLiteral::new(Boolean::False) }
+
+    rule null_literal() -> NullLiteral = tok(TokenType::Null) {
+      NullLiteral {
+        span: SourceSpan::default(),
+      }
+    }
 
     // B.1.2.2 Character strings
     rule character_string() -> Vec<char> = single_byte_character_string() / double_byte_character_string()
@@ -309,6 +1009,45 @@ parser! {
     rule seconds() -> DurationLiteral = secs:fixed_point() dt_sep("s") { DurationLiteral::seconds(secs) } / sec:integer() dt_sep("s") dt_sep("_")? ms:milliseconds() { ms.plus(DurationLiteral::seconds(sec.into())) }
     rule milliseconds() -> DurationLiteral = ms:fixed_point() dt_sep("ms") { DurationLiteral::milliseconds(ms) }
 
+    // Handle TimeLiteral tokens (T#5S, T#1.5S format) directly
+    rule time_literal_token() -> DurationLiteral = token:tok(TokenType::TimeLiteral) {?
+        let text = &token.text;
+        // Parse T#5S, T#1.5S, T#100MS, etc.
+        if let Some(hash_pos) = text.find('#') {
+            let time_part = &text[hash_pos + 1..];
+            
+            // Extract number and unit
+            let mut number_end = 0;
+            for (i, c) in time_part.char_indices() {
+                if c.is_ascii_digit() || c == '.' {
+                    number_end = i + 1;
+                } else {
+                    break;
+                }
+            }
+            
+            if number_end == 0 {
+                return Err("Invalid time literal format");
+            }
+            
+            let number_str = &time_part[..number_end];
+            let unit = &time_part[number_end..].to_lowercase();
+            
+            let fixed_point = FixedPoint::parse(number_str).map_err(|_| "Invalid number in time literal")?;
+            
+            match unit.as_str() {
+                "s" => Ok(DurationLiteral::seconds(fixed_point)),
+                "ms" => Ok(DurationLiteral::milliseconds(fixed_point)),
+                "m" => Ok(DurationLiteral::minutes(fixed_point)),
+                "h" => Ok(DurationLiteral::hours(fixed_point)),
+                "d" => Ok(DurationLiteral::days(fixed_point)),
+                _ => Err("Unsupported time unit"),
+            }
+        } else {
+            Err("Invalid time literal format")
+        }
+    }
+
     // 1.2.3.2 Time of day and date
     rule time_of_day() -> TimeOfDayLiteral = tok(TokenType::TimeOfDay) tok(TokenType::Hash) d:daytime() { TimeOfDayLiteral::new(d) }
     rule daytime() -> Time = h:day_hour() tok(TokenType::Colon) m:day_minute() tok(TokenType::Colon) s:day_second() {?
@@ -341,8 +1080,12 @@ parser! {
       / date_type_name()
       / bit_string_type_name()
       / tok(TokenType::String) { ElementaryTypeName::STRING }
+      / string_with_length_type_name()
       / tok(TokenType::WString) { ElementaryTypeName::WSTRING }
       / tok(TokenType::Time) { ElementaryTypeName::TIME }
+      / tok(TokenType::Ton) { ElementaryTypeName::TON }
+      / tok(TokenType::Tof) { ElementaryTypeName::TOF }
+      / tok(TokenType::Tp) { ElementaryTypeName::TP }
     rule numeric_type_name() -> ElementaryTypeName = integer_type_name() / real_type_name()
     rule integer_type_name() -> ElementaryTypeName = signed_integer_type_name() / unsigned_integer_type_name()
     rule signed_integer_type_name() -> ElementaryTypeName = tok(TokenType::Sint) { ElementaryTypeName::SINT }  / tok(TokenType::Int) { ElementaryTypeName::INT } / tok(TokenType::Dint) { ElementaryTypeName::DINT } / tok(TokenType::Lint) { ElementaryTypeName::LINT }
@@ -350,6 +1093,19 @@ parser! {
     rule real_type_name() -> ElementaryTypeName = tok(TokenType::Real) { ElementaryTypeName::REAL } / tok(TokenType::Lreal) { ElementaryTypeName::LREAL }
     rule date_type_name() -> ElementaryTypeName = tok(TokenType::Date) { ElementaryTypeName::DATE } / tok(TokenType::TimeOfDay) { ElementaryTypeName::TimeOfDay } / tok(TokenType::DateAndTime) { ElementaryTypeName::DateAndTime }
     rule bit_string_type_name() -> ElementaryTypeName = tok(TokenType::Bool) { ElementaryTypeName::BOOL } / tok(TokenType::Byte) { ElementaryTypeName::BYTE } / tok(TokenType::Word) { ElementaryTypeName::WORD } / tok(TokenType::Dword) { ElementaryTypeName::DWORD } / tok(TokenType::Lword) { ElementaryTypeName::LWORD }
+    rule string_with_length_type_name() -> ElementaryTypeName = token:tok(TokenType::StringWithLength) {?
+        // Extract the length from the token text (e.g., "STRING(50)" -> 50)
+        let text = &token.text;
+        if let Some(start) = text.find('(') {
+            if let Some(end) = text.find(')') {
+                let length_str = &text[start + 1..end];
+                if let Ok(length) = length_str.parse::<u32>() {
+                    return Ok(ElementaryTypeName::StringWithLength(length));
+                }
+            }
+        }
+        Err("Invalid STRING(n) format")
+    }
 
     // B.1.3.2
     // rule omitted because this matched identifiers. Resolving type names happens later in parsing.
@@ -366,17 +1122,97 @@ parser! {
     rule enumerated_type_name() -> TypeName = type_name()
     rule array_type_name() -> TypeName = type_name()
     rule structure_type_name() -> TypeName = type_name()
-    rule data_type_declaration() -> Vec<DataTypeDeclarationKind> = tok(TokenType::Type) _ declarations:semisep(<type_declaration()>) _ tok(TokenType::EndType) { declarations }
+    rule data_type_declaration() -> Vec<DataTypeDeclarationKind> = tok(TokenType::Type) _ declarations:semisep_optional_trailing(<type_declaration()>) _ tok(TokenType::EndType) { declarations }
+    
+    // Enhanced TYPE...END_TYPE block parsing for type definitions and aliases
+    rule type_definition_block() -> TypeDefinitionBlock = start:position!() tok(TokenType::Type) _ definitions:semisep_optional_trailing(<type_definition()>) _ tok(TokenType::EndType) end:position!() {
+      TypeDefinitionBlock {
+        definitions,
+        span: SourceSpan::range(start, end),
+      }
+    }
+    
+    // Individual type definition within a TYPE block (type aliases and custom types)
+    rule type_definition() -> TypeDefinition = start:position!() name:type_name() _ tok(TokenType::Colon) _ base_type:data_type_specification() default_value:(_ tok(TokenType::Assignment) _ c:constant() { c })? end:position!() {
+      TypeDefinition {
+        name,
+        base_type,
+        default_value,
+        span: SourceSpan::range(start, end),
+      }
+    }
+    
+    // Enhanced data type specification that supports all IEC 61131-3 data types
+    rule data_type_specification() -> DataTypeSpecificationKind =
+      // Elementary data types
+      et:elementary_type_name() { DataTypeSpecificationKind::Elementary(et) }
+      // User-defined type reference
+      / tn:type_name() { DataTypeSpecificationKind::UserDefined(tn) }
+      // Enumeration type with named constants
+      / enum_spec:enumeration_specification() { DataTypeSpecificationKind::Enumeration(enum_spec) }
+      // Array type with bounds and element type
+      / array_spec:enhanced_array_specification() { DataTypeSpecificationKind::Array(array_spec) }
+      // Subrange type with constrained bounds
+      / subrange_spec:enhanced_subrange_specification() { DataTypeSpecificationKind::Subrange(subrange_spec) }
+      // String type with optional length specification
+      / string_spec:string_specification() { DataTypeSpecificationKind::String(string_spec) }
+    
+    // Enhanced enumeration specification for inline enumeration definitions
+    rule enumeration_specification() -> EnumerationSpecification = start:position!() tok(TokenType::LeftParen) _ values:commasep_oneplus(<enumerated_value()>) _ tok(TokenType::RightParen) end:position!() {
+      EnumerationSpecification {
+        values,
+        span: SourceSpan::range(start, end),
+      }
+    }
+    
+    // Enhanced array specification for multi-dimensional arrays
+    rule enhanced_array_specification() -> ArraySpecification = start:position!() tok(TokenType::Array) _ tok(TokenType::LeftBracket) _ bounds:commasep_oneplus(<array_bounds()>) _ tok(TokenType::RightBracket) _ tok(TokenType::Of) _ element_type:data_type_specification() end:position!() {
+      ArraySpecification {
+        bounds,
+        element_type: Box::new(element_type),
+        span: SourceSpan::range(start, end),
+      }
+    }
+    
+    // Array bounds specification for a single dimension
+    rule array_bounds() -> ArrayBounds = start:position!() lower:signed_integer() _ tok(TokenType::Range) _ upper:signed_integer() end:position!() {
+      ArrayBounds {
+        lower,
+        upper,
+        span: SourceSpan::range(start, end),
+      }
+    }
+    
+    // Enhanced subrange specification for constrained integer types
+    rule enhanced_subrange_specification() -> EnhancedSubrangeSpecification = start:position!() base_type:integer_type_name() _ tok(TokenType::LeftParen) _ lower_bound:signed_integer() _ tok(TokenType::Range) _ upper_bound:signed_integer() _ tok(TokenType::RightParen) end:position!() {
+      EnhancedSubrangeSpecification {
+        base_type,
+        lower_bound,
+        upper_bound,
+        span: SourceSpan::range(start, end),
+      }
+    }
+    
+    // String specification with optional length
+    rule string_specification() -> StringSpecification = start:position!() width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) length:(tok(TokenType::LeftParen) _ len:integer() _ tok(TokenType::RightParen) { len })? end:position!() {
+      StringSpecification {
+        width,
+        length,
+        keyword_span: SourceSpan::range(start, end),
+      }
+    }
     /// the type_declaration also bring in from single_element_type_declaration so that we can match in an order
     /// that identifies the type
     rule type_declaration() -> DataTypeDeclarationKind =
       s:string_type_declaration() { DataTypeDeclarationKind::String(s) }
       / s:string_type_declaration__parenthesis() { DataTypeDeclarationKind::String(s) }
+      / s:string_type_declaration__with_length_token() { DataTypeDeclarationKind::String(s) }
       / a:array_type_declaration() { DataTypeDeclarationKind::Array(a) }
       / subrange:subrange_type_declaration__with_range() { DataTypeDeclarationKind::Subrange(subrange) }
       / structure_type_declaration__with_constant()
       / enumerated:enumerated_type_declaration__with_value() { DataTypeDeclarationKind::Enumeration(enumerated) }
       / simple:simple_type_declaration__with_constant() { DataTypeDeclarationKind::Simple(simple )}
+      / reference:reference_type_declaration() { DataTypeDeclarationKind::Reference(reference) }
       // The remaining are structure, enumerated and simple without an initializer
       // These all have the general form of
       //    `identifier : identifier`
@@ -411,6 +1247,12 @@ parser! {
       })
     }
     rule simple_specification() -> TypeName = et:elementary_type_name() { et.into() } / simple_type_name()
+    rule reference_specification() -> TypeName = tok(TokenType::RefTo) _ referenced_type:(array_spec:array_specification() { 
+      // For REF_TO ARRAY[...] OF TYPE, we need to create a synthetic type name
+      // This is a simplified approach - in a full implementation, we'd want to 
+      // properly represent the array specification in the type system
+      TypeName::from("ARRAY") 
+    } / reference_specification() / non_generic_type_name()) { referenced_type }
     rule subrange_type_declaration__with_range() -> SubrangeDeclaration = type_name:subrange_type_name() _ tok(TokenType::Colon) _ spec:subrange_spec_init__with_range() {
       SubrangeDeclaration {
         type_name,
@@ -423,7 +1265,7 @@ parser! {
     }
     rule subrange_specification__with_range() -> SubrangeSpecificationKind
       = type_name:integer_type_name() _ tok(TokenType::LeftParen) _ subrange:subrange() _ tok(TokenType::RightParen) { SubrangeSpecificationKind::Specification(SubrangeSpecification{ type_name, subrange }) }
-    rule subrange() -> Subrange = start:signed_integer() tok(TokenType::Range) end:signed_integer() { Subrange{start, end} }
+    rule subrange() -> Subrange = start:signed_integer() _ tok(TokenType::Range) _ end:signed_integer() { Subrange{start, end} }
 
     rule enumerated_type_declaration__with_value() -> EnumerationDeclaration =
       type_name:enumerated_type_name() _ tok(TokenType::Colon) _ spec_init:enumerated_spec_init__with_value() {
@@ -487,12 +1329,15 @@ parser! {
     rule array_initialization() -> Vec<ArrayInitialElementKind> = tok(TokenType::LeftBracket) _ init:array_initial_elements() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) { init }
     rule array_initial_elements() -> ArrayInitialElementKind = size:integer() _ tok(TokenType::LeftParen) ai:array_initial_element()? tok(TokenType::RightParen) { ArrayInitialElementKind::repeated(size, ai) } / array_initial_element()
     // TODO array_initial_element requires structure_initialization | array_initialization
-    rule array_initial_element() -> ArrayInitialElementKind = c:constant() { ArrayInitialElementKind::Constant(c) } / e:enumerated_value() { ArrayInitialElementKind::EnumValue(e) }
+    rule array_initial_element() -> ArrayInitialElementKind = 
+        nested_array:array_initialization() { ArrayInitialElementKind::Array(nested_array) }
+        / c:constant() { ArrayInitialElementKind::Constant(c) } 
+        / e:enumerated_value() { ArrayInitialElementKind::EnumValue(e) }
     rule structure_type_declaration__with_constant() -> DataTypeDeclarationKind =
-      type_name:structure_type_name() _ tok(TokenType::Colon) _ decl:structure_declaration() {
+      type_name:structure_type_name() _ tok(TokenType::Colon) _ tok(TokenType::Struct) _ elements:semisep_oneplus(<structure_element_declaration()>) _ tok(TokenType::EndStruct) {
         DataTypeDeclarationKind::Structure(StructureDeclaration {
           type_name,
-          elements: decl.elements,
+          elements,
         })
       }
       / type_name:structure_type_name() _ tok(TokenType::Colon) _ init:initialized_structure__without_ambiguous() {
@@ -575,9 +1420,17 @@ parser! {
     //
     // There is still value in trying to disambiguate early because it allows us to use
     // the parser definitions.
-    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ tok(TokenType::Assignment) _ c:constant() {
-      // A simple_specification with a constant is unambiguous because the constant is
-      // not a valid identifier.
+    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = 
+      s:reference_specification() _ tok(TokenType::Assignment) _ c:constant() {
+        // A reference_specification with a constant is unambiguous
+        InitialValueAssignmentKind::Simple(SimpleInitializer {
+          type_name: s,
+          initial_value: Some(c),
+        })
+      }
+      / s:simple_specification() _ tok(TokenType::Assignment) _ c:constant() {
+        // A simple_specification with a constant is unambiguous because the constant is
+        // not a valid identifier.
       InitialValueAssignmentKind::Simple(SimpleInitializer {
         type_name: s,
         initial_value: Some(c),
@@ -606,6 +1459,30 @@ parser! {
         values,
         initial_value: init,
       })
+    } / s:reference_specification() {
+      // A reference_specification without assignment is unambiguous because REF_TO is a reserved keyword
+      InitialValueAssignmentKind::Simple(SimpleInitializer {
+        type_name: s,
+        initial_value: None,
+      })
+    } / subrange:subrange_spec_init__with_range() {
+      // Handle subrange specifications like INT(-10..2)
+      match subrange.1 {
+        Some(assignment_value) => {
+          // Create a simple initializer with the assignment value
+          InitialValueAssignmentKind::Simple(SimpleInitializer {
+            type_name: match &subrange.0 {
+              SubrangeSpecificationKind::Specification(spec) => TypeName::from(spec.type_name.as_id().original.as_str()),
+              SubrangeSpecificationKind::Type(type_name) => type_name.clone(),
+            },
+            initial_value: Some(ConstantKind::integer_literal(&assignment_value.to_string()).unwrap_or_else(|_| ConstantKind::integer_literal("0").unwrap())),
+          })
+        },
+        None => {
+          // No assignment, use subrange specification
+          InitialValueAssignmentKind::Subrange(subrange.0)
+        }
+      }
     } / et:elementary_type_name() {
       // An identifier that is an elementary_type_name s unambiguous because these are
       // reserved keywords
@@ -635,6 +1512,34 @@ parser! {
         init: init.map(|v| v.into_iter().collect()),
       }
     }
+    rule string_type_declaration__with_length_token() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ token:tok(TokenType::StringWithLength) _ init:(tok(TokenType::Assignment) _ str:character_string() {str})? {?
+        // Extract the length from the token text (e.g., "STRING(50)" -> 50)
+        let text = &token.text;
+        if let Some(start) = text.find('(') {
+            if let Some(end) = text.find(')') {
+                let length_str = &text[start + 1..end];
+                if let Ok(length_value) = length_str.parse::<u128>() {
+                    return Ok(StringDeclaration {
+                        type_name,
+                        length: Integer {
+                            span: token.span.clone(),
+                            value: length_value,
+                        },
+                        width: StringType::String,
+                        init: init.map(|v| v.into_iter().collect()),
+                    });
+                }
+            }
+        }
+        Err("Invalid STRING(n) format")
+    }
+
+    rule reference_type_declaration() -> ReferenceDeclaration = type_name:type_name() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ referenced_type:non_generic_type_name() {
+      ReferenceDeclaration {
+        type_name,
+        referenced_type,
+      }
+    }
 
     // B.1.4 Variables
     rule variable() -> Variable =
@@ -643,7 +1548,7 @@ parser! {
     //rule symbolic_variable() -> SymbolicVariableKind =
     //  multi_element_variable()
     //  / name:variable_name() { SymbolicVariableKind::Named(NamedVariable{name}) }
-    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) id:identifier() { Element::StructSelector(id) } / sub:subscript_list() {Element::ArraySelector(sub)})* {
+    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) id:field_selector() { Element::StructSelector(id) } / sub:subscript_list() {Element::ArraySelector(sub)} / tok(TokenType::Caret) { Element::Dereference })* {
       // Start by assuming that the top is just a named variable
       let mut head = SymbolicVariableKind::Named(NamedVariable { name });
 
@@ -661,6 +1566,12 @@ parser! {
               let cur = SymbolicVariableKind::Array(ArrayVariable{
                   subscripted_variable: Box::new(head),
                   subscripts: arr
+                });
+              head = cur;
+            },
+            Element::Dereference => {
+              let cur = SymbolicVariableKind::Dereference(DereferenceVariable{
+                  referenced_variable: Box::new(head),
                 });
               head = cur;
             },
@@ -698,7 +1609,13 @@ parser! {
     rule subscript() -> ExprKind = expression()
     rule structured_variable() -> (SymbolicVariableKind, Id) = r:record_variable() tok(TokenType::Period) f:field_selector() { (r, f) }
     rule record_variable() -> SymbolicVariableKind = symbolic_variable()
-    rule field_selector() -> Id = identifier()
+    rule field_selector() -> Id = identifier() / numeric_field_selector()
+    
+    // Support numeric field access like .1, .2, etc.
+    rule numeric_field_selector() -> Id = i:tok(TokenType::Digits) {
+      Id::from(i.text.as_str())
+        .with_position(i.span.clone())
+    }
 
     // B.1.4.3 Declarations and initialization
     rule input_declarations() -> Vec<VarDeclarations> = tok(TokenType::VarInput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<input_declaration()>) _ tok(TokenType::EndVar) {
@@ -718,13 +1635,17 @@ parser! {
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    rule var_init_decl() -> Vec<UntypedVarDecl> = structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() /  fb_name_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
-    rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(a:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()) {
+    rule var_init_decl() -> Vec<UntypedVarDecl> = structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / var1_init_decl__with_ambiguous_struct() / var1_declaration() / fb_name_decl() / string_var_declaration()
+    rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = ref_annotation:(annotation:tok(TokenType::RefAnnotation) {? 
+        validate_reference_annotation(annotation)?;
+        Ok(ReferenceAnnotation::Reference)
+      })? _ names:var1_list() _ tok(TokenType::Colon) _ init:(a:array_spec_init() { InitialValueAssignmentKind::Array(a) } / a:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
           initializer: init.clone(),
+          reference_annotation: ref_annotation.clone(),
         }
       }).collect()
     }
@@ -735,6 +1656,7 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Array(init.clone()),
+          reference_annotation: None,
         }
       }).collect()
     }
@@ -744,6 +1666,7 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
+          reference_annotation: None,
         }
       }).collect()
     }
@@ -752,6 +1675,7 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
+          reference_annotation: None,
         }
       }).collect()
     }
@@ -760,6 +1684,7 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment { type_name: type_name.clone(), init: init.clone().unwrap_or_else(Vec::new) }),
+          reference_annotation: None,
         }
       }).collect()
     }
@@ -773,13 +1698,32 @@ parser! {
     }
     rule var_declaration() -> Vec<UntypedVarDecl> = temp_var_decl() / fb_name_decl()
     rule temp_var_decl() -> Vec<UntypedVarDecl> = var1_declaration() / array_var_declaration() / structured_var_declaration() / string_var_declaration()
-    rule var1_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(spec:subrange_specification__with_range() {InitialValueAssignmentKind::Subrange(spec)} / values:enumerated_specification__only_values()  {InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer{ values, initial_value: None})} / spec:simple_specification() { InitialValueAssignmentKind::LateResolvedType(spec)} ) {
+    rule var1_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(subrange:subrange_spec_init__with_range() {
+        // Handle subrange with optional assignment
+        match subrange.1 {
+            Some(assignment_value) => {
+                // Create a simple initializer with the assignment value
+                InitialValueAssignmentKind::Simple(SimpleInitializer {
+                    type_name: match &subrange.0 {
+                        SubrangeSpecificationKind::Specification(spec) => TypeName::from(spec.type_name.as_id().original.as_str()),
+                        SubrangeSpecificationKind::Type(type_name) => type_name.clone(),
+                    },
+                    initial_value: Some(ConstantKind::integer_literal(&assignment_value.to_string()).unwrap_or_else(|_| ConstantKind::integer_literal("0").unwrap())),
+                })
+            },
+            None => {
+                // No assignment, use subrange specification
+                InitialValueAssignmentKind::Subrange(subrange.0)
+            }
+        }
+    } / values:enumerated_specification__only_values()  {InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer{ values, initial_value: None})} / spec:reference_specification() { InitialValueAssignmentKind::LateResolvedType(spec)} / spec:simple_specification() { InitialValueAssignmentKind::LateResolvedType(spec)} ) {
       // TODO this could eventually cause duplicated definitions because
       // multiple variables have the same type declaration
       names.iter().map(|identifier| {
         UntypedVarDecl {
           name: identifier.clone(),
           initializer: init.clone(),
+          reference_annotation: None,
         }
       }).collect()
     }
@@ -789,6 +1733,7 @@ parser! {
         UntypedVarDecl {
           name: identifier.clone(),
           initializer: InitialValueAssignmentKind::Array(init),
+          reference_annotation: None,
         }
       }).collect()
     }
@@ -798,14 +1743,14 @@ parser! {
         UntypedVarDecl {
           name: identifier.clone(),
           initializer: InitialValueAssignmentKind::Structure(init),
-
+          reference_annotation: None,
         }
       }).collect()
     }
-    rule var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) {DeclarationQualifier::Constant})? _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
+    rule var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) {DeclarationQualifier::Constant})? _ declarations:semisep_forgiving(<var_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
-    rule retentive_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ tok(TokenType::Retain) _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
+    rule retentive_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ tok(TokenType::Retain) _ declarations:semisep_forgiving(<var_init_decl()>) _ tok(TokenType::EndVar) {
       let qualifier = Option::Some(DeclarationQualifier::Retain);
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
@@ -820,6 +1765,7 @@ parser! {
         var_type: VariableType::Var,
         qualifier: DeclarationQualifier::Unspecified,
         initializer,
+        reference_annotation: None,
       }
     }
     // We use the same type as in other places for VarInit, but the external always omits the initializer
@@ -840,6 +1786,7 @@ parser! {
         var_type: VariableType::External,
         qualifier: DeclarationQualifier::Unspecified,
         initializer: spec,
+        reference_annotation: None,
       }
     }
     rule global_var_name() -> Id = i:identifier() { i }
@@ -864,6 +1811,7 @@ parser! {
           qualifier: DeclarationQualifier::Unspecified,
           // TODO this is clearly wrong
           initializer: init,
+          reference_annotation: None,
         }
       }).collect()
      }
@@ -877,13 +1825,40 @@ parser! {
     rule located_var_spec_init() -> InitialValueAssignmentKind = simple:simple_spec_init() { simple }
     rule location() -> AddressAssignment = tok(TokenType::At) _ v:direct_variable() { v }
     rule global_var_list() -> Vec<Id> = names:global_var_name() ++ (_ tok(TokenType::Comma) _) { names }
-    rule string_var_declaration() -> Vec<UntypedVarDecl> = single_byte_string_var_declaration() / double_byte_string_var_declaration()
+    
+    // Top-level VAR_GLOBAL block parsing for library elements
+    rule global_variable_declaration() -> GlobalVariableDeclaration = start:tok(TokenType::VarGlobal) _ qualifier:global_var_declarations__qualifier()? _ declarations:variable_declaration_list() _ end:tok(TokenType::EndVar) {
+      let qualifier = qualifier.unwrap_or(DeclarationQualifier::Unspecified);
+      
+      GlobalVariableDeclaration {
+        variables: declarations,
+        span: SourceSpan::join(&start.span, &end.span),
+      }
+    }
+    
+    // Variable declaration list for VAR_GLOBAL blocks
+    rule variable_declaration_list() -> Vec<VarDecl> = declarations:variable_declaration_item() ** (_ semicolon() _) _ semicolon()? {
+      let mut result = Vec::new();
+      for untyped_vars in declarations {
+        for untyped_var in untyped_vars {
+          let mut var_decl = untyped_var.into_var_decl(VariableType::Global);
+          result.push(var_decl);
+        }
+      }
+      result
+    }
+    
+    // Individual variable declaration within VAR_GLOBAL
+    rule variable_declaration_item() -> Vec<UntypedVarDecl> = var_init_decl()
+    
+    rule string_var_declaration() -> Vec<UntypedVarDecl> = single_byte_string_var_declaration() / double_byte_string_var_declaration() / string_with_length_var_declaration()
     rule single_byte_string_var_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ spec:single_byte_string_spec() {
       names.into_iter().map(|name| {
         let span = name.span.clone();
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::String(spec.clone()),
+          reference_annotation: None,
         }
       }).collect()
     }
@@ -900,8 +1875,38 @@ parser! {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::String(spec.clone()),
+          reference_annotation: None,
         }
       }).collect()
+    }
+    rule string_with_length_var_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ token:tok(TokenType::StringWithLength) _ initial_value:(tok(TokenType::Assignment) _ v:single_byte_character_string() {v})? {?
+        // Extract the length from the token text (e.g., "STRING(50)" -> 50)
+        let text = &token.text;
+        if let Some(start) = text.find('(') {
+            if let Some(end) = text.find(')') {
+                let length_str = &text[start + 1..end];
+                if let Ok(length_value) = length_str.parse::<u128>() {
+                    let spec = StringInitializer {
+                        length: Some(Integer {
+                            span: token.span.clone(),
+                            value: length_value,
+                        }),
+                        width: StringType::String,
+                        initial_value,
+                        keyword_span: token.span.clone(),
+                    };
+                    
+                    return Ok(names.into_iter().map(|name| {
+                        UntypedVarDecl {
+                            name,
+                            initializer: InitialValueAssignmentKind::String(spec.clone()),
+                            reference_annotation: None,
+                        }
+                    }).collect());
+                }
+            }
+        }
+        Err("Invalid STRING(n) format")
     }
     rule double_byte_string_spec() -> StringInitializer = start:tok(TokenType::WString) _ length:(tok(TokenType::LeftBracket) _ i:integer() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:double_byte_character_string() {v})? {
       StringInitializer {
@@ -943,6 +1948,26 @@ parser! {
       / a:array_specification() { VariableSpecificationKind::Array(a) }
       / tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
       / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
+      / token:tok(TokenType::StringWithLength) {? 
+        // Extract the length from the token text (e.g., "STRING(50)" -> 50)
+        let text = &token.text;
+        if let Some(start) = text.find('(') {
+            if let Some(end) = text.find(')') {
+                let length_str = &text[start + 1..end];
+                if let Ok(length_value) = length_str.parse::<u128>() {
+                    return Ok(VariableSpecificationKind::String(StringSpecification {
+                        width: StringType::String,
+                        length: Some(Integer {
+                            span: token.span.clone(),
+                            value: length_value,
+                        }),
+                        keyword_span: token.span.clone(),
+                    }));
+                }
+            }
+        }
+        Err("Invalid STRING(n) format")
+      }
       / et:elementary_type_name() { VariableSpecificationKind::Simple(et.into()) }
       / id:type_name() { VariableSpecificationKind::Ambiguous(id) }
 
@@ -950,7 +1975,13 @@ parser! {
     rule function_name() -> Id = standard_function_name() / derived_function_name()
     rule standard_function_name() -> Id = identifier()
     rule derived_function_name() -> Id = identifier()
-    rule function_declaration() -> FunctionDeclaration = tok(TokenType::Function) _  name:derived_function_name() _ tok(TokenType::Colon) _ rt:(et:elementary_type_name() { et.into() } / dt:derived_type_name() { dt }) _ var_decls:(io:io_var_declarations() / func:function_var_decls() { vec![ func ]}) ** _ _ body:function_body() _ tok(TokenType::EndFunction) {
+    rule function_declaration() -> FunctionDeclaration = external_annotation:(annotation:tok(TokenType::ExternalAnnotation) {? 
+        validate_external_annotation(annotation)?;
+        Ok(ExternalAnnotation::CurlyBrace)
+      } / annotation:tok(TokenType::AtExternal) {? 
+        validate_external_annotation(annotation)?;
+        Ok(ExternalAnnotation::AtSymbol)
+      })? _ tok(TokenType::Function) _  name:derived_function_name() _ tok(TokenType::Colon) _ rt:(et:elementary_type_name() { et.into() } / dt:derived_type_name() { dt }) _ var_decls:(io:io_var_declarations() / func:function_var_decls() { vec![ func ]}) ** _ _ body:function_body()? _ tok(TokenType::EndFunction) {
       let var_decls = VarDeclarations::flatten(var_decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(var_decls);
       let (edge_variables, remainder) = VarDeclarations::drain_edge_decl(remainder);
@@ -959,7 +1990,8 @@ parser! {
         return_type: rt,
         variables,
         edge_variables,
-        body,
+        body: body.unwrap_or_default(),
+        external_annotation,
       }
     }
     rule io_var_declarations() -> Vec<VarDeclarations> = input_declarations() / o:output_declarations() { vec![VarDeclarations::Outputs(o)] } / io:input_output_declarations() { vec![VarDeclarations::Inouts(io)] }
@@ -988,13 +2020,90 @@ parser! {
         span: SourceSpan::join(&start.span, &end.span),
       }
     }
-    // TODO temp_var_decls
-    rule other_var_declarations() -> VarDeclarations = external_var_declarations() / var_declarations() / retentive_var_declarations() / non_retentive_var_declarations() / incompl_located_var_declarations()
-    //rule temp_var_decls() -> VarDeclarations = tok(TokenType::VarTemp) _ declarations:semisep(<temp_var_decl()>) _ tok(TokenType::EndVar) {
-    //  let qualifier = Option::Some(DeclarationQualifier::Retain);
-    //  VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::VarTemp, qualifier))
-    //}
-    rule non_retentive_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ tok(TokenType::NonRetain) _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
+
+    // Class declaration
+    rule class_declaration() -> ClassDeclaration = start:tok(TokenType::Class) _ name:type_name() _ elements:class_element() ** _ _ end:tok(TokenType::EndClass) {?
+      // Validate class declaration structure first
+      validate_class_declaration(&name.name, &elements)?;
+      
+      let mut variables = Vec::new();
+      let mut methods = Vec::new();
+      
+      for element in elements {
+        match element {
+          ClassElement::Variables(mut vars) => variables.append(&mut vars),
+          ClassElement::Method(method) => methods.push(*method),
+        }
+      }
+      
+      Ok(ClassDeclaration {
+        name,
+        variables,
+        methods,
+        span: SourceSpan::join(&start.span, &end.span),
+      })
+    }
+
+    rule class_element() -> ClassElement = 
+      var_decls:var_declarations() { 
+        let (vars, _) = VarDeclarations::drain_var_decl(vec![var_decls]);
+        ClassElement::Variables(vars)
+      }
+      / method:method_declaration() { ClassElement::Method(Box::new(method)) }
+
+    // Method declaration within a class
+    rule method_declaration() -> MethodDeclaration = start:tok(TokenType::Method) _ name:identifier() _ return_type:(tok(TokenType::Colon) _ rt:(et:elementary_type_name() { et.into() } / dt:derived_type_name() { dt }) { rt })? _ var_decls:(io:io_var_declarations() / func:function_var_decls() { vec![ func ]}) ** _ _ body:function_body()? _ end:tok(TokenType::EndMethod) {?
+      let var_decls = VarDeclarations::flatten(var_decls);
+      let (variables, remainder) = VarDeclarations::drain_var_decl(var_decls);
+      let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
+      
+      // Validate method declaration structure
+      validate_method_declaration(&name, &return_type)?;
+      
+      Ok(MethodDeclaration {
+        name,
+        return_type,
+        variables,
+        edge_variables,
+        body: body.unwrap_or_default(),
+        span: SourceSpan::join(&start.span, &end.span),
+      })
+    }
+
+    // Action block declaration
+    rule action_block_declaration() -> ActionBlockDeclaration = start:tok(TokenType::Actions) _ actions:action_declaration() ** _ _ end:tok(TokenType::EndActions) {?
+      // Validate action block structure
+      validate_action_block(&actions)?;
+      
+      Ok(ActionBlockDeclaration {
+        actions,
+        span: SourceSpan::join(&start.span, &end.span),
+      })
+    }
+
+    // Individual action declaration within an action block
+    rule action_declaration() -> ActionDeclaration = start:tok(TokenType::Action) _ name:identifier() _ vars:(v:var_declarations() { Some(v) } / tok(TokenType::Colon) { None } / _ { None }) _ body:statement_list() _ end:tok(TokenType::EndAction) {
+      let variables = if let Some(var_decls) = vars {
+        let (variables, _) = VarDeclarations::drain_var_decl(vec![var_decls]);
+        variables
+      } else {
+        vec![]
+      };
+      
+      ActionDeclaration {
+        name,
+        variables,
+        body,
+        span: SourceSpan::join(&start.span, &end.span),
+      }
+    }
+
+    rule temp_var_decls() -> VarDeclarations = tok(TokenType::VarTemp) _ declarations:semisep(<temp_var_decl()>) _ tok(TokenType::EndVar) {
+      let qualifier = Option::Some(DeclarationQualifier::Unspecified);
+      VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::VarTemp, qualifier))
+    }
+    rule other_var_declarations() -> VarDeclarations = external_var_declarations() / var_declarations() / retentive_var_declarations() / non_retentive_var_declarations() / temp_var_decls() / incompl_located_var_declarations()
+    rule non_retentive_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ tok(TokenType::NonRetain) _ declarations:semisep_optional_trailing(<var_init_decl()>) _ tok(TokenType::EndVar) {
       let qualifier = Option::Some(DeclarationQualifier::NonRetain);
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
@@ -1004,7 +2113,7 @@ parser! {
     // B.1.5.3 Program declaration
     rule program_type_name() -> Id = identifier()
     // TODO program_access_decls
-    pub rule program_declaration() -> ProgramDeclaration = tok(TokenType::Program) _ p:program_type_name() _ decls:(access:program_access_decls() { vec![access] } / io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / located:located_var_declarations() { vec![located] }) ** _ _ body:function_block_body() _ tok(TokenType::EndProgram) {
+    pub rule program_declaration() -> ProgramDeclaration = tok(TokenType::Program) _ p:program_type_name() _ decls:(access:program_access_decls() { vec![access] } / io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / located:located_var_declarations() { vec![located] }) ** _ _ body:function_block_body() _ actions:action_block_declaration()? _ tok(TokenType::EndProgram) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (access_variables, _) = VarDeclarations::drain_access(remainder);
@@ -1013,6 +2122,7 @@ parser! {
         variables,
         access_variables,
         body,
+        actions,
       }
     }
     // TODO
@@ -1325,7 +2435,10 @@ parser! {
       }
       expr
     }
-    rule unary_operator() -> UnaryOp = tok(TokenType::Minus) {UnaryOp::Neg} / tok(TokenType::Not) {UnaryOp::Not}
+    rule unary_operator() -> UnaryOp = tok(TokenType::Minus) {UnaryOp::Neg} / tok(TokenType::Not) {UnaryOp::Not} / ampersand:tok(TokenType::Ampersand) {? 
+        validate_reference_operation("&", "")?;
+        Ok(UnaryOp::AddressOf)
+      }
     rule primary_expression() -> ExprKind
       = constant:constant() {
           ExprKind::Const(constant)
@@ -1334,7 +2447,7 @@ parser! {
       / function:function_expression() {
           function
         }
-      / id:identifier() _ !(tok(TokenType::LeftParen) / tok(TokenType::LeftBracket) / tok(TokenType::Period)) {
+      / id:identifier() _ !(tok(TokenType::LeftParen) / tok(TokenType::LeftBracket) / tok(TokenType::Period) / tok(TokenType::Caret)) {
         ExprKind::LateBound(LateBound{ value: id })
       }
       / variable:variable() {
@@ -1354,14 +2467,37 @@ parser! {
     pub rule statement_list() -> Vec<StmtKind> = items:statements_or_empty()+ {
       flatten_statements(items)
     }
-    rule statements_or_empty() -> StatementsOrEmpty = _ tok(TokenType::Semicolon) _ { StatementsOrEmpty::Empty() } / s:semisep(<statement()>) { StatementsOrEmpty::Statements(s)}
-    rule statement() -> StmtKind = assignment_statement() / selection_statement() / iteration_statement() / subprogram_control_statement()
+    rule statements_or_empty() -> StatementsOrEmpty = _ tok(TokenType::Semicolon) _ { StatementsOrEmpty::Empty() } / s:semisep_forgiving(<statement()>) { StatementsOrEmpty::Statements(s)}
+    rule statement() -> StmtKind = assignment_statement() / selection_statement() / iteration_statement() / subprogram_control_statement() / expression_statement()
+    
+    // Expression statement - standalone expressions that are evaluated but result is discarded
+    rule expression_statement() -> StmtKind = expr:expression() { StmtKind::ExpressionStatement(expr) }
 
     // B.3.2.1 Assignment statements
-    pub rule assignment_statement() -> StmtKind = var:variable() _ tok(TokenType::Assignment) _ expr:expression() { StmtKind::assignment(var, expr) }
+    pub rule assignment_statement() -> StmtKind = lvalue:assignment_target() _ tok(TokenType::Assignment) _ expr:expression() { 
+      StmtKind::assignment(lvalue, expr) 
+    }
+    
+    // Assignment target - can be variable or function call
+    rule assignment_target() -> Variable = 
+      func:function_call_lvalue() { Variable::Symbolic(SymbolicVariableKind::FunctionCall(func)) }
+      / var:variable() { var }
+    
+    // Function call as lvalue (assignment target)
+    rule function_call_lvalue() -> Function = name:identifier() _ tok(TokenType::LeftParen) _ tok(TokenType::RightParen) {
+      Function {
+        name,
+        param_assignment: vec![],
+      }
+    }
 
     // B.3.2.2 Subprogram control statements
-    rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb } / tok(TokenType::Return) { StmtKind::Return }
+    rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb } / func:function_call_statement() { func } / tok(TokenType::Return) { StmtKind::Return }
+    
+    // Function call as a statement (return value discarded) - but not if followed by assignment
+    rule function_call_statement() -> StmtKind = func:function_expression() !tok(TokenType::Assignment) {
+        StmtKind::FunctionCall(func)
+    }
     rule fb_invocation() -> StmtKind = name:fb_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
       let span = SourceSpan::join(&name.span, &end.span);
       StmtKind::FbCall(FbCall {
@@ -1391,7 +2527,12 @@ parser! {
 
     // B.3.2.3 Selection statements
     rule selection_statement() -> StmtKind = if_statement() / case_statement()
-    rule if_statement() -> StmtKind = tok(TokenType::If) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list()? _ else_ifs:(tok(TokenType::Elsif) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list() {ElseIf{expr, body}}) ** _ _ else_body:(tok(TokenType::Else) _ e:statement_list() { e })? _ tok(TokenType::EndIf) {
+    rule if_statement() -> StmtKind = tok(TokenType::If) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list()? _ else_ifs:(tok(TokenType::Elsif) _ expr:expression()? _ tok(TokenType::Then)? _ body:statement_list()? {
+      ElseIf{
+        expr: expr.unwrap_or_else(|| ExprKind::Const(ConstantKind::Boolean(BooleanLiteral::new(Boolean::True)))),
+        body: body.unwrap_or_default()
+      }
+    }) ** _ _ else_body:(tok(TokenType::Else) _ e:statement_list() { e })? _ tok(TokenType::EndIf)? {
       StmtKind::If(If {
         expr,
         body: body.unwrap_or_default(),
@@ -1406,17 +2547,37 @@ parser! {
         else_body: else_body.unwrap_or_default(),
       })
     }
-    rule case_element() -> CaseStatementGroup = selectors:case_list() _ tok(TokenType::Colon) _ statements:statement_list() {
+    rule case_element() -> CaseStatementGroup = selectors:case_list() _ tok(TokenType::Colon) _ statements:case_element_statements() {
       CaseStatementGroup {
         selectors,
         statements,
       }
     }
+    
+    // Parse statements for a case element, stopping at the next case label, ELSE, or END_CASE
+    rule case_element_statements() -> Vec<StmtKind> = 
+        first:case_element_statement() 
+        rest:(_ semicolon()? _ stmt:case_element_statement() { stmt })* 
+        _ semicolon()? { 
+            let mut result = vec![first];
+            result.extend(rest);
+            result
+        } / _ { vec![] }
+    
+    // Parse a single statement in a case element, with lookahead to avoid consuming next case labels
+    rule case_element_statement() -> StmtKind = 
+        !case_element_terminator() stmt:statement() { stmt }
+    
+    // Lookahead rule to detect when we should stop parsing case element statements
+    rule case_element_terminator() = 
+        _ case_list() _ tok(TokenType::Colon) /  // Next case label(s) followed by colon
+        _ tok(TokenType::Else) /                 // ELSE clause
+        _ tok(TokenType::EndCase)                // End of case statement
     rule case_list() -> Vec<CaseSelectionKind> = cases_list:case_list_element() ++ (_ tok(TokenType::Comma) _) { cases_list }
-    rule case_list_element() -> CaseSelectionKind = sr:subrange() {CaseSelectionKind::Subrange(sr)} / si:signed_integer() {CaseSelectionKind::SignedInteger(si)} / ev:enumerated_value() {CaseSelectionKind::EnumeratedValue(ev)}
+    rule case_list_element() -> CaseSelectionKind = sr:subrange() {CaseSelectionKind::Subrange(sr)} / si:signed_integer() {CaseSelectionKind::SignedInteger(si)} / i:integer() {CaseSelectionKind::SignedInteger(i.into())} / ev:enumerated_value() {CaseSelectionKind::EnumeratedValue(ev)}
 
     // B.3.2.4 Iteration statements
-    rule iteration_statement() -> StmtKind = f:for_statement() {StmtKind::For(f)} / w:while_statement() {StmtKind::While(w)} / r:repeat_statement() {StmtKind::Repeat(r)} / exit_statement()
+    rule iteration_statement() -> StmtKind = f:for_statement() {StmtKind::For(f)} / w:while_statement() {StmtKind::While(w)} / r:repeat_statement() {StmtKind::Repeat(r)} / exit_statement() / continue_statement()
     rule for_statement() -> For = tok(TokenType::For) _ control:control_variable() _ tok(TokenType::Assignment) _ range:for_list() _ tok(TokenType::Do) _ body:statement_list() _ tok(TokenType::EndFor) {
       For {
         control,
@@ -1441,5 +2602,6 @@ parser! {
       }
     }
     rule exit_statement() -> StmtKind = tok(TokenType::Exit) { StmtKind::Exit }
+    rule continue_statement() -> StmtKind = tok(TokenType::Continue) { StmtKind::Continue }
   }
 }

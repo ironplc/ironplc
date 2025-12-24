@@ -68,7 +68,7 @@ mod tests {
     use crate::test_helpers::parse_and_resolve_types;
 
     #[test]
-    fn apply_when_has_ton_unsupported_type_then_err() {
+    fn apply_when_has_ton_supported_type_then_ok() {
         let program = "
 FUNCTION_BLOCK DUMMY
 VAR_INPUT
@@ -82,6 +82,45 @@ END_FUNCTION_BLOCK";
         let symbol_env = SymbolEnvironment::new();
         let result = apply(&input, &type_env, &symbol_env);
 
+        // TON is now supported, so this should not generate an error
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_has_tof_supported_type_then_ok() {
+        let program = "
+FUNCTION_BLOCK DUMMY
+VAR_INPUT
+name : TOF;
+END_VAR
+         
+END_FUNCTION_BLOCK";
+
+        let input = parse_and_resolve_types(program);
+        let type_env = TypeEnvironment::new();
+        let symbol_env = SymbolEnvironment::new();
+        let result = apply(&input, &type_env, &symbol_env);
+
+        // TOF is now supported, so this should not generate an error
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_has_ctu_unsupported_type_then_err() {
+        let program = "
+FUNCTION_BLOCK DUMMY
+VAR_INPUT
+name : CTU;
+END_VAR
+         
+END_FUNCTION_BLOCK";
+
+        let input = parse_and_resolve_types(program);
+        let type_env = TypeEnvironment::new();
+        let symbol_env = SymbolEnvironment::new();
+        let result = apply(&input, &type_env, &symbol_env);
+
+        // CTU is still unsupported, so this should generate an error
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(1, err.len());

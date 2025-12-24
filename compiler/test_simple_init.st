@@ -1,0 +1,6 @@
+VAR_GLOBAL
+    x : INT := 42;
+END_VAR
+
+PROGRAM Test
+END_PROGRAM

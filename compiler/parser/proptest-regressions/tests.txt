@@ -1,0 +1,20 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 983b41b41378c17a87c26e87a6e03e06dd99166082398f4a09db81d78ead8955 # shrinks to (func_name, return_type, params) = ("A", "BOOL", [("or", "BOOL", false)])
+cc dc05fe96dcc825e753e83a7c82a6ec2d87b35b7efb7ea7a578b79c4ceb1f8b40 # shrinks to (class_name, variables, methods) = ("A", [], [("A", None)])
+cc 7d7ccbe80a3a45c1dd33cfde0d2bccd2443d7ec2a8572e75abe37fa03943b204 # shrinks to var_names = ["or", "A"], var_type = "BOOL"
+cc 11c7b875826eba3a7f19b7bd366dd4251ff53b5daf840ac62115aaf11169daf6 # shrinks to (class_name, variables, methods) = ("A", [], [("DO", None)])
+cc 6de4ac3f46e1ca57536adcba83e1781ed0ee97332d52e2c943b0a26fb3095fd9 # shrinks to (class_name, variables, methods) = ("A", [], [("J", None), ("J", None)])
+cc bb763cb6d200ee2214451b78e329a9fe6d8008580520ac5f540c9e6ec4885816 # shrinks to base_code = "FUNCTION test: BOOL\nVAR x: BOOL; END_VAR\ntest := TRUE;\nEND_FUNCTION", c_comment = "// Simple comment", position = "start"
+cc 945fdc181e1bd2d5f4037cd3abab4868c6dc5b94e7b89e4ea646e8a78d7defff # shrinks to fb_source = "FUNCTION_BLOCK DO\nVAR_INPUT\n    A : BOOL;\nEND_VAR\nEND_FUNCTION_BLOCK"
+cc 9d8872c38b09615503e9f66a0cf5e49fd94d5201d926622eabfc55b64443865f # shrinks to fb_source = "FUNCTION_BLOCK a\nVAR_INPUT\n    a : BOOL;\nEND_VAR\nVAR_OUTPUT\n    AT : BOOL;\nEND_VAR\nEND_FUNCTION_BLOCK"
+cc 7731ce46605eeb2f7c2744ce7d788f5d57503ac858a83c53c590732fd7978369 # shrinks to struct_decl = "TYPE ON : STRUCT\n    a : BOOL;\nEND_STRUCT;\nEND_TYPE"
+cc cbce0426c6ddcc6c8e3ab9d332782b3524f9abc43c87345141ff0c519f813084 # shrinks to struct_source = "TYPE A : STRUCT\n    aT : BOOL;\nEND_STRUCT;\nEND_TYPE\n\nPROGRAM TestStruct\nVAR\n    a : A;\nEND_VAR\n    a.aT := 42;\nEND_PROGRAM"
+cc ace56c03fe65daa58cc0749a99311ddcf86c078587c3d0f10ff1fa67802177fa # shrinks to var_name = "en", bounds_list = [(1, 11)], element_type = "INT"
+cc 7e1665527fe93573c057f4515487854f72cf191cb79da4187cf7a6d34ec143d1 # shrinks to var_name = "aT", base_type = "INT", bounds = (1, 11)
+cc 4aa26692432413cd66eaf61fc750330580c54bdf9884caf8d434e12a1d2f1e57 # shrinks to outer_struct_name = "A", inner_struct_name = "A", member_name = "oR", inner_member_name = "a", var_name = "a"
+cc 8a433f471fa2fe3401410cdf1f3f80a56d791dee33294c5b5f7f942095e34216 # shrinks to array_type_name = "A", element_type = "INT", bounds = (1, 11), var_name = "to"

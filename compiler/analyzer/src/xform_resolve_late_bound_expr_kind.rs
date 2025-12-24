@@ -131,10 +131,41 @@ impl Fold<Diagnostic> for DeclarationResolver {
                         self.current_type = self.find_type(&named.name).clone();
                     }
                     SymbolicVariableKind::Array(arr) => {
-                        Err(Diagnostic::todo_with_span(arr.span(), file!(), line!()))?
+                        // For array access (e.g., myArray[index]),
+                        // we need to resolve the base variable type first
+                        match arr.subscripted_variable.as_ref() {
+                            SymbolicVariableKind::Named(named) => {
+                                self.current_type = self.find_type(&named.name).clone();
+                                
+                                // For array access, the result type should be the element type
+                                // For now, we'll treat it as the same type as the base variable
+                                // TODO: Implement proper element type resolution
+                            }
+                            _ => {
+                                // Nested array access - for now treat as array type
+                                self.current_type = VariableType::Array;
+                            }
+                        }
                     }
                     SymbolicVariableKind::Structured(st) => {
-                        Err(Diagnostic::todo_with_span(st.span(), file!(), line!()))?
+                        // For structured variable access (e.g., myStruct.member),
+                        // we need to resolve the base variable type first
+                        match st.record.as_ref() {
+                            SymbolicVariableKind::Named(named) => {
+                                self.current_type = self.find_type(&named.name).clone();
+                            }
+                            _ => {
+                                // Nested structured access - for now treat as structure type
+                                self.current_type = VariableType::Structure;
+                            }
+                        }
+                    }
+                    SymbolicVariableKind::Dereference(deref) => {
+                        Err(Diagnostic::todo_with_span(deref.span(), file!(), line!()))?
+                    }
+                    SymbolicVariableKind::FunctionCall(func) => {
+                        // Function call as assignment target - treat as untyped for now
+                        self.current_type = VariableType::None;
                     }
                 }
             }
@@ -197,9 +228,13 @@ impl Fold<Diagnostic> for DeclarationResolver {
                 VariableType::FunctionBlock => Err(Diagnostic::todo(file!(), line!())),
                 VariableType::Subrange => Err(Diagnostic::todo(file!(), line!())),
                 VariableType::Structure => Err(Diagnostic::todo(file!(), line!())),
-                VariableType::Array => Ok(ExprKind::Variable(Variable::Symbolic(
-                    SymbolicVariableKind::Named(NamedVariable { name: node.value }),
-                ))),
+                VariableType::Array => {
+                    // For array variables, we need to handle array indexing
+                    // The result should be an array variable expression
+                    Ok(ExprKind::Variable(Variable::Symbolic(
+                        SymbolicVariableKind::Named(NamedVariable { name: node.value }),
+                    )))
+                }
                 VariableType::LateResolvedType => Err(Diagnostic::todo(file!(), line!())),
             },
         }

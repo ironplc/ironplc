@@ -1,0 +1,18 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 0e2d8a8765283d0476d9ef70425ffff9caa7338b01b682905c49462bada34228 # shrinks to type_name = "A", min_value = 0, max_value = 51, test_value = 52, program_name = "A", var_name = "a"
+cc 7cc6984a1df4c841589cb5340a63597c7d808b90948e7cd574425b69b3c7b843 # shrinks to type1_name = "DO", type2_name = "A", min1 = 0, max1 = 21, min2 = 0, max2 = 21, val1 = 0, val2 = 0, program_name = "A", var1_name = "a", var2_name = "aa", result_name = "aA"
+cc f910f949b725d6999b3efaa25a82fdb83f0c8fcde8feb0bfad55bffb286fa602 # shrinks to type1_name = "A", type2_name = "Aa", min1 = 0, max1 = 21, min2 = 0, max2 = 21, val1 = 0, val2 = 0, program_name = "Do", var1_name = "a", var2_name = "aa", result_name = "ab"
+cc de83337145fa768c0bdf740a3d9d77fdc683e54584742d9ccc7c708ec1fb107e # shrinks to type_name = "A", min_value = 0, max_value = 51, test_value = 0, program_name = "A", var_name = "eN"
+cc 691bd3a7e5feae6f4915de18cfc4fd3449e95da86d66639fe0bb850f44f12e5b # shrinks to type1_name = "A", type2_name = "AA", min1 = 0, max1 = 21, min2 = 0, max2 = 21, val1 = 0, val2 = 0, program_name = "A", var1_name = "a", var2_name = "aa", result_name = "aT"
+cc 16b71709ba895b79f7e9202615b030e58fb26807737b4c46cd236bad1475e9a8 # shrinks to type_name = "A", min_value = 0, max_value = 51, test_value = 0, program_name = "EN", var_name = "a"
+cc af9831b6692afa7af054d2118bc4ea49f447d1edd8dae2a1fd051c96b6a93c40 # shrinks to type1_name = "A", type2_name = "Aa", min1 = 0, max1 = 21, min2 = 0, max2 = 21, val1 = 0, val2 = 0, program_name = "A", var1_name = "a", var2_name = "a0", result_name = "en"
+cc c6e4c6eed26581f6293a94cfdd99224a0b1189066a833a179c845e5aa5be6dfd # shrinks to type_name = "A", min_value = 0, max_value = 51, test_value = 0, program_name = "Tp", var_name = "a"
+cc 875f234bd7aa20d8530af7a0da2070818ef72be0e6a5d61b97fce32647b32d83 # shrinks to type1_name = "A", type2_name = "Aa", min1 = 0, max1 = 21, min2 = 0, max2 = 21, val1 = 0, val2 = 0, program_name = "A", var1_name = "a", var2_name = "a_", result_name = "tp"
+cc 1bdb9e0c47d839c087ea4a191177f1536bf68133bb1c8f73834bee1141c64fc3 # shrinks to type1_name = "TP", type2_name = "A", min1 = 0, max1 = 21, min2 = 0, max2 = 21, val1 = 0, val2 = 0, program_name = "A", var1_name = "a", var2_name = "b", result_name = "a_"
+cc 2705c5db9dcda393156f6fbf47b6d8755d78cfc52dff0aa0bed156676e6496f2 # shrinks to type1_name = "A", type2_name = "Aa", min1 = 0, max1 = 21, min2 = 0, max2 = 21, val1 = 0, val2 = 0, program_name = "A", var1_name = "tP", var2_name = "a", result_name = "aA"
+cc 44552f897b2e95306c34bcbc715088fbc9cf879ab66458a4b53592daddb9485c # shrinks to type1_name = "A", type2_name = "B", min1 = 0, max1 = 21, min2 = 0, max2 = 21, val1 = 0, val2 = 0, program_name = "On", var1_name = "a", var2_name = "aA", result_name = "a0"

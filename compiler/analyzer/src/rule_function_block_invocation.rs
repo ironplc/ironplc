@@ -216,6 +216,8 @@ impl<'a> RuleFunctionBlockUse<'a> {
 impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
     type Value = ();
 
+
+
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
@@ -241,6 +243,17 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        let res = node.recurse_visit(self);
+
+        // Remove all items from var init decl since we have left this context
+        self.var_to_fb.clear();
+        res
+    }
+
+    fn visit_class_declaration(
+        &mut self,
+        node: &ironplc_dsl::common::ClassDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         let res = node.recurse_visit(self);
 

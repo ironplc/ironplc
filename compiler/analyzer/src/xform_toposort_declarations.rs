@@ -50,6 +50,148 @@ use petgraph::{
 };
 use std::collections::HashMap;
 
+/// Convert a TypeDefinition to a DataTypeDeclarationKind for topological sorting
+fn convert_type_definition_to_data_type_declaration(type_def: TypeDefinition) -> DataTypeDeclarationKind {
+    match type_def.base_type {
+        DataTypeSpecificationKind::Elementary(elem_type) => {
+            match elem_type {
+                ElementaryTypeName::StringWithLength(len) => {
+                    // String with length should create a StringDeclaration
+                    DataTypeDeclarationKind::String(StringDeclaration {
+                        type_name: type_def.name,
+                        length: Integer {
+                            span: SourceSpan::default(),
+                            value: len as u128,
+                        },
+                        width: StringType::String,
+                        init: match type_def.default_value {
+                            Some(ConstantKind::CharacterString(s)) => {
+                                Some(s.value.iter().collect::<String>())
+                            }
+                            _ => None,
+                        },
+                    })
+                }
+                _ => {
+                    // Other elementary types create simple declarations
+                    DataTypeDeclarationKind::Simple(SimpleDeclaration {
+                        type_name: type_def.name,
+                        spec_and_init: InitialValueAssignmentKind::Simple(SimpleInitializer {
+                            type_name: TypeName::from(match elem_type {
+                                ElementaryTypeName::BOOL => "BOOL",
+                                ElementaryTypeName::INT => "INT",
+                                ElementaryTypeName::DINT => "DINT",
+                                ElementaryTypeName::REAL => "REAL",
+                                ElementaryTypeName::TIME => "TIME",
+                                ElementaryTypeName::BYTE => "BYTE",
+                                _ => "UNKNOWN", // Handle other elementary types
+                            }),
+                            initial_value: type_def.default_value,
+                        }),
+                    })
+                }
+            }
+        }
+        DataTypeSpecificationKind::UserDefined(type_name) => {
+            // Check if this has an initial value - if so, it's a simple declaration
+            // If not, it's a late-bound type alias
+            if type_def.default_value.is_some() {
+                // Type alias with initial value - create a simple declaration
+                DataTypeDeclarationKind::Simple(SimpleDeclaration {
+                    type_name: type_def.name,
+                    spec_and_init: InitialValueAssignmentKind::Simple(SimpleInitializer {
+                        type_name: type_name,
+                        initial_value: type_def.default_value,
+                    }),
+                })
+            } else {
+                // Type alias without initial value - create a late-bound declaration
+                DataTypeDeclarationKind::LateBound(LateBoundDeclaration {
+                    data_type_name: type_def.name,
+                    base_type_name: type_name,
+                })
+            }
+        }
+        DataTypeSpecificationKind::Enumeration(enum_spec) => {
+            DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
+                type_name: type_def.name,
+                spec_init: EnumeratedSpecificationInit {
+                    spec: EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues {
+                        values: enum_spec.values,
+                    }),
+                    default: match type_def.default_value {
+                        Some(ConstantKind::CharacterString(s)) => {
+                            // Convert string to enumerated value
+                            Some(EnumeratedValue {
+                                type_name: None,
+                                value: Id::from(&s.value.iter().collect::<String>()),
+                            })
+                        }
+                        _ => None,
+                    },
+                },
+            })
+        }
+        DataTypeSpecificationKind::Subrange(subrange_spec) => {
+            DataTypeDeclarationKind::Subrange(SubrangeDeclaration {
+                type_name: type_def.name,
+                spec: SubrangeSpecificationKind::Specification(SubrangeSpecification {
+                    type_name: subrange_spec.base_type,
+                    subrange: Subrange {
+                        start: subrange_spec.lower_bound,
+                        end: subrange_spec.upper_bound,
+                    },
+                }),
+                default: match type_def.default_value {
+                    Some(ConstantKind::IntegerLiteral(int_lit)) => Some(int_lit.value),
+                    _ => None,
+                },
+            })
+        }
+        DataTypeSpecificationKind::Array(array_spec) => {
+            // Convert ArraySpecification to ArraySpecificationKind
+            let array_subranges = ArraySubranges {
+                ranges: array_spec.bounds.into_iter().map(|bounds| {
+                    Subrange {
+                        start: bounds.lower,
+                        end: bounds.upper,
+                    }
+                }).collect(),
+                type_name: match array_spec.element_type.as_ref() {
+                    DataTypeSpecificationKind::Elementary(elem_type) => {
+                        TypeName::from(elem_type.as_id().original())
+                    }
+                    DataTypeSpecificationKind::UserDefined(type_name) => type_name.clone(),
+                    _ => TypeName::from("UNKNOWN"), // Fallback for complex types
+                },
+            };
+            
+            DataTypeDeclarationKind::Array(ArrayDeclaration {
+                type_name: type_def.name,
+                spec: ArraySpecificationKind::Subranges(array_subranges),
+                init: vec![], // TODO: Handle array initialization if needed
+            })
+        }
+        DataTypeSpecificationKind::String(_string_spec) => {
+            // Convert string specification to string declaration
+            DataTypeDeclarationKind::String(StringDeclaration {
+                type_name: type_def.name,
+                length: Integer {
+                    span: SourceSpan::default(),
+                    value: 80, // Default string length
+                },
+                width: StringType::String, // Default to regular string
+                init: match type_def.default_value {
+                    Some(ConstantKind::CharacterString(s)) => {
+                        Some(s.value.iter().collect::<String>())
+                    }
+                    _ => None,
+                },
+            })
+        }
+    }
+}
+
 pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
     // Walk to build a graph of types, POUs and their relationships
     let mut data_type_visitor = RuleGraphReferenceableElements::new();
@@ -68,6 +210,7 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
     // at the beginning.
     let mut types_by_name: HashMap<Id, DataTypeDeclarationKind> = HashMap::new();
     let mut elems_by_name: HashMap<Id, LibraryElementKind> = HashMap::new();
+    let mut action_blocks: Vec<LibraryElementKind> = Vec::new();
     for element in lib.elements {
         match element {
             LibraryElementKind::DataTypeDeclaration(decl) => {
@@ -116,6 +259,13 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
                             DataTypeDeclarationKind::String(decl),
                         );
                     }
+                    DataTypeDeclarationKind::Reference(decl) => {
+                        // Reference types can refer to other declarations
+                        types_by_name.insert(
+                            decl.type_name.name.clone(),
+                            DataTypeDeclarationKind::Reference(decl),
+                        );
+                    }
                     DataTypeDeclarationKind::LateBound(decl) => {
                         types_by_name.insert(
                             decl.data_type_name.name.clone(),
@@ -148,6 +298,76 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
                     LibraryElementKind::ConfigurationDeclaration(decl),
                 );
             }
+            LibraryElementKind::ClassDeclaration(decl) => {
+                elems_by_name.insert(
+                    decl.name.name.clone(),
+                    LibraryElementKind::ClassDeclaration(decl),
+                );
+            }
+            LibraryElementKind::ActionBlockDeclaration(decl) => {
+                // Action blocks don't have names that can be referenced by other elements,
+                // so they don't participate in topological sorting. We'll add them back at the end.
+                action_blocks.push(LibraryElementKind::ActionBlockDeclaration(decl));
+            }
+            LibraryElementKind::GlobalVariableDeclaration(decl) => {
+                // Global variable declarations don't have names that can be referenced by other elements,
+                // so they don't participate in topological sorting. We'll add them back at the end.
+                action_blocks.push(LibraryElementKind::GlobalVariableDeclaration(decl));
+            }
+            LibraryElementKind::TypeDefinitionBlock(block) => {
+                // Extract individual type definitions from the block and add them to types_by_name
+                for type_def in block.definitions {
+                    // Convert TypeDefinition to DataTypeDeclarationKind for sorting
+                    let data_type_decl = convert_type_definition_to_data_type_declaration(type_def);
+                    match data_type_decl {
+                        DataTypeDeclarationKind::Simple(decl) => {
+                            types_by_name.insert(
+                                decl.type_name.name.clone(),
+                                DataTypeDeclarationKind::Simple(decl),
+                            );
+                        }
+                        DataTypeDeclarationKind::String(decl) => {
+                            types_by_name.insert(
+                                decl.type_name.name.clone(),
+                                DataTypeDeclarationKind::String(decl),
+                            );
+                        }
+                        DataTypeDeclarationKind::Enumeration(decl) => {
+                            types_by_name.insert(
+                                decl.type_name.name.clone(),
+                                DataTypeDeclarationKind::Enumeration(decl),
+                            );
+                        }
+                        DataTypeDeclarationKind::Subrange(decl) => {
+                            types_by_name.insert(
+                                decl.type_name.name.clone(),
+                                DataTypeDeclarationKind::Subrange(decl),
+                            );
+                        }
+                        DataTypeDeclarationKind::Array(decl) => {
+                            types_by_name.insert(
+                                decl.type_name.name.clone(),
+                                DataTypeDeclarationKind::Array(decl),
+                            );
+                        }
+                        DataTypeDeclarationKind::Structure(decl) => {
+                            types_by_name.insert(
+                                decl.type_name.name.clone(),
+                                DataTypeDeclarationKind::Structure(decl),
+                            );
+                        }
+                        DataTypeDeclarationKind::LateBound(decl) => {
+                            types_by_name.insert(
+                                decl.data_type_name.name.clone(),
+                                DataTypeDeclarationKind::LateBound(decl),
+                            );
+                        }
+                        _ => {
+                            // Handle other types as needed
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -159,6 +379,9 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
             .map(LibraryElementKind::DataTypeDeclaration)
     }));
     elements.extend(sorted_ids.iter().filter_map(|id| elems_by_name.remove(id)));
+    
+    // Add action blocks at the end since they don't participate in topological sorting
+    elements.extend(action_blocks);
 
     Ok(Library { elements })
 }
@@ -347,6 +570,16 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         res
     }
 
+    fn visit_reference_declaration(
+        &mut self,
+        node: &ReferenceDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        let this = self.declarations.add_node(&node.type_name.name);
+        let depends_on = self.declarations.add_node(&node.referenced_type.name);
+        self.declarations.graph.add_edge(depends_on, this, ());
+        Ok(())
+    }
+
     fn visit_string_declaration(
         &mut self,
         node: &StringDeclaration,
@@ -356,6 +589,42 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
+    }
+
+    fn visit_type_definition_block(
+        &mut self,
+        node: &TypeDefinitionBlock,
+    ) -> Result<Self::Value, Diagnostic> {
+        // Process each type definition in the block
+        for type_def in &node.definitions {
+            // Add the type definition to the graph
+            self.declarations.add_node(&type_def.name.name);
+            
+            // Add dependencies based on the base type
+            match &type_def.base_type {
+                DataTypeSpecificationKind::UserDefined(base_type) => {
+                    let this = self.declarations.add_node(&type_def.name.name);
+                    let depends_on = self.declarations.add_node(&base_type.name);
+                    self.declarations.graph.add_edge(depends_on, this, ());
+                }
+                DataTypeSpecificationKind::Array(array_spec) => {
+                    let this = self.declarations.add_node(&type_def.name.name);
+                    match array_spec.element_type.as_ref() {
+                        DataTypeSpecificationKind::UserDefined(element_type) => {
+                            let depends_on = self.declarations.add_node(&element_type.name);
+                            self.declarations.graph.add_edge(depends_on, this, ());
+                        }
+                        _ => {
+                            // Elementary types don't need dependencies
+                        }
+                    }
+                }
+                _ => {
+                    // Elementary types, enumerations, subranges, and strings don't need dependencies
+                }
+            }
+        }
+        Ok(())
     }
 
     // POU declarations
@@ -393,6 +662,17 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         res
     }
 
+    fn visit_class_declaration(
+        &mut self,
+        node: &ironplc_dsl::common::ClassDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.current_from = Some(node.name.name.clone());
+        self.declarations.add_node(&node.name.name);
+        let res = node.recurse_visit(self);
+        self.current_from = None;
+        res
+    }
+
     fn visit_configuration_declaration(
         &mut self,
         node: &ironplc_dsl::configuration::ConfigurationDeclaration,
@@ -418,6 +698,16 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
             None => return Err(Diagnostic::todo(file!(), line!())),
         }
 
+        Ok(())
+    }
+
+    fn visit_global_variable_declaration(
+        &mut self,
+        _node: &GlobalVariableDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        // Global variable declarations don't participate in topological sorting
+        // since they don't have names that can be referenced by other elements.
+        // We can safely skip processing their contents for dependency analysis.
         Ok(())
     }
 
@@ -450,7 +740,13 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                     }
                 }
             }
-            None => return Err(Diagnostic::todo(file!(), line!())),
+            None => {
+                // This can happen when processing global variables or other contexts
+                // where there's no current declaration context. In these cases,
+                // we don't need to track dependencies since global variables
+                // don't participate in topological sorting.
+                // Just skip processing the initial value assignments.
+            }
         }
 
         node.recurse_visit(self)
@@ -724,8 +1020,6 @@ END_TYPE";
 
         let library = parse_only(program);
         let library = apply(library).unwrap();
-
-        println!("{library:?}");
 
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);

@@ -101,6 +101,17 @@ impl Visitor<Diagnostic> for ScopedTable<'_, Id, DummyNode> {
         ret
     }
 
+    fn visit_class_declaration(
+        &mut self,
+        node: &ironplc_dsl::common::ClassDeclaration,
+    ) -> Result<(), Diagnostic> {
+        self.enter();
+        self.add(&node.name.name, DummyNode {});
+        let ret = node.recurse_visit(self);
+        self.exit();
+        ret
+    }
+
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         self.add_if(node.identifier.symbolic_id(), DummyNode {});
         node.recurse_visit(self)

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 2d05593be03688e15b879feeb31ce26a1e8ba6354bf39487d4f561ae539689bf # shrinks to type_block = "TYPE\n    A : INT;\nEND_TYPE", global_block = "VAR_GLOBAL\n    tO : INT;\nEND_VAR", program = "PROGRAM A\nEND_PROGRAM", order = 0

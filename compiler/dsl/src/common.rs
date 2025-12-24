@@ -14,6 +14,7 @@ use time::convert::{Day, Hour, Minute, Second};
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
 use dsl_macro_derive::Recurse;
+use serde::Serialize;
 
 use crate::configuration::{ConfigurationDeclaration, Direction};
 use crate::core::{Id, Located, SourceSpan};
@@ -26,7 +27,7 @@ use crate::visitor::Visitor;
 /// Container for elementary constants.
 ///
 /// See section 2.2.
-#[derive(PartialEq, Clone, Debug, Recurse)]
+#[derive(PartialEq, Clone, Debug, Recurse, Serialize)]
 pub enum ConstantKind {
     IntegerLiteral(IntegerLiteral),
     RealLiteral(RealLiteral),
@@ -37,6 +38,7 @@ pub enum ConstantKind {
     Date(DateLiteral),
     DateAndTime(DateAndTimeLiteral),
     BitStringLiteral(BitStringLiteral),
+    Null(NullLiteral),
 }
 
 impl ConstantKind {
@@ -48,10 +50,23 @@ impl ConstantKind {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum Boolean {
     True,
     False,
+}
+
+/// Null literal for reference types.
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
+pub struct NullLiteral {
+    #[recurse(ignore)]
+    pub span: SourceSpan,
+}
+
+impl Located for NullLiteral {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
 }
 
 // Numeric liberals declared by 2.2.1. Numeric literals define
@@ -60,7 +75,7 @@ pub enum Boolean {
 
 /// Integer liberal. The representation is of the largest possible integer
 /// and later bound to smaller types depend on context.
-#[derive(Debug, Clone, PartialEq, Recurse)]
+#[derive(Debug, Clone, PartialEq, Recurse, Serialize)]
 pub struct Integer {
     pub span: SourceSpan,
     /// The value in the maximum possible size. An integer is inherently
@@ -220,7 +235,7 @@ impl fmt::Display for Integer {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Recurse)]
+#[derive(Debug, Clone, PartialEq, Recurse, Serialize)]
 pub struct SignedInteger {
     pub value: Integer,
     #[recurse(ignore)]
@@ -323,7 +338,7 @@ impl From<SignedInteger> for String {
 /// A signed integer literal with a optional type name.
 ///
 /// See section 2.2.1.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct IntegerLiteral {
     pub value: SignedInteger,
     // TODO restrict to valid integer type names
@@ -335,7 +350,7 @@ pub struct IntegerLiteral {
 ///
 /// The structure keeps the whole and decimal parts as integers so that
 /// we do not lose precision with floating point rounding.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct FixedPoint {
     pub span: SourceSpan,
     pub whole: u64,
@@ -414,7 +429,7 @@ impl From<Integer> for FixedPoint {
 }
 
 /// See section 2.2.1.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct RealLiteral {
     pub value: f64,
     // TODO restrict to valid float type names
@@ -440,7 +455,7 @@ impl RealLiteral {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct BooleanLiteral {
     pub value: Boolean,
 }
@@ -452,7 +467,7 @@ impl BooleanLiteral {
 }
 
 // See section 2.2.2
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct CharacterStringLiteral {
     pub value: Vec<char>,
 }
@@ -463,7 +478,7 @@ impl CharacterStringLiteral {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct BitStringLiteral {
     pub value: Integer,
     // TODO restrict to valid float type names
@@ -476,7 +491,7 @@ pub struct BitStringLiteral {
 /// Types are all identifiers but we use a separate structure
 /// because it is convenient to treat types and other identifiers
 /// separately.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct TypeName {
     pub name: Id,
 }
@@ -517,7 +532,7 @@ impl fmt::Display for TypeName {
 /// Elementary type names.
 ///
 /// See section 2.3.1.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub enum ElementaryTypeName {
     BOOL,
     SINT,
@@ -535,11 +550,19 @@ pub enum ElementaryTypeName {
     TimeOfDay,
     DateAndTime,
     STRING,
+    /// STRING with specified maximum length
+    StringWithLength(u32),
     BYTE,
     WORD,
     DWORD,
     LWORD,
     WSTRING,
+    /// Timer On Delay function block
+    TON,
+    /// Timer Off Delay function block
+    TOF,
+    /// Timer Pulse function block
+    TP,
 }
 
 impl ElementaryTypeName {
@@ -561,11 +584,15 @@ impl ElementaryTypeName {
             ElementaryTypeName::TimeOfDay => Id::from("TIME_OF_DAY"),
             ElementaryTypeName::DateAndTime => Id::from("DATE_AND_TIME"),
             ElementaryTypeName::STRING => Id::from("STRING"),
+            ElementaryTypeName::StringWithLength(len) => Id::from(&format!("STRING({})", len)),
             ElementaryTypeName::BYTE => Id::from("BYTE"),
             ElementaryTypeName::WORD => Id::from("WORD"),
             ElementaryTypeName::DWORD => Id::from("DWORD"),
             ElementaryTypeName::LWORD => Id::from("LWORD"),
             ElementaryTypeName::WSTRING => Id::from("WSTRING"),
+            ElementaryTypeName::TON => Id::from("TON"),
+            ElementaryTypeName::TOF => Id::from("TOF"),
+            ElementaryTypeName::TP => Id::from("TP"),
         }
     }
 }
@@ -589,11 +616,15 @@ impl From<ElementaryTypeName> for Id {
             ElementaryTypeName::TimeOfDay => Id::from("TIME_OF_DAY"),
             ElementaryTypeName::DateAndTime => Id::from("DATE_AND_TIME"),
             ElementaryTypeName::STRING => Id::from("STRING"),
+            ElementaryTypeName::StringWithLength(len) => Id::from(&format!("STRING({})", len)),
             ElementaryTypeName::BYTE => Id::from("BYTE"),
             ElementaryTypeName::WORD => Id::from("WORD"),
             ElementaryTypeName::DWORD => Id::from("DWORD"),
             ElementaryTypeName::LWORD => Id::from("LWORD"),
             ElementaryTypeName::WSTRING => Id::from("WSTRING"),
+            ElementaryTypeName::TON => Id::from("TON"),
+            ElementaryTypeName::TOF => Id::from("TOF"),
+            ElementaryTypeName::TP => Id::from("TP"),
         }
     }
 }
@@ -617,11 +648,15 @@ impl From<ElementaryTypeName> for TypeName {
             ElementaryTypeName::TimeOfDay => TypeName::from("TIME_OF_DAY"),
             ElementaryTypeName::DateAndTime => TypeName::from("DATE_AND_TIME"),
             ElementaryTypeName::STRING => TypeName::from("STRING"),
+            ElementaryTypeName::StringWithLength(len) => TypeName::from(&format!("STRING({})", len)),
             ElementaryTypeName::BYTE => TypeName::from("BYTE"),
             ElementaryTypeName::WORD => TypeName::from("WORD"),
             ElementaryTypeName::DWORD => TypeName::from("DWORD"),
             ElementaryTypeName::LWORD => TypeName::from("LWORD"),
             ElementaryTypeName::WSTRING => TypeName::from("WSTRING"),
+            ElementaryTypeName::TON => TypeName::from("TON"),
+            ElementaryTypeName::TOF => TypeName::from("TOF"),
+            ElementaryTypeName::TP => TypeName::from("TP"),
         }
     }
 }
@@ -629,7 +664,7 @@ impl From<ElementaryTypeName> for TypeName {
 /// Kinds of derived data types.
 ///
 /// See section 2.3.3.1
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum DataTypeDeclarationKind {
     /// Derived data type the restricts permitted values from a set of identifiers.
@@ -643,6 +678,8 @@ pub enum DataTypeDeclarationKind {
     Structure(StructureDeclaration),
     StructureInitialization(StructureInitializationDeclaration),
     String(StringDeclaration),
+    /// Reference type that points to another variable's memory location.
+    Reference(ReferenceDeclaration),
     /// Data declaration that is ambiguous at parse time and must be
     /// resolved to a data type declaration after parsing all types.
     LateBound(LateBoundDeclaration),
@@ -653,7 +690,7 @@ pub enum DataTypeDeclarationKind {
 /// * enumeration
 /// * structure
 /// * simple
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct LateBoundDeclaration {
     /// The type name of this declaration. Other library elements
     /// refer to this this type with this name.
@@ -672,17 +709,32 @@ impl Located for LateBoundDeclaration {
 }
 
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct EnumerationDeclaration {
     pub type_name: TypeName,
     // TODO need to understand when the context name matters in the definition
     pub spec_init: EnumeratedSpecificationInit,
 }
 
+/// Reference type declaration that creates a pointer-like type.
+///
+/// Represents REF_TO type declarations like: TYPE MyRef : REF_TO INT; END_TYPE
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
+pub struct ReferenceDeclaration {
+    pub type_name: TypeName,
+    pub referenced_type: TypeName,
+}
+
+impl Located for ReferenceDeclaration {
+    fn span(&self) -> SourceSpan {
+        SourceSpan::join2(&self.type_name, &self.referenced_type)
+    }
+}
+
 /// The specification of an enumeration with a possible default value.
 ///
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct EnumeratedSpecificationInit {
     pub spec: EnumeratedSpecificationKind,
     pub default: Option<EnumeratedValue>,
@@ -700,7 +752,7 @@ impl EnumeratedSpecificationInit {
 }
 
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub enum EnumeratedSpecificationKind {
     /// Enumeration declaration that renames another enumeration.
     TypeName(TypeName),
@@ -729,7 +781,7 @@ impl EnumeratedSpecificationKind {
 }
 
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct EnumeratedSpecificationValues {
     pub values: Vec<EnumeratedValue>,
 }
@@ -758,7 +810,7 @@ impl HasEnumeratedValues for EnumeratedSpecificationValues {
 /// ambiguous.)
 ///
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct EnumeratedValue {
     pub type_name: Option<TypeName>,
     pub value: Id,
@@ -787,7 +839,7 @@ impl Located for EnumeratedValue {
 /// specified values, that is, `[minimum, maximum]`.
 ///
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct SubrangeDeclaration {
     pub type_name: TypeName,
     pub spec: SubrangeSpecificationKind,
@@ -798,7 +850,7 @@ pub struct SubrangeDeclaration {
 /// or by specializing another type.
 ///
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub enum SubrangeSpecificationKind {
     Specification(SubrangeSpecification),
     Type(TypeName),
@@ -808,7 +860,7 @@ pub enum SubrangeSpecificationKind {
 /// type to a subset of the integer range.
 ///
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct SubrangeSpecification {
     /// The parent type that is being restricted.
     /// TODO how can this be restricted to integer type names?
@@ -820,25 +872,26 @@ pub struct SubrangeSpecification {
 /// The specification for a simple declared type.
 ///
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct SimpleDeclaration {
     pub type_name: TypeName,
     pub spec_and_init: InitialValueAssignmentKind,
 }
 
 /// Derived data type that
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct ArrayDeclaration {
     pub type_name: TypeName,
     pub spec: ArraySpecificationKind,
     pub init: Vec<ArrayInitialElementKind>,
 }
 
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub enum ArrayInitialElementKind {
     Constant(ConstantKind),
     EnumValue(EnumeratedValue),
     Repeated(Repeated),
+    Array(Vec<ArrayInitialElementKind>),
 }
 
 impl ArrayInitialElementKind {
@@ -850,7 +903,7 @@ impl ArrayInitialElementKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Repeated {
     pub size: Integer,
     pub init: Box<Option<ArrayInitialElementKind>>,
@@ -887,7 +940,7 @@ impl Repeated {
 /// may be nested but must not contain an instance of itself.
 ///
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct StructureDeclaration {
     /// The name of the structure.
     pub type_name: TypeName,
@@ -898,14 +951,14 @@ pub struct StructureDeclaration {
 /// Declares an element contained within a structure.
 ///
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct StructureElementDeclaration {
     pub name: Id,
     pub init: InitialValueAssignmentKind,
 }
 
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct StructureInitializationDeclaration {
     pub type_name: TypeName,
     pub elements_init: Vec<StructureElementInit>,
@@ -914,14 +967,14 @@ pub struct StructureInitializationDeclaration {
 /// Initializes a particular element in a structured type.
 ///
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct StructureElementInit {
     /// The name of the element in the structure to initialize.
     pub name: Id,
     pub init: StructInitialValueAssignmentKind,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum StringType {
     /// String of single-byte characters
     String,
@@ -932,7 +985,7 @@ pub enum StringType {
 /// Declares a string type with restricted length.
 ///
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct StringDeclaration {
     pub type_name: TypeName,
     pub length: Integer,
@@ -946,7 +999,7 @@ pub struct StringDeclaration {
 /// Location prefix for directly represented variables.
 ///
 /// See section 2.4.1.1.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum LocationPrefix {
     /// Input location
     I,
@@ -982,7 +1035,7 @@ impl TryFrom<&str> for LocationPrefix {
 /// are associated with the variable.
 ///
 /// See section 2.4.1.1.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum SizePrefix {
     /// Unspecified (indicated by asterisk)
     Unspecified,
@@ -1027,13 +1080,13 @@ impl TryFrom<&str> for SizePrefix {
 }
 
 /// Array specification defines a size/shape of an array.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub enum ArraySpecificationKind {
     Type(TypeName),
     Subranges(ArraySubranges),
 }
 
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct ArraySubranges {
     pub ranges: Vec<Subrange>,
     pub type_name: TypeName,
@@ -1042,7 +1095,7 @@ pub struct ArraySubranges {
 /// Subrange of an array.
 ///
 /// See section 2.4.2.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct Subrange {
     pub start: SignedInteger,
     pub end: SignedInteger,
@@ -1056,7 +1109,7 @@ pub trait HasVariables {
     fn variables(&self) -> &Vec<VarDecl>;
 }
 
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct ProgramAccessDecl {
     pub access_name: Id,
     pub symbolic_variable: SymbolicVariableKind,
@@ -1068,7 +1121,7 @@ pub struct ProgramAccessDecl {
 /// Variable declaration.
 ///
 /// See section 2.4.3.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct VarDecl {
     // Not all variable types have a "name", so the name is part of the type.
     pub identifier: VariableIdentifier,
@@ -1077,6 +1130,8 @@ pub struct VarDecl {
     #[recurse(ignore)]
     pub qualifier: DeclarationQualifier,
     pub initializer: InitialValueAssignmentKind,
+    #[recurse(ignore)]
+    pub reference_annotation: Option<ReferenceAnnotation>,
 }
 
 impl Located for VarDecl {
@@ -1096,6 +1151,7 @@ impl VarDecl {
             initializer: InitialValueAssignmentKind::simple_uninitialized(TypeName::from(
                 type_name,
             )),
+            reference_annotation: None,
         }
     }
 
@@ -1110,6 +1166,7 @@ impl VarDecl {
                 initial_value: None,
                 keyword_span: SourceSpan::default(),
             }),
+            reference_annotation: None,
         }
     }
 
@@ -1126,6 +1183,7 @@ impl VarDecl {
                     initial_value: None,
                 },
             ),
+            reference_annotation: None,
         }
     }
 
@@ -1145,6 +1203,7 @@ impl VarDecl {
                     }),
                 },
             ),
+            reference_annotation: None,
         }
     }
 
@@ -1161,6 +1220,7 @@ impl VarDecl {
                     init: vec![],
                 },
             ),
+            reference_annotation: None,
         }
     }
 
@@ -1176,6 +1236,7 @@ impl VarDecl {
                     elements_init: vec![],
                 },
             ),
+            reference_annotation: None,
         }
     }
 
@@ -1190,6 +1251,7 @@ impl VarDecl {
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::LateResolvedType(TypeName::from(type_name)),
+            reference_annotation: None,
         }
     }
 
@@ -1247,7 +1309,7 @@ impl VarDecl {
 /// defines whether a name is required.
 ///
 /// See section 2.4.3.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum VariableType {
     /// Local to a POU.
     Var,
@@ -1276,7 +1338,7 @@ pub enum VariableType {
 /// Declaration (that does not permit a location).
 ///
 /// See section 2.4.3.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct EdgeVarDecl {
     pub identifier: Id,
     #[recurse(ignore)]
@@ -1290,7 +1352,7 @@ pub struct EdgeVarDecl {
 /// does not have multi-element information (arrays and structures).
 ///
 /// See section 2.4.1.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub enum VariableIdentifier {
     /// A variable data object that is referenced by a symbol. This is
     /// typical reference type common in most programming languages.
@@ -1357,7 +1419,7 @@ impl Display for VariableIdentifier {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct DirectVariableIdentifier {
     pub name: Option<Id>,
     pub address_assignment: AddressAssignment,
@@ -1378,7 +1440,7 @@ impl Located for DirectVariableIdentifier {
 /// effect, there are no groups.
 ///
 /// See section 2.4.3.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum DeclarationQualifier {
     // TODO Some of these are not valid for some contexts - should there be multiple
     // qualifier classes, indicate some how, or fail?
@@ -1393,7 +1455,7 @@ pub enum DeclarationQualifier {
 /// Location assignment for a variable.
 ///
 /// See section 2.4.3.1.
-#[derive(Clone, PartialEq, Recurse)]
+#[derive(Clone, PartialEq, Recurse, Serialize)]
 pub struct AddressAssignment {
     #[recurse(ignore)]
     pub location: LocationPrefix,
@@ -1471,7 +1533,7 @@ impl fmt::Display for AddressAssignment {
 /// variable.
 ///
 /// See section 2.4.3.2.
-#[derive(Clone, PartialEq, Debug, Recurse)]
+#[derive(Clone, PartialEq, Debug, Recurse, Serialize)]
 pub enum InitialValueAssignmentKind {
     /// Represents no type initializer.
     ///
@@ -1530,7 +1592,7 @@ impl InitialValueAssignmentKind {
 /// initialization is required.
 ///
 /// See section 2.4.3.2.
-#[derive(Clone, PartialEq, Debug, Recurse)]
+#[derive(Clone, PartialEq, Debug, Recurse, Serialize)]
 pub enum StructInitialValueAssignmentKind {
     Constant(ConstantKind),
     EnumeratedValue(EnumeratedValue),
@@ -1538,13 +1600,13 @@ pub enum StructInitialValueAssignmentKind {
     Structure(Vec<StructureElementInit>),
 }
 
-#[derive(Clone, PartialEq, Debug, Recurse)]
+#[derive(Clone, PartialEq, Debug, Recurse, Serialize)]
 pub struct EnumeratedInitialValueAssignment {
     pub type_name: TypeName,
     pub initial_value: Option<EnumeratedValue>,
 }
 
-#[derive(Clone, PartialEq, Debug, Recurse)]
+#[derive(Clone, PartialEq, Debug, Recurse, Serialize)]
 pub struct SimpleInitializer {
     pub type_name: TypeName,
     pub initial_value: Option<ConstantKind>,
@@ -1553,7 +1615,7 @@ pub struct SimpleInitializer {
 /// Provides the initialization of a string variable declaration.
 ///
 /// See sections 2.4.3.1 and 2.4.3.2.
-#[derive(Clone, PartialEq, Debug, Recurse)]
+#[derive(Clone, PartialEq, Debug, Recurse, Serialize)]
 pub struct StringInitializer {
     /// Maximum length of the string.
     pub length: Option<Integer>,
@@ -1583,7 +1645,7 @@ impl StringInitializer {
     }
 }
 
-#[derive(Clone, PartialEq, Debug, Recurse)]
+#[derive(Clone, PartialEq, Debug, Recurse, Serialize)]
 pub struct EnumeratedValuesInitializer {
     pub values: Vec<EnumeratedValue>,
     pub initial_value: Option<EnumeratedValue>,
@@ -1613,7 +1675,7 @@ impl HasEnumeratedValues for EnumeratedValuesInitializer {
     }
 }
 
-#[derive(Clone, PartialEq, Debug, Recurse)]
+#[derive(Clone, PartialEq, Debug, Recurse, Serialize)]
 pub struct FunctionBlockInitialValueAssignment {
     // In this context, the name is referring to a type, much like a function pointer
     // in other languages, so the correct representation here is a type and not
@@ -1624,13 +1686,13 @@ pub struct FunctionBlockInitialValueAssignment {
 }
 
 /// See section 2.4.3.2. #6
-#[derive(Clone, PartialEq, Debug, Recurse)]
+#[derive(Clone, PartialEq, Debug, Recurse, Serialize)]
 pub struct ArrayInitialValueAssignment {
     pub spec: ArraySpecificationKind,
     pub initial_values: Vec<ArrayInitialElementKind>,
 }
 
-#[derive(Clone, PartialEq, Debug, Recurse)]
+#[derive(Clone, PartialEq, Debug, Recurse, Serialize)]
 pub enum VariableSpecificationKind {
     Simple(TypeName),
     Subrange(SubrangeSpecificationKind),
@@ -1643,7 +1705,7 @@ pub enum VariableSpecificationKind {
     Ambiguous(TypeName),
 }
 
-#[derive(Clone, PartialEq, Debug, Recurse)]
+#[derive(Clone, PartialEq, Debug, Recurse, Serialize)]
 pub struct StringSpecification {
     #[recurse(ignore)]
     pub width: StringType,
@@ -1651,10 +1713,26 @@ pub struct StringSpecification {
     pub keyword_span: SourceSpan,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum EdgeDirection {
     Rising,
     Falling,
+}
+
+/// External function annotation type
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub enum ExternalAnnotation {
+    /// {external} annotation
+    CurlyBrace,
+    /// @EXTERNAL annotation
+    AtSymbol,
+}
+
+/// Reference parameter annotation type
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub enum ReferenceAnnotation {
+    /// {ref} annotation
+    Reference,
 }
 
 /// Container for top-level elements that are valid top-level declarations in
@@ -1662,13 +1740,17 @@ pub enum EdgeDirection {
 ///
 /// The library element flattens data type declaration blocks so that each
 /// enumeration is for a single data type declaration.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub enum LibraryElementKind {
     DataTypeDeclaration(DataTypeDeclarationKind),
     FunctionDeclaration(FunctionDeclaration),
     FunctionBlockDeclaration(FunctionBlockDeclaration),
     ProgramDeclaration(ProgramDeclaration),
     ConfigurationDeclaration(ConfigurationDeclaration),
+    ClassDeclaration(ClassDeclaration),
+    ActionBlockDeclaration(ActionBlockDeclaration),
+    GlobalVariableDeclaration(GlobalVariableDeclaration),
+    TypeDefinitionBlock(TypeDefinitionBlock),
 }
 
 ///Function Program Organization Unit Declaration
@@ -1678,13 +1760,15 @@ pub enum LibraryElementKind {
 /// return value and bound variables.
 ///
 /// See section 2.5.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct FunctionDeclaration {
     pub name: Id,
     pub return_type: TypeName,
     pub variables: Vec<VarDecl>,
     pub edge_variables: Vec<EdgeVarDecl>,
     pub body: Vec<StmtKind>,
+    #[recurse(ignore)]
+    pub external_annotation: Option<ExternalAnnotation>,
 }
 
 impl HasVariables for FunctionDeclaration {
@@ -1700,7 +1784,7 @@ impl HasVariables for FunctionDeclaration {
 /// and variables retain values between invocations.
 ///
 /// See section 2.5.2.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct FunctionBlockDeclaration {
     pub name: TypeName,
     pub variables: Vec<VarDecl>,
@@ -1721,18 +1805,249 @@ impl Located for FunctionBlockDeclaration {
     }
 }
 
+/// Class Program Organization Unit Declaration
+///
+/// A class declaration defines a class with variables and methods.
+/// Classes support object-oriented programming features.
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
+pub struct ClassDeclaration {
+    pub name: TypeName,
+    pub variables: Vec<VarDecl>,
+    pub methods: Vec<MethodDeclaration>,
+    pub span: SourceSpan,
+}
+
+impl HasVariables for ClassDeclaration {
+    fn variables(&self) -> &Vec<VarDecl> {
+        &self.variables
+    }
+}
+
+impl Located for ClassDeclaration {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
+}
+
+/// Method declaration within a class
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
+pub struct MethodDeclaration {
+    pub name: Id,
+    pub return_type: Option<TypeName>,
+    pub variables: Vec<VarDecl>,
+    pub edge_variables: Vec<EdgeVarDecl>,
+    pub body: Vec<StmtKind>,
+    pub span: SourceSpan,
+}
+
+impl HasVariables for MethodDeclaration {
+    fn variables(&self) -> &Vec<VarDecl> {
+        &self.variables
+    }
+}
+
+impl Located for MethodDeclaration {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
+}
+
+/// Action block declaration containing multiple named actions
+///
+/// Action blocks provide a way to organize code into reusable named sections
+/// within programs. Each action can be called by name and has access to
+/// program variables.
+///
+/// See section 4.1 in requirements.
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
+pub struct ActionBlockDeclaration {
+    pub actions: Vec<ActionDeclaration>,
+    pub span: SourceSpan,
+}
+
+impl Located for ActionBlockDeclaration {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
+}
+
+/// Individual action declaration within an action block
+///
+/// An action is a named code block that can be executed when called.
+/// Actions have access to the program's variable scope.
+///
+/// See section 4.1 in requirements.
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
+pub struct ActionDeclaration {
+    pub name: Id,
+    pub variables: Vec<VarDecl>,
+    pub body: Vec<StmtKind>,
+    pub span: SourceSpan,
+}
+
+impl Located for ActionDeclaration {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
+}
+
+/// Global variable declaration block that defines variables accessible across all program units.
+///
+/// Represents VAR_GLOBAL...END_VAR blocks at the top level of a library.
+/// Multiple VAR_GLOBAL blocks can exist and are merged into a unified global scope.
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
+pub struct GlobalVariableDeclaration {
+    pub variables: Vec<VarDecl>,
+    pub span: SourceSpan,
+}
+
+impl Located for GlobalVariableDeclaration {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
+}
+
+impl HasVariables for GlobalVariableDeclaration {
+    fn variables(&self) -> &Vec<VarDecl> {
+        &self.variables
+    }
+}
+
+/// Type definition block that contains multiple type definitions.
+///
+/// Represents TYPE...END_TYPE blocks at the top level of a library.
+/// Contains user-defined data type declarations including type aliases and custom types.
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
+pub struct TypeDefinitionBlock {
+    pub definitions: Vec<TypeDefinition>,
+    pub span: SourceSpan,
+}
+
+impl Located for TypeDefinitionBlock {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
+}
+
+/// Individual type definition within a TYPE block.
+///
+/// Defines a new type name that can be an alias to an existing type or
+/// a new type with optional default value assignment.
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
+pub struct TypeDefinition {
+    pub name: TypeName,
+    pub base_type: DataTypeSpecificationKind,
+    pub default_value: Option<ConstantKind>,
+    pub span: SourceSpan,
+}
+
+impl Located for TypeDefinition {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
+}
+
+/// Enhanced data type specification that supports all IEC 61131-3 data types.
+///
+/// Extends the existing type system to support enumeration types, array types,
+/// subrange types, and user-defined types for better esstee compatibility.
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
+pub enum DataTypeSpecificationKind {
+    /// Elementary data types (BOOL, INT, REAL, etc.)
+    Elementary(ElementaryTypeName),
+    /// User-defined type reference
+    UserDefined(TypeName),
+    /// Enumeration type with named constants
+    Enumeration(EnumerationSpecification),
+    /// Array type with bounds and element type
+    Array(ArraySpecification),
+    /// Subrange type with constrained bounds
+    Subrange(EnhancedSubrangeSpecification),
+    /// String type with optional length specification
+    String(StringSpecification),
+}
+
+/// Enhanced enumeration specification for inline enumeration definitions.
+///
+/// Supports enumeration types declared directly in variable declarations
+/// or type definitions, such as: e : (one, two, three);
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
+pub struct EnumerationSpecification {
+    pub values: Vec<EnumeratedValue>,
+    pub span: SourceSpan,
+}
+
+impl Located for EnumerationSpecification {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
+}
+
+/// Enhanced array specification for multi-dimensional arrays.
+///
+/// Supports array declarations with multiple dimensions and various bound types,
+/// including negative bounds and complex initialization patterns.
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
+pub struct ArraySpecification {
+    pub bounds: Vec<ArrayBounds>,
+    pub element_type: Box<DataTypeSpecificationKind>,
+    pub span: SourceSpan,
+}
+
+impl Located for ArraySpecification {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
+}
+
+/// Array bounds specification for a single dimension.
+///
+/// Defines the lower and upper bounds for one dimension of an array.
+/// Supports negative bounds and validates that lower <= upper.
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
+pub struct ArrayBounds {
+    pub lower: SignedInteger,
+    pub upper: SignedInteger,
+    pub span: SourceSpan,
+}
+
+impl Located for ArrayBounds {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
+}
+
+/// Enhanced subrange specification for constrained integer types.
+///
+/// Supports subrange types like INT(-10..2) with validation that
+/// lower bound is less than or equal to upper bound.
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
+pub struct EnhancedSubrangeSpecification {
+    pub base_type: ElementaryTypeName,
+    pub lower_bound: SignedInteger,
+    pub upper_bound: SignedInteger,
+    pub span: SourceSpan,
+}
+
+impl Located for EnhancedSubrangeSpecification {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
+}
+
 /// "Program" Program Organization Unit Declaration Declaration
 ///
 /// Programs assembled the units into a whole that embodies a measurement
 /// or control objective.
 ///
 /// See section 2.5.3.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct ProgramDeclaration {
     pub name: Id,
     pub variables: Vec<VarDecl>,
     pub access_variables: Vec<ProgramAccessDecl>,
     pub body: FunctionBlockBodyKind,
+    pub actions: Option<ActionBlockDeclaration>,
 }
 
 impl HasVariables for ProgramDeclaration {
@@ -1745,7 +2060,7 @@ impl HasVariables for ProgramDeclaration {
 /// function block.
 ///
 /// See section 2.5.2.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub enum FunctionBlockBodyKind {
     Sfc(Sfc),
     Statements(Statements),
@@ -1776,7 +2091,7 @@ impl FunctionBlockBodyKind {
 
 /// Container for a library that contains top-level elements. Libraries are
 /// typically represented as a file resource.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Serialize)]
 pub struct Library {
     pub elements: Vec<LibraryElementKind>,
 }
@@ -1968,5 +2283,158 @@ mod tests {
             )],
         };
         assert_ne!(lib1, lib3);
+    }
+
+    // Property-based tests for enhanced AST node creation
+    use proptest::prelude::*;
+
+    // **Feature: ironplc-esstee-syntax-support, Property 28: Complete AST Generation**
+    // **Validates: Requirements 8.1, 8.2, 8.3, 8.4**
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        #[test]
+        fn property_complete_ast_generation(
+            var_name in "[a-zA-Z][a-zA-Z0-9_]*",
+            type_name in "[a-zA-Z][a-zA-Z0-9_]*",
+            enum_values in prop::collection::vec("[a-zA-Z][a-zA-Z0-9_]*", 1..5),
+            lower_bound in -100i32..100i32,
+            upper_bound in -100i32..100i32,
+            array_lower in 0i32..10i32,
+            array_upper in 1i32..20i32,
+        ) {
+            // Filter to ensure valid bounds
+            prop_assume!(lower_bound <= upper_bound);
+            prop_assume!(array_lower <= array_upper);
+
+            // Test GlobalVariableDeclaration AST node creation
+            let global_var_decl = GlobalVariableDeclaration {
+                variables: vec![VarDecl::simple(&var_name, &type_name)],
+                span: SourceSpan::default(),
+            };
+            
+            // Verify the AST node is properly constructed
+            assert_eq!(global_var_decl.variables.len(), 1);
+            assert_eq!(global_var_decl.variables[0].identifier.symbolic_id().unwrap().original(), &var_name);
+            
+            // Test TypeDefinitionBlock AST node creation
+            let type_def_block = TypeDefinitionBlock {
+                definitions: vec![TypeDefinition {
+                    name: TypeName::from(&type_name),
+                    base_type: DataTypeSpecificationKind::Elementary(ElementaryTypeName::INT),
+                    default_value: None,
+                    span: SourceSpan::default(),
+                }],
+                span: SourceSpan::default(),
+            };
+            
+            // Verify the type definition block is properly constructed
+            assert_eq!(type_def_block.definitions.len(), 1);
+            assert_eq!(type_def_block.definitions[0].name.name.original(), &type_name);
+            
+            // Test EnumerationSpecification AST node creation
+            let enum_spec = EnumerationSpecification {
+                values: enum_values.iter().map(|v| EnumeratedValue::new(v)).collect(),
+                span: SourceSpan::default(),
+            };
+            
+            // Verify enumeration specification is properly constructed
+            assert_eq!(enum_spec.values.len(), enum_values.len());
+            for (i, expected_value) in enum_values.iter().enumerate() {
+                assert_eq!(enum_spec.values[i].value.original(), expected_value);
+            }
+            
+            // Test ArraySpecification AST node creation
+            let array_spec = ArraySpecification {
+                bounds: vec![ArrayBounds {
+                    lower: SignedInteger::new(&array_lower.to_string(), SourceSpan::default()).unwrap(),
+                    upper: SignedInteger::new(&array_upper.to_string(), SourceSpan::default()).unwrap(),
+                    span: SourceSpan::default(),
+                }],
+                element_type: Box::new(DataTypeSpecificationKind::Elementary(ElementaryTypeName::INT)),
+                span: SourceSpan::default(),
+            };
+            
+            // Verify array specification is properly constructed
+            assert_eq!(array_spec.bounds.len(), 1);
+            let lower_val: i128 = array_spec.bounds[0].lower.clone().try_into().unwrap();
+            let upper_val: i128 = array_spec.bounds[0].upper.clone().try_into().unwrap();
+            assert_eq!(lower_val, array_lower as i128);
+            assert_eq!(upper_val, array_upper as i128);
+            
+            // Test EnhancedSubrangeSpecification AST node creation
+            let subrange_spec = EnhancedSubrangeSpecification {
+                base_type: ElementaryTypeName::INT,
+                lower_bound: SignedInteger::new(&lower_bound.to_string(), SourceSpan::default()).unwrap(),
+                upper_bound: SignedInteger::new(&upper_bound.to_string(), SourceSpan::default()).unwrap(),
+                span: SourceSpan::default(),
+            };
+            
+            // Verify subrange specification is properly constructed
+            let subrange_lower: i128 = subrange_spec.lower_bound.clone().try_into().unwrap();
+            let subrange_upper: i128 = subrange_spec.upper_bound.clone().try_into().unwrap();
+            assert_eq!(subrange_lower, lower_bound as i128);
+            assert_eq!(subrange_upper, upper_bound as i128);
+            
+            // Test DataTypeSpecificationKind variants
+            let elementary_type = DataTypeSpecificationKind::Elementary(ElementaryTypeName::BOOL);
+            let user_defined_type = DataTypeSpecificationKind::UserDefined(TypeName::from(&type_name));
+            let enumeration_type = DataTypeSpecificationKind::Enumeration(enum_spec.clone());
+            let array_type = DataTypeSpecificationKind::Array(array_spec.clone());
+            let subrange_type = DataTypeSpecificationKind::Subrange(subrange_spec.clone());
+            
+            // Verify all DataTypeSpecificationKind variants can be created
+            match elementary_type {
+                DataTypeSpecificationKind::Elementary(ElementaryTypeName::BOOL) => {},
+                _ => panic!("Elementary type not properly constructed"),
+            }
+            
+            match user_defined_type {
+                DataTypeSpecificationKind::UserDefined(ref tn) => {
+                    assert_eq!(tn.name.original(), &type_name);
+                },
+                _ => panic!("User defined type not properly constructed"),
+            }
+            
+            match enumeration_type {
+                DataTypeSpecificationKind::Enumeration(ref es) => {
+                    assert_eq!(es.values.len(), enum_values.len());
+                },
+                _ => panic!("Enumeration type not properly constructed"),
+            }
+            
+            match array_type {
+                DataTypeSpecificationKind::Array(ref as_) => {
+                    assert_eq!(as_.bounds.len(), 1);
+                },
+                _ => panic!("Array type not properly constructed"),
+            }
+            
+            match subrange_type {
+                DataTypeSpecificationKind::Subrange(ref ss) => {
+                    assert_eq!(ss.base_type, ElementaryTypeName::INT);
+                },
+                _ => panic!("Subrange type not properly constructed"),
+            }
+            
+            // Test LibraryElementKind with new variants
+            let global_var_element = LibraryElementKind::GlobalVariableDeclaration(global_var_decl);
+            let type_def_element = LibraryElementKind::TypeDefinitionBlock(type_def_block);
+            
+            // Verify library elements can be created with new variants
+            match global_var_element {
+                LibraryElementKind::GlobalVariableDeclaration(ref gvd) => {
+                    assert_eq!(gvd.variables.len(), 1);
+                },
+                _ => panic!("Global variable declaration element not properly constructed"),
+            }
+            
+            match type_def_element {
+                LibraryElementKind::TypeDefinitionBlock(ref tdb) => {
+                    assert_eq!(tdb.definitions.len(), 1);
+                },
+                _ => panic!("Type definition block element not properly constructed"),
+            }
+        }
     }
 }

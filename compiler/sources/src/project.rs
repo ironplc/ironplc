@@ -44,7 +44,7 @@ impl SourceProject {
 
     /// Add source content directly to the project
     pub fn add_source(&mut self, file_id: FileId, content: String) {
-        trace!("Adding source file: {}", file_id);
+        trace!("Adding source file: {file_id}");
         let source = Source::new(content, &file_id);
         self.sources.insert(file_id, source);
     }

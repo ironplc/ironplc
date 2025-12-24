@@ -1,0 +1,1 @@
+TYPE MY_STRING : STRING(50) := "hello"; END_TYPE
