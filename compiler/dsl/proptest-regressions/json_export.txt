@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 917a1ecb817b3f3d29f072e89b3fc446945bb0152d1999c3adfaef9e93d779e7 # shrinks to library = Library { elements: [FunctionDeclaration(FunctionDeclaration { name: P, return_type: TypeName { name: BOOL }, variables: [], edge_variables: [], body: [], external_annotation: None }), FunctionDeclaration(FunctionDeclaration { name: P, return_type: TypeName { name: BOOL }, variables: [], edge_variables: [], body: [], external_annotation: None })] }

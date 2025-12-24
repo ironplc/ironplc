@@ -15,7 +15,7 @@ use ironplc_dsl::{
 use ironplc_parser::{options::ParseOptions, tokenize_program};
 use ironplc_plc2plc::write_to_string;
 use ironplc_problems::Problem;
-use log::{debug, error, trace};
+use log::{error, trace};
 use std::{
     collections::{HashMap, HashSet},
     fs::{canonicalize, metadata, read_dir},
@@ -37,6 +37,62 @@ pub fn check(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
     }
 
     println!("OK");
+    Ok(())
+}
+
+pub fn export_json(
+    paths: &[PathBuf], 
+    output_file: Option<&Path>, 
+    pretty_print: bool, 
+    include_comments: bool, 
+    include_locations: bool
+) -> Result<(), String> {
+    use ironplc_dsl::json_export::{JsonExporter, JsonExportOptions};
+    use std::fs::File;
+    use std::io::Write;
+
+    let mut project = create_project(paths, false)?;
+
+    // Parse the files to get the AST
+    let mut combined_library = ironplc_dsl::common::Library::new();
+    for src in project.sources_mut() {
+        let library = src.library().map_err(|e| format!("Failed to parse library: {:?}", e))?;
+        combined_library.elements.extend(library.elements.clone());
+    }
+
+    // Configure JSON export options
+    let options = JsonExportOptions {
+        include_comments,
+        include_locations,
+        pretty_print,
+    };
+
+    let exporter = JsonExporter::with_options(options);
+    
+    // Export to JSON
+    let json_result = exporter.export_library(&combined_library)
+        .map_err(|e| format!("JSON export failed: {}", e))?;
+
+    // Write to output file or stdout
+    match output_file {
+        Some(path) => {
+            // Create parent directories if they don't exist
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create directory '{}': {}", parent.display(), e))?;
+            }
+            
+            let mut file = File::create(path)
+                .map_err(|e| format!("Failed to create output file '{}': {}", path.display(), e))?;
+            file.write_all(json_result.as_bytes())
+                .map_err(|e| format!("Failed to write to output file: {}", e))?;
+            println!("JSON exported to: {}", path.display());
+        }
+        None => {
+            print!("{}", json_result);
+        }
+    }
+
     Ok(())
 }
 
@@ -94,17 +150,14 @@ pub fn tokenize(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> 
             .trim_start()
             .to_string();
 
-        debug!("{tokens}");
         println!("{tokens}");
 
         if !diagnostics.is_empty() {
-            println!("Number of errors {}", diagnostics.len());
             handle_diagnostics(&diagnostics, Some(&project), suppress_output);
             return Err(String::from("Not valid"));
         }
     }
 
-    println!("OK");
     Ok(())
 }
 
