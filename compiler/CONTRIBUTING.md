@@ -2,6 +2,16 @@
 
 This component is the `ironplcc` compiler.
 
+## Code Standards
+
+The compiler follows specific architectural patterns and coding standards defined in the project's steering files:
+
+* **Compiler Architecture** (`.kiro/steering/compiler-architecture.md`) - Module organization, semantic analysis patterns, and type system implementation
+* **Problem Code Management** (`.kiro/steering/problem-code-management.md`) - Error handling patterns and diagnostic creation
+* **IEC 61131-3 Compliance** (`.kiro/steering/iec-61131-3-compliance.md`) - Standard compliance validation and type system rules
+
+These steering files provide detailed implementation guidance that complements the development workflow described below.
+
 ## Developing
 
 Follow the steps in the sections below to setup and develop `ironplcc`.
@@ -15,23 +25,28 @@ source.
 ### Get the Code and Run a Test
 
 ```sh
-git clone https://github.com/garretfick/ironplc.git
+git clone https://github.com/ironplc/ironplc.git
 cd ironplc/compiler
 ```
 
 Run the checker using Cargo:
 
 ```sh
-cargo run check plc2x\resources\test\first_steps.st
+cargo run check plc2x/resources/test/first_steps.st
 ```
 
 ### Making Changes
 
-`ironplcc` has a large set of tests. Use `just` to execute them:
+`ironplcc` has a large set of tests. Use `just` to execute the full build pipeline (compile, test, and lint):
 
 ```sh
 just
 ```
+
+You can also run individual tasks:
+- `just compile` - Build the compiler
+- `just test` - Run tests and check coverage
+- `just lint` - Check code formatting and style
 
 ### Checking Coverage
 
@@ -74,3 +89,14 @@ cargo test --features trace | pegviz --output ./pegviz.html
 The project is split into several parts. The best way to find out
 what each part does is to open the Cargo.toml file and read the
 description.
+
+### Architecture Guidelines
+
+When working on the compiler:
+
+* **Keep modules focused**: Each analyzer/transformation module should handle one specific aspect and stay under 1000 lines of code
+* **Follow semantic analysis patterns**: Use the `try_from` pattern for AST transformations and proper error handling
+* **Implement proper diagnostics**: All errors must use the shared problem code system with clear, actionable messages
+* **Maintain IEC 61131-3 compliance**: Follow standard compliance rules and support configurable validation levels
+
+See the steering files referenced above for detailed implementation patterns and examples.

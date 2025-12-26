@@ -11,8 +11,19 @@ as a single repository that hosts all of components:
 * the [Visual Studio Code Extension](integrations/vscode/CONTRIBUTING.md)
 * the [documentation website](docs/CONTRIBUTING.md)
 
-See below for common recommdations or follow the links above for information
+See below for common recommendations or follow the links above for information
 about how to develop each component.
+
+## Code Standards and AI-Assisted Development
+
+IronPLC uses AI-assisted development with detailed coding standards and architectural patterns defined in steering files. These files guide both human and AI contributors to maintain consistency and quality:
+
+* **Development Standards** - Core project conventions, testing patterns, and error handling (`.kiro/steering/ironplc-development-standards.md`)
+* **Compiler Architecture** - Patterns for implementing language features and semantic analysis (`.kiro/steering/compiler-architecture.md`)
+* **Problem Code Management** - Guidelines for error handling and diagnostic creation (`.kiro/steering/problem-code-management.md`)
+* **IEC 61131-3 Compliance** - Standards compliance and validation rules (`.kiro/steering/iec-61131-3-compliance.md`)
+
+When contributing code, these steering files provide the detailed implementation guidance, while this CONTRIBUTING.md focuses on the development workflow and setup process.
 
 ## Developing
 
@@ -76,3 +87,17 @@ Execute the following to run what you can locally:
 ```sh
 just ci-commit-workflow
 ```
+
+## Code Quality Expectations
+
+### Testing Standards
+All code must follow BDD-style test naming conventions and include comprehensive test coverage. See the development standards steering file for specific patterns and examples.
+
+### Error Handling
+Error handling is critical for developer experience. All errors must use the shared problem code system with proper documentation. See the problem code management steering file for the complete lifecycle and requirements.
+
+### Architecture Compliance
+The compiler follows specific architectural patterns for semantic analysis and type checking. Modules must remain focused and under 1000 lines of code. See the compiler architecture steering file for detailed guidance.
+
+### IEC 61131-3 Compliance
+All language features must follow IEC 61131-3 standard compliance rules with configurable validation levels. See the compliance steering file for implementation requirements.
