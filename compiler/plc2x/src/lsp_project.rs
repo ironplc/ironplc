@@ -293,7 +293,7 @@ fn map_diagnostic(
         code: Some(NumberOrString::String(diagnostic.code)),
         code_description,
         source: Some("ironplc".into()),
-        message: format!("{}: {} ", description, diagnostic.primary.message),
+        message: format!("{description}: {} ", diagnostic.primary.message),
         related_information: None,
         tags: None,
         data: None,

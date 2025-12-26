@@ -21,7 +21,7 @@ pub fn parse_source(
             Problem::UnsupportedFileType,
             ironplc_dsl::diagnostic::Label::file(
                 file_id.clone(),
-                format!("Unsupported file type: {:?}", file_type),
+                format!("Unsupported file type: {file_type:?}"),
             ),
         )),
     }

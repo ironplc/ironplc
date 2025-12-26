@@ -138,8 +138,7 @@ fn validate_subrange_bounds(
             Label::span(
                 type_name.span(),
                 format!(
-                    "Subrange [{}, {}] is outside base type bounds [{}, {}]",
-                    min_value, max_value, type_min, type_max
+                    "Subrange [{min_value}, {max_value}] is outside base type bounds [{type_min}, {type_max}]"
                 ),
             ),
         ));

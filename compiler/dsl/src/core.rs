@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn file_id_when_display_then_returns_value() {
         let file_id = FileId::from_string("test/file.rs");
-        assert_eq!(format!("{}", file_id), "test/file.rs");
+        assert_eq!(format!("{file_id}"), "test/file.rs");
     }
 
     #[test]
@@ -243,7 +243,7 @@ mod tests {
         use std::path::Path;
         let path = Path::new("src/lib.rs");
         let file_id = FileId::from_path(path);
-        assert_eq!(format!("{}", file_id), "src/lib.rs");
+        assert_eq!(format!("{file_id}"), "src/lib.rs");
     }
 
     #[test]
