@@ -725,8 +725,6 @@ END_TYPE";
         let library = parse_only(program);
         let library = apply(library).unwrap();
 
-        println!("{library:?}");
-
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::Structure);

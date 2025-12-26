@@ -78,6 +78,43 @@ P0044,SubrangeOutOfBounds,Subrange is outside base type bounds
 
 ## Documentation Standards
 
+### Documentation Quadrants Framework
+All IronPLC documentation follows the **Documentation Quadrants** approach, organizing content into four distinct types:
+
+#### 1. Tutorials (Learning-Oriented)
+- **Purpose**: Guide newcomers through their first successful experience
+- **Audience**: People studying and learning
+- **Content**: Step-by-step lessons that work reliably
+- **Examples**: "Getting Started with IronPLC", "Your First PLC Program"
+- **Location**: `docs/tutorials/`
+
+#### 2. How-To Guides (Problem-Oriented)
+- **Purpose**: Show how to solve specific real-world problems
+- **Audience**: Practitioners at work who need to accomplish something
+- **Content**: Series of steps focused on achieving a goal
+- **Examples**: "How to Debug Compilation Errors", "How to Add a New Data Type"
+- **Location**: `docs/how-to/`
+
+#### 3. Technical Reference (Information-Oriented)
+- **Purpose**: Describe the machinery and how to operate it
+- **Audience**: Practitioners at work who need accurate information
+- **Content**: Structured descriptions of APIs, commands, and features
+- **Examples**: "Compiler CLI Reference", "Problem Code Reference", "Language Grammar"
+- **Location**: `docs/reference/`
+
+#### 4. Explanation (Understanding-Oriented)
+- **Purpose**: Clarify and illuminate topics for deeper understanding
+- **Audience**: People studying who want to understand concepts
+- **Content**: Discussions of design decisions, alternatives, and context
+- **Examples**: "IEC 61131-3 Compliance Strategy", "Compiler Architecture Overview"
+- **Location**: `docs/explanation/`
+
+### Documentation Relationships
+- **Tutorials + How-To Guides**: Both describe practical steps
+- **How-To Guides + Reference**: Both serve practitioners at work
+- **Reference + Explanation**: Both provide theoretical knowledge
+- **Tutorials + Explanation**: Both support learning and study
+
 ### Problem Documentation Format
 Each problem code must have a corresponding `.rst` file in `docs/compiler/problems/` with:
 
@@ -141,6 +178,14 @@ Use `just` for all build tasks. Key commands:
 - `just devenv-smoke` - Quick environment check
 
 For complete setup and development workflow instructions, see [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+### Version Management
+**Version numbers are generated and incremented automatically** - no manual version management is required:
+
+- **Automated versioning**: The build system handles version increments automatically
+- **No manual updates**: Do not manually edit version numbers in `Cargo.toml` or other files
+- **Synchronization**: The build system ensures version numbers stay synchronized across all components
+- **Release process**: Version bumps happen as part of the automated release workflow
 
 ### Synchronization Checks
 The build system enforces synchronization between components:
