@@ -94,7 +94,6 @@ mod test {
 
     fn assert_no_err(lexer: &mut Lexer<'_, TokenType>) {
         while let Some(tok) = lexer.next() {
-            println!("{:?} {:?}", tok, lexer.slice());
             assert!(tok.is_ok(), "{}", lexer.slice());
         }
     }
