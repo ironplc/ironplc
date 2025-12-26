@@ -12,4 +12,4 @@ extension.
 1. Open the directory containing this file in Visual Studio Code.
 1. In the Dev Container terminal, change to the `docs` folder.
 1. Run `just`.
-1. Open `_build\index.html` in a browser.
+1. Open `_build/index.html` in a browser.

@@ -27,19 +27,24 @@ to be written entirely in safe Rust to prevent security issues. The development
 environment aims to be available via Visual Studio Code to provide
 a first class environment.
 
-### Milestones
+### Progress
 
-The project is progressing towards a minimum loveable product. The following
-milestones are the current plan to achieve that loveable product.
+The project is progressing towards a minimum loveable product.
+What works today:
 
-* ✅ Implement a parser for a single IEC 61131-3 structured text file
-* ✅ Implement a Visual Studio Code Extension that uses the parser
-* ✅ Build Windows and macOS installers
-* ✅ Setup weekly automated deployments
-* ✅ Build documentation website
-* ✅ Implement semantic analyzer for multiple IEC 61131-3 structured text file
-* ✅ Implement a tokenizer to enable syntax highlighting
-* ✅ Enable working with multiple files via Visual Studio Code Extension
+* ✅ Syntax highlighting
+* ✅ Analysis of structured text files
+* ✅ Visual Studio Code Extension
+* ✅ Documentation website
+
+What doesn't work:
+* Executing structured text
+
+IronPLC supports:
+
+* ✅ Windows
+* ✅ MacOS
+* ✅ Linux (probably)
 
 ## Usage
 
