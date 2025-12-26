@@ -55,7 +55,7 @@ mod tests {
         // Create an enumeration with less than 256 values to test 8-bit underlying type
         let mut values = Vec::new();
         for i in 0..10 {
-            values.push(format!("VALUE_{}", i));
+            values.push(format!("VALUE_{i}"));
         }
         let values_str = values.join(", ");
 
@@ -87,7 +87,7 @@ END_TYPE
         // Create an enumeration with more than 256 values to test 16-bit underlying type
         let mut values = Vec::new();
         for i in 0..257 {
-            values.push(format!("VALUE_{}", i));
+            values.push(format!("VALUE_{i}"));
         }
         let values_str = values.join(", ");
 
@@ -119,7 +119,7 @@ END_TYPE
         // Create an enumeration with more than 65,536 values to test 32-bit underlying type
         let mut values = Vec::new();
         for i in 0..65_537 {
-            values.push(format!("VALUE_{}", i));
+            values.push(format!("VALUE_{i}"));
         }
         let values_str = values.join(", ");
 
@@ -143,7 +143,7 @@ END_TYPE
         assert_eq!(1, errors.len());
         assert_eq!(
             Problem::EnumerationTooManyValues.code(),
-            errors.get(0).unwrap().code
+            errors.first().unwrap().code
         );
     }
 
