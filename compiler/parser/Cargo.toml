@@ -22,3 +22,7 @@ ironplc-problems = { path = "../problems", version = "0.147.0" }
 ironplc-test = { path = "../test", version = "0.147.0" }
 logos = "0.14.0"
 peg = "0.8.3"
+
+[dev-dependencies]
+proptest = { workspace = true }
+quickcheck = "1.0"

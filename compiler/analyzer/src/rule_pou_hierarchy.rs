@@ -66,6 +66,7 @@ enum PouKind {
     Function,
     FunctionBlock,
     Program,
+    Class,
     Config,
 }
 
@@ -151,6 +152,27 @@ impl Visitor<Diagnostic> for HierarchyVisitor {
         node.recurse_visit(self)
     }
 
+    fn visit_class_declaration(
+        &mut self,
+        node: &ironplc_dsl::common::ClassDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        if let Some(existing) = self.pou_types.insert(
+            node.name.name.clone(),
+            (PouKind::Class, node.name.span()),
+        ) {
+            self.problems.push(
+                Diagnostic::problem(
+                    Problem::PouDeclNameDuplicated,
+                    Label::span(node.name.span(), "POU"),
+                )
+                .with_secondary(Label::span(existing.1, "POU")),
+            );
+        }
+        self.context_type = Some((PouKind::Class, node.name.span()));
+
+        node.recurse_visit(self)
+    }
+
     fn visit_configuration_declaration(
         &mut self,
         node: &ironplc_dsl::configuration::ConfigurationDeclaration,
@@ -176,20 +198,8 @@ impl Visitor<Diagnostic> for HierarchyVisitor {
         &mut self,
         node: &ironplc_dsl::common::FunctionBlockInitialValueAssignment,
     ) -> Result<Self::Value, Diagnostic> {
-        if let Some(existing) = self.pou_types.insert(
-            node.type_name.name.clone(),
-            (PouKind::FunctionBlock, node.type_name.name.span()),
-        ) {
-            self.problems.push(
-                Diagnostic::problem(
-                    Problem::PouDeclNameDuplicated,
-                    Label::span(node.type_name.name.span(), "POU"),
-                )
-                .with_secondary(Label::span(existing.1, "POU")),
-            );
-        }
-        self.context_type = Some((PouKind::Config, node.type_name.name.span()));
-
+        // This is a variable declaration using a function block type, not a POU declaration
+        // We should not add it to the pou_types map as it would cause false duplicate errors
         node.recurse_visit(self)
     }
 }

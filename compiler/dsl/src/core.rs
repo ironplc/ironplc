@@ -11,6 +11,7 @@ use std::{cmp::Ordering, hash::Hash, hash::Hasher};
 use crate::fold::Fold;
 use crate::visitor::Visitor;
 use dsl_macro_derive::Recurse;
+use serde::Serialize;
 
 // Static singletons for common FileId values to avoid repeated allocations.
 // This is particularly beneficial for test code which frequently uses FileId::default(),
@@ -66,10 +67,19 @@ impl fmt::Display for FileId {
     }
 }
 
+impl Serialize for FileId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.0)
+    }
+}
+
 /// Location in a file of a language element instance.
 ///
 /// The location is defined by indices in the source file.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SourceSpan {
     /// The position of the starting character (0-indexed).
     pub start: usize,
@@ -140,7 +150,7 @@ pub trait Located {
 /// and can use containers as appropriate.
 ///
 /// See section 2.1.2.
-#[derive(Recurse)]
+#[derive(Recurse, Serialize)]
 pub struct Id {
     #[recurse(ignore)]
     pub original: String,
@@ -235,7 +245,7 @@ mod tests {
     #[test]
     fn file_id_when_display_then_returns_value() {
         let file_id = FileId::from_string("test/file.rs");
-        assert_eq!(format!("{}", file_id), "test/file.rs");
+        assert_eq!(format!("{file_id}"), "test/file.rs");
     }
 
     #[test]
@@ -243,7 +253,7 @@ mod tests {
         use std::path::Path;
         let path = Path::new("src/lib.rs");
         let file_id = FileId::from_path(path);
-        assert_eq!(format!("{}", file_id), "src/lib.rs");
+        assert_eq!(format!("{file_id}"), "src/lib.rs");
     }
 
     #[test]

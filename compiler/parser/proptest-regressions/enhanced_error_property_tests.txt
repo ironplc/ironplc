@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 5b49bec3a008176bff256dda7778f5eae9abcadfad6bad5e06ae0895308d24d5 # shrinks to scenario = NewSyntaxErrorScenario { source_code: "VAR_GLOBAL\n  x: INT;\n  y: BOOL\n", expected_error_types: ["VAR_GLOBAL"], should_have_location: true }
+cc 6674bf8228cfba9da5bc90f68172d4b37f1353527c63057e8005ba4ae8449a5a # shrinks to fragments = ["$?|!?$", "\\\\???$\"", "\"$", "?\\?|\\$!!"]

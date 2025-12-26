@@ -29,7 +29,6 @@ fn create_problems() -> Result<(), Box<dyn Error>> {
     src_path.push("problem-codes.csv");
 
     let src = fs::read_to_string(src_path).expect("Unable to read 'problem-codes.csv'");
-    println!("{src}");
     let src = src.as_bytes();
 
     // Read the file into the definition (we'll iterate over the structs more than once)
@@ -37,7 +36,6 @@ fn create_problems() -> Result<(), Box<dyn Error>> {
     let mut rdr = csv::Reader::from_reader(src);
     for result in rdr.records() {
         let record = result?;
-        println!("{record:?}");
         let code = record
             .get(0)
             .ok_or_else(|| format!("Record {record:?} is not valid at column 0"))?;
@@ -112,7 +110,7 @@ fn create_problems() -> Result<(), Box<dyn Error>> {
 
 fn main() {
     if let Err(err) = create_problems() {
-        println!("problem generating problems.rs: {err}");
+        eprintln!("Error generating problems.rs: {err}");
         process::exit(1);
     }
 }

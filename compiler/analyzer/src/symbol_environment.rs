@@ -30,6 +30,8 @@ pub enum SymbolKind {
     FunctionBlock,
     /// Program declaration
     Program,
+    /// Class declaration
+    Class,
     /// Type declaration
     Type,
     /// Constant declaration
@@ -137,8 +139,16 @@ impl SymbolEnvironment {
         scope: &ScopeKind,
     ) -> Result<(), Diagnostic> {
         let symbol_info = SymbolInfo::new(kind, scope.clone(), name.span());
+        self.insert_with_info(name, symbol_info)
+    }
 
-        match scope {
+    /// Insert a symbol with pre-configured SymbolInfo
+    pub fn insert_with_info(
+        &mut self,
+        name: &Id,
+        symbol_info: SymbolInfo,
+    ) -> Result<(), Diagnostic> {
+        match &symbol_info.scope {
             ScopeKind::Global => {
                 // Check for duplicate global symbols
                 if let Some(_existing) = self.global_symbols.get(name) {

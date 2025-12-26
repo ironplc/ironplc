@@ -29,6 +29,7 @@ enum TypeDefinitionKind {
     Structure,
     StructureInitialization,
     String(StringType, Integer),
+    Reference,
     FunctionBlock,
 }
 
@@ -111,6 +112,9 @@ impl Visitor<Diagnostic> for ScopedTable<'_, TypeName, TypeDefinitionKind> {
                 &node.type_name,
                 TypeDefinitionKind::String(node.width.clone(), node.length.clone()),
             ),
+            DataTypeDeclarationKind::Reference(node) => {
+                self.add_if_new(&node.type_name, TypeDefinitionKind::Reference)
+            }
             DataTypeDeclarationKind::LateBound(_) => Ok(()),
         }
     }

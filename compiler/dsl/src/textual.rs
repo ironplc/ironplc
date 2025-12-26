@@ -13,11 +13,12 @@ use std::ops::Deref;
 use crate::fold::Fold;
 use crate::visitor::Visitor;
 use dsl_macro_derive::Recurse;
+use serde::Serialize;
 
 /// A body of a function bock (one of the possible types).
 ///
 /// See section 3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct Statements {
     pub body: Vec<StmtKind>,
 }
@@ -25,7 +26,7 @@ pub struct Statements {
 /// A variable.
 ///
 /// See section B.1.4.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub enum Variable {
     // A variable that maps to a hardware address.
     Direct(AddressAssignment),
@@ -45,6 +46,12 @@ impl From<SymbolicVariableKind> for Variable {
             SymbolicVariableKind::Structured(structured) => {
                 Variable::Symbolic(SymbolicVariableKind::Structured(structured))
             }
+            SymbolicVariableKind::Dereference(dereference) => {
+                Variable::Symbolic(SymbolicVariableKind::Dereference(dereference))
+            }
+            SymbolicVariableKind::FunctionCall(function) => {
+                Variable::Symbolic(SymbolicVariableKind::FunctionCall(function))
+            }
         }
     }
 }
@@ -58,11 +65,13 @@ impl fmt::Display for Variable {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub enum SymbolicVariableKind {
     Named(NamedVariable),
     Array(ArrayVariable),
     Structured(StructuredVariable),
+    Dereference(DereferenceVariable),
+    FunctionCall(Function),
 }
 
 impl fmt::Display for SymbolicVariableKind {
@@ -72,6 +81,12 @@ impl fmt::Display for SymbolicVariableKind {
             SymbolicVariableKind::Array(array) => f.write_fmt(format_args!("{array}")),
             SymbolicVariableKind::Structured(structured) => {
                 f.write_fmt(format_args!("{structured}"))
+            }
+            SymbolicVariableKind::Dereference(dereference) => {
+                f.write_fmt(format_args!("{dereference}"))
+            }
+            SymbolicVariableKind::FunctionCall(function) => {
+                f.write_fmt(format_args!("{}()", function.name))
             }
         }
     }
@@ -83,6 +98,8 @@ impl Located for SymbolicVariableKind {
             SymbolicVariableKind::Named(named) => named.span(),
             SymbolicVariableKind::Array(array) => array.span(),
             SymbolicVariableKind::Structured(structured) => structured.span(),
+            SymbolicVariableKind::Dereference(dereference) => dereference.span(),
+            SymbolicVariableKind::FunctionCall(function) => function.span(),
         }
     }
 }
@@ -104,7 +121,7 @@ impl Variable {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct NamedVariable {
     pub name: Id,
 }
@@ -121,7 +138,7 @@ impl Located for NamedVariable {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct ArrayVariable {
     /// The variable that is being accessed by subscript (the array).
     pub subscripted_variable: Box<SymbolicVariableKind>,
@@ -146,7 +163,7 @@ impl Located for ArrayVariable {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct StructuredVariable {
     pub record: Box<SymbolicVariableKind>,
     pub field: Id,
@@ -164,16 +181,40 @@ impl Located for StructuredVariable {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
+pub struct DereferenceVariable {
+    /// The variable that is being dereferenced (should be a reference type).
+    pub referenced_variable: Box<SymbolicVariableKind>,
+}
+
+impl fmt::Display for DereferenceVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{}^", self.referenced_variable))
+    }
+}
+
+impl Located for DereferenceVariable {
+    fn span(&self) -> SourceSpan {
+        self.referenced_variable.as_ref().span()
+    }
+}
+
 /// Function block invocation.
 ///
 /// See section 3.2.3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct FbCall {
     /// Name of the variable that is associated with the function block
     /// call.
     pub var_name: Id,
     pub params: Vec<ParamAssignmentKind>,
     pub position: SourceSpan,
+}
+
+impl Located for Function {
+    fn span(&self) -> SourceSpan {
+        self.name.span()
+    }
 }
 
 impl Located for FbCall {
@@ -185,7 +226,7 @@ impl Located for FbCall {
 /// A binary expression that produces a Boolean result by comparing operands.
 ///
 /// See section 3.3.1.
-#[derive(Debug, Clone, PartialEq, Recurse)]
+#[derive(Debug, Clone, PartialEq, Recurse, Serialize)]
 pub struct CompareExpr {
     #[recurse(ignore)]
     pub op: CompareOp,
@@ -197,7 +238,7 @@ pub struct CompareExpr {
 /// two operands.
 ///
 /// See section 3.3.1.
-#[derive(Debug, Clone, PartialEq, Recurse)]
+#[derive(Debug, Clone, PartialEq, Recurse, Serialize)]
 pub struct BinaryExpr {
     #[recurse(ignore)]
     pub op: Operator,
@@ -209,26 +250,26 @@ pub struct BinaryExpr {
 /// transforming the operand.
 ///
 /// See section 3.3.1.
-#[derive(Debug, Clone, PartialEq, Recurse)]
+#[derive(Debug, Clone, PartialEq, Recurse, Serialize)]
 pub struct UnaryExpr {
     #[recurse(ignore)]
     pub op: UnaryOp,
     pub term: ExprKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Recurse)]
+#[derive(Debug, Clone, PartialEq, Recurse, Serialize)]
 pub struct Function {
     pub name: Id,
     pub param_assignment: Vec<ParamAssignmentKind>,
 }
 
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct LateBound {
     pub value: Id,
 }
 
 /// Expression that yields a value derived from the input(s) to the expression.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub enum ExprKind {
     Compare(Box<CompareExpr>),
     BinaryOp(Box<BinaryExpr>),
@@ -277,7 +318,7 @@ impl ExprKind {
 /// as a non-formal input.
 ///
 /// See section 3.2.3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct PositionalInput {
     pub expr: ExprKind,
 }
@@ -287,7 +328,7 @@ pub struct PositionalInput {
 /// a formal input.
 ///
 /// See section 3.2.3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct NamedInput {
     pub name: Id,
     pub expr: ExprKind,
@@ -296,7 +337,7 @@ pub struct NamedInput {
 /// Output argument captured from a function or function block invocation.
 ///
 /// See section 3.2.3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct Output {
     #[recurse(ignore)]
     pub not: bool,
@@ -304,7 +345,7 @@ pub struct Output {
     pub tgt: Variable,
 }
 
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub enum ParamAssignmentKind {
     PositionalInput(PositionalInput),
     NamedInput(NamedInput),
@@ -327,7 +368,7 @@ impl ParamAssignmentKind {
 /// Comparison operators.
 ///
 /// See section 3.2.2, especially table 52.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub enum CompareOp {
     Or,
     Xor,
@@ -343,7 +384,7 @@ pub enum CompareOp {
 /// Arithmetic operators.
 ///
 /// See section 3.2.2, especially table 52.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub enum Operator {
     Add,
     Sub,
@@ -356,22 +397,28 @@ pub enum Operator {
 /// Local operators (with single operand).
 ///
 /// See section 3.2.2, especially table 52.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub enum UnaryOp {
     Neg,
     // Compliment operator (for Boolean values)
     Not,
+    // Address-of operator (&)
+    AddressOf,
+    // Dereference operator (^)
+    Dereference,
 }
 
 /// Statements.
 ///
 /// See section 3.3.2.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum StmtKind {
     Assignment(Assignment),
     // Function and function block control
     FbCall(FbCall),
+    // Function call as statement (return value discarded)
+    FunctionCall(ExprKind),
     // Selection statements
     If(If),
     Case(Case),
@@ -384,6 +431,11 @@ pub enum StmtKind {
     // Exit statement.
     #[recurse(ignore)]
     Exit,
+    // Continue statement.
+    #[recurse(ignore)]
+    Continue,
+    // Expression statement - standalone expressions evaluated for side effects
+    ExpressionStatement(ExprKind),
 }
 
 impl StmtKind {
@@ -473,7 +525,7 @@ impl StmtKind {
 /// Assigns a variable as the evaluation of an expression.
 ///
 /// See section 3.3.2.1.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct Assignment {
     pub target: Variable,
     pub value: ExprKind,
@@ -482,7 +534,7 @@ pub struct Assignment {
 /// If selection statement.
 ///
 /// See section 3.3.2.3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct If {
     pub expr: ExprKind,
     pub body: Vec<StmtKind>,
@@ -490,7 +542,7 @@ pub struct If {
     pub else_body: Vec<StmtKind>,
 }
 
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct ElseIf {
     pub expr: ExprKind,
     pub body: Vec<StmtKind>,
@@ -499,7 +551,7 @@ pub struct ElseIf {
 /// Case selection statement.
 ///
 /// See section 3.3.2.3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct Case {
     /// An expression, the result of which is used to select a particular case.
     pub selector: ExprKind,
@@ -510,7 +562,7 @@ pub struct Case {
 /// A group of statements that can be selected within a case.
 ///
 /// See section 3.3.2.3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct CaseStatementGroup {
     pub selectors: Vec<CaseSelectionKind>,
     pub statements: Vec<StmtKind>,
@@ -519,7 +571,7 @@ pub struct CaseStatementGroup {
 /// A particular value that selects a case statement group.
 ///
 /// See section 3.3.2.3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub enum CaseSelectionKind {
     Subrange(Subrange),
     SignedInteger(SignedInteger),
@@ -529,7 +581,7 @@ pub enum CaseSelectionKind {
 /// The for loop statement.
 ///
 /// See section 3.3.2.4.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct For {
     /// The variable that is assigned and contains the value for each loop iteration.
     pub control: Id,
@@ -542,7 +594,7 @@ pub struct For {
 /// The while loop statement.
 ///
 /// See section 3.3.2.4.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct While {
     pub condition: ExprKind,
     pub body: Vec<StmtKind>,
@@ -551,7 +603,7 @@ pub struct While {
 /// The repeat loop statement.
 ///
 /// See section 3.3.2.4.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct Repeat {
     pub until: ExprKind,
     pub body: Vec<StmtKind>,

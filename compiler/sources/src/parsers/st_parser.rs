@@ -1,11 +1,21 @@
 //! Structured Text parser implementation
 
 use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
-use ironplc_parser::{options::ParseOptions, parse_program};
+use ironplc_parser::{options::ParseOptions, parse_program_enhanced};
 
-/// Parse Structured Text (.st, .iec) files
+/// Parse Structured Text (.st, .iec) files with enhanced error reporting
 pub fn parse(content: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
-    parse_program(content, file_id, &ParseOptions::default())
+    // Use enhanced parsing that provides better error messages and multiple error collection
+    match parse_program_enhanced(content, file_id, &ParseOptions::default()) {
+        Ok(library) => Ok(library),
+        Err(diagnostics) => {
+            // Return the first diagnostic for compatibility, but enhanced parsing
+            // has already collected multiple errors for better user experience
+            Err(diagnostics.into_iter().next().unwrap_or_else(|| {
+                Diagnostic::internal_error(file!(), line!())
+            }))
+        }
+    }
 }
 
 #[cfg(test)]

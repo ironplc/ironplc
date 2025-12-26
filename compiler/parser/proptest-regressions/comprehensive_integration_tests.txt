@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 171d855e7484b7435ba43e632f1568e36d567f942ceb05aa849bee3fc4753bb3 # shrinks to scenario = "VAR_GLOBAL\n    var_a : Type1_A;\nEND_VAR\n\nTYPE\n    Type1_A : STRUCT\n        field : Type2_B;\n    END_STRUCT;\n    Type2_B : INT;\nEND_TYPE\n\nPROGRAM Prog_A\nVAR\n    local_var : Type2_B;\nEND_VAR\n    local_var := 42;\nEND_PROGRAM"
+cc d4f8e23875b216f6c0af34d08629072a3d795ef7e3cb86c6668ed78136d098d3 # shrinks to scenario = "TYPE\n    A : (A, A);\n    AArray : ARRAY[1..5] OF INT;\n    ARange : INT(-2..0);\nEND_TYPE\n\nVAR_GLOBAL\n    a : A;\n    aArr : AArray;\n    aVal : ARange;\nEND_VAR\n\nPROGRAM A\nVAR\n    local_var : INT;\nEND_VAR\n    local_var := 1;\nEND_PROGRAM"

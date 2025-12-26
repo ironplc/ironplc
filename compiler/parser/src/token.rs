@@ -70,11 +70,19 @@ pub enum TokenType {
     #[regex(r"[ \t]+")]
     Whitespace,
 
-    #[regex(r"\(\*(?:[^*]|\*[^\)])*\*\)", priority = 0)]
-    // TODO The following is common but not valid. We want to recognize the token
-    // so that we can generate meaningful errors.
-    #[regex(r"//[^\r\n]*(\r\n|\n)?", priority = 0)]
+    #[regex(r"\(\*(?:[^*]|\*[^)])*\*+\)", priority = 0)]
     Comment,
+    
+    #[regex(r"//[^\r\n]*", priority = 0)]
+    LineComment,
+
+    // External function and reference annotations
+    #[token("{external}", ignore(case))]
+    ExternalAnnotation,
+    #[token("{ref}", ignore(case))]
+    RefAnnotation,
+    #[token("@EXTERNAL", ignore(case))]
+    AtExternal,
 
     // Grouping and other markers
     #[token("(", priority = 1)]
@@ -111,8 +119,8 @@ pub enum TokenType {
     DoubleByteString,
 
     // B.1.1 Letters, digits and identifier
-    // Lower priority than any keyword.
-    #[regex(r"[A-Za-z_][A-Za-z0-9_]*", priority = 1)]
+    // Higher priority than keywords to prevent partial matches like "aT" -> "AT"
+    #[regex(r"[A-Za-z_][A-Za-z0-9_]*", priority = 2)]
     Identifier,
 
     // B.1.2 Constants
@@ -139,17 +147,28 @@ pub enum TokenType {
     Action,
     #[token("END_ACTION", ignore(case))]
     EndAction,
+    #[token("ACTIONS", ignore(case))]
+    Actions,
+    #[token("END_ACTIONS", ignore(case))]
+    EndActions,
 
     #[token("ARRAY", ignore(case))]
     Array,
     #[token("OF", ignore(case))]
     Of,
 
-    #[token("AT", ignore(case))]
+    #[token("AT")]
+    #[token("at")]
     At,
 
     #[token("CASE", ignore(case))]
     Case,
+    #[token("CLASS", ignore(case))]
+    Class,
+    #[token("END_CLASS", ignore(case))]
+    EndClass,
+    #[token("CONTINUE", ignore(case))]
+    Continue,
     #[token("ELSE", ignore(case))]
     Else,
     #[token("END_CASE", ignore(case))]
@@ -163,8 +182,6 @@ pub enum TokenType {
     #[token("END_CONFIGURATION", ignore(case))]
     EndConfiguration,
 
-    #[token("EN", ignore(case))]
-    En,
     #[token("ENO", ignore(case))]
     Eno,
 
@@ -173,6 +190,9 @@ pub enum TokenType {
 
     #[token("FALSE", ignore(case))]
     False,
+
+    #[token("NULL", ignore(case))]
+    Null,
 
     #[token("F_EDGE", ignore(case))]
     FEdge,
@@ -197,6 +217,11 @@ pub enum TokenType {
     FunctionBlock,
     #[token("END_FUNCTION_BLOCK", ignore(case))]
     EndFunctionBlock,
+
+    #[token("METHOD", ignore(case))]
+    Method,
+    #[token("END_METHOD", ignore(case))]
+    EndMethod,
 
     #[token("IF", ignore(case))]
     If,
@@ -248,6 +273,9 @@ pub enum TokenType {
 
     #[token("RETURN", ignore(case))]
     Return,
+
+    #[token("REF_TO", ignore(case))]
+    RefTo,
 
     #[token("STEP", ignore(case))]
     Step,
@@ -348,6 +376,22 @@ pub enum TokenType {
     #[token("WSTRING", ignore(case))]
     WString,
 
+    // Timer function blocks
+    #[token("TON", ignore(case))]
+    Ton,
+    #[token("TOF", ignore(case))]
+    Tof,
+    #[token("TP", ignore(case))]
+    Tp,
+
+    // Time literals (T#5S, T#100MS, T#1.5S, etc.) - supports decimal numbers
+    #[regex(r"T#[0-9]+(\.[0-9]+)?[a-zA-Z]+", ignore(case))]
+    TimeLiteral,
+
+    // STRING with length specification
+    #[regex(r"STRING\([0-9]+\)", ignore(case))]
+    StringWithLength,
+
     #[regex(r"%[IQM]\*", ignore(case))]
     DirectAddressIncomplete,
     #[regex(r"%[IQM]([XBWDL])?(\d(\.\d)*)", ignore(case))]
@@ -359,7 +403,6 @@ pub enum TokenType {
     #[token("XOR", ignore(case))]
     Xor,
     #[token("AND", ignore(case))]
-    #[token("&")]
     And,
     #[token("=")]
     Equal,
@@ -388,6 +431,12 @@ pub enum TokenType {
     #[token("NOT")]
     Not,
 
+    // Reference operators
+    #[token("&")]
+    Ampersand,
+    #[token("^")]
+    Caret,
+
     #[token(":=")]
     Assignment,
 
@@ -401,6 +450,7 @@ impl TokenType {
             TokenType::Newline => "'\\n' (new line)",
             TokenType::Whitespace => "' ' (space) | '\\t' (tab)",
             TokenType::Comment => "'(* ... *)' (comment)",
+            TokenType::LineComment => "'// ...' (line comment)",
             TokenType::LeftParen => "'('",
             TokenType::RightParen => "')'",
             TokenType::LeftBrace => "'{'",
@@ -424,19 +474,24 @@ impl TokenType {
             TokenType::Digits => "[0-9][0-9_]* (integer)",
             TokenType::Action => "'ACTION'",
             TokenType::EndAction => "'END_ACTION'",
+            TokenType::Actions => "'ACTIONS'",
+            TokenType::EndActions => "'END_ACTIONS'",
             TokenType::Array => "'ARRAY'",
             TokenType::Of => "'OF'",
             TokenType::At => "'AT'",
             TokenType::Case => "'CASE'",
+            TokenType::Class => "'CLASS'",
+            TokenType::EndClass => "'END_CLASS'",
+            TokenType::Continue => "'CONTINUE'",
             TokenType::Else => "'ELSE'",
             TokenType::EndCase => "'END_CASE'",
             TokenType::Constant => "'CONSTANT'",
             TokenType::Configuration => "'CONFIGURATION'",
             TokenType::EndConfiguration => "'END_CONFIGURATION'",
-            TokenType::En => "'EN'",
             TokenType::Eno => "'ENO'",
             TokenType::Exit => "'EXIT'",
             TokenType::False => "'FALSE'",
+            TokenType::Null => "'NULL'",
             TokenType::FEdge => "'F_EDGE'",
             TokenType::For => "'FOR'",
             TokenType::To => "'TO'",
@@ -447,6 +502,8 @@ impl TokenType {
             TokenType::EndFunction => "'END_FUNCTION'",
             TokenType::FunctionBlock => "'FUNCTION_BLOCK'",
             TokenType::EndFunctionBlock => "'END_FUNCTION_BLOCK'",
+            TokenType::Method => "'METHOD'",
+            TokenType::EndMethod => "'END_METHOD'",
             TokenType::If => "'IF'",
             TokenType::Then => "'THEN'",
             TokenType::Elsif => "'ELSIF'",
@@ -468,6 +525,7 @@ impl TokenType {
             TokenType::Retain => "'RETAIN'",
             TokenType::NonRetain => "'NON_RETAIN'",
             TokenType::Return => "'RETURN'",
+            TokenType::RefTo => "'REF_TO'",
             TokenType::Step => "'STEP'",
             TokenType::Struct => "'STRUCT'",
             TokenType::EndStruct => "'END_STRUCT'",
@@ -507,11 +565,16 @@ impl TokenType {
             TokenType::TimeOfDay => "'TIME_OF_DAY' | 'TOD'",
             TokenType::DateAndTime => "'DATE_AND_TIME' | 'DT'",
             TokenType::String => "'STRING'",
+            TokenType::StringWithLength => "STRING([0-9]+) (string with length)",
             TokenType::Byte => "'BYTE'",
             TokenType::Word => "'WORD'",
             TokenType::Dword => "'DWORD'",
             TokenType::Lword => "'LWORD'",
             TokenType::WString => "'WSTRING'",
+            TokenType::Ton => "'TON'",
+            TokenType::Tof => "'TOF'",
+            TokenType::Tp => "'TP'",
+            TokenType::TimeLiteral => "T#[0-9]+[a-zA-Z]+ (time literal)",
             TokenType::DirectAddressIncomplete => "'%I*' | '%Q*' | '%M*' (incomplete address)",
             TokenType::DirectAddress => "%[IQM]([XBWDL])?(\\d(\\.\\d)*) (direct address)",
             TokenType::Or => "'OR'",
@@ -530,8 +593,13 @@ impl TokenType {
             TokenType::Mod => "'MOD'",
             TokenType::Power => "'**'",
             TokenType::Not => "'NOT'",
+            TokenType::Ampersand => "'&' (address-of)",
+            TokenType::Caret => "'^' (dereference)",
             TokenType::Assignment => "':='",
             TokenType::RightArrow => "'=>'",
+            TokenType::ExternalAnnotation => "'{external}'",
+            TokenType::RefAnnotation => "'{ref}'",
+            TokenType::AtExternal => "'@EXTERNAL'",
         }
     }
 }
@@ -591,6 +659,7 @@ mod tests {
             (Newline, "\\n"),
             (Whitespace, " "),
             (Comment, "(* comment *)"),
+            (LineComment, "// comment"),
             (LeftParen, "("),
             (RightParen, ")"),
             (LeftBrace, "{"),
@@ -614,19 +683,24 @@ mod tests {
             (Digits, "123"),
             (Action, "ACTION"),
             (EndAction, "END_ACTION"),
+            (Actions, "ACTIONS"),
+            (EndActions, "END_ACTIONS"),
             (Array, "ARRAY"),
             (Of, "OF"),
             (At, "AT"),
             (Case, "CASE"),
+            (Class, "CLASS"),
+            (EndClass, "END_CLASS"),
+            (Continue, "CONTINUE"),
             (Else, "ELSE"),
             (EndCase, "END_CASE"),
             (Constant, "CONSTANT"),
             (Configuration, "CONFIGURATION"),
             (EndConfiguration, "END_CONFIGURATION"),
-            (En, "EN"),
             (Eno, "ENO"),
             (Exit, "EXIT"),
             (False, "FALSE"),
+            (Null, "NULL"),
             (FEdge, "F_EDGE"),
             (For, "FOR"),
             (To, "TO"),
@@ -637,6 +711,8 @@ mod tests {
             (EndFunction, "END_FUNCTION"),
             (FunctionBlock, "FUNCTION_BLOCK"),
             (EndFunctionBlock, "END_FUNCTION_BLOCK"),
+            (Method, "METHOD"),
+            (EndMethod, "END_METHOD"),
             (If, "IF"),
             (Then, "THEN"),
             (Elsif, "ELSIF"),
@@ -658,6 +734,7 @@ mod tests {
             (Retain, "RETAIN"),
             (NonRetain, "NON_RETAIN"),
             (Return, "RETURN"),
+            (RefTo, "REF_TO"),
             (Step, "STEP"),
             (Struct, "STRUCT"),
             (EndStruct, "END_STRUCT"),
@@ -702,6 +779,11 @@ mod tests {
             (Dword, "DWORD"),
             (Lword, "LWORD"),
             (WString, "WSTRING"),
+            (Ton, "TON"),
+            (Tof, "TOF"),
+            (Tp, "TP"),
+            (TimeLiteral, "T#5S"),
+            (StringWithLength, "STRING(50)"),
             (DirectAddressIncomplete, "%I*"),
             (DirectAddress, "%I0.0"),
             (Or, "OR"),
@@ -720,8 +802,13 @@ mod tests {
             (Mod, "MOD"),
             (Power, "**"),
             (Not, "NOT"),
+            (Ampersand, "&"),
+            (Caret, "^"),
             (Assignment, ":="),
             (RightArrow, "=>"),
+            (ExternalAnnotation, "{external}"),
+            (RefAnnotation, "{ref}"),
+            (AtExternal, "@EXTERNAL"),
         ];
         for (token_type, text) in cases {
             let token = Token {

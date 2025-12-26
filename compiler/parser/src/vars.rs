@@ -16,6 +16,7 @@ use dsl::{
 pub struct UntypedVarDecl {
     pub name: Id,
     pub initializer: InitialValueAssignmentKind,
+    pub reference_annotation: Option<ReferenceAnnotation>,
 }
 
 #[derive(Clone)]
@@ -93,6 +94,7 @@ impl From<IncomplVarDecl> for VarDecl {
             var_type: VariableType::Var,
             qualifier: val.qualifier,
             initializer: init,
+            reference_annotation: None,
         }
     }
 }
@@ -104,6 +106,7 @@ impl UntypedVarDecl {
             var_type,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: self.initializer,
+            reference_annotation: self.reference_annotation,
         }
     }
 }
@@ -387,6 +390,7 @@ impl VarDeclarations {
                     var_type: var_type.clone(),
                     qualifier,
                     initializer: declaration.initializer,
+                    reference_annotation: None,
                 }
             })
             .collect()

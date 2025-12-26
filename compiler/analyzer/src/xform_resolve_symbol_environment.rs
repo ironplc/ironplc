@@ -117,8 +117,23 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
     ) -> Result<Self::Value, Diagnostic> {
         self.scope = Some(node.name.clone());
 
-        self.env
-            .insert(&node.name, SymbolKind::Function, &ScopeKind::Global)?;
+        // Check if this is an external function
+        let is_external = node.external_annotation.is_some();
+        
+        if is_external {
+            // Insert external function with external flag set
+            let mut symbol_info = crate::symbol_environment::SymbolInfo::new(
+                SymbolKind::Function,
+                ScopeKind::Global,
+                node.name.span(),
+            );
+            symbol_info = symbol_info.with_external(true);
+            self.env.insert_with_info(&node.name, symbol_info)?;
+        } else {
+            // Insert regular function
+            self.env
+                .insert(&node.name, SymbolKind::Function, &ScopeKind::Global)?;
+        }
 
         let result = node.recurse_visit(self);
         self.scope = None;
@@ -155,6 +170,22 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
         result
     }
 
+    fn visit_class_declaration(
+        &mut self,
+        node: &ironplc_dsl::common::ClassDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.scope = Some(node.name.name.clone());
+        self.env.insert(
+            &node.name.name,
+            SymbolKind::Class,
+            &ScopeKind::Global,
+        )?;
+        let result = node.recurse_visit(self);
+        self.scope = None;
+
+        result
+    }
+
     fn visit_data_type_declaration_kind(
         &mut self,
         node: &ironplc_dsl::common::DataTypeDeclarationKind,
@@ -181,6 +212,10 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
                     .insert(&decl.type_name.name, SymbolKind::Type, &ScopeKind::Global)?;
             }
             ironplc_dsl::common::DataTypeDeclarationKind::String(decl) => {
+                self.env
+                    .insert(&decl.type_name.name, SymbolKind::Type, &ScopeKind::Global)?;
+            }
+            ironplc_dsl::common::DataTypeDeclarationKind::Reference(decl) => {
                 self.env
                     .insert(&decl.type_name.name, SymbolKind::Type, &ScopeKind::Global)?;
             }
@@ -227,6 +262,20 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
             }
         }
 
+        node.recurse_visit(self)
+    }
+
+    fn visit_global_variable_declaration(
+        &mut self,
+        node: &ironplc_dsl::common::GlobalVariableDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        // Process all variables in the global variable declaration
+        for var_decl in &node.variables {
+            if let ironplc_dsl::common::VariableIdentifier::Symbol(id) = &var_decl.identifier {
+                // Global variables are always registered in the global scope
+                self.env.insert(id, SymbolKind::Variable, &ScopeKind::Global)?;
+            }
+        }
         node.recurse_visit(self)
     }
 
@@ -318,5 +367,51 @@ END_FUNCTION_BLOCK";
         // Check that function block is captured
         let counter_symbol = env.get(&Id::from("Counter"), &ScopeKind::Global).unwrap();
         assert_eq!(counter_symbol.kind, SymbolKind::FunctionBlock);
+    }
+
+    #[test]
+    fn apply_when_global_variables_declared_then_registered_in_symbol_table() {
+        let program = "
+VAR_GLOBAL
+    global_counter : INT := 42;
+    global_flag : BOOL := TRUE;
+    global_value : REAL;
+END_VAR
+
+PROGRAM TestProgram
+VAR
+    local_var : INT;
+END_VAR
+    local_var := global_counter;
+END_PROGRAM";
+
+        let library = parse_and_resolve_types(program);
+        let mut env = SymbolEnvironment::new();
+        let result = apply_impl(&library, &mut env);
+
+        assert!(result.is_ok());
+
+        // Check that global variables are registered in the global scope
+        let global_counter_symbol = env.get(&Id::from("global_counter"), &ScopeKind::Global);
+        assert!(global_counter_symbol.is_some());
+        assert_eq!(global_counter_symbol.unwrap().kind, SymbolKind::Variable);
+
+        let global_flag_symbol = env.get(&Id::from("global_flag"), &ScopeKind::Global);
+        assert!(global_flag_symbol.is_some());
+        assert_eq!(global_flag_symbol.unwrap().kind, SymbolKind::Variable);
+
+        let global_value_symbol = env.get(&Id::from("global_value"), &ScopeKind::Global);
+        assert!(global_value_symbol.is_some());
+        assert_eq!(global_value_symbol.unwrap().kind, SymbolKind::Variable);
+
+        // Check that program is also registered
+        let program_symbol = env.get(&Id::from("TestProgram"), &ScopeKind::Global);
+        assert!(program_symbol.is_some());
+        assert_eq!(program_symbol.unwrap().kind, SymbolKind::Program);
+
+        // Check that local variable is registered in program scope
+        let local_var_symbol = env.get(&Id::from("local_var"), &ScopeKind::Named(Id::from("TestProgram")));
+        assert!(local_var_symbol.is_some());
+        assert_eq!(local_var_symbol.unwrap().kind, SymbolKind::Variable);
     }
 }

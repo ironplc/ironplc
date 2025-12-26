@@ -61,6 +61,24 @@ enum Action {
         #[arg(long)]
         stdio: bool,
     },
+    /// Export AST as JSON for external analysis tools.
+    ExportJson {
+        /// Files to export as JSON. Directory names can be given to
+        /// add all files in the given directory.
+        files: Vec<PathBuf>,
+        /// Output file for JSON export. If not specified, outputs to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Pretty-print the JSON output for better readability.
+        #[arg(long)]
+        pretty: bool,
+        /// Include comments in the JSON export.
+        #[arg(long)]
+        include_comments: bool,
+        /// Include source location information in the JSON export.
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        include_locations: bool,
+    },
     /// Prints the version number of the compiler.
     Version,
 }
@@ -79,6 +97,13 @@ pub fn main() -> Result<(), String> {
         Action::Check { files } => cli::check(&files, false),
         Action::Echo { files } => cli::echo(&files, false),
         Action::Tokenize { files } => cli::tokenize(&files, false),
+        Action::ExportJson { 
+            files, 
+            output, 
+            pretty, 
+            include_comments, 
+            include_locations 
+        } => cli::export_json(&files, output.as_deref(), pretty, include_comments, include_locations),
         Action::Version => {
             println!("ironplcc version {VERSION}");
             Ok(())

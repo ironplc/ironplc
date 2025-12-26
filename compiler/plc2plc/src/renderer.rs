@@ -7,6 +7,7 @@
 use dsl::configuration::LocatedVarInit;
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Id;
+use ironplc_dsl::textual::StmtKind;
 use ironplc_dsl::time::*;
 use ironplc_dsl::{diagnostic::Diagnostic, visitor::Visitor};
 use paste::paste;
@@ -514,6 +515,16 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.newline();
 
         self.indent();
+        
+        // Handle reference parameter annotation
+        if let Some(ref_annotation) = &node.reference_annotation {
+            match ref_annotation {
+                dsl::common::ReferenceAnnotation::Reference => {
+                    self.write_ws("{ref}");
+                }
+            }
+        }
+        
         match &node.identifier {
             VariableIdentifier::Symbol(id) => {
                 self.visit_id(id)?;
@@ -734,6 +745,18 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &FunctionDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
+        // Handle external function annotations
+        if let Some(annotation) = &node.external_annotation {
+            match annotation {
+                dsl::common::ExternalAnnotation::CurlyBrace => {
+                    self.write_ws("{external}");
+                }
+                dsl::common::ExternalAnnotation::AtSymbol => {
+                    self.write_ws("@EXTERNAL");
+                }
+            }
+        }
+        
         self.write_ws("FUNCTION");
         self.visit_id(&node.name)?;
         self.write_ws(":");
@@ -757,14 +780,147 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             self.newline();
         }
 
+        // External functions don't have a body
+        if node.external_annotation.is_none() {
+            self.indent();
+            for stmt in node.body.iter() {
+                self.visit_stmt_kind(stmt)?;
+            }
+            self.outdent();
+        }
+
+        self.write_ws("END_FUNCTION");
+        self.newline();
+        Ok(())
+    }
+
+    // Class declaration rendering
+    fn visit_class_declaration(
+        &mut self,
+        node: &ClassDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("CLASS");
+        self.visit_type_name(&node.name)?;
+        self.newline();
+
+        // Render class variables
+        if !node.variables.is_empty() {
+            self.indent();
+            for var in node.variables.iter() {
+                self.visit_var_decl(var)?;
+            }
+            self.outdent();
+        }
+
+        // Render class methods
+        if !node.methods.is_empty() {
+            self.indent();
+            for method in node.methods.iter() {
+                self.visit_method_declaration(method)?;
+            }
+            self.outdent();
+        }
+
+        self.write_ws("END_CLASS");
+        self.newline();
+        Ok(())
+    }
+
+    // Method declaration rendering
+    fn visit_method_declaration(
+        &mut self,
+        node: &MethodDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("METHOD");
+        self.visit_id(&node.name)?;
+        
+        if let Some(return_type) = &node.return_type {
+            self.write_ws(":");
+            self.visit_type_name(return_type)?;
+        }
+        self.newline();
+
+        // Render method variables
+        if !node.variables.is_empty() {
+            self.indent();
+            for var in node.variables.iter() {
+                self.visit_var_decl(var)?;
+            }
+            self.outdent();
+        }
+
+        // Render edge variables
+        if !node.edge_variables.is_empty() {
+            self.indent();
+            for var in node.edge_variables.iter() {
+                self.visit_edge_var_decl(var)?;
+            }
+            self.outdent();
+        }
+
+        // Render method body
         self.indent();
         for stmt in node.body.iter() {
             self.visit_stmt_kind(stmt)?;
         }
         self.outdent();
 
-        self.write_ws("END_FUNCTION");
+        self.write_ws("END_METHOD");
         self.newline();
+        Ok(())
+    }
+
+    // Action block declaration rendering
+    fn visit_action_block_declaration(
+        &mut self,
+        node: &ActionBlockDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("ACTIONS");
+        self.newline();
+
+        // Render individual actions
+        self.indent();
+        for action in node.actions.iter() {
+            self.visit_action_declaration(action)?;
+        }
+        self.outdent();
+
+        self.write_ws("END_ACTIONS");
+        self.newline();
+        Ok(())
+    }
+
+    // Individual action declaration rendering
+    fn visit_action_declaration(
+        &mut self,
+        node: &ActionDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("ACTION");
+        self.visit_id(&node.name)?;
+        self.write_ws(":");
+        self.newline();
+
+        // Render action body
+        self.indent();
+        for stmt in node.body.iter() {
+            self.visit_stmt_kind(stmt)?;
+        }
+        self.outdent();
+
+        self.write_ws("END_ACTION");
+        self.newline();
+        Ok(())
+    }
+
+    // Reference type declaration rendering
+    fn visit_reference_declaration(
+        &mut self,
+        node: &ReferenceDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_type_name(&node.type_name)?;
+        self.write_ws(":");
+        self.write_ws("REF_TO");
+        self.visit_type_name(&node.referenced_type)?;
         Ok(())
     }
 
@@ -1190,6 +1346,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         let op = match node.op {
             dsl::textual::UnaryOp::Neg => "-",
             dsl::textual::UnaryOp::Not => "NOT",
+            dsl::textual::UnaryOp::AddressOf => "&",
+            dsl::textual::UnaryOp::Dereference => "^",
         };
         self.write_ws(op);
 
@@ -1405,5 +1563,43 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write(node.field.original().as_str());
 
         Ok(())
+    }
+
+    fn visit_dereference_variable(
+        &mut self,
+        node: &dsl::textual::DereferenceVariable,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_symbolic_variable_kind(&node.referenced_variable)?;
+        self.write("^");
+
+        Ok(())
+    }
+
+    // Handle Continue statement rendering
+    fn visit_stmt_kind(&mut self, node: &StmtKind) -> Result<Self::Value, Diagnostic> {
+        match node {
+            StmtKind::Continue => {
+                self.write_ws("CONTINUE");
+                self.write_ws(";");
+                self.newline();
+                Ok(())
+            }
+            StmtKind::Return => {
+                self.write_ws("RETURN");
+                self.write_ws(";");
+                self.newline();
+                Ok(())
+            }
+            StmtKind::Exit => {
+                self.write_ws("EXIT");
+                self.write_ws(";");
+                self.newline();
+                Ok(())
+            }
+            _ => {
+                // Use default visitor behavior for other statements
+                node.recurse_visit(self)
+            }
+        }
     }
 }

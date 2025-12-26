@@ -20,9 +20,9 @@ static STANDARD_LIBRARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
     "r_trig", // 2.5.2.3.2
     "rs", // 2.5.2.3.1
     "sr", // 2.5.2.3.1
-    "ton", // 2.5.2.3.4
-    "tof", // 2.5.2.3.4
-    "tp", // 2.5.2.3.4
+    // "ton", // 2.5.2.3.4 - Now supported as built-in function block
+    // "tof", // 2.5.2.3.4 - Now supported as built-in function block
+    // "tp", // 2.5.2.3.4 - Now supported as built-in function block
     // TODO there is more in IEC 61131-5
 };
 

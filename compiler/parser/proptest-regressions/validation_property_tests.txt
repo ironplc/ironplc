@@ -1,0 +1,14 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc b12ed2044f9dd94adcbebd282623c73c982428d12728150ab64ecf6763427773 # shrinks to type_name = "A", base_type = "INT", lower_bound = 0, upper_bound = 20, default_value = 0, program_name = "A", var_name = "a"
+cc 1a0b1b645ba169b7c2e0133e3d3116a1dd9356cb26b16de81e2f843a8103740d # shrinks to type_name = "A0", lower_bound = -4, upper_bound = 0, element_type = "INT", program_name = "A", var_name = "a"
+cc 565699ddff10723f499ebcbb79281d48da31d0041746a258a4d32ac3bc27f623 # shrinks to type_name = "A", bounds1 = (0, 5), bounds2 = (0, 3), bounds3 = (1, 2), element_type = "INT", program_name = "A", var_name = "a"
+cc c6d838c3bc102530dd1010246e002b99d6b159a1a43d01bbdb6d2e0a2af7aed8 # shrinks to type_name = "A", array_size = 2, init_values = [0, 0], program_name = "A", var_name = "a"
+cc d305c91dc7898b78a0c86afb256f7543c372067025bbc17d12d51027bb2953a5 # shrinks to type_name = "A", base_type = "INT", lower_bound = 0, upper_bound = 0, program_name = "A", var_name = "a"
+cc 697228e1ff68331d3b9dfeefa0aa84c1bb0ef01cc3df36a75dc1a90ce54645d8 # shrinks to type_name = "A", array_size = 5, repeat_count = 2, repeat_value = 0, program_name = "A", var_name = "a"
+cc 07521a5d0c49014589fad22a31c63a32122b165c552cb43b008581cf30f9f3b2 # shrinks to enum_type_name = "A", enum_values = ["A", "A0"], program_name = "A", var_name = "a"
+cc b684147c742a71eea1eedc111db1a9b63990f5a26fc311b4a20b6cb9af26e731 # shrinks to type_name = "A", dim1_size = 2, dim2_size = 2, program_name = "A", var_name = "a"

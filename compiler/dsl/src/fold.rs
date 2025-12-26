@@ -73,6 +73,9 @@ pub trait Fold<E> {
     // 2.2.2
     leaf!(BooleanLiteral);
 
+    // Null literal for reference types
+    leaf!(NullLiteral);
+
     // 2.2.2
     leaf!(CharacterStringLiteral);
 
@@ -94,6 +97,7 @@ pub trait Fold<E> {
     dispatch!(ConstantKind);
 
     dispatch!(TypeName);
+    leaf!(ElementaryTypeName);
 
     // 2.3.3.1
     dispatch!(DataTypeDeclarationKind);
@@ -103,6 +107,9 @@ pub trait Fold<E> {
 
     // 2.3.3.1
     dispatch!(EnumerationDeclaration);
+
+    // Reference type declarations
+    dispatch!(ReferenceDeclaration);
 
     dispatch!(InitialValueAssignmentKind);
     dispatch!(StructInitialValueAssignmentKind);
@@ -204,6 +211,24 @@ pub trait Fold<E> {
     dispatch!(FunctionBlockDeclaration);
 
     dispatch!(FunctionBlockBodyKind);
+
+    // Class declarations
+    dispatch!(ClassDeclaration);
+    dispatch!(MethodDeclaration);
+
+    // Action block declarations
+    dispatch!(ActionBlockDeclaration);
+    dispatch!(ActionDeclaration);
+
+    // Global variable and type definition declarations
+    dispatch!(GlobalVariableDeclaration);
+    dispatch!(TypeDefinitionBlock);
+    dispatch!(TypeDefinition);
+    dispatch!(DataTypeSpecificationKind);
+    dispatch!(EnumerationSpecification);
+    dispatch!(ArraySpecification);
+    dispatch!(ArrayBounds);
+    dispatch!(EnhancedSubrangeSpecification);
 
     // 2.5.3
     dispatch!(ProgramDeclaration);
@@ -344,4 +369,6 @@ pub trait Fold<E> {
     dispatch!(ArrayVariable);
 
     dispatch!(StructuredVariable);
+
+    dispatch!(DereferenceVariable);
 }

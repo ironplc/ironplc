@@ -11,11 +11,12 @@ use crate::time::*;
 use crate::fold::Fold;
 use crate::visitor::Visitor;
 use dsl_macro_derive::Recurse;
+use serde::Serialize;
 
 /// Sequential function chart.
 ///
 /// See section 2.6.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct Sfc {
     pub networks: Vec<Network>,
 }
@@ -23,7 +24,7 @@ pub struct Sfc {
 /// Grouping of related items that represent and a complete SFC.
 ///
 /// See section 2.6.2.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct Network {
     pub initial_step: Step,
     pub elements: Vec<ElementKind>,
@@ -32,7 +33,7 @@ pub struct Network {
 /// Grouping for SFC keyword-defined elements.
 ///
 /// See section 2.6.2.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub enum ElementKind {
     Step(Step),
     Transition(Transition),
@@ -68,7 +69,7 @@ impl ElementKind {
 /// Step item for a SFC.
 ///
 /// See section 2.6.2.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct Step {
     pub name: Id,
     pub action_associations: Vec<ActionAssociation>,
@@ -77,7 +78,7 @@ pub struct Step {
 /// Transition item for a SFC.
 ///
 /// See section 2.6.3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct Transition {
     pub name: Option<Id>,
     #[recurse(ignore)]
@@ -90,7 +91,7 @@ pub struct Transition {
 /// Action item for a SFC.
 ///
 /// See section 2.6.4. Action
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct Action {
     pub name: Id,
     pub body: FunctionBlockBodyKind,
@@ -99,7 +100,7 @@ pub struct Action {
 /// Action qualifiers defined for each step/action association.
 ///
 /// See section 2.6.4.4.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub enum ActionQualifier {
     /// Non-stored
     N,
@@ -165,13 +166,13 @@ impl ActionQualifier {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub enum ActionTimeKind {
     Duration(DurationLiteral),
     VariableName(Id),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub enum TimedQualifier {
     L,
     D,
@@ -189,7 +190,7 @@ impl fmt::Display for TimedQualifier {
 /// Associated actions with steps.
 ///
 /// See section 2.6.5.2.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Serialize)]
 pub struct ActionAssociation {
     pub name: Id,
     pub qualifier: Option<ActionQualifier>,

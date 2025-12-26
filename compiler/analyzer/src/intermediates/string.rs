@@ -50,6 +50,10 @@ END_TYPE
 
         // Check that the string type was created
         let my_string_type = env.get(&TypeName::from("MY_STRING")).unwrap();
+        
+        // Debug: Print the actual type representation
+        println!("Actual type representation: {:?}", my_string_type.representation);
+        
         assert!(matches!(
             &my_string_type.representation,
             IntermediateType::String { max_len: Some(50) }

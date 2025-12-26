@@ -11,6 +11,100 @@ use logos::Logos;
 
 use crate::token::{Token, TokenType};
 
+/// Validates that a token represents a valid syntax construct
+pub fn validate_token(token: &Token) -> bool {
+    match &token.token_type {
+        TokenType::TimeLiteral => validate_time_literal(&token.text),
+        TokenType::StringWithLength => validate_string_with_length(&token.text),
+        TokenType::Comment => validate_comment(&token.text),
+        _ => true, // Other tokens are validated by the regex patterns
+    }
+}
+
+/// Validates time literal format (T#5S, T#100MS, T#1.5S, etc.)
+fn validate_time_literal(text: &str) -> bool {
+    if !text.starts_with("T#") && !text.starts_with("t#") {
+        return false;
+    }
+    
+    let time_part = &text[2..];
+    if time_part.is_empty() {
+        return false;
+    }
+    
+    // Find where digits (including decimal point) end and unit begins
+    let mut digit_end = 0;
+    let mut has_decimal = false;
+    for (i, c) in time_part.chars().enumerate() {
+        if c.is_ascii_digit() {
+            digit_end = i + 1;
+        } else if c == '.' && !has_decimal {
+            has_decimal = true;
+            digit_end = i + 1;
+        } else {
+            break;
+        }
+    }
+    
+    if digit_end == 0 || digit_end == time_part.len() {
+        return false;
+    }
+    
+    // Ensure we don't end with a decimal point
+    if time_part.chars().nth(digit_end - 1) == Some('.') {
+        return false;
+    }
+    
+    let unit = &time_part[digit_end..];
+    matches!(unit.to_uppercase().as_str(), "MS" | "S" | "M" | "H" | "D")
+}
+
+/// Validates STRING(n) format
+fn validate_string_with_length(text: &str) -> bool {
+    if !text.to_uppercase().starts_with("STRING(") || !text.ends_with(')') {
+        return false;
+    }
+    
+    let inner = &text[7..text.len()-1];
+    if inner.is_empty() || !inner.chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    
+    // Parse the number and check if it's greater than 0
+    if let Ok(length) = inner.parse::<u32>() {
+        length > 0
+    } else {
+        false
+    }
+}
+
+/// Validates comment format and structure
+fn validate_comment(text: &str) -> bool {
+    if !text.starts_with("(*") || !text.ends_with("*)") {
+        return false;
+    }
+    
+    // Check for proper nesting - no unmatched (* or *) inside
+    let inner = &text[2..text.len()-2];
+    let mut depth = 0;
+    let mut chars = inner.chars().peekable();
+    
+    while let Some(c) = chars.next() {
+        if c == '(' && chars.peek() == Some(&'*') {
+            chars.next(); // consume the '*'
+            depth += 1;
+        } else if c == '*' && chars.peek() == Some(&')') {
+            chars.next(); // consume the ')'
+            if depth == 0 {
+                return false; // Unmatched closing
+            }
+            depth -= 1;
+        }
+    }
+    
+    depth == 0 // All nested comments should be closed
+}
+
 /// Tokenize a IEC 61131 program.
 ///
 /// Returns a list of tokens and a list of diagnostics. This does not return a result
@@ -27,7 +121,7 @@ pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>)
     while let Some(token) = lexer.next() {
         match token {
             Ok(token_type) => {
-                tokens.push(Token {
+                let new_token = Token {
                     token_type: token_type.clone(),
                     span: SourceSpan {
                         // TODO this will be slow
@@ -38,7 +132,26 @@ pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>)
                     line,
                     col,
                     text: lexer.slice().into(),
-                });
+                };
+
+                // Validate the token
+                if !validate_token(&new_token) {
+                    let span = SourceSpan::range(lexer.span().start, lexer.span().end).with_file_id(file_id);
+                    diagnostics.push(Diagnostic::problem(
+                        ironplc_problems::Problem::UnexpectedToken,
+                        Label::span(
+                            span,
+                            format!(
+                                "Invalid token format '{}' at line {} column {}.",
+                                lexer.slice(),
+                                line + 1,
+                                col + 1,
+                            ),
+                        ),
+                    ));
+                } else {
+                    tokens.push(new_token);
+                }
 
                 match token_type {
                     TokenType::Newline => {
@@ -58,6 +171,10 @@ pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>)
                                 }
                             }
                         }
+                    }
+                    TokenType::LineComment => {
+                        // Line comments don't contain newlines, just advance column
+                        col += lexer.span().len();
                     }
                     _ => col += lexer.span().len(),
                 }
@@ -94,7 +211,6 @@ mod test {
 
     fn assert_no_err(lexer: &mut Lexer<'_, TokenType>) {
         while let Some(tok) = lexer.next() {
-            println!("{:?} {:?}", tok, lexer.slice());
             assert!(tok.is_ok(), "{}", lexer.slice());
         }
     }

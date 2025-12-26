@@ -8,7 +8,7 @@ use log::debug;
 /// Currently returns an empty Library as requested, but can be extended
 /// to parse actual XML content in the future.
 pub fn parse(_content: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
-    debug!("XML file detected, returning empty library for {}", file_id);
+    debug!("XML file detected, returning empty library for {file_id}");
     // For now, return an empty Library as requested
     // TODO: Implement actual XML parsing when needed
     Ok(Library::new())

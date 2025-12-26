@@ -1,0 +1,11 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 20945679fe0b0c1d9f21697d6abd8d4b94d4a5addc8184e290c0af7d302a78ae # shrinks to program_name = "A", var_name = "a", continue_in_loop = false, loop_type = "FOR"
+cc 6a38a1b23f5c3b5c1af233a4e3692729fd232e41e91aefb86310a417d6c325ae # shrinks to program_name = "A", var_name = "a", continue_in_loop = true, loop_type = "FOR"
+cc 712cb7905ae70a8e4a9e6fbe2de56cccc554f3bfc01db2bfea0749f32b9214ad # shrinks to program_name = "A", var_name = "a", continue_in_loop = true, loop_type = "REPEAT"
+cc ecde4eaf054a799255dd3a830902f00d3ff9367649b0ebb65e8939afbba0bcba # shrinks to program_name = "A", var_name = "eN", continue_in_loop = true, loop_type = "FOR"
+cc 1c8f720c3114e661140ef5518428a81d46569ee91a02b1fd04be13b039aeb366 # shrinks to program_name = "Aa0_", var_name = "var_a00", continue_in_loop = true, loop_type = "WHILE"

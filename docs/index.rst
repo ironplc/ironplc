@@ -37,6 +37,7 @@ contributor. IronPLC is MIT licensed and we aim to keep it that way.
         
         * :doc:`compiler/index`
         * :doc:`vscode/index`
+        * :doc:`developer/index`
 
 .. toctree::
    :maxdepth: 1
@@ -46,3 +47,4 @@ contributor. IronPLC is MIT licensed and we aim to keep it that way.
    How-to guides <how-to-guides/index>
    Compiler reference <compiler/index>
    Visual Studio Code extension reference <vscode/index>
+   Developer documentation <developer/index>

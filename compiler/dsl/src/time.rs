@@ -4,13 +4,14 @@ use time::{
 };
 
 use crate::{common::FixedPoint, core::SourceSpan};
+use serde::Serialize;
 
 const SECOND_PER_DAY: u64 = Second::per(Day) as u64;
 const SECOND_PER_HOUR: u64 = Second::per(Hour) as u64;
 const SECOND_PER_MINUTE: u64 = Second::per(Minute) as u64;
 
 // See section 2.2.2
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct DurationLiteral {
     pub span: SourceSpan,
     pub interval: Duration,
@@ -136,7 +137,7 @@ impl DurationLiteral {
 }
 
 // See section 2.2.3
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct TimeOfDayLiteral {
     value: Time,
 }
@@ -153,7 +154,7 @@ impl TimeOfDayLiteral {
 }
 
 // See section 2.2.3
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct DateLiteral {
     pub value: Date,
 }
@@ -173,7 +174,7 @@ impl DateLiteral {
 }
 
 // See section 2.2.3
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct DateAndTimeLiteral {
     value: PrimitiveDateTime,
 }
