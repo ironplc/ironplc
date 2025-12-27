@@ -48,7 +48,7 @@ fn check_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("check").arg(shared_resource_path("first_steps.st"));
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("OK"));
+        .stdout(predicate::str::is_empty());
 
     Ok(())
 }
@@ -61,7 +61,7 @@ fn check_when_valid_file_8859_encoded_then_ok() -> Result<(), Box<dyn std::error
         .arg(path_to_test_resource("first_steps_8859.st"));
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("OK"));
+        .stdout(predicate::str::is_empty());
 
     Ok(())
 }
