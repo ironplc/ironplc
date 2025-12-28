@@ -1,7 +1,7 @@
 use assert_cmd::prelude::*;
 use ironplc_test::shared_resource_path;
 use predicates::prelude::*;
-use assert_cmd::cargo::cargo_bin;
+use assert_cmd::cargo;
 use std::{path::PathBuf, process::Command};
 
 pub fn path_to_test_resource(name: &'static str) -> PathBuf {
@@ -14,7 +14,7 @@ pub fn path_to_test_resource(name: &'static str) -> PathBuf {
 
 #[test]
 fn check_when_not_a_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::new(cargo_bin!());
+    let mut cmd = Command::new(cargo::cargo_bin!());
 
     cmd.arg("check").arg("test/file/doesnt/exist");
     cmd.assert()
@@ -26,7 +26,7 @@ fn check_when_not_a_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn check_when_trace_log_and_not_a_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::new(cargo_bin!());
+    let mut cmd = Command::new(cargo::cargo_bin!());
 
     cmd.arg("-v")
         .arg("-v")
@@ -43,7 +43,7 @@ fn check_when_trace_log_and_not_a_file_then_err() -> Result<(), Box<dyn std::err
 
 #[test]
 fn check_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::new(cargo_bin!());
+    let mut cmd = Command::new(cargo::cargo_bin!());
 
     cmd.arg("check").arg(shared_resource_path("first_steps.st"));
     cmd.assert()
@@ -55,7 +55,7 @@ fn check_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn check_when_valid_file_8859_encoded_then_ok() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::new(cargo_bin!());
+    let mut cmd = Command::new(cargo::cargo_bin!());
 
     cmd.arg("check")
         .arg(path_to_test_resource("first_steps_8859.st"));
@@ -68,7 +68,7 @@ fn check_when_valid_file_8859_encoded_then_ok() -> Result<(), Box<dyn std::error
 
 #[test]
 fn check_when_binary_encoded_then_error() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::new(cargo_bin!());
+    let mut cmd = Command::new(cargo::cargo_bin!());
 
     cmd.arg("check")
         .arg(path_to_test_resource("binary_file.st"));
@@ -81,7 +81,7 @@ fn check_when_binary_encoded_then_error() -> Result<(), Box<dyn std::error::Erro
 
 #[test]
 fn check_when_syntax_error_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::new(cargo_bin!());
+    let mut cmd = Command::new(cargo::cargo_bin!());
 
     cmd.arg("check")
         .arg(shared_resource_path("first_steps_syntax_error.st"));
@@ -94,7 +94,7 @@ fn check_when_syntax_error_file_then_err() -> Result<(), Box<dyn std::error::Err
 
 #[test]
 fn check_when_semantic_error_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::new(cargo_bin!());
+    let mut cmd = Command::new(cargo::cargo_bin!());
 
     cmd.arg("check")
         .arg(shared_resource_path("first_steps_semantic_error.st"));
@@ -107,7 +107,7 @@ fn check_when_semantic_error_file_then_err() -> Result<(), Box<dyn std::error::E
 
 #[test]
 fn echo_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::new(cargo_bin!());
+    let mut cmd = Command::new(cargo::cargo_bin!());
 
     cmd.arg("echo").arg(shared_resource_path("first_steps.st"));
     cmd.assert()
@@ -119,7 +119,7 @@ fn echo_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn echo_when_syntax_error_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::new(cargo_bin!());
+    let mut cmd = Command::new(cargo::cargo_bin!());
 
     cmd.arg("echo")
         .arg(shared_resource_path("first_steps_syntax_error.st"));
@@ -135,7 +135,7 @@ fn echo_when_syntax_error_file_then_err() -> Result<(), Box<dyn std::error::Erro
 fn echo_when_semantic_error_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     // For echo, we are only asking if we could parse, not if it is semantically
     // valid, so a semantic problem should not be an error.
-    let mut cmd = Command::new(cargo_bin!());
+    let mut cmd = Command::new(cargo::cargo_bin!());
 
     cmd.arg("echo")
         .arg(shared_resource_path("first_steps_semantic_error.st"));
@@ -148,7 +148,7 @@ fn echo_when_semantic_error_file_then_ok() -> Result<(), Box<dyn std::error::Err
 
 #[test]
 fn tokenize_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::new(cargo_bin!());
+    let mut cmd = Command::new(cargo::cargo_bin!());
 
     cmd.arg("tokenize")
         .arg(shared_resource_path("first_steps.st"));
@@ -161,7 +161,7 @@ fn tokenize_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> 
 
 #[test]
 fn version_then_ok() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::new(cargo_bin!());
+    let mut cmd = Command::new(cargo::cargo_bin!());
 
     cmd.arg("version");
 
