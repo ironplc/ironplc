@@ -1,7 +1,7 @@
+use assert_cmd::cargo;
 use assert_cmd::prelude::*;
 use ironplc_test::shared_resource_path;
 use predicates::prelude::*;
-use assert_cmd::cargo;
 use std::{path::PathBuf, process::Command};
 
 pub fn path_to_test_resource(name: &'static str) -> PathBuf {
