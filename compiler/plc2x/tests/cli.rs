@@ -46,9 +46,7 @@ fn check_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!());
 
     cmd.arg("check").arg(shared_resource_path("first_steps.st"));
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("OK"));
+    cmd.assert().success().stdout(predicate::str::is_empty());
 
     Ok(())
 }
@@ -59,9 +57,7 @@ fn check_when_valid_file_8859_encoded_then_ok() -> Result<(), Box<dyn std::error
 
     cmd.arg("check")
         .arg(path_to_test_resource("first_steps_8859.st"));
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("OK"));
+    cmd.assert().success().stdout(predicate::str::is_empty());
 
     Ok(())
 }
