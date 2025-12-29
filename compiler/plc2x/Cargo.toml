@@ -1,7 +1,7 @@
 [package]
 name = "ironplcc"
 description = "Compiler front-end for ironplc. This component provides both the CLI and Language Server Protocol"
-version = "0.147.0"
+version = "0.148.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -14,13 +14,13 @@ maintenance = { status = "experimental" }
 trace = ["ironplc-parser/trace"]
 
 [dependencies]
-ironplc-analyzer = { path = "../analyzer", version = "0.147.0" }
-ironplc-parser = { path = "../parser", version = "0.147.0" }
-ironplc-dsl = { path = "../dsl", version = "0.147.0" }
-ironplc-problems = { path = "../problems", version = "0.147.0" }
-ironplc-plc2plc = { path = "../plc2plc", version = "0.147.0" }
-ironplc-sources = { path = "../sources", version = "0.147.0" }
-ironplc-test = { path = "../test", version = "0.147.0" }
+ironplc-analyzer = { path = "../analyzer", version = "0.148.0" }
+ironplc-parser = { path = "../parser", version = "0.148.0" }
+ironplc-dsl = { path = "../dsl", version = "0.148.0" }
+ironplc-problems = { path = "../problems", version = "0.148.0" }
+ironplc-plc2plc = { path = "../plc2plc", version = "0.148.0" }
+ironplc-sources = { path = "../sources", version = "0.148.0" }
+ironplc-test = { path = "../test", version = "0.148.0" }
 
 time = "0.3.17"
 clap = { version = "4.0", features = ["derive", "wrap_help"] }
