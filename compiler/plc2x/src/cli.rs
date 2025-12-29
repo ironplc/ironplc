@@ -36,7 +36,6 @@ pub fn check(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
         return Err(String::from("Error during analysis"));
     }
 
-    println!("OK");
     Ok(())
 }
 
@@ -104,7 +103,6 @@ pub fn tokenize(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> 
         }
     }
 
-    println!("OK");
     Ok(())
 }
 
