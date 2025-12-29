@@ -1,7 +1,7 @@
 set windows-shell := ["powershell.exe", "-c"]
 
 alias ci := default
-default: compile test lint
+default: compile test coverage lint
 
 setup:
   cargo install cargo-release
@@ -12,11 +12,10 @@ compile:
 
 test:
   cargo test --all-targets
-  cargo llvm-cov --all-features --workspace --fail-under-lines 85 --show-missing-lines
 
 # Run tests and produce coverage report
 coverage:
-  cargo llvm-cov --ignore-filename-regex "cargo|dsl_macro_derive|rustup" --all-features --workspace --fail-under-lines 85 --show-missing-lines --lcov --output-path lcov.info
+  cargo llvm-cov --ignore-filename-regex "cargo|dsl_macro_derive|rustup" --workspace --fail-under-lines 85 --show-missing-lines --lcov --output-path lcov.info
 
 # Fix linting errors.
 format:
