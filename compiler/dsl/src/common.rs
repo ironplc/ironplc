@@ -286,7 +286,10 @@ impl TryFrom<SignedInteger> for u32 {
 impl TryFrom<SignedInteger> for i128 {
     type Error = TryFromIntegerError;
     fn try_from(value: SignedInteger) -> Result<i128, Self::Error> {
-        let mut primitive = value.value.try_into().map_err(|_e| TryFromIntegerError {})?;
+        let mut primitive = value
+            .value
+            .try_into()
+            .map_err(|_e| TryFromIntegerError {})?;
         if value.is_neg {
             primitive *= -1;
         }

@@ -2,8 +2,7 @@
 //!
 //! See section 3.
 use crate::common::{
-    AddressAssignment, ConstantKind, EnumeratedValue, IntegerLiteral,
-    SignedInteger, Subrange,
+    AddressAssignment, ConstantKind, EnumeratedValue, IntegerLiteral, SignedInteger, Subrange,
 };
 use crate::core::{Id, Located, SourceSpan};
 use std::fmt;
