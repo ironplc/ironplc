@@ -2,13 +2,10 @@
 //!
 //! See section 3.
 use crate::common::{
-    AddressAssignment, ConstantKind, EnumeratedValue, IntegerLiteral, LateBoundDeclaration,
-    SignedInteger, Subrange, TypeName,
+    AddressAssignment, ConstantKind, EnumeratedValue, IntegerLiteral, SignedInteger, Subrange,
 };
 use crate::core::{Id, Located, SourceSpan};
-use std::cmp::Ordering;
 use std::fmt;
-use std::ops::Deref;
 
 use crate::fold::Fold;
 use crate::visitor::Visitor;

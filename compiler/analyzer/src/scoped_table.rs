@@ -74,7 +74,7 @@ impl<'a, K: Key, V: 'a + Value> Scope<'a, K, V> {
         self.table.get(name)
     }
 
-    #[allow(unused)]
+    #[allow(dead_code)]
     fn remove(&mut self, name: &K) -> Option<V> {
         self.table.remove(name)
     }
@@ -158,7 +158,7 @@ impl<'a, K: Key, V: 'a + Value> ScopedTable<'a, K, V> {
     ///
     /// Returns the value or `None` if value is not in
     /// the inner-most scope.
-    #[allow(unused)]
+    #[allow(dead_code)]
     pub fn remove(&mut self, name: &K) -> Option<V> {
         match self.stack.front_mut() {
             None => None,

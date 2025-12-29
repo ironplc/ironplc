@@ -7,7 +7,6 @@
 //! protocol).
 use ironplc_problems::Problem;
 use std::collections::HashSet;
-use std::{fs::File, ops::Range};
 
 use crate::common::TypeName;
 use crate::core::{FileId, Id, Located, SourceSpan};
