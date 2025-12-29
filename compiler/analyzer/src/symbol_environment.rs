@@ -14,7 +14,6 @@ pub enum ScopeKind {
 
 /// Represents the kind of symbol
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 pub enum SymbolKind {
     /// Variable declaration
     Variable,
@@ -33,6 +32,7 @@ pub enum SymbolKind {
     /// Type declaration
     Type,
     /// Constant declaration
+    #[allow(unused)]
     Constant,
     /// Enumeration value
     EnumerationValue,
@@ -447,7 +447,6 @@ impl SymbolEnvironment {
 
     /// Get all symbols that are accessible from a given scope
     #[allow(dead_code)]
-    #[allow(unused_variables)]
     pub fn get_accessible_symbols(&self, scope: &ScopeKind) -> Vec<(&Id, &SymbolInfo)> {
         let mut accessible = Vec::new();
 

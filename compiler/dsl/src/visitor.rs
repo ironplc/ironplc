@@ -35,7 +35,6 @@
 use crate::common::*;
 use crate::configuration::*;
 use crate::core::{Id, SourceSpan};
-use crate::diagnostic::Diagnostic;
 use crate::sfc::*;
 use crate::textual::*;
 use crate::time::*;
@@ -77,7 +76,7 @@ macro_rules! dispatch {
 macro_rules! leaf {
     ($struct_name:ident) => {
         paste! {
-            fn [<visit_ $struct_name:snake >](&mut self, node: &$struct_name) -> Result<Self::Value, E> {
+            fn [<visit_ $struct_name:snake >](&mut self, _node: &$struct_name) -> Result<Self::Value, E> {
                 Ok(Self::Value::default())
             }
         }
@@ -398,13 +397,11 @@ pub trait Visitor<E> {
     dispatch!(StructuredVariable);
 }
 
+#[cfg(test)]
 mod test {
     use super::*;
-    use crate::common::*;
-    use crate::core::{Id, SourceSpan};
-    use crate::textual::*;
+    use crate::core::Id;
     use std::collections::LinkedList;
-    use std::fmt::Error;
 
     struct Descender {
         names: LinkedList<String>,
@@ -421,25 +418,25 @@ mod test {
         type Value = ();
 
         fn visit_address_assignment(&mut self, variable: &AddressAssignment) -> Result<(), ()> {
-            let mut dst = &mut self.names;
+            let dst = &mut self.names;
             dst.push_back(variable.to_string());
             Ok(())
         }
 
         fn visit_named_variable(&mut self, var: &NamedVariable) -> Result<(), ()> {
-            let mut dst = &mut self.names;
+            let dst = &mut self.names;
             dst.push_back(var.name.to_string());
             Ok(())
         }
 
         fn visit_late_bound(&mut self, node: &LateBound) -> Result<(), ()> {
-            let mut dst = &mut self.names;
+            let dst = &mut self.names;
             dst.push_back(node.value.to_string());
             Ok(())
         }
 
         fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<(), ()> {
-            let mut dst = &mut self.names;
+            let dst = &mut self.names;
             dst.push_back(fb_call.var_name.to_string());
             Ok(())
         }
@@ -462,8 +459,7 @@ mod test {
 
         let mut descender = Descender::new();
 
-        descender.walk(&library);
-
+        assert!(descender.walk(&library).is_ok());
         assert_eq!(3, descender.names.len())
     }
 }

@@ -2,11 +2,9 @@
 //! part of the standard.
 use core::fmt;
 use std::fs::DirEntry;
-use std::ops::{Deref, Range};
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::path::Path;
 use std::sync::{Arc, LazyLock};
-use std::{cmp::Ordering, hash::Hash, hash::Hasher};
+use std::{hash::Hash, hash::Hasher};
 
 use crate::fold::Fold;
 use crate::visitor::Visitor;
@@ -118,7 +116,7 @@ impl Default for SourceSpan {
 }
 
 impl PartialEq for SourceSpan {
-    fn eq(&self, other: &Self) -> bool {
+    fn eq(&self, _other: &Self) -> bool {
         // Two source locations are equal by default? Yes - when comparing
         // items, we rarely want to know that they were declared at the same
         // position. With this, we can use the derived "Clone" implementation.
