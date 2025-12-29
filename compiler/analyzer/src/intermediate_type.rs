@@ -36,6 +36,7 @@ impl ByteSized {
         }
     }
 
+    #[allow(dead_code)]
     pub fn as_bytes(&self) -> u8 {
         match self {
             ByteSized::B8 => 1,
@@ -52,7 +53,6 @@ impl ByteSized {
 /// from primitive types to complex user-defined types. The intermediate
 /// representation is used during semantic analysis and code generation.
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 pub enum IntermediateType {
     /// Boolean type (true/false)
     Bool,
@@ -101,11 +101,13 @@ pub enum IntermediateType {
         max_value: i128,
     },
     /// Function block type
+    #[allow(unused)]
     FunctionBlock {
         /// Name of the function block type
         name: String,
     },
     /// Function type with return type and parameters
+    #[allow(unused)]
     Function {
         /// Return type of the function, None for procedures
         return_type: Option<Box<IntermediateType>>,
@@ -114,7 +116,6 @@ pub enum IntermediateType {
     },
 }
 
-#[allow(dead_code)]
 impl IntermediateType {
     /// Returns if the type is a primitive type.
     pub fn is_primitive(&self) -> bool {
@@ -147,16 +148,19 @@ impl IntermediateType {
     }
 
     /// Returns if the type is a subrange.
+    #[allow(dead_code)]
     pub fn is_subrange(&self) -> bool {
         matches!(self, IntermediateType::Subrange { .. })
     }
 
     /// Returns if the type is a function block.
+    #[allow(dead_code)]
     pub fn is_function_block(&self) -> bool {
         matches!(self, IntermediateType::FunctionBlock { .. })
     }
 
     /// Returns if the type is a function.
+    #[allow(dead_code)]
     pub fn is_function(&self) -> bool {
         matches!(self, IntermediateType::Function { .. })
     }
@@ -172,6 +176,7 @@ impl IntermediateType {
     }
 
     /// Returns if the type is an integer type (signed or unsigned).
+    #[allow(dead_code)]
     pub fn is_integer(&self) -> bool {
         matches!(
             self,
@@ -181,6 +186,7 @@ impl IntermediateType {
 
     /// Gets the size in bytes. 61131-3 doesn't support dynamically sized
     /// objects so we know the size of every item.
+    #[allow(dead_code)]
     pub fn size_in_bytes(&self) -> u8 {
         match self {
             IntermediateType::Bool => 1,
