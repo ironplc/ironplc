@@ -1,14 +1,13 @@
 //! Provides definitions specific to configuration elements.
 //!
 //! See section 2 (especially 2.7).
-use time::Duration;
 
 use crate::{
     common::{
         AddressAssignment, ConstantKind, DeclarationQualifier, EnumeratedValue, HasVariables,
         InitialValueAssignmentKind, StructureElementInit, TypeName, VarDecl,
     },
-    core::{Id, Located},
+    core::Id,
     textual::SymbolicVariableKind,
     time::DurationLiteral,
 };

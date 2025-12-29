@@ -3,15 +3,9 @@
 //! See section 2.
 use core::str::FromStr;
 use lazy_static::lazy_static;
-use logos::Source;
 use regex::Regex;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
-use std::num::TryFromIntError;
-use std::ops::{Add, Deref};
-use std::panic::Location;
-use time::convert::{Day, Hour, Minute, Second};
-use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
 use dsl_macro_derive::Recurse;
 
@@ -81,21 +75,21 @@ pub struct TryFromIntegerError();
 impl TryFrom<Integer> for u8 {
     type Error = TryFromIntegerError;
     fn try_from(value: Integer) -> Result<u8, Self::Error> {
-        value.value.try_into().map_err(|e| TryFromIntegerError {})
+        value.value.try_into().map_err(|_e| TryFromIntegerError {})
     }
 }
 
 impl TryFrom<Integer> for u32 {
     type Error = TryFromIntegerError;
     fn try_from(value: Integer) -> Result<u32, Self::Error> {
-        value.value.try_into().map_err(|e| TryFromIntegerError {})
+        value.value.try_into().map_err(|_e| TryFromIntegerError {})
     }
 }
 
 impl TryFrom<Integer> for i128 {
     type Error = TryFromIntegerError;
     fn try_from(value: Integer) -> Result<i128, Self::Error> {
-        value.value.try_into().map_err(|e| TryFromIntegerError {})
+        value.value.try_into().map_err(|_e| TryFromIntegerError {})
     }
 }
 
@@ -103,7 +97,7 @@ impl TryFrom<Integer> for f64 {
     type Error = TryFromIntegerError;
     fn try_from(value: Integer) -> Result<f64, Self::Error> {
         let res: Result<u32, _> = value.value.try_into();
-        let val = res.map_err(|e| TryFromIntegerError {})?;
+        let val = res.map_err(|_e| TryFromIntegerError {})?;
 
         let res: f64 = val.into();
         Ok(res)
@@ -123,7 +117,7 @@ impl Integer {
             .as_str()
             .parse::<u128>()
             .map(|value| Integer { span, value })
-            .map_err(|e| "dec")
+            .map_err(|_e| "dec")
     }
 
     pub fn try_hex(a: &str) -> Result<Self, &'static str> {
@@ -145,14 +139,14 @@ impl Integer {
                 span: SourceSpan::default(),
                 value,
             })
-            .map_err(|e| "hex")
+            .map_err(|_e| "hex")
     }
 
     pub fn hex(a: &str, span: SourceSpan) -> Result<Self, &'static str> {
         let without_underscore: String = a.chars().filter(|c| c.is_ascii_hexdigit()).collect();
         u128::from_str_radix(without_underscore.as_str(), 16)
             .map(|value| Integer { span, value })
-            .map_err(|e| "hex")
+            .map_err(|_e| "hex")
     }
 
     pub fn try_octal(a: &str) -> Result<Self, &'static str> {
@@ -174,14 +168,14 @@ impl Integer {
                 span: SourceSpan::default(),
                 value,
             })
-            .map_err(|e| "octal")
+            .map_err(|_e| "octal")
     }
 
     pub fn octal(a: &str, span: SourceSpan) -> Result<Self, &'static str> {
         let without_underscore: String = a.chars().filter(|c| matches!(c, '0'..='7')).collect();
         u128::from_str_radix(without_underscore.as_str(), 8)
             .map(|value| Integer { span, value })
-            .map_err(|e| "octal")
+            .map_err(|_e| "octal")
     }
 
     pub fn try_binary(a: &str) -> Result<Self, &'static str> {
@@ -203,14 +197,14 @@ impl Integer {
                 span: SourceSpan::default(),
                 value,
             })
-            .map_err(|e| "binary")
+            .map_err(|_e| "binary")
     }
 
     pub fn binary(a: &str, span: SourceSpan) -> Result<Self, &'static str> {
         let without_underscore: String = a.chars().filter(|c| matches!(c, '0'..='1')).collect();
         u128::from_str_radix(without_underscore.as_str(), 2)
             .map(|value| Integer { span, value })
-            .map_err(|e| "binary")
+            .map_err(|_e| "binary")
     }
 }
 
@@ -278,21 +272,21 @@ impl From<Integer> for SignedInteger {
 impl TryFrom<SignedInteger> for u8 {
     type Error = TryFromIntegerError;
     fn try_from(value: SignedInteger) -> Result<u8, Self::Error> {
-        value.value.try_into().map_err(|e| TryFromIntegerError {})
+        value.value.try_into().map_err(|_e| TryFromIntegerError {})
     }
 }
 
 impl TryFrom<SignedInteger> for u32 {
     type Error = TryFromIntegerError;
     fn try_from(value: SignedInteger) -> Result<u32, Self::Error> {
-        value.value.try_into().map_err(|e| TryFromIntegerError {})
+        value.value.try_into().map_err(|_e| TryFromIntegerError {})
     }
 }
 
 impl TryFrom<SignedInteger> for i128 {
     type Error = TryFromIntegerError;
     fn try_from(value: SignedInteger) -> Result<i128, Self::Error> {
-        let mut primitive = value.value.try_into().map_err(|e| TryFromIntegerError {})?;
+        let mut primitive = value.value.try_into().map_err(|_e| TryFromIntegerError {})?;
         if value.is_neg {
             primitive *= -1;
         }
@@ -358,7 +352,7 @@ impl FixedPoint {
             Some((whole, decimal)) => {
                 let whole = whole
                     .parse::<u64>()
-                    .map_err(|e| "floating point whole not valid")?;
+                    .map_err(|_e| "floating point whole not valid")?;
 
                 // The maximum value for a u64 integer is:
                 //   18446744073709551615
@@ -383,7 +377,7 @@ impl FixedPoint {
                 // Now parse this value as a u64
                 let decimal = decimal
                     .parse::<u64>()
-                    .map_err(|e| "floating point decimal not valid")?;
+                    .map_err(|_e| "floating point decimal not valid")?;
 
                 Ok(FixedPoint {
                     span: SourceSpan::default(),
@@ -395,7 +389,7 @@ impl FixedPoint {
                 // There is no decimal point so this is essentially a whole number
                 Ok(FixedPoint {
                     span: SourceSpan::default(),
-                    whole: value.parse::<u64>().map_err(|e| "u64")?,
+                    whole: value.parse::<u64>().map_err(|_e| "u64")?,
                     femptos: 0,
                 })
             }
@@ -436,7 +430,7 @@ impl RealLiteral {
                 value,
                 data_type: tn,
             })
-            .map_err(|e| "real")
+            .map_err(|_e| "real")
     }
 }
 
@@ -1207,7 +1201,7 @@ impl VarDecl {
 
     pub fn type_name(&self) -> Option<TypeName> {
         match &self.initializer {
-            InitialValueAssignmentKind::None(source_span) => None,
+            InitialValueAssignmentKind::None(_source_span) => None,
             InitialValueAssignmentKind::Simple(simple_initializer) => {
                 Some(simple_initializer.type_name.clone())
             }
@@ -1215,7 +1209,7 @@ impl VarDecl {
                 Some(string_initializer.type_name())
             }
             // TODO The enumerated values doesn't have a named type - we probably want to create a type name here
-            InitialValueAssignmentKind::EnumeratedValues(enumerated_values_initializer) => None,
+            InitialValueAssignmentKind::EnumeratedValues(_enumerated_values_initializer) => None,
             InitialValueAssignmentKind::EnumeratedType(enumerated_initial_value_assignment) => {
                 Some(enumerated_initial_value_assignment.type_name.clone())
             }
@@ -1225,12 +1219,12 @@ impl VarDecl {
             InitialValueAssignmentKind::Subrange(subrange_specification_kind) => {
                 match subrange_specification_kind {
                     // TODO should generate a type name for these anonymous types
-                    SubrangeSpecificationKind::Specification(subrange_specification) => None,
+                    SubrangeSpecificationKind::Specification(_subrange_specification) => None,
                     SubrangeSpecificationKind::Type(type_name) => Some(type_name.clone()),
                 }
             }
-            InitialValueAssignmentKind::Structure(structure_initialization_declaration) => todo!(),
-            InitialValueAssignmentKind::Array(array_initial_value_assignment) => todo!(),
+            InitialValueAssignmentKind::Structure(_structure_initialization_declaration) => todo!(),
+            InitialValueAssignmentKind::Array(_array_initial_value_assignment) => todo!(),
             InitialValueAssignmentKind::LateResolvedType(type_name) => Some(type_name.clone()),
         }
     }
