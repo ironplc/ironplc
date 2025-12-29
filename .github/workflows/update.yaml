@@ -75,7 +75,11 @@ jobs:
         with:
           ref: ${{ needs.update-dependencies.outputs.branch-name }}
           token: ${{secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN}}
-      - name: Merge Changes
+      - name: Fetch latest main
+        run: git fetch origin main
+      - name: Merge main into branch
+        run: git merge origin/main
+      - name: Publish Changes
         if: ${{ !inputs.dryrun }}
         run: |
           git push origin ${{ needs.update-dependencies.outputs.branch-name }}:main
