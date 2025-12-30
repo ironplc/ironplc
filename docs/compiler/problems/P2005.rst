@@ -1,0 +1,47 @@
+=====
+P2005
+=====
+
+.. problem-summary:: P2005
+
+This error occurs when there is a recursive enumeration definition, where an enumeration type references itself either directly or indirectly.
+
+Example
+-------
+
+The following code will generate error P2005:
+
+.. code-block::
+
+   TYPE
+       RecursiveEnum : RecursiveEnum;  (* Error: Enumeration references itself *)
+   END_TYPE
+
+The enumeration ``RecursiveEnum`` references itself in its own definition, creating a recursive cycle.
+
+Another example of indirect recursion:
+
+.. code-block::
+
+   TYPE
+       EnumA : EnumB;
+       EnumB : EnumA;  (* Error: Indirect recursive enumeration *)
+   END_TYPE
+
+To fix this error, define the enumeration with actual values instead of self-references:
+
+.. code-block::
+
+   TYPE
+       StatusEnum : (IDLE, RUNNING, STOPPED, ERROR) := IDLE;  (* Correct: Proper enumeration *)
+   END_TYPE
+
+Or use a base type for type aliases:
+
+.. code-block::
+
+   TYPE
+       BaseEnum : (VALUE1, VALUE2, VALUE3) := VALUE1;
+       AliasEnum : BaseEnum;  (* Correct: References a proper enumeration *)
+   END_TYPE
+

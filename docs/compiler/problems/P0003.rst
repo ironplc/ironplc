@@ -1,35 +1,34 @@
 =====
-P0003
+P0031
 =====
 
-.. problem-summary:: P0003
+.. problem-summary:: P0031
 
-This error occurs when a structure type declaration has duplicate element names.
+The compiler encountered an unexpected token while parsing the source text.
+
+This error occurs when the parser encounters text that is not valid IEC 61131-3 syntax.
 
 Example
 -------
 
-The following code will generate error P0003:
+The following code will generate error P0031:
 
 .. code-block::
 
    TYPE
-       CustomStruct : STRUCT
-           Name: BOOL;
-           Name: BOOL;  (* Error: Duplicate element name *)
+       CUSTOM_STRUCT : STRUCT&   (* Error: Invalid character '&' *)
+           NAME: BOOL;
        END_STRUCT;
    END_TYPE
 
-The structure has two elements with the same name ``Name``, which is not allowed.
+The parser encountered the ``&`` character in an unexpected position where it expected valid identifier characters.
 
-To fix this error, ensure all element names in a structure are unique:
+To fix this error, remove the invalid character and use valid IEC 61131-3 syntax:
 
 .. code-block::
 
    TYPE
-       CustomStruct : STRUCT
-           Name1: BOOL;
-           Name2: BOOL;  (* Different name *)
+       CUSTOM_STRUCT : STRUCT   (* Correct: No invalid characters *)
+           NAME: BOOL;
        END_STRUCT;
    END_TYPE
-

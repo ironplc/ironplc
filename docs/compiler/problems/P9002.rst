@@ -1,0 +1,33 @@
+=====
+P9002
+=====
+
+.. problem-summary:: P9002
+
+This error occurs when the set of valid source files has no content, meaning no valid Structured Text code was provided for compilation.
+
+Example
+-------
+
+This error typically occurs when:
+
+1. No source files are provided to the compiler
+2. All provided source files are empty
+3. All provided source files contain only comments or whitespace
+
+To fix this error, ensure that at least one source file contains valid Structured Text code:
+
+.. code-block::
+
+   (* This is a valid Structured Text program *)
+   FUNCTION_BLOCK Example
+   VAR_INPUT
+       Input1 : BOOL;
+   END_VAR
+   VAR_OUTPUT
+       Output1 : BOOL;
+   END_VAR
+   
+   Output1 := Input1;
+   END_FUNCTION_BLOCK
+

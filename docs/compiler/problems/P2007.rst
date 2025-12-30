@@ -1,0 +1,39 @@
+=====
+P2007
+=====
+
+.. problem-summary:: P2007
+
+This error occurs when a type declaration name is duplicated within the same scope.
+
+Example
+-------
+
+The following code will generate error P2007:
+
+.. code-block::
+
+   TYPE
+       the_struct : STRUCT
+           member: BOOL;
+       END_STRUCT;  
+       the_struct : STRUCT  (* Error: Duplicate type name *)
+           member: BOOL;
+       END_STRUCT; 
+   END_TYPE
+
+The type ``the_struct`` is declared twice within the same ``TYPE`` block, which is not allowed.
+
+To fix this error, ensure all type names are unique within their scope:
+
+.. code-block::
+
+   TYPE
+       the_struct : STRUCT
+           member: BOOL;
+       END_STRUCT;  
+       another_struct : STRUCT  (* Correct: Different name *)
+           member: BOOL;
+       END_STRUCT; 
+   END_TYPE
+
