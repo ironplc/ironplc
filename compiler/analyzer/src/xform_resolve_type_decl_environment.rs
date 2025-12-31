@@ -381,7 +381,7 @@ END_TYPE
         let mut env = TypeEnvironment::new();
         let result = apply(input, &mut env);
         let result = result.unwrap_err();
-        assert_eq!("P0019", result.first().unwrap().code);
+        assert_eq!("P2007", result.first().unwrap().code);
     }
 
     #[test]
