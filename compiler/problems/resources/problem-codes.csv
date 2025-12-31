@@ -1,51 +1,51 @@
 Code,Name,Message
 P0001,OpenComment,End of file before comment closed
 P0002,SyntaxError,Syntax error
-P0003,StructureDuplicatedElement,Structure has more than one element with name
-P0004,SubrangeMinStrictlyLessMax,Subrange declaration minimum value is not less than the maximum
-P0005,EnumTypeDeclDuplicateItem,Enumeration type declaration has duplicated value
-P0006,FunctionCallMixedArgTypes,Function call mixes named (formal) and positional (non-format) input arguments
-P0007,FunctionInvocationMissingInput,Function invocation assigns named (formal) input that is not defined
-P0008,FunctionInvocationRequiresFormal,Function invocation requires non-formal inputs but the invocation has formal inputs
-P0009,FunctionInvocationUndefinedOutput,Function invocation assigns output that is not an output variable of the function
-P0010,RecursiveCycle,Library has a recursive cycle
-P0011,ProgramMissingTaskConfig,Program task configuration reference not defined
-P0012,EnumNotDeclared,Enumeration is not declared
-P0013,EnumRecursive,Recursive enumeration for type
-P0014,EnumValueNotDefined,Enumeration uses value that is not defined in the enumeration
-P0015,VariableUndefined,Variable not defined before used
-P0016,ConstantMustHaveInitializer,Variable is constant but does not define value
-P0017,FunctionBlockNotConstant,CONSTANT qualifier is not permitted for function block instance type
-P0018,VariableMustBeConst,External var is global constant and must be declared constant
-P0019,TypeDeclNameDuplicated,Type declaration name is duplicated
-P0020,DefinitionNameDuplicated,Definition name is duplicated
-P0021,FunctionBlockNotInScope,Function block invocation is not a variable in scope
-P0022,UndeclaredUnknownType,Unknown type
-P0023,CannotCanonicalizePath,Unable to canonicalize the path
-P0024,CannotReadMetadata,Unable to read metadata for the path
-P0025,CannotReadDirectory,Unable to read directory
-P0026,CannotReadFile,Unable to read file
-P0027,SymlinkUnsupported,Symlinks are not supported
-P0028,UnsupportedEncoding,File encoding is not supported
-P0029,UnsupportedStdLibType,Referenced type is valid but not implemented
-P0030,NoContent,Set of valid source files has no content
-P0031,UnexpectedToken,Unmatched character sequence in source text
-P0032,CStyleComment,C-style comment not allowed
-P0033,PouDeclNameDuplicated,POU declaration name is duplicated
-P0034,UnexpectedElement,Element is not permitted at this compiler state
-P0035,ParentEnumNotDeclared,Parent enumeration is not declared
-P0036,SymbolDeclDuplicated,Symbol declaration name is duplicated
-P0037,RecursiveTypeCycle,Library has a recursive cycle in resolving type names
-P0038,ParentTypeNotDeclared,Parent type is not declared
-P0039,AliasParentTypeNotDeclared,Alias parent type is not declared
-P0040,ArrayElementTypeNotDeclared,Array element type is not declared
-P0041,UnsupportedFileType,File type is not supported
-P0042,SimpleTypeDeclMissingInit,Simple type declaration requires an initializer
-P0043,SubrangeBaseTypeNotNumeric,Subrange base type must be numeric
-P0044,SubrangeOutOfBounds,Subrange is outside base type bounds
-P0045,StructFieldMissingType,Structure field missing type specification
-P0046,NestedStructuresNotSupported,Nested structures not supported
-P0047,InvalidSimpleTypeDecl,Invalid simple type declaration
-P0048,EnumerationTooManyValues,Enumeration has too many unique values
+P0003,UnexpectedToken,Unmatched character sequence in source text
+P0004,CStyleComment,C-style comment not allowed
+P0005,UnexpectedElement,Element is not permitted at this compiler state
+P2001,StructureDuplicatedElement,Structure has more than one element with name
+P2002,SubrangeMinStrictlyLessMax,Subrange declaration minimum value is not less than the maximum
+P2003,EnumTypeDeclDuplicateItem,Enumeration type declaration has duplicated value
+P2004,EnumNotDeclared,Enumeration is not declared
+P2005,EnumRecursive,Recursive enumeration for type
+P2006,EnumValueNotDefined,Enumeration uses value that is not defined in the enumeration
+P2007,TypeDeclNameDuplicated,Type declaration name is duplicated
+P2008,UndeclaredUnknownType,Unknown type
+P2009,ParentEnumNotDeclared,Parent enumeration is not declared
+P2010,RecursiveTypeCycle,Library has a recursive cycle in resolving type names
+P2011,ParentTypeNotDeclared,Parent type is not declared
+P2012,AliasParentTypeNotDeclared,Alias parent type is not declared
+P2013,ArrayElementTypeNotDeclared,Array element type is not declared
+P2014,SimpleTypeDeclMissingInit,Simple type declaration requires an initializer
+P2015,SubrangeBaseTypeNotNumeric,Subrange base type must be numeric
+P2016,SubrangeOutOfBounds,Subrange is outside base type bounds
+P2017,StructFieldMissingType,Structure field missing type specification
+P2018,NestedStructuresNotSupported,Nested structures not supported
+P2019,InvalidSimpleTypeDecl,Invalid simple type declaration
+P2020,EnumerationTooManyValues,Enumeration has too many unique values
+P4001,FunctionCallMixedArgTypes,Function call mixes named (formal) and positional (non-format) input arguments
+P4002,FunctionInvocationMissingInput,Function invocation assigns named (formal) input that is not defined
+P4003,FunctionInvocationRequiresFormal,Function invocation requires non-formal inputs but the invocation has formal inputs
+P4004,FunctionInvocationUndefinedOutput,Function invocation assigns output that is not an output variable of the function
+P4005,RecursiveCycle,Library has a recursive cycle
+P4006,ProgramMissingTaskConfig,Program task configuration reference not defined
+P4007,VariableUndefined,Variable not defined before used
+P4008,ConstantMustHaveInitializer,Variable is constant but does not define value
+P4009,FunctionBlockNotConstant,CONSTANT qualifier is not permitted for function block instance type
+P4010,VariableMustBeConst,External var is global constant and must be declared constant
+P4011,DefinitionNameDuplicated,Definition name is duplicated
+P4012,FunctionBlockNotInScope,Function block invocation is not a variable in scope
+P4013,PouDeclNameDuplicated,POU declaration name is duplicated
+P4014,SymbolDeclDuplicated,Symbol declaration name is duplicated
+P6001,CannotCanonicalizePath,Unable to canonicalize the path
+P6002,CannotReadMetadata,Unable to read metadata for the path
+P6003,CannotReadDirectory,Unable to read directory
+P6004,CannotReadFile,Unable to read file
+P6005,SymlinkUnsupported,Symlinks are not supported
+P6006,UnsupportedEncoding,File encoding is not supported
+P6007,UnsupportedFileType,File type is not supported
+P9001,UnsupportedStdLibType,Referenced type is valid but not implemented
+P9002,NoContent,Set of valid source files has no content
 P9998,InternalError,Internal error indicating a bug in the compiler
 P9999,NotImplemented,Capability is not implemented (yet!)

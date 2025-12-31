@@ -1,0 +1,32 @@
+=====
+P2010
+=====
+
+.. problem-summary:: P2010
+
+This error occurs when there is a recursive cycle in resolving type names, where types reference each other in a circular manner.
+
+Example
+-------
+
+The following code will generate error P2010:
+
+.. code-block::
+
+   TYPE
+       TypeA : TypeB;
+       TypeB : TypeA;  (* Error: Circular type reference *)
+   END_TYPE
+
+The types ``TypeA`` and ``TypeB`` reference each other, creating a circular dependency that cannot be resolved.
+
+To fix this error, break the cycle by using a base type:
+
+.. code-block::
+
+   TYPE
+       BaseType : INT;
+       TypeA : BaseType;
+       TypeB : BaseType;  (* Correct: Both reference base type *)
+   END_TYPE
+

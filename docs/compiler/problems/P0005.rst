@@ -1,29 +1,38 @@
 =====
-P0005
+P0004
 =====
 
 .. problem-summary:: P0005
 
-This error occurs when an enumeration type declaration has duplicate values.
+This error occurs when an element appears in a context where it is not permitted according to the current compiler state or parsing context.
 
 Example
 -------
 
-The following code will generate error P0005:
+This error typically occurs when language elements are used in inappropriate contexts, such as:
+
+1. Using statements outside of executable sections
+2. Declaring variables in inappropriate sections
+3. Using keywords in wrong contexts
 
 .. code-block::
 
    TYPE
-       LogLevel : (CRITICAL, CRITICAL) := CRITICAL;  (* Error: Duplicate value *)
+       DataStruct : STRUCT
+           Field1 : BOOL;
+           SomeVariable := SomeVariable + 1;  (* Error: Statement not allowed in struct *)
+       END_STRUCT;
    END_TYPE
 
-The enumeration has two values with the same name ``CRITICAL``, which is not allowed.
+The assignment statement ``SomeVariable := SomeVariable + 1`` is not permitted inside a structure declaration.
 
-To fix this error, ensure all enumeration values are unique:
+To fix this error, ensure elements are used in their appropriate contexts:
 
 .. code-block::
 
    TYPE
-       LogLevel : (CRITICAL, WARNING, INFO, DEBUG) := INFO;  (* All values unique *)
+       DataStruct : STRUCT
+           Field1 : BOOL;
+           Field2 : INT;  (* Correct: Only declarations in struct *)
+       END_STRUCT;
    END_TYPE
-
