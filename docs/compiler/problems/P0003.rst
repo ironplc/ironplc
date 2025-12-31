@@ -1,8 +1,8 @@
 =====
-P0031
+P0003
 =====
 
-.. problem-summary:: P0031
+.. problem-summary:: P0003
 
 The compiler encountered an unexpected token while parsing the source text.
 
@@ -11,7 +11,7 @@ This error occurs when the parser encounters text that is not valid IEC 61131-3 
 Example
 -------
 
-The following code will generate error P0031:
+The following code will generate error P0003:
 
 .. code-block::
 

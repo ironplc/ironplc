@@ -1,15 +1,15 @@
 =====
-P0032
+P0004
 =====
 
-.. problem-summary:: P0032
+.. problem-summary:: P0004
 
 This error occurs when C-style comments (``//``) are used in the code, which are not allowed in IEC 61131-3.
 
 Example
 -------
 
-The following code will generate error P0032:
+The following code will generate error P0004:
 
 .. code-block::
 

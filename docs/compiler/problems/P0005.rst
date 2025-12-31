@@ -1,8 +1,8 @@
 =====
-P0034
+P0004
 =====
 
-.. problem-summary:: P0034
+.. problem-summary:: P0005
 
 This error occurs when an element appears in a context where it is not permitted according to the current compiler state or parsing context.
 
