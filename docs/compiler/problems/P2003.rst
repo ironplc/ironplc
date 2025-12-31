@@ -1,0 +1,29 @@
+=====
+P2003
+=====
+
+.. problem-summary:: P2003
+
+This error occurs when an enumeration type declaration has duplicate values.
+
+Example
+-------
+
+The following code will generate error P2003:
+
+.. code-block::
+
+   TYPE
+       LogLevel : (CRITICAL, CRITICAL) := CRITICAL;  (* Error: Duplicate value *)
+   END_TYPE
+
+The enumeration has two values with the same name ``CRITICAL``, which is not allowed.
+
+To fix this error, ensure all enumeration values are unique:
+
+.. code-block::
+
+   TYPE
+       LogLevel : (CRITICAL, WARNING, INFO, DEBUG) := INFO;  (* All values unique *)
+   END_TYPE
+

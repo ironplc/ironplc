@@ -1,0 +1,46 @@
+=====
+P6004
+=====
+
+.. problem-summary:: P6004
+
+This error occurs when the compiler is unable to read a source file from disk.
+
+Example
+-------
+
+This error typically occurs when:
+
+1. The specified file does not exist
+2. You don't have permission to read the file
+3. The file is locked by another process
+4. There are hardware or filesystem issues
+
+.. code-block:: bash
+
+   # Examples that would cause this error:
+   ironplcc check nonexistent_file.st             # File doesn't exist
+   ironplcc check /root/private_file.st           # Permission denied
+   ironplcc check locked_file.st                  # File locked by another process
+
+To fix this error, ensure that:
+
+- The file exists at the specified path
+- You have read permissions for the file
+- The file is not locked by another application
+- The filesystem and storage device are functioning correctly
+
+.. code-block::
+
+   (* Example of a valid file that can be read *)
+   FUNCTION_BLOCK ReadableFile
+   VAR_INPUT
+       InputSignal : BOOL;
+   END_VAR
+   VAR_OUTPUT
+       OutputSignal : BOOL;
+   END_VAR
+   
+   OutputSignal := InputSignal;
+   END_FUNCTION_BLOCK
+

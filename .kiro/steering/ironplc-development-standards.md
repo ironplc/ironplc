@@ -25,7 +25,7 @@ IronPLC consists of three primary components that must be kept in sync:
 - Use `snake_case` for functions, variables, and module names
 - Use `PascalCase` for types, structs, and enums
 - Use `SCREAMING_SNAKE_CASE` for constants
-- Problem codes follow the pattern `P####` (e.g., P0044)
+- Problem codes follow the pattern `P####` (e.g., P2016)
 - Problem enum variants use descriptive names (e.g., `SubrangeOutOfBounds`)
 
 ## Testing Standards
@@ -68,7 +68,7 @@ Error handling is **critical** for developer experience. Follow these rules:
 ### Problem Code Format
 ```csv
 Code,Name,Message
-P0044,SubrangeOutOfBounds,Subrange is outside base type bounds
+P2016,SubrangeOutOfBounds,Subrange is outside base type bounds
 ```
 
 ### Error Messages

@@ -1,0 +1,30 @@
+=====
+P2011
+=====
+
+.. problem-summary:: P2011
+
+This error occurs when a type alias references a parent type that has not been declared.
+
+Example
+-------
+
+The following code will generate error P2011:
+
+.. code-block::
+
+   TYPE
+       MyAlias : UndeclaredParentType;  (* Error: UndeclaredParentType is not declared *)
+   END_TYPE
+
+The type alias ``MyAlias`` references ``UndeclaredParentType`` which has not been declared.
+
+To fix this error, declare the parent type before creating the alias:
+
+.. code-block::
+
+   TYPE
+       BaseType : INT;
+       MyAlias : BaseType;  (* Correct: BaseType is now declared *)
+   END_TYPE
+

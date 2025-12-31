@@ -1,0 +1,49 @@
+=====
+P4011
+=====
+
+.. problem-summary:: P4011
+
+This error occurs when there are duplicate definition names in the same scope, such as having two functions, function blocks, or programs with the same name.
+
+Example
+-------
+
+The following code will generate error P4011:
+
+.. code-block::
+
+   FUNCTION DuplicateName : BOOL
+   VAR_INPUT
+       InputParam : BOOL;
+   END_VAR
+   DuplicateName := InputParam;
+   END_FUNCTION
+
+   FUNCTION DuplicateName : INT  (* Error: Duplicate definition name *)
+   VAR_INPUT
+       InputValue : INT;
+   END_VAR
+   DuplicateName := InputValue;
+   END_FUNCTION
+
+The code defines two functions with the same name ``DuplicateName``, which is not allowed.
+
+To fix this error, ensure all definition names are unique:
+
+.. code-block::
+
+   FUNCTION FirstFunction : BOOL
+   VAR_INPUT
+       InputParam : BOOL;
+   END_VAR
+   FirstFunction := InputParam;
+   END_FUNCTION
+
+   FUNCTION SecondFunction : INT  (* Different name *)
+   VAR_INPUT
+       InputValue : INT;
+   END_VAR
+   SecondFunction := InputValue;
+   END_FUNCTION
+

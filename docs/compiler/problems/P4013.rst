@@ -1,0 +1,33 @@
+=====
+P4013
+=====
+
+.. problem-summary:: P4013
+
+This error occurs when a POU (Program Organization Unit) declaration name is duplicated within the same scope.
+
+Example
+-------
+
+The following code will generate error P4013:
+
+.. code-block::
+
+   FUNCTION_BLOCK MyFunction
+   END_FUNCTION_BLOCK
+
+   FUNCTION_BLOCK MyFunction  (* Error: Duplicate POU name *)
+   END_FUNCTION_BLOCK
+
+The function block ``MyFunction`` is declared twice, which is not allowed.
+
+To fix this error, ensure all POU names are unique within their scope:
+
+.. code-block::
+
+   FUNCTION_BLOCK MyFunction1
+   END_FUNCTION_BLOCK
+
+   FUNCTION_BLOCK MyFunction2  (* Correct: Different name *)
+   END_FUNCTION_BLOCK
+

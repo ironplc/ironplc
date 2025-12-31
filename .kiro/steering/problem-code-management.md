@@ -22,10 +22,10 @@ This steering file provides specific guidance for managing problem codes in the 
 ### CSV Format
 ```csv
 Code,Name,Message
-P0044,SubrangeOutOfBounds,Subrange is outside base type bounds
+P2016,SubrangeOutOfBounds,Subrange is outside base type bounds
 ```
 
-- **Code**: P#### format (e.g., P0044)
+- **Code**: P#### format (e.g., P2016)
 - **Name**: PascalCase enum variant name (e.g., SubrangeOutOfBounds)
 - **Message**: Brief, generic description of the error class
 
@@ -74,15 +74,15 @@ To fix this error, [specific guidance]:
 
 ### Type System Errors (P2000-P3999)
 - Type declaration issues, type compatibility problems
-- Examples: P0004 (SubrangeMinStrictlyLessMax), P0044 (SubrangeOutOfBounds)
+- Examples: P2002 (SubrangeMinStrictlyLessMax), P2016 (SubrangeOutOfBounds)
 
 ### Semantic Analysis Errors (P4000-P5999)
 - Variable scoping, function calls, semantic validation
-- Examples: P0015 (VariableUndefined), P0021 (FunctionBlockNotInScope)
+- Examples: P4007 (VariableUndefined), P4012 (FunctionBlockNotInScope)
 
 ### File System Errors (P6000-P7999)
 - File I/O, path resolution, encoding issues
-- Examples: P0023 (CannotCanonicalizePath), P0026 (CannotReadFile)
+- Examples: P6001 (CannotCanonicalizePath), P6004 (CannotReadFile)
 
 ### Internal Errors (P9000+)
 - Compiler bugs and unimplemented features
@@ -160,7 +160,7 @@ TYPE
 OUT_OF_BOUNDS : SINT (-200..200) := 0;
 END_TYPE
     ";
-    // This example should match the documentation for P0044
+    // This example should match the documentation for P2016
 }
 ```
 

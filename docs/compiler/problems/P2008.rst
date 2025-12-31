@@ -1,0 +1,37 @@
+=====
+P2008
+=====
+
+.. problem-summary:: P2008
+
+This error occurs when a type is referenced that has not been declared.
+
+Example
+-------
+
+The following code will generate error P2008:
+
+.. code-block::
+
+   FUNCTION_BLOCK Example
+   VAR
+       MyVar : UndeclaredType;  (* Error: UndeclaredType is not declared *)
+   END_VAR
+   END_FUNCTION_BLOCK
+
+The variable ``MyVar`` uses the type ``UndeclaredType`` which has not been declared anywhere in the program.
+
+To fix this error, declare the type before using it:
+
+.. code-block::
+
+   TYPE
+       MyType : INT;
+   END_TYPE
+
+   FUNCTION_BLOCK Example
+   VAR
+       MyVar : MyType;  (* Correct: MyType is now declared *)
+   END_VAR
+   END_FUNCTION_BLOCK
+

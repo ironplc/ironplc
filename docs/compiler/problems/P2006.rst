@@ -1,0 +1,45 @@
+=====
+P2006
+=====
+
+.. problem-summary:: P2006
+
+This error occurs when an enumeration uses a value that is not defined in the enumeration.
+
+Example
+-------
+
+The following code will generate error P2006:
+
+.. code-block::
+
+   TYPE
+       LogLevel : (CRITICAL, WARNING, INFO, DEBUG) := INFO;
+   END_TYPE
+
+   FUNCTION_BLOCK Logger
+     VAR_INPUT
+       Trigger : BOOL;
+       Message : STRING;
+       Level : LogLevel := BLAH;  (* Error: BLAH is not defined in LogLevel *)
+     END_VAR
+   END_FUNCTION_BLOCK
+
+The variable ``Level`` is assigned the value ``BLAH``, but ``BLAH`` is not one of the defined values in the ``LogLevel`` enumeration.
+
+To fix this error, use a value that is defined in the enumeration:
+
+.. code-block::
+
+   TYPE
+       LogLevel : (CRITICAL, WARNING, INFO, DEBUG) := INFO;
+   END_TYPE
+
+   FUNCTION_BLOCK Logger
+     VAR_INPUT
+       Trigger : BOOL;
+       Message : STRING;
+       Level : LogLevel := INFO;  (* Correct: INFO is defined in LogLevel *)
+     END_VAR
+   END_FUNCTION_BLOCK
+

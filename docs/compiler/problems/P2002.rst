@@ -1,0 +1,29 @@
+=====
+P2002
+=====
+
+.. problem-summary:: P2002
+
+This error occurs when a subrange declaration has a minimum value that is not strictly less than the maximum value.
+
+Example
+-------
+
+The following code will generate error P2002:
+
+.. code-block::
+
+   TYPE
+       InvalidRange : INT(10..-10);  (* Error: minimum (10) >= maximum (-10) *)
+   END_TYPE
+
+The subrange declaration has a minimum value of 10 and maximum value of -10, but the minimum must be strictly less than the maximum.
+
+To fix this error, ensure the minimum value is less than the maximum value:
+
+.. code-block::
+
+   TYPE
+       ValidRange : INT(-10..10);  (* Correct: minimum (-10) < maximum (10) *)
+   END_TYPE
+

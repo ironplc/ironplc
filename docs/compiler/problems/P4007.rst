@@ -1,0 +1,38 @@
+=====
+P4007
+=====
+
+.. problem-summary:: P4007
+
+This error occurs when a variable is referenced but not declared in the current scope.
+
+Example
+-------
+
+The following code will generate error P4007:
+
+.. code-block::
+
+   FUNCTION_BLOCK LOGGER
+   VAR
+       TRIG0 : BOOL;
+   END_VAR
+   
+   TRIG := TRIG0;  (* Error: TRIG is not declared *)
+   END_FUNCTION_BLOCK
+
+The variable ``TRIG`` is used in the assignment but is not declared in the ``VAR`` section of the function block.
+
+To fix this error, declare the variable in the appropriate variable section:
+
+.. code-block::
+
+   FUNCTION_BLOCK LOGGER
+   VAR
+       TRIG : BOOL;   (* Declare the variable *)
+       TRIG0 : BOOL;
+   END_VAR
+   
+   TRIG := TRIG0;  (* Correct: TRIG is now declared *)
+   END_FUNCTION_BLOCK
+

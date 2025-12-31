@@ -1,0 +1,39 @@
+=====
+P4009
+=====
+
+.. problem-summary:: P4009
+
+This error occurs when a function block instance is declared with the ``CONSTANT`` qualifier, which is not permitted.
+
+Example
+-------
+
+The following code will generate error P4009:
+
+.. code-block::
+
+   FUNCTION_BLOCK Callee
+   END_FUNCTION_BLOCK
+   
+   FUNCTION_BLOCK Caller
+   VAR CONSTANT
+       FB_INSTANCE : Callee;  (* Error: CONSTANT qualifier not permitted for function block *)
+   END_VAR
+   END_FUNCTION_BLOCK
+
+Function block instances cannot be declared as constants because they represent instances of executable code, not constant values.
+
+To fix this error, remove the ``CONSTANT`` qualifier from the function block instance declaration:
+
+.. code-block::
+
+   FUNCTION_BLOCK Callee
+   END_FUNCTION_BLOCK
+   
+   FUNCTION_BLOCK Caller
+   VAR
+       FB_INSTANCE : Callee;  (* Correct: No CONSTANT qualifier *)
+   END_VAR
+   END_FUNCTION_BLOCK
+
