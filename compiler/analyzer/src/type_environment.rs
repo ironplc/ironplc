@@ -187,7 +187,9 @@ impl TypeEnvironment {
     // Note: removed is_structure(name) to avoid duplicate API with representation helpers
 
     /// An iterator for all types in the environment
-    pub fn iter(&self) -> impl Iterator<Item = (&TypeName, &crate::type_attributes::TypeAttributes)> {
+    pub fn iter(
+        &self,
+    ) -> impl Iterator<Item = (&TypeName, &crate::type_attributes::TypeAttributes)> {
         self.table.iter()
     }
 
@@ -207,7 +209,9 @@ impl TypeEnvironment {
 
     /// Gets all types organized by category
     #[allow(dead_code)]
-    pub fn get_all_types_by_category(&self) -> std::collections::HashMap<crate::type_category::TypeCategory, Vec<&TypeName>> {
+    pub fn get_all_types_by_category(
+        &self,
+    ) -> std::collections::HashMap<crate::type_category::TypeCategory, Vec<&TypeName>> {
         let mut result = std::collections::HashMap::new();
         for (name, attrs) in &self.table {
             result
@@ -480,15 +484,10 @@ mod tests {
         .unwrap();
 
         // Test successful memory size retrieval
-        assert_eq!(
-            env.get_memory_size(&TypeName::from("MY_INT")).unwrap(),
-            4
-        );
+        assert_eq!(env.get_memory_size(&TypeName::from("MY_INT")).unwrap(), 4);
 
         // Test error for non-existent type
-        assert!(env
-            .get_memory_size(&TypeName::from("NONEXISTENT"))
-            .is_err());
+        assert!(env.get_memory_size(&TypeName::from("NONEXISTENT")).is_err());
     }
 
     #[test]

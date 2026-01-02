@@ -6,10 +6,7 @@
 
 use ironplc_dsl::core::{Located, SourceSpan};
 
-use crate::{
-    intermediate_type::IntermediateType,
-    type_category::TypeCategory,
-};
+use crate::{intermediate_type::IntermediateType, type_category::TypeCategory};
 
 /// Attributes associated with a type in the type environment.
 #[derive(Debug, Clone, PartialEq)]
@@ -105,8 +102,17 @@ mod tests {
         );
 
         // Test that convenience methods return the same values as IntermediateType methods
-        assert_eq!(attrs.size_bytes(), attrs.representation.size_in_bytes() as u32);
-        assert_eq!(attrs.alignment_bytes(), attrs.representation.alignment_bytes() as u32);
-        assert_eq!(attrs.has_explicit_size(), attrs.representation.has_explicit_size());
+        assert_eq!(
+            attrs.size_bytes(),
+            attrs.representation.size_in_bytes() as u32
+        );
+        assert_eq!(
+            attrs.alignment_bytes(),
+            attrs.representation.alignment_bytes() as u32
+        );
+        assert_eq!(
+            attrs.has_explicit_size(),
+            attrs.representation.has_explicit_size()
+        );
     }
 }
