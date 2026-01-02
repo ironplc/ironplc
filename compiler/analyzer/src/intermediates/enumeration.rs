@@ -32,12 +32,12 @@ pub fn try_from_values(
         ));
     };
 
-    Ok(TypeAttributes {
-        span: enumerated_values.values_span(),
-        representation: IntermediateType::Enumeration {
+    Ok(TypeAttributes::new(
+        enumerated_values.values_span(),
+        IntermediateType::Enumeration {
             underlying_type: Box::new(underlying_type),
         },
-    })
+    ))
 }
 
 #[cfg(test)]

@@ -69,14 +69,14 @@ pub fn try_from(
             // Validate range is within base type bounds
             validate_subrange_bounds(&base_type.representation, min_value, max_value, node_name)?;
 
-            Ok(IntermediateResult::Type(TypeAttributes {
-                span: node_name.span(),
-                representation: IntermediateType::Subrange {
+            Ok(IntermediateResult::Type(TypeAttributes::new(
+                node_name.span(),
+                IntermediateType::Subrange {
                     base_type: Box::new(base_type.representation.clone()),
                     min_value,
                     max_value,
                 },
-            }))
+            )))
         }
         SubrangeSpecificationKind::Type(base_type_name) => {
             // Subrange type alias: MY_RANGE : OTHER_RANGE;
@@ -340,16 +340,16 @@ mod tests {
         // First create a base subrange type
         env.insert_type(
             &TypeName::from("BASE_RANGE"),
-            TypeAttributes {
-                span: SourceSpan::default(),
-                representation: IntermediateType::Subrange {
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::Subrange {
                     base_type: Box::new(IntermediateType::Int {
                         size: ByteSized::B16,
                     }),
                     min_value: 1,
                     max_value: 100,
                 },
-            },
+            ),
         )
         .unwrap();
 
@@ -483,10 +483,10 @@ mod tests {
         // Add a non-numeric type
         env.insert_type(
             &TypeName::from("string"),
-            TypeAttributes {
-                span: SourceSpan::default(),
-                representation: IntermediateType::String { max_len: None },
-            },
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::String { max_len: None },
+            ),
         )
         .unwrap();
 

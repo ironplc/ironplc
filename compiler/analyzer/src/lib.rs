@@ -22,6 +22,8 @@ mod scoped_table;
 pub mod stages;
 mod stdlib;
 mod symbol_environment;
+mod type_attributes;
+mod type_category;
 mod type_environment;
 mod type_table;
 mod xform_resolve_late_bound_expr_kind;

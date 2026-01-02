@@ -5,21 +5,21 @@ use ironplc_dsl::core::Located;
 
 pub fn from(initializer: &StringInitializer) -> TypeAttributes {
     // String type with specific length: MY_STRING : STRING(10);
-    TypeAttributes {
-        span: initializer.span(),
-        representation: IntermediateType::String {
+    TypeAttributes::new(
+        initializer.span(),
+        IntermediateType::String {
             max_len: initializer.length.as_ref().map(|len| len.value),
         },
-    }
+    )
 }
 
 pub fn from_decl(decl: &StringDeclaration) -> TypeAttributes {
-    TypeAttributes {
-        span: decl.type_name.span(),
-        representation: IntermediateType::String {
+    TypeAttributes::new(
+        decl.type_name.span(),
+        IntermediateType::String {
             max_len: Some(decl.length.value),
         },
-    }
+    )
 }
 
 #[cfg(test)]
