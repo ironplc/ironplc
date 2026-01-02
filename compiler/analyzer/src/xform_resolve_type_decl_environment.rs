@@ -182,12 +182,12 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // For now, create an empty structure
         self.insert_type(
             &node.type_name,
-            TypeAttributes {
-                span: node.type_name.span(),
-                representation: IntermediateType::Structure {
+            TypeAttributes::new(
+                node.type_name.span(),
+                IntermediateType::Structure {
                     fields: Vec::new(), // TODO: Resolve structure fields
                 },
-            },
+            ),
         )?;
         Ok(node)
     }
@@ -276,13 +276,13 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // Insert the array type into the type environment
         self.insert_type(
             &node.type_name,
-            TypeAttributes {
-                span: node.type_name.span(),
-                representation: IntermediateType::Array {
+            TypeAttributes::new(
+                node.type_name.span(),
+                IntermediateType::Array {
                     element_type: Box::new(element_type),
                     size: array_size,
                 },
-            },
+            ),
         )?;
 
         Ok(node)
