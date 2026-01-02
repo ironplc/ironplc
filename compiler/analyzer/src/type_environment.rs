@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use ironplc_dsl::{
     common::TypeName,
-    core::{Located, SourceSpan},
+    core::Located,
     diagnostic::{Diagnostic, Label},
 };
 use ironplc_problems::Problem;
@@ -114,23 +114,9 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 23] = [
     ("time", IntermediateType::Time),
 ];
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypeAttributes {
-    /// The location in source code that defined the type.
-    /// TODO this should be unnecessary since the TypeName already has a span.
-    pub span: SourceSpan,
-    pub representation: IntermediateType,
-}
-
 #[derive(Debug)]
 pub struct TypeEnvironment {
-    table: HashMap<TypeName, TypeAttributes>,
-}
-
-impl Located for TypeAttributes {
-    fn span(&self) -> ironplc_dsl::core::SourceSpan {
-        self.span.clone()
-    }
+    table: HashMap<TypeName, crate::type_attributes::TypeAttributes>,
 }
 
 impl TypeEnvironment {
@@ -148,7 +134,7 @@ impl TypeEnvironment {
     pub fn insert_type(
         &mut self,
         type_name: &TypeName,
-        symbol: TypeAttributes,
+        symbol: crate::type_attributes::TypeAttributes,
     ) -> Result<(), Diagnostic> {
         self.table.insert(type_name.clone(), symbol).map_or_else(
             || Ok(()),
@@ -186,7 +172,7 @@ impl TypeEnvironment {
     }
 
     /// Gets the type from the environment.
-    pub fn get(&self, type_name: &TypeName) -> Option<&TypeAttributes> {
+    pub fn get(&self, type_name: &TypeName) -> Option<&crate::type_attributes::TypeAttributes> {
         self.table.get(type_name)
     }
 
@@ -201,8 +187,35 @@ impl TypeEnvironment {
     // Note: removed is_structure(name) to avoid duplicate API with representation helpers
 
     /// An iterator for all types in the environment
-    pub fn iter(&self) -> impl Iterator<Item = (&TypeName, &TypeAttributes)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&TypeName, &crate::type_attributes::TypeAttributes)> {
         self.table.iter()
+    }
+
+    /// Gets the memory size of a type by name
+    #[allow(dead_code)]
+    pub fn get_memory_size(&self, type_name: &TypeName) -> Result<u32, Diagnostic> {
+        self.table
+            .get(type_name)
+            .map(|attrs| attrs.size_bytes())
+            .ok_or_else(|| {
+                Diagnostic::problem(
+                    Problem::UndeclaredUnknownType,
+                    Label::span(type_name.span(), "Type not found"),
+                )
+            })
+    }
+
+    /// Gets all types organized by category
+    #[allow(dead_code)]
+    pub fn get_all_types_by_category(&self) -> std::collections::HashMap<crate::type_category::TypeCategory, Vec<&TypeName>> {
+        let mut result = std::collections::HashMap::new();
+        for (name, attrs) in &self.table {
+            result
+                .entry(attrs.type_category.clone())
+                .or_insert_with(Vec::new)
+                .push(name);
+        }
+        result
     }
 }
 
@@ -232,10 +245,7 @@ impl TypeEnvironmentBuilder {
             for (name, representation) in ELEMENTARY_TYPES_LOWER_CASE.iter() {
                 env.insert_type(
                     &TypeName::from(name),
-                    TypeAttributes {
-                        span: SourceSpan::default(),
-                        representation: representation.clone(),
-                    },
+                    crate::type_attributes::TypeAttributes::elementary(representation.clone()),
                 )?;
             }
         }
@@ -243,9 +253,18 @@ impl TypeEnvironmentBuilder {
     }
 }
 
+// Re-export TypeAttributes for use by other modules
+pub use crate::type_attributes::TypeAttributes;
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        intermediate_type::{ByteSized, IntermediateType},
+        type_attributes::TypeAttributes,
+        type_category::TypeCategory,
+    };
+    use ironplc_dsl::core::SourceSpan;
 
     #[test]
     fn insert_type_when_type_already_exists_then_error() {
@@ -253,20 +272,14 @@ mod tests {
         assert!(env
             .insert_type(
                 &TypeName::from("TYPE"),
-                TypeAttributes {
-                    span: SourceSpan::default(),
-                    representation: IntermediateType::Bool,
-                }
+                TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool)
             )
             .is_ok());
 
         assert!(env
             .insert_type(
                 &TypeName::from("TYPE"),
-                TypeAttributes {
-                    span: SourceSpan::default(),
-                    representation: IntermediateType::Bool,
-                }
+                TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool)
             )
             .is_err());
     }
@@ -276,10 +289,7 @@ mod tests {
         let mut env = TypeEnvironment::new();
         env.insert_type(
             &TypeName::from("TYPE"),
-            TypeAttributes {
-                span: SourceSpan::default(),
-                representation: IntermediateType::Bool,
-            },
+            TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
         )
         .unwrap();
         assert!(env
@@ -426,26 +436,26 @@ mod tests {
         // Add an enumeration type
         env.insert_type(
             &TypeName::from("MY_ENUM"),
-            TypeAttributes {
-                span: SourceSpan::default(),
-                representation: IntermediateType::Enumeration {
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::Enumeration {
                     underlying_type: Box::new(IntermediateType::Int {
                         size: ByteSized::B8,
                     }),
                 },
-            },
+            ),
         )
         .unwrap();
 
         // Add a non-enumeration type
         env.insert_type(
             &TypeName::from("MY_INT"),
-            TypeAttributes {
-                span: SourceSpan::default(),
-                representation: IntermediateType::Int {
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::Int {
                     size: ByteSized::B16,
                 },
-            },
+            ),
         )
         .unwrap();
 
@@ -453,5 +463,87 @@ mod tests {
         assert!(env.is_enumeration(&TypeName::from("MY_ENUM")));
         assert!(!env.is_enumeration(&TypeName::from("MY_INT")));
         assert!(!env.is_enumeration(&TypeName::from("NONEXISTENT")));
+    }
+
+    #[test]
+    fn type_environment_get_memory_size() {
+        let mut env = TypeEnvironment::new();
+        env.insert_type(
+            &TypeName::from("MY_INT"),
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::Int {
+                    size: ByteSized::B32,
+                },
+            ),
+        )
+        .unwrap();
+
+        // Test successful memory size retrieval
+        assert_eq!(
+            env.get_memory_size(&TypeName::from("MY_INT")).unwrap(),
+            4
+        );
+
+        // Test error for non-existent type
+        assert!(env
+            .get_memory_size(&TypeName::from("NONEXISTENT"))
+            .is_err());
+    }
+
+    #[test]
+    fn type_environment_get_all_types_by_category() {
+        let mut env = TypeEnvironment::new();
+
+        // Add types of different categories
+        env.insert_type(
+            &TypeName::from("MY_BOOL"),
+            TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
+        )
+        .unwrap();
+
+        env.insert_type(
+            &TypeName::from("MY_ENUM"),
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::Enumeration {
+                    underlying_type: Box::new(IntermediateType::Int {
+                        size: ByteSized::B8,
+                    }),
+                },
+            ),
+        )
+        .unwrap();
+
+        env.insert_type(
+            &TypeName::from("MY_SUBRANGE"),
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::Subrange {
+                    base_type: Box::new(IntermediateType::Int {
+                        size: ByteSized::B16,
+                    }),
+                    min_value: 1,
+                    max_value: 100,
+                },
+            ),
+        )
+        .unwrap();
+
+        let categories = env.get_all_types_by_category();
+
+        // Check that types are correctly categorized
+        assert!(categories
+            .get(&TypeCategory::Elementary)
+            .unwrap()
+            .contains(&&TypeName::from("MY_BOOL")));
+        assert!(categories
+            .get(&TypeCategory::UserDefined)
+            .unwrap()
+            .contains(&&TypeName::from("MY_ENUM")));
+        assert!(categories
+            .get(&TypeCategory::Derived)
+            .unwrap()
+            .contains(&&TypeName::from("MY_SUBRANGE")));
     }
 }
