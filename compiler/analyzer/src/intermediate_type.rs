@@ -8,7 +8,7 @@
 //! booleans) and complex types (like structures, arrays, and function blocks) found in
 //! IEC 61131-3 standard and similar PLC programming languages.
 
-use ironplc_dsl::common::TypeName;
+use ironplc_dsl::core::Id;
 
 /// Represents the size of a data type in bits, aligned to common byte boundaries.
 /// Used for memory layout and type checking of numeric and bit-based types.
@@ -321,7 +321,7 @@ impl IntermediateType {
     /// // For a structure with fields: x: INT (offset 0), y: DINT (offset 4)
     /// let fields = vec![
     ///     IntermediateStructField {
-    ///         name: TypeName::from("x"),
+    ///         name: Id::from("x"),
     ///         field_type: IntermediateType::Bool,
     ///         offset: 0,
     ///     }
@@ -345,8 +345,8 @@ impl IntermediateType {
                 // Find the field by name using case-insensitive Id comparison
                 fields
                     .iter()
-                    .find(|field| field.name.name == *field_name)
-                    .map(|field| field.offset / 8) // Convert bit offset to byte offset
+                    .find(|field| field.name == *field_name)
+                    .map(|field| field.offset)
             }
             _ => None, // Not a structure type
         }
@@ -357,10 +357,10 @@ impl IntermediateType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct IntermediateStructField {
     /// Name of the field
-    pub name: TypeName,
+    pub name: Id,
     /// Type of the field
     pub field_type: IntermediateType,
-    /// Memory offset of the field from the start of the structure (in bits)
+    /// Memory offset of the field from the start of the structure (in bytes)
     pub offset: u32,
 }
 
@@ -565,23 +565,22 @@ mod tests {
     #[test]
     fn get_field_offset_with_structure_then_returns_correct_offset() {
         use super::IntermediateStructField;
-        use ironplc_dsl::common::TypeName;
         use ironplc_dsl::core::Id;
 
         let fields = vec![
             IntermediateStructField {
-                name: TypeName::from("field1"),
+                name: Id::from("field1"),
                 field_type: IntermediateType::Int {
                     size: ByteSized::B16,
                 },
-                offset: 0, // 0 bits = 0 bytes
+                offset: 0,
             },
             IntermediateStructField {
-                name: TypeName::from("field2"),
+                name: Id::from("field2"),
                 field_type: IntermediateType::Int {
                     size: ByteSized::B32,
                 },
-                offset: 32, // 32 bits = 4 bytes
+                offset: 4,
             },
         ];
 
@@ -599,15 +598,14 @@ mod tests {
     #[test]
     fn get_field_offset_with_case_insensitive_field_name_then_returns_correct_offset() {
         use super::IntermediateStructField;
-        use ironplc_dsl::common::TypeName;
         use ironplc_dsl::core::Id;
 
         let fields = vec![IntermediateStructField {
-            name: TypeName::from("MyField"),
+            name: Id::from("MyField"),
             field_type: IntermediateType::Int {
                 size: ByteSized::B16,
             },
-            offset: 16, // 16 bits = 2 bytes
+            offset: 2,
         }];
 
         let struct_type = IntermediateType::Structure { fields };
