@@ -57,7 +57,7 @@ fn align_offset(offset: u32, alignment: u32) -> u32 {
     if alignment == 0 {
         return offset;
     }
-    ((offset + alignment - 1) / alignment) * alignment
+    offset.div_ceil(alignment) * alignment
 }
 
 /// Resolves the field type from an initial value assignment
