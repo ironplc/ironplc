@@ -1,0 +1,49 @@
+=====
+P2021
+=====
+
+.. problem-summary:: P2021
+
+Structure field references undeclared type
+
+This error occurs when a structure field declaration references a type that has not been declared or is not available in the current scope.
+
+Example
+-------
+
+The following code will generate error P2021:
+
+.. code-block::
+
+   TYPE
+       MyStruct : STRUCT
+           field1 : UNKNOWN_TYPE;  (* UNKNOWN_TYPE is not declared *)
+           field2 : INT;
+       END_STRUCT;
+   END_TYPE
+
+The error occurs because ``UNKNOWN_TYPE`` has not been declared as a valid type in the program.
+
+To fix this error, ensure the field type is properly declared:
+
+.. code-block::
+
+   TYPE
+       MyStruct : STRUCT
+           field1 : INT;  (* Use a valid elementary type *)
+           field2 : INT;
+       END_STRUCT;
+   END_TYPE
+
+Or declare the custom type before using it:
+
+.. code-block::
+
+   TYPE
+       CustomType : INT(0..100);
+       
+       MyStruct : STRUCT
+           field1 : CustomType;  (* Now CustomType is declared *)
+           field2 : INT;
+       END_STRUCT;
+   END_TYPE

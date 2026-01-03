@@ -178,17 +178,9 @@ impl Fold<Diagnostic> for TypeEnvironment {
         &mut self,
         node: StructureDeclaration,
     ) -> Result<StructureDeclaration, Diagnostic> {
-        // TODO: Implement proper structure field resolution
-        // For now, create an empty structure
-        self.insert_type(
-            &node.type_name,
-            TypeAttributes::new(
-                node.type_name.span(),
-                IntermediateType::Structure {
-                    fields: Vec::new(), // TODO: Resolve structure fields
-                },
-            ),
-        )?;
+        // Use the structure processing module to create the structure type
+        let attrs = crate::intermediates::structure::try_from(&node.type_name, &node, self)?;
+        self.insert_type(&node.type_name, attrs)?;
         Ok(node)
     }
 
