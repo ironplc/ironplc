@@ -73,7 +73,7 @@ fn resolve_field_type(
                 .ok_or_else(|| {
                     Diagnostic::problem(
                         Problem::StructFieldTypeNotDeclared,
-                        Label::span(simple_init.type_name.span(), "Field type not found"),
+                        Label::span(simple_init.type_name.span(), "Field type"),
                     )
                 })?;
             Ok(type_attrs.representation.clone())
@@ -100,7 +100,7 @@ fn resolve_field_type(
                     let base_attrs = type_environment.get(&base_name).ok_or_else(|| {
                         Diagnostic::problem(
                             Problem::StructFieldTypeNotDeclared,
-                            Label::span(base_name.span(), "Base type not found"),
+                            Label::span(base_name.span(), "Base type"),
                         )
                     })?;
                     Ok(base_attrs.representation.clone())
@@ -119,10 +119,7 @@ fn resolve_field_type(
                 .ok_or_else(|| {
                     Diagnostic::problem(
                         Problem::StructFieldTypeNotDeclared,
-                        Label::span(
-                            enum_assignment.type_name.span(),
-                            "Enumeration type not found",
-                        ),
+                        Label::span(enum_assignment.type_name.span(), "Enumeration type"),
                     )
                 })?;
             Ok(type_attrs.representation.clone())
@@ -131,10 +128,7 @@ fn resolve_field_type(
             // Nested structures are not yet supported
             Err(Diagnostic::problem(
                 Problem::NestedStructuresNotSupported,
-                Label::span(
-                    ironplc_dsl::core::SourceSpan::default(),
-                    "Nested structures not yet supported",
-                ),
+                Label::span(ironplc_dsl::core::SourceSpan::default(), "Nested structure"),
             ))
         }
         InitialValueAssignmentKind::Array(_array_init) => {

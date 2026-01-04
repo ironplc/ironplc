@@ -1,0 +1,36 @@
+=====
+P2022
+=====
+
+.. problem-summary:: P2022
+
+Array declarations must specify at least one dimension. An array without dimensions is not valid in IEC 61131-3.
+
+Example
+-------
+
+The following code will generate error P2022:
+
+.. code-block::
+
+   TYPE
+       MY_ARRAY : ARRAY [] OF INT;
+   END_TYPE
+
+This error occurs because the array dimension specification is empty - there are no ranges specified between the brackets.
+
+To fix this error, specify at least one dimension range:
+
+.. code-block::
+
+   TYPE
+       MY_ARRAY : ARRAY [1..10] OF INT;
+   END_TYPE
+
+Multi-dimensional arrays are also valid:
+
+.. code-block::
+
+   TYPE
+       MATRIX : ARRAY [1..3, 1..4] OF REAL;
+   END_TYPE

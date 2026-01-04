@@ -1,3 +1,4 @@
+pub mod array;
 pub mod enumeration;
 pub mod string;
 pub mod structure;

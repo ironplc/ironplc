@@ -28,7 +28,7 @@ pub fn try_from_values(
         // a program, we can enable more states here.
         return Err(Diagnostic::problem(
             Problem::EnumerationTooManyValues,
-            Label::span(enumerated_values.values_span(), "Enumeration initializer"),
+            Label::span(enumerated_values.values_span(), "Enumeration declaration"),
         ));
     };
 
