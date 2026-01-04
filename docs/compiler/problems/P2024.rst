@@ -1,0 +1,37 @@
+=====
+P2024
+=====
+
+.. problem-summary:: P2024
+
+Array dimension ranges must have the minimum value less than or equal to the maximum value. An array dimension where the start index is greater than the end index is invalid.
+
+Example
+-------
+
+The following code will generate error P2024:
+
+.. code-block::
+
+   TYPE
+       MY_ARRAY : ARRAY [10..1] OF INT;
+   END_TYPE
+
+This error occurs because the array dimension range [10..1] is invalid - the minimum value (10) is greater than the maximum value (1).
+
+To fix this error, ensure the minimum value is less than or equal to the maximum value:
+
+.. code-block::
+
+   TYPE
+       MY_ARRAY : ARRAY [1..10] OF INT;
+   END_TYPE
+
+This applies to all dimensions in multi-dimensional arrays:
+
+.. code-block::
+
+   TYPE
+       MATRIX : ARRAY [1..3, 1..4] OF REAL;  -- Valid
+       INVALID_MATRIX : ARRAY [3..1, 1..4] OF REAL;  -- Error: first dimension invalid
+   END_TYPE
