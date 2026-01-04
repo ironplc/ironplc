@@ -1,0 +1,30 @@
+=====
+P2023
+=====
+
+.. problem-summary:: P2023
+
+Array size calculation resulted in overflow. This occurs when the total number of elements in an array exceeds the maximum supported size.
+
+Example
+-------
+
+The following code will generate error P2023:
+
+.. code-block::
+
+   TYPE
+       HUGE_ARRAY : ARRAY [1..100000, 1..100000] OF INT;
+   END_TYPE
+
+This error occurs because the total array size (100,000 × 100,000 = 10,000,000,000 elements) exceeds the maximum supported array size.
+
+To fix this error, reduce the array dimensions to a reasonable size:
+
+.. code-block::
+
+   TYPE
+       REASONABLE_ARRAY : ARRAY [1..1000, 1..1000] OF INT;
+   END_TYPE
+
+The maximum total array size is limited to prevent memory allocation issues and ensure reasonable compilation performance.

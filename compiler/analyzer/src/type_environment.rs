@@ -12,6 +12,27 @@ use ironplc_problems::Problem;
 
 use crate::intermediate_type::{ByteSized, IntermediateType};
 
+/// Context for type usage validation
+#[derive(Debug, Clone, PartialEq)]
+pub enum UsageContext {
+    /// Type used in variable declaration
+    VariableDeclaration,
+    /// Type used in function parameter
+    FunctionParameter,
+    /// Type used in function return type
+    FunctionReturn,
+    /// Type used in array element type
+    ArrayElement,
+    /// Type used in structure field
+    StructureField,
+    /// Type used in subrange base type
+    SubrangeBase,
+    /// Type used in enumeration underlying type
+    EnumerationUnderlying,
+    /// General type usage
+    General,
+}
+
 static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 23] = [
     // signed_integer_type_name
     (
@@ -141,9 +162,9 @@ impl TypeEnvironment {
             |existing| {
                 Err(Diagnostic::problem(
                     Problem::TypeDeclNameDuplicated,
-                    Label::span(type_name.span(), "Duplicate declaration"),
+                    Label::span(type_name.span(), "Type declaration"),
                 )
-                .with_secondary(Label::span(existing.span(), "First declaration")))
+                .with_secondary(Label::span(existing.span(), "Previous declaration")))
             },
         )
     }
@@ -163,9 +184,9 @@ impl TypeEnvironment {
         let base_intermediate_type = self.table.get(base_type_name).ok_or_else(|| {
             Diagnostic::problem(
                 Problem::AliasParentTypeNotDeclared,
-                Label::span(type_name.span(), "Type name"),
+                Label::span(type_name.span(), "Type alias"),
             )
-            .with_secondary(Label::span(base_type_name.span(), "Missing declaration"))
+            .with_secondary(Label::span(base_type_name.span(), "Base type"))
         })?;
 
         self.insert_type(type_name, base_intermediate_type.clone())
@@ -202,9 +223,73 @@ impl TypeEnvironment {
             .ok_or_else(|| {
                 Diagnostic::problem(
                     Problem::UndeclaredUnknownType,
-                    Label::span(type_name.span(), "Type not found"),
+                    Label::span(type_name.span(), "Type reference"),
                 )
             })
+    }
+
+    /// Validates type usage in a specific context
+    #[allow(dead_code)]
+    pub fn validate_type_usage(
+        &self,
+        type_name: &TypeName,
+        context: &UsageContext,
+    ) -> Result<(), Diagnostic> {
+        let type_attrs = self.table.get(type_name).ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::UndeclaredUnknownType,
+                Label::span(type_name.span(), "Type reference"),
+            )
+        })?;
+
+        // Context-specific validation rules
+        match context {
+            UsageContext::SubrangeBase => {
+                // Subrange base types must be numeric
+                if !type_attrs.representation.is_numeric() {
+                    return Err(Diagnostic::problem(
+                        Problem::SubrangeBaseTypeNotNumeric,
+                        Label::span(type_name.span(), "Subrange base type"),
+                    ));
+                }
+            }
+            UsageContext::EnumerationUnderlying => {
+                // Enumeration underlying types must be integer types
+                if !type_attrs.representation.is_integer() {
+                    return Err(Diagnostic::problem(
+                        Problem::UndeclaredUnknownType, // Using existing code for now
+                        Label::span(type_name.span(), "Enumeration underlying type"),
+                    ));
+                }
+            }
+            UsageContext::ArrayElement => {
+                // Array elements cannot be function blocks or functions
+                if type_attrs.representation.is_function_block()
+                    || type_attrs.representation.is_function()
+                {
+                    return Err(Diagnostic::problem(
+                        Problem::UndeclaredUnknownType, // Using existing code for now
+                        Label::span(type_name.span(), "Array element type"),
+                    ));
+                }
+            }
+            UsageContext::FunctionReturn => {
+                // Function return types cannot be function blocks
+                if type_attrs.representation.is_function_block() {
+                    return Err(Diagnostic::problem(
+                        Problem::UndeclaredUnknownType, // Using existing code for now
+                        Label::span(type_name.span(), "Function return type"),
+                    ));
+                }
+            }
+            // Other contexts have no specific restrictions for now
+            UsageContext::VariableDeclaration
+            | UsageContext::FunctionParameter
+            | UsageContext::StructureField
+            | UsageContext::General => {}
+        }
+
+        Ok(())
     }
 
     /// Gets all types organized by category
@@ -220,6 +305,12 @@ impl TypeEnvironment {
                 .push(name);
         }
         result
+    }
+}
+
+impl Default for TypeEnvironment {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -254,6 +345,12 @@ impl TypeEnvironmentBuilder {
             }
         }
         Ok(env)
+    }
+}
+
+impl Default for TypeEnvironmentBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -544,5 +641,124 @@ mod tests {
             .get(&TypeCategory::Derived)
             .unwrap()
             .contains(&&TypeName::from("MY_SUBRANGE")));
+    }
+
+    #[test]
+    fn validate_type_usage_when_type_exists_and_context_valid_then_ok() {
+        let mut env = TypeEnvironment::new();
+        env.insert_type(
+            &TypeName::from("MY_INT"),
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::Int {
+                    size: ByteSized::B32,
+                },
+            ),
+        )
+        .unwrap();
+
+        // Test valid usage contexts
+        assert!(env
+            .validate_type_usage(
+                &TypeName::from("MY_INT"),
+                &UsageContext::VariableDeclaration
+            )
+            .is_ok());
+        assert!(env
+            .validate_type_usage(&TypeName::from("MY_INT"), &UsageContext::SubrangeBase)
+            .is_ok());
+        assert!(env
+            .validate_type_usage(
+                &TypeName::from("MY_INT"),
+                &UsageContext::EnumerationUnderlying
+            )
+            .is_ok());
+    }
+
+    #[test]
+    fn validate_type_usage_when_type_not_found_then_error() {
+        let env = TypeEnvironment::new();
+
+        assert!(env
+            .validate_type_usage(&TypeName::from("NONEXISTENT"), &UsageContext::General)
+            .is_err());
+    }
+
+    #[test]
+    fn validate_type_usage_when_non_numeric_subrange_base_then_error() {
+        let mut env = TypeEnvironment::new();
+        env.insert_type(
+            &TypeName::from("MY_BOOL"),
+            TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
+        )
+        .unwrap();
+
+        // Boolean is not numeric, should fail for subrange base
+        assert!(env
+            .validate_type_usage(&TypeName::from("MY_BOOL"), &UsageContext::SubrangeBase)
+            .is_err());
+    }
+
+    #[test]
+    fn validate_type_usage_when_non_integer_enumeration_underlying_then_error() {
+        let mut env = TypeEnvironment::new();
+        env.insert_type(
+            &TypeName::from("MY_REAL"),
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::Real {
+                    size: ByteSized::B32,
+                },
+            ),
+        )
+        .unwrap();
+
+        // Real is numeric but not integer, should fail for enumeration underlying
+        assert!(env
+            .validate_type_usage(
+                &TypeName::from("MY_REAL"),
+                &UsageContext::EnumerationUnderlying
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn validate_type_usage_when_function_block_array_element_then_error() {
+        let mut env = TypeEnvironment::new();
+        env.insert_type(
+            &TypeName::from("MY_FB"),
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::FunctionBlock {
+                    name: "MyFB".to_string(),
+                },
+            ),
+        )
+        .unwrap();
+
+        // Function blocks cannot be array elements
+        assert!(env
+            .validate_type_usage(&TypeName::from("MY_FB"), &UsageContext::ArrayElement)
+            .is_err());
+    }
+
+    #[test]
+    fn validate_type_usage_when_function_block_return_type_then_error() {
+        let mut env = TypeEnvironment::new();
+        env.insert_type(
+            &TypeName::from("MY_FB"),
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::FunctionBlock {
+                    name: "MyFB".to_string(),
+                },
+            ),
+        )
+        .unwrap();
+
+        // Function blocks cannot be return types
+        assert!(env
+            .validate_type_usage(&TypeName::from("MY_FB"), &UsageContext::FunctionReturn)
+            .is_err());
     }
 }

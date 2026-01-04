@@ -351,6 +351,87 @@ impl IntermediateType {
             _ => None, // Not a structure type
         }
     }
+
+    /// Validates that subrange bounds are within the limits of this type.
+    ///
+    /// This method checks if the given minimum and maximum values are valid
+    /// for this type when used as a subrange base type. It ensures that:
+    /// 1. The type is numeric (integer, unsigned integer, or real)
+    /// 2. The bounds are within the representable range of the type
+    /// 3. For nested subranges, the bounds are within the parent subrange
+    ///
+    /// # Parameters
+    /// - `min_value`: The minimum value of the subrange (inclusive)
+    /// - `max_value`: The maximum value of the subrange (inclusive)
+    /// - `type_name`: The name of the type being validated (for error reporting)
+    ///
+    /// # Returns
+    /// - `Ok(())`: If the bounds are valid for this type
+    /// - `Err(Diagnostic)`: If the bounds are invalid, with specific error details
+    ///
+    /// # Errors
+    /// - `SubrangeBaseTypeNotNumeric`: If this type is not numeric
+    /// - `SubrangeOutOfBounds`: If the bounds exceed the type's representable range
+    ///
+    /// # Examples
+    /// ```ignore
+    /// let int_type = IntermediateType::Int { size: ByteSized::B16 };
+    /// let type_name = TypeName::from("MY_RANGE");
+    ///
+    /// // Valid bounds for INT (-32768 to 32767)
+    /// assert!(int_type.validate_bounds(-1000, 1000, &type_name).is_ok());
+    ///
+    /// // Invalid bounds (exceeds INT range)
+    /// assert!(int_type.validate_bounds(-50000, 50000, &type_name).is_err());
+    /// ```
+    pub fn validate_bounds(
+        &self,
+        min_value: i128,
+        max_value: i128,
+        type_name: &ironplc_dsl::common::TypeName,
+    ) -> Result<(), ironplc_dsl::diagnostic::Diagnostic> {
+        use ironplc_dsl::core::Located;
+        use ironplc_dsl::diagnostic::{Diagnostic, Label};
+        use ironplc_problems::Problem;
+
+        let (type_min, type_max) = match self {
+            IntermediateType::Int { size } => match size {
+                ByteSized::B8 => (i8::MIN as i128, i8::MAX as i128),
+                ByteSized::B16 => (i16::MIN as i128, i16::MAX as i128),
+                ByteSized::B32 => (i32::MIN as i128, i32::MAX as i128),
+                ByteSized::B64 => (i64::MIN as i128, i64::MAX as i128),
+            },
+            IntermediateType::UInt { size } => match size {
+                ByteSized::B8 => (0, u8::MAX as i128),
+                ByteSized::B16 => (0, u16::MAX as i128),
+                ByteSized::B32 => (0, u32::MAX as i128),
+                ByteSized::B64 => (0, u64::MAX as i128),
+            },
+            IntermediateType::Subrange {
+                min_value: base_min,
+                max_value: base_max,
+                ..
+            } => {
+                // For nested subranges, use the parent subrange bounds
+                (*base_min, *base_max)
+            }
+            _ => {
+                return Err(Diagnostic::problem(
+                    Problem::SubrangeBaseTypeNotNumeric,
+                    Label::span(type_name.span(), "Subrange base type"),
+                ));
+            }
+        };
+
+        if min_value < type_min || max_value > type_max {
+            return Err(Diagnostic::problem(
+                Problem::SubrangeOutOfBounds,
+                Label::span(type_name.span(), "Subrange declaration"),
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 /// Represents a field within a structure type in the intermediate representation.
@@ -635,5 +716,157 @@ mod tests {
             size: Some(10),
         };
         assert_eq!(array_type.get_field_offset(&field_id), None);
+    }
+
+    #[test]
+    fn validate_bounds_with_all_integer_types_then_validates_correctly() {
+        use ironplc_dsl::common::TypeName;
+
+        // Test all signed integer types
+        let sint_type = IntermediateType::Int {
+            size: ByteSized::B8,
+        };
+        assert!(sint_type
+            .validate_bounds(-128, 127, &TypeName::from("TEST"))
+            .is_ok());
+        assert!(sint_type
+            .validate_bounds(-129, 127, &TypeName::from("TEST"))
+            .is_err());
+        assert!(sint_type
+            .validate_bounds(-128, 128, &TypeName::from("TEST"))
+            .is_err());
+
+        let int_type = IntermediateType::Int {
+            size: ByteSized::B16,
+        };
+        assert!(int_type
+            .validate_bounds(-32768, 32767, &TypeName::from("TEST"))
+            .is_ok());
+        assert!(int_type
+            .validate_bounds(-32769, 32767, &TypeName::from("TEST"))
+            .is_err());
+
+        let dint_type = IntermediateType::Int {
+            size: ByteSized::B32,
+        };
+        assert!(dint_type
+            .validate_bounds(-2147483648, 2147483647, &TypeName::from("TEST"))
+            .is_ok());
+        assert!(dint_type
+            .validate_bounds(-2147483649, 2147483647, &TypeName::from("TEST"))
+            .is_err());
+
+        let lint_type = IntermediateType::Int {
+            size: ByteSized::B64,
+        };
+        assert!(lint_type
+            .validate_bounds(i64::MIN as i128, i64::MAX as i128, &TypeName::from("TEST"))
+            .is_ok());
+
+        // Test all unsigned integer types
+        let usint_type = IntermediateType::UInt {
+            size: ByteSized::B8,
+        };
+        assert!(usint_type
+            .validate_bounds(0, 255, &TypeName::from("TEST"))
+            .is_ok());
+        assert!(usint_type
+            .validate_bounds(-1, 255, &TypeName::from("TEST"))
+            .is_err());
+        assert!(usint_type
+            .validate_bounds(0, 256, &TypeName::from("TEST"))
+            .is_err());
+
+        let uint_type = IntermediateType::UInt {
+            size: ByteSized::B16,
+        };
+        assert!(uint_type
+            .validate_bounds(0, 65535, &TypeName::from("TEST"))
+            .is_ok());
+        assert!(uint_type
+            .validate_bounds(-1, 65535, &TypeName::from("TEST"))
+            .is_err());
+
+        let udint_type = IntermediateType::UInt {
+            size: ByteSized::B32,
+        };
+        assert!(udint_type
+            .validate_bounds(0, 4294967295, &TypeName::from("TEST"))
+            .is_ok());
+        assert!(udint_type
+            .validate_bounds(-1, 4294967295, &TypeName::from("TEST"))
+            .is_err());
+
+        let ulint_type = IntermediateType::UInt {
+            size: ByteSized::B64,
+        };
+        assert!(ulint_type
+            .validate_bounds(0, u64::MAX as i128, &TypeName::from("TEST"))
+            .is_ok());
+        assert!(ulint_type
+            .validate_bounds(-1, u64::MAX as i128, &TypeName::from("TEST"))
+            .is_err());
+    }
+
+    #[test]
+    fn validate_bounds_with_nested_subrange_then_validates_correctly() {
+        use ironplc_dsl::common::TypeName;
+
+        // Create a nested subrange: INT (10..100) -> SUBRANGE (20..80)
+        let nested_subrange = IntermediateType::Subrange {
+            base_type: Box::new(IntermediateType::Int {
+                size: ByteSized::B16,
+            }),
+            min_value: 10,
+            max_value: 100,
+        };
+
+        // Valid bounds within the nested subrange
+        assert!(nested_subrange
+            .validate_bounds(20, 80, &TypeName::from("TEST"))
+            .is_ok());
+        assert!(nested_subrange
+            .validate_bounds(10, 100, &TypeName::from("TEST"))
+            .is_ok());
+
+        // Invalid bounds outside the nested subrange
+        assert!(nested_subrange
+            .validate_bounds(5, 80, &TypeName::from("TEST"))
+            .is_err());
+        assert!(nested_subrange
+            .validate_bounds(20, 150, &TypeName::from("TEST"))
+            .is_err());
+        assert!(nested_subrange
+            .validate_bounds(5, 150, &TypeName::from("TEST"))
+            .is_err());
+    }
+
+    #[test]
+    fn validate_bounds_with_non_numeric_type_then_error() {
+        use ironplc_dsl::common::TypeName;
+        use ironplc_problems::Problem;
+
+        let string_type = IntermediateType::String { max_len: Some(10) };
+        let result = string_type.validate_bounds(0, 10, &TypeName::from("TEST"));
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(error.code, Problem::SubrangeBaseTypeNotNumeric.code());
+
+        let bool_type = IntermediateType::Bool;
+        let result = bool_type.validate_bounds(0, 1, &TypeName::from("TEST"));
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(error.code, Problem::SubrangeBaseTypeNotNumeric.code());
+
+        let array_type = IntermediateType::Array {
+            element_type: Box::new(IntermediateType::Int {
+                size: ByteSized::B16,
+            }),
+            size: Some(10),
+        };
+        let result = array_type.validate_bounds(0, 9, &TypeName::from("TEST"));
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(error.code, Problem::SubrangeBaseTypeNotNumeric.code());
     }
 }

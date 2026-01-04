@@ -1,6 +1,14 @@
 //! Provides definition for diagnostics, which are normally errors and warnings
 //! associated with compilation.
 //!
+//! # Diagnostic Creation Guidelines
+//!
+//! When creating diagnostics:
+//! 1. Use `Problem::SomeCode` from the shared problem system
+//! 2. Primary label points to the main error location
+//! 3. Secondary labels point to different, related locations
+//! 4. Labels describe what's at each location, not how to fix issues
+//!
 //! There exist crates that make this easy, but we need different information
 //! for different integrations and there is no one crate that does it all
 //! (especially one that works for both command line and language server
@@ -38,6 +46,17 @@ pub struct Label {
 }
 
 impl Label {
+    /// Creates a label pointing to a source span with a descriptive message.
+    ///
+    /// The message should describe **what is at this location**, not provide
+    /// explanations or fix guidance.
+    ///
+    /// # Examples
+    /// ```rust
+    /// Label::span(name.span(), "Type declaration")     // ✅ What's there
+    /// Label::span(base.span(), "Base type")           // ✅ What's there
+    /// Label::span(name.span(), "Fix by adding type")  // ❌ Fix guidance
+    /// ```
     pub fn span(span: SourceSpan, message: impl Into<String>) -> Self {
         Self {
             location: Location {
@@ -184,6 +203,21 @@ impl Diagnostic {
         self
     }
 
+    /// Adds a secondary label pointing to a related location.
+    ///
+    /// Secondary labels must point to **different spans** than the primary label
+    /// and should describe what is located at those spans.
+    ///
+    /// # Examples
+    /// ```rust
+    /// // ✅ Correct: Different spans, describes locations
+    /// Diagnostic::problem(Problem::ParentTypeNotDeclared,
+    ///     Label::span(decl_span, "Type declaration"))
+    /// .with_secondary(Label::span(base_span, "Base type"))
+    ///
+    /// // ❌ Wrong: Same span or fix guidance
+    /// .with_secondary(Label::span(decl_span, "Add missing type"))
+    /// ```
     pub fn with_secondary(mut self, label: Label) -> Self {
         self.secondary.push(label);
         self

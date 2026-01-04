@@ -36,5 +36,10 @@ mod xform_toposort_declarations;
 // Type declaration environment helper modules
 mod intermediates;
 
+// Re-export public types for external use
+pub use type_attributes::TypeAttributes;
+pub use type_category::TypeCategory;
+pub use type_environment::{TypeEnvironment, TypeEnvironmentBuilder, UsageContext};
+
 #[cfg(test)]
 mod test_helpers;
