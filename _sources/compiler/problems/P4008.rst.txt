@@ -1,0 +1,29 @@
+=====
+P4008
+=====
+
+.. problem-summary:: P4008
+
+This error occurs when a variable is declared as constant but does not define an initial value.
+
+Example
+-------
+
+The following code will generate error P4008:
+
+.. code-block::
+
+   VAR_GLOBAL CONSTANT
+       ResetCounterValue : INT;  (* Error: CONSTANT variable must have initializer *)
+   END_VAR
+
+The variable ``ResetCounterValue`` is declared as ``CONSTANT`` but does not have an initial value assigned.
+
+To fix this error, provide an initial value for the constant variable:
+
+.. code-block::
+
+   VAR_GLOBAL CONSTANT
+       ResetCounterValue : INT := 17;  (* Correct: CONSTANT variable has initializer *)
+   END_VAR
+

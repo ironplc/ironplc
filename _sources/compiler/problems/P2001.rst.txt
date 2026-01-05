@@ -1,0 +1,35 @@
+=====
+P2001
+=====
+
+.. problem-summary:: P2001
+
+This error occurs when a structure type declaration has duplicate element names.
+
+Example
+-------
+
+The following code will generate error P2001:
+
+.. code-block::
+
+   TYPE
+       CustomStruct : STRUCT
+           Name: BOOL;
+           Name: BOOL;  (* Error: Duplicate element name *)
+       END_STRUCT;
+   END_TYPE
+
+The structure has two elements with the same name ``Name``, which is not allowed.
+
+To fix this error, ensure all element names in a structure are unique:
+
+.. code-block::
+
+   TYPE
+       CustomStruct : STRUCT
+           Name1: BOOL;
+           Name2: BOOL;  (* Different name *)
+       END_STRUCT;
+   END_TYPE
+

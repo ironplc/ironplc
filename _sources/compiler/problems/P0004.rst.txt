@@ -4,7 +4,7 @@ P0004
 
 .. problem-summary:: P0004
 
-This error occurs when a subrange declaration has a minimum value that is not strictly less than the maximum value.
+This error occurs when C-style comments (``//``) are used in the code, which are not allowed in IEC 61131-3.
 
 Example
 -------
@@ -13,17 +13,32 @@ The following code will generate error P0004:
 
 .. code-block::
 
-   TYPE
-       InvalidRange : INT(10..-10);  (* Error: minimum (10) >= maximum (-10) *)
-   END_TYPE
+   FUNCTION_BLOCK Example
+   VAR
+       Counter : INT;
+   END_VAR
+   
+   // This is a C-style comment  (* Error: C-style comments not allowed *)
+   Counter := Counter + 1;
+   END_FUNCTION_BLOCK
 
-The subrange declaration has a minimum value of 10 and maximum value of -10, but the minimum must be strictly less than the maximum.
+The code uses ``//`` for comments, which is C-style syntax and not valid in IEC 61131-3.
 
-To fix this error, ensure the minimum value is less than the maximum value:
+To fix this error, you have two options:
+
+**Option 1: Use proper IEC 61131-3 comment syntax**
 
 .. code-block::
 
-   TYPE
-       ValidRange : INT(-10..10);  (* Correct: minimum (-10) < maximum (10) *)
-   END_TYPE
+   FUNCTION_BLOCK Example
+   VAR
+       Counter : INT;
+   END_VAR
+   
+   (* This is a proper IEC 61131-3 comment *)
+   Counter := Counter + 1;
+   END_FUNCTION_BLOCK
 
+**Option 2: Enable C-style comments with command line option**
+
+If you prefer to use C-style comments, you can enable them with the ``--allow-c-style-comments`` command line option when running the compiler.
