@@ -77,9 +77,9 @@ jobs:
           token: ${{secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN}}
       - name: Fetch latest main
         run: git fetch origin main
-      - name: Merge main into branch
-        run: git merge origin/main
+      - name: Rebase branch on main
+        run: git rebase origin/main
       - name: Publish Changes
         if: ${{ !inputs.dryrun }}
         run: |
-          git push origin ${{ needs.update-dependencies.outputs.branch-name }}:main
+          git push origin HEAD:main
