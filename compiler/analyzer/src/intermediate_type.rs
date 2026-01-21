@@ -206,11 +206,46 @@ impl IntermediateType {
             }
             IntermediateType::Subrange { base_type, .. } => base_type.size_in_bytes(),
             IntermediateType::Enumeration { underlying_type } => underlying_type.size_in_bytes(),
-            IntermediateType::Structure { .. } => {
-                // TODO: Implement proper structure size calculation with field alignment
-                // This requires calculating field offsets, padding, and total structure size
-                // For now, return 0 to indicate size calculation is not yet implemented
-                0
+            IntermediateType::Structure { fields } => {
+                if fields.is_empty() {
+                    return 0;
+                }
+
+                // If any field has unknown size (returns 0), we can't calculate structure size
+                let has_unknown_field = fields
+                    .iter()
+                    .any(|field| field.field_type.size_in_bytes() == 0);
+
+                if has_unknown_field {
+                    return 0;
+                }
+
+                // Calculate the end position of the last field (max of offset + field_size)
+                let size_after_last_field = fields
+                    .iter()
+                    .map(|field| {
+                        let field_size = field.field_type.size_in_bytes() as u32;
+                        field.offset + field_size
+                    })
+                    .max()
+                    .unwrap_or(0);
+
+                // Pad to structure alignment
+                let alignment = self.alignment_bytes() as u32;
+                if alignment == 0 {
+                    return 0;
+                }
+
+                // Calculate padding needed to align to structure boundary
+                let padding = (alignment - (size_after_last_field % alignment)) % alignment;
+                let total_size = size_after_last_field.saturating_add(padding);
+
+                // If size exceeds u8::MAX, return 0 to indicate complex size calculation needed
+                if total_size > u8::MAX as u32 {
+                    return 0;
+                }
+
+                total_size as u8
             }
             IntermediateType::Array { element_type, size } => {
                 if let Some(array_size) = size {
@@ -258,9 +293,14 @@ impl IntermediateType {
             IntermediateType::String { .. } => 1, // Strings are byte-aligned
             IntermediateType::Subrange { base_type, .. } => base_type.alignment_bytes(),
             IntermediateType::Enumeration { underlying_type } => underlying_type.alignment_bytes(),
-            IntermediateType::Structure { .. } => {
-                // TODO: Implement proper structure alignment calculation (should be max field alignment)
-                1
+            IntermediateType::Structure { fields } => {
+                // Structure alignment is the maximum alignment of all fields
+                // Empty structures have 1-byte alignment
+                fields
+                    .iter()
+                    .map(|field| field.field_type.alignment_bytes())
+                    .max()
+                    .unwrap_or(1)
             }
             IntermediateType::Array { element_type, .. } => element_type.alignment_bytes(),
             IntermediateType::FunctionBlock { .. } => 1, // Default alignment for function block instances
@@ -868,5 +908,286 @@ mod tests {
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert_eq!(error.code, Problem::SubrangeBaseTypeNotNumeric.code());
+    }
+
+    #[test]
+    fn structure_alignment_bytes_with_empty_structure_then_returns_one() {
+        let struct_type = IntermediateType::Structure { fields: vec![] };
+        assert_eq!(struct_type.alignment_bytes(), 1);
+    }
+
+    #[test]
+    fn structure_alignment_bytes_with_single_field_then_returns_field_alignment() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        let fields = vec![IntermediateStructField {
+            name: Id::from("field1"),
+            field_type: IntermediateType::Int {
+                size: ByteSized::B32,
+            },
+            offset: 0,
+        }];
+
+        let struct_type = IntermediateType::Structure { fields };
+        assert_eq!(struct_type.alignment_bytes(), 4);
+    }
+
+    #[test]
+    fn structure_alignment_bytes_with_multiple_fields_then_returns_max_alignment() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        let fields = vec![
+            IntermediateStructField {
+                name: Id::from("field1"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B8,
+                },
+                offset: 0,
+            },
+            IntermediateStructField {
+                name: Id::from("field2"),
+                field_type: IntermediateType::Real {
+                    size: ByteSized::B64,
+                },
+                offset: 8,
+            },
+            IntermediateStructField {
+                name: Id::from("field3"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B16,
+                },
+                offset: 16,
+            },
+        ];
+
+        let struct_type = IntermediateType::Structure { fields };
+        // Maximum alignment should be 8 (from the Real field)
+        assert_eq!(struct_type.alignment_bytes(), 8);
+    }
+
+    #[test]
+    fn structure_alignment_bytes_with_nested_structure_then_returns_max_nested_alignment() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        // Create inner structure with B64 alignment
+        let inner_struct = IntermediateType::Structure {
+            fields: vec![IntermediateStructField {
+                name: Id::from("inner_field"),
+                field_type: IntermediateType::Real {
+                    size: ByteSized::B64,
+                },
+                offset: 0,
+            }],
+        };
+
+        // Create outer structure containing the inner structure
+        let outer_struct = IntermediateType::Structure {
+            fields: vec![
+                IntermediateStructField {
+                    name: Id::from("field1"),
+                    field_type: IntermediateType::Int {
+                        size: ByteSized::B16,
+                    },
+                    offset: 0,
+                },
+                IntermediateStructField {
+                    name: Id::from("nested"),
+                    field_type: inner_struct,
+                    offset: 8,
+                },
+            ],
+        };
+
+        // Alignment should be 8 (from the nested Real field)
+        assert_eq!(outer_struct.alignment_bytes(), 8);
+    }
+
+    #[test]
+    fn structure_size_in_bytes_with_empty_structure_then_returns_zero() {
+        let struct_type = IntermediateType::Structure { fields: vec![] };
+        assert_eq!(struct_type.size_in_bytes(), 0);
+    }
+
+    #[test]
+    fn structure_size_in_bytes_with_single_field_then_returns_field_size() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        let fields = vec![IntermediateStructField {
+            name: Id::from("field1"),
+            field_type: IntermediateType::Int {
+                size: ByteSized::B32,
+            },
+            offset: 0,
+        }];
+
+        let struct_type = IntermediateType::Structure { fields };
+        // Size should be 4 bytes (one DINT field)
+        assert_eq!(struct_type.size_in_bytes(), 4);
+    }
+
+    #[test]
+    fn structure_size_in_bytes_with_aligned_fields_then_returns_total_size() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        // Structure with two 4-byte aligned fields
+        let fields = vec![
+            IntermediateStructField {
+                name: Id::from("field1"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B32,
+                },
+                offset: 0,
+            },
+            IntermediateStructField {
+                name: Id::from("field2"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B32,
+                },
+                offset: 4,
+            },
+        ];
+
+        let struct_type = IntermediateType::Structure { fields };
+        // Size should be 8 bytes (two DINT fields)
+        assert_eq!(struct_type.size_in_bytes(), 8);
+    }
+
+    #[test]
+    fn structure_size_in_bytes_with_padding_then_returns_padded_size() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        // Structure: SINT (1 byte at offset 0), DINT (4 bytes at offset 4)
+        // Total size should be 8 bytes (padded to 4-byte alignment)
+        let fields = vec![
+            IntermediateStructField {
+                name: Id::from("field1"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B8,
+                },
+                offset: 0,
+            },
+            IntermediateStructField {
+                name: Id::from("field2"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B32,
+                },
+                offset: 4,
+            },
+        ];
+
+        let struct_type = IntermediateType::Structure { fields };
+        // Size should be 8 bytes (1 byte + 3 padding + 4 bytes)
+        assert_eq!(struct_type.size_in_bytes(), 8);
+    }
+
+    #[test]
+    fn structure_size_in_bytes_with_trailing_padding_then_returns_aligned_size() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        // Structure: LREAL (8 bytes at offset 0), SINT (1 byte at offset 8)
+        // Total size should be 16 bytes (padded to 8-byte alignment)
+        let fields = vec![
+            IntermediateStructField {
+                name: Id::from("field1"),
+                field_type: IntermediateType::Real {
+                    size: ByteSized::B64,
+                },
+                offset: 0,
+            },
+            IntermediateStructField {
+                name: Id::from("field2"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B8,
+                },
+                offset: 8,
+            },
+        ];
+
+        let struct_type = IntermediateType::Structure { fields };
+        // Size should be 16 bytes (8 bytes + 1 byte + 7 padding)
+        assert_eq!(struct_type.size_in_bytes(), 16);
+    }
+
+    #[test]
+    fn structure_size_in_bytes_with_nested_structure_then_returns_correct_size() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        // Create inner structure (two INT fields = 4 bytes total)
+        let inner_struct = IntermediateType::Structure {
+            fields: vec![
+                IntermediateStructField {
+                    name: Id::from("x"),
+                    field_type: IntermediateType::Int {
+                        size: ByteSized::B16,
+                    },
+                    offset: 0,
+                },
+                IntermediateStructField {
+                    name: Id::from("y"),
+                    field_type: IntermediateType::Int {
+                        size: ByteSized::B16,
+                    },
+                    offset: 2,
+                },
+            ],
+        };
+
+        // Create outer structure
+        let outer_struct = IntermediateType::Structure {
+            fields: vec![
+                IntermediateStructField {
+                    name: Id::from("point"),
+                    field_type: inner_struct,
+                    offset: 0,
+                },
+                IntermediateStructField {
+                    name: Id::from("id"),
+                    field_type: IntermediateType::Int {
+                        size: ByteSized::B32,
+                    },
+                    offset: 4,
+                },
+            ],
+        };
+
+        // Size should be 8 bytes (4 bytes for inner struct + 4 bytes for id)
+        assert_eq!(outer_struct.size_in_bytes(), 8);
+    }
+
+    #[test]
+    fn structure_size_in_bytes_with_unknown_field_size_then_returns_zero() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        // Structure containing a field with unknown size (dynamic array)
+        let fields = vec![
+            IntermediateStructField {
+                name: Id::from("field1"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B32,
+                },
+                offset: 0,
+            },
+            IntermediateStructField {
+                name: Id::from("dynamic_array"),
+                field_type: IntermediateType::Array {
+                    element_type: Box::new(IntermediateType::Bool),
+                    size: None, // Dynamic size
+                },
+                offset: 4,
+            },
+        ];
+
+        let struct_type = IntermediateType::Structure { fields };
+        // Should return 0 because one field has unknown size
+        assert_eq!(struct_type.size_in_bytes(), 0);
     }
 }
