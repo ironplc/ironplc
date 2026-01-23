@@ -105,6 +105,8 @@ pub enum IntermediateType {
     FunctionBlock {
         /// Name of the function block type
         name: String,
+        /// Ordered list of fields (variables) in the function block instance
+        fields: Vec<IntermediateStructField>,
     },
     /// Function type with return type and parameters
     #[allow(unused)]
@@ -256,11 +258,45 @@ impl IntermediateType {
                     0
                 }
             }
-            IntermediateType::FunctionBlock { .. } => {
-                // TODO: Implement proper function block instance size calculation
-                // This requires analyzing the function block's variable declarations
-                // For now, return 0 to indicate size calculation is not yet implemented
-                0
+            IntermediateType::FunctionBlock { fields, .. } => {
+                // Function blocks follow the same memory layout rules as structures
+                if fields.is_empty() {
+                    return 0;
+                }
+
+                // If any field has unknown size (returns 0), we can't calculate function block size
+                // This includes checking all fields because if an earlier field has size 0,
+                // subsequent field offsets would be incorrect
+                let has_unknown_field = fields
+                    .iter()
+                    .any(|field| field.field_type.size_in_bytes() == 0);
+
+                if has_unknown_field {
+                    return 0;
+                }
+
+                // Calculate the end position of the last field
+                // Fields are guaranteed to be in offset order, so we just use the last one
+                let last_field = fields.last().unwrap(); // Safe: checked not empty above
+                let size_after_last_field =
+                    last_field.offset + last_field.field_type.size_in_bytes() as u32;
+
+                // Pad to function block alignment
+                let alignment = self.alignment_bytes() as u32;
+                if alignment == 0 {
+                    return 0;
+                }
+
+                // Calculate padding needed to align to function block boundary
+                let padding = (alignment - (size_after_last_field % alignment)) % alignment;
+                let total_size = size_after_last_field.saturating_add(padding);
+
+                // If size exceeds u8::MAX, return 0 to indicate complex size calculation needed
+                if total_size > u8::MAX as u32 {
+                    return 0;
+                }
+
+                total_size as u8
             }
             IntermediateType::Function { .. } => {
                 // Functions don't have memory layout in the traditional sense
@@ -301,7 +337,15 @@ impl IntermediateType {
                     .unwrap_or(1)
             }
             IntermediateType::Array { element_type, .. } => element_type.alignment_bytes(),
-            IntermediateType::FunctionBlock { .. } => 1, // Default alignment for function block instances
+            IntermediateType::FunctionBlock { fields, .. } => {
+                // Function block alignment is the maximum alignment of all fields
+                // Empty function blocks have 1-byte alignment
+                fields
+                    .iter()
+                    .map(|field| field.field_type.alignment_bytes())
+                    .max()
+                    .unwrap_or(1)
+            }
             IntermediateType::Function { .. } => 1, // Default alignment (functions don't have memory layout)
         }
     }
