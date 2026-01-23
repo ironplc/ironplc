@@ -212,6 +212,8 @@ impl IntermediateType {
                 }
 
                 // If any field has unknown size (returns 0), we can't calculate structure size
+                // This includes checking all fields because if an earlier field has size 0,
+                // subsequent field offsets would be incorrect
                 let has_unknown_field = fields
                     .iter()
                     .any(|field| field.field_type.size_in_bytes() == 0);
@@ -220,15 +222,11 @@ impl IntermediateType {
                     return 0;
                 }
 
-                // Calculate the end position of the last field (max of offset + field_size)
-                let size_after_last_field = fields
-                    .iter()
-                    .map(|field| {
-                        let field_size = field.field_type.size_in_bytes() as u32;
-                        field.offset + field_size
-                    })
-                    .max()
-                    .unwrap_or(0);
+                // Calculate the end position of the last field
+                // Fields are guaranteed to be in offset order, so we just use the last one
+                let last_field = fields.last().unwrap(); // Safe: checked not empty above
+                let size_after_last_field =
+                    last_field.offset + last_field.field_type.size_in_bytes() as u32;
 
                 // Pad to structure alignment
                 let alignment = self.alignment_bytes() as u32;
