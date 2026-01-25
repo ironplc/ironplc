@@ -72,7 +72,24 @@ impl TypeEnvironment {
                     spec: ArraySpecificationKind::Type(node.base_type_name),
                     init: vec![],
                 })),
-                _ => todo!(),
+                IntermediateType::Subrange { .. }
+                | IntermediateType::FunctionBlock { .. }
+                | IntermediateType::Function { .. } => {
+                    // Late-bound declarations for these types are not yet implemented
+                    Err(Diagnostic::todo_with_type(&node.data_type_name, file!(), line!()))
+                }
+                // Primitive types are handled by the is_primitive() check above,
+                // so reaching this branch indicates a bug in the compiler
+                IntermediateType::Bool
+                | IntermediateType::Int { .. }
+                | IntermediateType::UInt { .. }
+                | IntermediateType::Real { .. }
+                | IntermediateType::Bytes { .. }
+                | IntermediateType::Time
+                | IntermediateType::Date
+                | IntermediateType::String { .. } => {
+                    Err(Diagnostic::internal_error(file!(), line!()))
+                }
             }
         }
     }
