@@ -487,6 +487,7 @@ mod tests {
         // Test function block types
         let fb_type = IntermediateType::FunctionBlock {
             name: "MyFB".to_string(),
+            fields: vec![],
         };
         assert!(fb_type.is_function_block());
         assert!(!fb_type.is_primitive());
@@ -731,6 +732,7 @@ mod tests {
                 SourceSpan::default(),
                 IntermediateType::FunctionBlock {
                     name: "MyFB".to_string(),
+                    fields: vec![],
                 },
             ),
         )
@@ -751,6 +753,7 @@ mod tests {
                 SourceSpan::default(),
                 IntermediateType::FunctionBlock {
                     name: "MyFB".to_string(),
+                    fields: vec![],
                 },
             ),
         )
