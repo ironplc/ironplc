@@ -215,8 +215,12 @@ impl TypeEnvironment {
     }
 
     /// Gets the memory size of a type by name
+    ///
+    /// Returns `Ok(Some(size))` if the type exists and has a known size,
+    /// `Ok(None)` if the type exists but has unknown size (e.g., dynamic arrays),
+    /// or `Err` if the type is not declared.
     #[allow(dead_code)]
-    pub fn get_memory_size(&self, type_name: &TypeName) -> Result<u32, Diagnostic> {
+    pub fn get_memory_size(&self, type_name: &TypeName) -> Result<Option<u32>, Diagnostic> {
         self.table
             .get(type_name)
             .map(|attrs| attrs.size_bytes())
@@ -582,7 +586,7 @@ mod tests {
         .unwrap();
 
         // Test successful memory size retrieval
-        assert_eq!(env.get_memory_size(&TypeName::from("MY_INT")).unwrap(), 4);
+        assert_eq!(env.get_memory_size(&TypeName::from("MY_INT")).unwrap(), Some(4));
 
         // Test error for non-existent type
         assert!(env.get_memory_size(&TypeName::from("NONEXISTENT")).is_err());

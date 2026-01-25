@@ -189,118 +189,83 @@ impl IntermediateType {
     /// Gets the size in bytes for this type.
     ///
     /// Returns the exact size in bytes for fixed-size types. For types that require
-    /// complex calculations or are dynamically sized, returns 0.
+    /// complex calculations or are dynamically sized, returns `None`.
     ///
     /// Note: IEC 61131-3 doesn't support truly dynamically sized objects at runtime,
     /// but some types require compile-time analysis to determine their final size.
     #[allow(dead_code)]
-    pub fn size_in_bytes(&self) -> u8 {
+    pub fn size_in_bytes(&self) -> Option<u8> {
         match self {
-            IntermediateType::Bool => 1,
-            IntermediateType::Int { size } | IntermediateType::UInt { size } => size.as_bytes(),
-            IntermediateType::Real { size } => size.as_bytes(),
-            IntermediateType::Bytes { size } => size.as_bytes(),
-            IntermediateType::Time => 8, // 64-bit time representation
-            IntermediateType::Date => 8, // 64-bit date representation
-            IntermediateType::String { max_len } => {
-                // Variable-length strings return 0, fixed-length strings return max_len
-                max_len.map(|len| len as u8).unwrap_or(0)
+            IntermediateType::Bool => Some(1),
+            IntermediateType::Int { size } | IntermediateType::UInt { size } => {
+                Some(size.as_bytes())
             }
+            IntermediateType::Real { size } => Some(size.as_bytes()),
+            IntermediateType::Bytes { size } => Some(size.as_bytes()),
+            IntermediateType::Time => Some(8), // 64-bit time representation
+            IntermediateType::Date => Some(8), // 64-bit date representation
+            IntermediateType::String { max_len } => max_len.map(|len| len as u8),
             IntermediateType::Subrange { base_type, .. } => base_type.size_in_bytes(),
             IntermediateType::Enumeration { underlying_type } => underlying_type.size_in_bytes(),
             IntermediateType::Structure { fields } => {
                 if fields.is_empty() {
-                    return 0;
-                }
-
-                // If any field has unknown size (returns 0), we can't calculate structure size
-                // This includes checking all fields because if an earlier field has size 0,
-                // subsequent field offsets would be incorrect
-                let has_unknown_field = fields
-                    .iter()
-                    .any(|field| field.field_type.size_in_bytes() == 0);
-
-                if has_unknown_field {
-                    return 0;
+                    return None;
                 }
 
                 // Calculate the end position of the last field
                 // Fields are guaranteed to be in offset order, so we just use the last one
                 let last_field = fields.last().unwrap(); // Safe: checked not empty above
-                let size_after_last_field =
-                    last_field.offset + last_field.field_type.size_in_bytes() as u32;
+                let last_field_size = last_field.field_type.size_in_bytes()?;
+                let size_after_last_field = last_field.offset + last_field_size as u32;
 
                 // Pad to structure alignment
                 let alignment = self.alignment_bytes() as u32;
-                if alignment == 0 {
-                    return 0;
-                }
 
                 // Calculate padding needed to align to structure boundary
                 let padding = (alignment - (size_after_last_field % alignment)) % alignment;
                 let total_size = size_after_last_field.saturating_add(padding);
 
-                // If size exceeds u8::MAX, return 0 to indicate complex size calculation needed
+                // If size exceeds u8::MAX, return None to indicate complex size calculation needed
                 if total_size > u8::MAX as u32 {
-                    return 0;
+                    return None;
                 }
 
-                total_size as u8
+                Some(total_size as u8)
             }
             IntermediateType::Array { element_type, size } => {
-                if let Some(array_size) = size {
-                    // Fixed-size array: element_size * array_size
-                    element_type
-                        .size_in_bytes()
-                        .saturating_mul(*array_size as u8)
-                } else {
-                    // Dynamic array (not supported in IEC 61131-3, but used during analysis)
-                    0
-                }
+                let array_size = (*size)?;
+                let elem_size = element_type.size_in_bytes()?;
+                Some(elem_size.saturating_mul(array_size as u8))
             }
             IntermediateType::FunctionBlock { fields, .. } => {
                 // Function blocks follow the same memory layout rules as structures
                 if fields.is_empty() {
-                    return 0;
-                }
-
-                // If any field has unknown size (returns 0), we can't calculate function block size
-                // This includes checking all fields because if an earlier field has size 0,
-                // subsequent field offsets would be incorrect
-                let has_unknown_field = fields
-                    .iter()
-                    .any(|field| field.field_type.size_in_bytes() == 0);
-
-                if has_unknown_field {
-                    return 0;
+                    return None;
                 }
 
                 // Calculate the end position of the last field
                 // Fields are guaranteed to be in offset order, so we just use the last one
                 let last_field = fields.last().unwrap(); // Safe: checked not empty above
-                let size_after_last_field =
-                    last_field.offset + last_field.field_type.size_in_bytes() as u32;
+                let last_field_size = last_field.field_type.size_in_bytes()?;
+                let size_after_last_field = last_field.offset + last_field_size as u32;
 
                 // Pad to function block alignment
                 let alignment = self.alignment_bytes() as u32;
-                if alignment == 0 {
-                    return 0;
-                }
 
                 // Calculate padding needed to align to function block boundary
                 let padding = (alignment - (size_after_last_field % alignment)) % alignment;
                 let total_size = size_after_last_field.saturating_add(padding);
 
-                // If size exceeds u8::MAX, return 0 to indicate complex size calculation needed
+                // If size exceeds u8::MAX, return None to indicate complex size calculation needed
                 if total_size > u8::MAX as u32 {
-                    return 0;
+                    return None;
                 }
 
-                total_size as u8
+                Some(total_size as u8)
             }
             IntermediateType::Function { .. } => {
                 // Functions don't have memory layout in the traditional sense
-                0
+                None
             }
         }
     }
@@ -549,48 +514,48 @@ mod tests {
     #[test]
     fn intermediate_type_size_in_bytes_returns_bytes() {
         // Test sized types
-        assert_eq!(IntermediateType::Bool.size_in_bytes(), 1);
+        assert_eq!(IntermediateType::Bool.size_in_bytes(), Some(1));
         assert_eq!(
             IntermediateType::Int {
                 size: ByteSized::B16
             }
             .size_in_bytes(),
-            2
+            Some(2)
         );
         assert_eq!(
             IntermediateType::UInt {
                 size: ByteSized::B32
             }
             .size_in_bytes(),
-            4
+            Some(4)
         );
         assert_eq!(
             IntermediateType::Real {
                 size: ByteSized::B64
             }
             .size_in_bytes(),
-            8
+            Some(8)
         );
         assert_eq!(
             IntermediateType::Bytes {
                 size: ByteSized::B8
             }
             .size_in_bytes(),
-            1
+            Some(1)
         );
 
         // Test time and date types
-        assert_eq!(IntermediateType::Time.size_in_bytes(), 8);
-        assert_eq!(IntermediateType::Date.size_in_bytes(), 8);
+        assert_eq!(IntermediateType::Time.size_in_bytes(), Some(8));
+        assert_eq!(IntermediateType::Date.size_in_bytes(), Some(8));
 
         // Test string types
         assert_eq!(
             IntermediateType::String { max_len: Some(10) }.size_in_bytes(),
-            10
+            Some(10)
         );
         assert_eq!(
             IntermediateType::String { max_len: None }.size_in_bytes(),
-            0
+            None
         );
 
         // Test subrange inherits base type size
@@ -601,7 +566,7 @@ mod tests {
             min_value: 1,
             max_value: 100,
         };
-        assert_eq!(subrange.size_in_bytes(), 2);
+        assert_eq!(subrange.size_in_bytes(), Some(2));
 
         // Test enumeration inherits underlying type size
         let enumeration = IntermediateType::Enumeration {
@@ -609,7 +574,7 @@ mod tests {
                 size: ByteSized::B8,
             }),
         };
-        assert_eq!(enumeration.size_in_bytes(), 1);
+        assert_eq!(enumeration.size_in_bytes(), Some(1));
 
         // Test fixed-size array
         let array = IntermediateType::Array {
@@ -618,7 +583,7 @@ mod tests {
             }),
             size: Some(5),
         };
-        assert_eq!(array.size_in_bytes(), 20); // 4 bytes * 5 elements
+        assert_eq!(array.size_in_bytes(), Some(20)); // 4 bytes * 5 elements
 
         // Test dynamic array
         let dynamic_array = IntermediateType::Array {
@@ -627,7 +592,7 @@ mod tests {
             }),
             size: None,
         };
-        assert_eq!(dynamic_array.size_in_bytes(), 0);
+        assert_eq!(dynamic_array.size_in_bytes(), None);
     }
 
     #[test]
@@ -1048,9 +1013,9 @@ mod tests {
     }
 
     #[test]
-    fn structure_size_in_bytes_with_empty_structure_then_returns_zero() {
+    fn structure_size_in_bytes_with_empty_structure_then_returns_none() {
         let struct_type = IntermediateType::Structure { fields: vec![] };
-        assert_eq!(struct_type.size_in_bytes(), 0);
+        assert_eq!(struct_type.size_in_bytes(), None);
     }
 
     #[test]
@@ -1068,7 +1033,7 @@ mod tests {
 
         let struct_type = IntermediateType::Structure { fields };
         // Size should be 4 bytes (one DINT field)
-        assert_eq!(struct_type.size_in_bytes(), 4);
+        assert_eq!(struct_type.size_in_bytes(), Some(4));
     }
 
     #[test]
@@ -1096,7 +1061,7 @@ mod tests {
 
         let struct_type = IntermediateType::Structure { fields };
         // Size should be 8 bytes (two DINT fields)
-        assert_eq!(struct_type.size_in_bytes(), 8);
+        assert_eq!(struct_type.size_in_bytes(), Some(8));
     }
 
     #[test]
@@ -1125,7 +1090,7 @@ mod tests {
 
         let struct_type = IntermediateType::Structure { fields };
         // Size should be 8 bytes (1 byte + 3 padding + 4 bytes)
-        assert_eq!(struct_type.size_in_bytes(), 8);
+        assert_eq!(struct_type.size_in_bytes(), Some(8));
     }
 
     #[test]
@@ -1154,7 +1119,7 @@ mod tests {
 
         let struct_type = IntermediateType::Structure { fields };
         // Size should be 16 bytes (8 bytes + 1 byte + 7 padding)
-        assert_eq!(struct_type.size_in_bytes(), 16);
+        assert_eq!(struct_type.size_in_bytes(), Some(16));
     }
 
     #[test]
@@ -1201,11 +1166,11 @@ mod tests {
         };
 
         // Size should be 8 bytes (4 bytes for inner struct + 4 bytes for id)
-        assert_eq!(outer_struct.size_in_bytes(), 8);
+        assert_eq!(outer_struct.size_in_bytes(), Some(8));
     }
 
     #[test]
-    fn structure_size_in_bytes_with_unknown_field_size_then_returns_zero() {
+    fn structure_size_in_bytes_with_unknown_field_size_then_returns_none() {
         use super::IntermediateStructField;
         use ironplc_dsl::core::Id;
 
@@ -1229,8 +1194,8 @@ mod tests {
         ];
 
         let struct_type = IntermediateType::Structure { fields };
-        // Should return 0 because one field has unknown size
-        assert_eq!(struct_type.size_in_bytes(), 0);
+        // Should return None because one field has unknown size
+        assert_eq!(struct_type.size_in_bytes(), None);
     }
 
     #[test]
@@ -1300,12 +1265,12 @@ mod tests {
     }
 
     #[test]
-    fn function_block_size_in_bytes_with_empty_function_block_then_returns_zero() {
+    fn function_block_size_in_bytes_with_empty_function_block_then_returns_none() {
         let fb_type = IntermediateType::FunctionBlock {
             name: "EmptyFB".to_string(),
             fields: vec![],
         };
-        assert_eq!(fb_type.size_in_bytes(), 0);
+        assert_eq!(fb_type.size_in_bytes(), None);
     }
 
     #[test]
@@ -1326,7 +1291,7 @@ mod tests {
             fields,
         };
         // Size should be 4 bytes (one DINT field)
-        assert_eq!(fb_type.size_in_bytes(), 4);
+        assert_eq!(fb_type.size_in_bytes(), Some(4));
     }
 
     #[test]
@@ -1357,7 +1322,7 @@ mod tests {
             fields,
         };
         // Size should be 8 bytes (two DINT fields)
-        assert_eq!(fb_type.size_in_bytes(), 8);
+        assert_eq!(fb_type.size_in_bytes(), Some(8));
     }
 
     #[test]
@@ -1389,7 +1354,7 @@ mod tests {
             fields,
         };
         // Size should be 8 bytes (1 byte + 3 padding + 4 bytes)
-        assert_eq!(fb_type.size_in_bytes(), 8);
+        assert_eq!(fb_type.size_in_bytes(), Some(8));
     }
 
     #[test]
@@ -1421,7 +1386,7 @@ mod tests {
             fields,
         };
         // Size should be 16 bytes (8 bytes + 1 byte + 7 padding)
-        assert_eq!(fb_type.size_in_bytes(), 16);
+        assert_eq!(fb_type.size_in_bytes(), Some(16));
     }
 
     #[test]
@@ -1469,11 +1434,11 @@ mod tests {
         };
 
         // Size should be 8 bytes (4 bytes for inner struct + 4 bytes for id)
-        assert_eq!(fb_type.size_in_bytes(), 8);
+        assert_eq!(fb_type.size_in_bytes(), Some(8));
     }
 
     #[test]
-    fn function_block_size_in_bytes_with_unknown_field_size_then_returns_zero() {
+    fn function_block_size_in_bytes_with_unknown_field_size_then_returns_none() {
         use super::IntermediateStructField;
         use ironplc_dsl::core::Id;
 
@@ -1500,7 +1465,7 @@ mod tests {
             name: "BufferFB".to_string(),
             fields,
         };
-        // Should return 0 because one field has unknown size
-        assert_eq!(fb_type.size_in_bytes(), 0);
+        // Should return None because one field has unknown size
+        assert_eq!(fb_type.size_in_bytes(), None);
     }
 }

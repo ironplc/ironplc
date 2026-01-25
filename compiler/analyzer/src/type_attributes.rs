@@ -37,9 +37,12 @@ impl TypeAttributes {
     }
 
     /// Gets the size in bytes for this type (delegates to IntermediateType)
+    ///
+    /// Returns `None` if the size cannot be determined (e.g., dynamic arrays,
+    /// variable-length strings, or types with unknown field sizes).
     #[allow(dead_code)]
-    pub fn size_bytes(&self) -> u32 {
-        self.representation.size_in_bytes() as u32
+    pub fn size_bytes(&self) -> Option<u32> {
+        self.representation.size_in_bytes().map(|s| s as u32)
     }
 
     /// Gets the alignment requirement in bytes for this type (delegates to IntermediateType)
@@ -75,7 +78,7 @@ mod tests {
             },
         );
 
-        assert_eq!(attrs.size_bytes(), 4);
+        assert_eq!(attrs.size_bytes(), Some(4));
         assert_eq!(attrs.alignment_bytes(), 4);
         assert!(attrs.has_explicit_size());
         assert_eq!(attrs.type_category, TypeCategory::Elementary);
@@ -85,7 +88,7 @@ mod tests {
     fn type_attributes_elementary_constructor() {
         let attrs = TypeAttributes::elementary(IntermediateType::Bool);
 
-        assert_eq!(attrs.size_bytes(), 1);
+        assert_eq!(attrs.size_bytes(), Some(1));
         assert_eq!(attrs.alignment_bytes(), 1);
         assert!(attrs.has_explicit_size());
         assert_eq!(attrs.type_category, TypeCategory::Elementary);
@@ -104,7 +107,7 @@ mod tests {
         // Test that convenience methods return the same values as IntermediateType methods
         assert_eq!(
             attrs.size_bytes(),
-            attrs.representation.size_in_bytes() as u32
+            attrs.representation.size_in_bytes().map(|s| s as u32)
         );
         assert_eq!(
             attrs.alignment_bytes(),

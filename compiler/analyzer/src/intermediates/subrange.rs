@@ -643,13 +643,13 @@ END_TYPE
 
         // Check memory sizes
         let sint_range = env.get(&TypeName::from("SINT_RANGE")).unwrap();
-        assert_eq!(sint_range.representation.size_in_bytes(), 1);
+        assert_eq!(sint_range.representation.size_in_bytes(), Some(1));
 
         let int_range = env.get(&TypeName::from("INT_RANGE")).unwrap();
-        assert_eq!(int_range.representation.size_in_bytes(), 2);
+        assert_eq!(int_range.representation.size_in_bytes(), Some(2));
 
         let dint_range = env.get(&TypeName::from("DINT_RANGE")).unwrap();
-        assert_eq!(dint_range.representation.size_in_bytes(), 4);
+        assert_eq!(dint_range.representation.size_in_bytes(), Some(4));
     }
 
     #[test]
