@@ -72,11 +72,22 @@ impl TypeEnvironment {
                     spec: ArraySpecificationKind::Type(node.base_type_name),
                     init: vec![],
                 })),
-                IntermediateType::Subrange { .. }
-                | IntermediateType::FunctionBlock { .. }
-                | IntermediateType::Function { .. } => {
-                    // Late-bound declarations for these types are not yet implemented
-                    Err(Diagnostic::todo_with_type(&node.data_type_name, file!(), line!()))
+                IntermediateType::Subrange { .. } => {
+                    Ok(DataTypeDeclarationKind::Subrange(SubrangeDeclaration {
+                        type_name: node.data_type_name,
+                        spec: SubrangeSpecificationKind::Type(node.base_type_name),
+                        default: None,
+                    }))
+                }
+                IntermediateType::FunctionBlock { .. } | IntermediateType::Function { .. } => {
+                    // Function blocks and functions are treated as simple type aliases
+                    Ok(DataTypeDeclarationKind::Simple(SimpleDeclaration {
+                        type_name: node.data_type_name,
+                        spec_and_init: InitialValueAssignmentKind::Simple(SimpleInitializer {
+                            type_name: node.base_type_name,
+                            initial_value: None,
+                        }),
+                    }))
                 }
                 // Primitive types are handled by the is_primitive() check above,
                 // so reaching this branch indicates a bug in the compiler
