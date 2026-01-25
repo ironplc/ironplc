@@ -18,10 +18,10 @@ about how to develop each component.
 
 IronPLC uses AI-assisted development with detailed coding standards and architectural patterns defined in steering files. These files guide both human and AI contributors to maintain consistency and quality:
 
-* **Development Standards** - Core project conventions, testing patterns, and error handling (`.kiro/steering/ironplc-development-standards.md`)
-* **Compiler Architecture** - Patterns for implementing language features and semantic analysis (`.kiro/steering/compiler-architecture.md`)
-* **Problem Code Management** - Guidelines for error handling and diagnostic creation (`.kiro/steering/problem-code-management.md`)
-* **IEC 61131-3 Compliance** - Standards compliance and validation rules (`.kiro/steering/iec-61131-3-compliance.md`)
+* **[Development Standards](specs/steering/development-standards.md)** - Core project conventions, testing patterns, and error handling
+* **[Compiler Architecture](specs/steering/compiler-architecture.md)** - Patterns for implementing language features and semantic analysis
+* **[Problem Code Management](specs/steering/problem-code-management.md)** - Guidelines for error handling and diagnostic creation
+* **[IEC 61131-3 Compliance](specs/steering/iec-61131-3-compliance.md)** - Standards compliance and validation rules
 
 When contributing code, these steering files provide the detailed implementation guidance, while this CONTRIBUTING.md focuses on the development workflow and setup process.
 
