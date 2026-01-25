@@ -2,14 +2,14 @@
 
 This steering file defines the core development standards and patterns for the IronPLC project, a Rust-based PLC compiler implementing the IEC 61131-3 standard.
 
-> **Note**: This file provides detailed implementation guidance for AI-assisted development. For development workflow, setup instructions, and contribution processes, see the main [CONTRIBUTING.md](../CONTRIBUTING.md) and component-specific contributing guides.
+> **Note**: This file provides detailed implementation guidance for AI-assisted development. For development workflow, setup instructions, and contribution processes, see the main [CONTRIBUTING.md](../../CONTRIBUTING.md) and component-specific contributing guides.
 
 ## Project Structure
 
 IronPLC consists of three primary components that must be kept in sync:
 
 1. **Compiler** (`compiler/`) - The core Rust compiler with multiple crates
-2. **VS Code Extension** (`integrations/vscode/`) - Language server and IDE integration  
+2. **VS Code Extension** (`integrations/vscode/`) - Language server and IDE integration
 3. **Documentation Website** (`docs/`) - Sphinx-based documentation
 
 **Critical**: The build will fail if these components get out of sync. Always ensure version numbers, problem codes, and language features are synchronized across all three components.
@@ -177,7 +177,7 @@ Use `just` for all build tasks. Key commands:
 - `just ci` - Run full CI pipeline
 - `just devenv-smoke` - Quick environment check
 
-For complete setup and development workflow instructions, see [CONTRIBUTING.md](../CONTRIBUTING.md).
+For complete setup and development workflow instructions, see [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ### Version Management
 **Version numbers are generated and incremented automatically** - no manual version management is required:
