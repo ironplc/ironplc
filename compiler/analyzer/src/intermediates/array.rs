@@ -12,7 +12,6 @@ use ironplc_problems::Problem;
 
 /// Result of processing an array specification
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)] // Planned for future integration with compilation pipeline (Task 8)
 pub enum IntermediateResult {
     /// Create a new array type with the given attributes
     Type(TypeAttributes),
@@ -21,7 +20,6 @@ pub enum IntermediateResult {
 }
 
 /// Try to create the intermediate type information from the array specification.
-#[allow(dead_code)] // Planned for future integration with compilation pipeline (Task 8)
 pub fn try_from(
     node_name: &TypeName,
     spec: &ArraySpecificationKind,
