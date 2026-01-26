@@ -54,3 +54,8 @@ publish vsixfilename $VSCE_PAT:
   # VSCE_PAT: The personal access token for publishing
   ls
   npx vsce publish -p $VSCE_PAT --packagePath {{vsixfilename}} --pre-release 
+
+# Remove build artifacts
+clean:
+  rm -rf out
+  rm -f *.vsix
