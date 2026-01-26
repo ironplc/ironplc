@@ -69,7 +69,6 @@ pub fn try_from(
 }
 
 /// Validates that array bounds are valid (min <= max for each dimension)
-#[allow(dead_code)] // Planned for future integration with compilation pipeline (Task 8)
 pub fn validate_array_bounds(ranges: &[Subrange], type_name: &TypeName) -> Result<(), Diagnostic> {
     if ranges.is_empty() {
         return Err(Diagnostic::problem(
@@ -121,7 +120,6 @@ pub fn validate_array_bounds(ranges: &[Subrange], type_name: &TypeName) -> Resul
 }
 
 /// Calculates the total size of an array from its subranges
-#[allow(dead_code)] // Planned for future integration with compilation pipeline (Task 8)
 fn calculate_array_size(ranges: &[Subrange]) -> Result<u32, Diagnostic> {
     let mut total_size: u64 = 1;
 
