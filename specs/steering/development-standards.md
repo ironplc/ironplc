@@ -48,6 +48,10 @@ Examples:
 - **No global state dependencies** - each test must be self-contained
 - **Terminate on failure** - use `assert!`, `assert_eq!`, etc. rather than continuing
 - **One assertion per logical concept** - but multiple assertions for the same concept are fine
+- **No panic! in tests** - Use `assert!` macros instead of `panic!()` for test failures
+  - ❌ Bad: `match result { Ok(x) => assert_eq!(x, 5), _ => panic!("Expected Ok") }`
+  - ✅ Good: `assert!(result.is_ok()); assert_eq!(result.unwrap(), 5);`
+  - ✅ Better: `assert!(matches!(result, Ok(5)))`
 
 ### Test Organization
 - Group related tests in the same module
