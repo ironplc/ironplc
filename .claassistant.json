@@ -1,0 +1,3 @@
+{
+  "allowlist": "claude\\[bot\\]|claude-bot|dependabot\\[bot\\]|dependabot-preview\\[bot\\]"
+}

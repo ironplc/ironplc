@@ -36,7 +36,6 @@ impl ByteSized {
         }
     }
 
-    #[allow(dead_code)]
     pub fn as_bytes(&self) -> u8 {
         match self {
             ByteSized::B8 => 1,
@@ -101,13 +100,13 @@ pub enum IntermediateType {
         max_value: i128,
     },
     /// Function block type
-    #[allow(unused)]
     FunctionBlock {
         /// Name of the function block type
         name: String,
+        /// Ordered list of fields (variables) in the function block instance
+        fields: Vec<IntermediateStructField>,
     },
     /// Function type with return type and parameters
-    #[allow(unused)]
     Function {
         /// Return type of the function, None for procedures
         return_type: Option<Box<IntermediateType>>,
@@ -148,19 +147,16 @@ impl IntermediateType {
     }
 
     /// Returns if the type is a subrange.
-    #[allow(dead_code)]
     pub fn is_subrange(&self) -> bool {
         matches!(self, IntermediateType::Subrange { .. })
     }
 
     /// Returns if the type is a function block.
-    #[allow(dead_code)]
     pub fn is_function_block(&self) -> bool {
         matches!(self, IntermediateType::FunctionBlock { .. })
     }
 
     /// Returns if the type is a function.
-    #[allow(dead_code)]
     pub fn is_function(&self) -> bool {
         matches!(self, IntermediateType::Function { .. })
     }
@@ -176,7 +172,6 @@ impl IntermediateType {
     }
 
     /// Returns if the type is an integer type (signed or unsigned).
-    #[allow(dead_code)]
     pub fn is_integer(&self) -> bool {
         matches!(
             self,
@@ -191,7 +186,6 @@ impl IntermediateType {
     ///
     /// Note: IEC 61131-3 doesn't support truly dynamically sized objects at runtime,
     /// but some types require compile-time analysis to determine their final size.
-    #[allow(dead_code)]
     pub fn size_in_bytes(&self) -> u8 {
         match self {
             IntermediateType::Bool => 1,
@@ -256,11 +250,45 @@ impl IntermediateType {
                     0
                 }
             }
-            IntermediateType::FunctionBlock { .. } => {
-                // TODO: Implement proper function block instance size calculation
-                // This requires analyzing the function block's variable declarations
-                // For now, return 0 to indicate size calculation is not yet implemented
-                0
+            IntermediateType::FunctionBlock { fields, .. } => {
+                // Function blocks follow the same memory layout rules as structures
+                if fields.is_empty() {
+                    return 0;
+                }
+
+                // If any field has unknown size (returns 0), we can't calculate function block size
+                // This includes checking all fields because if an earlier field has size 0,
+                // subsequent field offsets would be incorrect
+                let has_unknown_field = fields
+                    .iter()
+                    .any(|field| field.field_type.size_in_bytes() == 0);
+
+                if has_unknown_field {
+                    return 0;
+                }
+
+                // Calculate the end position of the last field
+                // Fields are guaranteed to be in offset order, so we just use the last one
+                let last_field = fields.last().unwrap(); // Safe: checked not empty above
+                let size_after_last_field =
+                    last_field.offset + last_field.field_type.size_in_bytes() as u32;
+
+                // Pad to function block alignment
+                let alignment = self.alignment_bytes() as u32;
+                if alignment == 0 {
+                    return 0;
+                }
+
+                // Calculate padding needed to align to function block boundary
+                let padding = (alignment - (size_after_last_field % alignment)) % alignment;
+                let total_size = size_after_last_field.saturating_add(padding);
+
+                // If size exceeds u8::MAX, return 0 to indicate complex size calculation needed
+                if total_size > u8::MAX as u32 {
+                    return 0;
+                }
+
+                total_size as u8
             }
             IntermediateType::Function { .. } => {
                 // Functions don't have memory layout in the traditional sense
@@ -279,7 +307,6 @@ impl IntermediateType {
     /// - 16-bit types (INT, UINT, WORD): 2-byte alignment  
     /// - 32-bit types (DINT, UDINT, REAL, DWORD): 4-byte alignment
     /// - 64-bit types (LINT, ULINT, LREAL, LWORD, TIME, DATE): 8-byte alignment
-    #[allow(dead_code)]
     pub fn alignment_bytes(&self) -> u8 {
         match self {
             IntermediateType::Bool => 1,
@@ -301,7 +328,15 @@ impl IntermediateType {
                     .unwrap_or(1)
             }
             IntermediateType::Array { element_type, .. } => element_type.alignment_bytes(),
-            IntermediateType::FunctionBlock { .. } => 1, // Default alignment for function block instances
+            IntermediateType::FunctionBlock { fields, .. } => {
+                // Function block alignment is the maximum alignment of all fields
+                // Empty function blocks have 1-byte alignment
+                fields
+                    .iter()
+                    .map(|field| field.field_type.alignment_bytes())
+                    .max()
+                    .unwrap_or(1)
+            }
             IntermediateType::Function { .. } => 1, // Default alignment (functions don't have memory layout)
         }
     }
@@ -316,7 +351,6 @@ impl IntermediateType {
     /// # Return Values
     /// - `true`: Type size is explicitly specified in the declaration
     /// - `false`: Type size needs to be inferred from context or defaults
-    #[allow(dead_code)]
     pub fn has_explicit_size(&self) -> bool {
         match self {
             IntermediateType::Bool
@@ -1187,5 +1221,276 @@ mod tests {
         let struct_type = IntermediateType::Structure { fields };
         // Should return 0 because one field has unknown size
         assert_eq!(struct_type.size_in_bytes(), 0);
+    }
+
+    #[test]
+    fn function_block_alignment_bytes_with_empty_function_block_then_returns_one() {
+        let fb_type = IntermediateType::FunctionBlock {
+            name: "EmptyFB".to_string(),
+            fields: vec![],
+        };
+        assert_eq!(fb_type.alignment_bytes(), 1);
+    }
+
+    #[test]
+    fn function_block_alignment_bytes_with_single_field_then_returns_field_alignment() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        let fields = vec![IntermediateStructField {
+            name: Id::from("field1"),
+            field_type: IntermediateType::Int {
+                size: ByteSized::B32,
+            },
+            offset: 0,
+        }];
+
+        let fb_type = IntermediateType::FunctionBlock {
+            name: "TestFB".to_string(),
+            fields,
+        };
+        assert_eq!(fb_type.alignment_bytes(), 4);
+    }
+
+    #[test]
+    fn function_block_alignment_bytes_with_multiple_fields_then_returns_max_alignment() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        let fields = vec![
+            IntermediateStructField {
+                name: Id::from("field1"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B8,
+                },
+                offset: 0,
+            },
+            IntermediateStructField {
+                name: Id::from("field2"),
+                field_type: IntermediateType::Real {
+                    size: ByteSized::B64,
+                },
+                offset: 8,
+            },
+            IntermediateStructField {
+                name: Id::from("field3"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B16,
+                },
+                offset: 16,
+            },
+        ];
+
+        let fb_type = IntermediateType::FunctionBlock {
+            name: "TestFB".to_string(),
+            fields,
+        };
+        // Maximum alignment should be 8 (from the Real field)
+        assert_eq!(fb_type.alignment_bytes(), 8);
+    }
+
+    #[test]
+    fn function_block_size_in_bytes_with_empty_function_block_then_returns_zero() {
+        let fb_type = IntermediateType::FunctionBlock {
+            name: "EmptyFB".to_string(),
+            fields: vec![],
+        };
+        assert_eq!(fb_type.size_in_bytes(), 0);
+    }
+
+    #[test]
+    fn function_block_size_in_bytes_with_single_field_then_returns_field_size() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        let fields = vec![IntermediateStructField {
+            name: Id::from("counter"),
+            field_type: IntermediateType::Int {
+                size: ByteSized::B32,
+            },
+            offset: 0,
+        }];
+
+        let fb_type = IntermediateType::FunctionBlock {
+            name: "CounterFB".to_string(),
+            fields,
+        };
+        // Size should be 4 bytes (one DINT field)
+        assert_eq!(fb_type.size_in_bytes(), 4);
+    }
+
+    #[test]
+    fn function_block_size_in_bytes_with_aligned_fields_then_returns_total_size() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        // Function block with two 4-byte aligned fields
+        let fields = vec![
+            IntermediateStructField {
+                name: Id::from("input"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B32,
+                },
+                offset: 0,
+            },
+            IntermediateStructField {
+                name: Id::from("output"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B32,
+                },
+                offset: 4,
+            },
+        ];
+
+        let fb_type = IntermediateType::FunctionBlock {
+            name: "ProcessFB".to_string(),
+            fields,
+        };
+        // Size should be 8 bytes (two DINT fields)
+        assert_eq!(fb_type.size_in_bytes(), 8);
+    }
+
+    #[test]
+    fn function_block_size_in_bytes_with_padding_then_returns_padded_size() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        // Function block: SINT (1 byte at offset 0), DINT (4 bytes at offset 4)
+        // Total size should be 8 bytes (padded to 4-byte alignment)
+        let fields = vec![
+            IntermediateStructField {
+                name: Id::from("flag"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B8,
+                },
+                offset: 0,
+            },
+            IntermediateStructField {
+                name: Id::from("value"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B32,
+                },
+                offset: 4,
+            },
+        ];
+
+        let fb_type = IntermediateType::FunctionBlock {
+            name: "TestFB".to_string(),
+            fields,
+        };
+        // Size should be 8 bytes (1 byte + 3 padding + 4 bytes)
+        assert_eq!(fb_type.size_in_bytes(), 8);
+    }
+
+    #[test]
+    fn function_block_size_in_bytes_with_trailing_padding_then_returns_aligned_size() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        // Function block: LREAL (8 bytes at offset 0), SINT (1 byte at offset 8)
+        // Total size should be 16 bytes (padded to 8-byte alignment)
+        let fields = vec![
+            IntermediateStructField {
+                name: Id::from("timestamp"),
+                field_type: IntermediateType::Real {
+                    size: ByteSized::B64,
+                },
+                offset: 0,
+            },
+            IntermediateStructField {
+                name: Id::from("status"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B8,
+                },
+                offset: 8,
+            },
+        ];
+
+        let fb_type = IntermediateType::FunctionBlock {
+            name: "TimerFB".to_string(),
+            fields,
+        };
+        // Size should be 16 bytes (8 bytes + 1 byte + 7 padding)
+        assert_eq!(fb_type.size_in_bytes(), 16);
+    }
+
+    #[test]
+    fn function_block_size_in_bytes_with_nested_structure_then_returns_correct_size() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        // Create inner structure (two INT fields = 4 bytes total)
+        let inner_struct = IntermediateType::Structure {
+            fields: vec![
+                IntermediateStructField {
+                    name: Id::from("x"),
+                    field_type: IntermediateType::Int {
+                        size: ByteSized::B16,
+                    },
+                    offset: 0,
+                },
+                IntermediateStructField {
+                    name: Id::from("y"),
+                    field_type: IntermediateType::Int {
+                        size: ByteSized::B16,
+                    },
+                    offset: 2,
+                },
+            ],
+        };
+
+        // Create function block containing the structure
+        let fb_type = IntermediateType::FunctionBlock {
+            name: "PositionFB".to_string(),
+            fields: vec![
+                IntermediateStructField {
+                    name: Id::from("position"),
+                    field_type: inner_struct,
+                    offset: 0,
+                },
+                IntermediateStructField {
+                    name: Id::from("id"),
+                    field_type: IntermediateType::Int {
+                        size: ByteSized::B32,
+                    },
+                    offset: 4,
+                },
+            ],
+        };
+
+        // Size should be 8 bytes (4 bytes for inner struct + 4 bytes for id)
+        assert_eq!(fb_type.size_in_bytes(), 8);
+    }
+
+    #[test]
+    fn function_block_size_in_bytes_with_unknown_field_size_then_returns_zero() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        // Function block containing a field with unknown size (dynamic array)
+        let fields = vec![
+            IntermediateStructField {
+                name: Id::from("counter"),
+                field_type: IntermediateType::Int {
+                    size: ByteSized::B32,
+                },
+                offset: 0,
+            },
+            IntermediateStructField {
+                name: Id::from("buffer"),
+                field_type: IntermediateType::Array {
+                    element_type: Box::new(IntermediateType::Bool),
+                    size: None, // Dynamic size
+                },
+                offset: 4,
+            },
+        ];
+
+        let fb_type = IntermediateType::FunctionBlock {
+            name: "BufferFB".to_string(),
+            fields,
+        };
+        // Should return 0 because one field has unknown size
+        assert_eq!(fb_type.size_in_bytes(), 0);
     }
 }
