@@ -76,6 +76,25 @@ P2016,SubrangeOutOfBounds,Subrange is outside base type bounds
 - Include context about what was expected vs. what was found
 - Use `Diagnostic::problem()` with appropriate `Label::span()` for source location
 
+## Steering Files for AI Assistants
+
+IronPLC uses **steering files** to guide AI assistants in working with the codebase. These files follow a specific two-file pattern:
+
+- **Pointer files** in `.kiro/steering/` - Lightweight references loaded automatically by Kiro
+- **Detailed docs** in `specs/steering/` - Complete guidance that works with any AI system
+
+### Creating and Maintaining Steering Files
+
+When creating or updating steering files:
+
+1. **Use the two-file pattern** - Create detailed doc in `specs/steering/`, pointer in `.kiro/steering/`
+2. **Keep pointers minimal** - 3-5 lines with a reference to the detailed doc
+3. **Make detailed docs self-contained** - Should work when copied to any AI system
+4. **Update CLAUDE.md** - Add references to new steering files
+5. **Choose appropriate inclusion** - `always`, `fileMatch`, or `manual`
+
+For complete guidance on steering files, see [steering-file-guidelines.md](./steering-file-guidelines.md).
+
 ## Documentation Standards
 
 ### Documentation Quadrants Framework
