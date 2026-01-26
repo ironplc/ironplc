@@ -37,19 +37,16 @@ impl TypeAttributes {
     }
 
     /// Gets the size in bytes for this type (delegates to IntermediateType)
-    #[allow(dead_code)]
     pub fn size_bytes(&self) -> u32 {
         self.representation.size_in_bytes() as u32
     }
 
     /// Gets the alignment requirement in bytes for this type (delegates to IntermediateType)
-    #[allow(dead_code)]
     pub fn alignment_bytes(&self) -> u32 {
         self.representation.alignment_bytes() as u32
     }
 
     /// Returns whether this type has an explicitly specified size (delegates to IntermediateType)
-    #[allow(dead_code)]
     pub fn has_explicit_size(&self) -> bool {
         self.representation.has_explicit_size()
     }
