@@ -166,7 +166,7 @@ END_TYPE
         // Check that the enumeration type was created
         let attributes = env.get(&TypeName::from("LEVEL")).unwrap();
         assert!(attributes.representation.is_enumeration());
-        assert_eq!(1, attributes.representation.size_in_bytes());
+        assert_eq!(Some(1), attributes.representation.size_in_bytes());
     }
 
     #[test]
@@ -189,6 +189,6 @@ END_TYPE
         // Check that the enumeration type was created
         let attributes = env.get(&TypeName::from("LEVEL2")).unwrap();
         assert!(attributes.representation.is_enumeration());
-        assert_eq!(1, attributes.representation.size_in_bytes());
+        assert_eq!(Some(1), attributes.representation.size_in_bytes());
     }
 }

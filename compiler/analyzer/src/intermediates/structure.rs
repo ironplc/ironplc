@@ -31,7 +31,8 @@ pub fn try_from(
         // Calculate field alignment and adjust offset if needed
         let field_alignment = field_type.alignment_bytes() as u32;
         let aligned_offset = align_offset(current_offset, field_alignment);
-        let field_size = field_type.size_in_bytes() as u32;
+        // Use 0 for unknown sizes - the structure's overall size_in_bytes() will return None
+        let field_size = field_type.size_in_bytes().unwrap_or(0) as u32;
 
         // Create the field
         let field = IntermediateStructField {
