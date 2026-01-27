@@ -48,6 +48,10 @@ Examples:
 - **No global state dependencies** - each test must be self-contained
 - **Terminate on failure** - use `assert!`, `assert_eq!`, etc. rather than continuing
 - **One assertion per logical concept** - but multiple assertions for the same concept are fine
+- **No panic! in tests** - Use `assert!` macros instead of `panic!()` for test failures
+  - ❌ Bad: `match result { Ok(x) => assert_eq!(x, 5), _ => panic!("Expected Ok") }`
+  - ✅ Good: `assert!(result.is_ok()); assert_eq!(result.unwrap(), 5);`
+  - ✅ Better: `assert!(matches!(result, Ok(5)))`
 
 ### Test Organization
 - Group related tests in the same module
@@ -75,6 +79,25 @@ P2016,SubrangeOutOfBounds,Subrange is outside base type bounds
 - Provide clear, actionable error messages
 - Include context about what was expected vs. what was found
 - Use `Diagnostic::problem()` with appropriate `Label::span()` for source location
+
+## Steering Files for AI Assistants
+
+IronPLC uses **steering files** to guide AI assistants in working with the codebase. These files follow a specific two-file pattern:
+
+- **Pointer files** in `.kiro/steering/` - Lightweight references loaded automatically by Kiro
+- **Detailed docs** in `specs/steering/` - Complete guidance that works with any AI system
+
+### Creating and Maintaining Steering Files
+
+When creating or updating steering files:
+
+1. **Use the two-file pattern** - Create detailed doc in `specs/steering/`, pointer in `.kiro/steering/`
+2. **Keep pointers minimal** - 3-5 lines with a reference to the detailed doc
+3. **Make detailed docs self-contained** - Should work when copied to any AI system
+4. **Update CLAUDE.md** - Add references to new steering files
+5. **Choose appropriate inclusion** - `always`, `fileMatch`, or `manual`
+
+For complete guidance on steering files, see [steering-file-guidelines.md](./steering-file-guidelines.md).
 
 ## Documentation Standards
 

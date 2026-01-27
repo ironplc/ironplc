@@ -12,7 +12,6 @@ use ironplc_problems::Problem;
 
 /// Result of processing an array specification
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)] // Planned for future integration with compilation pipeline (Task 8)
 pub enum IntermediateResult {
     /// Create a new array type with the given attributes
     Type(TypeAttributes),
@@ -21,7 +20,6 @@ pub enum IntermediateResult {
 }
 
 /// Try to create the intermediate type information from the array specification.
-#[allow(dead_code)] // Planned for future integration with compilation pipeline (Task 8)
 pub fn try_from(
     node_name: &TypeName,
     spec: &ArraySpecificationKind,
@@ -69,7 +67,6 @@ pub fn try_from(
 }
 
 /// Validates that array bounds are valid (min <= max for each dimension)
-#[allow(dead_code)] // Planned for future integration with compilation pipeline (Task 8)
 pub fn validate_array_bounds(ranges: &[Subrange], type_name: &TypeName) -> Result<(), Diagnostic> {
     if ranges.is_empty() {
         return Err(Diagnostic::problem(
@@ -121,7 +118,6 @@ pub fn validate_array_bounds(ranges: &[Subrange], type_name: &TypeName) -> Resul
 }
 
 /// Calculates the total size of an array from its subranges
-#[allow(dead_code)] // Planned for future integration with compilation pipeline (Task 8)
 fn calculate_array_size(ranges: &[Subrange]) -> Result<u32, Diagnostic> {
     let mut total_size: u64 = 1;
 
