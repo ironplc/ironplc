@@ -72,7 +72,31 @@ impl TypeEnvironment {
                     spec: ArraySpecificationKind::Type(node.base_type_name),
                     init: vec![],
                 })),
-                _ => todo!(),
+                IntermediateType::Subrange { .. } => {
+                    Ok(DataTypeDeclarationKind::Subrange(SubrangeDeclaration {
+                        type_name: node.data_type_name,
+                        spec: SubrangeSpecificationKind::Type(node.base_type_name),
+                        default: None,
+                    }))
+                }
+                // FunctionBlock and Function types are POUs (Program Organization Units),
+                // not TYPE declarations, so they should never appear in the type environment.
+                // If we reach this branch, it indicates a bug in the compiler.
+                IntermediateType::FunctionBlock { .. } | IntermediateType::Function { .. } => {
+                    Err(Diagnostic::internal_error(file!(), line!()))
+                }
+                // Primitive types are handled by the is_primitive() check above,
+                // so reaching this branch indicates a bug in the compiler
+                IntermediateType::Bool
+                | IntermediateType::Int { .. }
+                | IntermediateType::UInt { .. }
+                | IntermediateType::Real { .. }
+                | IntermediateType::Bytes { .. }
+                | IntermediateType::Time
+                | IntermediateType::Date
+                | IntermediateType::String { .. } => {
+                    Err(Diagnostic::internal_error(file!(), line!()))
+                }
             }
         }
     }
@@ -674,5 +698,52 @@ END_TYPE
                 ..
             } if matches!(**element_type, IntermediateType::Array { .. })
         ));
+    }
+
+    // Subrange type integration tests
+
+    #[test]
+    fn apply_when_subrange_type_alias_then_creates_alias() {
+        let program = "
+TYPE
+BASE_RANGE : INT (0..100);
+ALIAS_RANGE : BASE_RANGE;
+END_TYPE
+        ";
+        let (result, env) = parse_and_apply_with_elementary_types(program);
+        assert!(result.is_ok());
+
+        // Both should resolve to the same subrange type
+        let base_type = env.get(&TypeName::from("BASE_RANGE")).unwrap();
+        let alias_type = env.get(&TypeName::from("ALIAS_RANGE")).unwrap();
+        assert!(matches!(
+            &base_type.representation,
+            IntermediateType::Subrange { .. }
+        ));
+        assert_eq!(base_type.representation, alias_type.representation);
+    }
+
+    #[test]
+    fn apply_when_nested_subrange_type_alias_then_creates_alias() {
+        let program = "
+TYPE
+BASE_RANGE : INT (0..100);
+MIDDLE_RANGE : BASE_RANGE;
+TOP_RANGE : MIDDLE_RANGE;
+END_TYPE
+        ";
+        let (result, env) = parse_and_apply_with_elementary_types(program);
+        assert!(result.is_ok());
+
+        // All three should resolve to the same subrange type
+        let base_type = env.get(&TypeName::from("BASE_RANGE")).unwrap();
+        let middle_type = env.get(&TypeName::from("MIDDLE_RANGE")).unwrap();
+        let top_type = env.get(&TypeName::from("TOP_RANGE")).unwrap();
+        assert!(matches!(
+            &base_type.representation,
+            IntermediateType::Subrange { .. }
+        ));
+        assert_eq!(base_type.representation, middle_type.representation);
+        assert_eq!(base_type.representation, top_type.representation);
     }
 }
