@@ -81,3 +81,8 @@ update:
 
 expand:
   cd dsl_macro_derive && cargo rustc --profile=check -- -Zunpretty=expanded
+
+# Remove build artifacts
+clean:
+  cargo clean
+  rm -f lcov.info

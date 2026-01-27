@@ -40,19 +40,16 @@ impl TypeAttributes {
     ///
     /// Returns `None` if the size cannot be determined (e.g., dynamic arrays,
     /// variable-length strings, or types with unknown field sizes).
-    #[allow(dead_code)]
     pub fn size_bytes(&self) -> Option<u32> {
         self.representation.size_in_bytes().map(|s| s as u32)
     }
 
     /// Gets the alignment requirement in bytes for this type (delegates to IntermediateType)
-    #[allow(dead_code)]
     pub fn alignment_bytes(&self) -> u32 {
         self.representation.alignment_bytes() as u32
     }
 
     /// Returns whether this type has an explicitly specified size (delegates to IntermediateType)
-    #[allow(dead_code)]
     pub fn has_explicit_size(&self) -> bool {
         self.representation.has_explicit_size()
     }

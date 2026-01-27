@@ -13,7 +13,7 @@
 //! resolve to a declared type.
 use crate::intermediate_type::IntermediateType;
 use crate::intermediates::*;
-use crate::type_environment::{TypeAttributes, TypeEnvironment};
+use crate::type_environment::TypeEnvironment;
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -206,76 +206,17 @@ impl Fold<Diagnostic> for TypeEnvironment {
         &mut self,
         node: ArrayDeclaration,
     ) -> Result<ArrayDeclaration, Diagnostic> {
-        // Resolve the element type from the array specification
-        let element_type = match &node.spec {
-            ArraySpecificationKind::Type(type_name) => {
-                // Array of a specific type - check if the type exists
-                if self.get(type_name).is_none() {
-                    return Err(Diagnostic::problem(
-                        Problem::ParentTypeNotDeclared,
-                        Label::span(node.type_name.span(), "Array element type not found"),
-                    )
-                    .with_secondary(Label::span(type_name.span(), "Element type name")));
-                }
+        // Use the array processing module to create the array type
+        let result = array::try_from(&node.type_name, &node.spec, self)?;
 
-                // Get the element type representation
-                let element_attrs = self.get(type_name).unwrap();
-                element_attrs.representation.clone()
+        match result {
+            array::IntermediateResult::Type(attributes) => {
+                self.insert_type(&node.type_name, attributes)?;
             }
-            ArraySpecificationKind::Subranges(subranges) => {
-                // Array with subranges - check if the base type exists
-                if self.get(&subranges.type_name).is_none() {
-                    return Err(Diagnostic::problem(
-                        Problem::ArrayElementTypeNotDeclared,
-                        Label::span(node.type_name.span(), "Array declaration"),
-                    )
-                    .with_secondary(Label::span(
-                        subranges.type_name.span(),
-                        "Array element type name",
-                    )));
-                }
-
-                // Get the base type representation
-                let base_attrs = self.get(&subranges.type_name).unwrap();
-                base_attrs.representation.clone()
+            array::IntermediateResult::Alias(base_type_name) => {
+                self.insert_alias(&node.type_name, &base_type_name)?;
             }
-        };
-
-        // Calculate array size from subranges if present
-        let array_size = match &node.spec {
-            ArraySpecificationKind::Subranges(subranges) => {
-                // For now, calculate total size as product of all subrange sizes
-                // TODO: Handle multi-dimensional arrays properly
-                let total_size = subranges
-                    .ranges
-                    .iter()
-                    .map(|range| {
-                        // Calculate range size: end - start + 1
-                        let start = range.start.value.value as i128;
-                        let end = range.end.value.value as i128;
-                        (end - start + 1) as u32
-                    })
-                    .product::<u32>();
-                Some(total_size)
-            }
-            ArraySpecificationKind::Type(_) => {
-                // Single-dimensional array without explicit size
-                // TODO: Determine size from initialization or make it dynamic
-                None
-            }
-        };
-
-        // Insert the array type into the type environment
-        self.insert_type(
-            &node.type_name,
-            TypeAttributes::new(
-                node.type_name.span(),
-                IntermediateType::Array {
-                    element_type: Box::new(element_type),
-                    size: array_size,
-                },
-            ),
-        )?;
+        }
 
         Ok(node)
     }
@@ -649,5 +590,89 @@ END_TYPE
         let mut env = TypeEnvironment::new();
         let result = apply(input, &mut env);
         (result, env)
+    }
+
+    // Array type integration tests
+
+    #[test]
+    fn apply_when_array_declaration_then_integrates_with_type_environment() {
+        let program = "
+TYPE
+MY_ARRAY : ARRAY [1..10] OF INT;
+END_TYPE
+        ";
+        let (result, env) = parse_and_apply_with_elementary_types(program);
+        assert!(result.is_ok());
+
+        // Verify the array type was added to the type environment
+        let array_type = env.get(&TypeName::from("MY_ARRAY")).unwrap();
+        assert!(matches!(
+            &array_type.representation,
+            IntermediateType::Array { .. }
+        ));
+    }
+
+    #[test]
+    fn apply_when_array_type_alias_then_creates_alias() {
+        let program = "
+TYPE
+BASE_ARRAY : ARRAY [1..10] OF INT;
+ALIAS_ARRAY : BASE_ARRAY;
+END_TYPE
+        ";
+        let (result, env) = parse_and_apply_with_elementary_types(program);
+        assert!(result.is_ok());
+
+        // Both should resolve to the same array type
+        let base_type = env.get(&TypeName::from("BASE_ARRAY")).unwrap();
+        let alias_type = env.get(&TypeName::from("ALIAS_ARRAY")).unwrap();
+        assert_eq!(base_type.representation, alias_type.representation);
+    }
+
+    #[test]
+    fn apply_when_array_of_user_defined_type_then_resolves_correctly() {
+        let program = "
+TYPE
+POINT : STRUCT
+    X : INT;
+    Y : INT;
+END_STRUCT;
+MY_ARRAY : ARRAY [1..3] OF POINT;
+END_TYPE
+        ";
+        let (result, env) = parse_and_apply_with_elementary_types(program);
+        assert!(result.is_ok());
+
+        // Verify array of structure type works
+        let array_type = env.get(&TypeName::from("MY_ARRAY")).unwrap();
+        assert!(matches!(
+            &array_type.representation,
+            IntermediateType::Array {
+                element_type,
+                ..
+            } if matches!(**element_type, IntermediateType::Structure { .. })
+        ));
+    }
+
+    #[test]
+    fn apply_when_nested_array_types_then_resolves_correctly() {
+        let program = "
+TYPE
+INNER_ARRAY : ARRAY [1..5] OF INT;
+OUTER_ARRAY : ARRAY [1..3] OF INNER_ARRAY;
+END_TYPE
+        ";
+        let (result, env) = parse_and_apply_with_elementary_types(program);
+        assert!(result.is_ok());
+
+        // Verify nested arrays work
+        let outer_type = env.get(&TypeName::from("OUTER_ARRAY")).unwrap();
+        assert!(matches!(
+            &outer_type.representation,
+            IntermediateType::Array {
+                element_type,
+                ..
+            } if matches!(**element_type, IntermediateType::Array { .. })
+        ));
     }
 }

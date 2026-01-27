@@ -36,7 +36,6 @@ impl ByteSized {
         }
     }
 
-    #[allow(dead_code)]
     pub fn as_bytes(&self) -> u8 {
         match self {
             ByteSized::B8 => 1,
@@ -101,7 +100,6 @@ pub enum IntermediateType {
         max_value: i128,
     },
     /// Function block type
-    #[allow(unused)]
     FunctionBlock {
         /// Name of the function block type
         name: String,
@@ -109,7 +107,6 @@ pub enum IntermediateType {
         fields: Vec<IntermediateStructField>,
     },
     /// Function type with return type and parameters
-    #[allow(unused)]
     Function {
         /// Return type of the function, None for procedures
         return_type: Option<Box<IntermediateType>>,
@@ -150,19 +147,16 @@ impl IntermediateType {
     }
 
     /// Returns if the type is a subrange.
-    #[allow(dead_code)]
     pub fn is_subrange(&self) -> bool {
         matches!(self, IntermediateType::Subrange { .. })
     }
 
     /// Returns if the type is a function block.
-    #[allow(dead_code)]
     pub fn is_function_block(&self) -> bool {
         matches!(self, IntermediateType::FunctionBlock { .. })
     }
 
     /// Returns if the type is a function.
-    #[allow(dead_code)]
     pub fn is_function(&self) -> bool {
         matches!(self, IntermediateType::Function { .. })
     }
@@ -178,7 +172,6 @@ impl IntermediateType {
     }
 
     /// Returns if the type is an integer type (signed or unsigned).
-    #[allow(dead_code)]
     pub fn is_integer(&self) -> bool {
         matches!(
             self,
@@ -193,7 +186,6 @@ impl IntermediateType {
     ///
     /// Note: IEC 61131-3 doesn't support truly dynamically sized objects at runtime,
     /// but some types require compile-time analysis to determine their final size.
-    #[allow(dead_code)]
     pub fn size_in_bytes(&self) -> Option<u8> {
         match self {
             IntermediateType::Bool => Some(1),
@@ -280,7 +272,6 @@ impl IntermediateType {
     /// - 16-bit types (INT, UINT, WORD): 2-byte alignment  
     /// - 32-bit types (DINT, UDINT, REAL, DWORD): 4-byte alignment
     /// - 64-bit types (LINT, ULINT, LREAL, LWORD, TIME, DATE): 8-byte alignment
-    #[allow(dead_code)]
     pub fn alignment_bytes(&self) -> u8 {
         match self {
             IntermediateType::Bool => 1,
@@ -325,7 +316,6 @@ impl IntermediateType {
     /// # Return Values
     /// - `true`: Type size is explicitly specified in the declaration
     /// - `false`: Type size needs to be inferred from context or defaults
-    #[allow(dead_code)]
     pub fn has_explicit_size(&self) -> bool {
         match self {
             IntermediateType::Bool
