@@ -586,7 +586,10 @@ mod tests {
         .unwrap();
 
         // Test successful memory size retrieval
-        assert_eq!(env.get_memory_size(&TypeName::from("MY_INT")).unwrap(), Some(4));
+        assert_eq!(
+            env.get_memory_size(&TypeName::from("MY_INT")).unwrap(),
+            Some(4)
+        );
 
         // Test error for non-existent type
         assert!(env.get_memory_size(&TypeName::from("NONEXISTENT")).is_err());
