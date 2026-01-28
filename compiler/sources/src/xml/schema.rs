@@ -128,111 +128,132 @@ pub struct DataTypeDecl {
     pub name: String,
 
     #[serde(rename = "baseType")]
-    pub base_type: DataType,
+    pub base_type: TypeElement,
 
     #[serde(rename = "initialValue", default)]
     pub initial_value: Option<Value>,
 }
 
-/// A data type reference (can be elementary or derived)
+/// Wrapper for type elements in XML
+///
+/// In PLCopen XML, type information is wrapped in elements like `<type>`, `<baseType>`.
+/// This wrapper uses `$value` to capture the inner DataType enum.
 #[derive(Debug, Deserialize)]
-pub struct DataType {
-    // Elementary types - each is an empty element
-    #[serde(rename = "BOOL", default)]
-    pub bool_type: Option<EmptyElement>,
-
-    #[serde(rename = "BYTE", default)]
-    pub byte_type: Option<EmptyElement>,
-
-    #[serde(rename = "WORD", default)]
-    pub word_type: Option<EmptyElement>,
-
-    #[serde(rename = "DWORD", default)]
-    pub dword_type: Option<EmptyElement>,
-
-    #[serde(rename = "LWORD", default)]
-    pub lword_type: Option<EmptyElement>,
-
-    #[serde(rename = "SINT", default)]
-    pub sint_type: Option<EmptyElement>,
-
-    #[serde(rename = "INT", default)]
-    pub int_type: Option<EmptyElement>,
-
-    #[serde(rename = "DINT", default)]
-    pub dint_type: Option<EmptyElement>,
-
-    #[serde(rename = "LINT", default)]
-    pub lint_type: Option<EmptyElement>,
-
-    #[serde(rename = "USINT", default)]
-    pub usint_type: Option<EmptyElement>,
-
-    #[serde(rename = "UINT", default)]
-    pub uint_type: Option<EmptyElement>,
-
-    #[serde(rename = "UDINT", default)]
-    pub udint_type: Option<EmptyElement>,
-
-    #[serde(rename = "ULINT", default)]
-    pub ulint_type: Option<EmptyElement>,
-
-    #[serde(rename = "REAL", default)]
-    pub real_type: Option<EmptyElement>,
-
-    #[serde(rename = "LREAL", default)]
-    pub lreal_type: Option<EmptyElement>,
-
-    #[serde(rename = "TIME", default)]
-    pub time_type: Option<EmptyElement>,
-
-    #[serde(rename = "DATE", default)]
-    pub date_type: Option<EmptyElement>,
-
-    #[serde(rename = "DT", default)]
-    pub dt_type: Option<EmptyElement>,
-
-    #[serde(rename = "TOD", default)]
-    pub tod_type: Option<EmptyElement>,
-
-    #[serde(rename = "string", default)]
-    pub string_type: Option<StringType>,
-
-    #[serde(rename = "wstring", default)]
-    pub wstring_type: Option<StringType>,
-
-    // Derived types
-    #[serde(rename = "derived", default)]
-    pub derived: Option<DerivedType>,
-
-    #[serde(rename = "array", default)]
-    pub array: Option<ArrayType>,
-
-    #[serde(rename = "enum", default)]
-    pub enum_type: Option<EnumType>,
-
-    #[serde(rename = "struct", default)]
-    pub struct_type: Option<StructType>,
-
-    #[serde(rename = "subrangeSigned", default)]
-    pub subrange_signed: Option<SubrangeSigned>,
-
-    #[serde(rename = "subrangeUnsigned", default)]
-    pub subrange_unsigned: Option<SubrangeUnsigned>,
-
-    #[serde(rename = "pointer", default)]
-    pub pointer: Option<PointerType>,
+pub struct TypeElement {
+    #[serde(rename = "$value")]
+    pub inner: DataType,
 }
 
-/// Empty element marker (for types like BOOL, INT that have no content)
-#[derive(Debug, Deserialize, Default)]
-pub struct EmptyElement {}
+impl TypeElement {
+    /// Get the inner data type
+    pub fn data_type(&self) -> &DataType {
+        &self.inner
+    }
+}
 
-/// String type with optional length
+impl std::ops::Deref for TypeElement {
+    type Target = DataType;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+/// A data type reference (exactly one variant)
+///
+/// In PLCopen XML, a type element contains exactly one child element
+/// indicating the type. This enum represents that constraint.
 #[derive(Debug, Deserialize)]
-pub struct StringType {
-    #[serde(rename = "@length", default)]
-    pub length: Option<String>,
+pub enum DataType {
+    // Elementary types (empty elements)
+    #[serde(rename = "BOOL")]
+    Bool,
+    #[serde(rename = "BYTE")]
+    Byte,
+    #[serde(rename = "WORD")]
+    Word,
+    #[serde(rename = "DWORD")]
+    DWord,
+    #[serde(rename = "LWORD")]
+    LWord,
+    #[serde(rename = "SINT")]
+    SInt,
+    #[serde(rename = "INT")]
+    Int,
+    #[serde(rename = "DINT")]
+    DInt,
+    #[serde(rename = "LINT")]
+    LInt,
+    #[serde(rename = "USINT")]
+    USInt,
+    #[serde(rename = "UINT")]
+    UInt,
+    #[serde(rename = "UDINT")]
+    UDInt,
+    #[serde(rename = "ULINT")]
+    ULInt,
+    #[serde(rename = "REAL")]
+    Real,
+    #[serde(rename = "LREAL")]
+    LReal,
+    #[serde(rename = "TIME")]
+    Time,
+    #[serde(rename = "DATE")]
+    Date,
+    #[serde(rename = "DT")]
+    DateAndTime,
+    #[serde(rename = "TOD")]
+    TimeOfDay,
+
+    // String types with optional length
+    #[serde(rename = "string")]
+    String {
+        #[serde(rename = "@length", default)]
+        length: Option<String>,
+    },
+    #[serde(rename = "wstring")]
+    WString {
+        #[serde(rename = "@length", default)]
+        length: Option<String>,
+    },
+
+    // Generic ANY types
+    #[serde(rename = "ANY")]
+    Any,
+    #[serde(rename = "ANY_DERIVED")]
+    AnyDerived,
+    #[serde(rename = "ANY_ELEMENTARY")]
+    AnyElementary,
+    #[serde(rename = "ANY_MAGNITUDE")]
+    AnyMagnitude,
+    #[serde(rename = "ANY_NUM")]
+    AnyNum,
+    #[serde(rename = "ANY_REAL")]
+    AnyReal,
+    #[serde(rename = "ANY_INT")]
+    AnyInt,
+    #[serde(rename = "ANY_BIT")]
+    AnyBit,
+    #[serde(rename = "ANY_STRING")]
+    AnyString,
+    #[serde(rename = "ANY_DATE")]
+    AnyDate,
+
+    // Derived types
+    #[serde(rename = "derived")]
+    Derived(DerivedType),
+    #[serde(rename = "array")]
+    Array(Box<ArrayType>),
+    #[serde(rename = "enum")]
+    Enum(EnumType),
+    #[serde(rename = "struct")]
+    Struct(StructType),
+    #[serde(rename = "subrangeSigned")]
+    SubrangeSigned(Box<SubrangeSigned>),
+    #[serde(rename = "subrangeUnsigned")]
+    SubrangeUnsigned(Box<SubrangeUnsigned>),
+    #[serde(rename = "pointer")]
+    Pointer(Box<PointerType>),
 }
 
 /// Reference to a named type
@@ -249,7 +270,7 @@ pub struct ArrayType {
     pub dimension: Vec<Dimension>,
 
     #[serde(rename = "baseType")]
-    pub base_type: Box<DataType>,
+    pub base_type: TypeElement,
 }
 
 /// Array dimension
@@ -269,7 +290,7 @@ pub struct EnumType {
     pub values: EnumValues,
 
     #[serde(rename = "baseType", default)]
-    pub base_type: Option<Box<DataType>>,
+    pub base_type: Option<Box<TypeElement>>,
 }
 
 /// Container for enumeration values
@@ -303,7 +324,7 @@ pub struct StructMember {
     pub name: String,
 
     #[serde(rename = "type")]
-    pub member_type: DataType,
+    pub member_type: TypeElement,
 
     #[serde(rename = "initialValue", default)]
     pub initial_value: Option<Value>,
@@ -319,7 +340,7 @@ pub struct SubrangeSigned {
     pub upper: String,
 
     #[serde(rename = "baseType")]
-    pub base_type: Box<DataType>,
+    pub base_type: TypeElement,
 }
 
 /// Unsigned subrange type
@@ -332,14 +353,14 @@ pub struct SubrangeUnsigned {
     pub upper: String,
 
     #[serde(rename = "baseType")]
-    pub base_type: Box<DataType>,
+    pub base_type: TypeElement,
 }
 
 /// Pointer type
 #[derive(Debug, Deserialize)]
 pub struct PointerType {
     #[serde(rename = "baseType")]
-    pub base_type: Box<DataType>,
+    pub base_type: TypeElement,
 }
 
 /// Container for POUs
@@ -387,7 +408,7 @@ pub enum PouType {
 #[derive(Debug, Deserialize, Default)]
 pub struct Interface {
     #[serde(rename = "returnType", default)]
-    pub return_type: Option<DataType>,
+    pub return_type: Option<TypeElement>,
 
     #[serde(rename = "localVars", default)]
     pub local_vars: Vec<VarList>,
@@ -446,7 +467,7 @@ pub struct Variable {
     pub global_id: Option<String>,
 
     #[serde(rename = "type")]
-    pub var_type: DataType,
+    pub var_type: TypeElement,
 
     #[serde(rename = "initialValue", default)]
     pub initial_value: Option<Value>,
@@ -676,62 +697,45 @@ pub struct PouInstance {
 impl DataType {
     /// Get the type name as a string for diagnostics
     pub fn type_name(&self) -> &'static str {
-        if self.bool_type.is_some() {
-            "BOOL"
-        } else if self.byte_type.is_some() {
-            "BYTE"
-        } else if self.word_type.is_some() {
-            "WORD"
-        } else if self.dword_type.is_some() {
-            "DWORD"
-        } else if self.lword_type.is_some() {
-            "LWORD"
-        } else if self.sint_type.is_some() {
-            "SINT"
-        } else if self.int_type.is_some() {
-            "INT"
-        } else if self.dint_type.is_some() {
-            "DINT"
-        } else if self.lint_type.is_some() {
-            "LINT"
-        } else if self.usint_type.is_some() {
-            "USINT"
-        } else if self.uint_type.is_some() {
-            "UINT"
-        } else if self.udint_type.is_some() {
-            "UDINT"
-        } else if self.ulint_type.is_some() {
-            "ULINT"
-        } else if self.real_type.is_some() {
-            "REAL"
-        } else if self.lreal_type.is_some() {
-            "LREAL"
-        } else if self.time_type.is_some() {
-            "TIME"
-        } else if self.date_type.is_some() {
-            "DATE"
-        } else if self.dt_type.is_some() {
-            "DATE_AND_TIME"
-        } else if self.tod_type.is_some() {
-            "TIME_OF_DAY"
-        } else if self.string_type.is_some() {
-            "STRING"
-        } else if self.wstring_type.is_some() {
-            "WSTRING"
-        } else if self.derived.is_some() {
-            "derived"
-        } else if self.array.is_some() {
-            "ARRAY"
-        } else if self.enum_type.is_some() {
-            "enum"
-        } else if self.struct_type.is_some() {
-            "STRUCT"
-        } else if self.subrange_signed.is_some() || self.subrange_unsigned.is_some() {
-            "subrange"
-        } else if self.pointer.is_some() {
-            "POINTER"
-        } else {
-            "unknown"
+        match self {
+            DataType::Bool => "BOOL",
+            DataType::Byte => "BYTE",
+            DataType::Word => "WORD",
+            DataType::DWord => "DWORD",
+            DataType::LWord => "LWORD",
+            DataType::SInt => "SINT",
+            DataType::Int => "INT",
+            DataType::DInt => "DINT",
+            DataType::LInt => "LINT",
+            DataType::USInt => "USINT",
+            DataType::UInt => "UINT",
+            DataType::UDInt => "UDINT",
+            DataType::ULInt => "ULINT",
+            DataType::Real => "REAL",
+            DataType::LReal => "LREAL",
+            DataType::Time => "TIME",
+            DataType::Date => "DATE",
+            DataType::DateAndTime => "DATE_AND_TIME",
+            DataType::TimeOfDay => "TIME_OF_DAY",
+            DataType::String { .. } => "STRING",
+            DataType::WString { .. } => "WSTRING",
+            DataType::Any => "ANY",
+            DataType::AnyDerived => "ANY_DERIVED",
+            DataType::AnyElementary => "ANY_ELEMENTARY",
+            DataType::AnyMagnitude => "ANY_MAGNITUDE",
+            DataType::AnyNum => "ANY_NUM",
+            DataType::AnyReal => "ANY_REAL",
+            DataType::AnyInt => "ANY_INT",
+            DataType::AnyBit => "ANY_BIT",
+            DataType::AnyString => "ANY_STRING",
+            DataType::AnyDate => "ANY_DATE",
+            DataType::Derived(_) => "derived",
+            DataType::Array(_) => "ARRAY",
+            DataType::Enum(_) => "enum",
+            DataType::Struct(_) => "STRUCT",
+            DataType::SubrangeSigned(_) => "subrange",
+            DataType::SubrangeUnsigned(_) => "subrange",
+            DataType::Pointer(_) => "POINTER",
         }
     }
 }
@@ -859,7 +863,7 @@ END_IF;
         assert_eq!(interface.input_vars.len(), 1);
         assert_eq!(interface.input_vars[0].variable.len(), 1);
         assert_eq!(interface.input_vars[0].variable[0].name, "Reset");
-        assert!(interface.input_vars[0].variable[0].var_type.bool_type.is_some());
+        assert!(matches!(*interface.input_vars[0].variable[0].var_type, DataType::Bool));
 
         let body = pou.body.as_ref().unwrap();
         assert!(body.is_st());
@@ -902,7 +906,9 @@ END_IF;
         let dt = &project.types.data_types.data_type[0];
         assert_eq!(dt.name, "TrafficLight");
 
-        let enum_type = dt.base_type.enum_type.as_ref().unwrap();
+        let DataType::Enum(enum_type) = &*dt.base_type else {
+            panic!("Expected enum type");
+        };
         assert_eq!(enum_type.values.value.len(), 3);
         assert_eq!(enum_type.values.value[0].name, "Red");
         assert_eq!(enum_type.values.value[1].name, "Yellow");
@@ -941,10 +947,12 @@ END_IF;
         let dt = &project.types.data_types.data_type[0];
         assert_eq!(dt.name, "IntArray");
 
-        let array = dt.base_type.array.as_ref().unwrap();
+        let DataType::Array(array) = &*dt.base_type else {
+            panic!("Expected array type");
+        };
         assert_eq!(array.dimension.len(), 1);
         assert_eq!(array.dimension[0].lower, "0");
         assert_eq!(array.dimension[0].upper, "9");
-        assert!(array.base_type.int_type.is_some());
+        assert!(matches!(*array.base_type, DataType::Int));
     }
 }
