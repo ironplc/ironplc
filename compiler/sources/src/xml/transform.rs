@@ -5,15 +5,15 @@
 
 use ironplc_dsl::{
     common::{
-        ArrayDeclaration, ArraySpecificationKind, ArraySubranges,
-        DataTypeDeclarationKind, DeclarationQualifier, ElementaryTypeName,
-        EnumeratedSpecificationInit, EnumeratedSpecificationKind, EnumeratedSpecificationValues,
-        EnumeratedValue, EnumerationDeclaration, FunctionBlockBodyKind,
-        FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, Integer,
-        Library, LibraryElementKind, ProgramDeclaration, SignedInteger, SimpleDeclaration,
-        SimpleInitializer, StructureDeclaration, StructureElementDeclaration, Subrange,
-        SubrangeDeclaration, SubrangeSpecification, SubrangeSpecificationKind, TypeName, VarDecl,
-        VariableIdentifier, VariableType,
+        ArrayDeclaration, ArraySpecificationKind, ArraySubranges, DataTypeDeclarationKind,
+        DeclarationQualifier, ElementaryTypeName, EnumeratedSpecificationInit,
+        EnumeratedSpecificationKind, EnumeratedSpecificationValues, EnumeratedValue,
+        EnumerationDeclaration, FunctionBlockBodyKind, FunctionBlockDeclaration,
+        FunctionDeclaration, InitialValueAssignmentKind, Integer, Library, LibraryElementKind,
+        ProgramDeclaration, SignedInteger, SimpleDeclaration, SimpleInitializer,
+        StructureDeclaration, StructureElementDeclaration, Subrange, SubrangeDeclaration,
+        SubrangeSpecification, SubrangeSpecificationKind, TypeName, VarDecl, VariableIdentifier,
+        VariableType,
     },
     core::{FileId, Id, SourceSpan},
     diagnostic::{Diagnostic, Label},
@@ -22,8 +22,8 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use super::schema::{
-    ArrayType, DataType, DataTypeDecl, Dimension, EnumType, Interface, Pou, PouType,
-    Project, StructType, SubrangeSigned, SubrangeUnsigned, VarList, Variable,
+    ArrayType, DataType, DataTypeDecl, Dimension, EnumType, Interface, Pou, PouType, Project,
+    StructType, SubrangeSigned, SubrangeUnsigned, VarList, Variable,
 };
 
 /// Create a SourceSpan for the given file with no position info
@@ -40,7 +40,9 @@ pub fn transform_project(project: &Project, file_id: &FileId) -> Result<Library,
     // Transform data types
     for dt in &project.types.data_types.data_type {
         let decl = transform_data_type_decl(dt, file_id)?;
-        library.elements.push(LibraryElementKind::DataTypeDeclaration(decl));
+        library
+            .elements
+            .push(LibraryElementKind::DataTypeDeclaration(decl));
     }
 
     // Transform POUs
@@ -100,13 +102,15 @@ fn transform_enum_decl(
 
     let spec = EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues { values });
 
-    Ok(DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
-        type_name: type_name.clone(),
-        spec_init: EnumeratedSpecificationInit {
-            spec,
-            default: None,
+    Ok(DataTypeDeclarationKind::Enumeration(
+        EnumerationDeclaration {
+            type_name: type_name.clone(),
+            spec_init: EnumeratedSpecificationInit {
+                spec,
+                default: None,
+            },
         },
-    }))
+    ))
 }
 
 /// Transform an array declaration
@@ -129,7 +133,10 @@ fn transform_array_decl(
 }
 
 /// Transform array dimensions to subranges
-fn transform_dimensions(dimensions: &[Dimension], file_id: &FileId) -> Result<Vec<Subrange>, Diagnostic> {
+fn transform_dimensions(
+    dimensions: &[Dimension],
+    file_id: &FileId,
+) -> Result<Vec<Subrange>, Diagnostic> {
     dimensions
         .iter()
         .map(|dim| {
@@ -264,10 +271,7 @@ fn transform_subrange_unsigned_decl(
                     is_neg: false,
                 },
                 end: SignedInteger {
-                    value: Integer {
-                        span,
-                        value: upper,
-                    },
+                    value: Integer { span, value: upper },
                     is_neg: false,
                 },
             },
@@ -295,7 +299,10 @@ fn transform_base_type_to_elementary(
             Problem::SyntaxError,
             Label::span(
                 span,
-                format!("Subrange base type must be an integer type, found: {}", type_element.inner.type_name()),
+                format!(
+                    "Subrange base type must be an integer type, found: {}",
+                    type_element.inner.type_name()
+                ),
             ),
         )),
     }
@@ -337,15 +344,24 @@ fn transform_data_type(
         // Complex types that need context
         DataType::Array(_) => Err(Diagnostic::problem(
             Problem::NotImplemented,
-            Label::span(span, "Anonymous array types not yet supported in variable declarations"),
+            Label::span(
+                span,
+                "Anonymous array types not yet supported in variable declarations",
+            ),
         )),
         DataType::Enum(_) => Err(Diagnostic::problem(
             Problem::NotImplemented,
-            Label::span(span, "Anonymous enum types not yet supported in variable declarations"),
+            Label::span(
+                span,
+                "Anonymous enum types not yet supported in variable declarations",
+            ),
         )),
         DataType::Struct(_) => Err(Diagnostic::problem(
             Problem::NotImplemented,
-            Label::span(span, "Anonymous struct types not yet supported in variable declarations"),
+            Label::span(
+                span,
+                "Anonymous struct types not yet supported in variable declarations",
+            ),
         )),
 
         // Generic types (usually for library functions)
@@ -397,26 +413,34 @@ fn transform_function(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind,
             // Functions must have a return type
             return Err(Diagnostic::problem(
                 Problem::SyntaxError,
-                Label::span(span, format!("Function '{}' is missing a return type", pou.name)),
+                Label::span(
+                    span,
+                    format!("Function '{}' is missing a return type", pou.name),
+                ),
             ));
         }
     } else {
         return Err(Diagnostic::problem(
             Problem::SyntaxError,
-            Label::span(span, format!("Function '{}' is missing interface", pou.name)),
+            Label::span(
+                span,
+                format!("Function '{}' is missing interface", pou.name),
+            ),
         ));
     };
 
     let variables = transform_interface(pou.interface.as_ref(), file_id)?;
     let body = transform_body_statements(pou, file_id)?;
 
-    Ok(LibraryElementKind::FunctionDeclaration(FunctionDeclaration {
-        name,
-        return_type,
-        variables,
-        edge_variables: vec![],
-        body,
-    }))
+    Ok(LibraryElementKind::FunctionDeclaration(
+        FunctionDeclaration {
+            name,
+            return_type,
+            variables,
+            edge_variables: vec![],
+            body,
+        },
+    ))
 }
 
 /// Transform a function block declaration
@@ -486,12 +510,20 @@ fn transform_interface(
 
     // Temp variables
     for var_list in &interface.temp_vars {
-        vars.extend(transform_var_list(var_list, VariableType::VarTemp, file_id)?);
+        vars.extend(transform_var_list(
+            var_list,
+            VariableType::VarTemp,
+            file_id,
+        )?);
     }
 
     // External variables
     for var_list in &interface.external_vars {
-        vars.extend(transform_var_list(var_list, VariableType::External, file_id)?);
+        vars.extend(transform_var_list(
+            var_list,
+            VariableType::External,
+            file_id,
+        )?);
     }
 
     // Global variables (at POU level)
@@ -556,7 +588,9 @@ fn transform_body(pou: &Pou, file_id: &FileId) -> Result<FunctionBlockBodyKind, 
 
     if let Some(st_text) = body.st_text() {
         let stmts = parse_st_body(st_text, file_id)?;
-        Ok(FunctionBlockBodyKind::Statements(Statements { body: stmts }))
+        Ok(FunctionBlockBodyKind::Statements(Statements {
+            body: stmts,
+        }))
     } else if body.sfc.is_some() {
         // SFC support is planned for Phase 3
         let span = file_span(file_id);
@@ -602,7 +636,10 @@ fn parse_st_body(
 fn invalid_value_error(value: &str, context: &str, file_id: &FileId) -> Diagnostic {
     Diagnostic::problem(
         Problem::SyntaxError,
-        Label::span(file_span(file_id), format!("Invalid {}: '{}'", context, value)),
+        Label::span(
+            file_span(file_id),
+            format!("Invalid {}: '{}'", context, value),
+        ),
     )
 }
 
@@ -671,8 +708,9 @@ mod tests {
         let library = transform_project(&project, &test_file_id()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
-        let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(enum_decl)) =
-            &library.elements[0]
+        let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
+            enum_decl,
+        )) = &library.elements[0]
         else {
             panic!("Expected enumeration declaration");
         };
@@ -741,8 +779,9 @@ mod tests {
         let library = transform_project(&project, &test_file_id()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
-        let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Structure(struct_decl)) =
-            &library.elements[0]
+        let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Structure(
+            struct_decl,
+        )) = &library.elements[0]
         else {
             panic!("Expected structure declaration");
         };

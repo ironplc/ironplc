@@ -863,7 +863,10 @@ END_IF;
         assert_eq!(interface.input_vars.len(), 1);
         assert_eq!(interface.input_vars[0].variable.len(), 1);
         assert_eq!(interface.input_vars[0].variable[0].name, "Reset");
-        assert!(matches!(*interface.input_vars[0].variable[0].var_type, DataType::Bool));
+        assert!(matches!(
+            *interface.input_vars[0].variable[0].var_type,
+            DataType::Bool
+        ));
 
         let body = pou.body.as_ref().unwrap();
         assert!(body.is_st());
