@@ -52,6 +52,7 @@ pub mod file_type;
 pub mod parsers;
 pub mod project;
 pub mod source;
+pub mod xml;
 
 // Re-export main types for convenience
 pub use file_type::FileType;
