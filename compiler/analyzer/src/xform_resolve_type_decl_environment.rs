@@ -109,8 +109,18 @@ impl Fold<Diagnostic> for TypeEnvironment {
     ) -> Result<SimpleDeclaration, Diagnostic> {
         // A simple declaration consists of a type name followed by specification/initialization.
         match &node.spec_and_init {
-            InitialValueAssignmentKind::None(_source_span) => {
-                // TODO: Handle simple type declarations without initializers
+            InitialValueAssignmentKind::None(source_span) => {
+                // Simple declarations must have a type specification
+                // Example: TYPE MY_TYPE : INT; END_TYPE (valid)
+                // Example: TYPE MY_TYPE; END_TYPE (invalid - this case)
+                return Err(Diagnostic::problem(
+                    Problem::InvalidSimpleTypeDecl,
+                    Label::span(node.type_name.span(), "Type declaration"),
+                )
+                .with_secondary(Label::span(
+                    source_span.clone(),
+                    "Type specification required (e.g., ': INT')",
+                )));
             }
             InitialValueAssignmentKind::Simple(simple_initializer) => {
                 match self.get(&simple_initializer.type_name) {
@@ -282,6 +292,7 @@ mod tests {
     use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
 
     use super::apply;
+    use ironplc_dsl::core::SourceSpan;
     use ironplc_dsl::diagnostic::Diagnostic;
     use ironplc_dsl::{common::*, core::FileId};
     use ironplc_parser::options::ParseOptions;
@@ -745,5 +756,33 @@ END_TYPE
         ));
         assert_eq!(base_type.representation, middle_type.representation);
         assert_eq!(base_type.representation, top_type.representation);
+    }
+
+    #[test]
+    fn apply_when_simple_decl_without_type_spec_then_error() {
+        // This test verifies that declarations without a type specification
+        // return a proper error. This would happen if the parser produces
+        // InitialValueAssignmentKind::None for a simple declaration.
+        let input = Library {
+            elements: vec![LibraryElementKind::DataTypeDeclaration(
+                DataTypeDeclarationKind::Simple(SimpleDeclaration {
+                    type_name: TypeName::from("MY_TYPE"),
+                    spec_and_init: InitialValueAssignmentKind::None(SourceSpan::default()),
+                }),
+            )],
+        };
+
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+
+        let result = apply(input, &mut env);
+
+        // Should return an error
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].code, "P2019"); // InvalidSimpleTypeDecl
     }
 }
