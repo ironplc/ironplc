@@ -17,8 +17,9 @@ use ironplc_dsl::{
     },
     core::{FileId, Id, SourceSpan},
     diagnostic::{Diagnostic, Label},
-    textual::Statements,
+    textual::{Statements, StmtKind},
 };
+use ironplc_parser::options::ParseOptions;
 use ironplc_problems::Problem;
 
 use super::schema::{
@@ -574,10 +575,7 @@ fn transform_body(pou: &Pou, file_id: &FileId) -> Result<FunctionBlockBodyKind, 
 }
 
 /// Transform POU body to Vec<StmtKind> (for functions)
-fn transform_body_statements(
-    pou: &Pou,
-    file_id: &FileId,
-) -> Result<Vec<ironplc_dsl::textual::StmtKind>, Diagnostic> {
+fn transform_body_statements(pou: &Pou, file_id: &FileId) -> Result<Vec<StmtKind>, Diagnostic> {
     let Some(ref body) = pou.body else {
         return Ok(vec![]);
     };
@@ -590,16 +588,15 @@ fn transform_body_statements(
 }
 
 /// Parse ST body text using the ST parser
-fn parse_st_body(
-    st_text: &str,
-    file_id: &FileId,
-) -> Result<Vec<ironplc_dsl::textual::StmtKind>, Diagnostic> {
-    // The ST body is just statements, we need to parse it
-    // For now, return empty - actual parsing requires ironplc_parser integration
-    // TODO: Integrate with ironplc_parser for ST body parsing
-    let _ = st_text;
-    let _ = file_id;
-    Ok(vec![])
+///
+/// TODO: Currently passes 0 offsets because quick-xml deserialization
+/// doesn't preserve source positions. To fix this, we would need to either:
+/// 1. Use a different XML parsing approach that tracks positions
+/// 2. Search the original XML for the ST content to determine offset
+fn parse_st_body(st_text: &str, file_id: &FileId) -> Result<Vec<StmtKind>, Diagnostic> {
+    let options = ParseOptions::default();
+    // Use offset-aware parsing with zeros until XML position tracking is implemented
+    ironplc_parser::parse_st_statements(st_text, file_id, &options, 0, 0)
 }
 
 /// Create an error diagnostic for invalid values
@@ -835,5 +832,56 @@ IF Reset THEN Count := 0; END_IF;
         };
         assert_eq!(prog_decl.name.to_string(), "Main");
         assert_eq!(prog_decl.variables.len(), 1);
+    }
+
+    #[test]
+    fn transform_when_function_block_with_st_body_then_parses_statements() {
+        let xml = format!(
+            r#"{}
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="Counter" pouType="functionBlock">
+        <interface>
+          <inputVars>
+            <variable name="Reset">
+              <type><BOOL/></type>
+            </variable>
+          </inputVars>
+          <outputVars>
+            <variable name="Count">
+              <type><INT/></type>
+            </variable>
+          </outputVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+IF Reset THEN
+  Count := 0;
+END_IF;
+            </xhtml>
+          </ST>
+        </body>
+      </pou>
+    </pous>
+  </types>
+</project>"#,
+            minimal_project_header()
+        );
+
+        let project = parse_project(&xml);
+        let library = transform_project(&project, &test_file_id()).unwrap();
+
+        assert_eq!(library.elements.len(), 1);
+        let LibraryElementKind::FunctionBlockDeclaration(fb_decl) = &library.elements[0] else {
+            panic!("Expected function block declaration");
+        };
+
+        // Verify the body has statements
+        let FunctionBlockBodyKind::Statements(stmts) = &fb_decl.body else {
+            panic!("Expected statements body");
+        };
+        assert!(!stmts.body.is_empty(), "Expected parsed statements");
     }
 }
