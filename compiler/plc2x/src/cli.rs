@@ -84,8 +84,13 @@ pub fn tokenize(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> 
 
     // Write the set
     for src in project.sources() {
-        let (tokens, diagnostics) =
-            tokenize_program(src.as_string(), src.file_id(), &ParseOptions::default());
+        let (tokens, diagnostics) = tokenize_program(
+            src.as_string(),
+            src.file_id(),
+            &ParseOptions::default(),
+            0,
+            0,
+        );
 
         let tokens = tokens
             .iter()

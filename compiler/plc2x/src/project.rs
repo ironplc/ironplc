@@ -92,7 +92,7 @@ impl Project for FileBackedProject {
         let source = self.source_project.get_source(file_id);
 
         match source {
-            Some(src) => tokenize_program(src.as_string(), file_id, &ParseOptions::default()),
+            Some(src) => tokenize_program(src.as_string(), file_id, &ParseOptions::default(), 0, 0),
             None => (
                 vec![],
                 vec![Diagnostic::problem(

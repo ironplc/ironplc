@@ -59,6 +59,36 @@ pub fn parse_library(tokens: Vec<Token>) -> Result<Vec<LibraryElementKind>, Diag
     })
 }
 
+/// Parses a list of IEC 61131-3 statements into object form.
+///
+/// This is useful for parsing ST body content from PLCopen XML files
+/// where only the statements (not the full POU declaration) are provided.
+pub fn parse_statements(tokens: Vec<Token>) -> Result<Vec<StmtKind>, Diagnostic> {
+    if tokens.is_empty() {
+        return Ok(vec![]);
+    }
+
+    plc_parser::statement_list(&SliceByRef(&tokens[..])).map_err(|e| {
+        let token_index = e.location;
+
+        let expected = Vec::from_iter(e.expected.tokens()).join(" | ");
+        let actual = tokens.get(token_index.saturating_sub(1)).unwrap();
+
+        Diagnostic::problem(
+            Problem::SyntaxError,
+            Label::span(
+                actual.span.clone(),
+                format!(
+                    "Expected {}. Found text '{}' that matched token {}",
+                    expected,
+                    actual.text.replace('\n', "\\n").replace('\r', "\\r"),
+                    actual.token_type.describe()
+                ),
+            ),
+        )
+    })
+}
+
 enum StatementsOrEmpty {
     Statements(Vec<StmtKind>),
     Empty(),
