@@ -588,9 +588,15 @@ fn transform_body_statements(pou: &Pou, file_id: &FileId) -> Result<Vec<StmtKind
 }
 
 /// Parse ST body text using the ST parser
+///
+/// TODO: Currently passes 0 offsets because quick-xml deserialization
+/// doesn't preserve source positions. To fix this, we would need to either:
+/// 1. Use a different XML parsing approach that tracks positions
+/// 2. Search the original XML for the ST content to determine offset
 fn parse_st_body(st_text: &str, file_id: &FileId) -> Result<Vec<StmtKind>, Diagnostic> {
     let options = ParseOptions::default();
-    ironplc_parser::parse_st_statements(st_text, file_id, &options)
+    // Use offset-aware parsing with zeros until XML position tracking is implemented
+    ironplc_parser::parse_st_statements_with_offset(st_text, file_id, &options, 0, 0, 0)
 }
 
 /// Create an error diagnostic for invalid values
