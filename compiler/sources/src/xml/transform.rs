@@ -596,7 +596,7 @@ fn transform_body_statements(pou: &Pou, file_id: &FileId) -> Result<Vec<StmtKind
 fn parse_st_body(st_text: &str, file_id: &FileId) -> Result<Vec<StmtKind>, Diagnostic> {
     let options = ParseOptions::default();
     // Use offset-aware parsing with zeros until XML position tracking is implemented
-    ironplc_parser::parse_st_statements_with_offset(st_text, file_id, &options, 0, 0, 0)
+    ironplc_parser::parse_st_statements(st_text, file_id, &options, 0, 0, 0)
 }
 
 /// Create an error diagnostic for invalid values

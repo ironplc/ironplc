@@ -15,7 +15,7 @@ use crate::parser::{parse_library, parse_statements};
 use dsl::{core::FileId, diagnostic::Diagnostic};
 use ironplc_dsl::common::Library;
 use ironplc_dsl::textual::StmtKind;
-use lexer::tokenize_with_offset;
+use lexer::tokenize;
 use options::ParseOptions;
 use preprocessor::preprocess;
 use token::Token;
@@ -30,23 +30,13 @@ pub mod token;
 /// Returns a list of tokens and a list of diagnostics. This does not return a result
 /// because we usually continue with parsing even if there are token errors because
 /// that will give the context of what was wrong in the location with the error.
-pub fn tokenize_program(
-    source: &str,
-    file_id: &FileId,
-    options: &ParseOptions,
-) -> (Vec<Token>, Vec<Diagnostic>) {
-    tokenize_program_with_offset(source, file_id, options, 0, 0, 0)
-}
-
-/// Tokenize a IEC 61131 program with an initial offset.
 ///
-/// This is useful for tokenizing embedded content (like ST body from XML) where
-/// the content doesn't start at the beginning of the file.
-///
+/// The offset parameters allow tokenizing embedded content (like ST body from XML)
+/// where the content doesn't start at the beginning of the file:
 /// - `byte_offset`: The byte position in the original file where this content starts
 /// - `line_offset`: The line number (0-based) where this content starts
 /// - `col_offset`: The column number (0-based) where this content starts
-pub fn tokenize_program_with_offset(
+pub fn tokenize_program(
     source: &str,
     file_id: &FileId,
     options: &ParseOptions,
@@ -55,8 +45,7 @@ pub fn tokenize_program_with_offset(
     col_offset: usize,
 ) -> (Vec<Token>, Vec<Diagnostic>) {
     let source = preprocess(source);
-    let (tokens, mut errors) =
-        tokenize_with_offset(&source, file_id, byte_offset, line_offset, col_offset);
+    let (tokens, mut errors) = tokenize(&source, file_id, byte_offset, line_offset, col_offset);
 
     let tokens = insert_keyword_statement_terminators(tokens, file_id);
     let result = check_tokens(&tokens, options);
@@ -94,7 +83,7 @@ pub fn parse_program(
     file_id: &FileId,
     options: &ParseOptions,
 ) -> Result<Library, Diagnostic> {
-    let mut result = tokenize_program(source, file_id, options);
+    let mut result = tokenize_program(source, file_id, options, 0, 0, 0);
     if !result.1.is_empty() {
         return Err(result.1.remove(0));
     }
@@ -110,23 +99,13 @@ pub fn parse_program(
 ///
 /// This is useful for parsing ST body content from PLCopen XML files
 /// where only the statements (not the full POU declaration) are provided.
-pub fn parse_st_statements(
-    source: &str,
-    file_id: &FileId,
-    options: &ParseOptions,
-) -> Result<Vec<StmtKind>, Diagnostic> {
-    parse_st_statements_with_offset(source, file_id, options, 0, 0, 0)
-}
-
-/// Parse ST (Structured Text) body content into statements with position offset.
 ///
-/// This is useful for parsing ST body content from PLCopen XML files
-/// where the content is embedded and doesn't start at the beginning of the file.
-///
+/// The offset parameters allow parsing embedded content where the content
+/// doesn't start at the beginning of the file:
 /// - `byte_offset`: The byte position in the original file where this content starts
 /// - `line_offset`: The line number (0-based) where this content starts
 /// - `col_offset`: The column number (0-based) where this content starts
-pub fn parse_st_statements_with_offset(
+pub fn parse_st_statements(
     source: &str,
     file_id: &FileId,
     options: &ParseOptions,
@@ -138,7 +117,7 @@ pub fn parse_st_statements_with_offset(
         return Ok(vec![]);
     }
 
-    let mut result = tokenize_program_with_offset(
+    let mut result = tokenize_program(
         source,
         file_id,
         options,

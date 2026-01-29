@@ -11,15 +11,18 @@ use logos::Logos;
 
 use crate::token::{Token, TokenType};
 
-/// Tokenize a IEC 61131 program with an initial offset.
+/// Tokenize a IEC 61131 program.
 ///
-/// This is useful when parsing embedded content (like ST body from XML) where
-/// the content doesn't start at the beginning of the file.
+/// Returns a list of tokens and a list of diagnostics. This does not return a result
+/// because we usually continue with parsing even if there are token errors because
+/// that will give the context of what was wrong in the location with the error.
 ///
+/// The offset parameters allow tokenizing embedded content (like ST body from XML)
+/// where the content doesn't start at the beginning of the file:
 /// - `byte_offset`: The byte position in the original file where this content starts
 /// - `line_offset`: The line number (0-based) where this content starts
 /// - `col_offset`: The column number (0-based) where this content starts
-pub fn tokenize_with_offset(
+pub fn tokenize(
     source: &str,
     file_id: &FileId,
     byte_offset: usize,
