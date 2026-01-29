@@ -11,9 +11,10 @@ mod vars;
 mod xform_assign_file_id;
 mod xform_tokens;
 
-use crate::parser::parse_library;
+use crate::parser::{parse_library, parse_statements};
 use dsl::{core::FileId, diagnostic::Diagnostic};
 use ironplc_dsl::common::Library;
+use ironplc_dsl::textual::StmtKind;
 use lexer::tokenize;
 use options::ParseOptions;
 use preprocessor::preprocess;
@@ -83,4 +84,25 @@ pub fn parse_program(
     // The parser does not know how to assign the file identifier, so transform the input as
     // a post-processing step.
     xform_assign_file_id::apply(library, file_id)
+}
+
+/// Parse ST (Structured Text) body content into statements.
+///
+/// This is useful for parsing ST body content from PLCopen XML files
+/// where only the statements (not the full POU declaration) are provided.
+pub fn parse_st_statements(
+    source: &str,
+    file_id: &FileId,
+    options: &ParseOptions,
+) -> Result<Vec<StmtKind>, Diagnostic> {
+    if source.trim().is_empty() {
+        return Ok(vec![]);
+    }
+
+    let mut result = tokenize_program(source, file_id, options);
+    if !result.1.is_empty() {
+        return Err(result.1.remove(0));
+    }
+
+    parse_statements(result.0)
 }
