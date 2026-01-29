@@ -11,18 +11,27 @@ use logos::Logos;
 
 use crate::token::{Token, TokenType};
 
-/// Tokenize a IEC 61131 program.
+/// Tokenize a IEC 61131 program with an initial offset.
 ///
-/// Returns a list of tokens and a list of diagnostics. This does not return a result
-/// because we usually continue with parsing even if there are token errors because
-/// that will give the context of what was wrong in the location with the error.
-pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>) {
+/// This is useful when parsing embedded content (like ST body from XML) where
+/// the content doesn't start at the beginning of the file.
+///
+/// - `byte_offset`: The byte position in the original file where this content starts
+/// - `line_offset`: The line number (0-based) where this content starts
+/// - `col_offset`: The column number (0-based) where this content starts
+pub fn tokenize_with_offset(
+    source: &str,
+    file_id: &FileId,
+    byte_offset: usize,
+    line_offset: usize,
+    col_offset: usize,
+) -> (Vec<Token>, Vec<Diagnostic>) {
     let mut tokens = Vec::new();
     let mut diagnostics = Vec::new();
     let mut lexer = TokenType::lexer(source);
 
-    let mut line: usize = 0;
-    let mut col: usize = 0;
+    let mut line: usize = line_offset;
+    let mut col: usize = col_offset;
 
     while let Some(token) = lexer.next() {
         match token {
@@ -32,8 +41,8 @@ pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>)
                     span: SourceSpan {
                         // TODO this will be slow
                         file_id: file_id.clone(),
-                        start: lexer.span().start,
-                        end: lexer.span().end,
+                        start: lexer.span().start + byte_offset,
+                        end: lexer.span().end + byte_offset,
                     },
                     line,
                     col,
@@ -64,7 +73,8 @@ pub fn tokenize(source: &str, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>)
             }
             Err(_) => {
                 let span = lexer.span();
-                let span = SourceSpan::range(span.start, span.end).with_file_id(file_id);
+                let span = SourceSpan::range(span.start + byte_offset, span.end + byte_offset)
+                    .with_file_id(file_id);
                 diagnostics.push(Diagnostic::problem(
                     ironplc_problems::Problem::UnexpectedToken,
                     Label::span(

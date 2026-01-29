@@ -15,7 +15,7 @@ use crate::parser::{parse_library, parse_statements};
 use dsl::{core::FileId, diagnostic::Diagnostic};
 use ironplc_dsl::common::Library;
 use ironplc_dsl::textual::StmtKind;
-use lexer::tokenize;
+use lexer::tokenize_with_offset;
 use options::ParseOptions;
 use preprocessor::preprocess;
 use token::Token;
@@ -35,8 +35,28 @@ pub fn tokenize_program(
     file_id: &FileId,
     options: &ParseOptions,
 ) -> (Vec<Token>, Vec<Diagnostic>) {
+    tokenize_program_with_offset(source, file_id, options, 0, 0, 0)
+}
+
+/// Tokenize a IEC 61131 program with an initial offset.
+///
+/// This is useful for tokenizing embedded content (like ST body from XML) where
+/// the content doesn't start at the beginning of the file.
+///
+/// - `byte_offset`: The byte position in the original file where this content starts
+/// - `line_offset`: The line number (0-based) where this content starts
+/// - `col_offset`: The column number (0-based) where this content starts
+pub fn tokenize_program_with_offset(
+    source: &str,
+    file_id: &FileId,
+    options: &ParseOptions,
+    byte_offset: usize,
+    line_offset: usize,
+    col_offset: usize,
+) -> (Vec<Token>, Vec<Diagnostic>) {
     let source = preprocess(source);
-    let (tokens, mut errors) = tokenize(&source, file_id);
+    let (tokens, mut errors) =
+        tokenize_with_offset(&source, file_id, byte_offset, line_offset, col_offset);
 
     let tokens = insert_keyword_statement_terminators(tokens, file_id);
     let result = check_tokens(&tokens, options);
@@ -95,11 +115,37 @@ pub fn parse_st_statements(
     file_id: &FileId,
     options: &ParseOptions,
 ) -> Result<Vec<StmtKind>, Diagnostic> {
+    parse_st_statements_with_offset(source, file_id, options, 0, 0, 0)
+}
+
+/// Parse ST (Structured Text) body content into statements with position offset.
+///
+/// This is useful for parsing ST body content from PLCopen XML files
+/// where the content is embedded and doesn't start at the beginning of the file.
+///
+/// - `byte_offset`: The byte position in the original file where this content starts
+/// - `line_offset`: The line number (0-based) where this content starts
+/// - `col_offset`: The column number (0-based) where this content starts
+pub fn parse_st_statements_with_offset(
+    source: &str,
+    file_id: &FileId,
+    options: &ParseOptions,
+    byte_offset: usize,
+    line_offset: usize,
+    col_offset: usize,
+) -> Result<Vec<StmtKind>, Diagnostic> {
     if source.trim().is_empty() {
         return Ok(vec![]);
     }
 
-    let mut result = tokenize_program(source, file_id, options);
+    let mut result = tokenize_program_with_offset(
+        source,
+        file_id,
+        options,
+        byte_offset,
+        line_offset,
+        col_offset,
+    );
     if !result.1.is_empty() {
         return Err(result.1.remove(0));
     }
