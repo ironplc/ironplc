@@ -311,9 +311,8 @@ fn transform_base_type_to_elementary(
 /// Transform a PLCopen DataType to a DSL TypeName
 fn transform_data_type(
     type_element: &super::schema::TypeElement,
-    file_id: &FileId,
+    _file_id: &FileId,
 ) -> Result<TypeName, Diagnostic> {
-    let span = file_span(file_id);
     match &type_element.inner {
         // Elementary types
         DataType::Bool => Ok(ElementaryTypeName::BOOL.into()),
@@ -342,27 +341,9 @@ fn transform_data_type(
         DataType::Derived(derived) => Ok(TypeName::from(derived.name.as_str())),
 
         // Complex types that need context
-        DataType::Array(_) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(
-                span,
-                "Anonymous array types not yet supported in variable declarations",
-            ),
-        )),
-        DataType::Enum(_) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(
-                span,
-                "Anonymous enum types not yet supported in variable declarations",
-            ),
-        )),
-        DataType::Struct(_) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(
-                span,
-                "Anonymous struct types not yet supported in variable declarations",
-            ),
-        )),
+        DataType::Array(_) => Err(Diagnostic::todo(file!(), line!())),
+        DataType::Enum(_) => Err(Diagnostic::todo(file!(), line!())),
+        DataType::Struct(_) => Err(Diagnostic::todo(file!(), line!())),
 
         // Generic types (usually for library functions)
         DataType::Any
@@ -374,20 +355,13 @@ fn transform_data_type(
         | DataType::AnyInt
         | DataType::AnyBit
         | DataType::AnyString
-        | DataType::AnyDate => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(span, "Generic ANY types not yet supported"),
-        )),
+        | DataType::AnyDate => Err(Diagnostic::todo(file!(), line!())),
 
         // Subranges and pointers
-        DataType::SubrangeSigned(_) | DataType::SubrangeUnsigned(_) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(span, "Anonymous subrange types not yet supported"),
-        )),
-        DataType::Pointer(_) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(span, "Pointer types not yet supported"),
-        )),
+        DataType::SubrangeSigned(_) | DataType::SubrangeUnsigned(_) => {
+            Err(Diagnostic::todo(file!(), line!()))
+        }
+        DataType::Pointer(_) => Err(Diagnostic::todo(file!(), line!())),
     }
 }
 
@@ -593,11 +567,7 @@ fn transform_body(pou: &Pou, file_id: &FileId) -> Result<FunctionBlockBodyKind, 
         }))
     } else if body.sfc.is_some() {
         // SFC support is planned for Phase 3
-        let span = file_span(file_id);
-        Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(span, "SFC body language not yet supported"),
-        ))
+        Err(Diagnostic::todo(file!(), line!()))
     } else {
         Ok(FunctionBlockBodyKind::Empty)
     }
