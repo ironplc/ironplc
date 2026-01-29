@@ -156,7 +156,21 @@ mod tests {
     #[test]
     fn xml_source_returns_empty_library() {
         let file_id = FileId::from_string("test.xml");
-        let content = r#"<?xml version="1.0"?><project></project>"#;
+        let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
+  <contentHeader name="TestProject">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous/>
+  </types>
+</project>"#;
         let mut source = Source::new(content.to_string(), &file_id);
 
         let result = source.library();
@@ -193,7 +207,22 @@ mod tests {
     #[test]
     fn source_caches_library_result() {
         let file_id = FileId::from_string("test.xml");
-        let mut source = Source::new("content".to_string(), &file_id);
+        let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
+  <contentHeader name="TestProject">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous/>
+  </types>
+</project>"#;
+        let mut source = Source::new(content.to_string(), &file_id);
 
         // First call should parse and cache
         {
