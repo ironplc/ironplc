@@ -90,7 +90,6 @@ pub fn tokenize(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> 
             &ParseOptions::default(),
             0,
             0,
-            0,
         );
 
         let tokens = tokens

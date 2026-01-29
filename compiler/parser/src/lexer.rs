@@ -19,13 +19,11 @@ use crate::token::{Token, TokenType};
 ///
 /// The offset parameters allow tokenizing embedded content (like ST body from XML)
 /// where the content doesn't start at the beginning of the file:
-/// - `byte_offset`: The byte position in the original file where this content starts
 /// - `line_offset`: The line number (0-based) where this content starts
 /// - `col_offset`: The column number (0-based) where this content starts
 pub fn tokenize(
     source: &str,
     file_id: &FileId,
-    byte_offset: usize,
     line_offset: usize,
     col_offset: usize,
 ) -> (Vec<Token>, Vec<Diagnostic>) {
@@ -44,8 +42,8 @@ pub fn tokenize(
                     span: SourceSpan {
                         // TODO this will be slow
                         file_id: file_id.clone(),
-                        start: lexer.span().start + byte_offset,
-                        end: lexer.span().end + byte_offset,
+                        start: lexer.span().start,
+                        end: lexer.span().end,
                     },
                     line,
                     col,
@@ -76,8 +74,7 @@ pub fn tokenize(
             }
             Err(_) => {
                 let span = lexer.span();
-                let span = SourceSpan::range(span.start + byte_offset, span.end + byte_offset)
-                    .with_file_id(file_id);
+                let span = SourceSpan::range(span.start, span.end).with_file_id(file_id);
                 diagnostics.push(Diagnostic::problem(
                     ironplc_problems::Problem::UnexpectedToken,
                     Label::span(

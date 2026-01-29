@@ -33,19 +33,17 @@ pub mod token;
 ///
 /// The offset parameters allow tokenizing embedded content (like ST body from XML)
 /// where the content doesn't start at the beginning of the file:
-/// - `byte_offset`: The byte position in the original file where this content starts
 /// - `line_offset`: The line number (0-based) where this content starts
 /// - `col_offset`: The column number (0-based) where this content starts
 pub fn tokenize_program(
     source: &str,
     file_id: &FileId,
     options: &ParseOptions,
-    byte_offset: usize,
     line_offset: usize,
     col_offset: usize,
 ) -> (Vec<Token>, Vec<Diagnostic>) {
     let source = preprocess(source);
-    let (tokens, mut errors) = tokenize(&source, file_id, byte_offset, line_offset, col_offset);
+    let (tokens, mut errors) = tokenize(&source, file_id, line_offset, col_offset);
 
     let tokens = insert_keyword_statement_terminators(tokens, file_id);
     let result = check_tokens(&tokens, options);
@@ -83,7 +81,7 @@ pub fn parse_program(
     file_id: &FileId,
     options: &ParseOptions,
 ) -> Result<Library, Diagnostic> {
-    let mut result = tokenize_program(source, file_id, options, 0, 0, 0);
+    let mut result = tokenize_program(source, file_id, options, 0, 0);
     if !result.1.is_empty() {
         return Err(result.1.remove(0));
     }
@@ -102,14 +100,12 @@ pub fn parse_program(
 ///
 /// The offset parameters allow parsing embedded content where the content
 /// doesn't start at the beginning of the file:
-/// - `byte_offset`: The byte position in the original file where this content starts
 /// - `line_offset`: The line number (0-based) where this content starts
 /// - `col_offset`: The column number (0-based) where this content starts
 pub fn parse_st_statements(
     source: &str,
     file_id: &FileId,
     options: &ParseOptions,
-    byte_offset: usize,
     line_offset: usize,
     col_offset: usize,
 ) -> Result<Vec<StmtKind>, Diagnostic> {
@@ -117,14 +113,7 @@ pub fn parse_st_statements(
         return Ok(vec![]);
     }
 
-    let mut result = tokenize_program(
-        source,
-        file_id,
-        options,
-        byte_offset,
-        line_offset,
-        col_offset,
-    );
+    let mut result = tokenize_program(source, file_id, options, line_offset, col_offset);
     if !result.1.is_empty() {
         return Err(result.1.remove(0));
     }
