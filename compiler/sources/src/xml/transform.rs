@@ -22,6 +22,7 @@ use ironplc_dsl::{
 use ironplc_parser::options::ParseOptions;
 use ironplc_problems::Problem;
 
+use super::position::StBodyPositions;
 use super::schema::{
     ArrayType, DataType, DataTypeDecl, Dimension, EnumType, Interface, Pou, PouType, Project,
     StructType, SubrangeSigned, SubrangeUnsigned, VarList, Variable,
@@ -35,7 +36,14 @@ fn file_span(file_id: &FileId) -> SourceSpan {
 /// Transform a parsed PLCopen XML project into an IronPLC Library
 ///
 /// This is the main entry point for XML -> DSL transformation.
-pub fn transform_project(project: &Project, file_id: &FileId) -> Result<Library, Diagnostic> {
+///
+/// The `st_positions` map provides line/column offsets for ST body content,
+/// enabling accurate error positions when parsing embedded ST code.
+pub fn transform_project(
+    project: &Project,
+    file_id: &FileId,
+    st_positions: &StBodyPositions,
+) -> Result<Library, Diagnostic> {
     let mut library = Library::new();
 
     // Transform data types
@@ -48,7 +56,7 @@ pub fn transform_project(project: &Project, file_id: &FileId) -> Result<Library,
 
     // Transform POUs
     for pou in &project.types.pous.pou {
-        let elem = transform_pou(pou, file_id)?;
+        let elem = transform_pou(pou, file_id, st_positions)?;
         library.elements.push(elem);
     }
 
@@ -367,16 +375,24 @@ fn transform_data_type(
 }
 
 /// Transform a POU (Program Organization Unit)
-fn transform_pou(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind, Diagnostic> {
+fn transform_pou(
+    pou: &Pou,
+    file_id: &FileId,
+    st_positions: &StBodyPositions,
+) -> Result<LibraryElementKind, Diagnostic> {
     match pou.pou_type {
-        PouType::Function => transform_function(pou, file_id),
-        PouType::FunctionBlock => transform_function_block(pou, file_id),
-        PouType::Program => transform_program(pou, file_id),
+        PouType::Function => transform_function(pou, file_id, st_positions),
+        PouType::FunctionBlock => transform_function_block(pou, file_id, st_positions),
+        PouType::Program => transform_program(pou, file_id, st_positions),
     }
 }
 
 /// Transform a function declaration
-fn transform_function(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind, Diagnostic> {
+fn transform_function(
+    pou: &Pou,
+    file_id: &FileId,
+    st_positions: &StBodyPositions,
+) -> Result<LibraryElementKind, Diagnostic> {
     let name = Id::from(pou.name.as_str());
     let span = file_span(file_id);
 
@@ -405,7 +421,7 @@ fn transform_function(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind,
     };
 
     let variables = transform_interface(pou.interface.as_ref(), file_id)?;
-    let body = transform_body_statements(pou, file_id)?;
+    let body = transform_body_statements(pou, file_id, st_positions)?;
 
     Ok(LibraryElementKind::FunctionDeclaration(
         FunctionDeclaration {
@@ -419,12 +435,16 @@ fn transform_function(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind,
 }
 
 /// Transform a function block declaration
-fn transform_function_block(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind, Diagnostic> {
+fn transform_function_block(
+    pou: &Pou,
+    file_id: &FileId,
+    st_positions: &StBodyPositions,
+) -> Result<LibraryElementKind, Diagnostic> {
     let name = TypeName::from(pou.name.as_str());
     let span = file_span(file_id);
 
     let variables = transform_interface(pou.interface.as_ref(), file_id)?;
-    let body = transform_body(pou, file_id)?;
+    let body = transform_body(pou, file_id, st_positions)?;
 
     Ok(LibraryElementKind::FunctionBlockDeclaration(
         FunctionBlockDeclaration {
@@ -438,11 +458,15 @@ fn transform_function_block(pou: &Pou, file_id: &FileId) -> Result<LibraryElemen
 }
 
 /// Transform a program declaration
-fn transform_program(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind, Diagnostic> {
+fn transform_program(
+    pou: &Pou,
+    file_id: &FileId,
+    st_positions: &StBodyPositions,
+) -> Result<LibraryElementKind, Diagnostic> {
     let name = Id::from(pou.name.as_str());
 
     let variables = transform_interface(pou.interface.as_ref(), file_id)?;
-    let body = transform_body(pou, file_id)?;
+    let body = transform_body(pou, file_id, st_positions)?;
 
     Ok(LibraryElementKind::ProgramDeclaration(ProgramDeclaration {
         name,
@@ -556,13 +580,17 @@ fn transform_variable(
 }
 
 /// Transform POU body to FunctionBlockBodyKind
-fn transform_body(pou: &Pou, file_id: &FileId) -> Result<FunctionBlockBodyKind, Diagnostic> {
+fn transform_body(
+    pou: &Pou,
+    file_id: &FileId,
+    st_positions: &StBodyPositions,
+) -> Result<FunctionBlockBodyKind, Diagnostic> {
     let Some(ref body) = pou.body else {
         return Ok(FunctionBlockBodyKind::Empty);
     };
 
     if let Some(st_text) = body.st_text() {
-        let stmts = parse_st_body(st_text, file_id)?;
+        let stmts = parse_st_body(st_text, file_id, &pou.name, st_positions)?;
         Ok(FunctionBlockBodyKind::Statements(Statements {
             body: stmts,
         }))
@@ -575,13 +603,17 @@ fn transform_body(pou: &Pou, file_id: &FileId) -> Result<FunctionBlockBodyKind, 
 }
 
 /// Transform POU body to Vec<StmtKind> (for functions)
-fn transform_body_statements(pou: &Pou, file_id: &FileId) -> Result<Vec<StmtKind>, Diagnostic> {
+fn transform_body_statements(
+    pou: &Pou,
+    file_id: &FileId,
+    st_positions: &StBodyPositions,
+) -> Result<Vec<StmtKind>, Diagnostic> {
     let Some(ref body) = pou.body else {
         return Ok(vec![]);
     };
 
     if let Some(st_text) = body.st_text() {
-        parse_st_body(st_text, file_id)
+        parse_st_body(st_text, file_id, &pou.name, st_positions)
     } else {
         Ok(vec![])
     }
@@ -589,14 +621,23 @@ fn transform_body_statements(pou: &Pou, file_id: &FileId) -> Result<Vec<StmtKind
 
 /// Parse ST body text using the ST parser
 ///
-/// TODO: Currently passes 0 offsets because quick-xml deserialization
-/// doesn't preserve source positions. To fix this, we would need to either:
-/// 1. Use a different XML parsing approach that tracks positions
-/// 2. Search the original XML for the ST content to determine offset
-fn parse_st_body(st_text: &str, file_id: &FileId) -> Result<Vec<StmtKind>, Diagnostic> {
+/// Uses the position information from roxmltree to provide accurate
+/// line/column offsets for error reporting.
+fn parse_st_body(
+    st_text: &str,
+    file_id: &FileId,
+    pou_name: &str,
+    st_positions: &StBodyPositions,
+) -> Result<Vec<StmtKind>, Diagnostic> {
     let options = ParseOptions::default();
-    // Use offset-aware parsing with zeros until XML position tracking is implemented
-    ironplc_parser::parse_st_statements(st_text, file_id, &options, 0, 0)
+
+    // Look up the position for this POU's ST body
+    let (line_offset, col_offset) = st_positions
+        .get(pou_name)
+        .map(|pos| (pos.line, pos.col))
+        .unwrap_or((0, 0));
+
+    ironplc_parser::parse_st_statements(st_text, file_id, &options, line_offset, col_offset)
 }
 
 /// Create an error diagnostic for invalid values
@@ -613,6 +654,7 @@ fn invalid_value_error(value: &str, context: &str, file_id: &FileId) -> Diagnost
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::xml::position::find_st_body_positions;
 
     fn test_file_id() -> FileId {
         FileId::from_string("test.xml")
@@ -620,6 +662,10 @@ mod tests {
 
     fn parse_project(xml: &str) -> Project {
         quick_xml::de::from_str(xml).unwrap()
+    }
+
+    fn get_st_positions(xml: &str) -> StBodyPositions {
+        find_st_body_positions(xml).unwrap_or_default()
     }
 
     fn minimal_project_header() -> &'static str {
@@ -642,7 +688,8 @@ mod tests {
             minimal_project_header()
         );
         let project = parse_project(&xml);
-        let library = transform_project(&project, &test_file_id()).unwrap();
+        let positions = get_st_positions(&xml);
+        let library = transform_project(&project, &test_file_id(), &positions).unwrap();
 
         assert_eq!(library.elements.len(), 0);
     }
@@ -672,7 +719,8 @@ mod tests {
         );
 
         let project = parse_project(&xml);
-        let library = transform_project(&project, &test_file_id()).unwrap();
+        let positions = get_st_positions(&xml);
+        let library = transform_project(&project, &test_file_id(), &positions).unwrap();
 
         assert_eq!(library.elements.len(), 1);
         let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
@@ -706,7 +754,8 @@ mod tests {
         );
 
         let project = parse_project(&xml);
-        let library = transform_project(&project, &test_file_id()).unwrap();
+        let positions = get_st_positions(&xml);
+        let library = transform_project(&project, &test_file_id(), &positions).unwrap();
 
         assert_eq!(library.elements.len(), 1);
         let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Array(array_decl)) =
@@ -743,7 +792,8 @@ mod tests {
         );
 
         let project = parse_project(&xml);
-        let library = transform_project(&project, &test_file_id()).unwrap();
+        let positions = get_st_positions(&xml);
+        let library = transform_project(&project, &test_file_id(), &positions).unwrap();
 
         assert_eq!(library.elements.len(), 1);
         let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Structure(
@@ -791,7 +841,8 @@ IF Reset THEN Count := 0; END_IF;
         );
 
         let project = parse_project(&xml);
-        let library = transform_project(&project, &test_file_id()).unwrap();
+        let positions = get_st_positions(&xml);
+        let library = transform_project(&project, &test_file_id(), &positions).unwrap();
 
         assert_eq!(library.elements.len(), 1);
         let LibraryElementKind::FunctionBlockDeclaration(fb_decl) = &library.elements[0] else {
@@ -824,7 +875,8 @@ IF Reset THEN Count := 0; END_IF;
         );
 
         let project = parse_project(&xml);
-        let library = transform_project(&project, &test_file_id()).unwrap();
+        let positions = get_st_positions(&xml);
+        let library = transform_project(&project, &test_file_id(), &positions).unwrap();
 
         assert_eq!(library.elements.len(), 1);
         let LibraryElementKind::ProgramDeclaration(prog_decl) = &library.elements[0] else {
@@ -871,7 +923,8 @@ END_IF;
         );
 
         let project = parse_project(&xml);
-        let library = transform_project(&project, &test_file_id()).unwrap();
+        let positions = get_st_positions(&xml);
+        let library = transform_project(&project, &test_file_id(), &positions).unwrap();
 
         assert_eq!(library.elements.len(), 1);
         let LibraryElementKind::FunctionBlockDeclaration(fb_decl) = &library.elements[0] else {

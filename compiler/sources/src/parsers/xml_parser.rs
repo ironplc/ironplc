@@ -10,13 +10,14 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 use log::debug;
 
-use crate::xml::{schema::Project, transform::transform_project};
+use crate::xml::{position::find_st_body_positions, schema::Project, transform::transform_project};
 
 /// Parse PLCopen XML (.xml) files into an IronPLC Library
 ///
 /// This function:
-/// 1. Deserializes the XML into PLCopen schema structures
-/// 2. Transforms the schema structures into IronPLC's DSL
+/// 1. Finds ST body positions using roxmltree (for accurate error positions)
+/// 2. Deserializes the XML into PLCopen schema structures
+/// 3. Transforms the schema structures into IronPLC's DSL
 ///
 /// # Errors
 ///
@@ -27,7 +28,17 @@ use crate::xml::{schema::Project, transform::transform_project};
 pub fn parse(content: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
     debug!("Parsing PLCopen XML file: {}", file_id);
 
-    // Parse the XML into PLCopen schema structures
+    // First pass: find ST body positions using roxmltree
+    let st_positions = find_st_body_positions(content).map_err(|e| {
+        Diagnostic::problem(
+            Problem::SyntaxError,
+            Label::file(file_id.clone(), format!("XML parse error: {}", e)),
+        )
+    })?;
+
+    debug!("Found {} ST body positions", st_positions.len());
+
+    // Second pass: parse the XML into PLCopen schema structures
     let project: Project = quick_xml::de::from_str(content).map_err(|e| {
         // Convert quick-xml errors to diagnostics
         Diagnostic::problem(
@@ -63,7 +74,7 @@ pub fn parse(content: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
     }
 
     // Transform to IronPLC DSL
-    transform_project(&project, file_id)
+    transform_project(&project, file_id, &st_positions)
 }
 
 #[cfg(test)]
