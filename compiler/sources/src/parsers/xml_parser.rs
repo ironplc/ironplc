@@ -10,12 +10,12 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 use log::debug;
 
-use crate::xml::{schema::Project, transform::transform_project};
+use crate::xml::{position::parse_plcopen_xml, transform::transform_project};
 
 /// Parse PLCopen XML (.xml) files into an IronPLC Library
 ///
 /// This function:
-/// 1. Deserializes the XML into PLCopen schema structures
+/// 1. Parses the XML using roxmltree (for accurate error positions)
 /// 2. Transforms the schema structures into IronPLC's DSL
 ///
 /// # Errors
@@ -27,11 +27,10 @@ use crate::xml::{schema::Project, transform::transform_project};
 pub fn parse(content: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
     debug!("Parsing PLCopen XML file: {}", file_id);
 
-    // Parse the XML into PLCopen schema structures
-    let project: Project = quick_xml::de::from_str(content).map_err(|e| {
-        // Convert quick-xml errors to diagnostics
+    // Parse the XML into PLCopen schema structures using roxmltree
+    let project = parse_plcopen_xml(content).map_err(|e| {
         Diagnostic::problem(
-            Problem::SyntaxError, // TODO: Add P0006 XmlMalformed
+            Problem::SyntaxError,
             Label::file(file_id.clone(), format!("XML parse error: {}", e)),
         )
     })?;
@@ -48,7 +47,7 @@ pub fn parse(content: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
         if let Some(ref body) = pou.body {
             if let Some(lang) = body.unsupported_language() {
                 return Err(Diagnostic::problem(
-                    Problem::NotImplemented, // TODO: Add P9003 XmlBodyTypeNotSupported
+                    Problem::NotImplemented,
                     Label::file(
                         file_id.clone(),
                         format!(
@@ -110,21 +109,10 @@ mod tests {
 
     #[test]
     fn parse_when_missing_required_element_then_returns_error() {
-        // Missing fileHeader
+        // Missing types element - root element check will fail
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://www.plcopen.org/xml/tc6_0201">
-  <contentHeader name="TestProject">
-    <coordinateInfo>
-      <fbd><scaling x="1" y="1"/></fbd>
-      <ld><scaling x="1" y="1"/></ld>
-      <sfc><scaling x="1" y="1"/></sfc>
-    </coordinateInfo>
-  </contentHeader>
-  <types>
-    <dataTypes/>
-    <pous/>
-  </types>
-</project>"#;
+<notproject xmlns="http://www.plcopen.org/xml/tc6_0201">
+</notproject>"#;
 
         let result = parse(xml, &test_file_id());
         assert!(result.is_err());

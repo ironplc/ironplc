@@ -14,8 +14,7 @@ ironplc-problems = { path = "../problems", version = "0.152.0" }
 
 log = "0.4.20"
 encoding_rs = "0.8"
-serde = { version = "1.0", features = ["derive"] }
-quick-xml = { version = "0.37", features = ["serialize"] }
+roxmltree = { version = "0.20", features = ["positions"] }
 
 [dev-dependencies]
 ironplc-test = { path = "../test", version = "0.152.0" }
