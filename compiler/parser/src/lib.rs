@@ -102,6 +102,9 @@ pub fn parse_program(
 /// doesn't start at the beginning of the file:
 /// - `line_offset`: The line number (0-based) where this content starts
 /// - `col_offset`: The column number (0-based) where this content starts
+///
+/// Leading and trailing whitespace is automatically trimmed, with the offset
+/// adjusted accordingly to maintain accurate source positions.
 pub fn parse_st_statements(
     source: &str,
     file_id: &FileId,
@@ -113,10 +116,40 @@ pub fn parse_st_statements(
         return Ok(vec![]);
     }
 
-    let mut result = tokenize_program(source, file_id, options, line_offset, col_offset);
+    // Calculate adjusted offset after skipping leading whitespace
+    let (trimmed_source, adjusted_line, adjusted_col) =
+        skip_leading_whitespace(source, line_offset, col_offset);
+
+    let mut result = tokenize_program(trimmed_source, file_id, options, adjusted_line, adjusted_col);
     if !result.1.is_empty() {
         return Err(result.1.remove(0));
     }
 
     parse_statements(result.0)
+}
+
+/// Skip leading whitespace and calculate the adjusted line/column offset.
+///
+/// Returns (trimmed_source, adjusted_line_offset, adjusted_col_offset).
+fn skip_leading_whitespace(source: &str, line_offset: usize, col_offset: usize) -> (&str, usize, usize) {
+    let mut line = line_offset;
+    let mut col = col_offset;
+    let mut start_idx = 0;
+
+    for (idx, ch) in source.char_indices() {
+        match ch {
+            '\n' => {
+                line += 1;
+                col = 0;
+                start_idx = idx + 1;
+            }
+            ' ' | '\t' | '\r' => {
+                col += 1;
+                start_idx = idx + 1;
+            }
+            _ => break,
+        }
+    }
+
+    (&source[start_idx..].trim_end(), line, col)
 }
