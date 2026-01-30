@@ -62,7 +62,7 @@ fn transform_data_type_decl(
 ) -> Result<DataTypeDeclarationKind, Diagnostic> {
     let type_name = TypeName::from(decl.name.as_str());
 
-    match &*decl.base_type {
+    match &decl.base_type {
         DataType::Enum(enum_type) => transform_enum_decl(&type_name, enum_type),
         DataType::Array(array_type) => transform_array_decl(&type_name, array_type, file_id),
         DataType::Struct(struct_type) => transform_struct_decl(&type_name, struct_type, file_id),
@@ -283,11 +283,11 @@ fn transform_subrange_unsigned_decl(
 
 /// Transform a DataType to an ElementaryTypeName for subranges
 fn transform_base_type_to_elementary(
-    type_element: &super::schema::TypeElement,
+    data_type: &DataType,
     file_id: &FileId,
 ) -> Result<ElementaryTypeName, Diagnostic> {
     let span = file_span(file_id);
-    match &type_element.inner {
+    match data_type {
         DataType::SInt => Ok(ElementaryTypeName::SINT),
         DataType::Int => Ok(ElementaryTypeName::INT),
         DataType::DInt => Ok(ElementaryTypeName::DINT),
@@ -302,7 +302,7 @@ fn transform_base_type_to_elementary(
                 span,
                 format!(
                     "Subrange base type must be an integer type, found: {}",
-                    type_element.inner.type_name()
+                    data_type.type_name()
                 ),
             ),
         )),
@@ -310,11 +310,8 @@ fn transform_base_type_to_elementary(
 }
 
 /// Transform a PLCopen DataType to a DSL TypeName
-fn transform_data_type(
-    type_element: &super::schema::TypeElement,
-    _file_id: &FileId,
-) -> Result<TypeName, Diagnostic> {
-    match &type_element.inner {
+fn transform_data_type(data_type: &DataType, _file_id: &FileId) -> Result<TypeName, Diagnostic> {
+    match data_type {
         // Elementary types
         DataType::Bool => Ok(ElementaryTypeName::BOOL.into()),
         DataType::Byte => Ok(ElementaryTypeName::BYTE.into()),
@@ -561,12 +558,17 @@ fn transform_body(pou: &Pou, file_id: &FileId) -> Result<FunctionBlockBodyKind, 
         return Ok(FunctionBlockBodyKind::Empty);
     };
 
-    if let Some(st_text) = body.st_text() {
-        let stmts = parse_st_body(st_text, file_id)?;
+    if let Some(st_body) = body.st_body() {
+        let stmts = parse_st_body(
+            &st_body.text,
+            file_id,
+            st_body.line_offset,
+            st_body.col_offset,
+        )?;
         Ok(FunctionBlockBodyKind::Statements(Statements {
             body: stmts,
         }))
-    } else if body.sfc.is_some() {
+    } else if body.sfc {
         // SFC support is planned for Phase 3
         Err(Diagnostic::todo(file!(), line!()))
     } else {
@@ -580,8 +582,13 @@ fn transform_body_statements(pou: &Pou, file_id: &FileId) -> Result<Vec<StmtKind
         return Ok(vec![]);
     };
 
-    if let Some(st_text) = body.st_text() {
-        parse_st_body(st_text, file_id)
+    if let Some(st_body) = body.st_body() {
+        parse_st_body(
+            &st_body.text,
+            file_id,
+            st_body.line_offset,
+            st_body.col_offset,
+        )
     } else {
         Ok(vec![])
     }
@@ -589,14 +596,16 @@ fn transform_body_statements(pou: &Pou, file_id: &FileId) -> Result<Vec<StmtKind
 
 /// Parse ST body text using the ST parser
 ///
-/// TODO: Currently passes 0 offsets because quick-xml deserialization
-/// doesn't preserve source positions. To fix this, we would need to either:
-/// 1. Use a different XML parsing approach that tracks positions
-/// 2. Search the original XML for the ST content to determine offset
-fn parse_st_body(st_text: &str, file_id: &FileId) -> Result<Vec<StmtKind>, Diagnostic> {
+/// Uses the position information embedded in the StBody struct to provide
+/// accurate line/column offsets for error reporting.
+fn parse_st_body(
+    st_text: &str,
+    file_id: &FileId,
+    line_offset: usize,
+    col_offset: usize,
+) -> Result<Vec<StmtKind>, Diagnostic> {
     let options = ParseOptions::default();
-    // Use offset-aware parsing with zeros until XML position tracking is implemented
-    ironplc_parser::parse_st_statements(st_text, file_id, &options, 0, 0)
+    ironplc_parser::parse_st_statements(st_text, file_id, &options, line_offset, col_offset)
 }
 
 /// Create an error diagnostic for invalid values
@@ -613,13 +622,14 @@ fn invalid_value_error(value: &str, context: &str, file_id: &FileId) -> Diagnost
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::xml::position::parse_plcopen_xml;
 
     fn test_file_id() -> FileId {
         FileId::from_string("test.xml")
     }
 
     fn parse_project(xml: &str) -> Project {
-        quick_xml::de::from_str(xml).unwrap()
+        parse_plcopen_xml(xml).unwrap()
     }
 
     fn minimal_project_header() -> &'static str {

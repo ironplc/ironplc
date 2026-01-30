@@ -1,11 +1,13 @@
 //! PLCopen XML parsing module
 //!
 //! This module provides parsing support for PLCopen TC6 XML format (IEC 61131-3).
-//! It defines Rust structs that map to the PLCopen XML schema and provides
-//! transformation to IronPLC's DSL.
+//! It uses roxmltree for XML parsing with accurate position tracking,
+//! then transforms the parsed structures to IronPLC's DSL.
 
+pub mod position;
 pub mod schema;
 pub mod transform;
 
+pub use position::parse_plcopen_xml;
 pub use schema::*;
-pub use transform::*;
+pub use transform::transform_project;
