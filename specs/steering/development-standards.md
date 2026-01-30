@@ -195,12 +195,30 @@ The compiler supports various levels of IEC 61131-3 compliance:
 
 ### Just Commands
 Use `just` for all build tasks. Key commands:
-- `just` - Run tests for the current component
+- `just` - Run full CI pipeline for the current component
 - `just compile` - Build the component
-- `just ci` - Run full CI pipeline
+- `just test` - Run tests
+- `just lint` - Run linting (clippy + fmt for Rust)
 - `just devenv-smoke` - Quick environment check
 
 For complete setup and development workflow instructions, see [CONTRIBUTING.md](../../CONTRIBUTING.md).
+
+### CRITICAL: Pre-PR Quality Gate
+
+**Before creating any pull request, you MUST run and pass the full CI pipeline:**
+
+```bash
+cd compiler && just
+```
+
+This runs compile, test, coverage, and lint. The **lint step includes clippy**, which catches common Rust issues. PRs that fail clippy will be rejected by CI.
+
+**Do not:**
+- Skip running `just` before creating a PR
+- Suppress clippy warnings with `#[allow(...)]` unless justified
+- Create a PR if any check fails
+
+See [common-tasks.md](./common-tasks.md) for detailed pre-PR requirements and troubleshooting.
 
 ### Version Management
 **Version numbers are generated and incremented automatically** - no manual version management is required:

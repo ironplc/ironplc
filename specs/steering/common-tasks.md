@@ -15,6 +15,63 @@ IronPLC uses [just](https://github.com/casey/just) as its command runner. All bu
 - **`docs/justfile`**: Documentation build and publishing
 - **`integrations/vscode/justfile`**: VS Code extension tasks
 
+## CRITICAL: Pre-PR Requirements
+
+**Before creating any pull request, you MUST run the full CI pipeline and ensure all checks pass.**
+
+### For Compiler Changes (Most Common)
+
+```bash
+cd compiler && just
+```
+
+This single command runs **all required checks**:
+1. `compile` - Build the compiler
+2. `test` - Run all tests
+3. `coverage` - Verify 85% line coverage threshold
+4. `lint` - Run **clippy** and **rustfmt** checks
+
+**All four checks must pass before creating a PR.** CI will reject PRs that fail any of these checks.
+
+### What Each Check Does
+
+| Check | Command | What it validates |
+|-------|---------|-------------------|
+| Compile | `cargo build` | Code compiles without errors |
+| Test | `cargo test --all-targets` | All tests pass |
+| Coverage | `cargo llvm-cov ...` | Line coverage ≥ 85% |
+| **Lint** | `cargo clippy` + `cargo fmt --check` | No clippy warnings, code is formatted |
+
+### Fixing Common Failures
+
+**Clippy failures:**
+```bash
+cd compiler && cargo clippy  # See warnings
+# Fix the issues manually, OR:
+cd compiler && just format   # Auto-fix some issues
+```
+
+**Format failures:**
+```bash
+cd compiler && just format   # Auto-fix formatting
+```
+
+**Coverage failures:**
+```bash
+cd compiler && just coverage  # Shows missing lines
+# Add tests for uncovered code paths
+```
+
+### Pre-PR Checklist for AI Assistants
+
+Before creating a PR, verify:
+- [ ] `cd compiler && just` completes successfully
+- [ ] All clippy warnings are resolved (not suppressed)
+- [ ] Code is properly formatted
+- [ ] Coverage threshold is met
+- [ ] For VS Code extension changes: `cd integrations/vscode && just ci`
+- [ ] For documentation changes: `cd docs && just`
+
 ## Most Common Commands
 
 **All components support these standard commands:**
@@ -24,7 +81,7 @@ cd [component]   # compiler, docs, or integrations/vscode
 just             # Run the default CI pipeline for this component
 just compile     # Build the component
 just test        # Run tests (or validation for docs)
-just lint        # Check for style/formatting issues
+just lint        # Check for style/formatting issues (includes clippy for Rust)
 just clean       # Remove build artifacts
 ```
 
@@ -196,7 +253,8 @@ The commit workflow runs:
 1. Compilation of all components
 2. Full test suite
 3. Coverage check (85% threshold)
-4. Linting and formatting checks
-5. Documentation build
+4. **Linting checks (including clippy for Rust code)**
+5. Format checks (rustfmt)
+6. Documentation build
 
-All of these can be run locally with `just` commands before pushing.
+**All of these checks run on every PR. Run `cd compiler && just` locally before creating a PR to catch issues early.**
