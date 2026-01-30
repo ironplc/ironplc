@@ -45,9 +45,8 @@ pub fn parse_plcopen_xml(xml_content: &str, file_id: &FileId) -> Result<Project,
         ));
     }
 
-    parse_project(&doc, root).map_err(|e| {
-        Diagnostic::problem(Problem::SyntaxError, Label::file(file_id.clone(), e))
-    })
+    parse_project(&doc, root)
+        .map_err(|e| Diagnostic::problem(Problem::SyntaxError, Label::file(file_id.clone(), e)))
 }
 
 fn parse_project(doc: &roxmltree::Document, node: roxmltree::Node) -> Result<Project, String> {
@@ -639,7 +638,10 @@ fn parse_value(node: roxmltree::Node) -> Result<Value, String> {
 fn parse_array_value(node: roxmltree::Node) -> Result<super::schema::ArrayValue, String> {
     let mut elements = Vec::new();
 
-    for child in node.children().filter(|n| n.is_element() && n.tag_name().name() == "value") {
+    for child in node
+        .children()
+        .filter(|n| n.is_element() && n.tag_name().name() == "value")
+    {
         let repetition_value = child.attribute("repetitionValue").map(String::from);
         let inner_value = parse_value(child)?;
         elements.push(super::schema::ArrayValueElement {
@@ -654,7 +656,10 @@ fn parse_array_value(node: roxmltree::Node) -> Result<super::schema::ArrayValue,
 fn parse_struct_value(node: roxmltree::Node) -> Result<super::schema::StructValue, String> {
     let mut elements = Vec::new();
 
-    for child in node.children().filter(|n| n.is_element() && n.tag_name().name() == "value") {
+    for child in node
+        .children()
+        .filter(|n| n.is_element() && n.tag_name().name() == "value")
+    {
         let member = child.attribute("member").unwrap_or("").to_string();
         let inner_value = parse_value(child)?;
         elements.push(super::schema::StructValueElement {

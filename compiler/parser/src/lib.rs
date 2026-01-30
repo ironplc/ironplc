@@ -120,7 +120,13 @@ pub fn parse_st_statements(
     let (trimmed_source, adjusted_line, adjusted_col) =
         skip_leading_whitespace(source, line_offset, col_offset);
 
-    let mut result = tokenize_program(trimmed_source, file_id, options, adjusted_line, adjusted_col);
+    let mut result = tokenize_program(
+        trimmed_source,
+        file_id,
+        options,
+        adjusted_line,
+        adjusted_col,
+    );
     if !result.1.is_empty() {
         return Err(result.1.remove(0));
     }
@@ -131,7 +137,11 @@ pub fn parse_st_statements(
 /// Skip leading whitespace and calculate the adjusted line/column offset.
 ///
 /// Returns (trimmed_source, adjusted_line_offset, adjusted_col_offset).
-fn skip_leading_whitespace(source: &str, line_offset: usize, col_offset: usize) -> (&str, usize, usize) {
+fn skip_leading_whitespace(
+    source: &str,
+    line_offset: usize,
+    col_offset: usize,
+) -> (&str, usize, usize) {
     let mut line = line_offset;
     let mut col = col_offset;
     let mut start_idx = 0;
@@ -151,5 +161,5 @@ fn skip_leading_whitespace(source: &str, line_offset: usize, col_offset: usize) 
         }
     }
 
-    (&source[start_idx..].trim_end(), line, col)
+    (source[start_idx..].trim_end(), line, col)
 }

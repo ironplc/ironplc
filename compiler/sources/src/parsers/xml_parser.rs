@@ -2,11 +2,7 @@
 //!
 //! This module parses PLCopen TC6 XML files into IronPLC's DSL.
 
-use ironplc_dsl::{
-    common::Library,
-    core::FileId,
-    diagnostic::Diagnostic,
-};
+use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
 use log::debug;
 
 use crate::xml::{position::parse_plcopen_xml, transform::transform_project};
