@@ -83,9 +83,10 @@ pub struct DataTypeDecl {
 ///
 /// In PLCopen XML, a type element contains exactly one child element
 /// indicating the type. This enum represents that constraint.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum DataType {
     // Elementary types (empty elements)
+    #[default]
     Bool,
     Byte,
     Word,
@@ -107,8 +108,12 @@ pub enum DataType {
     TimeOfDay,
 
     // String types with optional length
-    String { length: Option<String> },
-    WString { length: Option<String> },
+    String {
+        length: Option<String>,
+    },
+    WString {
+        length: Option<String>,
+    },
 
     // Generic ANY types
     Any,
@@ -130,12 +135,6 @@ pub enum DataType {
     SubrangeSigned(Box<SubrangeSigned>),
     SubrangeUnsigned(Box<SubrangeUnsigned>),
     Pointer(Box<PointerType>),
-}
-
-impl Default for DataType {
-    fn default() -> Self {
-        DataType::Bool
-    }
 }
 
 /// Reference to a named type
@@ -233,17 +232,12 @@ pub struct Pou {
 }
 
 /// POU type enumeration
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PouType {
     Function,
     FunctionBlock,
+    #[default]
     Program,
-}
-
-impl Default for PouType {
-    fn default() -> Self {
-        PouType::Program
-    }
 }
 
 /// POU interface (variable declarations)

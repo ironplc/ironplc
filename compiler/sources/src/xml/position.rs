@@ -158,7 +158,7 @@ fn parse_data_type_decl(node: roxmltree::Node) -> Result<DataTypeDecl, String> {
 
 fn parse_type_element(node: roxmltree::Node) -> Result<DataType, String> {
     // The type element contains exactly one child that indicates the type
-    for child in node.children().filter(|n| n.is_element()) {
+    if let Some(child) = node.children().find(|n| n.is_element()) {
         return parse_data_type_node(child);
     }
     Ok(DataType::Bool) // Default if empty
@@ -620,15 +620,12 @@ fn parse_value(node: roxmltree::Node) -> Result<Value, String> {
     let mut value = Value::default();
 
     for child in node.children().filter(|n| n.is_element()) {
-        match child.tag_name().name() {
-            "simpleValue" => {
-                value.simple_value = Some(super::schema::SimpleValue {
-                    value: child.attribute("value").map(String::from),
-                });
-            }
-            // Array and struct values would be parsed here if needed
-            _ => {}
+        if child.tag_name().name() == "simpleValue" {
+            value.simple_value = Some(super::schema::SimpleValue {
+                value: child.attribute("value").map(String::from),
+            });
         }
+        // Array and struct values would be parsed here if needed
     }
 
     Ok(value)
@@ -1016,5 +1013,230 @@ END_IF;</xhtml>
             .unwrap()
             .line_offset;
         assert!(pos2 > pos1);
+    }
+
+    #[test]
+    fn parse_when_comprehensive_project_then_extracts_all_components() {
+        // This test verifies that all major components of a PLCopen XML document
+        // are parsed correctly
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="TestCorp" companyURL="http://test.com" productName="TestProduct" productVersion="2.0" productRelease="beta" creationDateTime="2024-06-15T10:30:00" contentDescription="Test project"/>
+  <contentHeader name="ComprehensiveTest" version="1.0" author="Tester" organization="TestOrg" language="en">
+    <Comment>Project comment</Comment>
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes>
+      <dataType name="MyEnum">
+        <baseType>
+          <enum>
+            <values>
+              <value name="Val1"/>
+              <value name="Val2"/>
+            </values>
+          </enum>
+        </baseType>
+      </dataType>
+      <dataType name="MyArray">
+        <baseType>
+          <array>
+            <dimension lower="1" upper="10"/>
+            <baseType><INT/></baseType>
+          </array>
+        </baseType>
+      </dataType>
+      <dataType name="MyStruct">
+        <baseType>
+          <struct>
+            <variable name="Field1">
+              <type><REAL/></type>
+            </variable>
+            <variable name="Field2">
+              <type><BOOL/></type>
+            </variable>
+          </struct>
+        </baseType>
+      </dataType>
+    </dataTypes>
+    <pous>
+      <pou name="AddNumbers" pouType="function">
+        <interface>
+          <returnType><INT/></returnType>
+          <inputVars>
+            <variable name="A">
+              <type><INT/></type>
+            </variable>
+            <variable name="B">
+              <type><INT/></type>
+            </variable>
+          </inputVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">AddNumbers := A + B;</xhtml>
+          </ST>
+        </body>
+      </pou>
+      <pou name="Counter" pouType="functionBlock">
+        <interface>
+          <inputVars>
+            <variable name="Reset">
+              <type><BOOL/></type>
+            </variable>
+          </inputVars>
+          <outputVars>
+            <variable name="Count">
+              <type><INT/></type>
+            </variable>
+          </outputVars>
+          <localVars>
+            <variable name="Internal">
+              <type><INT/></type>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">IF Reset THEN Count := 0; END_IF;</xhtml>
+          </ST>
+        </body>
+      </pou>
+      <pou name="Main" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="MyCounter">
+              <type><derived name="Counter"/></type>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">MyCounter(Reset := FALSE);</xhtml>
+          </ST>
+        </body>
+      </pou>
+    </pous>
+  </types>
+</project>"#;
+
+        let project = parse_plcopen_xml(xml).unwrap();
+
+        // Verify file header
+        assert_eq!(project.file_header.company_name, "TestCorp");
+        assert_eq!(
+            project.file_header.company_url,
+            Some("http://test.com".to_string())
+        );
+        assert_eq!(project.file_header.product_name, "TestProduct");
+        assert_eq!(project.file_header.product_version, "2.0");
+        assert_eq!(
+            project.file_header.product_release,
+            Some("beta".to_string())
+        );
+        assert_eq!(
+            project.file_header.content_description,
+            Some("Test project".to_string())
+        );
+
+        // Verify content header
+        assert_eq!(project.content_header.name, "ComprehensiveTest");
+        assert_eq!(project.content_header.version, Some("1.0".to_string()));
+        assert_eq!(project.content_header.author, Some("Tester".to_string()));
+        assert_eq!(
+            project.content_header.organization,
+            Some("TestOrg".to_string())
+        );
+
+        // Verify data types
+        assert_eq!(project.types.data_types.data_type.len(), 3);
+
+        // Enum type
+        let enum_type = &project.types.data_types.data_type[0];
+        assert_eq!(enum_type.name, "MyEnum");
+        let DataType::Enum(e) = &enum_type.base_type else {
+            panic!("Expected enum")
+        };
+        assert_eq!(e.values.value.len(), 2);
+        assert_eq!(e.values.value[0].name, "Val1");
+        assert_eq!(e.values.value[1].name, "Val2");
+
+        // Array type
+        let array_type = &project.types.data_types.data_type[1];
+        assert_eq!(array_type.name, "MyArray");
+        let DataType::Array(a) = &array_type.base_type else {
+            panic!("Expected array")
+        };
+        assert_eq!(a.dimension.len(), 1);
+        assert_eq!(a.dimension[0].lower, "1");
+        assert_eq!(a.dimension[0].upper, "10");
+        assert!(matches!(a.base_type, DataType::Int));
+
+        // Struct type
+        let struct_type = &project.types.data_types.data_type[2];
+        assert_eq!(struct_type.name, "MyStruct");
+        let DataType::Struct(s) = &struct_type.base_type else {
+            panic!("Expected struct")
+        };
+        assert_eq!(s.variable.len(), 2);
+        assert_eq!(s.variable[0].name, "Field1");
+        assert!(matches!(s.variable[0].member_type, DataType::Real));
+        assert_eq!(s.variable[1].name, "Field2");
+        assert!(matches!(s.variable[1].member_type, DataType::Bool));
+
+        // Verify POUs
+        assert_eq!(project.types.pous.pou.len(), 3);
+
+        // Function
+        let func = &project.types.pous.pou[0];
+        assert_eq!(func.name, "AddNumbers");
+        assert_eq!(func.pou_type, PouType::Function);
+        let interface = func.interface.as_ref().unwrap();
+        assert!(interface.return_type.is_some());
+        assert!(matches!(
+            interface.return_type.as_ref().unwrap(),
+            DataType::Int
+        ));
+        assert_eq!(interface.input_vars.len(), 1);
+        assert_eq!(interface.input_vars[0].variable.len(), 2);
+        assert_eq!(interface.input_vars[0].variable[0].name, "A");
+        assert_eq!(interface.input_vars[0].variable[1].name, "B");
+        assert!(func.body.as_ref().unwrap().is_st());
+        assert!(func
+            .body
+            .as_ref()
+            .unwrap()
+            .st_text()
+            .unwrap()
+            .contains("AddNumbers := A + B"));
+
+        // Function block
+        let fb = &project.types.pous.pou[1];
+        assert_eq!(fb.name, "Counter");
+        assert_eq!(fb.pou_type, PouType::FunctionBlock);
+        let fb_interface = fb.interface.as_ref().unwrap();
+        assert_eq!(fb_interface.input_vars.len(), 1);
+        assert_eq!(fb_interface.output_vars.len(), 1);
+        assert_eq!(fb_interface.local_vars.len(), 1);
+        assert_eq!(fb_interface.input_vars[0].variable[0].name, "Reset");
+        assert_eq!(fb_interface.output_vars[0].variable[0].name, "Count");
+        assert_eq!(fb_interface.local_vars[0].variable[0].name, "Internal");
+
+        // Program
+        let prog = &project.types.pous.pou[2];
+        assert_eq!(prog.name, "Main");
+        assert_eq!(prog.pou_type, PouType::Program);
+        let prog_interface = prog.interface.as_ref().unwrap();
+        assert_eq!(prog_interface.local_vars.len(), 1);
+        let local_var = &prog_interface.local_vars[0].variable[0];
+        assert_eq!(local_var.name, "MyCounter");
+        let DataType::Derived(d) = &local_var.var_type else {
+            panic!("Expected derived type")
+        };
+        assert_eq!(d.name, "Counter");
     }
 }
