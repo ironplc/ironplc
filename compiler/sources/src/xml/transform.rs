@@ -629,7 +629,7 @@ mod tests {
     }
 
     fn parse_project(xml: &str) -> Project {
-        parse_plcopen_xml(xml).unwrap()
+        parse_plcopen_xml(xml, &test_file_id()).unwrap()
     }
 
     fn minimal_project_header() -> &'static str {
