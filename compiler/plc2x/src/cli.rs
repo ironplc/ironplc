@@ -15,6 +15,7 @@ use ironplc_dsl::{
 use ironplc_parser::{options::ParseOptions, tokenize_program};
 use ironplc_plc2plc::write_to_string;
 use ironplc_problems::Problem;
+use ironplc_sources::{xml, FileType};
 use log::{debug, error, trace};
 use std::{
     collections::{HashMap, HashSet},
@@ -84,28 +85,191 @@ pub fn tokenize(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> 
 
     // Write the set
     for src in project.sources() {
-        let (tokens, diagnostics) = tokenize_program(
-            src.as_string(),
-            src.file_id(),
-            &ParseOptions::default(),
-            0,
-            0,
-        );
-
-        let tokens = tokens
-            .iter()
-            .fold(String::new(), |s1, s2| s1 + "\n" + s2.describe().as_str())
-            .trim_start()
-            .to_string();
-
-        debug!("{tokens}");
-        println!("{tokens}");
-
-        if !diagnostics.is_empty() {
-            println!("Number of errors {}", diagnostics.len());
-            handle_diagnostics(&diagnostics, Some(&project), suppress_output);
-            return Err(String::from("Not valid"));
+        match src.file_type() {
+            FileType::Xml => {
+                tokenize_xml(src.as_string(), src.file_id(), &project, suppress_output)?;
+            }
+            FileType::StructuredText | FileType::Unknown => {
+                tokenize_st(src.as_string(), src.file_id(), &project, suppress_output)?;
+            }
         }
+    }
+
+    Ok(())
+}
+
+fn tokenize_st(
+    content: &str,
+    file_id: &FileId,
+    project: &FileBackedProject,
+    suppress_output: bool,
+) -> Result<(), String> {
+    let (tokens, diagnostics) = tokenize_program(content, file_id, &ParseOptions::default(), 0, 0);
+
+    let tokens = tokens
+        .iter()
+        .fold(String::new(), |s1, s2| s1 + "\n" + s2.describe().as_str())
+        .trim_start()
+        .to_string();
+
+    debug!("{tokens}");
+    println!("{tokens}");
+
+    if !diagnostics.is_empty() {
+        println!("Number of errors {}", diagnostics.len());
+        handle_diagnostics(&diagnostics, Some(project), suppress_output);
+        return Err(String::from("Not valid"));
+    }
+
+    Ok(())
+}
+
+fn tokenize_xml(
+    content: &str,
+    file_id: &FileId,
+    project: &FileBackedProject,
+    suppress_output: bool,
+) -> Result<(), String> {
+    // Parse the XML document
+    let xml_project = xml::parse_plcopen_xml(content, file_id).map_err(|diag| {
+        handle_diagnostics(&[diag], Some(project), suppress_output);
+        String::from("XML parsing error")
+    })?;
+
+    let mut had_error = false;
+    let mut first_pou = true;
+
+    // Tokenize each POU's ST body
+    for pou in &xml_project.types.pous.pou {
+        let pou_type = match pou.pou_type {
+            xml::PouType::Function => "function",
+            xml::PouType::FunctionBlock => "functionBlock",
+            xml::PouType::Program => "program",
+        };
+
+        if let Some(body) = &pou.body {
+            if let Some(st_body) = body.st_body() {
+                // Add separator between POUs
+                if !first_pou {
+                    println!();
+                }
+                first_pou = false;
+
+                println!("=== POU: {} ({}) ===", pou.name, pou_type);
+
+                let (tokens, diagnostics) = tokenize_program(
+                    &st_body.text,
+                    file_id,
+                    &ParseOptions::default(),
+                    st_body.line_offset,
+                    st_body.col_offset,
+                );
+
+                let tokens = tokens
+                    .iter()
+                    .fold(String::new(), |s1, s2| s1 + "\n" + s2.describe().as_str())
+                    .trim_start()
+                    .to_string();
+
+                debug!("{tokens}");
+                println!("{tokens}");
+
+                if !diagnostics.is_empty() {
+                    println!("Number of errors {}", diagnostics.len());
+                    handle_diagnostics(&diagnostics, Some(project), suppress_output);
+                    had_error = true;
+                }
+            } else if let Some(lang) = body.unsupported_language() {
+                // Add separator between POUs
+                if !first_pou {
+                    println!();
+                }
+                first_pou = false;
+
+                println!(
+                    "=== POU: {} ({}) - {} body (skipped) ===",
+                    pou.name, pou_type, lang
+                );
+            }
+        }
+
+        // Handle actions
+        if let Some(actions) = &pou.actions {
+            for action in &actions.action {
+                if let Some(st_body) = action.body.st_body() {
+                    if !first_pou {
+                        println!();
+                    }
+                    first_pou = false;
+
+                    println!("=== Action: {}.{} ===", pou.name, action.name);
+
+                    let (tokens, diagnostics) = tokenize_program(
+                        &st_body.text,
+                        file_id,
+                        &ParseOptions::default(),
+                        st_body.line_offset,
+                        st_body.col_offset,
+                    );
+
+                    let tokens = tokens
+                        .iter()
+                        .fold(String::new(), |s1, s2| s1 + "\n" + s2.describe().as_str())
+                        .trim_start()
+                        .to_string();
+
+                    debug!("{tokens}");
+                    println!("{tokens}");
+
+                    if !diagnostics.is_empty() {
+                        println!("Number of errors {}", diagnostics.len());
+                        handle_diagnostics(&diagnostics, Some(project), suppress_output);
+                        had_error = true;
+                    }
+                }
+            }
+        }
+
+        // Handle transitions
+        if let Some(transitions) = &pou.transitions {
+            for transition in &transitions.transition {
+                if let Some(st_body) = transition.body.st_body() {
+                    if !first_pou {
+                        println!();
+                    }
+                    first_pou = false;
+
+                    println!("=== Transition: {}.{} ===", pou.name, transition.name);
+
+                    let (tokens, diagnostics) = tokenize_program(
+                        &st_body.text,
+                        file_id,
+                        &ParseOptions::default(),
+                        st_body.line_offset,
+                        st_body.col_offset,
+                    );
+
+                    let tokens = tokens
+                        .iter()
+                        .fold(String::new(), |s1, s2| s1 + "\n" + s2.describe().as_str())
+                        .trim_start()
+                        .to_string();
+
+                    debug!("{tokens}");
+                    println!("{tokens}");
+
+                    if !diagnostics.is_empty() {
+                        println!("Number of errors {}", diagnostics.len());
+                        handle_diagnostics(&diagnostics, Some(project), suppress_output);
+                        had_error = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if had_error {
+        return Err(String::from("Tokenize errors in XML"));
     }
 
     Ok(())
@@ -294,7 +458,7 @@ fn diagnostic(problem: Problem, path: &Path, message: String) -> Vec<Diagnostic>
 mod tests {
     use ironplc_test::shared_resource_path;
 
-    use crate::{cli::check, cli::echo, test_helpers::resource_path};
+    use crate::{cli::check, cli::echo, cli::tokenize, test_helpers::resource_path};
 
     #[test]
     fn check_first_steps_when_invalid_syntax_then_error() {
@@ -335,6 +499,13 @@ mod tests {
     fn tokenize_first_steps_when_valid_syntax_then_ok() {
         let paths = vec![shared_resource_path("first_steps.st")];
         let result = echo(&paths, true);
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    fn tokenize_xml_when_valid_syntax_then_ok() {
+        let paths = vec![resource_path("simple.xml")];
+        let result = tokenize(&paths, true);
         assert!(result.is_ok())
     }
 }
