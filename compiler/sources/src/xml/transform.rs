@@ -344,16 +344,16 @@ fn transform_data_type(data_type: &DataType, _file_id: &FileId) -> Result<TypeNa
         DataType::Struct(_) => Err(Diagnostic::todo(file!(), line!())),
 
         // Generic types (usually for library functions)
-        DataType::Any
-        | DataType::AnyDerived
-        | DataType::AnyElementary
-        | DataType::AnyMagnitude
-        | DataType::AnyNum
-        | DataType::AnyReal
-        | DataType::AnyInt
-        | DataType::AnyBit
-        | DataType::AnyString
-        | DataType::AnyDate => Err(Diagnostic::todo(file!(), line!())),
+        DataType::Any => Ok(TypeName::from("ANY")),
+        DataType::AnyDerived => Ok(TypeName::from("ANY_DERIVED")),
+        DataType::AnyElementary => Ok(TypeName::from("ANY_ELEMENTARY")),
+        DataType::AnyMagnitude => Ok(TypeName::from("ANY_MAGNITUDE")),
+        DataType::AnyNum => Ok(TypeName::from("ANY_NUM")),
+        DataType::AnyReal => Ok(TypeName::from("ANY_REAL")),
+        DataType::AnyInt => Ok(TypeName::from("ANY_INT")),
+        DataType::AnyBit => Ok(TypeName::from("ANY_BIT")),
+        DataType::AnyString => Ok(TypeName::from("ANY_STRING")),
+        DataType::AnyDate => Ok(TypeName::from("ANY_DATE")),
 
         // Subranges and pointers
         DataType::SubrangeSigned(_) | DataType::SubrangeUnsigned(_) => {

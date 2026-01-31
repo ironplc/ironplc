@@ -641,4 +641,95 @@ END_FUNCTION";
             elements: vec![element],
         }
     }
+
+    #[test]
+    fn parse_when_function_with_any_num_return_type_then_parses() {
+        let lib = parse_text(
+            "FUNCTION ABS : ANY_NUM
+            VAR_INPUT
+                IN : ANY_NUM;
+            END_VAR
+            ABS := IN;
+            END_FUNCTION",
+        );
+
+        assert_eq!(lib.elements.len(), 1);
+        match &lib.elements[0] {
+            LibraryElementKind::FunctionDeclaration(func) => {
+                assert_eq!(func.return_type, TypeName::from("ANY_NUM"));
+            }
+            _ => panic!("Expected function declaration"),
+        }
+    }
+
+    #[test]
+    fn parse_when_variable_with_any_int_type_then_parses() {
+        let lib = parse_text(
+            "FUNCTION TEST : INT
+            VAR_INPUT
+                val : ANY_INT;
+            END_VAR
+            TEST := 0;
+            END_FUNCTION",
+        );
+
+        assert_eq!(lib.elements.len(), 1);
+        match &lib.elements[0] {
+            LibraryElementKind::FunctionDeclaration(func) => {
+                let var = &func.variables[0];
+                let type_name = var.type_name().unwrap();
+                assert_eq!(type_name, TypeName::from("ANY_INT"));
+            }
+            _ => panic!("Expected function declaration"),
+        }
+    }
+
+    #[test]
+    fn parse_when_all_generic_type_names_then_parses() {
+        // Test all generic type names can be used as type references
+        let generic_types = [
+            "ANY",
+            "ANY_DERIVED",
+            "ANY_ELEMENTARY",
+            "ANY_MAGNITUDE",
+            "ANY_NUM",
+            "ANY_REAL",
+            "ANY_INT",
+            "ANY_BIT",
+            "ANY_STRING",
+            "ANY_DATE",
+        ];
+
+        for generic_type in generic_types {
+            let source = format!(
+                "FUNCTION TEST : {}
+                VAR_INPUT
+                    val : {};
+                END_VAR
+                TEST := val;
+                END_FUNCTION",
+                generic_type, generic_type
+            );
+
+            let result = parse_program(&source, &FileId::default(), &ParseOptions::default());
+            assert!(
+                result.is_ok(),
+                "Failed to parse generic type: {}",
+                generic_type
+            );
+
+            let lib = result.unwrap();
+            match &lib.elements[0] {
+                LibraryElementKind::FunctionDeclaration(func) => {
+                    assert_eq!(
+                        func.return_type,
+                        TypeName::from(generic_type),
+                        "Return type mismatch for {}",
+                        generic_type
+                    );
+                }
+                _ => panic!("Expected function declaration for {}", generic_type),
+            }
+        }
+    }
 }
