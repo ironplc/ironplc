@@ -256,6 +256,17 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::DoubleByteString => None,
             TokenType::Lreal => Some(KEYWORD_INDEX),
             TokenType::RightArrow => Some(KEYWORD_INDEX),
+            // Generic type names
+            TokenType::Any => Some(KEYWORD_INDEX),
+            TokenType::AnyDerived => Some(KEYWORD_INDEX),
+            TokenType::AnyElementary => Some(KEYWORD_INDEX),
+            TokenType::AnyMagnitude => Some(KEYWORD_INDEX),
+            TokenType::AnyNum => Some(KEYWORD_INDEX),
+            TokenType::AnyReal => Some(KEYWORD_INDEX),
+            TokenType::AnyInt => Some(KEYWORD_INDEX),
+            TokenType::AnyBit => Some(KEYWORD_INDEX),
+            TokenType::AnyString => Some(KEYWORD_INDEX),
+            TokenType::AnyDate => Some(KEYWORD_INDEX),
         };
 
         token_type.map(|token_type| SemanticToken {
