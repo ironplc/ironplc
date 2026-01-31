@@ -66,13 +66,16 @@ def generate_problem_index(app, config):
     Generate the problem codes index.rst file based on the problem code files present
     in the docs/compiler/problems directory.
     """
+    from sphinx.util import logging
+    logger = logging.getLogger(__name__)
+    
     # Get the source directory from Sphinx
     srcdir = Path(app.srcdir)
     problems_dir = srcdir / 'compiler' / 'problems'
     index_path = problems_dir / 'index.rst'
     
     if not problems_dir.exists():
-        app.logger.warning(f"Problems directory not found: {problems_dir}")
+        logger.warning(f"Problems directory not found: {problems_dir}")
         return
     
     # Find all .rst files that match the pattern P####.rst
@@ -83,7 +86,7 @@ def generate_problem_index(app, config):
             problem_files.append(code)
     
     if not problem_files:
-        app.logger.warning("No problem code files found")
+        logger.warning("No problem code files found")
         return
     
     # Sort by problem code (natural sort to handle P0001, P2001, etc.)
@@ -117,7 +120,7 @@ Problem Codes
     with open(index_path, 'w', encoding='utf-8') as f:
         f.write(content)
     
-    app.logger.info(f"Generated problem codes index with {len(problem_files)} codes")
+    logger.info(f"Generated problem codes index with {len(problem_files)} codes")
 
 def setup(app):
     app.add_directive("problem-summary", ProblemSummary)
