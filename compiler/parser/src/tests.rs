@@ -654,12 +654,10 @@ END_FUNCTION";
         );
 
         assert_eq!(lib.elements.len(), 1);
-        match &lib.elements[0] {
-            LibraryElementKind::FunctionDeclaration(func) => {
-                assert_eq!(func.return_type, TypeName::from("ANY_NUM"));
-            }
-            _ => panic!("Expected function declaration"),
-        }
+        let LibraryElementKind::FunctionDeclaration(func) = &lib.elements[0] else {
+            unreachable!()
+        };
+        assert_eq!(func.return_type, TypeName::from("ANY_NUM"));
     }
 
     #[test]
@@ -674,14 +672,11 @@ END_FUNCTION";
         );
 
         assert_eq!(lib.elements.len(), 1);
-        match &lib.elements[0] {
-            LibraryElementKind::FunctionDeclaration(func) => {
-                let var = &func.variables[0];
-                let type_name = var.type_name().unwrap();
-                assert_eq!(type_name, TypeName::from("ANY_INT"));
-            }
-            _ => panic!("Expected function declaration"),
-        }
+        let LibraryElementKind::FunctionDeclaration(func) = &lib.elements[0] else {
+            unreachable!()
+        };
+        let type_name = func.variables[0].type_name().unwrap();
+        assert_eq!(type_name, TypeName::from("ANY_INT"));
     }
 
     #[test]
@@ -719,17 +714,15 @@ END_FUNCTION";
             );
 
             let lib = result.unwrap();
-            match &lib.elements[0] {
-                LibraryElementKind::FunctionDeclaration(func) => {
-                    assert_eq!(
-                        func.return_type,
-                        TypeName::from(generic_type),
-                        "Return type mismatch for {}",
-                        generic_type
-                    );
-                }
-                _ => panic!("Expected function declaration for {}", generic_type),
-            }
+            let LibraryElementKind::FunctionDeclaration(func) = &lib.elements[0] else {
+                unreachable!()
+            };
+            assert_eq!(
+                func.return_type,
+                TypeName::from(generic_type),
+                "Return type mismatch for {}",
+                generic_type
+            );
         }
     }
 }
