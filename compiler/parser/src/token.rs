@@ -348,6 +348,28 @@ pub enum TokenType {
     #[token("WSTRING", ignore(case))]
     WString,
 
+    // B.1.3.2 Generic data types
+    #[token("ANY", ignore(case))]
+    Any,
+    #[token("ANY_DERIVED", ignore(case))]
+    AnyDerived,
+    #[token("ANY_ELEMENTARY", ignore(case))]
+    AnyElementary,
+    #[token("ANY_MAGNITUDE", ignore(case))]
+    AnyMagnitude,
+    #[token("ANY_NUM", ignore(case))]
+    AnyNum,
+    #[token("ANY_REAL", ignore(case))]
+    AnyReal,
+    #[token("ANY_INT", ignore(case))]
+    AnyInt,
+    #[token("ANY_BIT", ignore(case))]
+    AnyBit,
+    #[token("ANY_STRING", ignore(case))]
+    AnyString,
+    #[token("ANY_DATE", ignore(case))]
+    AnyDate,
+
     #[regex(r"%[IQM]\*", ignore(case))]
     DirectAddressIncomplete,
     #[regex(r"%[IQM]([XBWDL])?(\d(\.\d)*)", ignore(case))]
@@ -512,6 +534,16 @@ impl TokenType {
             TokenType::Dword => "'DWORD'",
             TokenType::Lword => "'LWORD'",
             TokenType::WString => "'WSTRING'",
+            TokenType::Any => "'ANY'",
+            TokenType::AnyDerived => "'ANY_DERIVED'",
+            TokenType::AnyElementary => "'ANY_ELEMENTARY'",
+            TokenType::AnyMagnitude => "'ANY_MAGNITUDE'",
+            TokenType::AnyNum => "'ANY_NUM'",
+            TokenType::AnyReal => "'ANY_REAL'",
+            TokenType::AnyInt => "'ANY_INT'",
+            TokenType::AnyBit => "'ANY_BIT'",
+            TokenType::AnyString => "'ANY_STRING'",
+            TokenType::AnyDate => "'ANY_DATE'",
             TokenType::DirectAddressIncomplete => "'%I*' | '%Q*' | '%M*' (incomplete address)",
             TokenType::DirectAddress => "%[IQM]([XBWDL])?(\\d(\\.\\d)*) (direct address)",
             TokenType::Or => "'OR'",
@@ -702,6 +734,16 @@ mod tests {
             (Dword, "DWORD"),
             (Lword, "LWORD"),
             (WString, "WSTRING"),
+            (Any, "ANY"),
+            (AnyDerived, "ANY_DERIVED"),
+            (AnyElementary, "ANY_ELEMENTARY"),
+            (AnyMagnitude, "ANY_MAGNITUDE"),
+            (AnyNum, "ANY_NUM"),
+            (AnyReal, "ANY_REAL"),
+            (AnyInt, "ANY_INT"),
+            (AnyBit, "ANY_BIT"),
+            (AnyString, "ANY_STRING"),
+            (AnyDate, "ANY_DATE"),
             (DirectAddressIncomplete, "%I*"),
             (DirectAddress, "%I0.0"),
             (Or, "OR"),
