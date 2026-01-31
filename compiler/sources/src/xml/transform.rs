@@ -297,7 +297,7 @@ fn transform_base_type_to_elementary(
         DataType::UDInt => Ok(ElementaryTypeName::UDINT),
         DataType::ULInt => Ok(ElementaryTypeName::ULINT),
         _ => Err(Diagnostic::problem(
-            Problem::SyntaxError,
+            Problem::XmlSchemaViolation,
             Label::span(
                 span,
                 format!(
@@ -384,7 +384,7 @@ fn transform_function(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind,
         } else {
             // Functions must have a return type
             return Err(Diagnostic::problem(
-                Problem::SyntaxError,
+                Problem::XmlSchemaViolation,
                 Label::span(
                     span,
                     format!("Function '{}' is missing a return type", pou.name),
@@ -393,7 +393,7 @@ fn transform_function(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind,
         }
     } else {
         return Err(Diagnostic::problem(
-            Problem::SyntaxError,
+            Problem::XmlSchemaViolation,
             Label::span(
                 span,
                 format!("Function '{}' is missing interface", pou.name),
@@ -611,7 +611,7 @@ fn parse_st_body(
 /// Create an error diagnostic for invalid values
 fn invalid_value_error(value: &str, context: &str, file_id: &FileId) -> Diagnostic {
     Diagnostic::problem(
-        Problem::SyntaxError,
+        Problem::XmlSchemaViolation,
         Label::span(
             file_span(file_id),
             format!("Invalid {}: '{}'", context, value),
