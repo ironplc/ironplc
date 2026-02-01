@@ -440,7 +440,12 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         self.declarations.graph.add_edge(from, to, ());
                     }
                     InitialValueAssignmentKind::Subrange(_) => {}
-                    InitialValueAssignmentKind::Structure(_) => {}
+                    InitialValueAssignmentKind::Structure(struct_init) => {
+                        // Track dependency on the nested structure type
+                        let from = self.declarations.add_node(from);
+                        let to = self.declarations.add_node(&struct_init.type_name.name);
+                        self.declarations.graph.add_edge(to, from, ());
+                    }
                     InitialValueAssignmentKind::Array(_) => {}
                     InitialValueAssignmentKind::LateResolvedType(lrt) => {
                         // We only care about these because these may be references to a function block
