@@ -59,6 +59,36 @@ pub fn parse_library(tokens: Vec<Token>) -> Result<Vec<LibraryElementKind>, Diag
     })
 }
 
+/// Parses a list of IEC 61131-3 statements into object form.
+///
+/// This is useful for parsing ST body content from PLCopen XML files
+/// where only the statements (not the full POU declaration) are provided.
+pub fn parse_statements(tokens: Vec<Token>) -> Result<Vec<StmtKind>, Diagnostic> {
+    if tokens.is_empty() {
+        return Ok(vec![]);
+    }
+
+    plc_parser::statement_list(&SliceByRef(&tokens[..])).map_err(|e| {
+        let token_index = e.location;
+
+        let expected = Vec::from_iter(e.expected.tokens()).join(" | ");
+        let actual = tokens.get(token_index.saturating_sub(1)).unwrap();
+
+        Diagnostic::problem(
+            Problem::SyntaxError,
+            Label::span(
+                actual.span.clone(),
+                format!(
+                    "Expected {}. Found text '{}' that matched token {}",
+                    expected,
+                    actual.text.replace('\n', "\\n").replace('\r', "\\r"),
+                    actual.token_type.describe()
+                ),
+            ),
+        )
+    })
+}
+
 enum StatementsOrEmpty {
     Statements(Vec<StmtKind>),
     Empty(),
@@ -197,7 +227,20 @@ parser! {
     // We want to be more flexible on identifiers for variable names
     // because it is common to use variable names that are reserved names
     rule variable_identifier() -> Id = identifier() / t:tok(TokenType::Step) { Id::from(t.text.as_str()) } / t:tok(TokenType::On) { Id::from(t.text.as_str()) } / t:tok(TokenType::REdge) { Id::from(t.text.as_str()) } / t:tok(TokenType::FEdge) { Id::from(t.text.as_str()) }
-    rule type_name() -> TypeName = i:identifier() { TypeName::from_id(&i) }
+    rule type_name() -> TypeName = i:identifier() { TypeName::from_id(&i) } / generic_type_name()
+
+    // B.1.3.2 Generic data types - used for polymorphic function signatures
+    rule generic_type_name() -> TypeName =
+        t:tok(TokenType::Any) { TypeName { name: Id::from("ANY").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyDerived) { TypeName { name: Id::from("ANY_DERIVED").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyElementary) { TypeName { name: Id::from("ANY_ELEMENTARY").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyMagnitude) { TypeName { name: Id::from("ANY_MAGNITUDE").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyNum) { TypeName { name: Id::from("ANY_NUM").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyReal) { TypeName { name: Id::from("ANY_REAL").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyInt) { TypeName { name: Id::from("ANY_INT").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyBit) { TypeName { name: Id::from("ANY_BIT").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyString) { TypeName { name: Id::from("ANY_STRING").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyDate) { TypeName { name: Id::from("ANY_DATE").with_position(t.span.clone()) } }
 
     // B.1.2 Constants
     rule constant() -> ConstantKind =
@@ -351,9 +394,7 @@ parser! {
     rule date_type_name() -> ElementaryTypeName = tok(TokenType::Date) { ElementaryTypeName::DATE } / tok(TokenType::TimeOfDay) { ElementaryTypeName::TimeOfDay } / tok(TokenType::DateAndTime) { ElementaryTypeName::DateAndTime }
     rule bit_string_type_name() -> ElementaryTypeName = tok(TokenType::Bool) { ElementaryTypeName::BOOL } / tok(TokenType::Byte) { ElementaryTypeName::BYTE } / tok(TokenType::Word) { ElementaryTypeName::WORD } / tok(TokenType::Dword) { ElementaryTypeName::DWORD } / tok(TokenType::Lword) { ElementaryTypeName::LWORD }
 
-    // B.1.3.2
-    // rule omitted because this matched identifiers. Resolving type names happens later in parsing.
-    // rule generic_type_name() -> &'input str = "ANY" / "ANY_DERIVED" / "ANY_ELEMENTARY" / "ANY_MAGNITUDE" / "ANY_NUM" / "ANY_REAL" / "ANY_INT" / "ANY_BIT" / "ANY_STRING" / "ANY_DATE"
+    // B.1.3.2 - Generic type names are implemented above in generic_type_name() rule
 
     // B.1.3.3
     // TODO review this section for missing rules

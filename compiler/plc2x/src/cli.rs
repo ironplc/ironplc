@@ -12,10 +12,9 @@ use ironplc_dsl::{
     core::FileId,
     diagnostic::{Diagnostic, Label},
 };
-use ironplc_parser::{options::ParseOptions, tokenize_program};
 use ironplc_plc2plc::write_to_string;
 use ironplc_problems::Problem;
-use log::{debug, error, trace};
+use log::{error, trace};
 use std::{
     collections::{HashMap, HashSet},
     fs::{canonicalize, metadata, read_dir},
@@ -82,25 +81,8 @@ pub fn echo(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
 pub fn tokenize(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
     let project = create_project(paths, suppress_output)?;
 
-    // Write the set
     for src in project.sources() {
-        let (tokens, diagnostics) =
-            tokenize_program(src.as_string(), src.file_id(), &ParseOptions::default());
-
-        let tokens = tokens
-            .iter()
-            .fold(String::new(), |s1, s2| s1 + "\n" + s2.describe().as_str())
-            .trim_start()
-            .to_string();
-
-        debug!("{tokens}");
-        println!("{tokens}");
-
-        if !diagnostics.is_empty() {
-            println!("Number of errors {}", diagnostics.len());
-            handle_diagnostics(&diagnostics, Some(&project), suppress_output);
-            return Err(String::from("Not valid"));
-        }
+        crate::tokenizer::tokenize_source(src, &project, suppress_output, &handle_diagnostics)?;
     }
 
     Ok(())
@@ -289,7 +271,7 @@ fn diagnostic(problem: Problem, path: &Path, message: String) -> Vec<Diagnostic>
 mod tests {
     use ironplc_test::shared_resource_path;
 
-    use crate::{cli::check, cli::echo, test_helpers::resource_path};
+    use crate::{cli::check, cli::echo, cli::tokenize, test_helpers::resource_path};
 
     #[test]
     fn check_first_steps_when_invalid_syntax_then_error() {
@@ -330,6 +312,13 @@ mod tests {
     fn tokenize_first_steps_when_valid_syntax_then_ok() {
         let paths = vec![shared_resource_path("first_steps.st")];
         let result = echo(&paths, true);
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    fn tokenize_xml_when_valid_syntax_then_ok() {
+        let paths = vec![resource_path("simple.xml")];
+        let result = tokenize(&paths, true);
         assert!(result.is_ok())
     }
 }

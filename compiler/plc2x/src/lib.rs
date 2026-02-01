@@ -9,6 +9,7 @@ pub mod logger;
 pub mod lsp;
 pub mod lsp_project;
 pub mod project;
+pub mod tokenizer;
 
 #[cfg(test)]
 mod test_helpers;

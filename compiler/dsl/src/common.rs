@@ -623,6 +623,154 @@ impl From<ElementaryTypeName> for TypeName {
     }
 }
 
+/// Generic type names used for polymorphic function signatures.
+///
+/// These types form a hierarchy where each generic type matches
+/// a set of concrete types. Used primarily in standard library
+/// function signatures to indicate polymorphism.
+///
+/// See section B.1.3.2 of IEC 61131-3.
+#[derive(Debug, PartialEq, Clone)]
+pub enum GenericTypeName {
+    /// Matches any type
+    Any,
+    /// Matches any user-defined type (structures, enumerations, function blocks)
+    AnyDerived,
+    /// Matches any elementary type
+    AnyElementary,
+    /// Matches TIME and ANY_NUM types
+    AnyMagnitude,
+    /// Matches ANY_REAL and ANY_INT types
+    AnyNum,
+    /// Matches REAL and LREAL
+    AnyReal,
+    /// Matches all integer types (SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT)
+    AnyInt,
+    /// Matches bit string types (BOOL, BYTE, WORD, DWORD, LWORD)
+    AnyBit,
+    /// Matches string types (STRING, WSTRING)
+    AnyString,
+    /// Matches date/time types (DATE, TIME_OF_DAY, DATE_AND_TIME)
+    AnyDate,
+}
+
+impl GenericTypeName {
+    /// Returns the string representation of the generic type name.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            GenericTypeName::Any => "ANY",
+            GenericTypeName::AnyDerived => "ANY_DERIVED",
+            GenericTypeName::AnyElementary => "ANY_ELEMENTARY",
+            GenericTypeName::AnyMagnitude => "ANY_MAGNITUDE",
+            GenericTypeName::AnyNum => "ANY_NUM",
+            GenericTypeName::AnyReal => "ANY_REAL",
+            GenericTypeName::AnyInt => "ANY_INT",
+            GenericTypeName::AnyBit => "ANY_BIT",
+            GenericTypeName::AnyString => "ANY_STRING",
+            GenericTypeName::AnyDate => "ANY_DATE",
+        }
+    }
+
+    /// Checks if a concrete elementary type is compatible with this generic type.
+    ///
+    /// Returns true if the elementary type can be used where this generic type
+    /// is expected (e.g., INT is compatible with ANY_INT, ANY_NUM, ANY_MAGNITUDE,
+    /// ANY_ELEMENTARY, and ANY).
+    pub fn is_compatible_with(&self, elementary: &ElementaryTypeName) -> bool {
+        match self {
+            GenericTypeName::Any => true,
+            GenericTypeName::AnyDerived => false, // Elementary types are not derived
+            GenericTypeName::AnyElementary => true,
+            GenericTypeName::AnyMagnitude => {
+                matches!(
+                    elementary,
+                    ElementaryTypeName::TIME
+                        | ElementaryTypeName::SINT
+                        | ElementaryTypeName::INT
+                        | ElementaryTypeName::DINT
+                        | ElementaryTypeName::LINT
+                        | ElementaryTypeName::USINT
+                        | ElementaryTypeName::UINT
+                        | ElementaryTypeName::UDINT
+                        | ElementaryTypeName::ULINT
+                        | ElementaryTypeName::REAL
+                        | ElementaryTypeName::LREAL
+                )
+            }
+            GenericTypeName::AnyNum => {
+                matches!(
+                    elementary,
+                    ElementaryTypeName::SINT
+                        | ElementaryTypeName::INT
+                        | ElementaryTypeName::DINT
+                        | ElementaryTypeName::LINT
+                        | ElementaryTypeName::USINT
+                        | ElementaryTypeName::UINT
+                        | ElementaryTypeName::UDINT
+                        | ElementaryTypeName::ULINT
+                        | ElementaryTypeName::REAL
+                        | ElementaryTypeName::LREAL
+                )
+            }
+            GenericTypeName::AnyReal => {
+                matches!(
+                    elementary,
+                    ElementaryTypeName::REAL | ElementaryTypeName::LREAL
+                )
+            }
+            GenericTypeName::AnyInt => {
+                matches!(
+                    elementary,
+                    ElementaryTypeName::SINT
+                        | ElementaryTypeName::INT
+                        | ElementaryTypeName::DINT
+                        | ElementaryTypeName::LINT
+                        | ElementaryTypeName::USINT
+                        | ElementaryTypeName::UINT
+                        | ElementaryTypeName::UDINT
+                        | ElementaryTypeName::ULINT
+                )
+            }
+            GenericTypeName::AnyBit => {
+                matches!(
+                    elementary,
+                    ElementaryTypeName::BOOL
+                        | ElementaryTypeName::BYTE
+                        | ElementaryTypeName::WORD
+                        | ElementaryTypeName::DWORD
+                        | ElementaryTypeName::LWORD
+                )
+            }
+            GenericTypeName::AnyString => {
+                matches!(
+                    elementary,
+                    ElementaryTypeName::STRING | ElementaryTypeName::WSTRING
+                )
+            }
+            GenericTypeName::AnyDate => {
+                matches!(
+                    elementary,
+                    ElementaryTypeName::DATE
+                        | ElementaryTypeName::TimeOfDay
+                        | ElementaryTypeName::DateAndTime
+                )
+            }
+        }
+    }
+}
+
+impl From<GenericTypeName> for Id {
+    fn from(value: GenericTypeName) -> Id {
+        Id::from(value.as_str())
+    }
+}
+
+impl From<GenericTypeName> for TypeName {
+    fn from(value: GenericTypeName) -> TypeName {
+        TypeName::from(value.as_str())
+    }
+}
+
 /// Kinds of derived data types.
 ///
 /// See section 2.3.3.1
@@ -1965,5 +2113,121 @@ mod tests {
             )],
         };
         assert_ne!(lib1, lib3);
+    }
+
+    #[test]
+    fn generic_type_name_as_str_when_called_then_returns_expected_string() {
+        assert_eq!(GenericTypeName::Any.as_str(), "ANY");
+        assert_eq!(GenericTypeName::AnyDerived.as_str(), "ANY_DERIVED");
+        assert_eq!(GenericTypeName::AnyElementary.as_str(), "ANY_ELEMENTARY");
+        assert_eq!(GenericTypeName::AnyMagnitude.as_str(), "ANY_MAGNITUDE");
+        assert_eq!(GenericTypeName::AnyNum.as_str(), "ANY_NUM");
+        assert_eq!(GenericTypeName::AnyReal.as_str(), "ANY_REAL");
+        assert_eq!(GenericTypeName::AnyInt.as_str(), "ANY_INT");
+        assert_eq!(GenericTypeName::AnyBit.as_str(), "ANY_BIT");
+        assert_eq!(GenericTypeName::AnyString.as_str(), "ANY_STRING");
+        assert_eq!(GenericTypeName::AnyDate.as_str(), "ANY_DATE");
+    }
+
+    #[test]
+    fn generic_type_name_is_compatible_with_when_any_then_accepts_all() {
+        assert!(GenericTypeName::Any.is_compatible_with(&ElementaryTypeName::BOOL));
+        assert!(GenericTypeName::Any.is_compatible_with(&ElementaryTypeName::INT));
+        assert!(GenericTypeName::Any.is_compatible_with(&ElementaryTypeName::REAL));
+        assert!(GenericTypeName::Any.is_compatible_with(&ElementaryTypeName::STRING));
+        assert!(GenericTypeName::Any.is_compatible_with(&ElementaryTypeName::TIME));
+        assert!(GenericTypeName::Any.is_compatible_with(&ElementaryTypeName::DATE));
+    }
+
+    #[test]
+    fn generic_type_name_is_compatible_with_when_any_int_then_accepts_integers_only() {
+        // Should accept all integer types
+        assert!(GenericTypeName::AnyInt.is_compatible_with(&ElementaryTypeName::SINT));
+        assert!(GenericTypeName::AnyInt.is_compatible_with(&ElementaryTypeName::INT));
+        assert!(GenericTypeName::AnyInt.is_compatible_with(&ElementaryTypeName::DINT));
+        assert!(GenericTypeName::AnyInt.is_compatible_with(&ElementaryTypeName::LINT));
+        assert!(GenericTypeName::AnyInt.is_compatible_with(&ElementaryTypeName::USINT));
+        assert!(GenericTypeName::AnyInt.is_compatible_with(&ElementaryTypeName::UINT));
+        assert!(GenericTypeName::AnyInt.is_compatible_with(&ElementaryTypeName::UDINT));
+        assert!(GenericTypeName::AnyInt.is_compatible_with(&ElementaryTypeName::ULINT));
+
+        // Should reject non-integer types
+        assert!(!GenericTypeName::AnyInt.is_compatible_with(&ElementaryTypeName::REAL));
+        assert!(!GenericTypeName::AnyInt.is_compatible_with(&ElementaryTypeName::BOOL));
+        assert!(!GenericTypeName::AnyInt.is_compatible_with(&ElementaryTypeName::STRING));
+        assert!(!GenericTypeName::AnyInt.is_compatible_with(&ElementaryTypeName::TIME));
+    }
+
+    #[test]
+    fn generic_type_name_is_compatible_with_when_any_real_then_accepts_reals_only() {
+        assert!(GenericTypeName::AnyReal.is_compatible_with(&ElementaryTypeName::REAL));
+        assert!(GenericTypeName::AnyReal.is_compatible_with(&ElementaryTypeName::LREAL));
+        assert!(!GenericTypeName::AnyReal.is_compatible_with(&ElementaryTypeName::INT));
+        assert!(!GenericTypeName::AnyReal.is_compatible_with(&ElementaryTypeName::BOOL));
+    }
+
+    #[test]
+    fn generic_type_name_is_compatible_with_when_any_num_then_accepts_all_numerics() {
+        // Should accept integers and reals
+        assert!(GenericTypeName::AnyNum.is_compatible_with(&ElementaryTypeName::INT));
+        assert!(GenericTypeName::AnyNum.is_compatible_with(&ElementaryTypeName::REAL));
+        assert!(GenericTypeName::AnyNum.is_compatible_with(&ElementaryTypeName::LINT));
+        assert!(GenericTypeName::AnyNum.is_compatible_with(&ElementaryTypeName::LREAL));
+
+        // Should reject non-numeric types
+        assert!(!GenericTypeName::AnyNum.is_compatible_with(&ElementaryTypeName::BOOL));
+        assert!(!GenericTypeName::AnyNum.is_compatible_with(&ElementaryTypeName::TIME));
+        assert!(!GenericTypeName::AnyNum.is_compatible_with(&ElementaryTypeName::STRING));
+    }
+
+    #[test]
+    fn generic_type_name_is_compatible_with_when_any_bit_then_accepts_bit_types() {
+        assert!(GenericTypeName::AnyBit.is_compatible_with(&ElementaryTypeName::BOOL));
+        assert!(GenericTypeName::AnyBit.is_compatible_with(&ElementaryTypeName::BYTE));
+        assert!(GenericTypeName::AnyBit.is_compatible_with(&ElementaryTypeName::WORD));
+        assert!(GenericTypeName::AnyBit.is_compatible_with(&ElementaryTypeName::DWORD));
+        assert!(GenericTypeName::AnyBit.is_compatible_with(&ElementaryTypeName::LWORD));
+        assert!(!GenericTypeName::AnyBit.is_compatible_with(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn generic_type_name_is_compatible_with_when_any_string_then_accepts_strings() {
+        assert!(GenericTypeName::AnyString.is_compatible_with(&ElementaryTypeName::STRING));
+        assert!(GenericTypeName::AnyString.is_compatible_with(&ElementaryTypeName::WSTRING));
+        assert!(!GenericTypeName::AnyString.is_compatible_with(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn generic_type_name_is_compatible_with_when_any_date_then_accepts_date_types() {
+        assert!(GenericTypeName::AnyDate.is_compatible_with(&ElementaryTypeName::DATE));
+        assert!(GenericTypeName::AnyDate.is_compatible_with(&ElementaryTypeName::TimeOfDay));
+        assert!(GenericTypeName::AnyDate.is_compatible_with(&ElementaryTypeName::DateAndTime));
+        assert!(!GenericTypeName::AnyDate.is_compatible_with(&ElementaryTypeName::TIME));
+        assert!(!GenericTypeName::AnyDate.is_compatible_with(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn generic_type_name_is_compatible_with_when_any_magnitude_then_accepts_time_and_numerics() {
+        assert!(GenericTypeName::AnyMagnitude.is_compatible_with(&ElementaryTypeName::TIME));
+        assert!(GenericTypeName::AnyMagnitude.is_compatible_with(&ElementaryTypeName::INT));
+        assert!(GenericTypeName::AnyMagnitude.is_compatible_with(&ElementaryTypeName::REAL));
+        assert!(!GenericTypeName::AnyMagnitude.is_compatible_with(&ElementaryTypeName::BOOL));
+        assert!(!GenericTypeName::AnyMagnitude.is_compatible_with(&ElementaryTypeName::STRING));
+    }
+
+    #[test]
+    fn generic_type_name_is_compatible_with_when_any_derived_then_rejects_all_elementary() {
+        assert!(!GenericTypeName::AnyDerived.is_compatible_with(&ElementaryTypeName::INT));
+        assert!(!GenericTypeName::AnyDerived.is_compatible_with(&ElementaryTypeName::BOOL));
+        assert!(!GenericTypeName::AnyDerived.is_compatible_with(&ElementaryTypeName::STRING));
+    }
+
+    #[test]
+    fn generic_type_name_partial_eq_and_clone() {
+        let g1 = GenericTypeName::AnyInt;
+        let g2 = g1.clone();
+        assert_eq!(g1, g2);
+        let g3 = GenericTypeName::AnyReal;
+        assert_ne!(g1, g3);
     }
 }

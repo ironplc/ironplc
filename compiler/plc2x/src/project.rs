@@ -92,7 +92,7 @@ impl Project for FileBackedProject {
         let source = self.source_project.get_source(file_id);
 
         match source {
-            Some(src) => tokenize_program(src.as_string(), file_id, &ParseOptions::default()),
+            Some(src) => tokenize_program(src.as_string(), file_id, &ParseOptions::default(), 0, 0),
             None => (
                 vec![],
                 vec![Diagnostic::problem(
@@ -186,8 +186,19 @@ mod test {
     fn xml_file_returns_empty_library() {
         let mut project = FileBackedProject::default();
         let xml_content = r#"<?xml version="1.0" encoding="UTF-8"?>
-<project>
-    <name>Test Project</name>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
+  <contentHeader name="TestProject">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous/>
+  </types>
 </project>"#;
 
         let file_id = FileId::from_string("test.xml");
