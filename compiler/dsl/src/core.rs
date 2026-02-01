@@ -15,12 +15,20 @@ use dsl_macro_derive::Recurse;
 // and for any other commonly used file paths.
 static EMPTY_FILE_ID: LazyLock<Arc<str>> = LazyLock::new(|| Arc::from(""));
 
-/// FileId is an identifier for a file (may be local or remote).
+/// FileId identifies the origin of source code.
 ///
 /// FileId is normally useful in the context of source positions
-/// where a source position is in a file.
+/// where a source position is in a file. It can also represent
+/// built-in types that are part of the compiler (e.g., standard
+/// library function blocks, elementary types).
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct FileId(Arc<str>);
+pub enum FileId {
+    /// Source code from a file (local or remote). The string is the file path.
+    File(Arc<str>),
+    /// Built-in to the compiler (stdlib types, elementary types).
+    /// These types have no source file - they are intrinsic to the language.
+    BuiltIn,
+}
 
 impl FileId {
     /// Creates an empty file identifier.
@@ -30,37 +38,54 @@ impl FileId {
 
     /// Creates a file identifier from the path.
     pub fn from_path(path: &Path) -> Self {
-        FileId(Arc::from(path.to_string_lossy().as_ref()))
+        FileId::File(Arc::from(path.to_string_lossy().as_ref()))
     }
 
     /// Creates a file identifier from the directory entry.
     pub fn from_dir_entry(entry: DirEntry) -> Self {
-        FileId(Arc::from(entry.path().to_string_lossy().as_ref()))
+        FileId::File(Arc::from(entry.path().to_string_lossy().as_ref()))
     }
 
     /// Creates a file identifier from the slice. The slice
     /// is normally the file path.
     pub fn from_string(path: &str) -> Self {
-        FileId(Arc::from(path))
+        FileId::File(Arc::from(path))
+    }
+
+    /// Creates a file identifier for built-in types (stdlib, elementary types).
+    pub fn builtin() -> Self {
+        FileId::BuiltIn
+    }
+
+    /// Returns true if this FileId represents a built-in type.
+    pub fn is_builtin(&self) -> bool {
+        matches!(self, FileId::BuiltIn)
     }
 
     /// Test-only method to check if two FileIds share the same Arc memory.
     /// This is used to verify that our optimization is working correctly.
     #[cfg(test)]
     pub fn shares_arc_with(&self, other: &FileId) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
+        match (self, other) {
+            (FileId::File(a), FileId::File(b)) => Arc::ptr_eq(a, b),
+            (FileId::BuiltIn, FileId::BuiltIn) => true,
+            _ => false,
+        }
     }
 }
 
 impl Default for FileId {
     fn default() -> Self {
-        FileId(EMPTY_FILE_ID.clone())
+        FileId::File(EMPTY_FILE_ID.clone())
     }
 }
 
 impl fmt::Display for FileId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        match self {
+            FileId::File(path) => write!(f, "{}", path),
+            FileId::BuiltIn => write!(f, "<builtin>"),
+        }
     }
 }
 
@@ -106,6 +131,21 @@ impl SourceSpan {
             end: self.end,
             file_id: file_id.clone(),
         }
+    }
+
+    /// Creates a SourceSpan for built-in types (stdlib, elementary types).
+    /// These have no meaningful source position since they are intrinsic to the language.
+    pub fn builtin() -> Self {
+        Self {
+            start: 0,
+            end: 0,
+            file_id: FileId::builtin(),
+        }
+    }
+
+    /// Returns true if this span represents a built-in type.
+    pub fn is_builtin(&self) -> bool {
+        self.file_id.is_builtin()
     }
 }
 
@@ -263,5 +303,39 @@ mod tests {
         assert!(file1.shares_arc_with(&file1_clone));
         assert!(file2.shares_arc_with(&file2_clone));
         assert!(!file1.shares_arc_with(&file2_clone));
+    }
+
+    #[test]
+    fn file_id_builtin_when_display_then_returns_builtin_marker() {
+        let file_id = FileId::builtin();
+        assert_eq!(format!("{file_id}"), "<builtin>");
+    }
+
+    #[test]
+    fn file_id_builtin_when_is_builtin_then_true() {
+        let builtin = FileId::builtin();
+        assert!(builtin.is_builtin());
+    }
+
+    #[test]
+    fn file_id_file_when_is_builtin_then_false() {
+        let file = FileId::from_string("test.rs");
+        assert!(!file.is_builtin());
+    }
+
+    #[test]
+    fn file_id_builtin_when_compared_then_equal() {
+        let builtin1 = FileId::builtin();
+        let builtin2 = FileId::builtin();
+        assert_eq!(builtin1, builtin2);
+        assert!(builtin1.shares_arc_with(&builtin2));
+    }
+
+    #[test]
+    fn file_id_builtin_when_compared_to_file_then_not_equal() {
+        let builtin = FileId::builtin();
+        let file = FileId::from_string("test.rs");
+        assert_ne!(builtin, file);
+        assert!(!builtin.shares_arc_with(&file));
     }
 }

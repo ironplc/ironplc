@@ -1,13 +1,19 @@
-//! Semantic rule that checks for references to types that are not supported.
+//! Semantic rule that checks for references to standard library types that are
+//! recognized but not yet implemented in the compiler.
+//!
 //! This gives a nicer error message than "unknown type" when the problem is
-//! the compiler.
+//! that the compiler doesn't support a particular stdlib type variant yet.
+//!
+//! Note: Many standard library function blocks ARE supported (TON, TOF, TP, etc.).
+//! This rule only flags the types that are known but NOT yet implemented
+//! (e.g., counter variants with different integer types like CTU_DINT).
 //!
 //! ## Fails
 //!
 //! ```ignore
 //! FUNCTION_BLOCK FUNC
 //!    VAR_INPUT
-//!       NAME : TON;
+//!       NAME : CTU_DINT;  // Unsupported variant of CTU
 //!    END_VAR
 //! END_FUNCTION_BLOCK
 //! ```
@@ -68,13 +74,14 @@ mod tests {
     use crate::test_helpers::parse_and_resolve_types;
 
     #[test]
-    fn apply_when_has_ton_unsupported_type_then_err() {
+    fn apply_when_has_ctu_dint_unsupported_type_then_err() {
+        // CTU_DINT is a recognized stdlib type variant that is NOT yet implemented
         let program = "
 FUNCTION_BLOCK DUMMY
 VAR_INPUT
-name : TON;
+counter : CTU_DINT;
 END_VAR
-         
+
 END_FUNCTION_BLOCK";
 
         let input = parse_and_resolve_types(program);
@@ -86,5 +93,50 @@ END_FUNCTION_BLOCK";
         let err = result.unwrap_err();
         assert_eq!(1, err.len());
         assert_eq!(Problem::UnsupportedStdLibType.code(), err[0].code);
+    }
+
+    #[test]
+    fn apply_when_has_ton_supported_type_then_ok() {
+        // TON is a supported stdlib type - should not trigger this rule
+        let program = "
+FUNCTION_BLOCK DUMMY
+VAR_INPUT
+timer : TON;
+END_VAR
+
+END_FUNCTION_BLOCK";
+
+        let input = parse_and_resolve_types(program);
+        let type_env = TypeEnvironment::new();
+        let symbol_env = SymbolEnvironment::new();
+        let result = apply(&input, &type_env, &symbol_env);
+
+        // TON is now supported, so this should pass (no unsupported stdlib type error)
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_has_user_defined_function_block_then_ok() {
+        // User-defined function blocks should not trigger this rule
+        let program = "
+FUNCTION_BLOCK MY_CUSTOM_FB
+VAR_INPUT
+value : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK DUMMY
+VAR_INPUT
+my_var : MY_CUSTOM_FB;
+END_VAR
+END_FUNCTION_BLOCK";
+
+        let input = parse_and_resolve_types(program);
+        let type_env = TypeEnvironment::new();
+        let symbol_env = SymbolEnvironment::new();
+        let result = apply(&input, &type_env, &symbol_env);
+
+        // User-defined function blocks are not stdlib types, so this should pass
+        assert!(result.is_ok());
     }
 }

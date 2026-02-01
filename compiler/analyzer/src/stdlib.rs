@@ -1,31 +1,73 @@
+//! Standard library type detection for IEC 61131-3.
+//!
+//! This module provides functions to detect whether a type name refers to
+//! a standard library type, and whether that type is supported or not.
+
 use ironplc_dsl::common::TypeName;
 use phf::{phf_set, Set};
 
-static STANDARD_LIBRARY_TYPES_LOWER_CASE: Set<&'static str> = phf_set! {
-    "ctd", // 2.5.2.3.3
-    "ctd_dint", // 2.5.2.3.3
-    "ctd_lint", // 2.5.2.3.3
-    "ctd_udint", // 2.5.2.3.3
-    "ctd_ulint", // 2.5.2.3.3
-    "ctu", // 2.5.2.3.3
-    "ctu_dint", // 2.5.2.3.3
-    "ctu_lint", // 2.5.2.3.3
-    "ctu_udint", // 2.5.2.3.3
-    "ctu_ulint", // 2.5.2.3.3
-    "ctud", // 2.5.2.3.3
-    "ctud_dint", // 2.5.2.3.3
-    "ctud_lint", // 2.5.2.3.3
-    "ctud_ulint", // 2.5.2.3.3
-    "f_trig", // 2.5.2.3.2
-    "r_trig", // 2.5.2.3.2
-    "rs", // 2.5.2.3.1
-    "sr", // 2.5.2.3.1
-    "ton", // 2.5.2.3.4
-    "tof", // 2.5.2.3.4
-    "tp", // 2.5.2.3.4
-    // TODO there is more in IEC 61131-5
+/// Standard library types that are NOT YET implemented.
+///
+/// These are variants of standard function blocks with different integer types
+/// (e.g., CTU_DINT, CTD_LINT) and types from IEC 61131-5.
+///
+/// When a user tries to use one of these, they get an "unsupported stdlib type" error.
+static UNSUPPORTED_STANDARD_LIBRARY_TYPES: Set<&'static str> = phf_set! {
+    // Counter variants with different integer types (IEC 61131-3 2.5.2.3.3)
+    "ctd_dint",
+    "ctd_lint",
+    "ctd_udint",
+    "ctd_ulint",
+    "ctu_dint",
+    "ctu_lint",
+    "ctu_udint",
+    "ctu_ulint",
+    "ctud_dint",
+    "ctud_lint",
+    "ctud_ulint",
+    // TODO: Add more from IEC 61131-5 as needed
 };
 
+/// Standard library types that ARE implemented and available.
+///
+/// These types are registered in the type environment and can be used directly.
+/// This list is kept in sync with intermediates/stdlib_function_block.rs.
+static SUPPORTED_STANDARD_LIBRARY_TYPES: Set<&'static str> = phf_set! {
+    // Bistable function blocks (IEC 61131-3 2.5.2.3.1)
+    "sr",
+    "rs",
+    // Edge detection (IEC 61131-3 2.5.2.3.2)
+    "r_trig",
+    "f_trig",
+    // Counters (IEC 61131-3 2.5.2.3.3) - basic INT versions
+    "ctu",
+    "ctd",
+    "ctud",
+    // Timers (IEC 61131-3 2.5.2.3.4)
+    "ton",
+    "tof",
+    "tp",
+};
+
+/// Returns true if the type is a standard library type that is NOT supported.
+///
+/// This is used by rule_unsupported_stdlib_type to generate an error when
+/// a user tries to use an unsupported standard library type.
 pub(crate) fn is_unsupported_standard_type(ty: &TypeName) -> bool {
-    STANDARD_LIBRARY_TYPES_LOWER_CASE.contains(&ty.name.lower_case().to_string())
+    UNSUPPORTED_STANDARD_LIBRARY_TYPES.contains(ty.name.lower_case().as_str())
+}
+
+/// Returns true if the type is a standard library type that IS supported.
+///
+/// Supported types are available in the type environment and don't require
+/// user definition.
+#[allow(dead_code)]
+pub(crate) fn is_supported_standard_type(ty: &TypeName) -> bool {
+    SUPPORTED_STANDARD_LIBRARY_TYPES.contains(ty.name.lower_case().as_str())
+}
+
+/// Returns true if the type is any standard library type (supported or not).
+#[allow(dead_code)]
+pub(crate) fn is_standard_library_type(ty: &TypeName) -> bool {
+    is_supported_standard_type(ty) || is_unsupported_standard_type(ty)
 }

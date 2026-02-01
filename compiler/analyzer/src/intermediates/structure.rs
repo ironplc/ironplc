@@ -39,6 +39,7 @@ pub fn try_from(
             name: element.name.clone(),
             field_type,
             offset: aligned_offset,
+            var_type: None, // Structure fields don't have input/output distinction
         };
 
         fields.push(field);

@@ -139,13 +139,22 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
         match node {
             // TODO this needs to handle struct definitions
             InitialValueAssignmentKind::LateResolvedType(name) => {
-                // Element types resolve to the known type.
+                // Check the type environment for known types (elementary types and stdlib FBs)
                 if let Some(ty) = self.type_environment.get(&name) {
                     if ty.representation.is_primitive() {
                         return Ok(InitialValueAssignmentKind::Simple(SimpleInitializer {
                             type_name: name,
                             initial_value: None,
                         }));
+                    }
+                    // Stdlib function blocks (TON, TOF, TP, CTU, etc.) are in the type environment
+                    if ty.representation.is_function_block() {
+                        return Ok(InitialValueAssignmentKind::FunctionBlock(
+                            FunctionBlockInitialValueAssignment {
+                                type_name: name,
+                                init: vec![],
+                            },
+                        ));
                     }
                 }
 

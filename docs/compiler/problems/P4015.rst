@@ -1,0 +1,45 @@
+=====
+P4015
+=====
+
+.. problem-summary:: P4015
+
+This error occurs when a user-defined type has the same name as a standard library type.
+
+IEC 61131-3 defines standard library function blocks (such as TON, TOF, TP, CTU, CTD, CTUD, R_TRIG, F_TRIG, RS, SR) that are built into the language. User-defined types cannot use these reserved names.
+
+Example
+-------
+
+The following code will generate error P4015:
+
+.. code-block::
+
+   FUNCTION_BLOCK TON  (* Error: TON is a standard library type *)
+   VAR_INPUT
+       value : INT;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+The name ``TON`` is reserved for the standard library On-Delay Timer function block.
+
+To fix this error, use a different name for your function block:
+
+.. code-block::
+
+   FUNCTION_BLOCK MyTimer  (* Correct: Custom name *)
+   VAR_INPUT
+       value : INT;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+Standard Library Function Blocks
+--------------------------------
+
+The following names are reserved for standard library function blocks:
+
+- **Bistable**: SR, RS
+- **Edge Detection**: R_TRIG, F_TRIG
+- **Counters**: CTU, CTD, CTUD
+- **Timers**: TON, TOF, TP
+
