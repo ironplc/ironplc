@@ -67,9 +67,40 @@ Then follow these steps to check that you have a working environment:
 Follow the steps for each component to continue your development
 environment.
 
-Once your are done, return here for instructions on how to run continuous
-integration tests locally before creating a pull request (or do it now just to
-see how it works).
+## Claude Code Setup (Optional)
+
+The devcontainer is configured to support Claude Code, Anthropic's AI coding assistant. To use Claude Code in the development environment:
+
+1. **Get an Anthropic API key:**
+   - Sign up at [console.anthropic.com](https://console.anthropic.com)
+   - Create an API key in your account settings
+
+2. **Set the environment variable on your host machine:**
+   
+   **On macOS/Linux:**
+   ```bash
+   export ANTHROPIC_API_KEY="your-api-key-here"
+   ```
+   
+   **On Windows (PowerShell):**
+   ```powershell
+   $env:ANTHROPIC_API_KEY="your-api-key-here"
+   ```
+   
+   **On Windows (Command Prompt):**
+   ```cmd
+   set ANTHROPIC_API_KEY=your-api-key-here
+   ```
+
+3. **Make the environment variable persistent:**
+   
+   **On macOS/Linux:** Add the export command to your shell profile (`.bashrc`, `.zshrc`, etc.)
+   
+   **On Windows:** Set it as a system environment variable through System Properties > Environment Variables
+
+4. **Restart VS Code** after setting the environment variable to ensure it's available to the devcontainer.
+
+The devcontainer will automatically map your host `ANTHROPIC_API_KEY` environment variable into the container, making Claude Code available for AI-assisted development.
 
 ## Local Integration Testing
 
