@@ -471,7 +471,21 @@ impl IntermediateType {
     }
 }
 
-/// Represents a field within a structure type in the intermediate representation.
+/// Represents the variable type for function block fields.
+/// This distinguishes between input, output, in-out, and internal variables.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FunctionBlockVarType {
+    /// Input variable (VAR_INPUT)
+    Input,
+    /// Output variable (VAR_OUTPUT)
+    Output,
+    /// Input-output variable (VAR_IN_OUT)
+    InOut,
+    /// Internal variable (VAR)
+    Internal,
+}
+
+/// Represents a field within a structure or function block type in the intermediate representation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IntermediateStructField {
     /// Name of the field
@@ -480,6 +494,8 @@ pub struct IntermediateStructField {
     pub field_type: IntermediateType,
     /// Memory offset of the field from the start of the structure (in bytes)
     pub offset: u32,
+    /// Variable type for function block fields (None for structure fields)
+    pub var_type: Option<FunctionBlockVarType>,
 }
 
 /// Represents a parameter in a function or function block declaration.
