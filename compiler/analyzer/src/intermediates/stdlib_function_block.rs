@@ -12,7 +12,9 @@
 
 use ironplc_dsl::core::{Id, SourceSpan};
 
-use crate::intermediate_type::{ByteSized, FunctionBlockVarType, IntermediateStructField, IntermediateType};
+use crate::intermediate_type::{
+    ByteSized, FunctionBlockVarType, IntermediateStructField, IntermediateType,
+};
 use crate::type_attributes::TypeAttributes;
 
 // Type constants for common types used in stdlib function blocks
@@ -21,7 +23,9 @@ fn bool_type() -> IntermediateType {
 }
 
 fn int_type() -> IntermediateType {
-    IntermediateType::Int { size: ByteSized::B16 }
+    IntermediateType::Int {
+        size: ByteSized::B16,
+    }
 }
 
 fn time_type() -> IntermediateType {
@@ -58,7 +62,10 @@ fn build_field(
 }
 
 /// Builds TypeAttributes for a standard library function block.
-fn build_function_block(name: &str, field_defs: &[(& str, IntermediateType, FunctionBlockVarType)]) -> TypeAttributes {
+fn build_function_block(
+    name: &str,
+    field_defs: &[(&str, IntermediateType, FunctionBlockVarType)],
+) -> TypeAttributes {
     let mut current_offset = 0u32;
     let fields: Vec<IntermediateStructField> = field_defs
         .iter()
@@ -86,11 +93,14 @@ fn build_function_block(name: &str, field_defs: &[(& str, IntermediateType, Func
 /// Q1 := S1 OR (NOT R AND Q1)
 fn build_sr() -> TypeAttributes {
     use FunctionBlockVarType::*;
-    build_function_block("SR", &[
-        ("S1", bool_type(), Input),   // Set input (dominant)
-        ("R", bool_type(), Input),    // Reset input
-        ("Q1", bool_type(), Output),  // Output
-    ])
+    build_function_block(
+        "SR",
+        &[
+            ("S1", bool_type(), Input),  // Set input (dominant)
+            ("R", bool_type(), Input),   // Reset input
+            ("Q1", bool_type(), Output), // Output
+        ],
+    )
 }
 
 /// Creates the RS (Reset-Set) bistable function block.
@@ -99,11 +109,14 @@ fn build_sr() -> TypeAttributes {
 /// Q1 := NOT R1 AND (S OR Q1)
 fn build_rs() -> TypeAttributes {
     use FunctionBlockVarType::*;
-    build_function_block("RS", &[
-        ("S", bool_type(), Input),    // Set input
-        ("R1", bool_type(), Input),   // Reset input (dominant)
-        ("Q1", bool_type(), Output),  // Output
-    ])
+    build_function_block(
+        "RS",
+        &[
+            ("S", bool_type(), Input),   // Set input
+            ("R1", bool_type(), Input),  // Reset input (dominant)
+            ("Q1", bool_type(), Output), // Output
+        ],
+    )
 }
 
 // =============================================================================
@@ -115,11 +128,14 @@ fn build_rs() -> TypeAttributes {
 /// Produces a single pulse when the input changes from FALSE to TRUE.
 fn build_r_trig() -> TypeAttributes {
     use FunctionBlockVarType::*;
-    build_function_block("R_TRIG", &[
-        ("CLK", bool_type(), Input),  // Clock input
-        ("Q", bool_type(), Output),   // Output pulse
-        ("M", bool_type(), Internal), // Internal memory (previous CLK state)
-    ])
+    build_function_block(
+        "R_TRIG",
+        &[
+            ("CLK", bool_type(), Input),  // Clock input
+            ("Q", bool_type(), Output),   // Output pulse
+            ("M", bool_type(), Internal), // Internal memory (previous CLK state)
+        ],
+    )
 }
 
 /// Creates the F_TRIG (Falling Edge Trigger) function block.
@@ -127,11 +143,14 @@ fn build_r_trig() -> TypeAttributes {
 /// Produces a single pulse when the input changes from TRUE to FALSE.
 fn build_f_trig() -> TypeAttributes {
     use FunctionBlockVarType::*;
-    build_function_block("F_TRIG", &[
-        ("CLK", bool_type(), Input),  // Clock input
-        ("Q", bool_type(), Output),   // Output pulse
-        ("M", bool_type(), Internal), // Internal memory (previous CLK state)
-    ])
+    build_function_block(
+        "F_TRIG",
+        &[
+            ("CLK", bool_type(), Input),  // Clock input
+            ("Q", bool_type(), Output),   // Output pulse
+            ("M", bool_type(), Internal), // Internal memory (previous CLK state)
+        ],
+    )
 }
 
 // =============================================================================
@@ -143,13 +162,16 @@ fn build_f_trig() -> TypeAttributes {
 /// Counts up on rising edge of CU input until CV >= PV.
 fn build_ctu() -> TypeAttributes {
     use FunctionBlockVarType::*;
-    build_function_block("CTU", &[
-        ("CU", bool_type(), Input),   // Count up input (R_EDGE)
-        ("R", bool_type(), Input),    // Reset input
-        ("PV", int_type(), Input),    // Preset value
-        ("Q", bool_type(), Output),   // Output (CV >= PV)
-        ("CV", int_type(), Output),   // Current value
-    ])
+    build_function_block(
+        "CTU",
+        &[
+            ("CU", bool_type(), Input), // Count up input (R_EDGE)
+            ("R", bool_type(), Input),  // Reset input
+            ("PV", int_type(), Input),  // Preset value
+            ("Q", bool_type(), Output), // Output (CV >= PV)
+            ("CV", int_type(), Output), // Current value
+        ],
+    )
 }
 
 /// Creates the CTD (Count Down) function block.
@@ -157,13 +179,16 @@ fn build_ctu() -> TypeAttributes {
 /// Counts down on rising edge of CD input until CV <= 0.
 fn build_ctd() -> TypeAttributes {
     use FunctionBlockVarType::*;
-    build_function_block("CTD", &[
-        ("CD", bool_type(), Input),   // Count down input (R_EDGE)
-        ("LD", bool_type(), Input),   // Load input
-        ("PV", int_type(), Input),    // Preset value
-        ("Q", bool_type(), Output),   // Output (CV <= 0)
-        ("CV", int_type(), Output),   // Current value
-    ])
+    build_function_block(
+        "CTD",
+        &[
+            ("CD", bool_type(), Input), // Count down input (R_EDGE)
+            ("LD", bool_type(), Input), // Load input
+            ("PV", int_type(), Input),  // Preset value
+            ("Q", bool_type(), Output), // Output (CV <= 0)
+            ("CV", int_type(), Output), // Current value
+        ],
+    )
 }
 
 /// Creates the CTUD (Count Up/Down) function block.
@@ -171,16 +196,19 @@ fn build_ctd() -> TypeAttributes {
 /// Counts up on CU rising edge, down on CD rising edge.
 fn build_ctud() -> TypeAttributes {
     use FunctionBlockVarType::*;
-    build_function_block("CTUD", &[
-        ("CU", bool_type(), Input),   // Count up input (R_EDGE)
-        ("CD", bool_type(), Input),   // Count down input (R_EDGE)
-        ("R", bool_type(), Input),    // Reset input
-        ("LD", bool_type(), Input),   // Load input
-        ("PV", int_type(), Input),    // Preset value
-        ("QU", bool_type(), Output),  // Up output (CV >= PV)
-        ("QD", bool_type(), Output),  // Down output (CV <= 0)
-        ("CV", int_type(), Output),   // Current value
-    ])
+    build_function_block(
+        "CTUD",
+        &[
+            ("CU", bool_type(), Input),  // Count up input (R_EDGE)
+            ("CD", bool_type(), Input),  // Count down input (R_EDGE)
+            ("R", bool_type(), Input),   // Reset input
+            ("LD", bool_type(), Input),  // Load input
+            ("PV", int_type(), Input),   // Preset value
+            ("QU", bool_type(), Output), // Up output (CV >= PV)
+            ("QD", bool_type(), Output), // Down output (CV <= 0)
+            ("CV", int_type(), Output),  // Current value
+        ],
+    )
 }
 
 // =============================================================================
@@ -193,12 +221,15 @@ fn build_ctud() -> TypeAttributes {
 /// ET shows elapsed time while timing.
 fn build_ton() -> TypeAttributes {
     use FunctionBlockVarType::*;
-    build_function_block("TON", &[
-        ("IN", bool_type(), Input),   // Timer input
-        ("PT", time_type(), Input),   // Preset time
-        ("Q", bool_type(), Output),   // Timer output
-        ("ET", time_type(), Output),  // Elapsed time
-    ])
+    build_function_block(
+        "TON",
+        &[
+            ("IN", bool_type(), Input),  // Timer input
+            ("PT", time_type(), Input),  // Preset time
+            ("Q", bool_type(), Output),  // Timer output
+            ("ET", time_type(), Output), // Elapsed time
+        ],
+    )
 }
 
 /// Creates the TOF (Off-Delay Timer) function block.
@@ -207,12 +238,15 @@ fn build_ton() -> TypeAttributes {
 /// ET shows elapsed time while timing.
 fn build_tof() -> TypeAttributes {
     use FunctionBlockVarType::*;
-    build_function_block("TOF", &[
-        ("IN", bool_type(), Input),   // Timer input
-        ("PT", time_type(), Input),   // Preset time
-        ("Q", bool_type(), Output),   // Timer output
-        ("ET", time_type(), Output),  // Elapsed time
-    ])
+    build_function_block(
+        "TOF",
+        &[
+            ("IN", bool_type(), Input),  // Timer input
+            ("PT", time_type(), Input),  // Preset time
+            ("Q", bool_type(), Output),  // Timer output
+            ("ET", time_type(), Output), // Elapsed time
+        ],
+    )
 }
 
 /// Creates the TP (Pulse Timer) function block.
@@ -220,12 +254,15 @@ fn build_tof() -> TypeAttributes {
 /// Generates a pulse of duration PT when triggered by rising edge of IN.
 fn build_tp() -> TypeAttributes {
     use FunctionBlockVarType::*;
-    build_function_block("TP", &[
-        ("IN", bool_type(), Input),   // Timer input
-        ("PT", time_type(), Input),   // Preset time (pulse duration)
-        ("Q", bool_type(), Output),   // Timer output
-        ("ET", time_type(), Output),  // Elapsed time
-    ])
+    build_function_block(
+        "TP",
+        &[
+            ("IN", bool_type(), Input),  // Timer input
+            ("PT", time_type(), Input),  // Preset time (pulse duration)
+            ("Q", bool_type(), Output),  // Timer output
+            ("ET", time_type(), Output), // Elapsed time
+        ],
+    )
 }
 
 // =============================================================================
@@ -259,7 +296,9 @@ pub fn get_all_stdlib_function_blocks() -> Vec<(&'static str, TypeAttributes)> {
 ///
 /// This is useful for checking if a type name is a standard library type.
 pub fn stdlib_function_block_names() -> &'static [&'static str] {
-    &["sr", "rs", "r_trig", "f_trig", "ctu", "ctd", "ctud", "ton", "tof", "tp"]
+    &[
+        "sr", "rs", "r_trig", "f_trig", "ctu", "ctd", "ctud", "ton", "tof", "tp",
+    ]
 }
 
 /// Checks if a type name (lowercase) is a standard library function block.

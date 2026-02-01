@@ -363,7 +363,9 @@ impl TypeEnvironmentBuilder {
             }
         }
         if self.has_stdlib_function_blocks {
-            for (name, type_attrs) in crate::intermediates::stdlib_function_block::get_all_stdlib_function_blocks() {
+            for (name, type_attrs) in
+                crate::intermediates::stdlib_function_block::get_all_stdlib_function_blocks()
+            {
                 env.insert_type(&TypeName::from(name), type_attrs)?;
             }
         }
