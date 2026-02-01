@@ -23,7 +23,6 @@ P2014,SimpleTypeDeclMissingInit,Simple type declaration requires an initializer
 P2015,SubrangeBaseTypeNotNumeric,Subrange base type must be numeric
 P2016,SubrangeOutOfBounds,Subrange is outside base type bounds
 P2017,StructFieldMissingType,Structure field missing type specification
-P2018,NestedStructuresNotSupported,Nested structures not supported
 P2019,InvalidSimpleTypeDecl,Invalid simple type declaration
 P2020,EnumerationTooManyValues,Enumeration has too many unique values
 P2021,StructFieldTypeNotDeclared,Structure field references undeclared type
