@@ -283,7 +283,7 @@ pub struct Body {
     pub il: Option<String>,
     pub fbd: bool,
     pub ld: bool,
-    pub sfc: bool,
+    pub sfc: Option<SfcBody>,
 }
 
 /// ST body with text content and position information
@@ -294,6 +294,54 @@ pub struct StBody {
     pub line_offset: usize,
     /// Column offset (0-based) where the text content starts
     pub col_offset: usize,
+}
+
+/// SFC body containing steps, transitions, and action blocks
+#[derive(Debug, Clone, Default)]
+pub struct SfcBody {
+    pub steps: Vec<SfcStep>,
+    pub transitions: Vec<SfcTransition>,
+    pub action_blocks: Vec<SfcActionBlock>,
+}
+
+/// SFC step element
+#[derive(Debug, Clone)]
+pub struct SfcStep {
+    pub name: String,
+    pub initial_step: bool,
+    pub global_id: Option<String>,
+}
+
+/// SFC transition element
+#[derive(Debug, Clone)]
+pub struct SfcTransition {
+    pub name: Option<String>,
+    pub priority: Option<u32>,
+    pub global_id: Option<String>,
+    /// Inline ST condition
+    pub condition_st: Option<StBody>,
+    /// Reference to named transition
+    pub condition_reference: Option<String>,
+    /// Source step names
+    pub from_steps: Vec<String>,
+    /// Target step names
+    pub to_steps: Vec<String>,
+}
+
+/// SFC action block - associates actions with steps
+#[derive(Debug, Clone)]
+pub struct SfcActionBlock {
+    pub step_name: String,
+    pub actions: Vec<SfcActionAssociation>,
+}
+
+/// SFC action association with qualifier
+#[derive(Debug, Clone)]
+pub struct SfcActionAssociation {
+    pub action_name: String,
+    pub qualifier: Option<String>,
+    pub duration: Option<String>,
+    pub indicator: Option<String>,
 }
 
 /// Container for actions
@@ -474,7 +522,7 @@ impl Body {
             Some("FBD")
         } else if self.ld {
             Some("LD")
-        } else if self.sfc {
+        } else if self.sfc.is_some() {
             Some("SFC")
         } else {
             None
