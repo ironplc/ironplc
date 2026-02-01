@@ -320,6 +320,7 @@ impl Default for TypeEnvironment {
 
 pub struct TypeEnvironmentBuilder {
     has_elementary_types: bool,
+    has_stdlib_function_blocks: bool,
 }
 
 impl TypeEnvironmentBuilder {
@@ -327,6 +328,7 @@ impl TypeEnvironmentBuilder {
     pub fn new() -> Self {
         Self {
             has_elementary_types: false,
+            has_stdlib_function_blocks: false,
         }
     }
 
@@ -334,6 +336,18 @@ impl TypeEnvironmentBuilder {
     /// The elementary types are the types that are built into the language.
     pub fn with_elementary_types(mut self) -> Self {
         self.has_elementary_types = true;
+        self
+    }
+
+    /// Adds the standard library function blocks to the type environment.
+    ///
+    /// This includes:
+    /// - Bistable function blocks: SR, RS
+    /// - Edge detection: R_TRIG, F_TRIG
+    /// - Counters: CTU, CTD, CTUD
+    /// - Timers: TON, TOF, TP
+    pub fn with_stdlib_function_blocks(mut self) -> Self {
+        self.has_stdlib_function_blocks = true;
         self
     }
 
@@ -346,6 +360,11 @@ impl TypeEnvironmentBuilder {
                     &TypeName::from(name),
                     crate::type_attributes::TypeAttributes::elementary(representation.clone()),
                 )?;
+            }
+        }
+        if self.has_stdlib_function_blocks {
+            for (name, type_attrs) in crate::intermediates::stdlib_function_block::get_all_stdlib_function_blocks() {
+                env.insert_type(&TypeName::from(name), type_attrs)?;
             }
         }
         Ok(env)
@@ -770,5 +789,33 @@ mod tests {
         assert!(env
             .validate_type_usage(&TypeName::from("MY_FB"), &UsageContext::FunctionReturn)
             .is_err());
+    }
+
+    #[test]
+    fn type_environment_builder_with_stdlib_function_blocks_then_contains_all() {
+        let env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .with_stdlib_function_blocks()
+            .build()
+            .unwrap();
+
+        // Check that all 10 stdlib function blocks are present
+        assert!(env.get(&TypeName::from("ton")).is_some());
+        assert!(env.get(&TypeName::from("tof")).is_some());
+        assert!(env.get(&TypeName::from("tp")).is_some());
+        assert!(env.get(&TypeName::from("ctu")).is_some());
+        assert!(env.get(&TypeName::from("ctd")).is_some());
+        assert!(env.get(&TypeName::from("ctud")).is_some());
+        assert!(env.get(&TypeName::from("r_trig")).is_some());
+        assert!(env.get(&TypeName::from("f_trig")).is_some());
+        assert!(env.get(&TypeName::from("sr")).is_some());
+        assert!(env.get(&TypeName::from("rs")).is_some());
+
+        // Check that a stdlib FB has the correct type
+        let ton = env.get(&TypeName::from("ton")).unwrap();
+        assert!(ton.representation.is_function_block());
+
+        // Check that the span is marked as builtin
+        assert!(ton.span.is_builtin());
     }
 }
