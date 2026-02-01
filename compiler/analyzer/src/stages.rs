@@ -62,6 +62,7 @@ pub(crate) fn resolve_types(
 
     let mut type_environment = TypeEnvironmentBuilder::new()
         .with_elementary_types()
+        .with_stdlib_function_blocks()
         .build()
         .map_err(|err| vec![err])?;
 
