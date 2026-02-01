@@ -26,7 +26,7 @@ use super::schema::{
 pub fn parse_plcopen_xml(xml_content: &str, file_id: &FileId) -> Result<Project, Diagnostic> {
     let doc = roxmltree::Document::parse(xml_content).map_err(|e| {
         Diagnostic::problem(
-            Problem::SyntaxError,
+            Problem::XmlMalformed,
             Label::file(file_id.clone(), format!("XML parse error: {}", e)),
         )
     })?;
@@ -34,7 +34,7 @@ pub fn parse_plcopen_xml(xml_content: &str, file_id: &FileId) -> Result<Project,
     let root = doc.root_element();
     if !root.has_tag_name("project") {
         return Err(Diagnostic::problem(
-            Problem::SyntaxError,
+            Problem::XmlSchemaViolation,
             Label::file(
                 file_id.clone(),
                 format!(
@@ -45,8 +45,9 @@ pub fn parse_plcopen_xml(xml_content: &str, file_id: &FileId) -> Result<Project,
         ));
     }
 
-    parse_project(&doc, root)
-        .map_err(|e| Diagnostic::problem(Problem::SyntaxError, Label::file(file_id.clone(), e)))
+    parse_project(&doc, root).map_err(|e| {
+        Diagnostic::problem(Problem::XmlSchemaViolation, Label::file(file_id.clone(), e))
+    })
 }
 
 fn parse_project(doc: &roxmltree::Document, node: roxmltree::Node) -> Result<Project, String> {

@@ -18,7 +18,7 @@ use crate::xml::{position::parse_plcopen_xml, transform::transform_project};
 /// Returns a `Diagnostic` if:
 /// - The XML is malformed (P0006)
 /// - The XML doesn't conform to PLCopen schema (P0007)
-/// - An unsupported body language is used (P9003)
+/// - An unsupported body language is used (P9999 - not yet implemented)
 pub fn parse(content: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
     debug!("Parsing PLCopen XML file: {}", file_id);
 
@@ -85,6 +85,7 @@ mod tests {
         assert!(result.is_err());
 
         let diagnostic = result.unwrap_err();
+        assert_eq!(diagnostic.code, "P0006");
         assert!(diagnostic.primary.message.contains("XML parse error"));
     }
 
@@ -97,6 +98,9 @@ mod tests {
 
         let result = parse(xml, &test_file_id());
         assert!(result.is_err());
+
+        let diagnostic = result.unwrap_err();
+        assert_eq!(diagnostic.code, "P0007");
     }
 
     #[test]

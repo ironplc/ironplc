@@ -1,0 +1,42 @@
+=====
+P0006
+=====
+
+.. problem-summary:: P0006
+
+This error occurs when the compiler encounters a PLCopen XML file that is not valid XML. The file cannot be parsed because it violates XML syntax rules.
+
+Example
+-------
+
+This error typically occurs due to:
+
+1. Unclosed tags
+2. Mismatched tag names
+3. Invalid characters in the document
+4. Missing XML declaration
+5. Malformed attribute syntax
+
+.. code-block:: text
+
+   <?xml version="1.0" encoding="UTF-8"?>
+   <project xmlns="http://www.plcopen.org/xml/tc6_0201">
+     <fileHeader companyName="Test" productName="Test"
+     <!-- Missing closing > and rest of document -->
+
+The XML parser will report this as malformed because the opening tag is incomplete.
+
+To fix this error, ensure your XML file is well-formed:
+
+1. All tags must be properly closed
+2. Tag names must match exactly (case-sensitive)
+3. Attribute values must be quoted
+4. Special characters must be escaped (e.g., ``&lt;`` for ``<``)
+
+.. code-block:: xml
+
+   <?xml version="1.0" encoding="UTF-8"?>
+   <project xmlns="http://www.plcopen.org/xml/tc6_0201">
+     <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
+     <!-- Rest of valid XML document -->
+   </project>
