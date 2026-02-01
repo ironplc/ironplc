@@ -15,16 +15,21 @@ use ironplc_dsl::{
         SubrangeSpecification, SubrangeSpecificationKind, TypeName, VarDecl, VariableIdentifier,
         VariableType,
     },
+    configuration::{
+        ConfigurationDeclaration, ProgramConfiguration, ResourceDeclaration, TaskConfiguration,
+    },
     core::{FileId, Id, SourceSpan},
     diagnostic::{Diagnostic, Label},
     textual::{Statements, StmtKind},
+    time::DurationLiteral,
 };
 use ironplc_parser::options::ParseOptions;
 use ironplc_problems::Problem;
 
 use super::schema::{
-    ArrayType, DataType, DataTypeDecl, Dimension, EnumType, Interface, Pou, PouType, Project,
-    StructType, SubrangeSigned, SubrangeUnsigned, VarList, Variable,
+    ArrayType, Configuration, DataType, DataTypeDecl, Dimension, EnumType, Instances, Interface,
+    Pou, PouInstance, PouType, Project, Resource, StructType, SubrangeSigned, SubrangeUnsigned,
+    Task, VarList, Variable,
 };
 
 /// Create a SourceSpan for the given file with no position info
@@ -50,6 +55,16 @@ pub fn transform_project(project: &Project, file_id: &FileId) -> Result<Library,
     for pou in &project.types.pous.pou {
         let elem = transform_pou(pou, file_id)?;
         library.elements.push(elem);
+    }
+
+    // Transform instances (configurations)
+    if let Some(ref instances) = project.instances {
+        let configs = transform_instances(instances, file_id)?;
+        for config in configs {
+            library
+                .elements
+                .push(LibraryElementKind::ConfigurationDeclaration(config));
+        }
     }
 
     Ok(library)
@@ -594,6 +609,225 @@ fn transform_body_statements(pou: &Pou, file_id: &FileId) -> Result<Vec<StmtKind
     }
 }
 
+// ============================================================================
+// Configuration transforms
+// ============================================================================
+
+/// Transform instances container to configuration declarations
+fn transform_instances(
+    instances: &Instances,
+    file_id: &FileId,
+) -> Result<Vec<ConfigurationDeclaration>, Diagnostic> {
+    instances
+        .configurations
+        .configuration
+        .iter()
+        .map(|config| transform_configuration(config, file_id))
+        .collect()
+}
+
+/// Transform a configuration declaration
+fn transform_configuration(
+    config: &Configuration,
+    file_id: &FileId,
+) -> Result<ConfigurationDeclaration, Diagnostic> {
+    let name = Id::from(config.name.as_str());
+
+    // Transform global variables
+    let global_var = transform_global_vars(&config.global_vars, file_id)?;
+
+    // Transform resources
+    let resource_decl: Result<Vec<_>, _> = config
+        .resource
+        .iter()
+        .map(|resource| transform_resource(resource, file_id))
+        .collect();
+
+    Ok(ConfigurationDeclaration {
+        name,
+        global_var,
+        resource_decl: resource_decl?,
+        fb_inits: vec![],
+        located_var_inits: vec![],
+    })
+}
+
+/// Transform a resource declaration
+fn transform_resource(
+    resource: &Resource,
+    file_id: &FileId,
+) -> Result<ResourceDeclaration, Diagnostic> {
+    let name = Id::from(resource.name.as_str());
+
+    // Transform global variables
+    let global_vars = transform_global_vars(&resource.global_vars, file_id)?;
+
+    // Transform tasks
+    let tasks: Result<Vec<_>, _> = resource
+        .task
+        .iter()
+        .map(|task| transform_task(task, file_id))
+        .collect();
+
+    // Transform program instances from the resource level
+    let mut programs: Vec<ProgramConfiguration> = resource
+        .pou_instance
+        .iter()
+        .map(|inst| transform_pou_instance(inst, None))
+        .collect();
+
+    // Also include program instances from tasks
+    for task in &resource.task {
+        for inst in &task.pou_instance {
+            programs.push(transform_pou_instance(inst, Some(&task.name)));
+        }
+    }
+
+    Ok(ResourceDeclaration {
+        name: name.clone(),
+        resource: name, // Use the same name for resource identifier
+        global_vars,
+        tasks: tasks?,
+        programs,
+    })
+}
+
+/// Transform a task configuration
+fn transform_task(task: &Task, file_id: &FileId) -> Result<TaskConfiguration, Diagnostic> {
+    let name = Id::from(task.name.as_str());
+
+    // Parse priority
+    let priority = task.priority.parse::<u32>().map_err(|_| {
+        Diagnostic::problem(
+            Problem::XmlSchemaViolation,
+            Label::span(
+                file_span(file_id),
+                format!("Invalid task priority: '{}'", task.priority),
+            ),
+        )
+    })?;
+
+    // Parse interval if present
+    let interval = if let Some(ref interval_str) = task.interval {
+        Some(parse_duration(interval_str, file_id)?)
+    } else {
+        None
+    };
+
+    Ok(TaskConfiguration {
+        name,
+        priority,
+        interval,
+    })
+}
+
+/// Transform a POU instance (program configuration)
+fn transform_pou_instance(instance: &PouInstance, task_name: Option<&str>) -> ProgramConfiguration {
+    ProgramConfiguration {
+        name: Id::from(instance.name.as_str()),
+        storage: None,
+        task_name: task_name.map(Id::from),
+        type_name: Id::from(instance.type_name.as_str()),
+        fb_tasks: vec![],
+        sources: vec![],
+        sinks: vec![],
+    }
+}
+
+/// Transform global variables from VarList
+fn transform_global_vars(
+    var_lists: &[VarList],
+    file_id: &FileId,
+) -> Result<Vec<VarDecl>, Diagnostic> {
+    let mut vars = vec![];
+    for var_list in var_lists {
+        vars.extend(transform_var_list(var_list, VariableType::Global, file_id)?);
+    }
+    Ok(vars)
+}
+
+/// Parse a duration string (e.g., "T#100ms", "T#1s") to DurationLiteral
+fn parse_duration(duration_str: &str, file_id: &FileId) -> Result<DurationLiteral, Diagnostic> {
+    use time::Duration;
+
+    let span = file_span(file_id);
+
+    // Strip the T# prefix if present
+    let value_part = duration_str
+        .strip_prefix("T#")
+        .or_else(|| duration_str.strip_prefix("t#"))
+        .unwrap_or(duration_str);
+
+    // Try to parse common duration formats
+    // Supports: Xms, Xs, Xm, Xh, Xd (and fractional values)
+    if let Some(ms) = value_part.strip_suffix("ms") {
+        let value: f64 = ms
+            .parse()
+            .map_err(|_| invalid_duration_error(duration_str, file_id))?;
+        let micros = (value * 1000.0) as i64;
+        return Ok(DurationLiteral {
+            span,
+            interval: Duration::microseconds(micros),
+        });
+    }
+    if let Some(s) = value_part.strip_suffix('s') {
+        let value: f64 = s
+            .parse()
+            .map_err(|_| invalid_duration_error(duration_str, file_id))?;
+        let micros = (value * 1_000_000.0) as i64;
+        return Ok(DurationLiteral {
+            span,
+            interval: Duration::microseconds(micros),
+        });
+    }
+    if let Some(m) = value_part.strip_suffix('m') {
+        let value: f64 = m
+            .parse()
+            .map_err(|_| invalid_duration_error(duration_str, file_id))?;
+        let micros = (value * 60.0 * 1_000_000.0) as i64;
+        return Ok(DurationLiteral {
+            span,
+            interval: Duration::microseconds(micros),
+        });
+    }
+    if let Some(h) = value_part.strip_suffix('h') {
+        let value: f64 = h
+            .parse()
+            .map_err(|_| invalid_duration_error(duration_str, file_id))?;
+        let micros = (value * 3600.0 * 1_000_000.0) as i64;
+        return Ok(DurationLiteral {
+            span,
+            interval: Duration::microseconds(micros),
+        });
+    }
+    if let Some(d) = value_part.strip_suffix('d') {
+        let value: f64 = d
+            .parse()
+            .map_err(|_| invalid_duration_error(duration_str, file_id))?;
+        let micros = (value * 86400.0 * 1_000_000.0) as i64;
+        return Ok(DurationLiteral {
+            span,
+            interval: Duration::microseconds(micros),
+        });
+    }
+
+    Err(invalid_duration_error(duration_str, file_id))
+}
+
+/// Create an error diagnostic for invalid duration values
+fn invalid_duration_error(value: &str, file_id: &FileId) -> Diagnostic {
+    Diagnostic::problem(
+        Problem::XmlSchemaViolation,
+        Label::span(
+            file_span(file_id),
+            format!(
+                "Invalid duration format: '{}'. Expected format like T#100ms, T#1s, T#1m",
+                value
+            ),
+        ),
+    )
+}
+
 /// Parse ST body text using the ST parser
 ///
 /// Uses the position information embedded in the StBody struct to provide
@@ -893,5 +1127,243 @@ END_IF;
             panic!("Expected statements body");
         };
         assert!(!stmts.body.is_empty(), "Expected parsed statements");
+    }
+
+    // ========================================================================
+    // Configuration transform tests
+    // ========================================================================
+
+    #[test]
+    fn transform_when_configuration_then_creates_declaration() {
+        let xml = format!(
+            r#"{}
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="Main" pouType="program">
+        <interface/>
+      </pou>
+    </pous>
+  </types>
+  <instances>
+    <configurations>
+      <configuration name="Config1">
+        <resource name="Resource1">
+          <task name="MainTask" priority="1" interval="T#100ms">
+            <pouInstance name="MainInstance" typeName="Main"/>
+          </task>
+        </resource>
+      </configuration>
+    </configurations>
+  </instances>
+</project>"#,
+            minimal_project_header()
+        );
+
+        let project = parse_project(&xml);
+        let library = transform_project(&project, &test_file_id()).unwrap();
+
+        // Should have program declaration and configuration declaration
+        assert_eq!(library.elements.len(), 2);
+
+        let LibraryElementKind::ConfigurationDeclaration(config_decl) = &library.elements[1] else {
+            panic!("Expected configuration declaration");
+        };
+        assert_eq!(config_decl.name.to_string(), "Config1");
+        assert_eq!(config_decl.resource_decl.len(), 1);
+    }
+
+    #[test]
+    fn transform_when_resource_then_creates_declaration() {
+        let xml = format!(
+            r#"{}
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="Main" pouType="program">
+        <interface/>
+      </pou>
+    </pous>
+  </types>
+  <instances>
+    <configurations>
+      <configuration name="Config1">
+        <resource name="CPU1">
+          <task name="FastTask" priority="1" interval="T#10ms"/>
+          <task name="SlowTask" priority="10" interval="T#1s"/>
+        </resource>
+      </configuration>
+    </configurations>
+  </instances>
+</project>"#,
+            minimal_project_header()
+        );
+
+        let project = parse_project(&xml);
+        let library = transform_project(&project, &test_file_id()).unwrap();
+
+        let LibraryElementKind::ConfigurationDeclaration(config_decl) = &library.elements[1] else {
+            panic!("Expected configuration declaration");
+        };
+
+        let resource = &config_decl.resource_decl[0];
+        assert_eq!(resource.name.to_string(), "CPU1");
+        assert_eq!(resource.tasks.len(), 2);
+    }
+
+    #[test]
+    fn transform_when_task_with_interval_then_parses_duration() {
+        let xml = format!(
+            r#"{}
+  <types>
+    <dataTypes/>
+    <pous/>
+  </types>
+  <instances>
+    <configurations>
+      <configuration name="Config1">
+        <resource name="CPU1">
+          <task name="PeriodicTask" priority="5" interval="T#100ms"/>
+        </resource>
+      </configuration>
+    </configurations>
+  </instances>
+</project>"#,
+            minimal_project_header()
+        );
+
+        let project = parse_project(&xml);
+        let library = transform_project(&project, &test_file_id()).unwrap();
+
+        let LibraryElementKind::ConfigurationDeclaration(config_decl) = &library.elements[0] else {
+            panic!("Expected configuration declaration");
+        };
+
+        let task = &config_decl.resource_decl[0].tasks[0];
+        assert_eq!(task.name.to_string(), "PeriodicTask");
+        assert_eq!(task.priority, 5);
+        assert!(task.interval.is_some());
+
+        // 100ms = 100,000 microseconds
+        let interval = task.interval.as_ref().unwrap();
+        assert_eq!(interval.interval, time::Duration::microseconds(100_000));
+    }
+
+    #[test]
+    fn transform_when_pou_instance_in_task_then_creates_program_config() {
+        let xml = format!(
+            r#"{}
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="Main" pouType="program">
+        <interface/>
+      </pou>
+    </pous>
+  </types>
+  <instances>
+    <configurations>
+      <configuration name="Config1">
+        <resource name="CPU1">
+          <task name="MainTask" priority="1" interval="T#100ms">
+            <pouInstance name="MainProgram" typeName="Main"/>
+          </task>
+        </resource>
+      </configuration>
+    </configurations>
+  </instances>
+</project>"#,
+            minimal_project_header()
+        );
+
+        let project = parse_project(&xml);
+        let library = transform_project(&project, &test_file_id()).unwrap();
+
+        let LibraryElementKind::ConfigurationDeclaration(config_decl) = &library.elements[1] else {
+            panic!("Expected configuration declaration");
+        };
+
+        let resource = &config_decl.resource_decl[0];
+        assert_eq!(resource.programs.len(), 1);
+
+        let program = &resource.programs[0];
+        assert_eq!(program.name.to_string(), "MainProgram");
+        assert_eq!(program.type_name.to_string(), "Main");
+        assert_eq!(program.task_name.as_ref().unwrap().to_string(), "MainTask");
+    }
+
+    #[test]
+    fn transform_when_pou_instance_at_resource_level_then_creates_program_config() {
+        let xml = format!(
+            r#"{}
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="Main" pouType="program">
+        <interface/>
+      </pou>
+    </pous>
+  </types>
+  <instances>
+    <configurations>
+      <configuration name="Config1">
+        <resource name="CPU1">
+          <pouInstance name="FreeRunning" typeName="Main"/>
+        </resource>
+      </configuration>
+    </configurations>
+  </instances>
+</project>"#,
+            minimal_project_header()
+        );
+
+        let project = parse_project(&xml);
+        let library = transform_project(&project, &test_file_id()).unwrap();
+
+        let LibraryElementKind::ConfigurationDeclaration(config_decl) = &library.elements[1] else {
+            panic!("Expected configuration declaration");
+        };
+
+        let resource = &config_decl.resource_decl[0];
+        assert_eq!(resource.programs.len(), 1);
+
+        let program = &resource.programs[0];
+        assert_eq!(program.name.to_string(), "FreeRunning");
+        assert!(program.task_name.is_none()); // No task association
+    }
+
+    #[test]
+    fn parse_duration_when_milliseconds_then_correct() {
+        let file_id = test_file_id();
+        let duration = parse_duration("T#100ms", &file_id).unwrap();
+        assert_eq!(duration.interval, time::Duration::microseconds(100_000));
+    }
+
+    #[test]
+    fn parse_duration_when_seconds_then_correct() {
+        let file_id = test_file_id();
+        let duration = parse_duration("T#2s", &file_id).unwrap();
+        assert_eq!(duration.interval, time::Duration::seconds(2));
+    }
+
+    #[test]
+    fn parse_duration_when_minutes_then_correct() {
+        let file_id = test_file_id();
+        let duration = parse_duration("T#5m", &file_id).unwrap();
+        assert_eq!(duration.interval, time::Duration::minutes(5));
+    }
+
+    #[test]
+    fn parse_duration_when_lowercase_prefix_then_correct() {
+        let file_id = test_file_id();
+        let duration = parse_duration("t#500ms", &file_id).unwrap();
+        assert_eq!(duration.interval, time::Duration::microseconds(500_000));
+    }
+
+    #[test]
+    fn parse_duration_when_no_prefix_then_correct() {
+        let file_id = test_file_id();
+        let duration = parse_duration("1s", &file_id).unwrap();
+        assert_eq!(duration.interval, time::Duration::seconds(1));
     }
 }
