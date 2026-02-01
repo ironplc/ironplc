@@ -17,7 +17,7 @@ This error typically occurs due to:
 4. Missing XML declaration
 5. Malformed attribute syntax
 
-.. code-block:: xml
+.. code-block:: text
 
    <?xml version="1.0" encoding="UTF-8"?>
    <project xmlns="http://www.plcopen.org/xml/tc6_0201">
