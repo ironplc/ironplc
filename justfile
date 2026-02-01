@@ -102,7 +102,8 @@ _version-unix version:
 commit-branch authorname authoremail branch message:
   git config --global user.name "{{authorname}}"
   git config --global user.email "{{authoremail}}"
-  git checkout -b {{branch}}
+  git fetch origin main
+  git checkout -b {{branch}} origin/main
   git commit -a -m "{{message}}"
 
 commit-version authorname authoremail version:
