@@ -292,18 +292,22 @@ pub fn get_all_stdlib_function_blocks() -> Vec<(&'static str, TypeAttributes)> {
     ]
 }
 
-/// Returns the set of standard library function block names (lowercase).
+/// Returns the set of standard library function block names.
 ///
 /// This is useful for checking if a type name is a standard library type.
 pub fn stdlib_function_block_names() -> &'static [&'static str] {
     &[
-        "sr", "rs", "r_trig", "f_trig", "ctu", "ctd", "ctud", "ton", "tof", "tp",
+        "SR", "RS", "R_TRIG", "F_TRIG", "CTU", "CTD", "CTUD", "TON", "TOF", "TP",
     ]
 }
 
-/// Checks if a type name (lowercase) is a standard library function block.
-pub fn is_stdlib_function_block(name: &str) -> bool {
-    stdlib_function_block_names().contains(&name)
+/// Checks if a name is a standard library function block.
+///
+/// Uses `Id` equality which is case-insensitive per IEC 61131-3.
+pub fn is_stdlib_function_block(name: &Id) -> bool {
+    stdlib_function_block_names()
+        .iter()
+        .any(|stdlib_name| *name == Id::from(stdlib_name))
 }
 
 #[cfg(test)]
@@ -375,13 +379,14 @@ mod tests {
 
     #[test]
     fn is_stdlib_function_block_when_ton_then_true() {
-        assert!(is_stdlib_function_block("ton"));
-        assert!(is_stdlib_function_block("TON".to_lowercase().as_str()));
+        assert!(is_stdlib_function_block(&Id::from("ton")));
+        assert!(is_stdlib_function_block(&Id::from("TON")));
+        assert!(is_stdlib_function_block(&Id::from("Ton")));
     }
 
     #[test]
     fn is_stdlib_function_block_when_unknown_then_false() {
-        assert!(!is_stdlib_function_block("my_custom_fb"));
+        assert!(!is_stdlib_function_block(&Id::from("my_custom_fb")));
     }
 
     #[test]

@@ -54,8 +54,7 @@ impl Visitor<Diagnostic> for RuleStdlibTypeRedefinition {
         &mut self,
         node: &FunctionBlockDeclaration,
     ) -> Result<(), Diagnostic> {
-        let name_lower = node.name.name.lower_case();
-        if is_stdlib_function_block(name_lower.as_str()) {
+        if is_stdlib_function_block(&node.name.name) {
             self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::StdlibTypeRedefinition,
