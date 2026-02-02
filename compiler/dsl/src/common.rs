@@ -543,6 +543,7 @@ pub enum SpecificationKind<T> {
     Inline(T),
 }
 
+
 /// Elementary type names.
 ///
 /// See section 2.3.1.
@@ -1447,8 +1448,15 @@ impl VarDecl {
                     SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
                 }
             }
-            InitialValueAssignmentKind::Structure(_structure_initialization_declaration) => todo!(),
-            InitialValueAssignmentKind::Array(_array_initial_value_assignment) => todo!(),
+            InitialValueAssignmentKind::Structure(structure_initialization_declaration) => {
+                TypeReference::Named(structure_initialization_declaration.type_name.clone())
+            }
+            InitialValueAssignmentKind::Array(array_initial_value_assignment) => {
+                match &array_initial_value_assignment.spec {
+                    SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
+                    SpecificationKind::Inline(_) => TypeReference::Inline,
+                }
+            }
             InitialValueAssignmentKind::LateResolvedType(type_name) => {
                 TypeReference::Named(type_name.clone())
             }
