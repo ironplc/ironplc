@@ -511,6 +511,22 @@ impl fmt::Display for TypeName {
     }
 }
 
+/// Represents the type of a variable declaration.
+///
+/// This enum distinguishes between named types (which can be looked up in a
+/// type environment) and inline/anonymous type definitions (which have no
+/// named type to look up).
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypeReference {
+    /// A reference to a named type that can be resolved in the type environment.
+    Named(TypeName),
+    /// An inline/anonymous type definition with no type name to look up.
+    /// Examples: `ARRAY[1..10] OF INT`, `INT(0..100)`, `(RED, GREEN, BLUE)`.
+    Inline,
+    /// No type specification was provided.
+    Unspecified,
+}
+
 /// Elementary type names.
 ///
 /// See section 2.3.1.
@@ -1350,33 +1366,39 @@ impl VarDecl {
         self
     }
 
-    pub fn type_name(&self) -> Option<TypeName> {
+    pub fn type_name(&self) -> TypeReference {
         match &self.initializer {
-            InitialValueAssignmentKind::None(_source_span) => None,
+            InitialValueAssignmentKind::None(_source_span) => TypeReference::Unspecified,
             InitialValueAssignmentKind::Simple(simple_initializer) => {
-                Some(simple_initializer.type_name.clone())
+                TypeReference::Named(simple_initializer.type_name.clone())
             }
             InitialValueAssignmentKind::String(string_initializer) => {
-                Some(string_initializer.type_name())
+                TypeReference::Named(string_initializer.type_name())
             }
-            // TODO The enumerated values doesn't have a named type - we probably want to create a type name here
-            InitialValueAssignmentKind::EnumeratedValues(_enumerated_values_initializer) => None,
+            InitialValueAssignmentKind::EnumeratedValues(_enumerated_values_initializer) => {
+                TypeReference::Inline
+            }
             InitialValueAssignmentKind::EnumeratedType(enumerated_initial_value_assignment) => {
-                Some(enumerated_initial_value_assignment.type_name.clone())
+                TypeReference::Named(enumerated_initial_value_assignment.type_name.clone())
             }
             InitialValueAssignmentKind::FunctionBlock(function_block_initial_value_assignment) => {
-                Some(function_block_initial_value_assignment.type_name.clone())
+                TypeReference::Named(function_block_initial_value_assignment.type_name.clone())
             }
             InitialValueAssignmentKind::Subrange(subrange_specification_kind) => {
                 match subrange_specification_kind {
-                    // TODO should generate a type name for these anonymous types
-                    SubrangeSpecificationKind::Specification(_subrange_specification) => None,
-                    SubrangeSpecificationKind::Type(type_name) => Some(type_name.clone()),
+                    SubrangeSpecificationKind::Specification(_subrange_specification) => {
+                        TypeReference::Inline
+                    }
+                    SubrangeSpecificationKind::Type(type_name) => {
+                        TypeReference::Named(type_name.clone())
+                    }
                 }
             }
             InitialValueAssignmentKind::Structure(_structure_initialization_declaration) => todo!(),
             InitialValueAssignmentKind::Array(_array_initial_value_assignment) => todo!(),
-            InitialValueAssignmentKind::LateResolvedType(type_name) => Some(type_name.clone()),
+            InitialValueAssignmentKind::LateResolvedType(type_name) => {
+                TypeReference::Named(type_name.clone())
+            }
         }
     }
 }
