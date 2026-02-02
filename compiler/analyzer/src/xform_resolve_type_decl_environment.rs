@@ -51,7 +51,7 @@ impl TypeEnvironment {
                     DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
                         type_name: node.data_type_name,
                         spec_init: EnumeratedSpecificationInit {
-                            spec: EnumeratedSpecificationKind::TypeName(node.base_type_name),
+                            spec: SpecificationKind::Named(node.base_type_name),
                             default: None,
                         },
                     }),
@@ -69,13 +69,13 @@ impl TypeEnvironment {
                     size: _,
                 } => Ok(DataTypeDeclarationKind::Array(ArrayDeclaration {
                     type_name: node.data_type_name,
-                    spec: ArraySpecificationKind::Type(node.base_type_name),
+                    spec: SpecificationKind::Named(node.base_type_name),
                     init: vec![],
                 })),
                 IntermediateType::Subrange { .. } => {
                     Ok(DataTypeDeclarationKind::Subrange(SubrangeDeclaration {
                         type_name: node.data_type_name,
-                        spec: SubrangeSpecificationKind::Type(node.base_type_name),
+                        spec: SpecificationKind::Named(node.base_type_name),
                         default: None,
                     }))
                 }
@@ -179,7 +179,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // Enumeration declaration can define a set of values
         // or rename another enumeration.
         match &node.spec_init.spec {
-            EnumeratedSpecificationKind::TypeName(base_type_name) => {
+            SpecificationKind::Named(base_type_name) => {
                 // Alias of another enumeration: base must already exist because we sort the items
                 if self.get(base_type_name).is_none() {
                     return Err(Diagnostic::problem(
@@ -191,7 +191,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // Use explicit alias insertion to avoid duplicating representation logic
                 self.insert_alias(&node.type_name, base_type_name)?;
             }
-            EnumeratedSpecificationKind::Values(spec_values) => {
+            SpecificationKind::Inline(spec_values) => {
                 let attributes = enumeration::try_from_values(spec_values)?;
                 self.insert_type(&node.type_name, attributes)?;
             }
@@ -324,7 +324,7 @@ END_TYPE
                     EnumerationDeclaration {
                         type_name: TypeName::from("LEVEL_ALIAS"),
                         spec_init: EnumeratedSpecificationInit {
-                            spec: EnumeratedSpecificationKind::TypeName(TypeName::from("LEVEL")),
+                            spec: SpecificationKind::Named(TypeName::from("LEVEL")),
                             default: None,
                         },
                     },

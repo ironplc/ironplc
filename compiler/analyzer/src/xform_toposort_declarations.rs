@@ -272,7 +272,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
     ) -> Result<Self::Value, Diagnostic> {
         let this = self.declarations.add_node(&node.type_name.name);
 
-        if let EnumeratedSpecificationKind::TypeName(parent) = &node.spec_init.spec {
+        if let SpecificationKind::Named(parent) = &node.spec_init.spec {
             let depends_on = self.declarations.add_node(&parent.name);
             self.declarations.graph.add_edge(depends_on, this, ());
         };
@@ -286,7 +286,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
     ) -> Result<Self::Value, Diagnostic> {
         let this = self.declarations.add_node(&node.type_name.name);
 
-        if let SubrangeSpecificationKind::Type(parent) = &node.spec {
+        if let SpecificationKind::Named(parent) = &node.spec {
             let depends_on = self.declarations.add_node(&parent.name);
             self.declarations.graph.add_edge(depends_on, this, ());
         };
@@ -301,11 +301,11 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         let this = self.declarations.add_node(&node.type_name.name);
 
         match &node.spec {
-            ArraySpecificationKind::Type(parent) => {
+            SpecificationKind::Named(parent) => {
                 let depends_on = self.declarations.add_node(&parent.name);
                 self.declarations.graph.add_edge(depends_on, this, ());
             }
-            ArraySpecificationKind::Subranges(array_subranges) => {
+            SpecificationKind::Inline(array_subranges) => {
                 let depends_on = self.declarations.add_node(&array_subranges.type_name.name);
                 self.declarations.graph.add_edge(depends_on, this, ());
             }

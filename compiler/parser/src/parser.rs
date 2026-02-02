@@ -463,7 +463,7 @@ parser! {
       (spec, default)
     }
     rule subrange_specification__with_range() -> SubrangeSpecificationKind
-      = type_name:integer_type_name() _ tok(TokenType::LeftParen) _ subrange:subrange() _ tok(TokenType::RightParen) { SubrangeSpecificationKind::Specification(SubrangeSpecification{ type_name, subrange }) }
+      = type_name:integer_type_name() _ tok(TokenType::LeftParen) _ subrange:subrange() _ tok(TokenType::RightParen) { SpecificationKind::Inline(SubrangeSpecification{ type_name, subrange }) }
     rule subrange() -> Subrange = start:signed_integer() tok(TokenType::Range) end:signed_integer() { Subrange{start, end} }
 
     rule enumerated_type_declaration__with_value() -> EnumerationDeclaration =
@@ -507,7 +507,7 @@ parser! {
       tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { v }
     rule enumerated_specification() -> EnumeratedSpecificationKind  =
       tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { EnumeratedSpecificationKind::values(v) }
-      / name:enumerated_type_name() { EnumeratedSpecificationKind::TypeName(name) }
+      / name:enumerated_type_name() { SpecificationKind::Named(name) }
     rule enumerated_value() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:identifier() { EnumeratedValue {type_name, value} }
     rule array_type_declaration() -> ArrayDeclaration = type_name:array_type_name() _ tok(TokenType::Colon) _ spec_and_init:array_spec_init() {
       ArrayDeclaration {
@@ -523,7 +523,7 @@ parser! {
       }
     }
     rule array_specification() -> ArraySpecificationKind = tok(TokenType::Array) _ tok(TokenType::LeftBracket) _ ranges:subrange() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) _ tok(TokenType::Of) _ type_name:non_generic_type_name() {
-      ArraySpecificationKind::Subranges(ArraySubranges { ranges, type_name } )
+      SpecificationKind::Inline(ArraySubranges { ranges, type_name } )
     }
     rule array_initialization() -> Vec<ArrayInitialElementKind> = tok(TokenType::LeftBracket) _ init:array_initial_elements() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) { init }
     rule array_initial_elements() -> ArrayInitialElementKind = size:integer() _ tok(TokenType::LeftParen) ai:array_initial_element()? tok(TokenType::RightParen) { ArrayInitialElementKind::repeated(size, ai) } / array_initial_element()
@@ -574,7 +574,7 @@ parser! {
       / i:initialized_structure__without_ambiguous() { InitialValueAssignmentKind::Structure(i) }
       / spec_init:enumerated_spec_init__with_value() {
         match spec_init.0 {
-          EnumeratedSpecificationKind::TypeName(id) => {
+          SpecificationKind::Named(id) => {
             InitialValueAssignmentKind::EnumeratedType(
               EnumeratedInitialValueAssignment {
                 type_name: id,
@@ -582,7 +582,7 @@ parser! {
               }
             )
           },
-          EnumeratedSpecificationKind::Values(values) => {
+          SpecificationKind::Inline(values) => {
             InitialValueAssignmentKind::EnumeratedValues(
               EnumeratedValuesInitializer {
                 values: values.values,
@@ -627,13 +627,13 @@ parser! {
       // An enumerated_specification defined with a value is unambiguous the value
       // is not a valid constant.
       match spec {
-        EnumeratedSpecificationKind::TypeName(name) => {
+        SpecificationKind::Named(name) => {
           InitialValueAssignmentKind::EnumeratedType(EnumeratedInitialValueAssignment {
             type_name: name,
             initial_value: Some(init),
           })
         },
-        EnumeratedSpecificationKind::Values(values) => {
+        SpecificationKind::Inline(values) => {
           InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer {
             values: values.values,
             initial_value: Some(init),

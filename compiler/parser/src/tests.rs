@@ -5,8 +5,8 @@ mod test {
         ConstantKind, DataTypeDeclarationKind, DeclarationQualifier, EnumeratedSpecificationInit,
         EnumerationDeclaration, FunctionBlockBodyKind, FunctionBlockDeclaration,
         FunctionDeclaration, InitialValueAssignmentKind, Library, LibraryElementKind,
-        ProgramDeclaration, RealLiteral, SimpleInitializer, TypeName, VarDecl, VariableIdentifier,
-        VariableType,
+        ProgramDeclaration, RealLiteral, SimpleInitializer, TypeName, TypeReference, VarDecl,
+        VariableIdentifier, VariableType,
     };
     use dsl::configuration::{
         ConfigurationDeclaration, ProgramConfiguration, ResourceDeclaration, TaskConfiguration,
@@ -675,8 +675,8 @@ END_FUNCTION";
         let LibraryElementKind::FunctionDeclaration(func) = &lib.elements[0] else {
             unreachable!()
         };
-        let type_name = func.variables[0].type_name().unwrap();
-        assert_eq!(type_name, TypeName::from("ANY_INT"));
+        let type_ref = func.variables[0].type_name();
+        assert_eq!(type_ref, TypeReference::Named(TypeName::from("ANY_INT")));
     }
 
     #[test]

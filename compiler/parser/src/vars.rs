@@ -37,13 +37,13 @@ impl From<IncomplVarDecl> for VarDecl {
             }
             VariableSpecificationKind::Subrange(node) => InitialValueAssignmentKind::Subrange(node),
             VariableSpecificationKind::Enumerated(node) => match node {
-                EnumeratedSpecificationKind::TypeName(ty) => {
+                SpecificationKind::Named(ty) => {
                     InitialValueAssignmentKind::EnumeratedType(EnumeratedInitialValueAssignment {
                         type_name: ty,
                         initial_value: None,
                     })
                 }
-                EnumeratedSpecificationKind::Values(values) => {
+                SpecificationKind::Inline(values) => {
                     InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer {
                         values: values.values,
                         initial_value: None,

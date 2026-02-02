@@ -57,8 +57,8 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
         node: &EnumerationDeclaration,
     ) -> Result<(), Diagnostic> {
         match &node.spec_init.spec {
-            EnumeratedSpecificationKind::TypeName(_) => Ok(()),
-            EnumeratedSpecificationKind::Values(spec) => {
+            SpecificationKind::Named(_) => Ok(()),
+            SpecificationKind::Inline(spec) => {
                 let mut seen_values: HashSet<&Id> = HashSet::new();
                 for current in &spec.values {
                     // TODO this needs to be updated - this doesn't do

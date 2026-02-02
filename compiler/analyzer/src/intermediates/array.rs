@@ -26,7 +26,7 @@ pub fn try_from(
     type_environment: &TypeEnvironment,
 ) -> Result<IntermediateResult, Diagnostic> {
     match spec {
-        ArraySpecificationKind::Subranges(array_subranges) => {
+        SpecificationKind::Inline(array_subranges) => {
             // Array with explicit subranges: MY_ARRAY : ARRAY [1..10, 1..5] OF INT;
             let element_type_name = &array_subranges.type_name;
             let element_type = type_environment.get(element_type_name).ok_or_else(|| {
@@ -51,7 +51,7 @@ pub fn try_from(
                 },
             )))
         }
-        ArraySpecificationKind::Type(base_type_name) => {
+        SpecificationKind::Named(base_type_name) => {
             // Array type alias: MY_ARRAY : OTHER_ARRAY;
             if type_environment.get(base_type_name).is_none() {
                 return Err(Diagnostic::problem(
@@ -372,7 +372,7 @@ mod tests {
             type_name: TypeName::from("int"),
         };
 
-        let spec = ArraySpecificationKind::Subranges(array_subranges);
+        let spec = SpecificationKind::Inline(array_subranges);
         let result = try_from(&TypeName::from("MY_ARRAY"), &spec, &env);
         assert!(result.is_ok());
 
@@ -413,7 +413,7 @@ mod tests {
         )
         .unwrap();
 
-        let spec = ArraySpecificationKind::Type(TypeName::from("BASE_ARRAY"));
+        let spec = SpecificationKind::Named(TypeName::from("BASE_ARRAY"));
         let result = try_from(&TypeName::from("ALIAS_ARRAY"), &spec, &env);
         assert!(result.is_ok());
 
@@ -448,7 +448,7 @@ mod tests {
             type_name: TypeName::from("MISSING_TYPE"),
         };
 
-        let spec = ArraySpecificationKind::Subranges(array_subranges);
+        let spec = SpecificationKind::Inline(array_subranges);
         let result = try_from(&TypeName::from("MY_ARRAY"), &spec, &env);
         assert!(result.is_err());
         let error = result.unwrap_err();
@@ -459,7 +459,7 @@ mod tests {
     fn try_from_with_missing_base_array_type_then_error() {
         let env = TypeEnvironment::new(); // Empty environment
 
-        let spec = ArraySpecificationKind::Type(TypeName::from("MISSING_ARRAY"));
+        let spec = SpecificationKind::Named(TypeName::from("MISSING_ARRAY"));
         let result = try_from(&TypeName::from("ALIAS_ARRAY"), &spec, &env);
         assert!(result.is_err());
         let error = result.unwrap_err();
@@ -511,7 +511,7 @@ mod tests {
             type_name: TypeName::from("bool"),
         };
 
-        let spec = ArraySpecificationKind::Subranges(array_subranges);
+        let spec = SpecificationKind::Inline(array_subranges);
         let result = try_from(&TypeName::from("MATRIX"), &spec, &env);
         assert!(result.is_ok());
 
