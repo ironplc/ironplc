@@ -846,8 +846,8 @@ fn transform_sfc_body(sfc_body: &SfcBody, pou: &Pou, file_id: &FileId) -> Result
         .find(|s| s.initial_step)
         .ok_or_else(|| {
             Diagnostic::problem(
-                Problem::XmlSchemaViolation,
-                Label::span(file_span(file_id), "SFC body has no initial step"),
+                Problem::SfcMissingInitialStep,
+                Label::span(file_span(file_id), "SFC body"),
             )
         })?;
 
@@ -1720,5 +1720,35 @@ END_IF;
             .filter(|e| matches!(e, ElementKind::Action(_)))
             .count();
         assert_eq!(action_count, 1);
+    }
+
+    #[test]
+    fn transform_when_sfc_missing_initial_step_then_returns_error() {
+        let xml = format!(
+            r#"{}
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="SfcProgram" pouType="program">
+        <interface/>
+        <body>
+          <SFC>
+            <step localId="1" name="Step1"/>
+            <step localId="2" name="Step2"/>
+          </SFC>
+        </body>
+      </pou>
+    </pous>
+  </types>
+</project>"#,
+            minimal_project_header()
+        );
+
+        let project = parse_project(&xml);
+        let result = transform_project(&project, &test_file_id());
+
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(error.code, Problem::SfcMissingInitialStep.code());
     }
 }
