@@ -511,6 +511,38 @@ impl fmt::Display for TypeName {
     }
 }
 
+/// Represents the type of a variable declaration.
+///
+/// This enum distinguishes between named types (which can be looked up in a
+/// type environment) and inline/anonymous type definitions (which have no
+/// named type to look up).
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypeReference {
+    /// A reference to a named type that can be resolved in the type environment.
+    Named(TypeName),
+    /// An inline/anonymous type definition with no type name to look up.
+    /// Examples: `ARRAY[1..10] OF INT`, `INT(0..100)`, `(RED, GREEN, BLUE)`.
+    Inline,
+    /// No type specification was provided.
+    Unspecified,
+}
+
+/// Generic specification kind that distinguishes between a named type reference
+/// and an inline type definition.
+///
+/// This pattern is used for enumerations, subranges, and arrays where a
+/// declaration can either reference an existing named type or define the
+/// type inline.
+///
+/// See section 2.3.3.1.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SpecificationKind<T> {
+    /// A reference to a named type.
+    Named(TypeName),
+    /// An inline type definition.
+    Inline(T),
+}
+
 /// Elementary type names.
 ///
 /// See section 2.3.1.
@@ -836,7 +868,7 @@ pub struct EnumeratedSpecificationInit {
 impl EnumeratedSpecificationInit {
     pub fn values_and_default(values: Vec<&str>, default: &str) -> Self {
         EnumeratedSpecificationInit {
-            spec: EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues {
+            spec: SpecificationKind::Inline(EnumeratedSpecificationValues {
                 values: values.into_iter().map(EnumeratedValue::new).collect(),
             }),
             default: Some(EnumeratedValue::new(default)),
@@ -844,17 +876,11 @@ impl EnumeratedSpecificationInit {
     }
 }
 
+/// Enumeration specification: either a reference to a named enumeration type
+/// or an inline list of enumeration values.
+///
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
-pub enum EnumeratedSpecificationKind {
-    /// Enumeration declaration that renames another enumeration.
-    TypeName(TypeName),
-    /// Enumeration declaration that provides a list of values.
-    ///
-    /// Order of the values is important because the order declares the
-    /// default value if no default is specified directly.
-    Values(EnumeratedSpecificationValues),
-}
+pub type EnumeratedSpecificationKind = SpecificationKind<EnumeratedSpecificationValues>;
 
 impl EnumeratedSpecificationKind {
     pub fn from_values(values: Vec<&'static str>) -> EnumeratedSpecificationKind {
@@ -865,11 +891,27 @@ impl EnumeratedSpecificationKind {
                 value: Id::from(v),
             })
             .collect();
-        EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues { values })
+        SpecificationKind::Inline(EnumeratedSpecificationValues { values })
     }
 
     pub fn values(values: Vec<EnumeratedValue>) -> EnumeratedSpecificationKind {
-        EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues { values })
+        SpecificationKind::Inline(EnumeratedSpecificationValues { values })
+    }
+
+    pub fn recurse_visit<V: Visitor<E> + ?Sized, E>(&self, v: &mut V) -> Result<V::Value, E> {
+        match self {
+            SpecificationKind::Named(node) => v.visit_type_name(node),
+            SpecificationKind::Inline(node) => v.visit_enumerated_specification_values(node),
+        }
+    }
+
+    pub fn recurse_fold<F: Fold<E> + ?Sized, E>(self, f: &mut F) -> Result<Self, E> {
+        match self {
+            SpecificationKind::Named(node) => Ok(SpecificationKind::Named(f.fold_type_name(node)?)),
+            SpecificationKind::Inline(node) => Ok(SpecificationKind::Inline(
+                f.fold_enumerated_specification_values(node)?,
+            )),
+        }
     }
 }
 
@@ -939,14 +981,28 @@ pub struct SubrangeDeclaration {
     pub default: Option<SignedInteger>,
 }
 
-/// Subranges can be specified by either providing a direct specification
-/// or by specializing another type.
+/// Subrange specification: either a reference to a named subrange type
+/// or an inline subrange definition.
 ///
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
-pub enum SubrangeSpecificationKind {
-    Specification(SubrangeSpecification),
-    Type(TypeName),
+pub type SubrangeSpecificationKind = SpecificationKind<SubrangeSpecification>;
+
+impl SubrangeSpecificationKind {
+    pub fn recurse_visit<V: Visitor<E> + ?Sized, E>(&self, v: &mut V) -> Result<V::Value, E> {
+        match self {
+            SpecificationKind::Named(node) => v.visit_type_name(node),
+            SpecificationKind::Inline(node) => v.visit_subrange_specification(node),
+        }
+    }
+
+    pub fn recurse_fold<F: Fold<E> + ?Sized, E>(self, f: &mut F) -> Result<Self, E> {
+        match self {
+            SpecificationKind::Named(node) => Ok(SpecificationKind::Named(f.fold_type_name(node)?)),
+            SpecificationKind::Inline(node) => Ok(SpecificationKind::Inline(
+                f.fold_subrange_specification(node)?,
+            )),
+        }
+    }
 }
 
 /// The specification for a subrange. The specification restricts an integer
@@ -1171,11 +1227,28 @@ impl TryFrom<&str> for SizePrefix {
     }
 }
 
-/// Array specification defines a size/shape of an array.
-#[derive(Clone, Debug, PartialEq, Recurse)]
-pub enum ArraySpecificationKind {
-    Type(TypeName),
-    Subranges(ArraySubranges),
+/// Array specification: either a reference to a named array type
+/// or an inline array definition with explicit subranges.
+///
+/// See section 2.3.3.1.
+pub type ArraySpecificationKind = SpecificationKind<ArraySubranges>;
+
+impl ArraySpecificationKind {
+    pub fn recurse_visit<V: Visitor<E> + ?Sized, E>(&self, v: &mut V) -> Result<V::Value, E> {
+        match self {
+            SpecificationKind::Named(node) => v.visit_type_name(node),
+            SpecificationKind::Inline(node) => v.visit_array_subranges(node),
+        }
+    }
+
+    pub fn recurse_fold<F: Fold<E> + ?Sized, E>(self, f: &mut F) -> Result<Self, E> {
+        match self {
+            SpecificationKind::Named(node) => Ok(SpecificationKind::Named(f.fold_type_name(node)?)),
+            SpecificationKind::Inline(node) => {
+                Ok(SpecificationKind::Inline(f.fold_array_subranges(node)?))
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Recurse)]
@@ -1350,33 +1423,35 @@ impl VarDecl {
         self
     }
 
-    pub fn type_name(&self) -> Option<TypeName> {
+    pub fn type_name(&self) -> TypeReference {
         match &self.initializer {
-            InitialValueAssignmentKind::None(_source_span) => None,
+            InitialValueAssignmentKind::None(_source_span) => TypeReference::Unspecified,
             InitialValueAssignmentKind::Simple(simple_initializer) => {
-                Some(simple_initializer.type_name.clone())
+                TypeReference::Named(simple_initializer.type_name.clone())
             }
             InitialValueAssignmentKind::String(string_initializer) => {
-                Some(string_initializer.type_name())
+                TypeReference::Named(string_initializer.type_name())
             }
-            // TODO The enumerated values doesn't have a named type - we probably want to create a type name here
-            InitialValueAssignmentKind::EnumeratedValues(_enumerated_values_initializer) => None,
+            InitialValueAssignmentKind::EnumeratedValues(_enumerated_values_initializer) => {
+                TypeReference::Inline
+            }
             InitialValueAssignmentKind::EnumeratedType(enumerated_initial_value_assignment) => {
-                Some(enumerated_initial_value_assignment.type_name.clone())
+                TypeReference::Named(enumerated_initial_value_assignment.type_name.clone())
             }
             InitialValueAssignmentKind::FunctionBlock(function_block_initial_value_assignment) => {
-                Some(function_block_initial_value_assignment.type_name.clone())
+                TypeReference::Named(function_block_initial_value_assignment.type_name.clone())
             }
             InitialValueAssignmentKind::Subrange(subrange_specification_kind) => {
                 match subrange_specification_kind {
-                    // TODO should generate a type name for these anonymous types
-                    SubrangeSpecificationKind::Specification(_subrange_specification) => None,
-                    SubrangeSpecificationKind::Type(type_name) => Some(type_name.clone()),
+                    SpecificationKind::Inline(_subrange_specification) => TypeReference::Inline,
+                    SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
                 }
             }
             InitialValueAssignmentKind::Structure(_structure_initialization_declaration) => todo!(),
             InitialValueAssignmentKind::Array(_array_initial_value_assignment) => todo!(),
-            InitialValueAssignmentKind::LateResolvedType(type_name) => Some(type_name.clone()),
+            InitialValueAssignmentKind::LateResolvedType(type_name) => {
+                TypeReference::Named(type_name.clone())
+            }
         }
     }
 }

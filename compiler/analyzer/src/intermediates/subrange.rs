@@ -26,7 +26,7 @@ pub fn try_from(
     type_environment: &TypeEnvironment,
 ) -> Result<IntermediateResult, Diagnostic> {
     match spec {
-        SubrangeSpecificationKind::Specification(spec) => {
+        SpecificationKind::Inline(spec) => {
             // Direct subrange specification: MY_RANGE : INT (1..100);
             let base_type_name: TypeName = spec.type_name.clone().into();
             let base_type = type_environment.get(&base_type_name).ok_or_else(|| {
@@ -88,7 +88,7 @@ pub fn try_from(
                 },
             )))
         }
-        SubrangeSpecificationKind::Type(base_type_name) => {
+        SpecificationKind::Named(base_type_name) => {
             // Subrange type alias: MY_RANGE : OTHER_RANGE;
             if type_environment.get(base_type_name).is_none() {
                 return Err(Diagnostic::problem(
@@ -262,7 +262,7 @@ mod tests {
             .unwrap();
 
         // Create a subrange specification: INT (1..100)
-        let spec = SubrangeSpecificationKind::Specification(SubrangeSpecification {
+        let spec = SpecificationKind::Inline(SubrangeSpecification {
             type_name: ElementaryTypeName::INT,
             subrange: Subrange {
                 start: SignedInteger {
@@ -322,7 +322,7 @@ mod tests {
         .unwrap();
 
         // Create an alias specification: BASE_RANGE
-        let spec = SubrangeSpecificationKind::Type(TypeName::from("BASE_RANGE"));
+        let spec = SpecificationKind::Named(TypeName::from("BASE_RANGE"));
 
         let result = try_from(&TypeName::from("ALIAS_RANGE"), &spec, &env);
         assert!(result.is_ok());
@@ -339,7 +339,7 @@ mod tests {
         let env = TypeEnvironment::new();
 
         // Create an alias to a non-existent type
-        let spec = SubrangeSpecificationKind::Type(TypeName::from("MISSING_TYPE"));
+        let spec = SpecificationKind::Named(TypeName::from("MISSING_TYPE"));
 
         let result = try_from(&TypeName::from("ALIAS_RANGE"), &spec, &env);
         assert!(result.is_err());
@@ -353,7 +353,7 @@ mod tests {
             .unwrap();
 
         // Create an invalid subrange specification: INT (100..1) - min > max
-        let spec = SubrangeSpecificationKind::Specification(SubrangeSpecification {
+        let spec = SpecificationKind::Inline(SubrangeSpecification {
             type_name: ElementaryTypeName::INT,
             subrange: Subrange {
                 start: SignedInteger {
@@ -387,7 +387,7 @@ mod tests {
             .unwrap();
 
         // Create an out-of-bounds subrange specification: SINT (-200..200) - exceeds SINT bounds
-        let spec = SubrangeSpecificationKind::Specification(SubrangeSpecification {
+        let spec = SpecificationKind::Inline(SubrangeSpecification {
             type_name: ElementaryTypeName::SINT,
             subrange: Subrange {
                 start: SignedInteger {
@@ -418,7 +418,7 @@ mod tests {
         let env = TypeEnvironment::new(); // Empty environment without elementary types
 
         // Create a subrange specification with missing base type
-        let spec = SubrangeSpecificationKind::Specification(SubrangeSpecification {
+        let spec = SpecificationKind::Inline(SubrangeSpecification {
             type_name: ElementaryTypeName::INT,
             subrange: Subrange {
                 start: SignedInteger {
@@ -459,7 +459,7 @@ mod tests {
         .unwrap();
 
         // Create a subrange specification with non-numeric base type
-        let spec = SubrangeSpecificationKind::Specification(SubrangeSpecification {
+        let spec = SpecificationKind::Inline(SubrangeSpecification {
             type_name: ElementaryTypeName::STRING,
             subrange: Subrange {
                 start: SignedInteger {

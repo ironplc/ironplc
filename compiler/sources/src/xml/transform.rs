@@ -5,15 +5,14 @@
 
 use ironplc_dsl::{
     common::{
-        ArrayDeclaration, ArraySpecificationKind, ArraySubranges, Boolean, BooleanLiteral,
-        ConstantKind, DataTypeDeclarationKind, DeclarationQualifier, ElementaryTypeName,
-        EnumeratedSpecificationInit, EnumeratedSpecificationKind, EnumeratedSpecificationValues,
-        EnumeratedValue, EnumerationDeclaration, FunctionBlockBodyKind, FunctionBlockDeclaration,
+        ArrayDeclaration, ArraySubranges, Boolean, BooleanLiteral, ConstantKind,
+        DataTypeDeclarationKind, DeclarationQualifier, ElementaryTypeName,
+        EnumeratedSpecificationInit, EnumeratedSpecificationValues, EnumeratedValue,
+        EnumerationDeclaration, FunctionBlockBodyKind, FunctionBlockDeclaration,
         FunctionDeclaration, InitialValueAssignmentKind, Integer, Library, LibraryElementKind,
-        ProgramDeclaration, SignedInteger, SimpleDeclaration, SimpleInitializer,
+        ProgramDeclaration, SignedInteger, SimpleDeclaration, SimpleInitializer, SpecificationKind,
         StructureDeclaration, StructureElementDeclaration, Subrange, SubrangeDeclaration,
-        SubrangeSpecification, SubrangeSpecificationKind, TypeName, VarDecl, VariableIdentifier,
-        VariableType,
+        SubrangeSpecification, TypeName, VarDecl, VariableIdentifier, VariableType,
     },
     configuration::{
         ConfigurationDeclaration, ProgramConfiguration, ResourceDeclaration, TaskConfiguration,
@@ -120,7 +119,7 @@ fn transform_enum_decl(
         })
         .collect();
 
-    let spec = EnumeratedSpecificationKind::Values(EnumeratedSpecificationValues { values });
+    let spec = SpecificationKind::Inline(EnumeratedSpecificationValues { values });
 
     Ok(DataTypeDeclarationKind::Enumeration(
         EnumerationDeclaration {
@@ -144,7 +143,7 @@ fn transform_array_decl(
 
     Ok(DataTypeDeclarationKind::Array(ArrayDeclaration {
         type_name: type_name.clone(),
-        spec: ArraySpecificationKind::Subranges(ArraySubranges {
+        spec: SpecificationKind::Inline(ArraySubranges {
             ranges: subranges,
             type_name: base_type_name,
         }),
@@ -237,7 +236,7 @@ fn transform_subrange_signed_decl(
 
     Ok(DataTypeDeclarationKind::Subrange(SubrangeDeclaration {
         type_name: type_name.clone(),
-        spec: SubrangeSpecificationKind::Specification(SubrangeSpecification {
+        spec: SpecificationKind::Inline(SubrangeSpecification {
             type_name: base_type,
             subrange: Subrange {
                 start: SignedInteger {
@@ -280,7 +279,7 @@ fn transform_subrange_unsigned_decl(
 
     Ok(DataTypeDeclarationKind::Subrange(SubrangeDeclaration {
         type_name: type_name.clone(),
-        spec: SubrangeSpecificationKind::Specification(SubrangeSpecification {
+        spec: SpecificationKind::Inline(SubrangeSpecification {
             type_name: base_type,
             subrange: Subrange {
                 start: SignedInteger {
