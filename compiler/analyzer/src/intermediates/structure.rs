@@ -39,6 +39,7 @@ pub fn try_from(
             name: element.name.clone(),
             field_type,
             offset: aligned_offset,
+            var_type: None, // Structure fields don't have input/output distinction
         };
 
         fields.push(field);
@@ -79,10 +80,17 @@ fn resolve_field_type(
                 })?;
             Ok(type_attrs.representation.clone())
         }
-        InitialValueAssignmentKind::LateResolvedType(_type_name) => {
-            // LateResolvedType should have been resolved by xform_resolve_late_bound_type_initializer
-            // before structure processing runs. If we see this, it's a compiler bug.
-            Err(Diagnostic::internal_error(file!(), line!()))
+        InitialValueAssignmentKind::LateResolvedType(type_name) => {
+            // LateResolvedType may appear when the field references a user-defined type.
+            // Since types are processed in topological order, the referenced type should
+            // already be in the environment.
+            let type_attrs = type_environment.get(type_name).ok_or_else(|| {
+                Diagnostic::problem(
+                    Problem::StructFieldTypeNotDeclared,
+                    Label::span(type_name.span(), "Field type"),
+                )
+            })?;
+            Ok(type_attrs.representation.clone())
         }
         InitialValueAssignmentKind::Subrange(subrange_spec) => {
             // Handle subrange field types
@@ -125,12 +133,17 @@ fn resolve_field_type(
                 })?;
             Ok(type_attrs.representation.clone())
         }
-        InitialValueAssignmentKind::Structure(_structure_init) => {
-            // Nested structures are not yet supported
-            Err(Diagnostic::problem(
-                Problem::NestedStructuresNotSupported,
-                Label::span(ironplc_dsl::core::SourceSpan::default(), "Nested structure"),
-            ))
+        InitialValueAssignmentKind::Structure(structure_init) => {
+            // Handle nested structure field types
+            let type_attrs = type_environment
+                .get(&structure_init.type_name)
+                .ok_or_else(|| {
+                    Diagnostic::problem(
+                        Problem::StructFieldTypeNotDeclared,
+                        Label::span(structure_init.type_name.span(), "Structure type"),
+                    )
+                })?;
+            Ok(type_attrs.representation.clone())
         }
         InitialValueAssignmentKind::Array(_array_init) => {
             // Array fields are not yet supported
@@ -164,7 +177,7 @@ mod tests {
             .build()
             .unwrap();
         let result = apply(input, &mut env);
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "Expected Ok, got error: {:?}", result.err());
         env
     }
 
@@ -387,5 +400,156 @@ END_TYPE
 
         assert!(!errors.is_empty());
         assert_eq!(Problem::StructFieldTypeNotDeclared.code(), errors[0].code);
+    }
+
+    // Nested structure tests
+
+    #[test]
+    fn parse_structure_with_nested_structure_then_creates_structure_with_nested_type() {
+        let program = "
+TYPE
+    Point : STRUCT
+        x : INT := 0;
+        y : INT := 0;
+    END_STRUCT;
+    Rectangle : STRUCT
+        topLeft : Point;
+        bottomRight : Point;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let rect_type = env.get(&TypeName::from("Rectangle")).unwrap();
+        assert!(rect_type.representation.is_structure());
+
+        let fields = match &rect_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!(
+                "Expected Structure type, got {:?}",
+                rect_type.representation
+            ),
+        };
+
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].name, Id::from("topLeft"));
+        assert_eq!(fields[1].name, Id::from("bottomRight"));
+        assert!(fields[0].field_type.is_structure());
+        assert!(fields[1].field_type.is_structure());
+    }
+
+    #[test]
+    fn parse_structure_with_deeply_nested_structures_then_creates_correct_types() {
+        let program = "
+TYPE
+    Inner : STRUCT
+        value : INT := 0;
+    END_STRUCT;
+    Middle : STRUCT
+        inner : Inner;
+    END_STRUCT;
+    Outer : STRUCT
+        middle : Middle;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let outer_type = env.get(&TypeName::from("Outer")).unwrap();
+        assert!(outer_type.representation.is_structure());
+
+        let fields = match &outer_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!(
+                "Expected Structure type, got {:?}",
+                outer_type.representation
+            ),
+        };
+
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].name, Id::from("middle"));
+        assert!(fields[0].field_type.is_structure());
+    }
+
+    #[test]
+    fn parse_structure_with_undeclared_nested_type_then_error() {
+        let program = "
+TYPE
+    MyStruct : STRUCT
+        nested : UndeclaredType;
+    END_STRUCT;
+END_TYPE
+        ";
+        let errors = parse_and_expect_error(program);
+
+        assert!(!errors.is_empty());
+        assert_eq!(Problem::StructFieldTypeNotDeclared.code(), errors[0].code);
+    }
+
+    #[test]
+    fn parse_structure_with_nested_structure_then_calculates_correct_offsets() {
+        let program = "
+TYPE
+    Point : STRUCT
+        x : INT := 0;
+        y : INT := 0;
+    END_STRUCT;
+    Line : STRUCT
+        start : Point;
+        endPt : Point;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let line_type = env.get(&TypeName::from("Line")).unwrap();
+        let fields = match &line_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!(
+                "Expected Structure type, got {:?}",
+                line_type.representation
+            ),
+        };
+
+        // Point is 4 bytes (2x INT with 2-byte alignment), so:
+        // - start at offset 0
+        // - endPt at offset 4
+        assert_eq!(fields[0].offset, 0);
+        assert_eq!(fields[1].offset, 4);
+    }
+
+    #[test]
+    fn parse_structure_with_mixed_nested_and_primitive_fields_then_correct_layout() {
+        let program = "
+TYPE
+    Point : STRUCT
+        x : INT := 0;
+        y : INT := 0;
+    END_STRUCT;
+    Entity : STRUCT
+        id : DINT := 0;
+        position : Point;
+        active : BOOL := FALSE;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let entity_type = env.get(&TypeName::from("Entity")).unwrap();
+        let fields = match &entity_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!(
+                "Expected Structure type, got {:?}",
+                entity_type.representation
+            ),
+        };
+
+        assert_eq!(fields.len(), 3);
+        // id (DINT) at offset 0 (4 bytes)
+        // position (Point) at offset 4 (4 bytes, 2-byte alignment)
+        // active (BOOL) at offset 8 (1 byte)
+        assert_eq!(fields[0].offset, 0);
+        assert_eq!(fields[1].offset, 4);
+        assert_eq!(fields[2].offset, 8);
     }
 }

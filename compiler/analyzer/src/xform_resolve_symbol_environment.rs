@@ -215,9 +215,7 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
             .insert(&node.type_name.name, SymbolKind::Type, &ScopeKind::Global)?;
 
         // Add each enumeration value
-        if let ironplc_dsl::common::EnumeratedSpecificationKind::Values(values) =
-            &node.spec_init.spec
-        {
+        if let ironplc_dsl::common::SpecificationKind::Inline(values) = &node.spec_init.spec {
             for value in &values.values {
                 self.env.insert_enumeration_value(
                     &value.value,
