@@ -24,7 +24,6 @@ P2014,SimpleTypeDeclMissingInit,Simple type declaration requires an initializer
 P2015,SubrangeBaseTypeNotNumeric,Subrange base type must be numeric
 P2016,SubrangeOutOfBounds,Subrange is outside base type bounds
 P2017,StructFieldMissingType,Structure field missing type specification
-P2018,NestedStructuresNotSupported,Nested structures not supported
 P2019,InvalidSimpleTypeDecl,Invalid simple type declaration
 P2020,EnumerationTooManyValues,Enumeration has too many unique values
 P2021,StructFieldTypeNotDeclared,Structure field references undeclared type
@@ -45,6 +44,7 @@ P4011,DefinitionNameDuplicated,Definition name is duplicated
 P4012,FunctionBlockNotInScope,Function block invocation is not a variable in scope
 P4013,PouDeclNameDuplicated,POU declaration name is duplicated
 P4014,SymbolDeclDuplicated,Symbol declaration name is duplicated
+P4015,StdlibTypeRedefinition,User-defined type has the same name as a standard library type
 P6001,CannotCanonicalizePath,Unable to canonicalize the path
 P6002,CannotReadMetadata,Unable to read metadata for the path
 P6003,CannotReadDirectory,Unable to read directory
