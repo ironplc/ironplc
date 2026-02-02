@@ -55,5 +55,6 @@ P6007,UnsupportedFileType,File type is not supported
 P6008,XmlUnsupportedVersion,PLCopen XML version is not supported
 P9001,UnsupportedStdLibType,Referenced type is valid but not implemented
 P9002,NoContent,Set of valid source files has no content
+P9003,XmlBodyTypeNotSupported,POU body language is not supported
 P9998,InternalError,Internal error indicating a bug in the compiler
 P9999,NotImplemented,Capability is not implemented (yet!)
