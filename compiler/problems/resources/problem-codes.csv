@@ -6,6 +6,7 @@ P0004,CStyleComment,C-style comment not allowed
 P0005,UnexpectedElement,Element is not permitted at this compiler state
 P0006,XmlMalformed,XML file is malformed
 P0007,XmlSchemaViolation,XML violates PLCopen schema
+P0008,SfcMissingInitialStep,SFC body does not have an initial step
 P2001,StructureDuplicatedElement,Structure has more than one element with name
 P2002,SubrangeMinStrictlyLessMax,Subrange declaration minimum value is not less than the maximum
 P2003,EnumTypeDeclDuplicateItem,Enumeration type declaration has duplicated value

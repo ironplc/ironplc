@@ -13,8 +13,9 @@ use super::schema::{
     Action, Actions, ArrayType, Body, Configuration, Configurations, ContentHeader, CoordinateInfo,
     DataType, DataTypeDecl, DataTypes, DerivedType, Dimension, EnumType, EnumValue, EnumValues,
     FileHeader, Instances, Interface, PointerType, Pou, PouInstance, PouType, Pous, Project,
-    Resource, Scaling, ScalingValue, StBody, StructMember, StructType, SubrangeSigned,
-    SubrangeUnsigned, Task, Transition, Transitions, Types, Value, VarList, Variable,
+    Resource, Scaling, ScalingValue, SfcActionAssociation, SfcActionBlock, SfcBody, SfcStep,
+    SfcTransition, StBody, StructMember, StructType, SubrangeSigned, SubrangeUnsigned, Task,
+    Transition, Transitions, Types, Value, VarList, Variable,
 };
 
 /// Parse a PLCopen XML document into a Project struct
@@ -498,7 +499,7 @@ fn parse_body(doc: &roxmltree::Document, node: roxmltree::Node) -> Result<Body, 
             "IL" => body.il = get_text_content(child),
             "FBD" => body.fbd = true,
             "LD" => body.ld = true,
-            "SFC" => body.sfc = true,
+            "SFC" => body.sfc = Some(parse_sfc_body(doc, child)?),
             _ => {}
         }
     }
@@ -544,6 +545,146 @@ fn parse_st_body(doc: &roxmltree::Document, node: roxmltree::Node) -> Result<StB
         text: String::new(),
         line_offset: 0,
         col_offset: 0,
+    })
+}
+
+fn parse_sfc_body(doc: &roxmltree::Document, node: roxmltree::Node) -> Result<SfcBody, String> {
+    let mut sfc = SfcBody::default();
+
+    for child in node.children().filter(|n| n.is_element()) {
+        match child.tag_name().name() {
+            "step" => sfc.steps.push(parse_sfc_step(child)?),
+            "transition" => sfc.transitions.push(parse_sfc_transition(doc, child)?),
+            "actionBlock" => sfc.action_blocks.push(parse_sfc_action_block(child)?),
+            // Ignore graphical elements: inVariable, outVariable, selectionDivergence, etc.
+            _ => {}
+        }
+    }
+
+    Ok(sfc)
+}
+
+fn parse_sfc_step(node: roxmltree::Node) -> Result<SfcStep, String> {
+    let name = node.attribute("name").unwrap_or("").to_string();
+    let initial_step = node.attribute("initialStep") == Some("true");
+    let global_id = node.attribute("globalId").map(String::from);
+
+    Ok(SfcStep {
+        name,
+        initial_step,
+        global_id,
+    })
+}
+
+fn parse_sfc_transition(
+    doc: &roxmltree::Document,
+    node: roxmltree::Node,
+) -> Result<SfcTransition, String> {
+    let name = node.attribute("name").map(String::from);
+    let priority = node.attribute("priority").and_then(|p| p.parse().ok());
+    let global_id = node.attribute("globalId").map(String::from);
+
+    let mut condition_st = None;
+    let mut condition_reference = None;
+    let mut from_steps = Vec::new();
+    let to_steps = Vec::new();
+
+    for child in node.children().filter(|n| n.is_element()) {
+        match child.tag_name().name() {
+            "condition" => {
+                // Condition can be inline ST or reference
+                for cond_child in child.children().filter(|n| n.is_element()) {
+                    match cond_child.tag_name().name() {
+                        "inline" => {
+                            // Look for ST body inside inline
+                            for inline_child in cond_child.children().filter(|n| n.is_element()) {
+                                if inline_child.tag_name().name() == "ST" {
+                                    condition_st = Some(parse_st_body(doc, inline_child)?);
+                                }
+                            }
+                        }
+                        "reference" => {
+                            condition_reference = cond_child.attribute("name").map(String::from);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            "connectionPointIn" => {
+                // Parse source step references
+                for conn_child in child.children().filter(|n| n.is_element()) {
+                    if conn_child.tag_name().name() == "connection" {
+                        if let Some(ref_name) = conn_child.attribute("refLocalId") {
+                            // We'll resolve refLocalId to step name in transform
+                            from_steps.push(ref_name.to_string());
+                        }
+                    }
+                }
+            }
+            "connectionPointOut" => {
+                // Target steps are usually resolved through graph traversal
+                // For now, capture any direct references
+            }
+            _ => {}
+        }
+    }
+
+    Ok(SfcTransition {
+        name,
+        priority,
+        global_id,
+        condition_st,
+        condition_reference,
+        from_steps,
+        to_steps,
+    })
+}
+
+fn parse_sfc_action_block(node: roxmltree::Node) -> Result<SfcActionBlock, String> {
+    // ActionBlock is associated with a step via connectionPointIn
+    let mut step_name = String::new();
+    let mut actions = Vec::new();
+
+    // Get step reference from connectionPointIn
+    for child in node.children().filter(|n| n.is_element()) {
+        match child.tag_name().name() {
+            "connectionPointIn" => {
+                for conn_child in child.children().filter(|n| n.is_element()) {
+                    if conn_child.tag_name().name() == "connection" {
+                        if let Some(ref_name) = conn_child.attribute("refLocalId") {
+                            step_name = ref_name.to_string();
+                        }
+                    }
+                }
+            }
+            "action" => {
+                actions.push(parse_sfc_action_association(child)?);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(SfcActionBlock { step_name, actions })
+}
+
+fn parse_sfc_action_association(node: roxmltree::Node) -> Result<SfcActionAssociation, String> {
+    let mut action_name = String::new();
+    let qualifier = node.attribute("qualifier").map(String::from);
+    let duration = node.attribute("duration").map(String::from);
+    let indicator = node.attribute("indicator").map(String::from);
+
+    // Action name is in reference child or relPosition
+    for child in node.children().filter(|n| n.is_element()) {
+        if child.tag_name().name() == "reference" {
+            action_name = child.attribute("name").unwrap_or("").to_string();
+        }
+    }
+
+    Ok(SfcActionAssociation {
+        action_name,
+        qualifier,
+        duration,
+        indicator,
     })
 }
 

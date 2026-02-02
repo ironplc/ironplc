@@ -1,0 +1,44 @@
+=====
+P0008
+=====
+
+.. problem-summary:: P0008
+
+This error occurs when a Sequential Function Chart (SFC) body in a PLCopen XML file does not define an initial step. Every SFC must have exactly one step marked as the initial step where execution begins.
+
+Example
+-------
+
+The following XML defines an SFC body without an initial step:
+
+.. code-block:: xml
+
+   <pou name="MyProgram" pouType="program">
+     <body>
+       <SFC>
+         <step name="Step1">
+           <!-- Missing initialStep="true" attribute -->
+         </step>
+         <step name="Step2"/>
+       </SFC>
+     </body>
+   </pou>
+
+The SFC body contains steps but none of them are marked as the initial step.
+
+To fix this error, add the ``initialStep="true"`` attribute to exactly one step:
+
+.. code-block:: xml
+
+   <pou name="MyProgram" pouType="program">
+     <body>
+       <SFC>
+         <step name="Step1" initialStep="true">
+           <!-- This step is now the initial step -->
+         </step>
+         <step name="Step2"/>
+       </SFC>
+     </body>
+   </pou>
+
+According to the IEC 61131-3 standard, every SFC network must have exactly one initial step, which defines where execution starts when the SFC is activated.
