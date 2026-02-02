@@ -436,13 +436,6 @@ ironplc_analyzer (existing semantic analysis)
 - [ ] Test very large XML files
 - [ ] Test deeply nested structures
 
-### 4.4 Performance
-
-- [ ] Benchmark parsing on large XML files
-- [ ] Profile memory usage
-- [ ] Optimize if needed (streaming, allocation)
-- [ ] Add benchmark tests
-
 ### 4.5 Mixed Project Support
 
 - [ ] Test project with both XML and ST files
@@ -462,8 +455,6 @@ ironplc_analyzer (existing semantic analysis)
 - [ ] Add XML support section to compiler docs
 - [ ] Document supported PLCopen XML features
 - [ ] Document unsupported features (FBD, LD, IL)
-- [ ] Add example XML files to `examples/`
-- [ ] Create quickstart guide for XML
 
 ### 4.8 Documentation - Developer
 
