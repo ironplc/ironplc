@@ -424,8 +424,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &ArraySpecificationKind,
     ) -> Result<Self::Value, Diagnostic> {
         match &node {
-            ArraySpecificationKind::Type(id) => self.visit_type_name(id)?,
-            ArraySpecificationKind::Subranges(subranges) => {
+            SpecificationKind::Named(id) => self.visit_type_name(id)?,
+            SpecificationKind::Inline(subranges) => {
                 self.visit_array_subranges(subranges)?;
             }
         }
