@@ -543,7 +543,6 @@ pub enum SpecificationKind<T> {
     Inline(T),
 }
 
-
 /// Elementary type names.
 ///
 /// See section 2.3.1.
