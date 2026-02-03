@@ -13,4 +13,5 @@ This chapter describes how to use the command line interface.
    :maxdepth: 1
 
    Basic Usage <basicusage>
+   Source Formats <source-formats/index>
    Problems <problems/index>

@@ -1,0 +1,41 @@
+=====
+P9003
+=====
+
+.. problem-summary:: P9003
+
+This error occurs when a PLCopen XML file contains a POU (Program Organization Unit) with a body language that is not yet supported by the compiler.
+
+Example
+-------
+
+The following XML uses Ladder Diagram (LD), which is not supported:
+
+.. code-block:: xml
+
+   <pou name="MyProgram" pouType="program">
+     <body>
+       <LD>
+         <!-- Ladder Diagram content -->
+       </LD>
+     </body>
+   </pou>
+
+Supported Languages
+-------------------
+
+The compiler currently supports:
+
+- **ST (Structured Text)** - Fully supported
+- **SFC (Sequential Function Chart)** - Supported with ST action bodies
+
+Not Yet Supported
+-----------------
+
+The following languages are defined in IEC 61131-3 but not yet implemented:
+
+- **FBD (Function Block Diagram)** - Graphical language
+- **LD (Ladder Diagram)** - Graphical language
+- **IL (Instruction List)** - Deprecated in IEC 61131-3 3rd edition
+
+To fix this error, convert the POU body to Structured Text (ST) or use a different tool that supports the graphical languages.

@@ -241,4 +241,79 @@ mod tests {
         assert!(!diagnostics.is_empty());
         assert!(project.is_empty());
     }
+
+    #[test]
+    fn mixed_xml_and_st_sources_parse_successfully() {
+        let mut project = SourceProject::new();
+
+        // Add ST source defining a type
+        let st_content = r#"
+TYPE
+  Counter : INT := 0;
+END_TYPE
+
+FUNCTION_BLOCK FB_Counter
+VAR
+  count : Counter;
+END_VAR
+END_FUNCTION_BLOCK
+"#;
+        project.add_source(FileId::from_string("types.st"), st_content.to_string());
+
+        // Add XML source defining a program
+        let xml_content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
+  <contentHeader name="TestProject">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="MainProgram" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="x"><type><INT/></type></variable>
+          </localVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">x := x + 1;</xhtml>
+          </ST>
+        </body>
+      </pou>
+    </pous>
+  </types>
+</project>"#;
+        project.add_source(FileId::from_string("main.xml"), xml_content.to_string());
+
+        // Both sources should parse successfully
+        assert_eq!(project.len(), 2);
+
+        // Parse the ST source
+        let st_source = project
+            .get_source_mut(&FileId::from_string("types.st"))
+            .unwrap();
+        let st_library = st_source.library();
+        assert!(
+            st_library.is_ok(),
+            "ST source should parse successfully: {:?}",
+            st_library.err()
+        );
+        let st_lib = st_library.unwrap();
+        assert_eq!(st_lib.elements.len(), 2); // 1 type + 1 function block
+
+        // Parse the XML source
+        let xml_source = project
+            .get_source_mut(&FileId::from_string("main.xml"))
+            .unwrap();
+        let xml_library = xml_source.library();
+        assert!(xml_library.is_ok(), "XML source should parse successfully");
+        let xml_lib = xml_library.unwrap();
+        assert_eq!(xml_lib.elements.len(), 1); // 1 program
+    }
 }

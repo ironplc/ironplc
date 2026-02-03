@@ -2,7 +2,12 @@
 //!
 //! This module parses PLCopen TC6 XML files into IronPLC's DSL.
 
-use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
+use ironplc_dsl::{
+    common::Library,
+    core::FileId,
+    diagnostic::{Diagnostic, Label},
+};
+use ironplc_problems::Problem;
 use log::debug;
 
 use crate::xml::{position::parse_plcopen_xml, transform::transform_project};
@@ -35,9 +40,17 @@ pub fn parse(content: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
     // Check for unsupported body languages
     for pou in &project.types.pous.pou {
         if let Some(ref body) = pou.body {
-            if let Some(_lang) = body.unsupported_language() {
-                // FBD, LD, IL, SFC are not yet implemented
-                return Err(Diagnostic::todo(file!(), line!()));
+            if let Some(lang) = body.unsupported_language() {
+                return Err(Diagnostic::problem(
+                    Problem::XmlBodyTypeNotSupported,
+                    Label::file(
+                        file_id.clone(),
+                        format!(
+                            "POU '{}' uses {} which is not supported. Use ST (Structured Text) instead.",
+                            pou.name, lang
+                        ),
+                    ),
+                ));
             }
         }
     }
@@ -145,7 +158,7 @@ END_IF;
     }
 
     #[test]
-    fn parse_when_fbd_body_then_returns_todo_error() {
+    fn parse_when_fbd_body_then_returns_unsupported_error() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://www.plcopen.org/xml/tc6_0201">
   <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
@@ -173,13 +186,14 @@ END_IF;
         let result = parse(xml, &test_file_id());
         assert!(result.is_err());
 
-        // FBD is not yet implemented, so we get a todo error
         let diagnostic = result.unwrap_err();
-        assert_eq!(diagnostic.code, "P9999");
+        assert_eq!(diagnostic.code, Problem::XmlBodyTypeNotSupported.code());
+        assert!(diagnostic.primary.message.contains("FBD"));
+        assert!(diagnostic.primary.message.contains("not supported"));
     }
 
     #[test]
-    fn parse_when_ld_body_then_returns_todo_error() {
+    fn parse_when_ld_body_then_returns_unsupported_error() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://www.plcopen.org/xml/tc6_0201">
   <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
@@ -207,8 +221,9 @@ END_IF;
         let result = parse(xml, &test_file_id());
         assert!(result.is_err());
 
-        // LD is not yet implemented, so we get a todo error
         let diagnostic = result.unwrap_err();
-        assert_eq!(diagnostic.code, "P9999");
+        assert_eq!(diagnostic.code, Problem::XmlBodyTypeNotSupported.code());
+        assert!(diagnostic.primary.message.contains("LD"));
+        assert!(diagnostic.primary.message.contains("not supported"));
     }
 }

@@ -515,6 +515,9 @@ impl Body {
     }
 
     /// Check if this body uses an unsupported language
+    ///
+    /// Returns the language name if the body uses a language that is not yet
+    /// implemented (IL, FBD, LD). ST and SFC are supported.
     pub fn unsupported_language(&self) -> Option<&'static str> {
         if self.il.is_some() {
             Some("IL")
@@ -522,8 +525,6 @@ impl Body {
             Some("FBD")
         } else if self.ld {
             Some("LD")
-        } else if self.sfc.is_some() {
-            Some("SFC")
         } else {
             None
         }
