@@ -30,6 +30,31 @@ impl LocatedString {
         Self { value, range: 0..0 }
     }
 
+    /// Extract an attribute value with its source location from an XML node.
+    ///
+    /// If the attribute doesn't exist, returns a LocatedString with an empty value
+    /// and no location information.
+    pub fn from_node(node: roxmltree::Node, attr_name: &str) -> Self {
+        for attr in node.attributes() {
+            if attr.name() == attr_name {
+                return Self::new(attr.value().to_string(), attr.range_value());
+            }
+        }
+        Self::default()
+    }
+
+    /// Extract an optional attribute value with its source location from an XML node.
+    ///
+    /// Returns None if the attribute doesn't exist.
+    pub fn from_node_optional(node: roxmltree::Node, attr_name: &str) -> Option<Self> {
+        for attr in node.attributes() {
+            if attr.name() == attr_name {
+                return Some(Self::new(attr.value().to_string(), attr.range_value()));
+            }
+        }
+        None
+    }
+
     /// Get the string value
     pub fn as_str(&self) -> &str {
         &self.value
