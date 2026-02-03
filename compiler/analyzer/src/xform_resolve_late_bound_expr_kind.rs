@@ -6,7 +6,6 @@
 //!
 //! The transformation succeeds when all ambiguous expression elements
 //! resolve to a declared type.
-use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::textual::*;
@@ -130,11 +129,17 @@ impl Fold<Diagnostic> for DeclarationResolver {
                         // that we should have found earlier to identify the type
                         self.current_type = self.find_type(&named.name).clone();
                     }
-                    SymbolicVariableKind::Array(arr) => {
-                        Err(Diagnostic::todo_with_span(arr.span(), file!(), line!()))?
+                    SymbolicVariableKind::Array(_arr) => {
+                        // Assignment to an array element like data[i] := value
+                        // Determining the element type requires looking up the array
+                        // declaration which isn't available here. Default to None.
+                        self.current_type = VariableType::None;
                     }
-                    SymbolicVariableKind::Structured(st) => {
-                        Err(Diagnostic::todo_with_span(st.span(), file!(), line!()))?
+                    SymbolicVariableKind::Structured(_st) => {
+                        // Assignment to a structure member like s.field := value
+                        // Determining the field type requires looking up the struct
+                        // declaration which isn't available here. Default to None.
+                        self.current_type = VariableType::None;
                     }
                 }
             }
@@ -180,7 +185,7 @@ impl Fold<Diagnostic> for DeclarationResolver {
             }
             ExprKind::LateBound(node) => match self.current_type {
                 VariableType::None => {
-                    // TODO this is likely not right in all cases
+                    // When no type information is available, assume a variable reference
                     Ok(ExprKind::Variable(Variable::Symbolic(
                         SymbolicVariableKind::Named(NamedVariable { name: node.value }),
                     )))
@@ -188,19 +193,51 @@ impl Fold<Diagnostic> for DeclarationResolver {
                 VariableType::Simple => Ok(ExprKind::Variable(Variable::Symbolic(
                     SymbolicVariableKind::Named(NamedVariable { name: node.value }),
                 ))),
-                VariableType::String => Err(Diagnostic::todo(file!(), line!())),
-                VariableType::EnumeratedValues => Err(Diagnostic::todo(file!(), line!())),
+                VariableType::String => {
+                    // String assignment from another string variable
+                    Ok(ExprKind::Variable(Variable::Symbolic(
+                        SymbolicVariableKind::Named(NamedVariable { name: node.value }),
+                    )))
+                }
+                VariableType::EnumeratedValues => {
+                    // Inline enumeration like (Red, Green) - the value is an enum constant
+                    Ok(ExprKind::EnumeratedValue(EnumeratedValue {
+                        type_name: None,
+                        value: node.value,
+                    }))
+                }
                 VariableType::EnumeratedType => Ok(ExprKind::EnumeratedValue(EnumeratedValue {
                     type_name: None,
                     value: node.value,
                 })),
-                VariableType::FunctionBlock => Err(Diagnostic::todo(file!(), line!())),
-                VariableType::Subrange => Err(Diagnostic::todo(file!(), line!())),
-                VariableType::Structure => Err(Diagnostic::todo(file!(), line!())),
+                VariableType::FunctionBlock => {
+                    // Function block variables are parsed as LateResolvedType, not FunctionBlock.
+                    // If we reach this branch, it indicates an internal error.
+                    Err(Diagnostic::internal_error(file!(), line!()))
+                }
+                VariableType::Subrange => {
+                    // Subrange assignment from another integer variable
+                    Ok(ExprKind::Variable(Variable::Symbolic(
+                        SymbolicVariableKind::Named(NamedVariable { name: node.value }),
+                    )))
+                }
+                VariableType::Structure => {
+                    // Structure assignment from another structure variable
+                    Ok(ExprKind::Variable(Variable::Symbolic(
+                        SymbolicVariableKind::Named(NamedVariable { name: node.value }),
+                    )))
+                }
                 VariableType::Array => Ok(ExprKind::Variable(Variable::Symbolic(
                     SymbolicVariableKind::Named(NamedVariable { name: node.value }),
                 ))),
-                VariableType::LateResolvedType => Err(Diagnostic::todo(file!(), line!())),
+                VariableType::LateResolvedType => {
+                    // The variable type hasn't been resolved yet. Since we don't know if
+                    // this is an enum or another type, default to variable reference.
+                    // Semantic analysis will catch type mismatches later.
+                    Ok(ExprKind::Variable(Variable::Symbolic(
+                        SymbolicVariableKind::Named(NamedVariable { name: node.value }),
+                    )))
+                }
             },
         }
     }
@@ -241,20 +278,19 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
-    fn apply_when_assign_to_array_member() {
-        // TODO this fails
+    fn apply_when_assign_to_array_member_then_ok() {
         let program = "FUNCTION_BLOCK _BUFFER_INSERT
 
 VAR_IN_OUT
-	data : ARRAY[1..2] OF INT; 
+	data : ARRAY[1..2] OF INT;
 END_VAR
 
 VAR
 	i :	INT;
 	i2 : INT;
 END_VAR
-			
-data[i] := data[i2]; 
+
+data[i] := data[i2];
 
 END_FUNCTION_BLOCK
 ";
@@ -266,8 +302,169 @@ END_FUNCTION_BLOCK
             .with_elementary_types()
             .build()
             .unwrap();
-        let _ = apply(library, &mut type_environment);
+        let result = apply(library, &mut type_environment);
+        assert!(result.is_ok());
+    }
 
-        //assert!(result.is_ok());
+    // Test: String variable type - assignment from another variable
+    // Does this trigger VariableType::String?
+    #[test]
+    fn apply_when_string_var_assign_from_other_var() {
+        let program = "
+FUNCTION_BLOCK FB_TEST
+    VAR
+        s1 : STRING;
+        s2 : STRING;
+    END_VAR
+    s1 := s2;
+END_FUNCTION_BLOCK";
+
+        let library =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let result = apply(library, &mut type_environment);
+        assert!(result.is_ok());
+    }
+
+    // Test: Inline enumerated values
+    // Does this trigger VariableType::EnumeratedValues?
+    #[test]
+    fn apply_when_inline_enum_assign_value() {
+        let program = "
+FUNCTION_BLOCK FB_TEST
+    VAR
+        Color : (Red, Green, Blue);
+    END_VAR
+    Color := Green;
+END_FUNCTION_BLOCK";
+
+        let library =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let result = apply(library, &mut type_environment);
+        assert!(result.is_ok());
+    }
+
+    // Test: Subrange type - inline subrange in VAR_IN_OUT
+    // Does this trigger VariableType::Subrange?
+    #[test]
+    fn apply_when_subrange_assign_from_var() {
+        // VAR_IN_OUT allows inline subrange specification
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR_IN_OUT
+    x : INT(-100..100);
+END_VAR
+VAR
+    y : INT;
+END_VAR
+    x := y;
+END_FUNCTION_BLOCK";
+
+        let library =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let result = apply(library, &mut type_environment);
+        assert!(result.is_ok());
+    }
+
+    // Test: Structure type
+    // Does this trigger VariableType::Structure?
+    #[test]
+    fn apply_when_structure_assign_from_var() {
+        let program = "
+TYPE
+    MyStruct : STRUCT
+        field : INT;
+    END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK FB_TEST
+    VAR
+        s1 : MyStruct;
+        s2 : MyStruct;
+    END_VAR
+    s1 := s2;
+END_FUNCTION_BLOCK";
+
+        let library =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let result = apply(library, &mut type_environment);
+        assert!(result.is_ok());
+    }
+
+    // Test: LateResolvedType - enum without initializer
+    // Does this trigger VariableType::LateResolvedType?
+    #[test]
+    fn apply_when_enum_without_init_assign_value() {
+        let program = "
+TYPE
+    MyColors: (Red, Green);
+END_TYPE
+
+FUNCTION_BLOCK FB_TEST
+    VAR
+        Color: MyColors;
+    END_VAR
+    Color := Green;
+END_FUNCTION_BLOCK";
+
+        let library =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let result = apply(library, &mut type_environment);
+        assert!(result.is_ok());
+    }
+
+    // Test: Function block assignment.
+    // Note: Function block variables are parsed as LateResolvedType (not FunctionBlock),
+    // so this exercises the LateResolvedType handling which treats the RHS as a variable.
+    #[test]
+    fn apply_when_function_block_assign_from_var_then_ok() {
+        let program = "
+FUNCTION_BLOCK MyFB
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_TEST
+    VAR
+        fb1 : MyFB;
+        fb2 : MyFB;
+    END_VAR
+    fb1 := fb2;
+END_FUNCTION_BLOCK";
+
+        let library =
+            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let result = apply(library, &mut type_environment);
+        // This succeeds because FB variables are parsed as LateResolvedType,
+        // and we handle that by treating the RHS as a variable reference.
+        // Semantic analysis later will catch invalid FB assignments.
+        assert!(result.is_ok());
     }
 }
