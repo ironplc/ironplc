@@ -4,6 +4,96 @@
 //! Only the elements needed for IronPLC are implemented.
 //! These are plain data structures populated by the roxmltree-based parser.
 
+use std::ops::Range;
+
+/// A string value with its byte position in the source XML document.
+///
+/// This type preserves the source location of string values extracted from
+/// XML attributes, allowing accurate error reporting that points to the
+/// original location in the XML file.
+#[derive(Debug, Clone)]
+pub struct LocatedString {
+    /// The string value
+    pub value: String,
+    /// Byte range in the original XML document (start..end)
+    pub range: Range<usize>,
+}
+
+impl LocatedString {
+    /// Create a new LocatedString with the given value and range
+    pub fn new(value: String, range: Range<usize>) -> Self {
+        Self { value, range }
+    }
+
+    /// Create a LocatedString with no position information (for defaults)
+    pub fn unlocated(value: String) -> Self {
+        Self { value, range: 0..0 }
+    }
+
+    /// Extract an attribute value with its source location from an XML node.
+    ///
+    /// If the attribute doesn't exist, returns a LocatedString with an empty value
+    /// and no location information.
+    pub fn from_node(node: roxmltree::Node, attr_name: &str) -> Self {
+        for attr in node.attributes() {
+            if attr.name() == attr_name {
+                return Self::new(attr.value().to_string(), attr.range_value());
+            }
+        }
+        Self::default()
+    }
+
+    /// Extract an optional attribute value with its source location from an XML node.
+    ///
+    /// Returns None if the attribute doesn't exist.
+    pub fn from_node_optional(node: roxmltree::Node, attr_name: &str) -> Option<Self> {
+        for attr in node.attributes() {
+            if attr.name() == attr_name {
+                return Some(Self::new(attr.value().to_string(), attr.range_value()));
+            }
+        }
+        None
+    }
+
+    /// Get the string value
+    pub fn as_str(&self) -> &str {
+        &self.value
+    }
+}
+
+impl Default for LocatedString {
+    fn default() -> Self {
+        Self {
+            value: String::new(),
+            range: 0..0,
+        }
+    }
+}
+
+impl std::fmt::Display for LocatedString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+impl PartialEq<&str> for LocatedString {
+    fn eq(&self, other: &&str) -> bool {
+        self.value == *other
+    }
+}
+
+impl PartialEq<str> for LocatedString {
+    fn eq(&self, other: &str) -> bool {
+        self.value == other
+    }
+}
+
+impl PartialEq<String> for LocatedString {
+    fn eq(&self, other: &String) -> bool {
+        &self.value == other
+    }
+}
+
 /// The root project element
 #[derive(Debug, Default)]
 pub struct Project {
@@ -74,7 +164,7 @@ pub struct DataTypes {
 /// A data type declaration
 #[derive(Debug)]
 pub struct DataTypeDecl {
-    pub name: String,
+    pub name: LocatedString,
     pub base_type: DataType,
     pub initial_value: Option<Value>,
 }
@@ -140,7 +230,7 @@ pub enum DataType {
 /// Reference to a named type
 #[derive(Debug, Clone)]
 pub struct DerivedType {
-    pub name: String,
+    pub name: LocatedString,
 }
 
 /// Array type
@@ -173,7 +263,7 @@ pub struct EnumValues {
 /// Single enumeration value
 #[derive(Debug, Clone)]
 pub struct EnumValue {
-    pub name: String,
+    pub name: LocatedString,
     pub value: Option<String>,
 }
 
@@ -186,7 +276,7 @@ pub struct StructType {
 /// Structure member (uses same structure as variable)
 #[derive(Debug, Clone)]
 pub struct StructMember {
-    pub name: String,
+    pub name: LocatedString,
     pub member_type: DataType,
     pub initial_value: Option<Value>,
 }
@@ -222,7 +312,7 @@ pub struct Pous {
 /// Program Organization Unit
 #[derive(Debug)]
 pub struct Pou {
-    pub name: String,
+    pub name: LocatedString,
     pub pou_type: PouType,
     pub global_id: Option<String>,
     pub interface: Option<Interface>,
@@ -267,7 +357,7 @@ pub struct VarList {
 /// Variable declaration
 #[derive(Debug)]
 pub struct Variable {
-    pub name: String,
+    pub name: LocatedString,
     pub address: Option<String>,
     pub global_id: Option<String>,
     pub var_type: DataType,
@@ -307,7 +397,7 @@ pub struct SfcBody {
 /// SFC step element
 #[derive(Debug, Clone)]
 pub struct SfcStep {
-    pub name: String,
+    pub name: LocatedString,
     pub initial_step: bool,
     pub global_id: Option<String>,
 }
@@ -315,7 +405,7 @@ pub struct SfcStep {
 /// SFC transition element
 #[derive(Debug, Clone)]
 pub struct SfcTransition {
-    pub name: Option<String>,
+    pub name: Option<LocatedString>,
     pub priority: Option<u32>,
     pub global_id: Option<String>,
     /// Inline ST condition
@@ -323,22 +413,22 @@ pub struct SfcTransition {
     /// Reference to named transition
     pub condition_reference: Option<String>,
     /// Source step names
-    pub from_steps: Vec<String>,
+    pub from_steps: Vec<LocatedString>,
     /// Target step names
-    pub to_steps: Vec<String>,
+    pub to_steps: Vec<LocatedString>,
 }
 
 /// SFC action block - associates actions with steps
 #[derive(Debug, Clone)]
 pub struct SfcActionBlock {
-    pub step_name: String,
+    pub step_name: LocatedString,
     pub actions: Vec<SfcActionAssociation>,
 }
 
 /// SFC action association with qualifier
 #[derive(Debug, Clone)]
 pub struct SfcActionAssociation {
-    pub action_name: String,
+    pub action_name: LocatedString,
     pub qualifier: Option<String>,
     pub duration: Option<String>,
     pub indicator: Option<String>,
@@ -353,7 +443,7 @@ pub struct Actions {
 /// Action definition
 #[derive(Debug)]
 pub struct Action {
-    pub name: String,
+    pub name: LocatedString,
     pub global_id: Option<String>,
     pub body: Body,
 }
@@ -367,7 +457,7 @@ pub struct Transitions {
 /// Transition definition
 #[derive(Debug)]
 pub struct Transition {
-    pub name: String,
+    pub name: LocatedString,
     pub global_id: Option<String>,
     pub body: Body,
 }
@@ -427,7 +517,7 @@ pub struct Configurations {
 /// Configuration declaration
 #[derive(Debug)]
 pub struct Configuration {
-    pub name: String,
+    pub name: LocatedString,
     pub global_id: Option<String>,
     pub resource: Vec<Resource>,
     pub global_vars: Vec<VarList>,
@@ -436,7 +526,7 @@ pub struct Configuration {
 /// Resource declaration
 #[derive(Debug)]
 pub struct Resource {
-    pub name: String,
+    pub name: LocatedString,
     pub global_id: Option<String>,
     pub task: Vec<Task>,
     pub global_vars: Vec<VarList>,
@@ -446,7 +536,7 @@ pub struct Resource {
 /// Task configuration
 #[derive(Debug)]
 pub struct Task {
-    pub name: String,
+    pub name: LocatedString,
     pub priority: String,
     pub interval: Option<String>,
     pub single: Option<String>,
@@ -457,8 +547,8 @@ pub struct Task {
 /// POU instance (program instance)
 #[derive(Debug)]
 pub struct PouInstance {
-    pub name: String,
-    pub type_name: String,
+    pub name: LocatedString,
+    pub type_name: LocatedString,
     pub global_id: Option<String>,
 }
 
