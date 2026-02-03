@@ -46,6 +46,23 @@ pub fn parse_plcopen_xml(xml_content: &str, file_id: &FileId) -> Result<Project,
         ));
     }
 
+    // Check PLCopen XML version via namespace
+    const SUPPORTED_NAMESPACE: &str = "http://www.plcopen.org/xml/tc6_0201";
+    if let Some(ns) = root.tag_name().namespace() {
+        if ns != SUPPORTED_NAMESPACE {
+            return Err(Diagnostic::problem(
+                Problem::XmlUnsupportedVersion,
+                Label::file(
+                    file_id.clone(),
+                    format!(
+                        "Unsupported PLCopen XML version. Found namespace '{}', expected '{}'",
+                        ns, SUPPORTED_NAMESPACE
+                    ),
+                ),
+            ));
+        }
+    }
+
     parse_project(&doc, root).map_err(|e| {
         Diagnostic::problem(Problem::XmlSchemaViolation, Label::file(file_id.clone(), e))
     })
@@ -1563,5 +1580,52 @@ END_IF;</xhtml>
             sv.value[1].value.simple_value.as_ref().unwrap().value,
             Some("20".to_string())
         );
+    }
+
+    #[test]
+    fn parse_when_unsupported_version_then_returns_error() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0100">
+  <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
+  <contentHeader name="TestProject">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous/>
+  </types>
+</project>"#;
+
+        let result = parse_plcopen_xml(xml, &test_file_id());
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(error.code, Problem::XmlUnsupportedVersion.code());
+    }
+
+    #[test]
+    fn parse_when_no_namespace_then_succeeds() {
+        // Allow files without namespace for flexibility
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<project>
+  <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
+  <contentHeader name="TestProject">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous/>
+  </types>
+</project>"#;
+
+        let result = parse_plcopen_xml(xml, &test_file_id());
+        assert!(result.is_ok());
     }
 }

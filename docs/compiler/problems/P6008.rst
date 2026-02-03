@@ -1,0 +1,37 @@
+=====
+P6008
+=====
+
+.. problem-summary:: P6008
+
+This error occurs when a PLCopen XML file uses a version that is not supported by the compiler. The version is determined by the XML namespace on the root ``<project>`` element.
+
+Example
+-------
+
+The following XML uses an unsupported namespace version:
+
+.. code-block:: xml
+
+   <?xml version="1.0" encoding="UTF-8"?>
+   <project xmlns="http://www.plcopen.org/xml/tc6_0100">
+     <!-- TC6 v1.0 is not supported -->
+   </project>
+
+Supported Versions
+------------------
+
+The compiler supports the following PLCopen XML versions:
+
+- **TC6 v2.01** (namespace: ``http://www.plcopen.org/xml/tc6_0201``) - Primary supported version
+
+To fix this error, ensure your XML file uses a supported namespace:
+
+.. code-block:: xml
+
+   <?xml version="1.0" encoding="UTF-8"?>
+   <project xmlns="http://www.plcopen.org/xml/tc6_0201">
+     <!-- TC6 v2.01 is supported -->
+   </project>
+
+If you have a PLCopen XML file in an older format, you may need to use an export tool that supports TC6 v2.01, or manually update the namespace and adjust the file structure to match the v2.01 schema.
