@@ -74,6 +74,6 @@ to check your program's syntax.
 
    ironplcc check main.st
 
-The output :samp:`OK` should print to the terminal.
+On success, the command produces no output.
 
 For now, that's it. Presently, IronPLC does not create runnable programs.
