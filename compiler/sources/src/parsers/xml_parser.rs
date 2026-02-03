@@ -4,7 +4,7 @@
 
 use ironplc_dsl::{
     common::Library,
-    core::FileId,
+    core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
 use ironplc_problems::Problem;
@@ -40,17 +40,29 @@ pub fn parse(content: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
     // Check for unsupported body languages
     for pou in &project.types.pous.pou {
         if let Some(ref body) = pou.body {
-            if let Some(lang) = body.unsupported_language() {
-                return Err(Diagnostic::problem(
-                    Problem::XmlBodyTypeNotSupported,
+            if let Some((lang, range)) = body.unsupported_language() {
+                let label = if let Some(range) = range {
+                    Label::span(
+                        SourceSpan {
+                            start: range.start,
+                            end: range.end,
+                            file_id: file_id.clone(),
+                        },
+                        format!(
+                            "POU '{}' uses {} which is not supported. Use ST (Structured Text) instead.",
+                            pou.name, lang
+                        ),
+                    )
+                } else {
                     Label::file(
                         file_id.clone(),
                         format!(
                             "POU '{}' uses {} which is not supported. Use ST (Structured Text) instead.",
                             pou.name, lang
                         ),
-                    ),
-                ));
+                    )
+                };
+                return Err(Diagnostic::problem(Problem::XmlBodyTypeNotSupported, label));
             }
         }
     }
@@ -158,7 +170,7 @@ END_IF;
     }
 
     #[test]
-    fn parse_when_fbd_body_then_returns_unsupported_error() {
+    fn parse_when_fbd_body_then_returns_unsupported_error_with_position() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://www.plcopen.org/xml/tc6_0201">
   <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
@@ -190,10 +202,28 @@ END_IF;
         assert_eq!(diagnostic.code, Problem::XmlBodyTypeNotSupported.code());
         assert!(diagnostic.primary.message.contains("FBD"));
         assert!(diagnostic.primary.message.contains("not supported"));
+
+        // Verify that the error location points to the FBD element, not the file
+        assert!(
+            diagnostic.primary.location.start > 0,
+            "Expected error to point to the FBD element in the XML"
+        );
+        assert!(
+            diagnostic.primary.location.end > diagnostic.primary.location.start,
+            "Expected valid range for error location"
+        );
+
+        // Verify the location points to the FBD element by checking the byte range contains "<FBD>"
+        let error_text = &xml[diagnostic.primary.location.start..diagnostic.primary.location.end];
+        assert!(
+            error_text.contains("<FBD>") || error_text.starts_with("<FBD"),
+            "Expected error location to contain the FBD element, but got: {}",
+            error_text
+        );
     }
 
     #[test]
-    fn parse_when_ld_body_then_returns_unsupported_error() {
+    fn parse_when_ld_body_then_returns_unsupported_error_with_position() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://www.plcopen.org/xml/tc6_0201">
   <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
@@ -225,5 +255,23 @@ END_IF;
         assert_eq!(diagnostic.code, Problem::XmlBodyTypeNotSupported.code());
         assert!(diagnostic.primary.message.contains("LD"));
         assert!(diagnostic.primary.message.contains("not supported"));
+
+        // Verify that the error location points to the LD element, not the file
+        assert!(
+            diagnostic.primary.location.start > 0,
+            "Expected error to point to the LD element in the XML"
+        );
+        assert!(
+            diagnostic.primary.location.end > diagnostic.primary.location.start,
+            "Expected valid range for error location"
+        );
+
+        // Verify the location points to the LD element by checking the byte range contains "<LD>"
+        let error_text = &xml[diagnostic.primary.location.start..diagnostic.primary.location.end];
+        assert!(
+            error_text.contains("<LD>") || error_text.starts_with("<LD"),
+            "Expected error location to contain the LD element, but got: {}",
+            error_text
+        );
     }
 }
