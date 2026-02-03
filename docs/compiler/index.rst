@@ -13,5 +13,5 @@ This chapter describes how to use the command line interface.
    :maxdepth: 1
 
    Basic Usage <basicusage>
-   PLCopen XML <plcopen-xml>
+   Source Formats <source-formats/index>
    Problems <problems/index>

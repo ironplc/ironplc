@@ -28,9 +28,6 @@ Within PLCopen XML files, IronPLC supports the following programming languages:
 - **Ladder Diagram (LD)** - Graphical language
 - **Instruction List (IL)** - Deprecated text-based language
 
-If a PLCopen XML file contains POUs using unsupported languages, the compiler
-will report error :doc:`P9003 <problems/P9003>`.
-
 -----
 Usage
 -----
@@ -88,15 +85,3 @@ IronPLC supports the following PLCopen XML elements:
 - Transitions with ST conditions
 - Actions with ST bodies
 - Action associations with qualifiers (N, R, S, L, D, P)
-
--------------
-Related Codes
--------------
-
-The following problem codes are specific to PLCopen XML processing:
-
-- :doc:`P0006 <problems/P0006>` - XML file is malformed
-- :doc:`P0007 <problems/P0007>` - XML violates PLCopen schema
-- :doc:`P0008 <problems/P0008>` - SFC body missing initial step
-- :doc:`P6008 <problems/P6008>` - Unsupported PLCopen XML version
-- :doc:`P9003 <problems/P9003>` - POU body language not supported
