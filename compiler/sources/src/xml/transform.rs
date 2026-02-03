@@ -31,9 +31,21 @@ use ironplc_problems::Problem;
 
 use super::schema::{
     ArrayType, Configuration, DataType, DataTypeDecl, Dimension, EnumType, Instances, Interface,
-    Pou, PouInstance, PouType, Project, Resource, SfcBody, StructType, SubrangeSigned,
-    SubrangeUnsigned, Task, VarList, Variable,
+    LocatedString, Pou, PouInstance, PouType, Project, Resource, SfcBody, StructType,
+    SubrangeSigned, SubrangeUnsigned, Task, VarList, Variable,
 };
+
+/// Create an Id from a LocatedString with source position information.
+fn make_id(located: &LocatedString, file_id: &FileId) -> Id {
+    Id::from(located.as_str()).with_position(
+        SourceSpan::range(located.range.start, located.range.end).with_file_id(file_id),
+    )
+}
+
+/// Create a TypeName from a LocatedString with source position information.
+fn make_type_name(located: &LocatedString, file_id: &FileId) -> TypeName {
+    TypeName::from_id(&make_id(located, file_id))
+}
 
 /// Create a SourceSpan for the given file with no position info
 fn file_span(file_id: &FileId) -> SourceSpan {
@@ -78,10 +90,10 @@ fn transform_data_type_decl(
     decl: &DataTypeDecl,
     file_id: &FileId,
 ) -> Result<DataTypeDeclarationKind, Diagnostic> {
-    let type_name = TypeName::from(decl.name.as_str());
+    let type_name = make_type_name(&decl.name, file_id);
 
     match &decl.base_type {
-        DataType::Enum(enum_type) => transform_enum_decl(&type_name, enum_type),
+        DataType::Enum(enum_type) => transform_enum_decl(&type_name, enum_type, file_id),
         DataType::Array(array_type) => transform_array_decl(&type_name, array_type, file_id),
         DataType::Struct(struct_type) => transform_struct_decl(&type_name, struct_type, file_id),
         DataType::SubrangeSigned(subrange) => {
@@ -108,6 +120,7 @@ fn transform_data_type_decl(
 fn transform_enum_decl(
     type_name: &TypeName,
     enum_type: &EnumType,
+    file_id: &FileId,
 ) -> Result<DataTypeDeclarationKind, Diagnostic> {
     let values: Vec<EnumeratedValue> = enum_type
         .values
@@ -115,7 +128,7 @@ fn transform_enum_decl(
         .iter()
         .map(|v| EnumeratedValue {
             type_name: Some(type_name.clone()),
-            value: Id::from(v.name.as_str()),
+            value: make_id(&v.name, file_id),
         })
         .collect();
 
@@ -201,7 +214,7 @@ fn transform_struct_decl(
         .map(|member| {
             let member_type = transform_data_type(&member.member_type, file_id)?;
             Ok(StructureElementDeclaration {
-                name: Id::from(member.name.as_str()),
+                name: make_id(&member.name, file_id),
                 init: InitialValueAssignmentKind::Simple(SimpleInitializer {
                     type_name: member_type,
                     initial_value: None,
@@ -328,7 +341,7 @@ fn transform_base_type_to_elementary(
 }
 
 /// Transform a PLCopen DataType to a DSL TypeName
-fn transform_data_type(data_type: &DataType, _file_id: &FileId) -> Result<TypeName, Diagnostic> {
+fn transform_data_type(data_type: &DataType, file_id: &FileId) -> Result<TypeName, Diagnostic> {
     match data_type {
         // Elementary types
         DataType::Bool => Ok(ElementaryTypeName::BOOL.into()),
@@ -354,7 +367,7 @@ fn transform_data_type(data_type: &DataType, _file_id: &FileId) -> Result<TypeNa
         DataType::WString { .. } => Ok(ElementaryTypeName::WSTRING.into()),
 
         // Derived type (reference to another type)
-        DataType::Derived(derived) => Ok(TypeName::from(derived.name.as_str())),
+        DataType::Derived(derived) => Ok(make_type_name(&derived.name, file_id)),
 
         // Complex types that need context
         DataType::Array(_) => Err(Diagnostic::todo(file!(), line!())),
@@ -392,7 +405,7 @@ fn transform_pou(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind, Diag
 
 /// Transform a function declaration
 fn transform_function(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind, Diagnostic> {
-    let name = Id::from(pou.name.as_str());
+    let name = make_id(&pou.name, file_id);
     let span = file_span(file_id);
 
     // Get return type (required for functions)
@@ -405,7 +418,7 @@ fn transform_function(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind,
                 Problem::XmlSchemaViolation,
                 Label::span(
                     span,
-                    format!("Function '{}' is missing a return type", pou.name),
+                    format!("Function '{}' is missing a return type", pou.name.as_str()),
                 ),
             ));
         }
@@ -414,7 +427,7 @@ fn transform_function(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind,
             Problem::XmlSchemaViolation,
             Label::span(
                 span,
-                format!("Function '{}' is missing interface", pou.name),
+                format!("Function '{}' is missing interface", pou.name.as_str()),
             ),
         ));
     };
@@ -435,7 +448,7 @@ fn transform_function(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind,
 
 /// Transform a function block declaration
 fn transform_function_block(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind, Diagnostic> {
-    let name = TypeName::from(pou.name.as_str());
+    let name = make_type_name(&pou.name, file_id);
     let span = file_span(file_id);
 
     let variables = transform_interface(pou.interface.as_ref(), file_id)?;
@@ -454,7 +467,7 @@ fn transform_function_block(pou: &Pou, file_id: &FileId) -> Result<LibraryElemen
 
 /// Transform a program declaration
 fn transform_program(pou: &Pou, file_id: &FileId) -> Result<LibraryElementKind, Diagnostic> {
-    let name = Id::from(pou.name.as_str());
+    let name = make_id(&pou.name, file_id);
 
     let variables = transform_interface(pou.interface.as_ref(), file_id)?;
     let body = transform_body(pou, file_id)?;
@@ -554,7 +567,7 @@ fn transform_variable(
     qualifier: DeclarationQualifier,
     file_id: &FileId,
 ) -> Result<VarDecl, Diagnostic> {
-    let identifier = VariableIdentifier::Symbol(Id::from(var.name.as_str()));
+    let identifier = VariableIdentifier::Symbol(make_id(&var.name, file_id));
     let type_name = transform_data_type(&var.var_type, file_id)?;
 
     let initializer = InitialValueAssignmentKind::Simple(SimpleInitializer {
@@ -635,7 +648,7 @@ fn transform_configuration(
     config: &Configuration,
     file_id: &FileId,
 ) -> Result<ConfigurationDeclaration, Diagnostic> {
-    let name = Id::from(config.name.as_str());
+    let name = make_id(&config.name, file_id);
 
     // Transform global variables
     let global_var = transform_global_vars(&config.global_vars, file_id)?;
@@ -661,7 +674,7 @@ fn transform_resource(
     resource: &Resource,
     file_id: &FileId,
 ) -> Result<ResourceDeclaration, Diagnostic> {
-    let name = Id::from(resource.name.as_str());
+    let name = make_id(&resource.name, file_id);
 
     // Transform global variables
     let global_vars = transform_global_vars(&resource.global_vars, file_id)?;
@@ -677,13 +690,13 @@ fn transform_resource(
     let mut programs: Vec<ProgramConfiguration> = resource
         .pou_instance
         .iter()
-        .map(|inst| transform_pou_instance(inst, None))
+        .map(|inst| transform_pou_instance(inst, None, file_id))
         .collect();
 
     // Also include program instances from tasks
     for task in &resource.task {
         for inst in &task.pou_instance {
-            programs.push(transform_pou_instance(inst, Some(&task.name)));
+            programs.push(transform_pou_instance(inst, Some(&task.name), file_id));
         }
     }
 
@@ -698,7 +711,7 @@ fn transform_resource(
 
 /// Transform a task configuration
 fn transform_task(task: &Task, file_id: &FileId) -> Result<TaskConfiguration, Diagnostic> {
-    let name = Id::from(task.name.as_str());
+    let name = make_id(&task.name, file_id);
 
     // Parse priority
     let priority = task.priority.parse::<u32>().map_err(|_| {
@@ -726,12 +739,16 @@ fn transform_task(task: &Task, file_id: &FileId) -> Result<TaskConfiguration, Di
 }
 
 /// Transform a POU instance (program configuration)
-fn transform_pou_instance(instance: &PouInstance, task_name: Option<&str>) -> ProgramConfiguration {
+fn transform_pou_instance(
+    instance: &PouInstance,
+    task_name: Option<&LocatedString>,
+    file_id: &FileId,
+) -> ProgramConfiguration {
     ProgramConfiguration {
-        name: Id::from(instance.name.as_str()),
+        name: make_id(&instance.name, file_id),
         storage: None,
-        task_name: task_name.map(Id::from),
-        type_name: Id::from(instance.type_name.as_str()),
+        task_name: task_name.map(|t| make_id(t, file_id)),
+        type_name: make_id(&instance.type_name, file_id),
         fb_tasks: vec![],
         sources: vec![],
         sinks: vec![],
@@ -851,10 +868,10 @@ fn transform_sfc_body(sfc_body: &SfcBody, pou: &Pou, file_id: &FileId) -> Result
         })?;
 
     // Build action associations map from action blocks
-    let action_associations = build_action_associations(sfc_body);
+    let action_associations = build_action_associations(sfc_body, file_id);
 
     // Transform initial step
-    let initial_step_dsl = transform_sfc_step(initial_step, &action_associations);
+    let initial_step_dsl = transform_sfc_step(initial_step, &action_associations, file_id);
 
     // Transform other elements (non-initial steps, transitions, actions)
     let mut elements = Vec::new();
@@ -865,6 +882,7 @@ fn transform_sfc_body(sfc_body: &SfcBody, pou: &Pou, file_id: &FileId) -> Result
             elements.push(ElementKind::Step(transform_sfc_step(
                 step,
                 &action_associations,
+                file_id,
             )));
         }
     }
@@ -894,6 +912,7 @@ fn transform_sfc_body(sfc_body: &SfcBody, pou: &Pou, file_id: &FileId) -> Result
 /// Build a map of step names to their action associations
 fn build_action_associations(
     sfc_body: &SfcBody,
+    file_id: &FileId,
 ) -> std::collections::HashMap<String, Vec<ActionAssociation>> {
     let mut map = std::collections::HashMap::new();
 
@@ -902,13 +921,13 @@ fn build_action_associations(
             .actions
             .iter()
             .map(|a| ActionAssociation {
-                name: Id::from(a.action_name.as_str()),
+                name: make_id(&a.action_name, file_id),
                 qualifier: a.qualifier.as_ref().and_then(|q| parse_action_qualifier(q)),
                 indicators: vec![],
             })
             .collect();
 
-        map.insert(action_block.step_name.clone(), associations);
+        map.insert(action_block.step_name.value.clone(), associations);
     }
 
     map
@@ -918,14 +937,15 @@ fn build_action_associations(
 fn transform_sfc_step(
     step: &super::schema::SfcStep,
     action_associations: &std::collections::HashMap<String, Vec<ActionAssociation>>,
+    file_id: &FileId,
 ) -> Step {
     let associations = action_associations
-        .get(&step.name)
+        .get(&step.name.value)
         .cloned()
         .unwrap_or_default();
 
     Step {
-        name: Id::from(step.name.as_str()),
+        name: make_id(&step.name, file_id),
         action_associations: associations,
     }
 }
@@ -953,17 +973,17 @@ fn transform_sfc_transition(
     };
 
     Ok(Transition {
-        name: transition.name.as_ref().map(|n| Id::from(n.as_str())),
+        name: transition.name.as_ref().map(|n| make_id(n, file_id)),
         priority: transition.priority,
         from: transition
             .from_steps
             .iter()
-            .map(|s| Id::from(s.as_str()))
+            .map(|s| make_id(s, file_id))
             .collect(),
         to: transition
             .to_steps
             .iter()
-            .map(|s| Id::from(s.as_str()))
+            .map(|s| make_id(s, file_id))
             .collect(),
         condition,
     })
@@ -974,7 +994,7 @@ fn transform_sfc_action(
     action: &super::schema::Action,
     file_id: &FileId,
 ) -> Result<SfcAction, Diagnostic> {
-    let name = Id::from(action.name.as_str());
+    let name = make_id(&action.name, file_id);
 
     // Parse the action body
     let body = if let Some(st_body) = action.body.st_body() {
@@ -1912,5 +1932,160 @@ END_IF;
 
         // Should have 2 type declarations
         assert_eq!(library.elements.len(), 2);
+    }
+
+    // ========================================================================
+    // Source position tests
+    // ========================================================================
+
+    #[test]
+    fn transform_when_pou_name_then_has_source_position() {
+        let xml = format!(
+            r#"{}
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="MyFunction" pouType="function">
+        <interface>
+          <returnType><INT/></returnType>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">MyFunction := 42;</xhtml>
+          </ST>
+        </body>
+      </pou>
+    </pous>
+  </types>
+</project>"#,
+            minimal_project_header()
+        );
+
+        let project = parse_project(&xml);
+        let file_id = test_file_id();
+        let library = transform_project(&project, &file_id).unwrap();
+
+        let LibraryElementKind::FunctionDeclaration(func_decl) = &library.elements[0] else {
+            panic!("Expected function declaration");
+        };
+
+        // Verify the name has a non-zero span (indicating position was captured)
+        let span = &func_decl.name.span;
+        assert!(
+            span.start < span.end,
+            "Expected non-zero span for function name, got start={} end={}",
+            span.start,
+            span.end
+        );
+
+        // Verify the name value is correct
+        assert_eq!(func_decl.name.original(), "MyFunction");
+    }
+
+    #[test]
+    fn transform_when_variable_name_then_has_source_position() {
+        let xml = format!(
+            r#"{}
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="TestProg" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="MyVariable">
+              <type><INT/></type>
+            </variable>
+          </localVars>
+        </interface>
+      </pou>
+    </pous>
+  </types>
+</project>"#,
+            minimal_project_header()
+        );
+
+        let project = parse_project(&xml);
+        let file_id = test_file_id();
+        let library = transform_project(&project, &file_id).unwrap();
+
+        let LibraryElementKind::ProgramDeclaration(prog_decl) = &library.elements[0] else {
+            panic!("Expected program declaration");
+        };
+
+        // Get the variable identifier
+        let var = &prog_decl.variables[0];
+        let VariableIdentifier::Symbol(id) = &var.identifier else {
+            panic!("Expected Symbol identifier");
+        };
+
+        // Verify the variable name has a non-zero span
+        let span = &id.span;
+        assert!(
+            span.start < span.end,
+            "Expected non-zero span for variable name, got start={} end={}",
+            span.start,
+            span.end
+        );
+
+        // Verify the name value is correct
+        assert_eq!(id.original(), "MyVariable");
+    }
+
+    #[test]
+    fn transform_when_data_type_name_then_has_source_position() {
+        let xml = format!(
+            r#"{}
+  <types>
+    <dataTypes>
+      <dataType name="MyEnum">
+        <baseType>
+          <enum>
+            <values>
+              <value name="Value1"/>
+            </values>
+          </enum>
+        </baseType>
+      </dataType>
+    </dataTypes>
+    <pous/>
+  </types>
+</project>"#,
+            minimal_project_header()
+        );
+
+        let project = parse_project(&xml);
+        let file_id = test_file_id();
+        let library = transform_project(&project, &file_id).unwrap();
+
+        let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
+            enum_decl,
+        )) = &library.elements[0]
+        else {
+            panic!("Expected enumeration declaration");
+        };
+
+        // Verify the type name has a non-zero span
+        let span = &enum_decl.type_name.name.span;
+        assert!(
+            span.start < span.end,
+            "Expected non-zero span for type name, got start={} end={}",
+            span.start,
+            span.end
+        );
+
+        // Verify the name value is correct
+        assert_eq!(enum_decl.type_name.to_string(), "MyEnum");
+
+        // Also verify the enum value name has position
+        let SpecificationKind::Inline(spec) = &enum_decl.spec_init.spec else {
+            panic!("Expected inline spec");
+        };
+        let value_span = &spec.values[0].value.span;
+        assert!(
+            value_span.start < value_span.end,
+            "Expected non-zero span for enum value name, got start={} end={}",
+            value_span.start,
+            value_span.end
+        );
     }
 }
