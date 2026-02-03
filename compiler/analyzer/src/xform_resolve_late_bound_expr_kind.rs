@@ -16,13 +16,14 @@ use crate::type_environment::TypeEnvironment;
 
 pub fn apply(
     lib: Library,
-    _type_environment: &mut TypeEnvironment,
+    type_environment: &mut TypeEnvironment,
 ) -> Result<Library, Vec<Diagnostic>> {
     // Resolve the types. This is a single fold of the library
     let mut resolver = DeclarationResolver {
         names_to_types: HashMap::new(),
         current_type: VariableType::None,
         diagnostics: Vec::new(),
+        type_environment,
     };
     let result = resolver.fold_library(lib).map_err(|e| vec![e]);
 
@@ -44,19 +45,21 @@ enum VariableType {
     Subrange,
     Structure,
     Array,
-    LateResolvedType,
+    /// Late resolved type with the type name for lookup in type environment
+    LateResolvedType(TypeName),
 }
 
-struct DeclarationResolver {
+struct DeclarationResolver<'a> {
     // Defines the desired type for each identifier
     names_to_types: HashMap<Id, VariableType>,
     current_type: VariableType,
     diagnostics: Vec<Diagnostic>,
+    type_environment: &'a TypeEnvironment,
 }
 
-impl DeclarationResolver {
+impl DeclarationResolver<'_> {
     fn insert(&mut self, node: &VarDecl) {
-        let var_type = match node.initializer {
+        let var_type = match &node.initializer {
             InitialValueAssignmentKind::None(_) => VariableType::None,
             InitialValueAssignmentKind::Simple(_) => VariableType::Simple,
             InitialValueAssignmentKind::String(_) => VariableType::String,
@@ -66,7 +69,9 @@ impl DeclarationResolver {
             InitialValueAssignmentKind::Subrange(_) => VariableType::Subrange,
             InitialValueAssignmentKind::Structure(_) => VariableType::Structure,
             InitialValueAssignmentKind::Array(_) => VariableType::Array,
-            InitialValueAssignmentKind::LateResolvedType(_) => VariableType::LateResolvedType,
+            InitialValueAssignmentKind::LateResolvedType(type_name) => {
+                VariableType::LateResolvedType(type_name.clone())
+            }
         };
         match &node.identifier {
             VariableIdentifier::Symbol(id) => {
@@ -85,7 +90,7 @@ impl DeclarationResolver {
     }
 }
 
-impl Fold<Diagnostic> for DeclarationResolver {
+impl Fold<Diagnostic> for DeclarationResolver<'_> {
     fn fold_function_declaration(
         &mut self,
         node: FunctionDeclaration,
@@ -230,13 +235,21 @@ impl Fold<Diagnostic> for DeclarationResolver {
                 VariableType::Array => Ok(ExprKind::Variable(Variable::Symbolic(
                     SymbolicVariableKind::Named(NamedVariable { name: node.value }),
                 ))),
-                VariableType::LateResolvedType => {
-                    // The variable type hasn't been resolved yet. Since we don't know if
-                    // this is an enum or another type, default to variable reference.
-                    // Semantic analysis will catch type mismatches later.
-                    Ok(ExprKind::Variable(Variable::Symbolic(
-                        SymbolicVariableKind::Named(NamedVariable { name: node.value }),
-                    )))
+                VariableType::LateResolvedType(ref type_name) => {
+                    // Look up the type in the type environment to determine how to
+                    // handle the late-bound expression.
+                    if self.type_environment.is_enumeration(type_name) {
+                        // The type is an enumeration, so treat the value as an enum constant
+                        Ok(ExprKind::EnumeratedValue(EnumeratedValue {
+                            type_name: None,
+                            value: node.value,
+                        }))
+                    } else {
+                        // Not an enumeration (or type not found), treat as variable reference
+                        Ok(ExprKind::Variable(Variable::Symbolic(
+                            SymbolicVariableKind::Named(NamedVariable { name: node.value }),
+                        )))
+                    }
                 }
             },
         }
