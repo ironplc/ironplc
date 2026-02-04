@@ -88,7 +88,7 @@ pub trait Fold<E> {
     // 2.2.3.2
     leaf!(DateAndTimeLiteral);
 
-    // TODO where is this?
+    // 2.2.1
     leaf!(BitStringLiteral);
 
     dispatch!(ConstantKind);
