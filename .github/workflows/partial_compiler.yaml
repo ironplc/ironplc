@@ -80,6 +80,11 @@ jobs:
         with:
           components: rustfmt, clippy
           target: ${{ matrix.rust_target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "compiler -> target"
+          # Include target triple in cache key for cross-compilation
+          key: ${{ matrix.rust_target }}
       - uses: taiki-e/install-action@cargo-llvm-cov
       - name: Install NSIS
         if: ${{ matrix.os == 'windows-2025' }}
