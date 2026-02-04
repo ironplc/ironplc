@@ -27,19 +27,17 @@ cd compiler && just
 
 This single command runs **all required checks**:
 1. `compile` - Build the compiler
-2. `test` - Run all tests
-3. `coverage` - Verify 85% line coverage threshold
-4. `lint` - Run **clippy** and **rustfmt** checks
+2. `coverage` - Run all tests and verify 85% line coverage threshold
+3. `lint` - Run **clippy** and **rustfmt** checks
 
-**All four checks must pass before creating a PR.** CI will reject PRs that fail any of these checks.
+**All three checks must pass before creating a PR.** CI will reject PRs that fail any of these checks.
 
 ### What Each Check Does
 
 | Check | Command | What it validates |
 |-------|---------|-------------------|
 | Compile | `cargo build` | Code compiles without errors |
-| Test | `cargo test --all-targets` | All tests pass |
-| Coverage | `cargo llvm-cov ...` | Line coverage ≥ 85% |
+| Coverage | `cargo llvm-cov ...` | All tests pass and line coverage ≥ 85% |
 | **Lint** | `cargo clippy` + `cargo fmt --check` | No clippy warnings, code is formatted |
 
 ### Fixing Common Failures
@@ -91,7 +89,8 @@ just clean       # Remove build artifacts
 
 ```bash
 cd compiler
-just             # Runs: compile, test, coverage, lint
+just             # Runs: compile, coverage, lint
+just test        # Run tests only (without coverage instrumentation)
 just coverage    # Run tests with coverage (requires 85% line coverage)
 just format      # Auto-fix linting errors
 just clean       # Remove build artifacts (target/, lcov.info)

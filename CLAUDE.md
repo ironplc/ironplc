@@ -21,7 +21,7 @@ Before making changes, read the relevant steering files in `specs/steering/`:
 cd compiler && just
 ```
 
-This runs compile, test, coverage, AND lint (clippy + fmt). **All checks must pass.**
+This runs compile, coverage (which includes tests), AND lint (clippy + fmt). **All checks must pass.**
 
 If any check fails:
 1. Fix the issues

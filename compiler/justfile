@@ -1,7 +1,8 @@
 set windows-shell := ["powershell.exe", "-c"]
 
 alias ci := default
-default: compile test coverage lint
+# Coverage runs all tests with instrumentation, so separate test step is redundant
+default: compile coverage lint
 
 setup:
   cargo install cargo-release
