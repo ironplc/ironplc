@@ -83,6 +83,17 @@
           ".iec"
         ],
         "configuration": "./decl/61131-3-st-language-configuration.json"
+      },
+      {
+        "id": "plcopen-xml",
+        "aliases": [
+          "PLCopen XML",
+          "IEC 61131-3 XML",
+          "TC6 XML"
+        ],
+        "extensions": [],
+        "firstLine": "^<\\?xml[^>]*\\?>\\s*(<project\\s+xmlns\\s*=\\s*[\"']http://www\\.plcopen\\.org/xml/tc6|<project\\s[^>]*xmlns\\s*=\\s*[\"']http://www\\.plcopen\\.org/xml/tc6)",
+        "configuration": "./decl/plcopen-xml-language-configuration.json"
       }
     ],
     "grammars": [
@@ -90,6 +101,14 @@
         "language": "61131-3-st",
         "scopeName": "source.61131-3-st",
         "path": "./syntaxes/61131-3-st.tmLanguage.json"
+      },
+      {
+        "language": "plcopen-xml",
+        "scopeName": "source.plcopen-xml",
+        "path": "./syntaxes/plcopen-xml.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.st": "61131-3-st"
+        }
       }
     ]
   },
