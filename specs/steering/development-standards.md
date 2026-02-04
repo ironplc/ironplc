@@ -168,6 +168,23 @@ To fix this error, [solution]:
    [Corrected example]
 ```
 
+### README Synchronization
+The project has multiple README files that must stay synchronized:
+
+- **Root `README.md`**: Main project overview, mission, progress, and capabilities
+- **`integrations/vscode/README.md`**: VS Code Extension specific documentation for the Marketplace
+
+**When updating the main README:**
+1. Review if the extension README needs corresponding updates
+2. The extension README should reflect the same capabilities/limitations
+3. Keep the "warning" banner (`⚠`) consistent between both files
+4. Ensure feature lists match (e.g., syntax highlighting, analysis capabilities)
+
+**When updating the extension README:**
+1. Keep it focused on VS Code-specific usage and features
+2. Include extension settings, commands, and configuration
+3. Reference the main documentation website for detailed information
+
 ### Code Documentation
 - **Best effort** documentation for now, but focus on public APIs
 - Use Rust doc comments (`///`) for public functions and types
