@@ -611,15 +611,6 @@ END_FUNCTION";
         assert_eq!(actual, expected);
     }
 
-    // TODO add this as a test
-    //#[test]
-    //fn first_steps_function_block_counter_ld() {
-    //    let src = read_resource("first_steps_function_block_counter_ld.st");
-    //    let expected = Ok(vec![
-    //    ]);
-    //    assert_eq!(ironplc_parser::parse_program(src.as_str()), expected)
-    //}
-
     #[test]
     fn parse_when_first_steps_data_type_decl_then_builds_structure() {
         let actual = parse_resource("first_steps_data_type_decl.st").unwrap();
