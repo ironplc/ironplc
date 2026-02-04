@@ -20,10 +20,10 @@ Supported Languages
 **Fully Supported:**
 
 - **Structured Text (ST)** - Text-based programming language
+- **Sequential Function Chart (SFC)** - State-machine based programming with ST action bodies
 
 **Not Supported:**
 
-- **Sequential Function Chart (SFC)** - Supported only in PLCopen XML format
 - **Function Block Diagram (FBD)** - Graphical language
 - **Ladder Diagram (LD)** - Graphical language
 - **Instruction List (IL)** - Deprecated text-based language
@@ -55,3 +55,10 @@ IronPLC supports the following elements in Structured Text files:
 - Resources
 - Tasks
 - Program instances
+
+**SFC Elements:**
+
+- Steps (including initial step)
+- Transitions with ST conditions
+- Actions with ST bodies
+- Action associations with qualifiers (N, R, S, L, D, P)
