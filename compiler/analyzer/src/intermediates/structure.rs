@@ -29,7 +29,7 @@ pub fn try_from(
         let field_type = resolve_field_type(&element.init, type_environment)?;
 
         // Determine if this field has a default value
-        let has_default = field_has_default(&element.init);
+        let has_default = field_has_default(&element.init, type_environment);
 
         // Calculate field alignment and adjust offset if needed
         let field_alignment = field_type.alignment_bytes() as u32;
@@ -69,12 +69,21 @@ fn align_offset(offset: u32, alignment: u32) -> u32 {
 /// Determines whether a structure field has a default value based on its initializer.
 ///
 /// A field has a default if it has an explicit initial value in its type specification.
-/// For nested types (structures, arrays), we consider them to have defaults if they
-/// have initializers or if all their constituent parts have defaults.
-fn field_has_default(init: &InitialValueAssignmentKind) -> bool {
+/// For nested types (structures), we consider them to have defaults if:
+/// 1. They have explicit initializers, OR
+/// 2. All fields in the nested structure type have defaults
+fn field_has_default(init: &InitialValueAssignmentKind, type_environment: &TypeEnvironment) -> bool {
     match init {
         InitialValueAssignmentKind::None(_) => false,
-        InitialValueAssignmentKind::Simple(simple_init) => simple_init.initial_value.is_some(),
+        InitialValueAssignmentKind::Simple(simple_init) => {
+            // If there's an explicit initial value, this field has a default
+            if simple_init.initial_value.is_some() {
+                return true;
+            }
+            // No explicit initial value - check if the type is a structure with all defaults
+            // (e.g., `inner : Inner;` where Inner is a struct with all fields having defaults)
+            nested_structure_has_all_defaults(&simple_init.type_name, type_environment)
+        }
         InitialValueAssignmentKind::String(string_init) => string_init.initial_value.is_some(),
         InitialValueAssignmentKind::EnumeratedValues(enum_init) => {
             enum_init.initial_value.is_some()
@@ -96,23 +105,57 @@ fn field_has_default(init: &InitialValueAssignmentKind) -> bool {
             false
         }
         InitialValueAssignmentKind::Structure(struct_init) => {
-            // A structure field has a "default" if it has explicit initializers.
-            // If elements_init is non-empty, those fields are explicitly initialized.
-            // However, the complete determination of whether all fields are initialized
-            // requires checking the type definition - which happens during const validation.
-            // For this field-level check, we say it has a default if any explicit
-            // initializers are provided.
-            !struct_init.elements_init.is_empty()
+            // A nested structure field has a default if:
+            // 1. It has explicit initializers provided, OR
+            // 2. All fields in the nested structure type have defaults
+            if !struct_init.elements_init.is_empty() {
+                // Explicit initializers provided - we consider this as having a default.
+                // Note: This doesn't validate that ALL fields are initialized; that's
+                // done by the const validation rule which checks completeness.
+                return true;
+            }
+
+            // No explicit initializers - check if the nested type has all defaults
+            nested_structure_has_all_defaults(&struct_init.type_name, type_environment)
         }
         InitialValueAssignmentKind::Array(array_init) => {
             // Array has a default if it has initial values (non-empty vec)
             !array_init.initial_values.is_empty()
         }
-        InitialValueAssignmentKind::LateResolvedType(_) => {
-            // Late resolved types don't carry initial value information
-            false
+        InitialValueAssignmentKind::LateResolvedType(type_name) => {
+            // Late resolved types don't carry initial value information themselves,
+            // but they may reference a structure type with all defaults
+            nested_structure_has_all_defaults(type_name, type_environment)
         }
     }
+}
+
+/// Checks if a nested structure type has all its fields with default values.
+///
+/// This is used to determine if a field of structure type can be considered
+/// as "having a default" when no explicit initializers are provided.
+fn nested_structure_has_all_defaults(type_name: &TypeName, type_environment: &TypeEnvironment) -> bool {
+    // Look up the nested structure type
+    let type_attrs = match type_environment.get(type_name) {
+        Some(attrs) => attrs,
+        None => {
+            // Type not found - conservatively say no defaults
+            // Another rule will report the missing type error
+            return false;
+        }
+    };
+
+    // Check if it's a structure type
+    let fields = match &type_attrs.representation {
+        crate::intermediate_type::IntermediateType::Structure { fields } => fields,
+        _ => {
+            // Not a structure type - conservatively say no defaults
+            return false;
+        }
+    };
+
+    // All fields must have defaults for the nested structure to have a complete default
+    fields.iter().all(|field| field.has_default)
 }
 
 /// Resolves the field type from an initial value assignment
@@ -753,5 +796,43 @@ END_TYPE
             IntermediateType::Array { .. }
         ));
         assert!(matches!(fields[2].field_type, IntermediateType::Bool));
+    }
+
+    #[test]
+    fn parse_nested_structure_with_defaults_then_outer_field_has_default_true() {
+        let program = "
+TYPE
+    Inner : STRUCT
+        a : INT := 0;
+        b : INT := 0;
+    END_STRUCT;
+    Outer : STRUCT
+        inner : Inner;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        // Check Inner type
+        let inner_type = env.get(&TypeName::from("Inner")).unwrap();
+        let inner_fields = match &inner_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!("Expected Structure type"),
+        };
+        assert!(inner_fields[0].has_default, "Inner.a should have default");
+        assert!(inner_fields[1].has_default, "Inner.b should have default");
+
+        // Check Outer type - the inner field should have has_default=true
+        // because Inner has all defaults
+        let outer_type = env.get(&TypeName::from("Outer")).unwrap();
+        let outer_fields = match &outer_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!("Expected Structure type"),
+        };
+
+        assert!(
+            outer_fields[0].has_default,
+            "Outer.inner should have has_default=true because Inner has all defaults"
+        );
     }
 }

@@ -472,4 +472,86 @@ END_FUNCTION_BLOCK";
 
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn apply_when_const_nested_struct_inner_has_all_defaults_then_ok() {
+        // When a nested structure's type has all fields with defaults,
+        // the outer struct field should be considered as having a default
+        let program = "
+TYPE
+    Inner : STRUCT
+        a : INT := 0;
+        b : INT := 0;
+    END_STRUCT;
+    Outer : STRUCT
+        inner : Inner;
+    END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK MAIN
+VAR CONSTANT
+    myOuter : Outer;
+END_VAR
+END_FUNCTION_BLOCK";
+
+        let (library, type_env, symbol_env) = parse_and_resolve_types_with_env(program);
+        let result = apply(&library, &type_env, &symbol_env);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_const_nested_struct_inner_missing_defaults_then_error() {
+        // When a nested structure's type has fields without defaults,
+        // the outer const should require initialization
+        let program = "
+TYPE
+    Inner : STRUCT
+        a : INT;
+        b : INT;
+    END_STRUCT;
+    Outer : STRUCT
+        inner : Inner;
+    END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK MAIN
+VAR CONSTANT
+    myOuter : Outer;
+END_VAR
+END_FUNCTION_BLOCK";
+
+        let (library, type_env, symbol_env) = parse_and_resolve_types_with_env(program);
+        let result = apply(&library, &type_env, &symbol_env);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_const_deeply_nested_struct_all_have_defaults_then_ok() {
+        // Test deeply nested structures where all fields have defaults
+        let program = "
+TYPE
+    Level3 : STRUCT
+        value : INT := 42;
+    END_STRUCT;
+    Level2 : STRUCT
+        inner : Level3;
+    END_STRUCT;
+    Level1 : STRUCT
+        inner : Level2;
+    END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK MAIN
+VAR CONSTANT
+    deepNested : Level1;
+END_VAR
+END_FUNCTION_BLOCK";
+
+        let (library, type_env, symbol_env) = parse_and_resolve_types_with_env(program);
+        let result = apply(&library, &type_env, &symbol_env);
+
+        assert!(result.is_ok());
+    }
 }
