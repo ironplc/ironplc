@@ -72,7 +72,10 @@ fn align_offset(offset: u32, alignment: u32) -> u32 {
 /// For nested types (structures), we consider them to have defaults if:
 /// 1. They have explicit initializers, OR
 /// 2. All fields in the nested structure type have defaults
-fn field_has_default(init: &InitialValueAssignmentKind, type_environment: &TypeEnvironment) -> bool {
+fn field_has_default(
+    init: &InitialValueAssignmentKind,
+    type_environment: &TypeEnvironment,
+) -> bool {
     match init {
         InitialValueAssignmentKind::None(_) => false,
         InitialValueAssignmentKind::Simple(simple_init) => {
@@ -134,7 +137,10 @@ fn field_has_default(init: &InitialValueAssignmentKind, type_environment: &TypeE
 ///
 /// This is used to determine if a field of structure type can be considered
 /// as "having a default" when no explicit initializers are provided.
-fn nested_structure_has_all_defaults(type_name: &TypeName, type_environment: &TypeEnvironment) -> bool {
+fn nested_structure_has_all_defaults(
+    type_name: &TypeName,
+    type_environment: &TypeEnvironment,
+) -> bool {
     // Look up the nested structure type
     let type_attrs = match type_environment.get(type_name) {
         Some(attrs) => attrs,
