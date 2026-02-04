@@ -37,6 +37,11 @@ The next step is to create a source file for your IEC 61131-3 program.
 automatically detect file names with the :file:`.st` extension as IEC
 61131-3 programs.
 
+.. seealso::
+   IronPLC supports multiple source formats including Text (``.st``) and
+   PLCopen XML. See :doc:`source-formats/index` for details on supported
+   formats and their capabilities.
+
 In the same terminal, enter the commands in :ref:`Create Hello World Program <compiler-create-hello-world>`
 to create a program.
 
