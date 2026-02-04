@@ -512,11 +512,26 @@ fn parse_body(doc: &roxmltree::Document, node: roxmltree::Node) -> Result<Body, 
 
     for child in node.children().filter(|n| n.is_element()) {
         match child.tag_name().name() {
-            "ST" => body.st = Some(parse_st_body(doc, child)?),
-            "IL" => body.il = get_text_content(child),
-            "FBD" => body.fbd = true,
-            "LD" => body.ld = true,
-            "SFC" => body.sfc = Some(parse_sfc_body(doc, child)?),
+            "ST" => {
+                body.st = Some(parse_st_body(doc, child)?);
+                body.range = Some(child.range());
+            }
+            "IL" => {
+                body.il = get_text_content(child);
+                body.range = Some(child.range());
+            }
+            "FBD" => {
+                body.fbd = true;
+                body.range = Some(child.range());
+            }
+            "LD" => {
+                body.ld = true;
+                body.range = Some(child.range());
+            }
+            "SFC" => {
+                body.sfc = Some(parse_sfc_body(doc, child)?);
+                body.range = Some(child.range());
+            }
             _ => {}
         }
     }

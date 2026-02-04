@@ -102,7 +102,7 @@ fn tokenize_xml(
                 ) {
                     had_error = true;
                 }
-            } else if let Some(lang) = body.unsupported_language() {
+            } else if let Some((lang, _range)) = body.unsupported_language() {
                 print_header(
                     &mut first_pou,
                     &format!("POU: {} ({}) - {} body (skipped)", pou.name, pou_type, lang),

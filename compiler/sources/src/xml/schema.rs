@@ -374,6 +374,9 @@ pub struct Body {
     pub fbd: bool,
     pub ld: bool,
     pub sfc: Option<SfcBody>,
+    /// Byte range in the source XML for the language element (ST, IL, FBD, LD, SFC).
+    /// Used for accurate error location reporting.
+    pub range: Option<Range<usize>>,
 }
 
 /// ST body with text content and position information
@@ -606,15 +609,15 @@ impl Body {
 
     /// Check if this body uses an unsupported language
     ///
-    /// Returns the language name if the body uses a language that is not yet
+    /// Returns the language name and byte range if the body uses a language that is not yet
     /// implemented (IL, FBD, LD). ST and SFC are supported.
-    pub fn unsupported_language(&self) -> Option<&'static str> {
+    pub fn unsupported_language(&self) -> Option<(&'static str, Option<Range<usize>>)> {
         if self.il.is_some() {
-            Some("IL")
+            Some(("IL", self.range.clone()))
         } else if self.fbd {
-            Some("FBD")
+            Some(("FBD", self.range.clone()))
         } else if self.ld {
-            Some("LD")
+            Some(("LD", self.range.clone()))
         } else {
             None
         }
