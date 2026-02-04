@@ -35,7 +35,13 @@ impl TypeEnvironment {
     ) -> Result<DataTypeDeclarationKind, Diagnostic> {
         // At this point we should have a type for the late bound declaration
         // so we can replace the late bound declaration with the correct type
-        let existing = self.get(&node.base_type_name).unwrap();
+        let existing = self.get(&node.base_type_name).ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::ParentTypeNotDeclared,
+                Label::span(node.data_type_name.span(), "Type alias"),
+            )
+            .with_secondary(Label::span(node.base_type_name.span(), "Base type"))
+        })?;
 
         if existing.representation.is_primitive() {
             Ok(DataTypeDeclarationKind::Simple(SimpleDeclaration {
@@ -59,7 +65,7 @@ impl TypeEnvironment {
                 IntermediateType::Structure { fields: _ } => {
                     Ok(DataTypeDeclarationKind::StructureInitialization(
                         StructureInitializationDeclaration {
-                            type_name: node.data_type_name,
+                            type_name: node.base_type_name,
                             elements_init: vec![],
                         },
                     ))
@@ -152,17 +158,53 @@ impl Fold<Diagnostic> for TypeEnvironment {
             InitialValueAssignmentKind::EnumeratedType(_enumerated_initial_value_assignment) => {
                 // I don't think this is needed because this should refer to a declared type, not declare a type.
             }
-            InitialValueAssignmentKind::FunctionBlock(_function_block_initial_value_assignment) => {
-                // TODO: Handle function block initializers
+            InitialValueAssignmentKind::FunctionBlock(fb_init) => {
+                // Handle function block type aliases like: TYPE MyFBAlias : ExistingFB := (input := 10); END_TYPE
+                // This creates an alias to an existing function block type
+                if self.get(&fb_init.type_name).is_none() {
+                    return Err(Diagnostic::problem(
+                        Problem::ParentTypeNotDeclared,
+                        Label::span(node.type_name.span(), "Function block type alias"),
+                    )
+                    .with_secondary(Label::span(fb_init.type_name.span(), "Base type")));
+                }
+                self.insert_alias(&node.type_name, &fb_init.type_name)?;
             }
-            InitialValueAssignmentKind::Subrange(_spec) => {
-                // TODO: Handle subrange specifications
+            InitialValueAssignmentKind::Subrange(spec) => {
+                // Handle subrange specifications like: TYPE MY_RANGE : INT (1..100); END_TYPE
+                let result = subrange::try_from(&node.type_name, spec, self)?;
+                match result {
+                    subrange::IntermediateResult::Type(attributes) => {
+                        self.insert_type(&node.type_name, attributes)?;
+                    }
+                    subrange::IntermediateResult::Alias(base_type_name) => {
+                        self.insert_alias(&node.type_name, &base_type_name)?;
+                    }
+                }
             }
-            InitialValueAssignmentKind::Structure(_structure_initialization_declaration) => {
-                // TODO: Handle structure initializations
+            InitialValueAssignmentKind::Structure(structure_init) => {
+                // Handle structure type aliases like: TYPE MyAlias : ExistingStruct := (field := 10); END_TYPE
+                // This creates an alias to an existing structure type
+                if self.get(&structure_init.type_name).is_none() {
+                    return Err(Diagnostic::problem(
+                        Problem::ParentTypeNotDeclared,
+                        Label::span(node.type_name.span(), "Structure type alias"),
+                    )
+                    .with_secondary(Label::span(structure_init.type_name.span(), "Base type")));
+                }
+                self.insert_alias(&node.type_name, &structure_init.type_name)?;
             }
-            InitialValueAssignmentKind::Array(_array_initial_value_assignment) => {
-                // TODO: Handle array initializers
+            InitialValueAssignmentKind::Array(array_init) => {
+                // Handle array specifications like: TYPE MY_ARRAY : ARRAY [1..10] OF INT; END_TYPE
+                let result = array::try_from(&node.type_name, &array_init.spec, self)?;
+                match result {
+                    array::IntermediateResult::Type(attributes) => {
+                        self.insert_type(&node.type_name, attributes)?;
+                    }
+                    array::IntermediateResult::Alias(base_type_name) => {
+                        self.insert_alias(&node.type_name, &base_type_name)?;
+                    }
+                }
             }
             InitialValueAssignmentKind::LateResolvedType(_type_name) => {
                 return Err(Diagnostic::internal_error(file!(), line!()));
@@ -263,8 +305,25 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // we need to handle folding of late bound at declaration kind level
         // because this will change the type of the declaration.
         match node {
-            DataTypeDeclarationKind::LateBound(lb) => {
-                let result = self.transform_late_bound_declaration(lb)?;
+            DataTypeDeclarationKind::LateBound(ref lb) => {
+                // For structure aliases, we need to insert the alias directly here
+                // because StructureInitializationDeclaration doesn't have a field
+                // for the new type name being declared.
+                let existing = self.get(&lb.base_type_name);
+                if let Some(existing) = existing {
+                    if matches!(existing.representation, IntermediateType::Structure { .. }) {
+                        // Insert the alias directly and return the transformed declaration
+                        self.insert_alias(&lb.data_type_name, &lb.base_type_name)?;
+                        return Ok(DataTypeDeclarationKind::StructureInitialization(
+                            StructureInitializationDeclaration {
+                                type_name: lb.base_type_name.clone(),
+                                elements_init: vec![],
+                            },
+                        ));
+                    }
+                }
+                // For non-structure types, use the existing transform mechanism
+                let result = self.transform_late_bound_declaration(lb.clone())?;
                 let result = result.recurse_fold(self)?;
                 Ok(result)
             }
@@ -784,5 +843,45 @@ END_TYPE
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].code, "P2019"); // InvalidSimpleTypeDecl
+    }
+
+    // Structure type alias tests
+
+    #[test]
+    fn apply_when_structure_type_alias_then_creates_alias() {
+        let program = "
+TYPE
+    Point : STRUCT
+        x : INT := 0;
+        y : INT := 0;
+    END_STRUCT;
+    PointAlias : Point;
+END_TYPE
+        ";
+        let (result, env) = parse_and_apply_with_elementary_types(program);
+        assert!(result.is_ok());
+
+        // Both should resolve to the same structure type
+        let base_type = env.get(&TypeName::from("Point")).unwrap();
+        let alias_type = env.get(&TypeName::from("PointAlias")).unwrap();
+        assert!(base_type.representation.is_structure());
+        assert_eq!(base_type.representation, alias_type.representation);
+    }
+
+    #[test]
+    fn apply_when_structure_type_alias_missing_base_then_error() {
+        let program = "
+TYPE
+    MyAlias : MissingStruct;
+END_TYPE
+        ";
+        let (result, _env) = parse_and_apply_with_elementary_types(program);
+
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(
+            Problem::ParentTypeNotDeclared.code(),
+            error.first().unwrap().code
+        );
     }
 }
