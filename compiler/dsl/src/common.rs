@@ -931,10 +931,9 @@ impl HasEnumeratedValues for EnumeratedSpecificationValues {
         &self.values
     }
     fn values_span(&self) -> SourceSpan {
-        // TODO
-        match self.values.first() {
-            Some(first) => first.span(),
-            None => SourceSpan::default(),
+        match (self.values.first(), self.values.last()) {
+            (Some(first), Some(last)) => SourceSpan::join(&first.span(), &last.span()),
+            _ => SourceSpan::default(),
         }
     }
 }
