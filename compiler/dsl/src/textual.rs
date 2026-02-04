@@ -129,11 +129,14 @@ pub struct ArrayVariable {
 
 impl fmt::Display for ArrayVariable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO format this
-        f.write_fmt(format_args!(
-            "{} {:?}",
-            self.subscripted_variable, self.subscripts
-        ))
+        write!(f, "{}[", self.subscripted_variable)?;
+        for (i, subscript) in self.subscripts.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", subscript)?;
+        }
+        write!(f, "]")
     }
 }
 
@@ -219,9 +222,21 @@ pub struct Function {
     pub param_assignment: Vec<ParamAssignmentKind>,
 }
 
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}(...)", self.name)
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct LateBound {
     pub value: Id,
+}
+
+impl fmt::Display for LateBound {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value)
+    }
 }
 
 /// Expression that yields a value derived from the input(s) to the expression.
@@ -266,6 +281,22 @@ impl ExprKind {
             value: SignedInteger::new(value, SourceSpan::default()).unwrap(),
             data_type: None,
         }))
+    }
+}
+
+impl fmt::Display for ExprKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExprKind::Compare(expr) => write!(f, "({} {} {})", expr.left, expr.op, expr.right),
+            ExprKind::BinaryOp(expr) => write!(f, "({} {} {})", expr.left, expr.op, expr.right),
+            ExprKind::UnaryOp(expr) => write!(f, "{} {}", expr.op, expr.term),
+            ExprKind::Expression(expr) => write!(f, "({})", expr),
+            ExprKind::Const(c) => write!(f, "{}", c),
+            ExprKind::EnumeratedValue(ev) => write!(f, "{}", ev),
+            ExprKind::Variable(v) => write!(f, "{}", v),
+            ExprKind::Function(func) => write!(f, "{}", func),
+            ExprKind::LateBound(lb) => write!(f, "{}", lb),
+        }
     }
 }
 
@@ -337,6 +368,22 @@ pub enum CompareOp {
     GtEq,
 }
 
+impl fmt::Display for CompareOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CompareOp::Or => write!(f, "OR"),
+            CompareOp::Xor => write!(f, "XOR"),
+            CompareOp::And => write!(f, "AND"),
+            CompareOp::Eq => write!(f, "="),
+            CompareOp::Ne => write!(f, "<>"),
+            CompareOp::Lt => write!(f, "<"),
+            CompareOp::Gt => write!(f, ">"),
+            CompareOp::LtEq => write!(f, "<="),
+            CompareOp::GtEq => write!(f, ">="),
+        }
+    }
+}
+
 /// Arithmetic operators.
 ///
 /// See section 3.2.2, especially table 52.
@@ -350,6 +397,19 @@ pub enum Operator {
     Pow,
 }
 
+impl fmt::Display for Operator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Operator::Add => write!(f, "+"),
+            Operator::Sub => write!(f, "-"),
+            Operator::Mul => write!(f, "*"),
+            Operator::Div => write!(f, "/"),
+            Operator::Mod => write!(f, "MOD"),
+            Operator::Pow => write!(f, "**"),
+        }
+    }
+}
+
 /// Local operators (with single operand).
 ///
 /// See section 3.2.2, especially table 52.
@@ -358,6 +418,15 @@ pub enum UnaryOp {
     Neg,
     // Compliment operator (for Boolean values)
     Not,
+}
+
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UnaryOp::Neg => write!(f, "-"),
+            UnaryOp::Not => write!(f, "NOT"),
+        }
+    }
 }
 
 /// Statements.
@@ -552,4 +621,54 @@ pub struct While {
 pub struct Repeat {
     pub until: ExprKind,
     pub body: Vec<StmtKind>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn array_variable_display_when_single_subscript_then_formats_with_brackets() {
+        let array_var = ArrayVariable {
+            subscripted_variable: Box::new(SymbolicVariableKind::Named(NamedVariable {
+                name: Id::from("data"),
+            })),
+            subscripts: vec![ExprKind::integer_literal("0")],
+        };
+
+        let result = format!("{}", array_var);
+
+        assert_eq!(result, "data[0]");
+    }
+
+    #[test]
+    fn array_variable_display_when_multiple_subscripts_then_formats_with_comma_separated() {
+        let array_var = ArrayVariable {
+            subscripted_variable: Box::new(SymbolicVariableKind::Named(NamedVariable {
+                name: Id::from("matrix"),
+            })),
+            subscripts: vec![
+                ExprKind::integer_literal("1"),
+                ExprKind::integer_literal("2"),
+            ],
+        };
+
+        let result = format!("{}", array_var);
+
+        assert_eq!(result, "matrix[1, 2]");
+    }
+
+    #[test]
+    fn array_variable_display_when_variable_subscript_then_formats_variable_name() {
+        let array_var = ArrayVariable {
+            subscripted_variable: Box::new(SymbolicVariableKind::Named(NamedVariable {
+                name: Id::from("arr"),
+            })),
+            subscripts: vec![ExprKind::named_variable("i")],
+        };
+
+        let result = format!("{}", array_var);
+
+        assert_eq!(result, "arr[i]");
+    }
 }

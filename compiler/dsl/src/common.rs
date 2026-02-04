@@ -42,10 +42,35 @@ impl ConstantKind {
     }
 }
 
+impl fmt::Display for ConstantKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConstantKind::IntegerLiteral(lit) => write!(f, "{}", lit),
+            ConstantKind::RealLiteral(lit) => write!(f, "{}", lit),
+            ConstantKind::Boolean(lit) => write!(f, "{}", lit),
+            ConstantKind::CharacterString(lit) => write!(f, "{}", lit),
+            ConstantKind::Duration(lit) => write!(f, "{}", lit),
+            ConstantKind::TimeOfDay(lit) => write!(f, "{}", lit),
+            ConstantKind::Date(lit) => write!(f, "{}", lit),
+            ConstantKind::DateAndTime(lit) => write!(f, "{}", lit),
+            ConstantKind::BitStringLiteral(lit) => write!(f, "{}", lit),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Boolean {
     True,
     False,
+}
+
+impl fmt::Display for Boolean {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Boolean::True => write!(f, "TRUE"),
+            Boolean::False => write!(f, "FALSE"),
+        }
+    }
 }
 
 // Numeric liberals declared by 2.2.1. Numeric literals define
@@ -328,6 +353,15 @@ pub struct IntegerLiteral {
     pub data_type: Option<ElementaryTypeName>,
 }
 
+impl fmt::Display for IntegerLiteral {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.data_type {
+            Some(dt) => write!(f, "{}#{}", dt, self.value),
+            None => write!(f, "{}", self.value),
+        }
+    }
+}
+
 /// The fixed point structure represents a fixed point number.
 ///
 /// The structure keeps the whole and decimal parts as integers so that
@@ -437,6 +471,15 @@ impl RealLiteral {
     }
 }
 
+impl fmt::Display for RealLiteral {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.data_type {
+            Some(dt) => write!(f, "{}#{}", dt, self.value),
+            None => write!(f, "{}", self.value),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct BooleanLiteral {
     pub value: Boolean,
@@ -445,6 +488,12 @@ pub struct BooleanLiteral {
 impl BooleanLiteral {
     pub fn new(value: Boolean) -> Self {
         Self { value }
+    }
+}
+
+impl fmt::Display for BooleanLiteral {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value)
     }
 }
 
@@ -460,12 +509,28 @@ impl CharacterStringLiteral {
     }
 }
 
+impl fmt::Display for CharacterStringLiteral {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s: String = self.value.iter().collect();
+        write!(f, "'{}'", s)
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct BitStringLiteral {
     pub value: Integer,
     // TODO restrict to valid float type names
     #[recurse(ignore)]
     pub data_type: Option<ElementaryTypeName>,
+}
+
+impl fmt::Display for BitStringLiteral {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.data_type {
+            Some(dt) => write!(f, "{}#{}", dt, self.value),
+            None => write!(f, "{}", self.value),
+        }
+    }
 }
 
 /// Implements a type identifier.
@@ -596,6 +661,12 @@ impl ElementaryTypeName {
             ElementaryTypeName::LWORD => Id::from("LWORD"),
             ElementaryTypeName::WSTRING => Id::from("WSTRING"),
         }
+    }
+}
+
+impl fmt::Display for ElementaryTypeName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_id())
     }
 }
 
@@ -965,6 +1036,15 @@ impl Located for EnumeratedValue {
         match &self.type_name {
             Some(name) => SourceSpan::join2(name, &self.value),
             None => self.value.span.clone(),
+        }
+    }
+}
+
+impl fmt::Display for EnumeratedValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.type_name {
+            Some(type_name) => write!(f, "{}#{}", type_name, self.value),
+            None => write!(f, "{}", self.value),
         }
     }
 }
