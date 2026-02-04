@@ -28,6 +28,9 @@ pub fn try_from(
         // Resolve the field type from the initial value assignment
         let field_type = resolve_field_type(&element.init, type_environment)?;
 
+        // Determine if this field has a default value
+        let has_default = field_has_default(&element.init);
+
         // Calculate field alignment and adjust offset if needed
         let field_alignment = field_type.alignment_bytes() as u32;
         let aligned_offset = align_offset(current_offset, field_alignment);
@@ -40,6 +43,7 @@ pub fn try_from(
             field_type,
             offset: aligned_offset,
             var_type: None, // Structure fields don't have input/output distinction
+            has_default,
         };
 
         fields.push(field);
@@ -60,6 +64,55 @@ fn align_offset(offset: u32, alignment: u32) -> u32 {
         return offset;
     }
     offset.div_ceil(alignment) * alignment
+}
+
+/// Determines whether a structure field has a default value based on its initializer.
+///
+/// A field has a default if it has an explicit initial value in its type specification.
+/// For nested types (structures, arrays), we consider them to have defaults if they
+/// have initializers or if all their constituent parts have defaults.
+fn field_has_default(init: &InitialValueAssignmentKind) -> bool {
+    match init {
+        InitialValueAssignmentKind::None(_) => false,
+        InitialValueAssignmentKind::Simple(simple_init) => simple_init.initial_value.is_some(),
+        InitialValueAssignmentKind::String(string_init) => string_init.initial_value.is_some(),
+        InitialValueAssignmentKind::EnumeratedValues(enum_init) => {
+            enum_init.initial_value.is_some()
+        }
+        InitialValueAssignmentKind::EnumeratedType(enum_type_init) => {
+            enum_type_init.initial_value.is_some()
+        }
+        InitialValueAssignmentKind::FunctionBlock(_) => {
+            // Function block fields can have their inputs initialized,
+            // but function blocks themselves don't have "defaults" in the
+            // same sense - they always need to be instantiated.
+            // For const checking purposes, we treat them as not having defaults.
+            false
+        }
+        InitialValueAssignmentKind::Subrange(_subrange_spec) => {
+            // Subranges in structure fields don't currently preserve initial values
+            // in the parser (see parser.rs line 573 - subrange.1 is discarded).
+            // Conservatively treat them as not having defaults.
+            false
+        }
+        InitialValueAssignmentKind::Structure(struct_init) => {
+            // A structure field has a "default" if it has explicit initializers.
+            // If elements_init is non-empty, those fields are explicitly initialized.
+            // However, the complete determination of whether all fields are initialized
+            // requires checking the type definition - which happens during const validation.
+            // For this field-level check, we say it has a default if any explicit
+            // initializers are provided.
+            !struct_init.elements_init.is_empty()
+        }
+        InitialValueAssignmentKind::Array(array_init) => {
+            // Array has a default if it has initial values (non-empty vec)
+            !array_init.initial_values.is_empty()
+        }
+        InitialValueAssignmentKind::LateResolvedType(_) => {
+            // Late resolved types don't carry initial value information
+            false
+        }
+    }
 }
 
 /// Resolves the field type from an initial value assignment

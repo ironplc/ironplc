@@ -55,6 +55,7 @@ fn build_field(
         field_type,
         offset: aligned_offset,
         var_type: Some(var_type),
+        has_default: false, // Function block fields don't have defaults in the const sense
     };
 
     *current_offset = aligned_offset + size;
