@@ -125,11 +125,19 @@ impl Project for FileBackedProject {
         }
 
         // Do the analysis
+        let had_parse_errors = !all_diagnostics.is_empty();
         match analyze(&all_libraries) {
             Ok(_) => Ok(()),
             Err(diagnostics) => {
-                // If we had an error, then add more diagnostics to any that we already had
-                all_diagnostics.extend(diagnostics);
+                // If we had an error, then add more diagnostics to any that we already had.
+                // However, filter out P9002 (NoContent) if we already have parse errors,
+                // since it's misleading - there was content, it just failed to parse.
+                let dominated_codes: &[&str] = if had_parse_errors { &["P9002"] } else { &[] };
+                all_diagnostics.extend(
+                    diagnostics
+                        .into_iter()
+                        .filter(|d| !dominated_codes.contains(&d.code.as_str())),
+                );
                 Err(all_diagnostics)
             }
         }
@@ -151,6 +159,7 @@ impl Project for FileBackedProject {
 #[cfg(test)]
 mod test {
     use ironplc_dsl::core::FileId;
+    use ironplc_problems::Problem;
 
     use super::{FileBackedProject, Project};
 
@@ -210,5 +219,47 @@ mod test {
         assert!(library_result.is_ok());
         let library = library_result.unwrap();
         assert_eq!(0, library.elements.len()); // Should be empty
+    }
+
+    #[test]
+    fn semantic_when_xml_has_unsupported_body_then_only_p9003_error() {
+        // This tests that when an XML file fails to parse due to unsupported body type (P9003),
+        // we don't also get a misleading P9002 "No content" error
+        let mut project = FileBackedProject::default();
+        let xml_content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
+  <contentHeader name="TestProject">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="FbdProgram" pouType="program">
+        <body>
+          <FBD>
+            <!-- FBD content would be here -->
+          </FBD>
+        </body>
+      </pou>
+    </pous>
+  </types>
+</project>"#;
+
+        let file_id = FileId::from_string("test.xml");
+        project.change_text_document(&file_id, xml_content.to_owned());
+
+        let result = project.semantic();
+        assert!(result.is_err());
+
+        let diagnostics = result.unwrap_err();
+        // Should have exactly one error: P9003 (unsupported body type)
+        // P9002 should be filtered out since it's dominated by the parse error
+        assert_eq!(1, diagnostics.len());
+        assert_eq!(Problem::XmlBodyTypeNotSupported.code(), diagnostics[0].code);
     }
 }
