@@ -145,9 +145,28 @@ fn resolve_field_type(
                 })?;
             Ok(type_attrs.representation.clone())
         }
-        InitialValueAssignmentKind::Array(_array_init) => {
-            // Array fields are not yet supported
-            Err(Diagnostic::todo(file!(), line!()))
+        InitialValueAssignmentKind::Array(array_init) => {
+            // Handle array field types
+            let array_result = crate::intermediates::array::try_from(
+                &TypeName::from("_field_array"),
+                &array_init.spec,
+                type_environment,
+            )?;
+
+            match array_result {
+                crate::intermediates::array::IntermediateResult::Type(attrs) => {
+                    Ok(attrs.representation)
+                }
+                crate::intermediates::array::IntermediateResult::Alias(base_name) => {
+                    let base_attrs = type_environment.get(&base_name).ok_or_else(|| {
+                        Diagnostic::problem(
+                            Problem::StructFieldTypeNotDeclared,
+                            Label::span(base_name.span(), "Base type"),
+                        )
+                    })?;
+                    Ok(base_attrs.representation.clone())
+                }
+            }
         }
         _other => {
             // Other types are not yet supported
@@ -551,5 +570,135 @@ END_TYPE
         assert_eq!(fields[0].offset, 0);
         assert_eq!(fields[1].offset, 4);
         assert_eq!(fields[2].offset, 8);
+    }
+
+    // Array field tests
+
+    #[test]
+    fn parse_structure_with_array_field_then_creates_structure_with_array() {
+        let program = "
+TYPE
+    MyStruct : STRUCT
+        values : ARRAY [1..10] OF INT;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let struct_type = env.get(&TypeName::from("MyStruct")).unwrap();
+        assert!(struct_type.representation.is_structure());
+
+        let fields = match &struct_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!(
+                "Expected Structure type, got {:?}",
+                struct_type.representation
+            ),
+        };
+
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].name, Id::from("values"));
+        assert!(matches!(
+            fields[0].field_type,
+            IntermediateType::Array { .. }
+        ));
+    }
+
+    #[test]
+    fn parse_structure_with_multidimensional_array_field_then_creates_structure_with_array() {
+        let program = "
+TYPE
+    Matrix : STRUCT
+        data : ARRAY [1..3, 1..4] OF REAL;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let struct_type = env.get(&TypeName::from("Matrix")).unwrap();
+        assert!(struct_type.representation.is_structure());
+
+        let fields = match &struct_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!(
+                "Expected Structure type, got {:?}",
+                struct_type.representation
+            ),
+        };
+
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].name, Id::from("data"));
+        if let IntermediateType::Array { size, .. } = &fields[0].field_type {
+            assert_eq!(*size, Some(12)); // 3 * 4 = 12
+        } else {
+            panic!("Expected Array type");
+        }
+    }
+
+    #[test]
+    fn parse_structure_with_array_of_struct_field_then_creates_structure_with_nested_array() {
+        let program = "
+TYPE
+    Point : STRUCT
+        x : INT := 0;
+        y : INT := 0;
+    END_STRUCT;
+    Polygon : STRUCT
+        vertices : ARRAY [1..4] OF Point;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let polygon_type = env.get(&TypeName::from("Polygon")).unwrap();
+        assert!(polygon_type.representation.is_structure());
+
+        let fields = match &polygon_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!(
+                "Expected Structure type, got {:?}",
+                polygon_type.representation
+            ),
+        };
+
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].name, Id::from("vertices"));
+        if let IntermediateType::Array { element_type, size } = &fields[0].field_type {
+            assert!(element_type.is_structure());
+            assert_eq!(*size, Some(4));
+        } else {
+            panic!("Expected Array type");
+        }
+    }
+
+    #[test]
+    fn parse_structure_with_mixed_array_and_primitive_fields_then_correct_types() {
+        let program = "
+TYPE
+    DataRecord : STRUCT
+        id : DINT := 0;
+        values : ARRAY [1..5] OF INT;
+        active : BOOL := FALSE;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let struct_type = env.get(&TypeName::from("DataRecord")).unwrap();
+        let fields = match &struct_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!(
+                "Expected Structure type, got {:?}",
+                struct_type.representation
+            ),
+        };
+
+        assert_eq!(fields.len(), 3);
+        assert!(matches!(fields[0].field_type, IntermediateType::Int { .. }));
+        assert!(matches!(
+            fields[1].field_type,
+            IntermediateType::Array { .. }
+        ));
+        assert!(matches!(fields[2].field_type, IntermediateType::Bool));
     }
 }
