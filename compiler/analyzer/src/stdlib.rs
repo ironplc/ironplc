@@ -8,24 +8,11 @@ use phf::{phf_set, Set};
 
 /// Standard library types that are NOT YET implemented.
 ///
-/// These are variants of standard function blocks with different integer types
-/// (e.g., CTU_DINT, CTD_LINT) and types from IEC 61131-5.
+/// These are types from IEC 61131-5 or other standard extensions.
 ///
 /// When a user tries to use one of these, they get an "unsupported stdlib type" error.
 static UNSUPPORTED_STANDARD_LIBRARY_TYPES: Set<&'static str> = phf_set! {
-    // Counter variants with different integer types (IEC 61131-3 2.5.2.3.3)
-    "ctd_dint",
-    "ctd_lint",
-    "ctd_udint",
-    "ctd_ulint",
-    "ctu_dint",
-    "ctu_lint",
-    "ctu_udint",
-    "ctu_ulint",
-    "ctud_dint",
-    "ctud_lint",
-    "ctud_ulint",
-    // TODO: Add more from IEC 61131-5 as needed
+    // Add IEC 61131-5 types here as needed
 };
 
 /// Standard library types that ARE implemented and available.
@@ -39,10 +26,22 @@ static SUPPORTED_STANDARD_LIBRARY_TYPES: Set<&'static str> = phf_set! {
     // Edge detection (IEC 61131-3 2.5.2.3.2)
     "r_trig",
     "f_trig",
-    // Counters (IEC 61131-3 2.5.2.3.3) - basic INT versions
+    // Counters (IEC 61131-3 2.5.2.3.3) - all integer type variants
     "ctu",
+    "ctu_dint",
+    "ctu_lint",
+    "ctu_udint",
+    "ctu_ulint",
     "ctd",
+    "ctd_dint",
+    "ctd_lint",
+    "ctd_udint",
+    "ctd_ulint",
     "ctud",
+    "ctud_dint",
+    "ctud_lint",
+    "ctud_udint",
+    "ctud_ulint",
     // Timers (IEC 61131-3 2.5.2.3.4)
     "ton",
     "tof",

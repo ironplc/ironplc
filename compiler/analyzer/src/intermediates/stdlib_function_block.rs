@@ -22,15 +22,30 @@ fn bool_type() -> IntermediateType {
     IntermediateType::Bool
 }
 
-fn int_type() -> IntermediateType {
-    IntermediateType::Int {
-        size: ByteSized::B16,
-    }
-}
-
 fn time_type() -> IntermediateType {
     IntermediateType::Time
 }
+
+/// Integer type variants for counter function blocks.
+/// Each variant specifies the type name suffix and the IntermediateType for PV/CV fields.
+#[allow(clippy::type_complexity)]
+const COUNTER_INT_VARIANTS: &[(&str, fn() -> IntermediateType)] = &[
+    ("", || IntermediateType::Int {
+        size: ByteSized::B16,
+    }), // INT (default)
+    ("_DINT", || IntermediateType::Int {
+        size: ByteSized::B32,
+    }), // DINT
+    ("_LINT", || IntermediateType::Int {
+        size: ByteSized::B64,
+    }), // LINT
+    ("_UDINT", || IntermediateType::UInt {
+        size: ByteSized::B32,
+    }), // UDINT
+    ("_ULINT", || IntermediateType::UInt {
+        size: ByteSized::B64,
+    }), // ULINT
+];
 
 /// Builds an IntermediateStructField with proper offset calculation.
 fn build_field(
@@ -157,58 +172,88 @@ fn build_f_trig() -> TypeAttributes {
 // Counter Function Blocks (IEC 61131-3 Section 2.5.2.3.3)
 // =============================================================================
 
-/// Creates the CTU (Count Up) function block.
+/// Creates a CTU (Count Up) function block with the specified integer type.
 ///
 /// Counts up on rising edge of CU input until CV >= PV.
-fn build_ctu() -> TypeAttributes {
+/// The `suffix` is appended to "CTU" (e.g., "_DINT" for CTU_DINT).
+fn build_ctu_variant(suffix: &str, int_type: IntermediateType) -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
-        "CTU",
+        &format!("CTU{}", suffix),
         &[
-            ("CU", bool_type(), Input), // Count up input (R_EDGE)
-            ("R", bool_type(), Input),  // Reset input
-            ("PV", int_type(), Input),  // Preset value
-            ("Q", bool_type(), Output), // Output (CV >= PV)
-            ("CV", int_type(), Output), // Current value
+            ("CU", bool_type(), Input),      // Count up input (R_EDGE)
+            ("R", bool_type(), Input),       // Reset input
+            ("PV", int_type.clone(), Input), // Preset value
+            ("Q", bool_type(), Output),      // Output (CV >= PV)
+            ("CV", int_type, Output),        // Current value
         ],
     )
 }
 
-/// Creates the CTD (Count Down) function block.
+/// Creates a CTD (Count Down) function block with the specified integer type.
 ///
 /// Counts down on rising edge of CD input until CV <= 0.
-fn build_ctd() -> TypeAttributes {
+/// The `suffix` is appended to "CTD" (e.g., "_DINT" for CTD_DINT).
+fn build_ctd_variant(suffix: &str, int_type: IntermediateType) -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
-        "CTD",
+        &format!("CTD{}", suffix),
         &[
-            ("CD", bool_type(), Input), // Count down input (R_EDGE)
-            ("LD", bool_type(), Input), // Load input
-            ("PV", int_type(), Input),  // Preset value
-            ("Q", bool_type(), Output), // Output (CV <= 0)
-            ("CV", int_type(), Output), // Current value
+            ("CD", bool_type(), Input),      // Count down input (R_EDGE)
+            ("LD", bool_type(), Input),      // Load input
+            ("PV", int_type.clone(), Input), // Preset value
+            ("Q", bool_type(), Output),      // Output (CV <= 0)
+            ("CV", int_type, Output),        // Current value
         ],
     )
 }
 
-/// Creates the CTUD (Count Up/Down) function block.
+/// Creates a CTUD (Count Up/Down) function block with the specified integer type.
 ///
 /// Counts up on CU rising edge, down on CD rising edge.
-fn build_ctud() -> TypeAttributes {
+/// The `suffix` is appended to "CTUD" (e.g., "_DINT" for CTUD_DINT).
+fn build_ctud_variant(suffix: &str, int_type: IntermediateType) -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
-        "CTUD",
+        &format!("CTUD{}", suffix),
         &[
-            ("CU", bool_type(), Input),  // Count up input (R_EDGE)
-            ("CD", bool_type(), Input),  // Count down input (R_EDGE)
-            ("R", bool_type(), Input),   // Reset input
-            ("LD", bool_type(), Input),  // Load input
-            ("PV", int_type(), Input),   // Preset value
-            ("QU", bool_type(), Output), // Up output (CV >= PV)
-            ("QD", bool_type(), Output), // Down output (CV <= 0)
-            ("CV", int_type(), Output),  // Current value
+            ("CU", bool_type(), Input),      // Count up input (R_EDGE)
+            ("CD", bool_type(), Input),      // Count down input (R_EDGE)
+            ("R", bool_type(), Input),       // Reset input
+            ("LD", bool_type(), Input),      // Load input
+            ("PV", int_type.clone(), Input), // Preset value
+            ("QU", bool_type(), Output),     // Up output (CV >= PV)
+            ("QD", bool_type(), Output),     // Down output (CV <= 0)
+            ("CV", int_type, Output),        // Current value
         ],
     )
+}
+
+/// Generates all counter function block variants (CTU, CTD, CTUD with all integer types).
+fn get_all_counter_variants() -> Vec<(&'static str, TypeAttributes)> {
+    let mut counters = Vec::new();
+    for (suffix, int_type_fn) in COUNTER_INT_VARIANTS {
+        let int_type = int_type_fn();
+        counters.push((
+            leak_lowercase(&format!("ctu{}", suffix)),
+            build_ctu_variant(suffix, int_type.clone()),
+        ));
+        counters.push((
+            leak_lowercase(&format!("ctd{}", suffix)),
+            build_ctd_variant(suffix, int_type.clone()),
+        ));
+        counters.push((
+            leak_lowercase(&format!("ctud{}", suffix)),
+            build_ctud_variant(suffix, int_type),
+        ));
+    }
+    counters
+}
+
+/// Leaks a string to get a static lifetime (used for registry keys).
+/// This is acceptable because stdlib types are created once at startup.
+fn leak_lowercase(s: &str) -> &'static str {
+    Box::leak(s.to_lowercase().into_boxed_str())
 }
 
 // =============================================================================
@@ -274,22 +319,21 @@ fn build_tp() -> TypeAttributes {
 /// Each tuple contains (lowercase_name, TypeAttributes).
 /// The lowercase name is used for case-insensitive lookup in the type environment.
 pub fn get_all_stdlib_function_blocks() -> Vec<(&'static str, TypeAttributes)> {
-    vec![
+    let mut fbs = vec![
         // Bistable
         ("sr", build_sr()),
         ("rs", build_rs()),
         // Edge detection
         ("r_trig", build_r_trig()),
         ("f_trig", build_f_trig()),
-        // Counters
-        ("ctu", build_ctu()),
-        ("ctd", build_ctd()),
-        ("ctud", build_ctud()),
         // Timers
         ("ton", build_ton()),
         ("tof", build_tof()),
         ("tp", build_tp()),
-    ]
+    ];
+    // Counters (all integer type variants)
+    fbs.extend(get_all_counter_variants());
+    fbs
 }
 
 /// Returns the set of standard library function block names.
@@ -297,7 +341,32 @@ pub fn get_all_stdlib_function_blocks() -> Vec<(&'static str, TypeAttributes)> {
 /// This is useful for checking if a type name is a standard library type.
 pub fn stdlib_function_block_names() -> &'static [&'static str] {
     &[
-        "SR", "RS", "R_TRIG", "F_TRIG", "CTU", "CTD", "CTUD", "TON", "TOF", "TP",
+        // Bistable
+        "SR",
+        "RS",
+        // Edge detection
+        "R_TRIG",
+        "F_TRIG",
+        // Counters (all integer type variants)
+        "CTU",
+        "CTU_DINT",
+        "CTU_LINT",
+        "CTU_UDINT",
+        "CTU_ULINT",
+        "CTD",
+        "CTD_DINT",
+        "CTD_LINT",
+        "CTD_UDINT",
+        "CTD_ULINT",
+        "CTUD",
+        "CTUD_DINT",
+        "CTUD_LINT",
+        "CTUD_UDINT",
+        "CTUD_ULINT",
+        // Timers
+        "TON",
+        "TOF",
+        "TP",
     ]
 }
 
@@ -315,9 +384,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn get_all_stdlib_function_blocks_returns_ten_function_blocks() {
+    fn get_all_stdlib_function_blocks_returns_expected_count() {
         let fbs = get_all_stdlib_function_blocks();
-        assert_eq!(fbs.len(), 10);
+        // 2 bistable + 2 edge detection + 3 timers + 15 counters (3 types × 5 int variants)
+        assert_eq!(fbs.len(), 22);
     }
 
     #[test]
@@ -346,8 +416,13 @@ mod tests {
     }
 
     #[test]
-    fn build_ctu_when_called_then_has_correct_fields() {
-        let ctu = build_ctu();
+    fn build_ctu_variant_when_called_then_has_correct_fields() {
+        let ctu = build_ctu_variant(
+            "",
+            IntermediateType::Int {
+                size: ByteSized::B16,
+            },
+        );
         if let IntermediateType::FunctionBlock { name, fields } = &ctu.representation {
             assert_eq!(name, "CTU");
             assert_eq!(fields.len(), 5);
@@ -360,6 +435,39 @@ mod tests {
             // Check outputs: Q, CV
             assert_eq!(fields[3].name.original(), "Q");
             assert_eq!(fields[4].name.original(), "CV");
+        } else {
+            panic!("Expected FunctionBlock type");
+        }
+    }
+
+    #[test]
+    fn build_ctu_variant_when_dint_then_has_correct_name_and_type() {
+        let ctu_dint = build_ctu_variant(
+            "_DINT",
+            IntermediateType::Int {
+                size: ByteSized::B32,
+            },
+        );
+        if let IntermediateType::FunctionBlock { name, fields } = &ctu_dint.representation {
+            assert_eq!(name, "CTU_DINT");
+
+            // Check PV field has DINT type
+            let pv_field = fields.iter().find(|f| f.name.original() == "PV").unwrap();
+            assert_eq!(
+                pv_field.field_type,
+                IntermediateType::Int {
+                    size: ByteSized::B32
+                }
+            );
+
+            // Check CV field has DINT type
+            let cv_field = fields.iter().find(|f| f.name.original() == "CV").unwrap();
+            assert_eq!(
+                cv_field.field_type,
+                IntermediateType::Int {
+                    size: ByteSized::B32
+                }
+            );
         } else {
             panic!("Expected FunctionBlock type");
         }
