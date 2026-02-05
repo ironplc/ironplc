@@ -124,7 +124,7 @@ impl<'a> LspServer<'a> {
                     // For now, we just ignore them
                 }
                 lsp_server::Message::Notification(notification) => {
-                    self.handle_notification(&notification);
+                    self.handle_notification(notification);
                 }
             }
         }
@@ -193,15 +193,15 @@ impl<'a> LspServer<'a> {
         self.sender.send(Message::Response(response)).unwrap()
     }
 
-    fn handle_notification(&mut self, notification: &lsp_server::Notification) -> &'static str {
-        let _notification = match Self::cast_notification::<notification::Exit>(notification) {
+    fn handle_notification(&mut self, notification: lsp_server::Notification) -> &'static str {
+        let notification = match Self::cast_notification::<notification::Exit>(notification) {
             Ok(_params) => {
                 return notification::Exit::METHOD;
             }
             Err(notification) => notification,
         };
 
-        let _notification =
+        let notification =
             match Self::cast_notification::<notification::DidOpenTextDocument>(notification) {
                 Ok(params) => {
                     trace!(
@@ -257,20 +257,16 @@ impl<'a> LspServer<'a> {
     }
 
     fn cast_notification<T>(
-        notification: &lsp_server::Notification,
+        notification: lsp_server::Notification,
     ) -> Result<T::Params, lsp_server::Notification>
     where
         T: lsp_types::notification::Notification,
         T::Params: DeserializeOwned,
     {
-        // TODO why do I have this clone?
-        notification
-            .clone()
-            .extract(T::METHOD)
-            .map_err(|e| match e {
-                ExtractError::MethodMismatch(n) => n,
-                err @ ExtractError::JsonError { .. } => panic!("Invalid notification: {err:?}"),
-            })
+        notification.extract(T::METHOD).map_err(|e| match e {
+            ExtractError::MethodMismatch(n) => n,
+            err @ ExtractError::JsonError { .. } => panic!("Invalid notification: {err:?}"),
+        })
     }
 
     fn send_notification<N>(&self, params: N::Params)
