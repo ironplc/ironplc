@@ -221,6 +221,7 @@
 <li class="toctree-l1 current has-children"><a class="reference internal" href="index.html">Compiler reference</a><input aria-label="Toggle navigation of Compiler reference" checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Basic Usage</a></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="source-formats/index.html">Source Formats</a><input aria-label="Toggle navigation of Source Formats" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="source-formats/text.html">Text</a></li>
 <li class="toctree-l3"><a class="reference internal" href="source-formats/plcopen-xml.html">PLCopen XML</a></li>
 </ul>
 </li>
@@ -372,6 +373,12 @@ to make the <code class="file docutils literal notranslate"><span class="pre">ir
 <strong class="program">ironplcc</strong> doesn’t care what your call your file(s), but it will
 automatically detect file names with the <code class="file docutils literal notranslate"><span class="pre">.st</span></code> extension as IEC
 61131-3 programs.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>IronPLC supports multiple source formats including Text (<code class="docutils literal notranslate"><span class="pre">.st</span></code>) and
+PLCopen XML. See <a class="reference internal" href="source-formats/index.html"><span class="doc">Source Formats</span></a> for details on supported
+formats and their capabilities.</p>
+</div>
 <p>In the same terminal, enter the commands in <a class="reference internal" href="#compiler-create-hello-world"><span class="std std-ref">Create Hello World Program</span></a>
 to create a program.</p>
 <div class="literal-block-wrapper docutils container" id="compiler-create-hello-world">
@@ -406,7 +413,7 @@ to check your program’s syntax.</p>
 </pre></div>
 </div>
 </div>
-<p>The output <code class="samp docutils literal notranslate"><span class="pre">OK</span></code> should print to the terminal.</p>
+<p>On success, the command produces no output.</p>
 <p>For now, that’s it. Presently, IronPLC does not create runnable programs.</p>
 </section>
 </section>

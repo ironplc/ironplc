@@ -1,21 +1,21 @@
-=============
-PLCopen XML
-=============
+====
+Text
+====
 
-IronPLC supports the PLCopen XML interchange format (TC6 XML) for importing
-IEC 61131-3 programs from other development environments.
+IronPLC supports plain text files containing IEC 61131-3 Structured Text (ST)
+programs. This is the native format for developing new IEC 61131-3 code.
 
------------------
-Supported Version
------------------
+--------------
+File Extension
+--------------
 
-IronPLC supports **PLCopen TC6 XML version 2.01** (namespace: ``http://www.plcopen.org/xml/tc6_0201``).
+IronPLC recognizes files with the ``.st`` extension as Structured Text source
+files. You can also use any file extension and IronPLC will detect the format
+from the content.
 
 -------------------
 Supported Languages
 -------------------
-
-Within PLCopen XML files, IronPLC supports the following programming languages:
 
 **Fully Supported:**
 
@@ -32,7 +32,7 @@ Within PLCopen XML files, IronPLC supports the following programming languages:
 Supported Elements
 ------------------
 
-IronPLC supports the following PLCopen XML elements:
+IronPLC supports the following elements in Structured Text files:
 
 **Data Types:**
 

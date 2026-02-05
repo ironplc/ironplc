@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="Problem Codes" href="../problems/index.html"><link rel="prev" title="Source Formats" href="index.html">
+<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="Problem Codes" href="../problems/index.html"><link rel="prev" title="Text" href="text.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>PLCopen XML - IronPLC documentation</title>
@@ -221,6 +221,7 @@
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../index.html">Compiler reference</a><input aria-label="Toggle navigation of Compiler reference" checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="../basicusage.html">Basic Usage</a></li>
 <li class="toctree-l2 current has-children"><a class="reference internal" href="index.html">Source Formats</a><input aria-label="Toggle navigation of Source Formats" checked="" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="text.html">Text</a></li>
 <li class="toctree-l3 current current-page"><a class="current reference internal" href="#">PLCopen XML</a></li>
 </ul>
 </li>
@@ -364,22 +365,6 @@ IEC 61131-3 programs from other development environments.</p>
 <li><p><strong>Instruction List (IL)</strong> - Deprecated text-based language</p></li>
 </ul>
 </section>
-<section id="usage">
-<h2>Usage<a class="headerlink" href="#usage" title="Link to this heading">¶</a></h2>
-<p>To check a PLCopen XML file, use the <code class="docutils literal notranslate"><span class="pre">check</span></code> command with the XML file path:</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>myproject.xml
-</pre></div>
-</div>
-<p>The compiler automatically detects PLCopen XML files by their content (XML with
-the PLCopen namespace) regardless of file extension.</p>
-<p>You can also check multiple files together, including a mix of PLCopen XML and
-Structured Text files:</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>types.st<span class="w"> </span>program.xml
-</pre></div>
-</div>
-<p>This allows importing types or POUs from PLCopen XML while developing new code
-in Structured Text.</p>
-</section>
 <section id="supported-elements">
 <h2>Supported Elements<a class="headerlink" href="#supported-elements" title="Link to this heading">¶</a></h2>
 <p>IronPLC supports the following PLCopen XML elements:</p>
@@ -429,14 +414,14 @@ in Structured Text.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="index.html">
+          <a class="prev-page" href="text.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Source Formats</div>
+                <div class="title">Text</div>
                 
               </div>
             </a>
@@ -481,7 +466,6 @@ in Structured Text.</p>
 <li><a class="reference internal" href="#">PLCopen XML</a><ul>
 <li><a class="reference internal" href="#supported-version">Supported Version</a></li>
 <li><a class="reference internal" href="#supported-languages">Supported Languages</a></li>
-<li><a class="reference internal" href="#usage">Usage</a></li>
 <li><a class="reference internal" href="#supported-elements">Supported Elements</a></li>
 </ul>
 </li>
