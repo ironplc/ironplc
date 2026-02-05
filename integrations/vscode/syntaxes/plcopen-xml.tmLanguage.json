@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "$schema": "../schemas/tmlanguage.json",
   "name": "PLCopen XML",
   "scopeName": "source.plcopen-xml",
   "patterns": [
@@ -191,12 +191,16 @@
       "name": "meta.tag.close.xml",
       "patterns": [
         {
-          "match": "[a-zA-Z_][a-zA-Z0-9_\\-\\.]*",
-          "patterns": [
-            {
-              "include": "#tag-name"
+          "match": "([a-zA-Z_][a-zA-Z0-9_\\-\\.]*)",
+          "captures": {
+            "1": {
+              "patterns": [
+                {
+                  "include": "#tag-name"
+                }
+              ]
             }
-          ]
+          }
         }
       ]
     },
