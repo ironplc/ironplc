@@ -42,10 +42,37 @@ impl ConstantKind {
     }
 }
 
+impl fmt::Display for ConstantKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConstantKind::IntegerLiteral(lit) => write!(f, "{}", lit.value),
+            ConstantKind::RealLiteral(lit) => write!(f, "{}", lit.value),
+            ConstantKind::Boolean(lit) => write!(f, "{}", lit.value),
+            ConstantKind::CharacterString(lit) => {
+                write!(f, "'{}'", lit.value.iter().collect::<String>())
+            }
+            ConstantKind::Duration(lit) => write!(f, "{:?}", lit),
+            ConstantKind::TimeOfDay(lit) => write!(f, "{:?}", lit),
+            ConstantKind::Date(lit) => write!(f, "{:?}", lit),
+            ConstantKind::DateAndTime(lit) => write!(f, "{:?}", lit),
+            ConstantKind::BitStringLiteral(lit) => write!(f, "{:?}", lit),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Boolean {
     True,
     False,
+}
+
+impl fmt::Display for Boolean {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Boolean::True => write!(f, "TRUE"),
+            Boolean::False => write!(f, "FALSE"),
+        }
+    }
 }
 
 // Numeric liberals declared by 2.2.1. Numeric literals define
@@ -964,6 +991,15 @@ impl Located for EnumeratedValue {
         match &self.type_name {
             Some(name) => SourceSpan::join2(name, &self.value),
             None => self.value.span.clone(),
+        }
+    }
+}
+
+impl fmt::Display for EnumeratedValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.type_name {
+            Some(type_name) => write!(f, "{}#{}", type_name, self.value),
+            None => write!(f, "{}", self.value),
         }
     }
 }
