@@ -256,7 +256,17 @@ parser! {
 
     // B.1.2.1 Numeric literals
     // numeric_literal omitted because it only appears in constant so we do not need to create a type for it
-    rule integer_literal() -> IntegerLiteral = data_type:(t:integer_type_name() tok(TokenType::Hash) {t})? value:(bi:binary_integer() { bi.into() } / oi:octal_integer() { oi.into() } / hi:hex_integer() { hi.into() } / si:signed_integer() { si }) { IntegerLiteral { value, data_type } }
+    // integer_literal_type is used specifically for integer literals (returns IntegerTypeName)
+    rule integer_literal_type() -> IntegerTypeName =
+      tok(TokenType::Sint) { IntegerTypeName::SINT }
+      / tok(TokenType::Int) { IntegerTypeName::INT }
+      / tok(TokenType::Dint) { IntegerTypeName::DINT }
+      / tok(TokenType::Lint) { IntegerTypeName::LINT }
+      / tok(TokenType::Usint) { IntegerTypeName::USINT }
+      / tok(TokenType::Uint) { IntegerTypeName::UINT }
+      / tok(TokenType::Udint) { IntegerTypeName::UDINT }
+      / tok(TokenType::Ulint) { IntegerTypeName::ULINT }
+    rule integer_literal() -> IntegerLiteral = data_type:(t:integer_literal_type() tok(TokenType::Hash) {t})? value:(bi:binary_integer() { bi.into() } / oi:octal_integer() { oi.into() } / hi:hex_integer() { hi.into() } / si:signed_integer() { si }) { IntegerLiteral { value, data_type } }
     rule signed_integer__positive() -> SignedInteger = tok(TokenType::Plus)? digits:tok(TokenType::Digits) {? SignedInteger::positive(digits.text.as_str()) }
     rule signed_integer__negative() -> SignedInteger = tok(TokenType::Minus) digits:tok(TokenType::Digits) {? SignedInteger::negative(digits.text.as_str()) }
     rule signed_integer() -> SignedInteger = signed_integer__positive() / signed_integer__negative()
@@ -266,7 +276,11 @@ parser! {
     rule binary_integer() -> Integer =  n:tok(TokenType::BinDigits) {? Integer::try_binary(n.text.as_str()) }
     rule octal_integer() -> Integer = n:tok(TokenType::OctDigits) {? Integer::try_octal(n.text.as_str()) }
     rule hex_integer() -> Integer = n:tok(TokenType::HexDigits) {? Integer::try_hex(n.text.as_str()) }
-    rule real_literal() -> RealLiteral = tn:(t:real_type_name() tok(TokenType::Hash) {t})? sign:(tok(TokenType::Minus) { -1.0 }/ tok(TokenType::Plus) { 1.0 })? literal:(fp:tok(TokenType::FloatingPoint) {fp.text.as_str()} / fp:tok(TokenType::FixedPoint) {fp.text.as_str()} ){?
+    // real_literal_type is used specifically for real literals (returns RealTypeName)
+    rule real_literal_type() -> RealTypeName =
+      tok(TokenType::Real) { RealTypeName::REAL }
+      / tok(TokenType::Lreal) { RealTypeName::LREAL }
+    rule real_literal() -> RealLiteral = tn:(t:real_literal_type() tok(TokenType::Hash) {t})? sign:(tok(TokenType::Minus) { -1.0 }/ tok(TokenType::Plus) { 1.0 })? literal:(fp:tok(TokenType::FloatingPoint) {fp.text.as_str()} / fp:tok(TokenType::FixedPoint) {fp.text.as_str()} ){?
       let sign = sign.unwrap_or(1.0);
       RealLiteral::try_parse(literal, tn).map(|node| {
         RealLiteral {
@@ -282,12 +296,12 @@ parser! {
       let value = value.as_str().parse::<i128>().map_err(|e| "not an exponent")?;
       return Ok(sign * value);
     }
-    // bit_string_literal_type is not a rule in the specification but helps write simpler code
-    rule bit_string_literal_type() -> ElementaryTypeName =
-      tok(TokenType::Byte) { ElementaryTypeName::BYTE }
-      / tok(TokenType::Word) { ElementaryTypeName::WORD }
-      / tok(TokenType::Dword) { ElementaryTypeName::DWORD }
-      / tok(TokenType::Lword) { ElementaryTypeName::LWORD }
+    // bit_string_literal_type is used specifically for bit string literals (returns BitStringTypeName)
+    rule bit_string_literal_type() -> BitStringTypeName =
+      tok(TokenType::Byte) { BitStringTypeName::BYTE }
+      / tok(TokenType::Word) { BitStringTypeName::WORD }
+      / tok(TokenType::Dword) { BitStringTypeName::DWORD }
+      / tok(TokenType::Lword) { BitStringTypeName::LWORD }
     // The specification says unsigned_integer, but there is no such rule.
     rule bit_string_literal() -> BitStringLiteral = data_type:(t:bit_string_literal_type() tok(TokenType::Hash) {t})? value:(bi:binary_integer() { bi }/ oi:octal_integer() { oi } / hi:hex_integer() { hi } / ui:integer() { ui } ) { BitStringLiteral { value, data_type } }
     rule boolean_literal() -> BooleanLiteral =
