@@ -74,8 +74,8 @@ mod tests {
     use crate::test_helpers::parse_and_resolve_types;
 
     #[test]
-    fn apply_when_has_ctu_dint_unsupported_type_then_err() {
-        // CTU_DINT is a recognized stdlib type variant that is NOT yet implemented
+    fn apply_when_has_ctu_dint_supported_type_then_ok() {
+        // CTU_DINT is now a supported stdlib type variant
         let program = "
 FUNCTION_BLOCK DUMMY
 VAR_INPUT
@@ -89,10 +89,8 @@ END_FUNCTION_BLOCK";
         let symbol_env = SymbolEnvironment::new();
         let result = apply(&input, &type_env, &symbol_env);
 
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert_eq!(1, err.len());
-        assert_eq!(Problem::UnsupportedStdLibType.code(), err[0].code);
+        // CTU_DINT is now supported, so this should pass (no unsupported stdlib type error)
+        assert!(result.is_ok());
     }
 
     #[test]
