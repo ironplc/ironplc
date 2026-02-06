@@ -31,16 +31,9 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 use std::collections::HashSet;
 
-use crate::{
-    result::SemanticResult, symbol_environment::SymbolEnvironment,
-    type_environment::TypeEnvironment,
-};
+use crate::{result::SemanticResult, semantic_context::SemanticContext};
 
-pub fn apply(
-    lib: &Library,
-    _type_environment: &TypeEnvironment,
-    _symbol_environment: &SymbolEnvironment,
-) -> SemanticResult {
+pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
     let mut visitor = RuleStructElementNamesUnique {
         diagnostics: Vec::new(),
     };
@@ -94,6 +87,7 @@ impl Visitor<Diagnostic> for RuleStructElementNamesUnique {
 #[cfg(test)]
 mod tests {
     use crate::test_helpers::parse_and_resolve_types;
+    use crate::semantic_context::SemanticContextBuilder;
 
     use super::*;
 
@@ -101,15 +95,14 @@ mod tests {
     fn apply_when_structure_has_unique_names_then_ok() {
         let program = "
 TYPE
-    CUSTOM_STRUCT : STRUCT 
+    CUSTOM_STRUCT : STRUCT
         NAME: BOOL;
     END_STRUCT;
 END_TYPE";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
 
         assert!(result.is_ok());
     }
@@ -118,16 +111,15 @@ END_TYPE";
     fn apply_when_structure_has_duplicated_names_then_error() {
         let program = "
 TYPE
-    CUSTOM_STRUCT : STRUCT 
+    CUSTOM_STRUCT : STRUCT
         NAME: BOOL;
         NAME: BOOL;
     END_STRUCT;
 END_TYPE";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
 
         assert!(result.is_err());
     }

@@ -38,16 +38,12 @@ use ironplc_problems::Problem;
 
 use crate::{
     intermediate_type::IntermediateType, result::SemanticResult,
-    symbol_environment::SymbolEnvironment, type_environment::TypeEnvironment,
+    semantic_context::SemanticContext, type_environment::TypeEnvironment,
 };
 
-pub fn apply(
-    lib: &Library,
-    type_environment: &TypeEnvironment,
-    _symbol_environment: &SymbolEnvironment,
-) -> SemanticResult {
+pub fn apply(lib: &Library, context: &SemanticContext) -> SemanticResult {
     let mut visitor = RuleConstantVarsInitialized {
-        type_environment,
+        type_environment: context.types(),
         diagnostics: Vec::new(),
     };
     visitor.walk(lib).map_err(|e| vec![e])?;
@@ -211,7 +207,8 @@ impl<'a> RuleConstantVarsInitialized<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::test_helpers::{parse_and_resolve_types, parse_and_resolve_types_with_env};
+    use crate::semantic_context::SemanticContextBuilder;
+    use crate::test_helpers::{parse_and_resolve_types, parse_and_resolve_types_with_context};
 
     use super::*;
 
@@ -226,9 +223,8 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
 
         assert!(result.is_err())
     }
@@ -248,9 +244,8 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
 
         assert!(result.is_err())
     }
@@ -266,9 +261,8 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
 
         assert!(result.is_err())
     }
@@ -284,9 +278,8 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
 
         assert!(result.is_ok())
     }
@@ -306,9 +299,8 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
 
         assert!(result.is_ok())
     }
@@ -324,9 +316,8 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
 
         assert!(result.is_ok())
     }
@@ -349,8 +340,8 @@ VAR CONSTANT
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (library, type_env, symbol_env) = parse_and_resolve_types_with_env(program);
-        let result = apply(&library, &type_env, &symbol_env);
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
 
         assert!(result.is_ok());
     }
@@ -371,8 +362,8 @@ VAR CONSTANT
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (library, type_env, symbol_env) = parse_and_resolve_types_with_env(program);
-        let result = apply(&library, &type_env, &symbol_env);
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
 
         assert!(result.is_ok());
     }
@@ -393,8 +384,8 @@ VAR CONSTANT
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (library, type_env, symbol_env) = parse_and_resolve_types_with_env(program);
-        let result = apply(&library, &type_env, &symbol_env);
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
 
         assert!(result.is_ok());
     }
@@ -415,8 +406,8 @@ VAR CONSTANT
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (library, type_env, symbol_env) = parse_and_resolve_types_with_env(program);
-        let result = apply(&library, &type_env, &symbol_env);
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
 
         assert!(result.is_err());
         let errors = result.unwrap_err();
@@ -441,8 +432,8 @@ VAR CONSTANT
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (library, type_env, symbol_env) = parse_and_resolve_types_with_env(program);
-        let result = apply(&library, &type_env, &symbol_env);
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
 
         assert!(result.is_err());
         let errors = result.unwrap_err();
@@ -467,8 +458,8 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (library, type_env, symbol_env) = parse_and_resolve_types_with_env(program);
-        let result = apply(&library, &type_env, &symbol_env);
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
 
         assert!(result.is_ok());
     }
@@ -494,8 +485,8 @@ VAR CONSTANT
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (library, type_env, symbol_env) = parse_and_resolve_types_with_env(program);
-        let result = apply(&library, &type_env, &symbol_env);
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
 
         assert!(result.is_ok());
     }
@@ -521,8 +512,8 @@ VAR CONSTANT
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (library, type_env, symbol_env) = parse_and_resolve_types_with_env(program);
-        let result = apply(&library, &type_env, &symbol_env);
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
 
         assert!(result.is_err());
     }
@@ -549,8 +540,8 @@ VAR CONSTANT
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (library, type_env, symbol_env) = parse_and_resolve_types_with_env(program);
-        let result = apply(&library, &type_env, &symbol_env);
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
 
         assert!(result.is_ok());
     }
