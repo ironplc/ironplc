@@ -26,8 +26,7 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{
-    result::SemanticResult, semantic_context::SemanticContext,
-    stdlib::is_unsupported_standard_type,
+    result::SemanticResult, semantic_context::SemanticContext, stdlib::is_unsupported_standard_type,
 };
 
 pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {

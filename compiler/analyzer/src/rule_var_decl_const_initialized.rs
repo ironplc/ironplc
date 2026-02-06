@@ -37,8 +37,8 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{
-    intermediate_type::IntermediateType, result::SemanticResult,
-    semantic_context::SemanticContext, type_environment::TypeEnvironment,
+    intermediate_type::IntermediateType, result::SemanticResult, semantic_context::SemanticContext,
+    type_environment::TypeEnvironment,
 };
 
 pub fn apply(lib: &Library, context: &SemanticContext) -> SemanticResult {

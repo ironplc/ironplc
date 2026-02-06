@@ -8,6 +8,8 @@
 use std::collections::HashMap;
 
 use ironplc_dsl::core::{Id, SourceSpan};
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_problems::Problem;
 
 use crate::intermediate_type::{IntermediateFunctionParameter, IntermediateType};
 
@@ -83,9 +85,22 @@ impl FunctionEnvironment {
     /// Inserts a function signature into the environment.
     ///
     /// Uses case-insensitive lookup (stores lowercase key).
-    pub fn insert(&mut self, signature: FunctionSignature) {
-        let key = signature.name.lower_case();
-        self.table.insert(key.to_string(), signature);
+    ///
+    /// Returns an error if a function already exists with the same name.
+    pub fn insert(&mut self, signature: FunctionSignature) -> Result<(), Diagnostic> {
+        let key = signature.name.lower_case().to_string();
+        let span = signature.span.clone();
+
+        self.table.insert(key, signature).map_or_else(
+            || Ok(()),
+            |existing| {
+                Err(Diagnostic::problem(
+                    Problem::FunctionDeclNameDuplicated,
+                    Label::span(span, "Function declaration"),
+                )
+                .with_secondary(Label::span(existing.span, "Previous declaration")))
+            },
+        )
     }
 
     /// Gets a function signature by name.
@@ -192,11 +207,34 @@ mod tests {
             },
         );
 
-        env.insert(sig);
+        assert!(env.insert(sig).is_ok());
 
         assert!(!env.is_empty());
         assert_eq!(env.len(), 1);
         assert!(env.contains(&Id::from("INT_TO_REAL")));
+    }
+
+    #[test]
+    fn function_environment_insert_when_duplicate_then_error() {
+        let mut env = FunctionEnvironment::new();
+        let sig1 = create_test_signature(
+            "INT_TO_REAL",
+            IntermediateType::Real {
+                size: ByteSized::B32,
+            },
+        );
+        let sig2 = create_test_signature(
+            "INT_TO_REAL",
+            IntermediateType::Real {
+                size: ByteSized::B32,
+            },
+        );
+
+        assert!(env.insert(sig1).is_ok());
+        assert!(env.insert(sig2).is_err());
+
+        // Should still only have one entry
+        assert_eq!(env.len(), 1);
     }
 
     #[test]
@@ -209,7 +247,7 @@ mod tests {
             },
         );
 
-        env.insert(sig);
+        env.insert(sig).unwrap();
 
         // Should find with different cases
         assert!(env.get(&Id::from("INT_TO_REAL")).is_some());
@@ -309,13 +347,15 @@ mod tests {
     #[test]
     fn function_environment_iter_when_functions_added_then_iterates_all() {
         let mut env = FunctionEnvironment::new();
-        env.insert(create_test_signature("FUNC1", IntermediateType::Bool));
+        env.insert(create_test_signature("FUNC1", IntermediateType::Bool))
+            .unwrap();
         env.insert(create_test_signature(
             "FUNC2",
             IntermediateType::Int {
                 size: ByteSized::B16,
             },
-        ));
+        ))
+        .unwrap();
 
         let names: Vec<_> = env.iter().map(|(name, _)| name.clone()).collect();
         assert_eq!(names.len(), 2);

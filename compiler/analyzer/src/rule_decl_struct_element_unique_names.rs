@@ -86,8 +86,8 @@ impl Visitor<Diagnostic> for RuleStructElementNamesUnique {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_helpers::parse_and_resolve_types;
     use crate::semantic_context::SemanticContextBuilder;
+    use crate::test_helpers::parse_and_resolve_types;
 
     use super::*;
 
