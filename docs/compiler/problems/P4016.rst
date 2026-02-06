@@ -1,0 +1,33 @@
+=====
+P4016
+=====
+
+.. problem-summary:: P4016
+
+This error occurs when a function declaration name is duplicated within the same scope.
+
+Example
+-------
+
+The following code will generate error P4016:
+
+.. code-block::
+
+   FUNCTION MyFunction : INT
+   END_FUNCTION
+
+   FUNCTION MyFunction : INT  (* Error: Duplicate function name *)
+   END_FUNCTION
+
+The function ``MyFunction`` is declared twice, which is not allowed.
+
+To fix this error, ensure all function names are unique within their scope:
+
+.. code-block::
+
+   FUNCTION MyFunction1 : INT
+   END_FUNCTION
+
+   FUNCTION MyFunction2 : INT  (* Correct: Different name *)
+   END_FUNCTION
+

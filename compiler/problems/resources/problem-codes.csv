@@ -45,6 +45,7 @@ P4012,FunctionBlockNotInScope,Function block invocation is not a variable in sco
 P4013,PouDeclNameDuplicated,POU declaration name is duplicated
 P4014,SymbolDeclDuplicated,Symbol declaration name is duplicated
 P4015,StdlibTypeRedefinition,User-defined type has the same name as a standard library type
+P4016,FunctionDeclNameDuplicated,Function declaration name is duplicated
 P6001,CannotCanonicalizePath,Unable to canonicalize the path
 P6002,CannotReadMetadata,Unable to read metadata for the path
 P6003,CannotReadDirectory,Unable to read directory

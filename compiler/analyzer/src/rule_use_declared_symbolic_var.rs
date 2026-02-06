@@ -49,15 +49,10 @@ use ironplc_problems::Problem;
 use crate::{
     result::SemanticResult,
     scoped_table::{self, Key, ScopedTable, Value},
-    symbol_environment::SymbolEnvironment,
-    type_environment::TypeEnvironment,
+    semantic_context::SemanticContext,
 };
 
-pub fn apply(
-    lib: &Library,
-    _type_environment: &TypeEnvironment,
-    _symbol_environment: &SymbolEnvironment,
-) -> SemanticResult {
+pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
     let mut visitor: ScopedTable<Id, DummyNode> = scoped_table::ScopedTable::new();
 
     visitor.walk(lib).map_err(|e| vec![e])
@@ -126,6 +121,7 @@ impl Visitor<Diagnostic> for ScopedTable<'_, Id, DummyNode> {
 
 #[cfg(test)]
 mod tests {
+    use crate::semantic_context::SemanticContextBuilder;
     use crate::test_helpers::parse_and_resolve_types;
 
     use super::*;
@@ -142,9 +138,8 @@ TRIG := TRIG0.A;
 END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
 
         assert!(result.is_err());
         assert!(result
@@ -168,9 +163,8 @@ TRIG := TRIG0;
 END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
 
         assert!(result.is_ok());
     }
@@ -188,9 +182,8 @@ TRIG := TRIG0;
 END_FUNCTION";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
 
         assert!(result.is_ok());
     }
@@ -208,9 +201,8 @@ TRIG := TRIG0;
 END_PROGRAM";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
 
         assert!(result.is_ok());
     }
@@ -230,9 +222,8 @@ FUNCTION_BLOCK FB_EXAMPLE
 END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
 
         assert!(result.is_ok());
     }

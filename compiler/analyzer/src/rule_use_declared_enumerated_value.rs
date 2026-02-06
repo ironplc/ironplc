@@ -36,37 +36,23 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::{
-    result::SemanticResult, symbol_environment::SymbolEnvironment,
-    type_environment::TypeEnvironment,
-};
+use crate::{result::SemanticResult, semantic_context::SemanticContext};
 
-pub fn apply(
-    lib: &Library,
-    type_environment: &TypeEnvironment,
-    symbol_environment: &SymbolEnvironment,
-) -> SemanticResult {
+pub fn apply(lib: &Library, context: &SemanticContext) -> SemanticResult {
     // Walk the library to find all references to enumerations
     // checking that all references use an enumeration value
     // that is part of the enumeration
-    let mut visitor = RuleDeclaredEnumeratedValues::new(type_environment, symbol_environment);
+    let mut visitor = RuleDeclaredEnumeratedValues::new(context);
     visitor.walk(lib).map_err(|e| vec![e])
 }
 
 struct RuleDeclaredEnumeratedValues<'a> {
-    type_environment: &'a TypeEnvironment,
-    symbol_environment: &'a SymbolEnvironment,
+    context: &'a SemanticContext,
 }
 
 impl<'a> RuleDeclaredEnumeratedValues<'a> {
-    fn new(
-        type_environment: &'a TypeEnvironment,
-        symbol_environment: &'a SymbolEnvironment,
-    ) -> Self {
-        RuleDeclaredEnumeratedValues {
-            type_environment,
-            symbol_environment,
-        }
+    fn new(context: &'a SemanticContext) -> Self {
+        RuleDeclaredEnumeratedValues { context }
     }
 
     /// Returns enumeration values for a given enumeration type name.
@@ -85,7 +71,7 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
     /// * there's a circular reference in the alias chain
     fn find_enum_declaration_values(&self, type_name: &TypeName) -> Result<Vec<&Id>, Diagnostic> {
         // Check if the type exists and is an enumeration
-        if !self.type_environment.is_enumeration(type_name) {
+        if !self.context.types().is_enumeration(type_name) {
             return Err(Diagnostic::problem(
                 Problem::EnumNotDeclared,
                 Label::span(type_name.span(), "Type is not an enumeration"),
@@ -94,7 +80,8 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
 
         // Get all enumeration values for the type from the symbol environment
         Ok(self
-            .symbol_environment
+            .context
+            .symbols()
             .get_enumeration_values_for_type(type_name))
     }
 }

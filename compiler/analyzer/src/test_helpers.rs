@@ -1,3 +1,4 @@
+use crate::semantic_context::SemanticContext;
 use crate::stages::resolve_types;
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::FileId;
@@ -56,20 +57,14 @@ pub fn parse_and_resolve_types(program: &str) -> Library {
     use ironplc_parser::{options::ParseOptions, parse_program};
 
     let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-    let (library, _type_environment, _symbol_environment) = resolve_types(&[&library]).unwrap();
+    let (library, _context) = resolve_types(&[&library]).unwrap();
     library
 }
 
-/// Parses a program and resolves types, returning both the library and type environment.
-/// Use this when testing rules that need access to the type environment.
+/// Parses a program and resolves types, returning both the library and semantic context.
+/// Use this when testing rules that need access to the type environment or other context.
 #[cfg(test)]
-pub fn parse_and_resolve_types_with_env(
-    program: &str,
-) -> (
-    Library,
-    crate::type_environment::TypeEnvironment,
-    crate::symbol_environment::SymbolEnvironment,
-) {
+pub fn parse_and_resolve_types_with_context(program: &str) -> (Library, SemanticContext) {
     use ironplc_parser::{options::ParseOptions, parse_program};
 
     let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();

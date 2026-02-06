@@ -4,6 +4,7 @@
 extern crate ironplc_dsl;
 extern crate ironplc_parser;
 
+mod function_environment;
 mod intermediate_type;
 mod result;
 mod rule_decl_struct_element_unique_names;
@@ -20,6 +21,7 @@ mod rule_var_decl_const_initialized;
 mod rule_var_decl_const_not_fb;
 mod rule_var_decl_global_const_requires_external_const;
 mod scoped_table;
+mod semantic_context;
 pub mod stages;
 mod stdlib;
 mod symbol_environment;
@@ -38,6 +40,10 @@ mod xform_toposort_declarations;
 mod intermediates;
 
 // Re-export public types for external use
+pub use function_environment::{
+    FunctionEnvironment, FunctionEnvironmentBuilder, FunctionSignature,
+};
+pub use semantic_context::{SemanticContext, SemanticContextBuilder};
 pub use type_attributes::TypeAttributes;
 pub use type_category::TypeCategory;
 pub use type_environment::{TypeEnvironment, TypeEnvironmentBuilder, UsageContext};
