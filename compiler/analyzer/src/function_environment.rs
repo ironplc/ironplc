@@ -12,6 +12,7 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_problems::Problem;
 
 use crate::intermediate_type::{IntermediateFunctionParameter, IntermediateType};
+use crate::intermediates::stdlib_function::get_all_stdlib_functions;
 
 /// Represents a function signature in the function environment.
 #[derive(Debug, Clone)]
@@ -163,12 +164,14 @@ impl FunctionEnvironmentBuilder {
 
     /// Builds the function environment.
     pub fn build(self) -> FunctionEnvironment {
-        let env = FunctionEnvironment::new();
+        let mut env = FunctionEnvironment::new();
 
         if self.has_stdlib_functions {
-            // TODO: Add stdlib functions here when implemented
-            // For now, this is a placeholder for future stdlib function definitions
-            // e.g., for (name, sig) in get_all_stdlib_functions() { env.insert(sig); }
+            for sig in get_all_stdlib_functions() {
+                // Stdlib functions should never have duplicates, so unwrap is safe here
+                env.insert(sig)
+                    .expect("Stdlib function names should be unique");
+            }
         }
 
         env
@@ -334,14 +337,15 @@ mod tests {
 
     #[test]
     fn function_environment_builder_when_with_stdlib_functions_then_builds() {
-        // Currently stdlib functions are not implemented, so this just tests
-        // that the builder works without errors
         let env = FunctionEnvironmentBuilder::new()
             .with_stdlib_functions()
             .build();
-        // When stdlib functions are added, this should be non-empty
-        // For now, it's empty since we haven't implemented them yet
-        assert!(env.is_empty());
+        // Should have 90 stdlib type conversion functions
+        assert_eq!(env.len(), 90);
+        // Should be able to find conversion functions
+        assert!(env.contains(&Id::from("INT_TO_REAL")));
+        assert!(env.contains(&Id::from("REAL_TO_INT")));
+        assert!(env.contains(&Id::from("DINT_TO_LINT")));
     }
 
     #[test]
