@@ -3,7 +3,7 @@
   "displayName": "IronPLC",
   "publisher": "ironplc",
   "description": "IronPLC is the beginning of a development environment for IEC 61131-3.",
-  "version": "0.153.0",
+  "version": "0.154.0",
   "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0",
@@ -121,10 +121,12 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src/**/*.ts",
+    "validate-grammars": "ajv validate -s schemas/tmlanguage.json -d \"syntaxes/*.tmLanguage.json\"",
+    "lint": "eslint src/**/*.ts && npm run validate-grammars",
     "test:functional": "node ./out/test/functional/runTest.js"
   },
   "devDependencies": {
+    "ajv-cli": "^5",
     "@stylistic/eslint-plugin": "^5",
     "@stylistic/eslint-plugin-ts": "^4",
     "@types/mocha": "^10.0.0",
