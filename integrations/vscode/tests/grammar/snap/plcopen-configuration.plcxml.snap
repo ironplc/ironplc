@@ -11,40 +11,60 @@
 #                             ^^^^^^^ source.plcopen-xml meta.tag.preprocessor.xml string.quoted.double.xml
 #                                    ^^ source.plcopen-xml meta.tag.preprocessor.xml punctuation.definition.tag.end.xml
 ><project xmlns="http://www.plcopen.org/xml/tc6_0200">
-#^ source.plcopen-xml meta.tag.self-closing.xml punctuation.definition.tag.begin.xml
-# ^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.name.tag.structure.plcopen-xml
-#        ^ source.plcopen-xml meta.tag.self-closing.xml
-#         ^^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.other.attribute-name.namespace.xml
-#              ^ source.plcopen-xml meta.tag.self-closing.xml punctuation.separator.key-value.xml
-#               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml string.quoted.double.xml
-#                                                    ^^ source.plcopen-xml meta.tag.self-closing.xml
+#^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+# ^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.tag.structure.plcopen-xml
+#        ^ source.plcopen-xml meta.tag.xml
+#         ^^^^^ source.plcopen-xml meta.tag.xml entity.other.attribute-name.namespace.xml
+#              ^ source.plcopen-xml meta.tag.xml punctuation.separator.key-value.xml
+#               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.xml string.quoted.double.xml
+#                                                    ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
 >  <instances>
-#^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml
+#^^ source.plcopen-xml
+#  ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+#   ^^^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.tag.configuration.plcopen-xml
+#            ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
 >    <configurations>
-#^^^^^^^^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml
+#^^^^ source.plcopen-xml
+#    ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+#     ^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.tag.configuration.plcopen-xml
+#                   ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
 >      <configuration name="MainConfig">
-#^^^^^^^^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml
-#                     ^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.other.attribute-name.plcopen-xml
-#                         ^ source.plcopen-xml meta.tag.self-closing.xml punctuation.separator.key-value.xml
-#                          ^^^^^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.name.plcopen-xml
-#                                      ^^ source.plcopen-xml meta.tag.self-closing.xml
+#^^^^^^ source.plcopen-xml
+#      ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+#       ^^^^^^^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.tag.configuration.plcopen-xml
+#                    ^ source.plcopen-xml meta.tag.xml
+#                     ^^^^ source.plcopen-xml meta.tag.xml entity.other.attribute-name.plcopen-xml
+#                         ^ source.plcopen-xml meta.tag.xml punctuation.separator.key-value.xml
+#                          ^^^^^^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.plcopen-xml
+#                                      ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
 >        <globalVars>
-#^^^^^^^^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml
+#^^^^^^^^ source.plcopen-xml
+#        ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+#         ^^^^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.tag.variable-section.plcopen-xml
+#                   ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
 >          <variable name="GlobalCounter" retain="true">
-#^^^^^^^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml
-#                    ^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.other.attribute-name.plcopen-xml
-#                        ^ source.plcopen-xml meta.tag.self-closing.xml punctuation.separator.key-value.xml
-#                         ^^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.name.plcopen-xml
-#                                        ^ source.plcopen-xml meta.tag.self-closing.xml
-#                                         ^^^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.other.attribute-name.plcopen-xml
-#                                               ^ source.plcopen-xml meta.tag.self-closing.xml punctuation.separator.key-value.xml
-#                                                ^ source.plcopen-xml meta.tag.self-closing.xml punctuation.definition.string.begin.xml
-#                                                 ^^^^ source.plcopen-xml meta.tag.self-closing.xml constant.language.boolean.plcopen-xml
-#                                                     ^ source.plcopen-xml meta.tag.self-closing.xml punctuation.definition.string.end.xml
-#                                                      ^^ source.plcopen-xml meta.tag.self-closing.xml
+#^^^^^^^^^^ source.plcopen-xml
+#          ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+#           ^^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.tag.variable.plcopen-xml
+#                   ^ source.plcopen-xml meta.tag.xml
+#                    ^^^^ source.plcopen-xml meta.tag.xml entity.other.attribute-name.plcopen-xml
+#                        ^ source.plcopen-xml meta.tag.xml punctuation.separator.key-value.xml
+#                         ^^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.plcopen-xml
+#                                        ^ source.plcopen-xml meta.tag.xml
+#                                         ^^^^^^ source.plcopen-xml meta.tag.xml entity.other.attribute-name.plcopen-xml
+#                                               ^ source.plcopen-xml meta.tag.xml punctuation.separator.key-value.xml
+#                                                ^ source.plcopen-xml meta.tag.xml punctuation.definition.string.begin.xml
+#                                                 ^^^^ source.plcopen-xml meta.tag.xml constant.language.boolean.plcopen-xml
+#                                                     ^ source.plcopen-xml meta.tag.xml punctuation.definition.string.end.xml
+#                                                      ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
 >            <type><UDINT/></type>
-#^^^^^^^^^^^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml
-#                        ^^ source.plcopen-xml meta.tag.self-closing.xml punctuation.definition.tag.end.xml
+#^^^^^^^^^^^^ source.plcopen-xml
+#            ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+#             ^^^^ source.plcopen-xml meta.tag.xml entity.name.tag.variable.plcopen-xml
+#                 ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
+#                  ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+#                   ^^^^^ source.plcopen-xml meta.tag.xml storage.type.primitive.plcopen-xml
+#                        ^^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
 #                          ^^ source.plcopen-xml meta.tag.close.xml punctuation.definition.tag.begin.xml
 #                            ^^^^ source.plcopen-xml meta.tag.close.xml entity.name.tag.variable.plcopen-xml
 #                                ^ source.plcopen-xml meta.tag.close.xml punctuation.definition.tag.end.xml
@@ -60,43 +80,48 @@
 #                    ^ source.plcopen-xml meta.tag.close.xml punctuation.definition.tag.end.xml
 >        <resource name="CPU1">
 #^^^^^^^^ source.plcopen-xml
-#        ^ source.plcopen-xml meta.tag.self-closing.xml punctuation.definition.tag.begin.xml
-#         ^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.name.tag.configuration.plcopen-xml
-#                 ^ source.plcopen-xml meta.tag.self-closing.xml
-#                  ^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.other.attribute-name.plcopen-xml
-#                      ^ source.plcopen-xml meta.tag.self-closing.xml punctuation.separator.key-value.xml
-#                       ^^^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.name.plcopen-xml
-#                             ^^ source.plcopen-xml meta.tag.self-closing.xml
+#        ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+#         ^^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.tag.configuration.plcopen-xml
+#                 ^ source.plcopen-xml meta.tag.xml
+#                  ^^^^ source.plcopen-xml meta.tag.xml entity.other.attribute-name.plcopen-xml
+#                      ^ source.plcopen-xml meta.tag.xml punctuation.separator.key-value.xml
+#                       ^^^^^^ source.plcopen-xml meta.tag.xml entity.name.plcopen-xml
+#                             ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
 >          <task name="MainTask" interval="T#10ms" priority="1"/>
-#^^^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml
-#                ^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.other.attribute-name.plcopen-xml
-#                    ^ source.plcopen-xml meta.tag.self-closing.xml punctuation.separator.key-value.xml
-#                     ^^^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.name.plcopen-xml
-#                               ^ source.plcopen-xml meta.tag.self-closing.xml
-#                                ^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.other.attribute-name.xml
-#                                        ^ source.plcopen-xml meta.tag.self-closing.xml punctuation.separator.key-value.xml
-#                                         ^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml string.quoted.double.xml
-#                                                 ^ source.plcopen-xml meta.tag.self-closing.xml
-#                                                  ^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.other.attribute-name.xml
-#                                                          ^ source.plcopen-xml meta.tag.self-closing.xml punctuation.separator.key-value.xml
-#                                                           ^^^ source.plcopen-xml meta.tag.self-closing.xml string.quoted.double.xml
-#                                                              ^^ source.plcopen-xml meta.tag.self-closing.xml punctuation.definition.tag.end.xml
+#^^^^^^^^^^ source.plcopen-xml
+#          ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+#           ^^^^ source.plcopen-xml meta.tag.xml entity.name.tag.configuration.plcopen-xml
+#               ^ source.plcopen-xml meta.tag.xml
+#                ^^^^ source.plcopen-xml meta.tag.xml entity.other.attribute-name.plcopen-xml
+#                    ^ source.plcopen-xml meta.tag.xml punctuation.separator.key-value.xml
+#                     ^^^^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.plcopen-xml
+#                               ^ source.plcopen-xml meta.tag.xml
+#                                ^^^^^^^^ source.plcopen-xml meta.tag.xml entity.other.attribute-name.xml
+#                                        ^ source.plcopen-xml meta.tag.xml punctuation.separator.key-value.xml
+#                                         ^^^^^^^^ source.plcopen-xml meta.tag.xml string.quoted.double.xml
+#                                                 ^ source.plcopen-xml meta.tag.xml
+#                                                  ^^^^^^^^ source.plcopen-xml meta.tag.xml entity.other.attribute-name.xml
+#                                                          ^ source.plcopen-xml meta.tag.xml punctuation.separator.key-value.xml
+#                                                           ^^^ source.plcopen-xml meta.tag.xml string.quoted.double.xml
+#                                                              ^^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
 >          <pouInstance name="Main" typeName="MainProgram">
 #^^^^^^^^^^ source.plcopen-xml
-#          ^ source.plcopen-xml meta.tag.self-closing.xml punctuation.definition.tag.begin.xml
-#           ^^^^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.name.tag.configuration.plcopen-xml
-#                      ^ source.plcopen-xml meta.tag.self-closing.xml
-#                       ^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.other.attribute-name.plcopen-xml
-#                           ^ source.plcopen-xml meta.tag.self-closing.xml punctuation.separator.key-value.xml
-#                            ^^^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.name.plcopen-xml
-#                                  ^ source.plcopen-xml meta.tag.self-closing.xml
-#                                   ^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml entity.other.attribute-name.xml
-#                                           ^ source.plcopen-xml meta.tag.self-closing.xml punctuation.separator.key-value.xml
-#                                            ^^^^^^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml string.quoted.double.xml
-#                                                         ^^ source.plcopen-xml meta.tag.self-closing.xml
+#          ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+#           ^^^^^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.tag.configuration.plcopen-xml
+#                      ^ source.plcopen-xml meta.tag.xml
+#                       ^^^^ source.plcopen-xml meta.tag.xml entity.other.attribute-name.plcopen-xml
+#                           ^ source.plcopen-xml meta.tag.xml punctuation.separator.key-value.xml
+#                            ^^^^^^ source.plcopen-xml meta.tag.xml entity.name.plcopen-xml
+#                                  ^ source.plcopen-xml meta.tag.xml
+#                                   ^^^^^^^^ source.plcopen-xml meta.tag.xml entity.other.attribute-name.xml
+#                                           ^ source.plcopen-xml meta.tag.xml punctuation.separator.key-value.xml
+#                                            ^^^^^^^^^^^^^ source.plcopen-xml meta.tag.xml string.quoted.double.xml
+#                                                         ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
 >            <addData/>
-#^^^^^^^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.self-closing.xml
-#                    ^^ source.plcopen-xml meta.tag.self-closing.xml punctuation.definition.tag.end.xml
+#^^^^^^^^^^^^ source.plcopen-xml
+#            ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+#             ^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.tag.structure.plcopen-xml
+#                    ^^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
 >          </pouInstance>
 #^^^^^^^^^^ source.plcopen-xml
 #          ^^ source.plcopen-xml meta.tag.close.xml punctuation.definition.tag.begin.xml
