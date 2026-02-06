@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <types>
+    <pous>
+      <pou name="MySfcProgram" pouType="program">
+        <body>
+          <SFC>
+            <step name="Init" initialStep="true">
+              <connectionPointIn/>
+              <connectionPointOut/>
+              <position x="100" y="100"/>
+            </step>
+            <step name="Step1" initialStep="false">
+              <connectionPointIn>
+                <connection refLocalId="1"/>
+              </connectionPointIn>
+              <connectionPointOut/>
+              <position x="100" y="200"/>
+            </step>
+            <actionBlock>
+              <action localId="1" qualifier="N">
+                <reference name="DoSomething"/>
+              </action>
+              <action localId="2" qualifier="P">
+                <inline name="PulseAction">
+                  <ST>
+                    <xhtml>x := 1;</xhtml>
+                  </ST>
+                </inline>
+              </action>
+              <action localId="3" qualifier="R">
+                <reference name="ResetAction"/>
+              </action>
+              <action localId="4" qualifier="S">
+                <reference name="SetAction"/>
+              </action>
+            </actionBlock>
+            <inVariable localId="5" negated="false">
+              <position x="50" y="150"/>
+              <connectionPointOut/>
+              <expression>Start</expression>
+            </inVariable>
+            <outVariable localId="6" negated="true" edge="rising">
+              <position x="200" y="150"/>
+              <connectionPointIn/>
+              <expression>Output</expression>
+            </outVariable>
+          </SFC>
+        </body>
+      </pou>
+    </pous>
+  </types>
+</project>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <fileHeader companyName="Test" productName="Test" productVersion="1.0"/>
+  <contentHeader name="Test" modificationDateTime="2024-01-01T00:00:00"/>
+  <!-- This is a comment -->
+  <types>
+    <dataTypes/>
+    <pous/>
+  </types>
+</project>
