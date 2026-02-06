@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use ironplc_analyzer::stages::analyze;
+use ironplc_analyzer::{stages::analyze, SemanticContext};
 use ironplc_dsl::{
     core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
@@ -32,6 +32,12 @@ pub trait Project {
     /// Requests semantic analysis for the project.
     fn semantic(&mut self) -> Result<(), Vec<Diagnostic>>;
 
+    /// Gets the semantic context from the last successful analysis.
+    ///
+    /// Returns `None` if semantic analysis has not been run or if
+    /// the last analysis failed.
+    fn semantic_context(&self) -> Option<&SemanticContext>;
+
     /// Gets the sources that are the project.
     fn sources(&self) -> Vec<&Source>;
 
@@ -44,6 +50,8 @@ pub trait Project {
 pub struct FileBackedProject {
     /// The underlying source project
     source_project: SourceProject,
+    /// Cached semantic context from the last successful analysis
+    semantic_context: Option<SemanticContext>,
 }
 
 impl Default for FileBackedProject {
@@ -56,6 +64,7 @@ impl FileBackedProject {
     pub fn new() -> Self {
         FileBackedProject {
             source_project: SourceProject::new(),
+            semantic_context: None,
         }
     }
 
@@ -104,6 +113,9 @@ impl Project for FileBackedProject {
     }
 
     fn semantic(&mut self) -> Result<(), Vec<Diagnostic>> {
+        // Clear any previous context when re-analyzing
+        self.semantic_context = None;
+
         // We would like to do "best effort" semantic analysis. So, we will do
         // semantic analysis on the items we can analyze, and the provide full
         // diagnostics for any problems
@@ -126,13 +138,20 @@ impl Project for FileBackedProject {
 
         // Do the analysis
         match analyze(&all_libraries) {
-            Ok(_) => Ok(()),
+            Ok(context) => {
+                self.semantic_context = Some(context);
+                Ok(())
+            }
             Err(diagnostics) => {
                 // If we had an error, then add more diagnostics to any that we already had
                 all_diagnostics.extend(diagnostics);
                 Err(all_diagnostics)
             }
         }
+    }
+
+    fn semantic_context(&self) -> Option<&SemanticContext> {
+        self.semantic_context.as_ref()
     }
 
     fn sources(&self) -> Vec<&Source> {
