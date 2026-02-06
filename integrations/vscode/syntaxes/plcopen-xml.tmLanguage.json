@@ -111,19 +111,17 @@
     "tags": {
       "patterns": [
         {
-          "include": "#self-closing-tag"
-        },
-        {
-          "include": "#open-tag"
+          "include": "#tag"
         },
         {
           "include": "#close-tag"
         }
       ]
     },
-    "self-closing-tag": {
+    "tag": {
+      "comment": "Handles both open tags (<tag>) and self-closing tags (<tag/>)",
       "begin": "(<)([a-zA-Z_][a-zA-Z0-9_\\-\\.]*)",
-      "end": "(/>)",
+      "end": "(/?>)",
       "beginCaptures": {
         "1": {
           "name": "punctuation.definition.tag.begin.xml"
@@ -141,34 +139,7 @@
           "name": "punctuation.definition.tag.end.xml"
         }
       },
-      "name": "meta.tag.self-closing.xml",
-      "patterns": [
-        {
-          "include": "#attributes"
-        }
-      ]
-    },
-    "open-tag": {
-      "begin": "(<)([a-zA-Z_][a-zA-Z0-9_\\-\\.]*)",
-      "end": "(>)",
-      "beginCaptures": {
-        "1": {
-          "name": "punctuation.definition.tag.begin.xml"
-        },
-        "2": {
-          "patterns": [
-            {
-              "include": "#tag-name"
-            }
-          ]
-        }
-      },
-      "endCaptures": {
-        "1": {
-          "name": "punctuation.definition.tag.end.xml"
-        }
-      },
-      "name": "meta.tag.open.xml",
+      "name": "meta.tag.xml",
       "patterns": [
         {
           "include": "#attributes"
