@@ -24,14 +24,10 @@ use ironplc_problems::Problem;
 
 use crate::{
     intermediates::stdlib_function_block::is_stdlib_function_block, result::SemanticResult,
-    symbol_environment::SymbolEnvironment, type_environment::TypeEnvironment,
+    semantic_context::SemanticContext,
 };
 
-pub fn apply(
-    lib: &Library,
-    _type_environment: &TypeEnvironment,
-    _symbol_environment: &SymbolEnvironment,
-) -> SemanticResult {
+pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
     let mut visitor = RuleStdlibTypeRedefinition {
         diagnostics: Vec::new(),
     };
@@ -70,6 +66,7 @@ impl Visitor<Diagnostic> for RuleStdlibTypeRedefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::semantic_context::SemanticContextBuilder;
     use crate::test_helpers::parse_only;
 
     #[test]
@@ -83,9 +80,8 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let input = parse_only(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&input, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&input, &context);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -104,9 +100,8 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let input = parse_only(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&input, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&input, &context);
 
         assert!(result.is_ok());
     }
@@ -122,9 +117,8 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let input = parse_only(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&input, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&input, &context);
 
         assert!(result.is_err());
         let err = result.unwrap_err();

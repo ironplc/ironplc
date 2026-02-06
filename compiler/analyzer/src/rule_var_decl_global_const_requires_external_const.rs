@@ -44,16 +44,9 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::{
-    result::SemanticResult, symbol_environment::SymbolEnvironment,
-    type_environment::TypeEnvironment,
-};
+use crate::{result::SemanticResult, semantic_context::SemanticContext};
 
-pub fn apply(
-    lib: &Library,
-    _type_environment: &TypeEnvironment,
-    _symbol_environment: &SymbolEnvironment,
-) -> SemanticResult {
+pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
     let mut global_consts = HashSet::new();
 
     // Collect the global constants
@@ -115,6 +108,7 @@ impl Visitor<Diagnostic> for RuleExternalGlobalConst<'_> {
 
 #[cfg(test)]
 mod test {
+    use crate::semantic_context::SemanticContextBuilder;
     use crate::test_helpers::parse_and_resolve_types;
 
     use super::*;
@@ -139,9 +133,8 @@ FUNCTION_BLOCK func
 END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
 
         assert!(result.is_err())
     }
@@ -168,9 +161,8 @@ FUNCTION_BLOCK func
 END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
 
         assert!(result.is_ok())
     }
