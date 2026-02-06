@@ -59,3 +59,19 @@ pub fn parse_and_resolve_types(program: &str) -> Library {
     let (library, _type_environment, _symbol_environment) = resolve_types(&[&library]).unwrap();
     library
 }
+
+/// Parses a program and resolves types, returning both the library and type environment.
+/// Use this when testing rules that need access to the type environment.
+#[cfg(test)]
+pub fn parse_and_resolve_types_with_env(
+    program: &str,
+) -> (
+    Library,
+    crate::type_environment::TypeEnvironment,
+    crate::symbol_environment::SymbolEnvironment,
+) {
+    use ironplc_parser::{options::ParseOptions, parse_program};
+
+    let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
+    resolve_types(&[&library]).unwrap()
+}
