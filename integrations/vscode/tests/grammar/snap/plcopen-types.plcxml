@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <types>
+    <dataTypes>
+      <dataType name="MyEnum">
+        <baseType>
+          <enum>
+            <values>
+              <value name="Value1"/>
+              <value name="Value2"/>
+              <value name="Value3"/>
+            </values>
+          </enum>
+        </baseType>
+      </dataType>
+      <dataType name="MyArray">
+        <baseType>
+          <array>
+            <dimension lower="0" upper="9"/>
+            <baseType><LINT/></baseType>
+          </array>
+        </baseType>
+      </dataType>
+      <dataType name="MyStruct">
+        <baseType>
+          <struct>
+            <variable name="Field1">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="Field2">
+              <type><LREAL/></type>
+            </variable>
+            <variable name="Field3">
+              <type><TIME/></type>
+            </variable>
+            <variable name="Field4">
+              <type><DATE/></type>
+            </variable>
+            <variable name="Field5">
+              <type><derived name="MyEnum"/></type>
+            </variable>
+          </struct>
+        </baseType>
+      </dataType>
+      <dataType name="MySubrange">
+        <baseType>
+          <subrangeSigned>
+            <range lower="-100" upper="100"/>
+            <baseType><INT/></baseType>
+          </subrangeSigned>
+        </baseType>
+      </dataType>
+    </dataTypes>
+  </types>
+</project>
