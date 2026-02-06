@@ -61,7 +61,6 @@
     "cdata": {
       "begin": "<!\\[CDATA\\[",
       "end": "\\]\\]>",
-      "name": "string.unquoted.cdata.xml",
       "beginCaptures": {
         "0": {
           "name": "punctuation.definition.string.begin.xml"
@@ -71,7 +70,13 @@
         "0": {
           "name": "punctuation.definition.string.end.xml"
         }
-      }
+      },
+      "contentName": "meta.embedded.block.st",
+      "patterns": [
+        {
+          "include": "source.61131-3-st"
+        }
+      ]
     },
     "st-body": {
       "begin": "(<)(xhtml)(\\s+xmlns\\s*=\\s*\"http://www\\.w3\\.org/1999/xhtml\")?(>)",
