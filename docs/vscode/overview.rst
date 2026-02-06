@@ -41,17 +41,3 @@ which runs as a language server. When you open or edit a Structured Text file:
 
 This architecture means the same analysis engine used for compilation also powers
 your editing experience.
-
-Roadmap
-=======
-
-IronPLC is actively developed. Future versions will add:
-
-* Code completion for keywords, variables, and functions
-* Hover documentation for language constructs
-* Go to definition for variables and function blocks
-* Code formatting
-* Debugging support
-
-See the `GitHub repository <https://github.com/ironplc/ironplc>`_ for the latest
-development status and to contribute.
