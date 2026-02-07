@@ -3,14 +3,13 @@ Visual Studio Code Extension Reference
 ======================================
 
 The IronPLC extension provides IEC 61131-3 Structured Text support for Visual Studio
-Code and compatible editors.
+Code.
 
 .. toctree::
    :maxdepth: 1
    :caption: Understanding the Extension
 
    Overview <overview>
-   IDE Compatibility <compatibility>
 
 .. toctree::
    :maxdepth: 1
