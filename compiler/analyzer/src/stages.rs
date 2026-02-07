@@ -23,7 +23,7 @@ use crate::{
     symbol_environment::SymbolEnvironment,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
     type_table, xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
-    xform_resolve_symbol_environment, xform_resolve_type_aliases,
+    xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
     xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
 
@@ -68,7 +68,7 @@ pub(crate) fn resolve_types(
         .build()
         .map_err(|err| vec![err])?;
 
-    let function_environment = FunctionEnvironmentBuilder::new()
+    let mut function_environment = FunctionEnvironmentBuilder::new()
         .with_stdlib_functions()
         .build();
 
@@ -86,11 +86,12 @@ pub(crate) fn resolve_types(
         library = xform(library, &mut type_environment)?
     }
 
-    // Resolve symbols after types are resolved
-    library = xform_resolve_symbol_environment::apply(
+    // Resolve symbols and function signatures after types are resolved
+    library = xform_resolve_symbol_and_function_environment::apply(
         library,
         &type_environment,
         &mut symbol_environment,
+        &mut function_environment,
     )?;
 
     // Resolve type aliases by duplicating values
