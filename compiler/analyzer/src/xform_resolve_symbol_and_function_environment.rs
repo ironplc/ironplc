@@ -1,4 +1,8 @@
-//! "Rule" that builds the symbol table.
+//! Transform that builds the symbol table and function environment.
+//!
+//! This transform populates:
+//! - `SymbolEnvironment`: tracks declarations and scoping (variables, parameters, types, POUs)
+//! - `FunctionEnvironment`: tracks function signatures for call validation
 
 use ironplc_dsl::{
     common::{Library, VariableType},
@@ -9,6 +13,7 @@ use ironplc_dsl::{
 use log::debug;
 
 use crate::{
+    function_environment::FunctionEnvironment,
     result::SemanticResult,
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
     type_environment::TypeEnvironment,
@@ -18,6 +23,7 @@ pub fn apply(
     lib: Library,
     _type_environment: &TypeEnvironment,
     symbol_environment: &mut SymbolEnvironment,
+    _function_environment: &mut FunctionEnvironment,
 ) -> Result<Library, Vec<Diagnostic>> {
     apply_impl(&lib, symbol_environment)?;
 
@@ -238,7 +244,7 @@ mod test {
     use crate::{
         symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
         test_helpers::parse_and_resolve_types,
-        xform_resolve_symbol_environment::apply_impl,
+        xform_resolve_symbol_and_function_environment::apply_impl,
     };
 
     #[test]
