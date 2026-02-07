@@ -29,10 +29,10 @@ use crate::{
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
 ///
-/// Returns `Ok(Library)` if analysis succeeded (containing a possibly new library) that is
-/// the merge of the inputs.
+/// Returns `Ok(SemanticContext)` if analysis succeeded, containing all type, function,
+/// and symbol information gathered during analysis.
 /// Returns `Err(Diagnostic)` if analysis did not succeed.
-pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
+pub fn analyze(sources: &[&Library]) -> Result<SemanticContext, Vec<Diagnostic>> {
     if sources.is_empty() {
         let span = SourceSpan::range(0, 0).with_file_id(&FileId::default());
         return Err(vec![Diagnostic::problem(
@@ -41,7 +41,7 @@ pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
         )]);
     }
     let (library, context) = resolve_types(sources)?;
-    let result = semantic(&library, &context);
+    semantic(&library, &context)?;
 
     // TODO this is currently in progress. It isn't clear to me yet how this will influence
     // semantic analysis, but it should because the type table should influence rule checking.
@@ -49,7 +49,7 @@ pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
     let type_table_result = type_table::apply(&library)?;
     debug!("{type_table_result:?}");
 
-    result
+    Ok(context)
 }
 
 pub(crate) fn resolve_types(
