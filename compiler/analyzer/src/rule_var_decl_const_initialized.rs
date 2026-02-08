@@ -128,13 +128,7 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                     return Err(Diagnostic::todo(file!(), line!()))
                 }
                 InitialValueAssignmentKind::Subrange(_) => {
-                    self.diagnostics.push(
-                        Diagnostic::problem(
-                            Problem::ConstantMustHaveInitializer,
-                            Label::span(node.span(), "Variable declaration"),
-                        )
-                        .with_context("variable", &node.identifier.to_string()),
-                    );
+                    return Err(Diagnostic::internal_error(file!(), line!()))
                 }
                 InitialValueAssignmentKind::Structure(_) => {
                     return Err(Diagnostic::todo(file!(), line!()))
