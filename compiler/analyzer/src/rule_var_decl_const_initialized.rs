@@ -123,7 +123,8 @@ impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
                     }
                 }
                 InitialValueAssignmentKind::FunctionBlock(_) => {
-                    return Err(Diagnostic::todo(file!(), line!()))
+                    // Function blocks cannot be CONSTANT - this is handled by
+                    // rule_var_decl_const_not_fb, so skip initialization checking here.
                 }
                 InitialValueAssignmentKind::Subrange(_) => {
                     return Err(Diagnostic::internal_error(file!(), line!()))
@@ -133,11 +134,19 @@ impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
                     // are explicitly initialized in the variable declaration.
                     self.validate_const_structure_init(node, struct_init);
                 }
-                InitialValueAssignmentKind::Array(_) => {
-                    return Err(Diagnostic::todo(file!(), line!()))
+                InitialValueAssignmentKind::Array(array_init) => {
+                    if array_init.initial_values.is_empty() {
+                        self.diagnostics.push(
+                            Diagnostic::problem(
+                                Problem::ConstantMustHaveInitializer,
+                                Label::span(node.span(), "Variable declaration"),
+                            )
+                            .with_context("variable", &node.identifier.to_string()),
+                        );
+                    }
                 }
                 InitialValueAssignmentKind::LateResolvedType(_) => {
-                    return Err(Diagnostic::todo(file!(), line!()))
+                    return Err(Diagnostic::internal_error(file!(), line!()))
                 }
             },
             // Do not care about the following qualifiers
@@ -544,5 +553,39 @@ END_FUNCTION_BLOCK";
         let result = apply(&library, &context);
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_const_array_type_missing_initializer_then_error() {
+        let program = "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : ARRAY[1..10] OF INT;
+END_VAR
+
+END_FUNCTION_BLOCK";
+
+        let library = parse_and_resolve_types(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
+
+        assert!(result.is_err())
+    }
+
+    #[test]
+    fn apply_when_const_array_type_has_initializer_then_ok() {
+        let program = "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : ARRAY[1..3] OF INT := [1, 2, 3];
+END_VAR
+
+END_FUNCTION_BLOCK";
+
+        let library = parse_and_resolve_types(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
+
+        assert!(result.is_ok())
     }
 }
