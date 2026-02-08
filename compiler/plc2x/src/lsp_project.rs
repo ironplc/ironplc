@@ -3,13 +3,13 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use ironplc_analyzer::SemanticContext;
-use ironplc_dsl::core::FileId;
+use ironplc_analyzer::{SemanticContext, TypeCategory};
+use ironplc_dsl::core::{FileId, Located};
 use ironplc_parser::token::{Token, TokenType};
 use log::error;
 use lsp_types::{
-    CodeDescription, Diagnostic, DiagnosticSeverity, NumberOrString, SemanticTokenType,
-    WorkspaceFolder,
+    CodeDescription, Diagnostic, DiagnosticSeverity, DocumentSymbol, DocumentSymbolResponse,
+    NumberOrString, SemanticTokenType, SymbolKind, WorkspaceFolder,
 };
 use lsp_types::{SemanticToken, Uri};
 
@@ -108,6 +108,125 @@ impl LspProject {
     pub(crate) fn semantic_context(&self) -> Option<&SemanticContext> {
         self.wrapped.semantic_context()
     }
+
+    /// Returns document symbols for the given URI.
+    ///
+    /// This provides an outline of types defined in the document for
+    /// VS Code's Outline panel and "Go to Symbol" feature.
+    pub(crate) fn document_symbols(&self, uri: &Uri) -> DocumentSymbolResponse {
+        let path = match to_path_buf(uri) {
+            Ok(path) => path,
+            Err(_) => {
+                error!("URL must be convertible to a file path {}", uri.as_str());
+                return DocumentSymbolResponse::Nested(vec![]);
+            }
+        };
+
+        let file_id = FileId::from_path(&path);
+
+        let context = match self.wrapped.semantic_context() {
+            Some(ctx) => ctx,
+            None => return DocumentSymbolResponse::Nested(vec![]),
+        };
+
+        let source = match self.wrapped.find(&file_id) {
+            Some(src) => src,
+            None => return DocumentSymbolResponse::Nested(vec![]),
+        };
+
+        let contents = source.as_string();
+
+        let mut symbols = Vec::new();
+
+        for (type_name, type_attrs) in context.types().iter() {
+            // Skip built-in types (elementary and stdlib)
+            if type_attrs.span().is_builtin() {
+                continue;
+            }
+
+            // Skip types not in this file
+            if type_attrs.span().file_id != file_id {
+                continue;
+            }
+
+            // Only show user-defined and derived types
+            if type_attrs.type_category == TypeCategory::Elementary {
+                continue;
+            }
+
+            let symbol_kind = intermediate_type_to_symbol_kind(&type_attrs.representation);
+            let range = span_to_range(contents, &type_attrs.span());
+
+            #[allow(deprecated)]
+            let symbol = DocumentSymbol {
+                name: type_name.to_string(),
+                detail: Some(format!("{:?}", type_attrs.type_category)),
+                kind: symbol_kind,
+                tags: None,
+                deprecated: None,
+                range,
+                selection_range: range,
+                children: None,
+            };
+
+            symbols.push(symbol);
+        }
+
+        DocumentSymbolResponse::Nested(symbols)
+    }
+}
+
+/// Convert an IntermediateType to an LSP SymbolKind.
+fn intermediate_type_to_symbol_kind(
+    intermediate_type: &ironplc_analyzer::IntermediateType,
+) -> SymbolKind {
+    use ironplc_analyzer::IntermediateType;
+
+    match intermediate_type {
+        IntermediateType::Structure { .. } => SymbolKind::STRUCT,
+        IntermediateType::Enumeration { .. } => SymbolKind::ENUM,
+        IntermediateType::FunctionBlock { .. } => SymbolKind::CLASS,
+        IntermediateType::Function { .. } => SymbolKind::FUNCTION,
+        IntermediateType::Array { .. } => SymbolKind::ARRAY,
+        IntermediateType::Subrange { .. } => SymbolKind::TYPE_PARAMETER,
+        // Elementary types - shouldn't reach here but provide a fallback
+        _ => SymbolKind::VARIABLE,
+    }
+}
+
+/// Convert a SourceSpan to an LSP Range using file contents for line/column calculation.
+fn span_to_range(contents: &str, span: &ironplc_dsl::core::SourceSpan) -> lsp_types::Range {
+    let mut start_line = 0;
+    let mut start_col = 0;
+
+    for (idx, ch) in contents.char_indices() {
+        if idx >= span.start {
+            break;
+        }
+        if ch == '\n' {
+            start_line += 1;
+            start_col = 0;
+        } else {
+            start_col += 1;
+        }
+    }
+
+    let mut end_line = start_line;
+    let mut end_col = start_col;
+
+    for ch in contents[span.start..span.end.min(contents.len())].chars() {
+        if ch == '\n' {
+            end_line += 1;
+            end_col = 0;
+        } else {
+            end_col += 1;
+        }
+    }
+
+    lsp_types::Range::new(
+        lsp_types::Position::new(start_line, start_col),
+        lsp_types::Position::new(end_line, end_col),
+    )
 }
 
 // Token types that this produces.
