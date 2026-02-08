@@ -125,19 +125,36 @@ impl Visitor<Diagnostic> for RuleConstantVarsInitialized {
                     }
                 }
                 InitialValueAssignmentKind::FunctionBlock(_) => {
-                    return Err(Diagnostic::todo(file!(), line!()))
+                    // Function blocks cannot be CONSTANT - this is handled by
+                    // rule_var_decl_const_not_fb, so skip initialization checking here.
                 }
                 InitialValueAssignmentKind::Subrange(_) => {
                     return Err(Diagnostic::internal_error(file!(), line!()))
                 }
-                InitialValueAssignmentKind::Structure(_) => {
-                    return Err(Diagnostic::todo(file!(), line!()))
+                InitialValueAssignmentKind::Structure(struct_init) => {
+                    if struct_init.elements_init.is_empty() {
+                        self.diagnostics.push(
+                            Diagnostic::problem(
+                                Problem::ConstantMustHaveInitializer,
+                                Label::span(node.span(), "Variable declaration"),
+                            )
+                            .with_context("variable", &node.identifier.to_string()),
+                        );
+                    }
                 }
-                InitialValueAssignmentKind::Array(_) => {
-                    return Err(Diagnostic::todo(file!(), line!()))
+                InitialValueAssignmentKind::Array(array_init) => {
+                    if array_init.initial_values.is_empty() {
+                        self.diagnostics.push(
+                            Diagnostic::problem(
+                                Problem::ConstantMustHaveInitializer,
+                                Label::span(node.span(), "Variable declaration"),
+                            )
+                            .with_context("variable", &node.identifier.to_string()),
+                        );
+                    }
                 }
                 InitialValueAssignmentKind::LateResolvedType(_) => {
-                    return Err(Diagnostic::todo(file!(), line!()))
+                    return Err(Diagnostic::internal_error(file!(), line!()))
                 }
             },
             // Do not care about the following qualifiers
@@ -260,6 +277,90 @@ END_FUNCTION_BLOCK";
 FUNCTION_BLOCK LOGGER
 VAR CONSTANT
 ResetCounterValue : INT := 1;
+END_VAR
+
+END_FUNCTION_BLOCK";
+
+        let library = parse_and_resolve_types(program);
+        let type_env = TypeEnvironment::new();
+        let symbol_env = SymbolEnvironment::new();
+        let result = apply(&library, &type_env, &symbol_env);
+
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    fn apply_when_const_struct_type_missing_initializer_then_error() {
+        let program = "
+TYPE
+MyStruct : STRUCT
+    member : INT;
+END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : MyStruct;
+END_VAR
+
+END_FUNCTION_BLOCK";
+
+        let library = parse_and_resolve_types(program);
+        let type_env = TypeEnvironment::new();
+        let symbol_env = SymbolEnvironment::new();
+        let result = apply(&library, &type_env, &symbol_env);
+
+        assert!(result.is_err())
+    }
+
+    #[test]
+    fn apply_when_const_struct_type_has_initializer_then_ok() {
+        let program = "
+TYPE
+MyStruct : STRUCT
+    member : INT;
+END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : MyStruct := (member := 1);
+END_VAR
+
+END_FUNCTION_BLOCK";
+
+        let library = parse_and_resolve_types(program);
+        let type_env = TypeEnvironment::new();
+        let symbol_env = SymbolEnvironment::new();
+        let result = apply(&library, &type_env, &symbol_env);
+
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    fn apply_when_const_array_type_missing_initializer_then_error() {
+        let program = "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : ARRAY[1..10] OF INT;
+END_VAR
+
+END_FUNCTION_BLOCK";
+
+        let library = parse_and_resolve_types(program);
+        let type_env = TypeEnvironment::new();
+        let symbol_env = SymbolEnvironment::new();
+        let result = apply(&library, &type_env, &symbol_env);
+
+        assert!(result.is_err())
+    }
+
+    #[test]
+    fn apply_when_const_array_type_has_initializer_then_ok() {
+        let program = "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : ARRAY[1..3] OF INT := [1, 2, 3];
 END_VAR
 
 END_FUNCTION_BLOCK";
