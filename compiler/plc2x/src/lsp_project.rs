@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use ironplc_analyzer::SemanticContext;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::token::{Token, TokenType};
 use log::error;
@@ -97,6 +98,15 @@ impl LspProject {
         }
 
         vec![]
+    }
+
+    /// Returns the semantic context from the last successful analysis.
+    ///
+    /// This provides access to type, function, and symbol information
+    /// for IDE features like document symbols, go to definition, and hover.
+    #[allow(dead_code)]
+    pub(crate) fn semantic_context(&self) -> Option<&SemanticContext> {
+        self.wrapped.semantic_context()
     }
 }
 

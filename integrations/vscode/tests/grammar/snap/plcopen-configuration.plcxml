@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <instances>
+    <configurations>
+      <configuration name="MainConfig">
+        <globalVars>
+          <variable name="GlobalCounter" retain="true">
+            <type><UDINT/></type>
+          </variable>
+        </globalVars>
+        <resource name="CPU1">
+          <task name="MainTask" interval="T#10ms" priority="1"/>
+          <pouInstance name="Main" typeName="MainProgram">
+            <addData/>
+          </pouInstance>
+        </resource>
+      </configuration>
+    </configurations>
+  </instances>
+</project>

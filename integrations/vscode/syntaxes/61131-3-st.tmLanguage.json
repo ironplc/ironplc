@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "$schema": "../schemas/tmlanguage.json",
   "name": "IEC 61131-3 Structured Text",
   "scopeName": "source.61131-3-st",
   "patterns": [

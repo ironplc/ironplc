@@ -42,16 +42,9 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::{
-    result::SemanticResult, symbol_environment::SymbolEnvironment,
-    type_environment::TypeEnvironment,
-};
+use crate::{result::SemanticResult, semantic_context::SemanticContext};
 
-pub fn apply(
-    lib: &Library,
-    _type_environment: &TypeEnvironment,
-    _symbol_environment: &SymbolEnvironment,
-) -> SemanticResult {
+pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
     let mut hierarchy_visitor = HierarchyVisitor::new();
     hierarchy_visitor.walk(lib).map_err(|e| vec![e])?;
 
@@ -197,8 +190,8 @@ impl Visitor<Diagnostic> for HierarchyVisitor {
 #[cfg(test)]
 mod tests {
     use crate::{
-        rule_pou_hierarchy::apply, symbol_environment::SymbolEnvironment,
-        test_helpers::parse_and_resolve_types, type_environment::TypeEnvironment,
+        rule_pou_hierarchy::apply, semantic_context::SemanticContextBuilder,
+        test_helpers::parse_and_resolve_types,
     };
 
     #[test]
@@ -210,7 +203,7 @@ mod tests {
             END_VAR
 
         END_FUNCTION_BLOCK
-        
+
         FUNCTION Caller : BOOL
             VAR
                 CalleeInstance : Callee;
@@ -220,9 +213,8 @@ mod tests {
         END_FUNCTION";
 
         let library = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let _ = apply(&library, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let _ = apply(&library, &context);
         // TODO
         // assert!(result.is_ok());
     }
