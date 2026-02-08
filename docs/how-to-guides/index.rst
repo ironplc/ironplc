@@ -10,3 +10,4 @@ These guides presuppose some familiarity with IronPLC.
    :maxdepth: 1
 
    Update IronPLC on your computer <update>
+   Troubleshoot the VS Code Extension </vscode/troubleshooting>
