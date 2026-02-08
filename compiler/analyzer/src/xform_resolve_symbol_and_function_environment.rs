@@ -142,11 +142,8 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
     ) -> Result<Self::Value, Diagnostic> {
         self.scope = Some(node.name.clone());
 
-        // Register function in symbol environment
-        self.symbol_env
-            .insert(&node.name, SymbolKind::Function, &ScopeKind::Global)?;
-
         // Build function signature for function environment
+        // (Functions are tracked in FunctionEnvironment, not SymbolEnvironment)
         // Collect parameters (INPUT, OUTPUT, INOUT variables)
         let mut parameters = Vec::new();
         for var_decl in &node.variables {
@@ -437,11 +434,10 @@ END_FUNCTION";
 
         assert!(result.is_ok());
 
-        // Check function is in symbol environment
-        let func_symbol = symbol_env
+        // Functions are NOT registered in symbol environment (only in function environment)
+        assert!(symbol_env
             .get(&Id::from("ADD_INTS"), &ScopeKind::Global)
-            .unwrap();
-        assert_eq!(func_symbol.kind, SymbolKind::Function);
+            .is_none());
 
         // Check function is in function environment with correct signature
         let func_sig = function_env.get(&Id::from("ADD_INTS")).unwrap();

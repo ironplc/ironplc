@@ -23,7 +23,8 @@ pub enum SymbolKind {
     OutputParameter,
     /// Function parameter (input/output)
     InOutParameter,
-    /// Function declaration
+    /// Function declaration (unused - functions are tracked in FunctionEnvironment)
+    #[allow(unused)]
     Function,
     /// Function block declaration
     FunctionBlock,
