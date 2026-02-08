@@ -23,9 +23,6 @@ pub enum SymbolKind {
     OutputParameter,
     /// Function parameter (input/output)
     InOutParameter,
-    /// Function declaration (unused - functions are tracked in FunctionEnvironment)
-    #[allow(unused)]
-    Function,
     /// Function block declaration
     FunctionBlock,
     /// Program declaration
@@ -560,7 +557,7 @@ mod tests {
 
         env.insert(&id1, SymbolKind::Variable, &ScopeKind::Global)
             .unwrap();
-        env.insert(&id2, SymbolKind::Function, &ScopeKind::Global)
+        env.insert(&id2, SymbolKind::Program, &ScopeKind::Global)
             .unwrap();
 
         // Test finding symbols
@@ -568,7 +565,7 @@ mod tests {
         assert_eq!(symbol1.kind, SymbolKind::Variable);
 
         let symbol2 = env.find(&id2, &ScopeKind::Global).unwrap();
-        assert_eq!(symbol2.kind, SymbolKind::Function);
+        assert_eq!(symbol2.kind, SymbolKind::Program);
 
         // Test scoped symbols
         let scope = ScopeKind::Named(Id::from("FUNCTION_BLOCK"));
@@ -594,11 +591,11 @@ mod tests {
         let local_id = Id::from("LOCAL");
 
         // Insert global symbol
-        env.insert(&global_id, SymbolKind::Function, &ScopeKind::Global)
+        env.insert(&global_id, SymbolKind::Program, &ScopeKind::Global)
             .unwrap();
 
         // Insert function symbol
-        env.insert(&function_id, SymbolKind::Function, &ScopeKind::Global)
+        env.insert(&function_id, SymbolKind::Program, &ScopeKind::Global)
             .unwrap();
 
         // Insert local symbol in function scope
@@ -651,7 +648,7 @@ mod tests {
         let id2 = Id::from("GLOBAL2");
         env.insert(&id1, SymbolKind::Variable, &ScopeKind::Global)
             .unwrap();
-        env.insert(&id2, SymbolKind::Function, &ScopeKind::Global)
+        env.insert(&id2, SymbolKind::Program, &ScopeKind::Global)
             .unwrap();
         assert_eq!(env.total_symbols(), 2);
 
@@ -677,7 +674,7 @@ mod tests {
         let id2 = Id::from("GLOBAL2");
         env.insert(&id1, SymbolKind::Variable, &ScopeKind::Global)
             .unwrap();
-        env.insert(&id2, SymbolKind::Function, &ScopeKind::Global)
+        env.insert(&id2, SymbolKind::Program, &ScopeKind::Global)
             .unwrap();
 
         let global_symbols = env.get_scope_symbols(&ScopeKind::Global).unwrap();
@@ -740,7 +737,7 @@ mod tests {
         let id2 = Id::from("GLOBAL2");
         env.insert(&id1, SymbolKind::Variable, &ScopeKind::Global)
             .unwrap();
-        env.insert(&id2, SymbolKind::Function, &ScopeKind::Global)
+        env.insert(&id2, SymbolKind::Program, &ScopeKind::Global)
             .unwrap();
 
         let global_symbols = env.get_global_symbols();
@@ -811,7 +808,7 @@ mod tests {
         let global_id2 = Id::from("GLOBAL2");
         env.insert(&global_id1, SymbolKind::Variable, &ScopeKind::Global)
             .unwrap();
-        env.insert(&global_id2, SymbolKind::Function, &ScopeKind::Global)
+        env.insert(&global_id2, SymbolKind::Program, &ScopeKind::Global)
             .unwrap();
 
         // Add scoped symbols
@@ -855,7 +852,7 @@ mod tests {
 
         env.insert(&global_id, SymbolKind::Variable, &ScopeKind::Global)
             .unwrap();
-        env.insert(&function_id, SymbolKind::Function, &ScopeKind::Global)
+        env.insert(&function_id, SymbolKind::Program, &ScopeKind::Global)
             .unwrap();
 
         let scope = ScopeKind::Named(function_id.clone());
