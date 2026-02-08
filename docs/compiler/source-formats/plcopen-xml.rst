@@ -28,29 +28,6 @@ Within PLCopen XML files, IronPLC supports the following programming languages:
 - **Ladder Diagram (LD)** - Graphical language
 - **Instruction List (IL)** - Deprecated text-based language
 
------
-Usage
------
-
-To check a PLCopen XML file, use the ``check`` command with the XML file path:
-
-.. code-block:: shell
-
-   ironplcc check myproject.xml
-
-The compiler automatically detects PLCopen XML files by their content (XML with
-the PLCopen namespace) regardless of file extension.
-
-You can also check multiple files together, including a mix of PLCopen XML and
-Structured Text files:
-
-.. code-block:: shell
-
-   ironplcc check types.st program.xml
-
-This allows importing types or POUs from PLCopen XML while developing new code
-in Structured Text.
-
 ------------------
 Supported Elements
 ------------------

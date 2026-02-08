@@ -1,0 +1,377 @@
+{
+  "$schema": "../schemas/tmlanguage.json",
+  "name": "PLCopen XML",
+  "scopeName": "source.plcopen-xml",
+  "patterns": [
+    {
+      "include": "#xml-declaration"
+    },
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#cdata"
+    },
+    {
+      "include": "#st-body"
+    },
+    {
+      "include": "#tags"
+    }
+  ],
+  "repository": {
+    "xml-declaration": {
+      "begin": "(<\\?)(xml)",
+      "end": "(\\?>)",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.tag.begin.xml"
+        },
+        "2": {
+          "name": "keyword.other.xml-declaration.xml"
+        }
+      },
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.definition.tag.end.xml"
+        }
+      },
+      "name": "meta.tag.preprocessor.xml",
+      "patterns": [
+        {
+          "include": "#attributes"
+        }
+      ]
+    },
+    "comments": {
+      "begin": "<!--",
+      "end": "-->",
+      "name": "comment.block.xml",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.comment.begin.xml"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.comment.end.xml"
+        }
+      }
+    },
+    "cdata": {
+      "begin": "<!\\[CDATA\\[",
+      "end": "\\]\\]>",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.begin.xml"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.end.xml"
+        }
+      },
+      "contentName": "meta.embedded.block.st",
+      "patterns": [
+        {
+          "include": "source.61131-3-st"
+        }
+      ]
+    },
+    "st-body": {
+      "begin": "(<)(xhtml)(\\s+xmlns\\s*=\\s*\"http://www\\.w3\\.org/1999/xhtml\")?(>)",
+      "end": "(</)(xhtml)(>)",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.tag.begin.xml"
+        },
+        "2": {
+          "name": "entity.name.tag.body.plcopen-xml"
+        },
+        "3": {
+          "name": "entity.other.attribute-name.namespace.xml"
+        },
+        "4": {
+          "name": "punctuation.definition.tag.end.xml"
+        }
+      },
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.definition.tag.begin.xml"
+        },
+        "2": {
+          "name": "entity.name.tag.body.plcopen-xml"
+        },
+        "3": {
+          "name": "punctuation.definition.tag.end.xml"
+        }
+      },
+      "contentName": "meta.embedded.block.st",
+      "patterns": [
+        {
+          "include": "source.61131-3-st"
+        }
+      ]
+    },
+    "tags": {
+      "patterns": [
+        {
+          "include": "#tag"
+        },
+        {
+          "include": "#close-tag"
+        }
+      ]
+    },
+    "tag": {
+      "comment": "Handles both open tags (<tag>) and self-closing tags (<tag/>)",
+      "begin": "(<)([a-zA-Z_][a-zA-Z0-9_\\-\\.]*)",
+      "end": "(/?>)",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.tag.begin.xml"
+        },
+        "2": {
+          "patterns": [
+            {
+              "include": "#tag-name"
+            }
+          ]
+        }
+      },
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.definition.tag.end.xml"
+        }
+      },
+      "name": "meta.tag.xml",
+      "patterns": [
+        {
+          "include": "#attributes"
+        }
+      ]
+    },
+    "close-tag": {
+      "begin": "(</)",
+      "end": "(>)",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.tag.begin.xml"
+        }
+      },
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.definition.tag.end.xml"
+        }
+      },
+      "name": "meta.tag.close.xml",
+      "patterns": [
+        {
+          "match": "([a-zA-Z_][a-zA-Z0-9_\\-\\.]*)",
+          "captures": {
+            "1": {
+              "patterns": [
+                {
+                  "include": "#tag-name"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "tag-name": {
+      "patterns": [
+        {
+          "comment": "Project structure elements",
+          "match": "\\b(project|fileHeader|contentHeader|coordinateInfo|pageSize|fbd|ld|sfc|scaling|addData|addDataInfo|documentation)\\b",
+          "name": "entity.name.tag.structure.plcopen-xml"
+        },
+        {
+          "comment": "Type container elements",
+          "match": "\\b(types|dataTypes|dataType|baseType|pous)\\b",
+          "name": "entity.name.tag.types.plcopen-xml"
+        },
+        {
+          "comment": "POU elements",
+          "match": "\\b(pou|interface|body|actions|action|transitions|transition)\\b",
+          "name": "entity.name.tag.pou.plcopen-xml"
+        },
+        {
+          "comment": "Variable section elements",
+          "match": "\\b(inputVars|outputVars|inOutVars|localVars|tempVars|externalVars|globalVars|accessVars|returnType)\\b",
+          "name": "entity.name.tag.variable-section.plcopen-xml"
+        },
+        {
+          "comment": "Variable declaration elements",
+          "match": "\\b(variable|type|initialValue|derived|simpleValue|arrayValue|structValue|value)\\b",
+          "name": "entity.name.tag.variable.plcopen-xml"
+        },
+        {
+          "comment": "Primitive type elements",
+          "match": "\\b(BOOL|SINT|INT|DINT|LINT|USINT|UINT|UDINT|ULINT|REAL|LREAL|TIME|DATE|TOD|DT|STRING|WSTRING|BYTE|WORD|DWORD|LWORD|CHAR|WCHAR)\\b",
+          "name": "storage.type.primitive.plcopen-xml"
+        },
+        {
+          "comment": "Complex type elements",
+          "match": "\\b(array|struct|enum|values|subrangeSigned|subrangeUnsigned|pointer|string|wstring)\\b",
+          "name": "entity.name.tag.type-definition.plcopen-xml"
+        },
+        {
+          "comment": "Dimension elements",
+          "match": "\\b(dimension|range)\\b",
+          "name": "entity.name.tag.dimension.plcopen-xml"
+        },
+        {
+          "comment": "Body language elements",
+          "match": "\\b(ST|SFC|FBD|LD|IL)\\b",
+          "name": "entity.name.tag.body-language.plcopen-xml"
+        },
+        {
+          "comment": "SFC elements",
+          "match": "\\b(step|inVariable|outVariable|actionBlock|connectionPointIn|connectionPointOut|connection|position|relPosition|condition|inline|reference|vendorElement)\\b",
+          "name": "entity.name.tag.sfc.plcopen-xml"
+        },
+        {
+          "comment": "Configuration elements",
+          "match": "\\b(instances|configurations|configuration|resource|task|pouInstance|globalVars)\\b",
+          "name": "entity.name.tag.configuration.plcopen-xml"
+        },
+        {
+          "comment": "Default for other elements",
+          "match": "[a-zA-Z_][a-zA-Z0-9_\\-\\.]*",
+          "name": "entity.name.tag.xml"
+        }
+      ]
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "include": "#namespace-attribute"
+        },
+        {
+          "include": "#plcopen-attribute"
+        },
+        {
+          "include": "#generic-attribute"
+        }
+      ]
+    },
+    "namespace-attribute": {
+      "match": "(xmlns)(?:(:)([a-zA-Z_][a-zA-Z0-9_\\-]*))?\\s*(=)\\s*(\"[^\"]*\"|'[^']*')",
+      "captures": {
+        "1": {
+          "name": "entity.other.attribute-name.namespace.xml"
+        },
+        "2": {
+          "name": "punctuation.separator.namespace.xml"
+        },
+        "3": {
+          "name": "entity.other.attribute-name.namespace.xml"
+        },
+        "4": {
+          "name": "punctuation.separator.key-value.xml"
+        },
+        "5": {
+          "name": "string.quoted.double.xml"
+        }
+      }
+    },
+    "plcopen-attribute": {
+      "patterns": [
+        {
+          "comment": "POU type attribute with value highlighting",
+          "match": "(pouType)\\s*(=)\\s*(\")(function|functionBlock|program)(\")",
+          "captures": {
+            "1": {
+              "name": "entity.other.attribute-name.plcopen-xml"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.xml"
+            },
+            "3": {
+              "name": "punctuation.definition.string.begin.xml"
+            },
+            "4": {
+              "name": "support.type.pou.plcopen-xml"
+            },
+            "5": {
+              "name": "punctuation.definition.string.end.xml"
+            }
+          }
+        },
+        {
+          "comment": "Name attribute",
+          "match": "(name)\\s*(=)\\s*(\"[^\"]*\"|'[^']*')",
+          "captures": {
+            "1": {
+              "name": "entity.other.attribute-name.plcopen-xml"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.xml"
+            },
+            "3": {
+              "name": "entity.name.plcopen-xml"
+            }
+          }
+        },
+        {
+          "comment": "Boolean attribute values",
+          "match": "(initialStep|negated|edge|storage|constant|retain)\\s*(=)\\s*(\")(true|false)(\")",
+          "captures": {
+            "1": {
+              "name": "entity.other.attribute-name.plcopen-xml"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.xml"
+            },
+            "3": {
+              "name": "punctuation.definition.string.begin.xml"
+            },
+            "4": {
+              "name": "constant.language.boolean.plcopen-xml"
+            },
+            "5": {
+              "name": "punctuation.definition.string.end.xml"
+            }
+          }
+        },
+        {
+          "comment": "Qualifier attribute for SFC actions",
+          "match": "(qualifier)\\s*(=)\\s*(\")(N|R|S|L|D|P|SD|DS|SL|P0|P1)(\")",
+          "captures": {
+            "1": {
+              "name": "entity.other.attribute-name.plcopen-xml"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.xml"
+            },
+            "3": {
+              "name": "punctuation.definition.string.begin.xml"
+            },
+            "4": {
+              "name": "keyword.other.qualifier.plcopen-xml"
+            },
+            "5": {
+              "name": "punctuation.definition.string.end.xml"
+            }
+          }
+        }
+      ]
+    },
+    "generic-attribute": {
+      "match": "([a-zA-Z_][a-zA-Z0-9_\\-]*)\\s*(=)\\s*(\"[^\"]*\"|'[^']*')",
+      "captures": {
+        "1": {
+          "name": "entity.other.attribute-name.xml"
+        },
+        "2": {
+          "name": "punctuation.separator.key-value.xml"
+        },
+        "3": {
+          "name": "string.quoted.double.xml"
+        }
+      }
+    }
+  }
+}

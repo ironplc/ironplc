@@ -128,9 +128,6 @@ pub enum VarDeclarations {
     Var(Vec<VarDecl>),
     // external_declarations
     External(Vec<VarDecl>),
-    // TODO
-    // Retentive(Vec<VarDecl>),
-    // NonRetentive(Vec<VarDecl>),
     Incomplete(Vec<IncomplVarDecl>),
     ProgramAccess(Vec<ProgramAccessDecl>),
     ConfigAccess(Vec<AccessDeclaration>),

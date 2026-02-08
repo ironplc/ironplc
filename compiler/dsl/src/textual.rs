@@ -129,11 +129,14 @@ pub struct ArrayVariable {
 
 impl fmt::Display for ArrayVariable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO format this
-        f.write_fmt(format_args!(
-            "{} {:?}",
-            self.subscripted_variable, self.subscripts
-        ))
+        write!(f, "{}[", self.subscripted_variable)?;
+        for (i, subscript) in self.subscripts.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{subscript}")?;
+        }
+        write!(f, "]")
     }
 }
 
@@ -269,6 +272,37 @@ impl ExprKind {
     }
 }
 
+impl fmt::Display for ExprKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExprKind::Compare(expr) => {
+                write!(f, "{} {} {}", expr.left, expr.op, expr.right)
+            }
+            ExprKind::BinaryOp(expr) => {
+                write!(f, "{} {} {}", expr.left, expr.op, expr.right)
+            }
+            ExprKind::UnaryOp(expr) => {
+                write!(f, "{}{}", expr.op, expr.term)
+            }
+            ExprKind::Expression(inner) => write!(f, "({})", inner),
+            ExprKind::Const(constant) => write!(f, "{constant}"),
+            ExprKind::EnumeratedValue(value) => write!(f, "{value}"),
+            ExprKind::Variable(var) => write!(f, "{var}"),
+            ExprKind::Function(func) => {
+                write!(f, "{}(", func.name)?;
+                for (i, param) in func.param_assignment.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{param}")?;
+                }
+                write!(f, ")")
+            }
+            ExprKind::LateBound(late) => write!(f, "{}", late.value),
+        }
+    }
+}
+
 /// Input argument to a function or function block invocation.
 /// The input is mapped based on the order in a sequence. Also known
 /// as a non-formal input.
@@ -321,6 +355,22 @@ impl ParamAssignmentKind {
     }
 }
 
+impl fmt::Display for ParamAssignmentKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ParamAssignmentKind::PositionalInput(input) => write!(f, "{}", input.expr),
+            ParamAssignmentKind::NamedInput(input) => write!(f, "{} := {}", input.name, input.expr),
+            ParamAssignmentKind::Output(output) => {
+                if output.not {
+                    write!(f, "NOT {} => {}", output.src, output.tgt)
+                } else {
+                    write!(f, "{} => {}", output.src, output.tgt)
+                }
+            }
+        }
+    }
+}
+
 /// Comparison operators.
 ///
 /// See section 3.2.2, especially table 52.
@@ -337,6 +387,23 @@ pub enum CompareOp {
     GtEq,
 }
 
+impl fmt::Display for CompareOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let symbol = match self {
+            CompareOp::Or => "OR",
+            CompareOp::Xor => "XOR",
+            CompareOp::And => "AND",
+            CompareOp::Eq => "=",
+            CompareOp::Ne => "<>",
+            CompareOp::Lt => "<",
+            CompareOp::Gt => ">",
+            CompareOp::LtEq => "<=",
+            CompareOp::GtEq => ">=",
+        };
+        write!(f, "{symbol}")
+    }
+}
+
 /// Arithmetic operators.
 ///
 /// See section 3.2.2, especially table 52.
@@ -350,6 +417,20 @@ pub enum Operator {
     Pow,
 }
 
+impl fmt::Display for Operator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let symbol = match self {
+            Operator::Add => "+",
+            Operator::Sub => "-",
+            Operator::Mul => "*",
+            Operator::Div => "/",
+            Operator::Mod => "MOD",
+            Operator::Pow => "**",
+        };
+        write!(f, "{symbol}")
+    }
+}
+
 /// Local operators (with single operand).
 ///
 /// See section 3.2.2, especially table 52.
@@ -358,6 +439,16 @@ pub enum UnaryOp {
     Neg,
     // Compliment operator (for Boolean values)
     Not,
+}
+
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let symbol = match self {
+            UnaryOp::Neg => "-",
+            UnaryOp::Not => "NOT",
+        };
+        write!(f, "{symbol}")
+    }
 }
 
 /// Statements.

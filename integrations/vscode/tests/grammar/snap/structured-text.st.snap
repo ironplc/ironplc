@@ -1,0 +1,607 @@
+>(* Block comment test *)
+#^^ source.61131-3-st comment.block.st punctuation.definition.comment.begin.st
+#  ^^^^^^^^^^^^^^^^^^^^ source.61131-3-st comment.block.st
+#                      ^^ source.61131-3-st comment.block.st punctuation.definition.comment.end.st
+>// Line comment test
+#^^^^^^^^^^^^^^^^^^^^ source.61131-3-st comment.line.double-slash.st punctuation.definition.comment.st
+>
+>PROGRAM TestProgram
+#^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+#       ^ source.61131-3-st
+#        ^^^^^^^^^^^ source.61131-3-st entity.name.function.st
+>VAR
+#^^^ source.61131-3-st keyword.declaration.variable.st
+>    myBool : BOOL := TRUE;
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^ source.61131-3-st punctuation.separator.st
+#            ^ source.61131-3-st
+#             ^^^^ source.61131-3-st storage.type.primitive.integer.st
+#                 ^ source.61131-3-st
+#                  ^^ source.61131-3-st keyword.operator.assignment.st
+#                    ^ source.61131-3-st
+#                     ^^^^ source.61131-3-st constant.language.boolean.st
+#                         ^ source.61131-3-st punctuation.separator.st
+>    myInt : INT := 42;
+#^^^^ source.61131-3-st
+#    ^^^^^ source.61131-3-st variable.other.st
+#         ^ source.61131-3-st
+#          ^ source.61131-3-st punctuation.separator.st
+#           ^ source.61131-3-st
+#            ^^^ source.61131-3-st storage.type.primitive.integer.st
+#               ^ source.61131-3-st
+#                ^^ source.61131-3-st keyword.operator.assignment.st
+#                  ^ source.61131-3-st
+#                   ^^ source.61131-3-st constant.numeric.decimal.st
+#                     ^ source.61131-3-st punctuation.separator.st
+>    myReal : REAL := 3.14;
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^ source.61131-3-st punctuation.separator.st
+#            ^ source.61131-3-st
+#             ^^^^ source.61131-3-st storage.type.primitive.real.st
+#                 ^ source.61131-3-st
+#                  ^^ source.61131-3-st keyword.operator.assignment.st
+#                    ^ source.61131-3-st
+#                     ^^^^ source.61131-3-st constant.numeric.decimal.st
+#                         ^ source.61131-3-st punctuation.separator.st
+>    myString : STRING := 'Hello';
+#^^^^ source.61131-3-st
+#    ^^^^^^^^ source.61131-3-st variable.other.st
+#            ^ source.61131-3-st
+#             ^ source.61131-3-st punctuation.separator.st
+#              ^ source.61131-3-st
+#               ^^^^^^ source.61131-3-st storage.type.primitive.string.st
+#                     ^ source.61131-3-st
+#                      ^^ source.61131-3-st keyword.operator.assignment.st
+#                        ^ source.61131-3-st
+#                         ^^^^^^^ source.61131-3-st string.quoted.single.st punctuation.definition.string.st
+#                                ^ source.61131-3-st punctuation.separator.st
+>    myArray : ARRAY[0..9] OF DINT;
+#^^^^ source.61131-3-st
+#    ^^^^^^^ source.61131-3-st variable.other.st
+#           ^ source.61131-3-st
+#            ^ source.61131-3-st punctuation.separator.st
+#             ^ source.61131-3-st
+#              ^^^^^ source.61131-3-st keyword.declaration.type.st
+#                   ^ source.61131-3-st punctuation.section.brackets.st
+#                    ^ source.61131-3-st constant.numeric.decimal.st
+#                     ^ source.61131-3-st punctuation.accessor.st
+#                      ^ source.61131-3-st punctuation.accessor.st
+#                       ^ source.61131-3-st constant.numeric.decimal.st
+#                        ^ source.61131-3-st punctuation.section.brackets.st
+#                         ^ source.61131-3-st
+#                          ^^ source.61131-3-st keyword.control.conditional.st
+#                            ^ source.61131-3-st
+#                             ^^^^ source.61131-3-st storage.type.primitive.integer.st
+#                                 ^ source.61131-3-st punctuation.separator.st
+>    address1 : BOOL AT %IX0.0;
+#^^^^ source.61131-3-st
+#    ^^^^^^^^ source.61131-3-st variable.other.st
+#            ^ source.61131-3-st
+#             ^ source.61131-3-st punctuation.separator.st
+#              ^ source.61131-3-st
+#               ^^^^ source.61131-3-st storage.type.primitive.integer.st
+#                   ^ source.61131-3-st
+#                    ^^ source.61131-3-st keyword.other.st
+#                      ^ source.61131-3-st
+#                       ^^^^^^ source.61131-3-st variable.other.direct-address.st
+#                             ^ source.61131-3-st punctuation.separator.st
+>    address2 : WORD AT %QW10;
+#^^^^ source.61131-3-st
+#    ^^^^^^^^ source.61131-3-st variable.other.st
+#            ^ source.61131-3-st
+#             ^ source.61131-3-st punctuation.separator.st
+#              ^ source.61131-3-st
+#               ^^^^ source.61131-3-st storage.type.primitive.bit.st
+#                   ^ source.61131-3-st
+#                    ^^ source.61131-3-st keyword.other.st
+#                      ^ source.61131-3-st
+#                       ^^^^^ source.61131-3-st variable.other.direct-address.st
+#                            ^ source.61131-3-st punctuation.separator.st
+>END_VAR
+#^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>
+>VAR_INPUT
+#^^^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>    input1 : SINT;
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^ source.61131-3-st punctuation.separator.st
+#            ^ source.61131-3-st
+#             ^^^^ source.61131-3-st storage.type.primitive.integer.st
+#                 ^ source.61131-3-st punctuation.separator.st
+>    input2 : UDINT;
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^ source.61131-3-st punctuation.separator.st
+#            ^ source.61131-3-st
+#             ^^^^^ source.61131-3-st storage.type.primitive.integer.st
+#                  ^ source.61131-3-st punctuation.separator.st
+>END_VAR
+#^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>
+>VAR_OUTPUT
+#^^^^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>    output1 : LINT;
+#^^^^ source.61131-3-st
+#    ^^^^^^^ source.61131-3-st variable.other.st
+#           ^ source.61131-3-st
+#            ^ source.61131-3-st punctuation.separator.st
+#             ^ source.61131-3-st
+#              ^^^^ source.61131-3-st storage.type.primitive.integer.st
+#                  ^ source.61131-3-st punctuation.separator.st
+>END_VAR
+#^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>
+>VAR_TEMP
+#^^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>    temp1 : LREAL;
+#^^^^ source.61131-3-st
+#    ^^^^^ source.61131-3-st variable.other.st
+#         ^ source.61131-3-st
+#          ^ source.61131-3-st punctuation.separator.st
+#           ^ source.61131-3-st
+#            ^^^^^ source.61131-3-st storage.type.primitive.real.st
+#                 ^ source.61131-3-st punctuation.separator.st
+>END_VAR
+#^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>
+>    (* Conditional statements *)
+#^^^^ source.61131-3-st
+#    ^^ source.61131-3-st comment.block.st punctuation.definition.comment.begin.st
+#      ^^^^^^^^^^^^^^^^^^^^^^^^ source.61131-3-st comment.block.st
+#                              ^^ source.61131-3-st comment.block.st punctuation.definition.comment.end.st
+>    IF input1 > 0 THEN
+#^^^^ source.61131-3-st
+#    ^^ source.61131-3-st keyword.control.conditional.st
+#      ^ source.61131-3-st
+#       ^^^^^^ source.61131-3-st variable.other.st
+#             ^ source.61131-3-st
+#              ^ source.61131-3-st keyword.operator.comparison.st
+#               ^ source.61131-3-st
+#                ^ source.61131-3-st constant.numeric.decimal.st
+#                 ^ source.61131-3-st
+#                  ^^^^ source.61131-3-st keyword.control.conditional.st
+>        output1 := input1 * 2;
+#^^^^^^^^ source.61131-3-st
+#        ^^^^^^^ source.61131-3-st variable.other.st
+#               ^ source.61131-3-st
+#                ^^ source.61131-3-st keyword.operator.assignment.st
+#                  ^ source.61131-3-st
+#                   ^^^^^^ source.61131-3-st variable.other.st
+#                         ^ source.61131-3-st
+#                          ^ source.61131-3-st keyword.operator.arithmetic.st
+#                           ^ source.61131-3-st
+#                            ^ source.61131-3-st constant.numeric.decimal.st
+#                             ^ source.61131-3-st punctuation.separator.st
+>    ELSIF input1 < 0 THEN
+#^^^^ source.61131-3-st
+#    ^^^^^ source.61131-3-st keyword.control.conditional.st
+#         ^ source.61131-3-st
+#          ^^^^^^ source.61131-3-st variable.other.st
+#                ^ source.61131-3-st
+#                 ^ source.61131-3-st keyword.operator.comparison.st
+#                  ^ source.61131-3-st
+#                   ^ source.61131-3-st constant.numeric.decimal.st
+#                    ^ source.61131-3-st
+#                     ^^^^ source.61131-3-st keyword.control.conditional.st
+>        output1 := -input1;
+#^^^^^^^^ source.61131-3-st
+#        ^^^^^^^ source.61131-3-st variable.other.st
+#               ^ source.61131-3-st
+#                ^^ source.61131-3-st keyword.operator.assignment.st
+#                  ^ source.61131-3-st
+#                   ^ source.61131-3-st keyword.operator.arithmetic.st
+#                    ^^^^^^ source.61131-3-st variable.other.st
+#                          ^ source.61131-3-st punctuation.separator.st
+>    ELSE
+#^^^^ source.61131-3-st
+#    ^^^^ source.61131-3-st keyword.control.conditional.st
+>        output1 := 0;
+#^^^^^^^^ source.61131-3-st
+#        ^^^^^^^ source.61131-3-st variable.other.st
+#               ^ source.61131-3-st
+#                ^^ source.61131-3-st keyword.operator.assignment.st
+#                  ^ source.61131-3-st
+#                   ^ source.61131-3-st constant.numeric.decimal.st
+#                    ^ source.61131-3-st punctuation.separator.st
+>    END_IF;
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st keyword.control.conditional.st
+#          ^ source.61131-3-st punctuation.separator.st
+>
+>    (* Case statement *)
+#^^^^ source.61131-3-st
+#    ^^ source.61131-3-st comment.block.st punctuation.definition.comment.begin.st
+#      ^^^^^^^^^^^^^^^^ source.61131-3-st comment.block.st
+#                      ^^ source.61131-3-st comment.block.st punctuation.definition.comment.end.st
+>    CASE myInt OF
+#^^^^ source.61131-3-st
+#    ^^^^ source.61131-3-st keyword.control.conditional.st
+#        ^ source.61131-3-st
+#         ^^^^^ source.61131-3-st variable.other.st
+#              ^ source.61131-3-st
+#               ^^ source.61131-3-st keyword.control.conditional.st
+>        1: myBool := TRUE;
+#^^^^^^^^ source.61131-3-st
+#        ^ source.61131-3-st constant.numeric.decimal.st
+#         ^ source.61131-3-st punctuation.separator.st
+#          ^ source.61131-3-st
+#           ^^^^^^ source.61131-3-st variable.other.st
+#                 ^ source.61131-3-st
+#                  ^^ source.61131-3-st keyword.operator.assignment.st
+#                    ^ source.61131-3-st
+#                     ^^^^ source.61131-3-st constant.language.boolean.st
+#                         ^ source.61131-3-st punctuation.separator.st
+>        2, 3: myBool := FALSE;
+#^^^^^^^^ source.61131-3-st
+#        ^ source.61131-3-st constant.numeric.decimal.st
+#         ^ source.61131-3-st punctuation.separator.st
+#          ^ source.61131-3-st
+#           ^ source.61131-3-st constant.numeric.decimal.st
+#            ^ source.61131-3-st punctuation.separator.st
+#             ^ source.61131-3-st
+#              ^^^^^^ source.61131-3-st variable.other.st
+#                    ^ source.61131-3-st
+#                     ^^ source.61131-3-st keyword.operator.assignment.st
+#                       ^ source.61131-3-st
+#                        ^^^^^ source.61131-3-st constant.language.boolean.st
+#                             ^ source.61131-3-st punctuation.separator.st
+>    ELSE
+#^^^^ source.61131-3-st
+#    ^^^^ source.61131-3-st keyword.control.conditional.st
+>        myBool := NOT myBool;
+#^^^^^^^^ source.61131-3-st
+#        ^^^^^^ source.61131-3-st variable.other.st
+#              ^ source.61131-3-st
+#               ^^ source.61131-3-st keyword.operator.assignment.st
+#                 ^ source.61131-3-st
+#                  ^^^ source.61131-3-st keyword.operator.logical.st
+#                     ^ source.61131-3-st
+#                      ^^^^^^ source.61131-3-st variable.other.st
+#                            ^ source.61131-3-st punctuation.separator.st
+>    END_CASE;
+#^^^^ source.61131-3-st
+#    ^^^^^^^^ source.61131-3-st keyword.control.conditional.st
+#            ^ source.61131-3-st punctuation.separator.st
+>
+>    (* For loop *)
+#^^^^ source.61131-3-st
+#    ^^ source.61131-3-st comment.block.st punctuation.definition.comment.begin.st
+#      ^^^^^^^^^^ source.61131-3-st comment.block.st
+#                ^^ source.61131-3-st comment.block.st punctuation.definition.comment.end.st
+>    FOR i := 0 TO 9 BY 1 DO
+#^^^^ source.61131-3-st
+#    ^^^ source.61131-3-st keyword.control.loop.st
+#       ^ source.61131-3-st
+#        ^ source.61131-3-st variable.other.st
+#         ^ source.61131-3-st
+#          ^^ source.61131-3-st keyword.operator.assignment.st
+#            ^ source.61131-3-st
+#             ^ source.61131-3-st constant.numeric.decimal.st
+#              ^ source.61131-3-st
+#               ^^ source.61131-3-st keyword.control.loop.st
+#                 ^ source.61131-3-st
+#                  ^ source.61131-3-st constant.numeric.decimal.st
+#                   ^ source.61131-3-st
+#                    ^^ source.61131-3-st keyword.control.loop.st
+#                      ^ source.61131-3-st
+#                       ^ source.61131-3-st constant.numeric.decimal.st
+#                        ^ source.61131-3-st
+#                         ^^ source.61131-3-st keyword.control.loop.st
+>        myArray[i] := i * i;
+#^^^^^^^^ source.61131-3-st
+#        ^^^^^^^ source.61131-3-st variable.other.st
+#               ^ source.61131-3-st punctuation.section.brackets.st
+#                ^ source.61131-3-st variable.other.st
+#                 ^ source.61131-3-st punctuation.section.brackets.st
+#                  ^ source.61131-3-st
+#                   ^^ source.61131-3-st keyword.operator.assignment.st
+#                     ^ source.61131-3-st
+#                      ^ source.61131-3-st variable.other.st
+#                       ^ source.61131-3-st
+#                        ^ source.61131-3-st keyword.operator.arithmetic.st
+#                         ^ source.61131-3-st
+#                          ^ source.61131-3-st variable.other.st
+#                           ^ source.61131-3-st punctuation.separator.st
+>    END_FOR;
+#^^^^ source.61131-3-st
+#    ^^^^^^^ source.61131-3-st keyword.control.loop.st
+#           ^ source.61131-3-st punctuation.separator.st
+>
+>    (* While loop *)
+#^^^^ source.61131-3-st
+#    ^^ source.61131-3-st comment.block.st punctuation.definition.comment.begin.st
+#      ^^^^^^^^^^^^ source.61131-3-st comment.block.st
+#                  ^^ source.61131-3-st comment.block.st punctuation.definition.comment.end.st
+>    WHILE myInt > 0 DO
+#^^^^ source.61131-3-st
+#    ^^^^^ source.61131-3-st keyword.control.loop.st
+#         ^ source.61131-3-st
+#          ^^^^^ source.61131-3-st variable.other.st
+#               ^ source.61131-3-st
+#                ^ source.61131-3-st keyword.operator.comparison.st
+#                 ^ source.61131-3-st
+#                  ^ source.61131-3-st constant.numeric.decimal.st
+#                   ^ source.61131-3-st
+#                    ^^ source.61131-3-st keyword.control.loop.st
+>        myInt := myInt - 1;
+#^^^^^^^^ source.61131-3-st
+#        ^^^^^ source.61131-3-st variable.other.st
+#             ^ source.61131-3-st
+#              ^^ source.61131-3-st keyword.operator.assignment.st
+#                ^ source.61131-3-st
+#                 ^^^^^ source.61131-3-st variable.other.st
+#                      ^ source.61131-3-st
+#                       ^ source.61131-3-st keyword.operator.arithmetic.st
+#                        ^ source.61131-3-st
+#                         ^ source.61131-3-st constant.numeric.decimal.st
+#                          ^ source.61131-3-st punctuation.separator.st
+>    END_WHILE;
+#^^^^ source.61131-3-st
+#    ^^^^^^^^^ source.61131-3-st keyword.control.loop.st
+#             ^ source.61131-3-st punctuation.separator.st
+>
+>    (* Repeat loop *)
+#^^^^ source.61131-3-st
+#    ^^ source.61131-3-st comment.block.st punctuation.definition.comment.begin.st
+#      ^^^^^^^^^^^^^ source.61131-3-st comment.block.st
+#                   ^^ source.61131-3-st comment.block.st punctuation.definition.comment.end.st
+>    REPEAT
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st keyword.control.loop.st
+>        temp1 := temp1 + 1.0;
+#^^^^^^^^ source.61131-3-st
+#        ^^^^^ source.61131-3-st variable.other.st
+#             ^ source.61131-3-st
+#              ^^ source.61131-3-st keyword.operator.assignment.st
+#                ^ source.61131-3-st
+#                 ^^^^^ source.61131-3-st variable.other.st
+#                      ^ source.61131-3-st
+#                       ^ source.61131-3-st keyword.operator.arithmetic.st
+#                        ^ source.61131-3-st
+#                         ^^^ source.61131-3-st constant.numeric.decimal.st
+#                            ^ source.61131-3-st punctuation.separator.st
+>    UNTIL temp1 >= 10.0
+#^^^^ source.61131-3-st
+#    ^^^^^ source.61131-3-st keyword.control.loop.st
+#         ^ source.61131-3-st
+#          ^^^^^ source.61131-3-st variable.other.st
+#               ^ source.61131-3-st
+#                ^ source.61131-3-st keyword.operator.comparison.st
+#                 ^ source.61131-3-st keyword.operator.comparison.st
+#                  ^ source.61131-3-st
+#                   ^^^^ source.61131-3-st constant.numeric.decimal.st
+>    END_REPEAT;
+#^^^^ source.61131-3-st
+#    ^^^^^^^^^^ source.61131-3-st keyword.control.loop.st
+#              ^ source.61131-3-st punctuation.separator.st
+>
+>    (* Operators *)
+#^^^^ source.61131-3-st
+#    ^^ source.61131-3-st comment.block.st punctuation.definition.comment.begin.st
+#      ^^^^^^^^^^^ source.61131-3-st comment.block.st
+#                 ^^ source.61131-3-st comment.block.st punctuation.definition.comment.end.st
+>    myBool := (input1 = input2) OR (input1 <> 0);
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^^ source.61131-3-st keyword.operator.assignment.st
+#             ^ source.61131-3-st
+#              ^ source.61131-3-st punctuation.section.parens.st
+#               ^^^^^^ source.61131-3-st variable.other.st
+#                     ^ source.61131-3-st
+#                      ^ source.61131-3-st keyword.operator.comparison.st
+#                       ^ source.61131-3-st
+#                        ^^^^^^ source.61131-3-st variable.other.st
+#                              ^ source.61131-3-st punctuation.section.parens.st
+#                               ^ source.61131-3-st
+#                                ^^ source.61131-3-st keyword.operator.logical.st
+#                                  ^ source.61131-3-st
+#                                   ^ source.61131-3-st punctuation.section.parens.st
+#                                    ^^^^^^ source.61131-3-st variable.other.st
+#                                          ^ source.61131-3-st
+#                                           ^^ source.61131-3-st keyword.operator.comparison.st
+#                                             ^ source.61131-3-st
+#                                              ^ source.61131-3-st constant.numeric.decimal.st
+#                                               ^ source.61131-3-st punctuation.section.parens.st
+#                                                ^ source.61131-3-st punctuation.separator.st
+>    myBool := myBool AND NOT FALSE;
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^^ source.61131-3-st keyword.operator.assignment.st
+#             ^ source.61131-3-st
+#              ^^^^^^ source.61131-3-st variable.other.st
+#                    ^ source.61131-3-st
+#                     ^^^ source.61131-3-st keyword.operator.logical.st
+#                        ^ source.61131-3-st
+#                         ^^^ source.61131-3-st keyword.operator.logical.st
+#                            ^ source.61131-3-st
+#                             ^^^^^ source.61131-3-st constant.language.boolean.st
+#                                  ^ source.61131-3-st punctuation.separator.st
+>    myBool := input1 < input2;
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^^ source.61131-3-st keyword.operator.assignment.st
+#             ^ source.61131-3-st
+#              ^^^^^^ source.61131-3-st variable.other.st
+#                    ^ source.61131-3-st
+#                     ^ source.61131-3-st keyword.operator.comparison.st
+#                      ^ source.61131-3-st
+#                       ^^^^^^ source.61131-3-st variable.other.st
+#                             ^ source.61131-3-st punctuation.separator.st
+>    myBool := input1 >= input2;
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^^ source.61131-3-st keyword.operator.assignment.st
+#             ^ source.61131-3-st
+#              ^^^^^^ source.61131-3-st variable.other.st
+#                    ^ source.61131-3-st
+#                     ^ source.61131-3-st keyword.operator.comparison.st
+#                      ^ source.61131-3-st keyword.operator.comparison.st
+#                       ^ source.61131-3-st
+#                        ^^^^^^ source.61131-3-st variable.other.st
+#                              ^ source.61131-3-st punctuation.separator.st
+>
+>    (* Numeric literals *)
+#^^^^ source.61131-3-st
+#    ^^ source.61131-3-st comment.block.st punctuation.definition.comment.begin.st
+#      ^^^^^^^^^^^^^^^^^^ source.61131-3-st comment.block.st
+#                        ^^ source.61131-3-st comment.block.st punctuation.definition.comment.end.st
+>    myInt := 16#FF;
+#^^^^ source.61131-3-st
+#    ^^^^^ source.61131-3-st variable.other.st
+#         ^ source.61131-3-st
+#          ^^ source.61131-3-st keyword.operator.assignment.st
+#            ^ source.61131-3-st
+#             ^^^^^ source.61131-3-st constant.numeric.hex.st
+#                  ^ source.61131-3-st punctuation.separator.st
+>    myInt := 8#77;
+#^^^^ source.61131-3-st
+#    ^^^^^ source.61131-3-st variable.other.st
+#         ^ source.61131-3-st
+#          ^^ source.61131-3-st keyword.operator.assignment.st
+#            ^ source.61131-3-st
+#             ^^^^ source.61131-3-st constant.numeric.octal.st
+#                 ^ source.61131-3-st punctuation.separator.st
+>    myInt := 2#1010;
+#^^^^ source.61131-3-st
+#    ^^^^^ source.61131-3-st variable.other.st
+#         ^ source.61131-3-st
+#          ^^ source.61131-3-st keyword.operator.assignment.st
+#            ^ source.61131-3-st
+#             ^^^^^^ source.61131-3-st constant.numeric.binary.st
+#                   ^ source.61131-3-st punctuation.separator.st
+>    myReal := 1.5e10;
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^^ source.61131-3-st keyword.operator.assignment.st
+#             ^ source.61131-3-st
+#              ^^^^^^ source.61131-3-st constant.numeric.float.st
+#                    ^ source.61131-3-st punctuation.separator.st
+>
+>END_PROGRAM
+#^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+>
+>FUNCTION MyFunction : BOOL
+#^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+#        ^ source.61131-3-st
+#         ^^^^^^^^^^ source.61131-3-st entity.name.function.st
+#                   ^ source.61131-3-st
+#                    ^ source.61131-3-st punctuation.separator.st
+#                     ^ source.61131-3-st
+#                      ^^^^ source.61131-3-st storage.type.primitive.integer.st
+>VAR_INPUT
+#^^^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>    x : INT;
+#^^^^ source.61131-3-st
+#    ^ source.61131-3-st variable.other.st
+#     ^ source.61131-3-st
+#      ^ source.61131-3-st punctuation.separator.st
+#       ^ source.61131-3-st
+#        ^^^ source.61131-3-st storage.type.primitive.integer.st
+#           ^ source.61131-3-st punctuation.separator.st
+>END_VAR
+#^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>    IF x > 0 THEN
+#^^^^ source.61131-3-st
+#    ^^ source.61131-3-st keyword.control.conditional.st
+#      ^ source.61131-3-st
+#       ^ source.61131-3-st variable.other.st
+#        ^ source.61131-3-st
+#         ^ source.61131-3-st keyword.operator.comparison.st
+#          ^ source.61131-3-st
+#           ^ source.61131-3-st constant.numeric.decimal.st
+#            ^ source.61131-3-st
+#             ^^^^ source.61131-3-st keyword.control.conditional.st
+>        RETURN TRUE;
+#^^^^^^^^ source.61131-3-st
+#        ^^^^^^ source.61131-3-st keyword.control.flow.st
+#              ^ source.61131-3-st
+#               ^^^^ source.61131-3-st constant.language.boolean.st
+#                   ^ source.61131-3-st punctuation.separator.st
+>    ELSE
+#^^^^ source.61131-3-st
+#    ^^^^ source.61131-3-st keyword.control.conditional.st
+>        RETURN FALSE;
+#^^^^^^^^ source.61131-3-st
+#        ^^^^^^ source.61131-3-st keyword.control.flow.st
+#              ^ source.61131-3-st
+#               ^^^^^ source.61131-3-st constant.language.boolean.st
+#                    ^ source.61131-3-st punctuation.separator.st
+>    END_IF;
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st keyword.control.conditional.st
+#          ^ source.61131-3-st punctuation.separator.st
+>END_FUNCTION
+#^^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+>
+>FUNCTION_BLOCK MyFB
+#^^^^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+#              ^ source.61131-3-st
+#               ^^^^ source.61131-3-st entity.name.function.st
+>VAR
+#^^^ source.61131-3-st keyword.declaration.variable.st
+>    counter : UDINT;
+#^^^^ source.61131-3-st
+#    ^^^^^^^ source.61131-3-st variable.other.st
+#           ^ source.61131-3-st
+#            ^ source.61131-3-st punctuation.separator.st
+#             ^ source.61131-3-st
+#              ^^^^^ source.61131-3-st storage.type.primitive.integer.st
+#                   ^ source.61131-3-st punctuation.separator.st
+>END_VAR
+#^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>    counter := counter + 1;
+#^^^^ source.61131-3-st
+#    ^^^^^^^ source.61131-3-st variable.other.st
+#           ^ source.61131-3-st
+#            ^^ source.61131-3-st keyword.operator.assignment.st
+#              ^ source.61131-3-st
+#               ^^^^^^^ source.61131-3-st variable.other.st
+#                      ^ source.61131-3-st
+#                       ^ source.61131-3-st keyword.operator.arithmetic.st
+#                        ^ source.61131-3-st
+#                         ^ source.61131-3-st constant.numeric.decimal.st
+#                          ^ source.61131-3-st punctuation.separator.st
+>END_FUNCTION_BLOCK
+#^^^^^^^^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+>
+>TYPE MyStruct :
+#^^^^ source.61131-3-st keyword.declaration.type.st
+#    ^ source.61131-3-st
+#     ^^^^^^^^ source.61131-3-st entity.name.type.st
+#             ^ source.61131-3-st
+#              ^ source.61131-3-st punctuation.separator.st
+>STRUCT
+#^^^^^^ source.61131-3-st keyword.declaration.type.st
+>    field1 : BOOL;
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^ source.61131-3-st punctuation.separator.st
+#            ^ source.61131-3-st
+#             ^^^^ source.61131-3-st storage.type.primitive.integer.st
+#                 ^ source.61131-3-st punctuation.separator.st
+>    field2 : INT;
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^ source.61131-3-st punctuation.separator.st
+#            ^ source.61131-3-st
+#             ^^^ source.61131-3-st storage.type.primitive.integer.st
+#                ^ source.61131-3-st punctuation.separator.st
+>END_STRUCT
+#^^^^^^^^^^ source.61131-3-st keyword.declaration.type.st
+>END_TYPE
+#^^^^^^^^ source.61131-3-st keyword.declaration.type.st
+>

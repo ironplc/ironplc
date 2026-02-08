@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <types>
+    <pous>
+      <pou name="MyFunction" pouType="function">
+        <interface>
+          <returnType>
+            <BOOL/>
+          </returnType>
+          <inputVars>
+            <variable name="Input1">
+              <type><INT/></type>
+            </variable>
+          </inputVars>
+          <outputVars>
+            <variable name="Output1">
+              <type><DINT/></type>
+            </variable>
+          </outputVars>
+          <localVars>
+            <variable name="Local1" constant="true">
+              <type><REAL/></type>
+              <initialValue>
+                <simpleValue value="0.0"/>
+              </initialValue>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">Output1 := Input1 * 2;</xhtml>
+          </ST>
+        </body>
+      </pou>
+      <pou name="MyFunctionBlock" pouType="functionBlock">
+        <interface>
+          <inOutVars>
+            <variable name="Counter">
+              <type><UDINT/></type>
+            </variable>
+          </inOutVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml>Counter := Counter + 1;</xhtml>
+          </ST>
+        </body>
+      </pou>
+      <pou name="MyProgram" pouType="program">
+        <interface>
+          <tempVars>
+            <variable name="Temp">
+              <type><STRING/></type>
+            </variable>
+          </tempVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml>Temp := 'Hello';</xhtml>
+          </ST>
+        </body>
+      </pou>
+    </pous>
+  </types>
+</project>

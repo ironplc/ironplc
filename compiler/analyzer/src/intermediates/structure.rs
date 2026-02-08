@@ -28,6 +28,9 @@ pub fn try_from(
         // Resolve the field type from the initial value assignment
         let field_type = resolve_field_type(&element.init, type_environment)?;
 
+        // Determine if this field has a default value
+        let has_default = field_has_default(&element.init, type_environment);
+
         // Calculate field alignment and adjust offset if needed
         let field_alignment = field_type.alignment_bytes() as u32;
         let aligned_offset = align_offset(current_offset, field_alignment);
@@ -40,6 +43,7 @@ pub fn try_from(
             field_type,
             offset: aligned_offset,
             var_type: None, // Structure fields don't have input/output distinction
+            has_default,
         };
 
         fields.push(field);
@@ -60,6 +64,104 @@ fn align_offset(offset: u32, alignment: u32) -> u32 {
         return offset;
     }
     offset.div_ceil(alignment) * alignment
+}
+
+/// Determines whether a structure field has a default value based on its initializer.
+///
+/// A field has a default if it has an explicit initial value in its type specification.
+/// For nested types (structures), we consider them to have defaults if:
+/// 1. They have explicit initializers, OR
+/// 2. All fields in the nested structure type have defaults
+fn field_has_default(
+    init: &InitialValueAssignmentKind,
+    type_environment: &TypeEnvironment,
+) -> bool {
+    match init {
+        InitialValueAssignmentKind::None(_) => false,
+        InitialValueAssignmentKind::Simple(simple_init) => {
+            // If there's an explicit initial value, this field has a default
+            if simple_init.initial_value.is_some() {
+                return true;
+            }
+            // No explicit initial value - check if the type is a structure with all defaults
+            // (e.g., `inner : Inner;` where Inner is a struct with all fields having defaults)
+            nested_structure_has_all_defaults(&simple_init.type_name, type_environment)
+        }
+        InitialValueAssignmentKind::String(string_init) => string_init.initial_value.is_some(),
+        InitialValueAssignmentKind::EnumeratedValues(enum_init) => {
+            enum_init.initial_value.is_some()
+        }
+        InitialValueAssignmentKind::EnumeratedType(enum_type_init) => {
+            enum_type_init.initial_value.is_some()
+        }
+        InitialValueAssignmentKind::FunctionBlock(_) => {
+            // Function block fields can have their inputs initialized,
+            // but function blocks themselves don't have "defaults" in the
+            // same sense - they always need to be instantiated.
+            // For const checking purposes, we treat them as not having defaults.
+            false
+        }
+        InitialValueAssignmentKind::Subrange(_subrange_spec) => {
+            // Subranges in structure fields don't currently preserve initial values
+            // in the parser (see parser.rs line 573 - subrange.1 is discarded).
+            // Conservatively treat them as not having defaults.
+            false
+        }
+        InitialValueAssignmentKind::Structure(struct_init) => {
+            // A nested structure field has a default if:
+            // 1. It has explicit initializers provided, OR
+            // 2. All fields in the nested structure type have defaults
+            if !struct_init.elements_init.is_empty() {
+                // Explicit initializers provided - we consider this as having a default.
+                // Note: This doesn't validate that ALL fields are initialized; that's
+                // done by the const validation rule which checks completeness.
+                return true;
+            }
+
+            // No explicit initializers - check if the nested type has all defaults
+            nested_structure_has_all_defaults(&struct_init.type_name, type_environment)
+        }
+        InitialValueAssignmentKind::Array(array_init) => {
+            // Array has a default if it has initial values (non-empty vec)
+            !array_init.initial_values.is_empty()
+        }
+        InitialValueAssignmentKind::LateResolvedType(type_name) => {
+            // Late resolved types don't carry initial value information themselves,
+            // but they may reference a structure type with all defaults
+            nested_structure_has_all_defaults(type_name, type_environment)
+        }
+    }
+}
+
+/// Checks if a nested structure type has all its fields with default values.
+///
+/// This is used to determine if a field of structure type can be considered
+/// as "having a default" when no explicit initializers are provided.
+fn nested_structure_has_all_defaults(
+    type_name: &TypeName,
+    type_environment: &TypeEnvironment,
+) -> bool {
+    // Look up the nested structure type
+    let type_attrs = match type_environment.get(type_name) {
+        Some(attrs) => attrs,
+        None => {
+            // Type not found - conservatively say no defaults
+            // Another rule will report the missing type error
+            return false;
+        }
+    };
+
+    // Check if it's a structure type
+    let fields = match &type_attrs.representation {
+        crate::intermediate_type::IntermediateType::Structure { fields } => fields,
+        _ => {
+            // Not a structure type - conservatively say no defaults
+            return false;
+        }
+    };
+
+    // All fields must have defaults for the nested structure to have a complete default
+    fields.iter().all(|field| field.has_default)
 }
 
 /// Resolves the field type from an initial value assignment
@@ -145,9 +247,28 @@ fn resolve_field_type(
                 })?;
             Ok(type_attrs.representation.clone())
         }
-        InitialValueAssignmentKind::Array(_array_init) => {
-            // Array fields are not yet supported
-            Err(Diagnostic::todo(file!(), line!()))
+        InitialValueAssignmentKind::Array(array_init) => {
+            // Handle array field types
+            let array_result = crate::intermediates::array::try_from(
+                &TypeName::from("_field_array"),
+                &array_init.spec,
+                type_environment,
+            )?;
+
+            match array_result {
+                crate::intermediates::array::IntermediateResult::Type(attrs) => {
+                    Ok(attrs.representation)
+                }
+                crate::intermediates::array::IntermediateResult::Alias(base_name) => {
+                    let base_attrs = type_environment.get(&base_name).ok_or_else(|| {
+                        Diagnostic::problem(
+                            Problem::StructFieldTypeNotDeclared,
+                            Label::span(base_name.span(), "Base type"),
+                        )
+                    })?;
+                    Ok(base_attrs.representation.clone())
+                }
+            }
         }
         _other => {
             // Other types are not yet supported
@@ -551,5 +672,173 @@ END_TYPE
         assert_eq!(fields[0].offset, 0);
         assert_eq!(fields[1].offset, 4);
         assert_eq!(fields[2].offset, 8);
+    }
+
+    // Array field tests
+
+    #[test]
+    fn parse_structure_with_array_field_then_creates_structure_with_array() {
+        let program = "
+TYPE
+    MyStruct : STRUCT
+        values : ARRAY [1..10] OF INT;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let struct_type = env.get(&TypeName::from("MyStruct")).unwrap();
+        assert!(struct_type.representation.is_structure());
+
+        let fields = match &struct_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!(
+                "Expected Structure type, got {:?}",
+                struct_type.representation
+            ),
+        };
+
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].name, Id::from("values"));
+        assert!(matches!(
+            fields[0].field_type,
+            IntermediateType::Array { .. }
+        ));
+    }
+
+    #[test]
+    fn parse_structure_with_multidimensional_array_field_then_creates_structure_with_array() {
+        let program = "
+TYPE
+    Matrix : STRUCT
+        data : ARRAY [1..3, 1..4] OF REAL;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let struct_type = env.get(&TypeName::from("Matrix")).unwrap();
+        assert!(struct_type.representation.is_structure());
+
+        let fields = match &struct_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!(
+                "Expected Structure type, got {:?}",
+                struct_type.representation
+            ),
+        };
+
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].name, Id::from("data"));
+        if let IntermediateType::Array { size, .. } = &fields[0].field_type {
+            assert_eq!(*size, Some(12)); // 3 * 4 = 12
+        } else {
+            panic!("Expected Array type");
+        }
+    }
+
+    #[test]
+    fn parse_structure_with_array_of_struct_field_then_creates_structure_with_nested_array() {
+        let program = "
+TYPE
+    Point : STRUCT
+        x : INT := 0;
+        y : INT := 0;
+    END_STRUCT;
+    Polygon : STRUCT
+        vertices : ARRAY [1..4] OF Point;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let polygon_type = env.get(&TypeName::from("Polygon")).unwrap();
+        assert!(polygon_type.representation.is_structure());
+
+        let fields = match &polygon_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!(
+                "Expected Structure type, got {:?}",
+                polygon_type.representation
+            ),
+        };
+
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].name, Id::from("vertices"));
+        if let IntermediateType::Array { element_type, size } = &fields[0].field_type {
+            assert!(element_type.is_structure());
+            assert_eq!(*size, Some(4));
+        } else {
+            panic!("Expected Array type");
+        }
+    }
+
+    #[test]
+    fn parse_structure_with_mixed_array_and_primitive_fields_then_correct_types() {
+        let program = "
+TYPE
+    DataRecord : STRUCT
+        id : DINT := 0;
+        values : ARRAY [1..5] OF INT;
+        active : BOOL := FALSE;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let struct_type = env.get(&TypeName::from("DataRecord")).unwrap();
+        let fields = match &struct_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!(
+                "Expected Structure type, got {:?}",
+                struct_type.representation
+            ),
+        };
+
+        assert_eq!(fields.len(), 3);
+        assert!(matches!(fields[0].field_type, IntermediateType::Int { .. }));
+        assert!(matches!(
+            fields[1].field_type,
+            IntermediateType::Array { .. }
+        ));
+        assert!(matches!(fields[2].field_type, IntermediateType::Bool));
+    }
+
+    #[test]
+    fn parse_nested_structure_with_defaults_then_outer_field_has_default_true() {
+        let program = "
+TYPE
+    Inner : STRUCT
+        a : INT := 0;
+        b : INT := 0;
+    END_STRUCT;
+    Outer : STRUCT
+        inner : Inner;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        // Check Inner type
+        let inner_type = env.get(&TypeName::from("Inner")).unwrap();
+        let inner_fields = match &inner_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!("Expected Structure type"),
+        };
+        assert!(inner_fields[0].has_default, "Inner.a should have default");
+        assert!(inner_fields[1].has_default, "Inner.b should have default");
+
+        // Check Outer type - the inner field should have has_default=true
+        // because Inner has all defaults
+        let outer_type = env.get(&TypeName::from("Outer")).unwrap();
+        let outer_fields = match &outer_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!("Expected Structure type"),
+        };
+
+        assert!(
+            outer_fields[0].has_default,
+            "Outer.inner should have has_default=true because Inner has all defaults"
+        );
     }
 }

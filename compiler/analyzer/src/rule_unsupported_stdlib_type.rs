@@ -26,15 +26,10 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{
-    result::SemanticResult, stdlib::is_unsupported_standard_type,
-    symbol_environment::SymbolEnvironment, type_environment::TypeEnvironment,
+    result::SemanticResult, semantic_context::SemanticContext, stdlib::is_unsupported_standard_type,
 };
 
-pub fn apply(
-    lib: &Library,
-    _type_environment: &TypeEnvironment,
-    _symbol_environment: &SymbolEnvironment,
-) -> SemanticResult {
+pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
     let mut visitor = RuleUnsupportedStdLibType {
         diagnostics: Vec::new(),
     };
@@ -71,11 +66,12 @@ impl Visitor<Diagnostic> for RuleUnsupportedStdLibType {
 mod tests {
     use super::*;
 
+    use crate::semantic_context::SemanticContextBuilder;
     use crate::test_helpers::parse_and_resolve_types;
 
     #[test]
-    fn apply_when_has_ctu_dint_unsupported_type_then_err() {
-        // CTU_DINT is a recognized stdlib type variant that is NOT yet implemented
+    fn apply_when_has_ctu_dint_supported_type_then_ok() {
+        // CTU_DINT is now a supported stdlib type variant
         let program = "
 FUNCTION_BLOCK DUMMY
 VAR_INPUT
@@ -85,14 +81,11 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let input = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&input, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&input, &context);
 
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert_eq!(1, err.len());
-        assert_eq!(Problem::UnsupportedStdLibType.code(), err[0].code);
+        // CTU_DINT is now supported, so this should pass (no unsupported stdlib type error)
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -107,9 +100,8 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let input = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&input, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&input, &context);
 
         // TON is now supported, so this should pass (no unsupported stdlib type error)
         assert!(result.is_ok());
@@ -132,9 +124,8 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let input = parse_and_resolve_types(program);
-        let type_env = TypeEnvironment::new();
-        let symbol_env = SymbolEnvironment::new();
-        let result = apply(&input, &type_env, &symbol_env);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&input, &context);
 
         // User-defined function blocks are not stdlib types, so this should pass
         assert!(result.is_ok());

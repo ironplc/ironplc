@@ -3,7 +3,7 @@
   "displayName": "IronPLC",
   "publisher": "ironplc",
   "description": "IronPLC is the beginning of a development environment for IEC 61131-3.",
-  "version": "0.153.0",
+  "version": "0.154.0",
   "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0",
@@ -83,6 +83,19 @@
           ".iec"
         ],
         "configuration": "./decl/61131-3-st-language-configuration.json"
+      },
+      {
+        "id": "plcopen-xml",
+        "aliases": [
+          "PLCopen XML",
+          "IEC 61131-3 XML",
+          "TC6 XML"
+        ],
+        "extensions": [
+          ".plcxml"
+        ],
+        "firstLine": "^<\\?xml[^>]*\\?>\\s*(<project\\s+xmlns\\s*=\\s*[\"']http://www\\.plcopen\\.org/xml/tc6|<project\\s[^>]*xmlns\\s*=\\s*[\"']http://www\\.plcopen\\.org/xml/tc6)",
+        "configuration": "./decl/plcopen-xml-language-configuration.json"
       }
     ],
     "grammars": [
@@ -90,6 +103,14 @@
         "language": "61131-3-st",
         "scopeName": "source.61131-3-st",
         "path": "./syntaxes/61131-3-st.tmLanguage.json"
+      },
+      {
+        "language": "plcopen-xml",
+        "scopeName": "source.plcopen-xml",
+        "path": "./syntaxes/plcopen-xml.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.st": "61131-3-st"
+        }
       }
     ]
   },
@@ -102,10 +123,15 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src/**/*.ts",
-    "test:functional": "node ./out/test/functional/runTest.js"
+    "validate-grammars": "ajv validate -s schemas/tmlanguage.json -d \"syntaxes/*.tmLanguage.json\"",
+    "lint": "eslint src/**/*.ts && npm run validate-grammars",
+    "test:functional": "node ./out/test/functional/runTest.js",
+    "test:grammar": "vscode-tmgrammar-snap \"tests/grammar/snap/**/*.plcxml\" \"tests/grammar/snap/**/*.st\"",
+    "test:grammar:update": "vscode-tmgrammar-snap -u \"tests/grammar/snap/**/*.plcxml\" \"tests/grammar/snap/**/*.st\""
   },
   "devDependencies": {
+    "vscode-tmgrammar-test": "^0.1.3",
+    "ajv-cli": "^5",
     "@stylistic/eslint-plugin": "^5",
     "@stylistic/eslint-plugin-ts": "^4",
     "@types/mocha": "^10.0.0",

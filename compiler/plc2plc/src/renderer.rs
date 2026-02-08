@@ -146,10 +146,20 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &CharacterStringLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        // TODO this may not be right
+        // Single-byte character strings use single quotes per IEC 61131-3 section 2.2.2
+        // Special characters must be escaped with $ prefix
         let mut val = String::from("'");
-        let s: String = node.value.iter().collect();
-        val.push_str(s.as_str());
+        for c in &node.value {
+            match c {
+                '$' => val.push_str("$$"),
+                '\'' => val.push_str("$'"),
+                '\n' => val.push_str("$N"),
+                '\r' => val.push_str("$R"),
+                '\t' => val.push_str("$T"),
+                '\x0C' => val.push_str("$P"), // form feed
+                _ => val.push(*c),
+            }
+        }
         val.push('\'');
         self.write_ws(&val);
         Ok(())
