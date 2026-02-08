@@ -126,7 +126,7 @@ impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
                     return Err(Diagnostic::todo(file!(), line!()))
                 }
                 InitialValueAssignmentKind::Subrange(_) => {
-                    return Err(Diagnostic::todo(file!(), line!()))
+                    return Err(Diagnostic::internal_error(file!(), line!()))
                 }
                 InitialValueAssignmentKind::Structure(struct_init) => {
                     // For const structures, verify that all fields without defaults
