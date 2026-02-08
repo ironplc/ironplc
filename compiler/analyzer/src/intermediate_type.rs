@@ -503,12 +503,16 @@ pub struct IntermediateStructField {
 }
 
 /// Represents a parameter in a function or function block declaration.
+///
+/// Uses `TypeName` instead of resolved `IntermediateType` to allow building
+/// complete function signatures even when type resolution fails. Types can
+/// be resolved on-demand via `TypeEnvironment` when needed for validation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IntermediateFunctionParameter {
     /// Name of the parameter
     pub name: ironplc_dsl::core::Id,
-    /// Type of the parameter
-    pub param_type: IntermediateType,
+    /// Type name of the parameter (resolved on-demand via TypeEnvironment)
+    pub param_type: ironplc_dsl::common::TypeName,
     /// Whether this is an input parameter
     pub is_input: bool,
     /// Whether this is an output parameter
