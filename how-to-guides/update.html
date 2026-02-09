@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Compiler reference" href="../compiler/index.html"><link rel="prev" title="How-to guides" href="index.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Troubleshooting" href="../vscode/troubleshooting.html"><link rel="prev" title="How-to guides" href="index.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Update IronPLC - IronPLC documentation</title>
@@ -216,6 +216,7 @@
 </li>
 <li class="toctree-l1 current has-children"><a class="reference internal" href="index.html">How-to guides</a><input aria-label="Toggle navigation of How-to guides" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Update IronPLC on your computer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../vscode/troubleshooting.html">Troubleshoot the VS Code Extension</a></li>
 </ul>
 </li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../compiler/index.html">Compiler reference</a><input aria-label="Toggle navigation of Compiler reference" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -272,6 +273,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4013.html">P4013</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4014.html">P4014</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4015.html">P4015</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4016.html">P4016</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P6003.html">P6003</a></li>
@@ -290,7 +292,10 @@
 </ul>
 </li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../vscode/index.html">Visual Studio Code extension reference</a><input aria-label="Toggle navigation of Visual Studio Code extension reference" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../vscode/problems/index.html">Problems</a><input aria-label="Toggle navigation of Problems" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../vscode/overview.html">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../vscode/settings.html">Settings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../vscode/troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../vscode/problems/index.html">Problem Codes</a><input aria-label="Toggle navigation of Problem Codes" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../vscode/problems/E0001.html">E0001</a></li>
 </ul>
 </li>
@@ -358,8 +363,8 @@ automatic mechanism to distribute updates.</p>
 <li><p>Right-click (or press and hold) on <span class="guilabel">IronPLC</span> and select <span class="guilabel">Uninstall/Change</span>. Then follow the directions on the screen.</p></li>
 <li><p>Download the latest IronPLC installer from <a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>:</p>
 <ul class="simple">
-<li><p>x64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.154.0/ironplcc-x86_64-windows.exe">ironplcc-x86_64-windows.exe</a></p></li>
-<li><p>Arm64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.154.0/ironplcc-aarch64-windows.exe">ironplcc-aarch64-windows.exe</a></p></li>
+<li><p>x64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.155.0/ironplcc-x86_64-windows.exe">ironplcc-x86_64-windows.exe</a></p></li>
+<li><p>Arm64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.155.0/ironplcc-aarch64-windows.exe">ironplcc-aarch64-windows.exe</a></p></li>
 </ul>
 </li>
 <li><p>Run the installer and follow the prompts to complete
@@ -368,7 +373,7 @@ installation of the CLI.</p></li>
 <p><strong>Update IronPLC Visual Studio Code Extension</strong></p>
 <ol class="arabic simple">
 <li><p>Download the latest IronPLC Visual Studio Code Extension
-<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.154.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a> from
+<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.155.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a> from
 <a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>.</p></li>
 </ol>
 <p>Run Visual Studio Code, then in Visual Studio Code:</p>
@@ -388,7 +393,7 @@ View: Extensions command (<kbd class="kbd docutils literal notranslate">Ctrl</kb
 <p><strong>Update IronPLC Visual Studio Code Extension</strong></p>
 <ol class="arabic simple">
 <li><p>Download the latest IronPLC Visual Studio Code Extension
-<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.154.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a> from
+<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.155.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a> from
 <a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>.</p></li>
 </ol>
 <p>Run Visual Studio Code, then in Visual Studio Code:</p>
@@ -409,12 +414,12 @@ View: Extensions command (<kbd class="kbd docutils literal notranslate">⌘</kbd
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="../compiler/index.html">
+          <a class="next-page" href="../vscode/troubleshooting.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Compiler reference</div>
+                <div class="title">Troubleshooting</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>

@@ -3,10 +3,10 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Problem Codes" href="problems/index.html"><link rel="prev" title="P9999" href="../compiler/problems/P9999.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Overview" href="overview.html"><link rel="prev" title="P9999" href="../compiler/problems/P9999.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Visual Studio Code extension reference - IronPLC documentation</title>
+        <title>Visual Studio Code Extension Reference - IronPLC documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
@@ -216,6 +216,7 @@
 </li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../how-to-guides/index.html">How-to guides</a><input aria-label="Toggle navigation of How-to guides" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../how-to-guides/update.html">Update IronPLC on your computer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html">Troubleshoot the VS Code Extension</a></li>
 </ul>
 </li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../compiler/index.html">Compiler reference</a><input aria-label="Toggle navigation of Compiler reference" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -272,6 +273,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4013.html">P4013</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4014.html">P4014</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4015.html">P4015</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4016.html">P4016</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P6003.html">P6003</a></li>
@@ -290,7 +292,10 @@
 </ul>
 </li>
 <li class="toctree-l1 current has-children current-page"><a class="current reference internal" href="#">Visual Studio Code extension reference</a><input aria-label="Toggle navigation of Visual Studio Code extension reference" checked="" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l2 has-children"><a class="reference internal" href="problems/index.html">Problems</a><input aria-label="Toggle navigation of Problems" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="overview.html">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="settings.html">Settings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="problems/index.html">Problem Codes</a><input aria-label="Toggle navigation of Problem Codes" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="problems/E0001.html">E0001</a></li>
 </ul>
 </li>
@@ -343,10 +348,15 @@
 <p>These docs are a bit ambitious. The steps described are accurate but IronPLC cannot yet run programs.</p>
 </div>
 <section id="visual-studio-code-extension-reference">
-<h1>Visual Studio Code extension reference<a class="headerlink" href="#visual-studio-code-extension-reference" title="Link to this heading">¶</a></h1>
+<h1>Visual Studio Code Extension Reference<a class="headerlink" href="#visual-studio-code-extension-reference" title="Link to this heading">¶</a></h1>
+<p>The IronPLC extension provides IEC 61131-3 Structured Text support for Visual Studio
+Code.</p>
 <div class="toctree-wrapper compound">
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="problems/index.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="overview.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="settings.html">Settings</a></li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="problems/index.html">Problem Codes</a></li>
 </ul>
 </div>
 </section>
@@ -356,12 +366,12 @@
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="problems/index.html">
+          <a class="next-page" href="overview.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Problem Codes</div>
+                <div class="title">Overview</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
