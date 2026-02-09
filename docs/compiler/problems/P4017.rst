@@ -1,0 +1,58 @@
+=====
+P4017
+=====
+
+.. problem-summary:: P4017
+
+This error occurs when calling a function that has not been declared.
+
+Example
+-------
+
+The following code will generate error P4017:
+
+.. code-block::
+
+   FUNCTION_BLOCK CALLER
+   VAR
+       result : REAL;
+       value : INT;
+   END_VAR
+       result := NONEXISTENT_FUNC(value);  (* Error: Function not declared *)
+   END_FUNCTION_BLOCK
+
+The function ``NONEXISTENT_FUNC`` is not declared anywhere in the code.
+
+To fix this error, either:
+
+1. Define the missing function:
+
+.. code-block::
+
+   FUNCTION NONEXISTENT_FUNC : REAL
+   VAR_INPUT
+       input_val : INT;
+   END_VAR
+       NONEXISTENT_FUNC := INT_TO_REAL(input_val);
+   END_FUNCTION
+
+   FUNCTION_BLOCK CALLER
+   VAR
+       result : REAL;
+       value : INT;
+   END_VAR
+       result := NONEXISTENT_FUNC(value);  (* Now valid *)
+   END_FUNCTION_BLOCK
+
+2. Use a standard library function if available (e.g., type conversion functions like ``INT_TO_REAL``):
+
+.. code-block::
+
+   FUNCTION_BLOCK CALLER
+   VAR
+       result : REAL;
+       value : INT;
+   END_VAR
+       result := INT_TO_REAL(value);  (* Using stdlib function *)
+   END_FUNCTION_BLOCK
+
