@@ -1,3 +1,4 @@
+use std::fmt;
 use time::{
     convert::{Day, Hour, Minute, Second},
     Date, Duration, PrimitiveDateTime, Time,
@@ -135,6 +136,12 @@ impl DurationLiteral {
     }
 }
 
+impl fmt::Display for DurationLiteral {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "TIME#{}ms", self.interval.whole_milliseconds())
+    }
+}
+
 // See section 2.2.3
 #[derive(Debug, PartialEq, Clone)]
 pub struct TimeOfDayLiteral {
@@ -149,6 +156,13 @@ impl TimeOfDayLiteral {
     /// Returns the hour, minute, second and millisecond from the literal.
     pub fn hmsm(&self) -> (u8, u8, u8, u32) {
         self.value.as_hms_micro()
+    }
+}
+
+impl fmt::Display for TimeOfDayLiteral {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (h, m, s, _) = self.hmsm();
+        write!(f, "TIME_OF_DAY#{:02}:{:02}:{:02}", h, m, s)
     }
 }
 
@@ -169,6 +183,13 @@ impl DateLiteral {
         let month = self.value.month();
         let day = self.value.day();
         (year, month.into(), day)
+    }
+}
+
+impl fmt::Display for DateLiteral {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (y, m, d) = self.ymd();
+        write!(f, "DATE#{}-{:02}-{:02}", y, m, d)
     }
 }
 
@@ -194,5 +215,17 @@ impl DateAndTimeLiteral {
     /// Returns the hour, minute, second and millisecond from the literal.
     pub fn hmsm(&self) -> (u8, u8, u8, u32) {
         self.value.as_hms_micro()
+    }
+}
+
+impl fmt::Display for DateAndTimeLiteral {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (y, m, d) = self.ymd();
+        let (h, min, s, _) = self.hmsm();
+        write!(
+            f,
+            "DATE_AND_TIME#{}-{:02}-{:02}-{:02}:{:02}:{:02}",
+            y, m, d, h, min, s
+        )
     }
 }
