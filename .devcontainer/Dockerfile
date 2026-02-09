@@ -21,9 +21,8 @@ RUN export RUSTUP_HOME=/usr/local &&\
 # container is rebuilt (the same is generally true for most packages since we
 # don't specify versions).
 RUN rustup default stable
-RUN cargo install --root /usr/local just
-RUN cargo install --root /usr/local cargo-release
-RUN cargo install --root /usr/local cargo-llvm-cov
+COPY scripts/install-rust-tools.sh /tmp/install-rust-tools.sh
+RUN /tmp/install-rust-tools.sh --all /usr/local/bin
 
 # Install typecript for the VS code extension
 RUN npm install -g typescript@5.1.6 vscode
