@@ -354,6 +354,15 @@ pub struct IntegerLiteral {
     pub data_type: Option<IntegerTypeName>,
 }
 
+impl fmt::Display for IntegerLiteral {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.data_type {
+            Some(dt) => write!(f, "{}#{}", dt, self.value),
+            None => write!(f, "{}", self.value),
+        }
+    }
+}
+
 /// The fixed point structure represents a fixed point number.
 ///
 /// The structure keeps the whole and decimal parts as integers so that
@@ -462,6 +471,15 @@ impl RealLiteral {
     }
 }
 
+impl fmt::Display for RealLiteral {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.data_type {
+            Some(dt) => write!(f, "{}#{}", dt, self.value),
+            None => write!(f, "{}", self.value),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct BooleanLiteral {
     pub value: Boolean,
@@ -470,6 +488,12 @@ pub struct BooleanLiteral {
 impl BooleanLiteral {
     pub fn new(value: Boolean) -> Self {
         Self { value }
+    }
+}
+
+impl fmt::Display for BooleanLiteral {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value)
     }
 }
 
@@ -485,11 +509,27 @@ impl CharacterStringLiteral {
     }
 }
 
+impl fmt::Display for CharacterStringLiteral {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s: String = self.value.iter().collect();
+        write!(f, "'{}'", s)
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct BitStringLiteral {
     pub value: Integer,
     #[recurse(ignore)]
     pub data_type: Option<BitStringTypeName>,
+}
+
+impl fmt::Display for BitStringLiteral {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.data_type {
+            Some(dt) => write!(f, "{}#{}", dt, self.value),
+            None => write!(f, "{}", self.value),
+        }
+    }
 }
 
 /// Implements a type identifier.
@@ -583,6 +623,22 @@ pub enum IntegerTypeName {
     ULINT,
 }
 
+impl fmt::Display for IntegerTypeName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            IntegerTypeName::SINT => "SINT",
+            IntegerTypeName::INT => "INT",
+            IntegerTypeName::DINT => "DINT",
+            IntegerTypeName::LINT => "LINT",
+            IntegerTypeName::USINT => "USINT",
+            IntegerTypeName::UINT => "UINT",
+            IntegerTypeName::UDINT => "UDINT",
+            IntegerTypeName::ULINT => "ULINT",
+        };
+        write!(f, "{name}")
+    }
+}
+
 /// Valid type names for real (floating-point) literals.
 ///
 /// These are the types that can prefix a real literal (e.g., `REAL#3.14`).
@@ -591,6 +647,16 @@ pub enum IntegerTypeName {
 pub enum RealTypeName {
     REAL,
     LREAL,
+}
+
+impl fmt::Display for RealTypeName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            RealTypeName::REAL => "REAL",
+            RealTypeName::LREAL => "LREAL",
+        };
+        write!(f, "{name}")
+    }
 }
 
 /// Valid type names for bit string literals.
@@ -603,6 +669,18 @@ pub enum BitStringTypeName {
     WORD,
     DWORD,
     LWORD,
+}
+
+impl fmt::Display for BitStringTypeName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            BitStringTypeName::BYTE => "BYTE",
+            BitStringTypeName::WORD => "WORD",
+            BitStringTypeName::DWORD => "DWORD",
+            BitStringTypeName::LWORD => "LWORD",
+        };
+        write!(f, "{name}")
+    }
 }
 
 /// Elementary type names.
@@ -658,6 +736,12 @@ impl ElementaryTypeName {
             ElementaryTypeName::LWORD => Id::from("LWORD"),
             ElementaryTypeName::WSTRING => Id::from("WSTRING"),
         }
+    }
+}
+
+impl fmt::Display for ElementaryTypeName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_id())
     }
 }
 

@@ -222,9 +222,21 @@ pub struct Function {
     pub param_assignment: Vec<ParamAssignmentKind>,
 }
 
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}(...)", self.name)
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct LateBound {
     pub value: Id,
+}
+
+impl fmt::Display for LateBound {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value)
+    }
 }
 
 /// Expression that yields a value derived from the input(s) to the expression.
@@ -643,4 +655,54 @@ pub struct While {
 pub struct Repeat {
     pub until: ExprKind,
     pub body: Vec<StmtKind>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn array_variable_display_when_single_subscript_then_formats_with_brackets() {
+        let array_var = ArrayVariable {
+            subscripted_variable: Box::new(SymbolicVariableKind::Named(NamedVariable {
+                name: Id::from("data"),
+            })),
+            subscripts: vec![ExprKind::integer_literal("0")],
+        };
+
+        let result = format!("{}", array_var);
+
+        assert_eq!(result, "data[0]");
+    }
+
+    #[test]
+    fn array_variable_display_when_multiple_subscripts_then_formats_with_comma_separated() {
+        let array_var = ArrayVariable {
+            subscripted_variable: Box::new(SymbolicVariableKind::Named(NamedVariable {
+                name: Id::from("matrix"),
+            })),
+            subscripts: vec![
+                ExprKind::integer_literal("1"),
+                ExprKind::integer_literal("2"),
+            ],
+        };
+
+        let result = format!("{}", array_var);
+
+        assert_eq!(result, "matrix[1, 2]");
+    }
+
+    #[test]
+    fn array_variable_display_when_variable_subscript_then_formats_variable_name() {
+        let array_var = ArrayVariable {
+            subscripted_variable: Box::new(SymbolicVariableKind::Named(NamedVariable {
+                name: Id::from("arr"),
+            })),
+            subscripts: vec![ExprKind::named_variable("i")],
+        };
+
+        let result = format!("{}", array_var);
+
+        assert_eq!(result, "arr[i]");
+    }
 }
