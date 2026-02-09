@@ -45,15 +45,17 @@ impl ConstantKind {
 impl fmt::Display for ConstantKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ConstantKind::IntegerLiteral(lit) => write!(f, "{}", lit),
-            ConstantKind::RealLiteral(lit) => write!(f, "{}", lit),
-            ConstantKind::Boolean(lit) => write!(f, "{}", lit),
-            ConstantKind::CharacterString(lit) => write!(f, "{}", lit),
-            ConstantKind::Duration(lit) => write!(f, "{}", lit),
-            ConstantKind::TimeOfDay(lit) => write!(f, "{}", lit),
-            ConstantKind::Date(lit) => write!(f, "{}", lit),
-            ConstantKind::DateAndTime(lit) => write!(f, "{}", lit),
-            ConstantKind::BitStringLiteral(lit) => write!(f, "{}", lit),
+            ConstantKind::IntegerLiteral(lit) => write!(f, "{}", lit.value),
+            ConstantKind::RealLiteral(lit) => write!(f, "{}", lit.value),
+            ConstantKind::Boolean(lit) => write!(f, "{}", lit.value),
+            ConstantKind::CharacterString(lit) => {
+                write!(f, "'{}'", lit.value.iter().collect::<String>())
+            }
+            ConstantKind::Duration(lit) => write!(f, "{:?}", lit),
+            ConstantKind::TimeOfDay(lit) => write!(f, "{:?}", lit),
+            ConstantKind::Date(lit) => write!(f, "{:?}", lit),
+            ConstantKind::DateAndTime(lit) => write!(f, "{:?}", lit),
+            ConstantKind::BitStringLiteral(lit) => write!(f, "{:?}", lit),
         }
     }
 }
@@ -342,15 +344,14 @@ impl From<SignedInteger> for String {
     }
 }
 
-/// A signed integer literal with a optional type name.
+/// A signed integer literal with an optional type name.
 ///
 /// See section 2.2.1.
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct IntegerLiteral {
     pub value: SignedInteger,
-    // TODO restrict to valid integer type names
     #[recurse(ignore)]
-    pub data_type: Option<ElementaryTypeName>,
+    pub data_type: Option<IntegerTypeName>,
 }
 
 impl fmt::Display for IntegerLiteral {
@@ -448,12 +449,11 @@ impl From<Integer> for FixedPoint {
 #[derive(Debug, PartialEq, Clone)]
 pub struct RealLiteral {
     pub value: f64,
-    // TODO restrict to valid float type names
-    pub data_type: Option<ElementaryTypeName>,
+    pub data_type: Option<RealTypeName>,
 }
 
 impl RealLiteral {
-    pub fn try_parse(a: &str, tn: Option<ElementaryTypeName>) -> Result<Self, &'static str> {
+    pub fn try_parse(a: &str, tn: Option<RealTypeName>) -> Result<Self, &'static str> {
         let (r, remainder): (Vec<_>, Vec<_>) = a
             .chars()
             .filter(|c| *c != '_')
@@ -519,9 +519,8 @@ impl fmt::Display for CharacterStringLiteral {
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct BitStringLiteral {
     pub value: Integer,
-    // TODO restrict to valid float type names
     #[recurse(ignore)]
-    pub data_type: Option<ElementaryTypeName>,
+    pub data_type: Option<BitStringTypeName>,
 }
 
 impl fmt::Display for BitStringLiteral {
@@ -606,6 +605,82 @@ pub enum SpecificationKind<T> {
     Named(TypeName),
     /// An inline type definition.
     Inline(T),
+}
+
+/// Valid type names for integer literals.
+///
+/// These are the types that can prefix an integer literal (e.g., `INT#42`).
+/// See section 2.2.1.
+#[derive(Debug, PartialEq, Clone)]
+pub enum IntegerTypeName {
+    SINT,
+    INT,
+    DINT,
+    LINT,
+    USINT,
+    UINT,
+    UDINT,
+    ULINT,
+}
+
+impl fmt::Display for IntegerTypeName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            IntegerTypeName::SINT => "SINT",
+            IntegerTypeName::INT => "INT",
+            IntegerTypeName::DINT => "DINT",
+            IntegerTypeName::LINT => "LINT",
+            IntegerTypeName::USINT => "USINT",
+            IntegerTypeName::UINT => "UINT",
+            IntegerTypeName::UDINT => "UDINT",
+            IntegerTypeName::ULINT => "ULINT",
+        };
+        write!(f, "{name}")
+    }
+}
+
+/// Valid type names for real (floating-point) literals.
+///
+/// These are the types that can prefix a real literal (e.g., `REAL#3.14`).
+/// See section 2.2.1.
+#[derive(Debug, PartialEq, Clone)]
+pub enum RealTypeName {
+    REAL,
+    LREAL,
+}
+
+impl fmt::Display for RealTypeName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            RealTypeName::REAL => "REAL",
+            RealTypeName::LREAL => "LREAL",
+        };
+        write!(f, "{name}")
+    }
+}
+
+/// Valid type names for bit string literals.
+///
+/// These are the types that can prefix a bit string literal (e.g., `BYTE#16#FF`).
+/// See section 2.2.1.
+#[derive(Debug, PartialEq, Clone)]
+pub enum BitStringTypeName {
+    BYTE,
+    WORD,
+    DWORD,
+    LWORD,
+}
+
+impl fmt::Display for BitStringTypeName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            BitStringTypeName::BYTE => "BYTE",
+            BitStringTypeName::WORD => "WORD",
+            BitStringTypeName::DWORD => "DWORD",
+            BitStringTypeName::LWORD => "LWORD",
+        };
+        write!(f, "{name}")
+    }
 }
 
 /// Elementary type names.
@@ -722,6 +797,76 @@ impl From<ElementaryTypeName> for TypeName {
             ElementaryTypeName::DWORD => TypeName::from("DWORD"),
             ElementaryTypeName::LWORD => TypeName::from("LWORD"),
             ElementaryTypeName::WSTRING => TypeName::from("WSTRING"),
+        }
+    }
+}
+
+impl IntegerTypeName {
+    pub fn as_id(&self) -> Id {
+        match self {
+            IntegerTypeName::SINT => Id::from("SINT"),
+            IntegerTypeName::INT => Id::from("INT"),
+            IntegerTypeName::DINT => Id::from("DINT"),
+            IntegerTypeName::LINT => Id::from("LINT"),
+            IntegerTypeName::USINT => Id::from("USINT"),
+            IntegerTypeName::UINT => Id::from("UINT"),
+            IntegerTypeName::UDINT => Id::from("UDINT"),
+            IntegerTypeName::ULINT => Id::from("ULINT"),
+        }
+    }
+}
+
+impl From<IntegerTypeName> for ElementaryTypeName {
+    fn from(value: IntegerTypeName) -> ElementaryTypeName {
+        match value {
+            IntegerTypeName::SINT => ElementaryTypeName::SINT,
+            IntegerTypeName::INT => ElementaryTypeName::INT,
+            IntegerTypeName::DINT => ElementaryTypeName::DINT,
+            IntegerTypeName::LINT => ElementaryTypeName::LINT,
+            IntegerTypeName::USINT => ElementaryTypeName::USINT,
+            IntegerTypeName::UINT => ElementaryTypeName::UINT,
+            IntegerTypeName::UDINT => ElementaryTypeName::UDINT,
+            IntegerTypeName::ULINT => ElementaryTypeName::ULINT,
+        }
+    }
+}
+
+impl RealTypeName {
+    pub fn as_id(&self) -> Id {
+        match self {
+            RealTypeName::REAL => Id::from("REAL"),
+            RealTypeName::LREAL => Id::from("LREAL"),
+        }
+    }
+}
+
+impl From<RealTypeName> for ElementaryTypeName {
+    fn from(value: RealTypeName) -> ElementaryTypeName {
+        match value {
+            RealTypeName::REAL => ElementaryTypeName::REAL,
+            RealTypeName::LREAL => ElementaryTypeName::LREAL,
+        }
+    }
+}
+
+impl BitStringTypeName {
+    pub fn as_id(&self) -> Id {
+        match self {
+            BitStringTypeName::BYTE => Id::from("BYTE"),
+            BitStringTypeName::WORD => Id::from("WORD"),
+            BitStringTypeName::DWORD => Id::from("DWORD"),
+            BitStringTypeName::LWORD => Id::from("LWORD"),
+        }
+    }
+}
+
+impl From<BitStringTypeName> for ElementaryTypeName {
+    fn from(value: BitStringTypeName) -> ElementaryTypeName {
+        match value {
+            BitStringTypeName::BYTE => ElementaryTypeName::BYTE,
+            BitStringTypeName::WORD => ElementaryTypeName::WORD,
+            BitStringTypeName::DWORD => ElementaryTypeName::DWORD,
+            BitStringTypeName::LWORD => ElementaryTypeName::LWORD,
         }
     }
 }
@@ -1002,10 +1147,9 @@ impl HasEnumeratedValues for EnumeratedSpecificationValues {
         &self.values
     }
     fn values_span(&self) -> SourceSpan {
-        // TODO
-        match self.values.first() {
-            Some(first) => first.span(),
-            None => SourceSpan::default(),
+        match (self.values.first(), self.values.last()) {
+            (Some(first), Some(last)) => SourceSpan::join(&first.span(), &last.span()),
+            _ => SourceSpan::default(),
         }
     }
 }

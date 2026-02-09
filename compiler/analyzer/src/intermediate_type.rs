@@ -496,6 +496,10 @@ pub struct IntermediateStructField {
     pub offset: u32,
     /// Variable type for function block fields (None for structure fields)
     pub var_type: Option<FunctionBlockVarType>,
+    /// Whether this field has a default value in the type declaration.
+    /// Used for const initialization validation - a const variable of structure type
+    /// is fully initialized if all fields without defaults are explicitly initialized.
+    pub has_default: bool,
 }
 
 /// Represents a parameter in a function or function block declaration.
@@ -709,6 +713,7 @@ mod tests {
                 },
                 offset: 0,
                 var_type: None,
+                has_default: false,
             },
             IntermediateStructField {
                 name: Id::from("field2"),
@@ -717,6 +722,7 @@ mod tests {
                 },
                 offset: 4,
                 var_type: None,
+                has_default: false,
             },
         ];
 
@@ -743,6 +749,7 @@ mod tests {
             },
             offset: 2,
             var_type: None,
+            has_default: false,
         }];
 
         let struct_type = IntermediateType::Structure { fields };
@@ -944,6 +951,7 @@ mod tests {
             },
             offset: 0,
             var_type: None,
+            has_default: false,
         }];
 
         let struct_type = IntermediateType::Structure { fields };
@@ -963,6 +971,7 @@ mod tests {
                 },
                 offset: 0,
                 var_type: None,
+                has_default: false,
             },
             IntermediateStructField {
                 name: Id::from("field2"),
@@ -971,6 +980,7 @@ mod tests {
                 },
                 offset: 8,
                 var_type: None,
+                has_default: false,
             },
             IntermediateStructField {
                 name: Id::from("field3"),
@@ -979,6 +989,7 @@ mod tests {
                 },
                 offset: 16,
                 var_type: None,
+                has_default: false,
             },
         ];
 
@@ -1001,6 +1012,7 @@ mod tests {
                 },
                 offset: 0,
                 var_type: None,
+                has_default: false,
             }],
         };
 
@@ -1014,12 +1026,14 @@ mod tests {
                     },
                     offset: 0,
                     var_type: None,
+                    has_default: false,
                 },
                 IntermediateStructField {
                     name: Id::from("nested"),
                     field_type: inner_struct,
                     offset: 8,
                     var_type: None,
+                    has_default: false,
                 },
             ],
         };
@@ -1046,6 +1060,7 @@ mod tests {
             },
             offset: 0,
             var_type: None,
+            has_default: false,
         }];
 
         let struct_type = IntermediateType::Structure { fields };
@@ -1067,6 +1082,7 @@ mod tests {
                 },
                 offset: 0,
                 var_type: None,
+                has_default: false,
             },
             IntermediateStructField {
                 name: Id::from("field2"),
@@ -1075,6 +1091,7 @@ mod tests {
                 },
                 offset: 4,
                 var_type: None,
+                has_default: false,
             },
         ];
 
@@ -1098,6 +1115,7 @@ mod tests {
                 },
                 offset: 0,
                 var_type: None,
+                has_default: false,
             },
             IntermediateStructField {
                 name: Id::from("field2"),
@@ -1106,6 +1124,7 @@ mod tests {
                 },
                 offset: 4,
                 var_type: None,
+                has_default: false,
             },
         ];
 
@@ -1129,6 +1148,7 @@ mod tests {
                 },
                 offset: 0,
                 var_type: None,
+                has_default: false,
             },
             IntermediateStructField {
                 name: Id::from("field2"),
@@ -1137,6 +1157,7 @@ mod tests {
                 },
                 offset: 8,
                 var_type: None,
+                has_default: false,
             },
         ];
 
@@ -1160,6 +1181,7 @@ mod tests {
                     },
                     offset: 0,
                     var_type: None,
+                    has_default: false,
                 },
                 IntermediateStructField {
                     name: Id::from("y"),
@@ -1168,6 +1190,7 @@ mod tests {
                     },
                     offset: 2,
                     var_type: None,
+                    has_default: false,
                 },
             ],
         };
@@ -1180,6 +1203,7 @@ mod tests {
                     field_type: inner_struct,
                     offset: 0,
                     var_type: None,
+                    has_default: false,
                 },
                 IntermediateStructField {
                     name: Id::from("id"),
@@ -1188,6 +1212,7 @@ mod tests {
                     },
                     offset: 4,
                     var_type: None,
+                    has_default: false,
                 },
             ],
         };
@@ -1210,6 +1235,7 @@ mod tests {
                 },
                 offset: 0,
                 var_type: None,
+                has_default: false,
             },
             IntermediateStructField {
                 name: Id::from("dynamic_array"),
@@ -1219,6 +1245,7 @@ mod tests {
                 },
                 offset: 4,
                 var_type: None,
+                has_default: false,
             },
         ];
 
@@ -1248,6 +1275,7 @@ mod tests {
             },
             offset: 0,
             var_type: None,
+            has_default: false,
         }];
 
         let fb_type = IntermediateType::FunctionBlock {
@@ -1270,6 +1298,7 @@ mod tests {
                 },
                 offset: 0,
                 var_type: None,
+                has_default: false,
             },
             IntermediateStructField {
                 name: Id::from("field2"),
@@ -1278,6 +1307,7 @@ mod tests {
                 },
                 offset: 8,
                 var_type: None,
+                has_default: false,
             },
             IntermediateStructField {
                 name: Id::from("field3"),
@@ -1286,6 +1316,7 @@ mod tests {
                 },
                 offset: 16,
                 var_type: None,
+                has_default: false,
             },
         ];
 
@@ -1318,6 +1349,7 @@ mod tests {
             },
             offset: 0,
             var_type: None,
+            has_default: false,
         }];
 
         let fb_type = IntermediateType::FunctionBlock {
@@ -1342,6 +1374,7 @@ mod tests {
                 },
                 offset: 0,
                 var_type: None,
+                has_default: false,
             },
             IntermediateStructField {
                 name: Id::from("output"),
@@ -1350,6 +1383,7 @@ mod tests {
                 },
                 offset: 4,
                 var_type: None,
+                has_default: false,
             },
         ];
 
@@ -1376,6 +1410,7 @@ mod tests {
                 },
                 offset: 0,
                 var_type: None,
+                has_default: false,
             },
             IntermediateStructField {
                 name: Id::from("value"),
@@ -1384,6 +1419,7 @@ mod tests {
                 },
                 offset: 4,
                 var_type: None,
+                has_default: false,
             },
         ];
 
@@ -1410,6 +1446,7 @@ mod tests {
                 },
                 offset: 0,
                 var_type: None,
+                has_default: false,
             },
             IntermediateStructField {
                 name: Id::from("status"),
@@ -1418,6 +1455,7 @@ mod tests {
                 },
                 offset: 8,
                 var_type: None,
+                has_default: false,
             },
         ];
 
@@ -1444,6 +1482,7 @@ mod tests {
                     },
                     offset: 0,
                     var_type: None,
+                    has_default: false,
                 },
                 IntermediateStructField {
                     name: Id::from("y"),
@@ -1452,6 +1491,7 @@ mod tests {
                     },
                     offset: 2,
                     var_type: None,
+                    has_default: false,
                 },
             ],
         };
@@ -1465,6 +1505,7 @@ mod tests {
                     field_type: inner_struct,
                     offset: 0,
                     var_type: None,
+                    has_default: false,
                 },
                 IntermediateStructField {
                     name: Id::from("id"),
@@ -1473,6 +1514,7 @@ mod tests {
                     },
                     offset: 4,
                     var_type: None,
+                    has_default: false,
                 },
             ],
         };
@@ -1495,6 +1537,7 @@ mod tests {
                 },
                 offset: 0,
                 var_type: None,
+                has_default: false,
             },
             IntermediateStructField {
                 name: Id::from("buffer"),
@@ -1504,6 +1547,7 @@ mod tests {
                 },
                 offset: 4,
                 var_type: None,
+                has_default: false,
             },
         ];
 

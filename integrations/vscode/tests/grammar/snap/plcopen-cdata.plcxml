@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <types>
+    <pous>
+      <pou name="TestCDATA" pouType="function">
+        <body>
+          <ST>
+            <![CDATA[
+              x := 1;
+              IF y > 0 THEN
+                z := x + y;
+              END_IF;
+            ]]>
+          </ST>
+        </body>
+      </pou>
+    </pous>
+  </types>
+</project>

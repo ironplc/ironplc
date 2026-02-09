@@ -10,6 +10,7 @@ use ironplc_problems::Problem;
 use log::debug;
 
 use crate::{
+    function_environment::FunctionEnvironmentBuilder,
     ironplc_dsl::common::Library,
     result::SemanticResult,
     rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
@@ -18,19 +19,20 @@ use crate::{
     rule_unsupported_stdlib_type, rule_use_declared_enumerated_value,
     rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const,
+    semantic_context::SemanticContext,
     symbol_environment::SymbolEnvironment,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
     type_table, xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
-    xform_resolve_symbol_environment, xform_resolve_type_aliases,
+    xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
     xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
 ///
-/// Returns `Ok(Library)` if analysis succeeded (containing a possibly new library) that is
-/// the merge of the inputs.
+/// Returns `Ok(SemanticContext)` if analysis succeeded, containing all type, function,
+/// and symbol information gathered during analysis.
 /// Returns `Err(Diagnostic)` if analysis did not succeed.
-pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
+pub fn analyze(sources: &[&Library]) -> Result<SemanticContext, Vec<Diagnostic>> {
     if sources.is_empty() {
         let span = SourceSpan::range(0, 0).with_file_id(&FileId::default());
         return Err(vec![Diagnostic::problem(
@@ -38,8 +40,8 @@ pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
             Label::span(span, "First location"),
         )]);
     }
-    let (library, type_environment, symbol_environment) = resolve_types(sources)?;
-    let result = semantic(&library, &type_environment, &symbol_environment);
+    let (library, context) = resolve_types(sources)?;
+    semantic(&library, &context)?;
 
     // TODO this is currently in progress. It isn't clear to me yet how this will influence
     // semantic analysis, but it should because the type table should influence rule checking.
@@ -47,12 +49,12 @@ pub fn analyze(sources: &[&Library]) -> Result<(), Vec<Diagnostic>> {
     let type_table_result = type_table::apply(&library)?;
     debug!("{type_table_result:?}");
 
-    result
+    Ok(context)
 }
 
 pub(crate) fn resolve_types(
     sources: &[&Library],
-) -> Result<(Library, TypeEnvironment, SymbolEnvironment), Vec<Diagnostic>> {
+) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
     // We want to analyze this as a complete set, so we need to join the items together
     // into a single library. Extend owns the item so after this we are free to modify
     let mut library = Library::new();
@@ -65,6 +67,10 @@ pub(crate) fn resolve_types(
         .with_stdlib_function_blocks()
         .build()
         .map_err(|err| vec![err])?;
+
+    let mut function_environment = FunctionEnvironmentBuilder::new()
+        .with_stdlib_functions()
+        .build();
 
     let mut symbol_environment = SymbolEnvironment::new();
 
@@ -80,11 +86,12 @@ pub(crate) fn resolve_types(
         library = xform(library, &mut type_environment)?
     }
 
-    // Resolve symbols after types are resolved
-    library = xform_resolve_symbol_environment::apply(
+    // Resolve symbols and function signatures after types are resolved
+    library = xform_resolve_symbol_and_function_environment::apply(
         library,
         &type_environment,
         &mut symbol_environment,
+        &mut function_environment,
     )?;
 
     // Resolve type aliases by duplicating values
@@ -98,19 +105,17 @@ pub(crate) fn resolve_types(
     debug!("Symbol Environment:");
     debug!("{symbol_environment:?}");
 
-    Ok((library, type_environment, symbol_environment))
+    let context = SemanticContext::new(type_environment, function_environment, symbol_environment);
+
+    Ok((library, context))
 }
 
 /// Semantic implements semantic analysis (stage 3).
 ///
 /// Returns `Ok(())` if the library is free of semantic errors.
 /// Returns `Err(String)` if the library contains a semantic error.
-pub(crate) fn semantic(
-    library: &Library,
-    type_environment: &TypeEnvironment,
-    symbol_environment: &SymbolEnvironment,
-) -> SemanticResult {
-    let functions: Vec<fn(&Library, &TypeEnvironment, &SymbolEnvironment) -> SemanticResult> = vec![
+pub(crate) fn semantic(library: &Library, context: &SemanticContext) -> SemanticResult {
+    let functions: Vec<fn(&Library, &SemanticContext) -> SemanticResult> = vec![
         rule_decl_struct_element_unique_names::apply,
         rule_decl_subrange_limits::apply,
         rule_enumeration_values_unique::apply,
@@ -128,7 +133,7 @@ pub(crate) fn semantic(
 
     let mut all_diagnostics = vec![];
     for func in functions {
-        match func(library, type_environment, symbol_environment) {
+        match func(library, context) {
             Ok(_) => {
                 // Nothing to do here
             }
