@@ -3,6 +3,10 @@
 //! This transform populates:
 //! - `SymbolEnvironment`: tracks declarations and scoping (variables, parameters, types, POUs)
 //! - `FunctionEnvironment`: tracks function signatures for call validation
+//!
+//! Function signatures store type names (not resolved types) to allow building
+//! complete signatures even when type resolution fails. Types are resolved
+//! on-demand during validation via TypeEnvironment.
 
 use ironplc_dsl::{
     common::{Library, TypeReference, VariableType},
@@ -17,35 +21,26 @@ use crate::{
     intermediate_type::IntermediateFunctionParameter,
     result::SemanticResult,
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
-    type_environment::TypeEnvironment,
 };
 
 pub fn apply(
     lib: Library,
-    type_environment: &TypeEnvironment,
     symbol_environment: &mut SymbolEnvironment,
     function_environment: &mut FunctionEnvironment,
 ) -> Result<Library, Vec<Diagnostic>> {
-    apply_impl(
-        &lib,
-        type_environment,
-        symbol_environment,
-        function_environment,
-    )?;
+    apply_impl(&lib, symbol_environment, function_environment)?;
 
     Ok(lib)
 }
 
 pub fn apply_impl(
     lib: &Library,
-    type_env: &TypeEnvironment,
     symbol_env: &mut SymbolEnvironment,
     function_env: &mut FunctionEnvironment,
 ) -> SemanticResult {
     let mut resolver = EnvironmentResolver {
         symbol_env,
         function_env,
-        type_env,
         scope: None,
     };
     let result = resolver.walk(lib).map_err(|e| vec![e]);
@@ -61,7 +56,6 @@ pub fn apply_impl(
 struct EnvironmentResolver<'a> {
     symbol_env: &'a mut SymbolEnvironment,
     function_env: &'a mut FunctionEnvironment,
-    type_env: &'a TypeEnvironment,
     scope: Option<Id>,
 }
 
@@ -145,6 +139,10 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
         // Build function signature for function environment
         // (Functions are tracked in FunctionEnvironment, not SymbolEnvironment)
         // Collect parameters (INPUT, OUTPUT, INOUT variables)
+        //
+        // Note: We store TypeName references, not resolved types. This allows
+        // building complete signatures even when type resolution fails. Types
+        // are resolved on-demand during validation via TypeEnvironment.
         let mut parameters = Vec::new();
         for var_decl in &node.variables {
             let is_parameter = matches!(
@@ -161,14 +159,9 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
                 ironplc_dsl::common::VariableIdentifier::Direct(_) => continue,
             };
 
-            // Get parameter type
+            // Get parameter type name (store as TypeName, resolve later)
             let param_type = match var_decl.type_name() {
-                TypeReference::Named(type_name) => {
-                    match self.type_env.get(&type_name) {
-                        Some(attrs) => attrs.representation.clone(),
-                        None => continue, // Type not found, skip this parameter
-                    }
-                }
+                TypeReference::Named(type_name) => type_name,
                 _ => continue, // Inline or unspecified types not supported yet
             };
 
@@ -181,11 +174,8 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
             });
         }
 
-        // Get return type
-        let return_type = self
-            .type_env
-            .get(&node.return_type)
-            .map(|attrs| attrs.representation.clone());
+        // Store return type as TypeName (resolve later during validation)
+        let return_type = Some(node.return_type.clone());
 
         // Build and insert function signature
         let signature =
@@ -323,13 +313,13 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
 
 #[cfg(test)]
 mod test {
+    use ironplc_dsl::common::TypeName;
     use ironplc_dsl::core::Id;
 
     use crate::{
         function_environment::FunctionEnvironment,
-        intermediate_type::{ByteSized, IntermediateType},
         symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
-        test_helpers::parse_and_resolve_types_with_type_env,
+        test_helpers::parse_and_resolve_types,
         xform_resolve_symbol_and_function_environment::apply_impl,
     };
 
@@ -346,10 +336,10 @@ LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (library, type_env) = parse_and_resolve_types_with_type_env(program);
+        let library = parse_and_resolve_types(program);
         let mut symbol_env = SymbolEnvironment::new();
         let mut function_env = FunctionEnvironment::new();
-        let result = apply_impl(&library, &type_env, &mut symbol_env, &mut function_env);
+        let result = apply_impl(&library, &mut symbol_env, &mut function_env);
 
         assert!(result.is_ok());
         let attributes = symbol_env
@@ -379,10 +369,10 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (library, type_env) = parse_and_resolve_types_with_type_env(program);
+        let library = parse_and_resolve_types(program);
         let mut symbol_env = SymbolEnvironment::new();
         let mut function_env = FunctionEnvironment::new();
-        let result = apply_impl(&library, &type_env, &mut symbol_env, &mut function_env);
+        let result = apply_impl(&library, &mut symbol_env, &mut function_env);
 
         assert!(result.is_ok());
 
@@ -427,10 +417,10 @@ END_VAR
     ADD_INTS := A + B;
 END_FUNCTION";
 
-        let (library, type_env) = parse_and_resolve_types_with_type_env(program);
+        let library = parse_and_resolve_types(program);
         let mut symbol_env = SymbolEnvironment::new();
         let mut function_env = FunctionEnvironment::new();
-        let result = apply_impl(&library, &type_env, &mut symbol_env, &mut function_env);
+        let result = apply_impl(&library, &mut symbol_env, &mut function_env);
 
         assert!(result.is_ok());
 
@@ -442,12 +432,8 @@ END_FUNCTION";
         // Check function is in function environment with correct signature
         let func_sig = function_env.get(&Id::from("ADD_INTS")).unwrap();
         assert_eq!(func_sig.name.original(), "ADD_INTS");
-        assert_eq!(
-            func_sig.return_type,
-            Some(IntermediateType::Int {
-                size: ByteSized::B16
-            })
-        );
+        // Return type is now stored as TypeName, not resolved IntermediateType
+        assert_eq!(func_sig.return_type, Some(TypeName::from("INT")));
         assert_eq!(func_sig.parameters.len(), 2);
 
         // Check first parameter
@@ -476,10 +462,10 @@ END_VAR
     SPLIT := 0;
 END_FUNCTION";
 
-        let (library, type_env) = parse_and_resolve_types_with_type_env(program);
+        let library = parse_and_resolve_types(program);
         let mut symbol_env = SymbolEnvironment::new();
         let mut function_env = FunctionEnvironment::new();
-        let result = apply_impl(&library, &type_env, &mut symbol_env, &mut function_env);
+        let result = apply_impl(&library, &mut symbol_env, &mut function_env);
 
         assert!(result.is_ok());
 

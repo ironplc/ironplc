@@ -4,23 +4,32 @@
 //! of function signatures (both standard library functions and user-defined functions).
 //! Unlike TypeEnvironment which tracks types, this tracks callable functions and
 //! their signatures.
+//!
+//! Function signatures store type names (not resolved types) to allow building
+//! complete signatures even when type resolution fails. Types can be resolved
+//! on-demand via `TypeEnvironment` when needed for validation.
 
 use std::collections::HashMap;
 
+use ironplc_dsl::common::TypeName;
 use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_problems::Problem;
 
-use crate::intermediate_type::{IntermediateFunctionParameter, IntermediateType};
+use crate::intermediate_type::IntermediateFunctionParameter;
 use crate::intermediates::stdlib_function::get_all_stdlib_functions;
 
 /// Represents a function signature in the function environment.
+///
+/// Stores type names (not resolved types) to allow building complete signatures
+/// even when type resolution fails. Use `resolve_return_type()` and
+/// `resolve_param_type()` to get the actual types via TypeEnvironment.
 #[derive(Debug, Clone)]
 pub struct FunctionSignature {
     /// Name of the function
     pub name: Id,
-    /// Return type of the function (None for procedures)
-    pub return_type: Option<IntermediateType>,
+    /// Return type name of the function (None for procedures)
+    pub return_type: Option<TypeName>,
     /// List of function parameters
     pub parameters: Vec<IntermediateFunctionParameter>,
     /// Source location (builtin for stdlib functions)
@@ -31,7 +40,7 @@ impl FunctionSignature {
     /// Creates a new function signature.
     pub fn new(
         name: Id,
-        return_type: Option<IntermediateType>,
+        return_type: Option<TypeName>,
         parameters: Vec<IntermediateFunctionParameter>,
         span: SourceSpan,
     ) -> Self {
@@ -46,7 +55,7 @@ impl FunctionSignature {
     /// Creates a stdlib function signature with a builtin span.
     pub fn stdlib(
         name: &str,
-        return_type: IntermediateType,
+        return_type: TypeName,
         parameters: Vec<IntermediateFunctionParameter>,
     ) -> Self {
         Self {
@@ -187,10 +196,9 @@ impl Default for FunctionEnvironmentBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intermediate_type::ByteSized;
 
-    fn create_test_signature(name: &str, return_type: IntermediateType) -> FunctionSignature {
-        FunctionSignature::stdlib(name, return_type, vec![])
+    fn create_test_signature(name: &str, return_type_name: &str) -> FunctionSignature {
+        FunctionSignature::stdlib(name, TypeName::from(return_type_name), vec![])
     }
 
     #[test]
@@ -203,12 +211,7 @@ mod tests {
     #[test]
     fn function_environment_insert_when_function_added_then_can_retrieve() {
         let mut env = FunctionEnvironment::new();
-        let sig = create_test_signature(
-            "INT_TO_REAL",
-            IntermediateType::Real {
-                size: ByteSized::B32,
-            },
-        );
+        let sig = create_test_signature("INT_TO_REAL", "REAL");
 
         assert!(env.insert(sig).is_ok());
 
@@ -220,18 +223,8 @@ mod tests {
     #[test]
     fn function_environment_insert_when_duplicate_then_error() {
         let mut env = FunctionEnvironment::new();
-        let sig1 = create_test_signature(
-            "INT_TO_REAL",
-            IntermediateType::Real {
-                size: ByteSized::B32,
-            },
-        );
-        let sig2 = create_test_signature(
-            "INT_TO_REAL",
-            IntermediateType::Real {
-                size: ByteSized::B32,
-            },
-        );
+        let sig1 = create_test_signature("INT_TO_REAL", "REAL");
+        let sig2 = create_test_signature("INT_TO_REAL", "REAL");
 
         assert!(env.insert(sig1).is_ok());
         assert!(env.insert(sig2).is_err());
@@ -243,12 +236,7 @@ mod tests {
     #[test]
     fn function_environment_get_when_case_insensitive_then_finds_function() {
         let mut env = FunctionEnvironment::new();
-        let sig = create_test_signature(
-            "INT_TO_REAL",
-            IntermediateType::Real {
-                size: ByteSized::B32,
-            },
-        );
+        let sig = create_test_signature("INT_TO_REAL", "REAL");
 
         env.insert(sig).unwrap();
 
@@ -266,13 +254,7 @@ mod tests {
 
     #[test]
     fn function_signature_is_stdlib_when_builtin_span_then_true() {
-        let sig = FunctionSignature::stdlib(
-            "INT_TO_REAL",
-            IntermediateType::Real {
-                size: ByteSized::B32,
-            },
-            vec![],
-        );
+        let sig = FunctionSignature::stdlib("INT_TO_REAL", TypeName::from("REAL"), vec![]);
         assert!(sig.is_stdlib());
     }
 
@@ -280,7 +262,7 @@ mod tests {
     fn function_signature_is_stdlib_when_user_defined_then_false() {
         let sig = FunctionSignature::new(
             Id::from("MY_FUNC"),
-            Some(IntermediateType::Bool),
+            Some(TypeName::from("BOOL")),
             vec![],
             SourceSpan::default(),
         );
@@ -292,27 +274,21 @@ mod tests {
         let params = vec![
             IntermediateFunctionParameter {
                 name: Id::from("IN1"),
-                param_type: IntermediateType::Int {
-                    size: ByteSized::B16,
-                },
+                param_type: TypeName::from("INT"),
                 is_input: true,
                 is_output: false,
                 is_inout: false,
             },
             IntermediateFunctionParameter {
                 name: Id::from("IN2"),
-                param_type: IntermediateType::Int {
-                    size: ByteSized::B16,
-                },
+                param_type: TypeName::from("INT"),
                 is_input: true,
                 is_output: false,
                 is_inout: false,
             },
             IntermediateFunctionParameter {
                 name: Id::from("OUT1"),
-                param_type: IntermediateType::Int {
-                    size: ByteSized::B16,
-                },
+                param_type: TypeName::from("INT"),
                 is_input: false,
                 is_output: true,
                 is_inout: false,
@@ -321,7 +297,7 @@ mod tests {
 
         let sig = FunctionSignature::new(
             Id::from("MY_FUNC"),
-            Some(IntermediateType::Bool),
+            Some(TypeName::from("BOOL")),
             params,
             SourceSpan::default(),
         );
@@ -351,15 +327,8 @@ mod tests {
     #[test]
     fn function_environment_iter_when_functions_added_then_iterates_all() {
         let mut env = FunctionEnvironment::new();
-        env.insert(create_test_signature("FUNC1", IntermediateType::Bool))
-            .unwrap();
-        env.insert(create_test_signature(
-            "FUNC2",
-            IntermediateType::Int {
-                size: ByteSized::B16,
-            },
-        ))
-        .unwrap();
+        env.insert(create_test_signature("FUNC1", "BOOL")).unwrap();
+        env.insert(create_test_signature("FUNC2", "INT")).unwrap();
 
         let names: Vec<_> = env.iter().map(|(name, _)| name.clone()).collect();
         assert_eq!(names.len(), 2);

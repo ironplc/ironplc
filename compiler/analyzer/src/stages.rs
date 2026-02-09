@@ -86,10 +86,11 @@ pub(crate) fn resolve_types(
         library = xform(library, &mut type_environment)?
     }
 
-    // Resolve symbols and function signatures after types are resolved
+    // Resolve symbols and function signatures
+    // Note: Function signatures store type names, not resolved types, to allow
+    // building complete signatures even when type resolution fails.
     library = xform_resolve_symbol_and_function_environment::apply(
         library,
-        &type_environment,
         &mut symbol_environment,
         &mut function_environment,
     )?;
