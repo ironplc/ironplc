@@ -698,4 +698,188 @@ INVALID_SYNTAX"
         // Call semantic analysis which will internally call map_label when creating diagnostics
         let _diagnostics = proj.semantic(&url);
     }
+
+    #[test]
+    fn document_symbols_when_no_document_then_empty() {
+        let proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+
+        let result = proj.document_symbols(&url);
+
+        match result {
+            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
+                assert!(symbols.is_empty());
+            }
+            _ => panic!("Expected nested response"),
+        }
+    }
+
+    #[test]
+    fn document_symbols_when_has_structure_then_returns_struct_symbol() {
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content = "TYPE\nMyStruct : STRUCT\n  field1 : INT;\nEND_STRUCT;\nEND_TYPE";
+        proj.change_text_document(&url, content.to_owned());
+
+        // Run semantic analysis to populate the context
+        let _ = proj.semantic(&url);
+
+        let result = proj.document_symbols(&url);
+
+        match result {
+            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
+                assert_eq!(symbols.len(), 1);
+                assert_eq!(symbols[0].name, "MyStruct");
+                assert_eq!(symbols[0].kind, lsp_types::SymbolKind::STRUCT);
+            }
+            _ => panic!("Expected nested response"),
+        }
+    }
+
+    #[test]
+    fn document_symbols_when_has_enumeration_then_returns_enum_symbol() {
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content = "TYPE\nMyEnum : (VALUE1, VALUE2, VALUE3);\nEND_TYPE";
+        proj.change_text_document(&url, content.to_owned());
+
+        // Run semantic analysis to populate the context
+        let _ = proj.semantic(&url);
+
+        let result = proj.document_symbols(&url);
+
+        match result {
+            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
+                assert_eq!(symbols.len(), 1);
+                assert_eq!(symbols[0].name, "MyEnum");
+                assert_eq!(symbols[0].kind, lsp_types::SymbolKind::ENUM);
+            }
+            _ => panic!("Expected nested response"),
+        }
+    }
+
+    #[test]
+    fn document_symbols_when_has_function_block_then_not_in_type_environment() {
+        // Note: User-defined function blocks are currently stored in the SymbolEnvironment,
+        // not the TypeEnvironment. Only type declarations (TYPE...END_TYPE) appear in
+        // document symbols. This is a known limitation.
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content = "FUNCTION_BLOCK MyFB\nVAR\n  x : INT;\nEND_VAR\nEND_FUNCTION_BLOCK";
+        proj.change_text_document(&url, content.to_owned());
+
+        // Run semantic analysis to populate the context
+        let _ = proj.semantic(&url);
+
+        let result = proj.document_symbols(&url);
+
+        match result {
+            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
+                // Function blocks are not in the TypeEnvironment, so they won't appear
+                assert!(symbols.is_empty());
+            }
+            _ => panic!("Expected nested response"),
+        }
+    }
+
+    #[test]
+    fn document_symbols_when_multiple_types_then_returns_all() {
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content =
+            "TYPE\nMyStruct : STRUCT\n  field1 : INT;\nEND_STRUCT;\nMyEnum : (A, B);\nEND_TYPE";
+        proj.change_text_document(&url, content.to_owned());
+
+        // Run semantic analysis to populate the context
+        let _ = proj.semantic(&url);
+
+        let result = proj.document_symbols(&url);
+
+        match result {
+            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
+                assert_eq!(symbols.len(), 2);
+                let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
+                assert!(names.contains(&"MyStruct"));
+                assert!(names.contains(&"MyEnum"));
+            }
+            _ => panic!("Expected nested response"),
+        }
+    }
+
+    #[test]
+    fn span_to_range_when_single_line_then_correct_positions() {
+        use super::span_to_range;
+
+        let contents = "TYPE MyType : INT; END_TYPE";
+        let span = SourceSpan {
+            start: 5,
+            end: 11,
+            file_id: ironplc_dsl::core::FileId::default(),
+        };
+
+        let range = span_to_range(contents, &span);
+
+        assert_eq!(range.start.line, 0);
+        assert_eq!(range.start.character, 5);
+        assert_eq!(range.end.line, 0);
+        assert_eq!(range.end.character, 11);
+    }
+
+    #[test]
+    fn span_to_range_when_multiline_then_correct_positions() {
+        use super::span_to_range;
+
+        let contents = "TYPE\nMyStruct : STRUCT\n  field : INT;\nEND_STRUCT;\nEND_TYPE";
+        // Span covering "MyStruct" which starts at position 5 (after "TYPE\n")
+        let span = SourceSpan {
+            start: 5,
+            end: 13,
+            file_id: ironplc_dsl::core::FileId::default(),
+        };
+
+        let range = span_to_range(contents, &span);
+
+        assert_eq!(range.start.line, 1);
+        assert_eq!(range.start.character, 0);
+        assert_eq!(range.end.line, 1);
+        assert_eq!(range.end.character, 8);
+    }
+
+    #[test]
+    fn intermediate_type_to_symbol_kind_when_structure_then_struct() {
+        use super::intermediate_type_to_symbol_kind;
+        use ironplc_analyzer::IntermediateType;
+
+        let int_type = IntermediateType::Structure { fields: vec![] };
+        let kind = intermediate_type_to_symbol_kind(&int_type);
+
+        assert_eq!(kind, lsp_types::SymbolKind::STRUCT);
+    }
+
+    #[test]
+    fn intermediate_type_to_symbol_kind_when_enumeration_then_enum() {
+        use super::intermediate_type_to_symbol_kind;
+        use ironplc_analyzer::IntermediateType;
+
+        let int_type = IntermediateType::Enumeration {
+            underlying_type: Box::new(IntermediateType::Bool),
+        };
+        let kind = intermediate_type_to_symbol_kind(&int_type);
+
+        assert_eq!(kind, lsp_types::SymbolKind::ENUM);
+    }
+
+    #[test]
+    fn intermediate_type_to_symbol_kind_when_function_block_then_class() {
+        use super::intermediate_type_to_symbol_kind;
+        use ironplc_analyzer::IntermediateType;
+
+        let int_type = IntermediateType::FunctionBlock {
+            name: "TestFB".to_string(),
+            fields: vec![],
+        };
+        let kind = intermediate_type_to_symbol_kind(&int_type);
+
+        assert_eq!(kind, lsp_types::SymbolKind::CLASS);
+    }
 }
