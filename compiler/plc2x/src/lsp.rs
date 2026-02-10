@@ -7,7 +7,7 @@ use lsp_server::{Connection, ExtractError, Message, RequestId};
 use lsp_types::{
     notification::{self, Notification, PublishDiagnostics},
     request::{self, Request},
-    InitializeParams, PublishDiagnosticsParams, SemanticTokens, SemanticTokensFullOptions,
+    InitializeParams, OneOf, PublishDiagnosticsParams, SemanticTokens, SemanticTokensFullOptions,
     SemanticTokensLegend, SemanticTokensOptions, SemanticTokensResult,
     SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability,
     TextDocumentSyncKind, WorkDoneProgressOptions, WorkspaceFoldersServerCapabilities,
@@ -100,6 +100,7 @@ impl<'a> LspServer<'a> {
                 }),
                 file_operations: None,
             }),
+            document_symbol_provider: Some(OneOf::Left(true)),
             ..ServerCapabilities::default()
         }
     }
@@ -140,7 +141,7 @@ impl<'a> LspServer<'a> {
             }
             Err(req) => req,
         };
-        let _request = match Self::cast_request::<request::SemanticTokensFullRequest>(req) {
+        let req = match Self::cast_request::<request::SemanticTokensFullRequest>(req) {
             Ok(params) => {
                 let uri = params.text_document.uri;
                 let token_result = self.project.tokenize(&uri);
@@ -163,6 +164,18 @@ impl<'a> LspServer<'a> {
                 }
 
                 return request::SemanticTokensFullRequest::METHOD;
+            }
+            Err(req) => req,
+        };
+        let _req = match Self::cast_request::<request::DocumentSymbolRequest>(req) {
+            Ok(params) => {
+                let uri = params.text_document.uri;
+                let symbols = self.project.document_symbols(&uri);
+
+                trace!("DocumentSymbolRequest Response {symbols:?}");
+                self.send_response::<request::DocumentSymbolRequest>(req_id, Some(symbols));
+
+                return request::DocumentSymbolRequest::METHOD;
             }
             Err(req) => req,
         };

@@ -3,13 +3,13 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use ironplc_analyzer::SemanticContext;
-use ironplc_dsl::core::FileId;
+use ironplc_analyzer::{SemanticContext, TypeCategory};
+use ironplc_dsl::core::{FileId, Located};
 use ironplc_parser::token::{Token, TokenType};
 use log::error;
 use lsp_types::{
-    CodeDescription, Diagnostic, DiagnosticSeverity, NumberOrString, SemanticTokenType,
-    WorkspaceFolder,
+    CodeDescription, Diagnostic, DiagnosticSeverity, DocumentSymbol, DocumentSymbolResponse,
+    NumberOrString, SemanticTokenType, SymbolKind, WorkspaceFolder,
 };
 use lsp_types::{SemanticToken, Uri};
 
@@ -108,6 +108,125 @@ impl LspProject {
     pub(crate) fn semantic_context(&self) -> Option<&SemanticContext> {
         self.wrapped.semantic_context()
     }
+
+    /// Returns document symbols for the given URI.
+    ///
+    /// This provides an outline of types defined in the document for
+    /// VS Code's Outline panel and "Go to Symbol" feature.
+    pub(crate) fn document_symbols(&self, uri: &Uri) -> DocumentSymbolResponse {
+        let path = match to_path_buf(uri) {
+            Ok(path) => path,
+            Err(_) => {
+                error!("URL must be convertible to a file path {}", uri.as_str());
+                return DocumentSymbolResponse::Nested(vec![]);
+            }
+        };
+
+        let file_id = FileId::from_path(&path);
+
+        let context = match self.wrapped.semantic_context() {
+            Some(ctx) => ctx,
+            None => return DocumentSymbolResponse::Nested(vec![]),
+        };
+
+        let source = match self.wrapped.find(&file_id) {
+            Some(src) => src,
+            None => return DocumentSymbolResponse::Nested(vec![]),
+        };
+
+        let contents = source.as_string();
+
+        let mut symbols = Vec::new();
+
+        for (type_name, type_attrs) in context.types().iter() {
+            // Skip built-in types (elementary and stdlib)
+            if type_attrs.span().is_builtin() {
+                continue;
+            }
+
+            // Skip types not in this file
+            if type_attrs.span().file_id != file_id {
+                continue;
+            }
+
+            // Only show user-defined and derived types
+            if type_attrs.type_category == TypeCategory::Elementary {
+                continue;
+            }
+
+            let symbol_kind = intermediate_type_to_symbol_kind(&type_attrs.representation);
+            let range = span_to_range(contents, &type_attrs.span());
+
+            #[allow(deprecated)]
+            let symbol = DocumentSymbol {
+                name: type_name.to_string(),
+                detail: Some(format!("{:?}", type_attrs.type_category)),
+                kind: symbol_kind,
+                tags: None,
+                deprecated: None,
+                range,
+                selection_range: range,
+                children: None,
+            };
+
+            symbols.push(symbol);
+        }
+
+        DocumentSymbolResponse::Nested(symbols)
+    }
+}
+
+/// Convert an IntermediateType to an LSP SymbolKind.
+fn intermediate_type_to_symbol_kind(
+    intermediate_type: &ironplc_analyzer::IntermediateType,
+) -> SymbolKind {
+    use ironplc_analyzer::IntermediateType;
+
+    match intermediate_type {
+        IntermediateType::Structure { .. } => SymbolKind::STRUCT,
+        IntermediateType::Enumeration { .. } => SymbolKind::ENUM,
+        IntermediateType::FunctionBlock { .. } => SymbolKind::CLASS,
+        IntermediateType::Function { .. } => SymbolKind::FUNCTION,
+        IntermediateType::Array { .. } => SymbolKind::ARRAY,
+        IntermediateType::Subrange { .. } => SymbolKind::TYPE_PARAMETER,
+        // Elementary types - shouldn't reach here but provide a fallback
+        _ => SymbolKind::VARIABLE,
+    }
+}
+
+/// Convert a SourceSpan to an LSP Range using file contents for line/column calculation.
+fn span_to_range(contents: &str, span: &ironplc_dsl::core::SourceSpan) -> lsp_types::Range {
+    let mut start_line = 0;
+    let mut start_col = 0;
+
+    for (idx, ch) in contents.char_indices() {
+        if idx >= span.start {
+            break;
+        }
+        if ch == '\n' {
+            start_line += 1;
+            start_col = 0;
+        } else {
+            start_col += 1;
+        }
+    }
+
+    let mut end_line = start_line;
+    let mut end_col = start_col;
+
+    for ch in contents[span.start..span.end.min(contents.len())].chars() {
+        if ch == '\n' {
+            end_line += 1;
+            end_col = 0;
+        } else {
+            end_col += 1;
+        }
+    }
+
+    lsp_types::Range::new(
+        lsp_types::Position::new(start_line, start_col),
+        lsp_types::Position::new(end_line, end_col),
+    )
 }
 
 // Token types that this produces.
@@ -578,5 +697,189 @@ INVALID_SYNTAX"
 
         // Call semantic analysis which will internally call map_label when creating diagnostics
         let _diagnostics = proj.semantic(&url);
+    }
+
+    #[test]
+    fn document_symbols_when_no_document_then_empty() {
+        let proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+
+        let result = proj.document_symbols(&url);
+
+        match result {
+            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
+                assert!(symbols.is_empty());
+            }
+            _ => panic!("Expected nested response"),
+        }
+    }
+
+    #[test]
+    fn document_symbols_when_has_structure_then_returns_struct_symbol() {
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content = "TYPE\nMyStruct : STRUCT\n  field1 : INT;\nEND_STRUCT;\nEND_TYPE";
+        proj.change_text_document(&url, content.to_owned());
+
+        // Run semantic analysis to populate the context
+        let _ = proj.semantic(&url);
+
+        let result = proj.document_symbols(&url);
+
+        match result {
+            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
+                assert_eq!(symbols.len(), 1);
+                assert_eq!(symbols[0].name, "MyStruct");
+                assert_eq!(symbols[0].kind, lsp_types::SymbolKind::STRUCT);
+            }
+            _ => panic!("Expected nested response"),
+        }
+    }
+
+    #[test]
+    fn document_symbols_when_has_enumeration_then_returns_enum_symbol() {
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content = "TYPE\nMyEnum : (VALUE1, VALUE2, VALUE3);\nEND_TYPE";
+        proj.change_text_document(&url, content.to_owned());
+
+        // Run semantic analysis to populate the context
+        let _ = proj.semantic(&url);
+
+        let result = proj.document_symbols(&url);
+
+        match result {
+            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
+                assert_eq!(symbols.len(), 1);
+                assert_eq!(symbols[0].name, "MyEnum");
+                assert_eq!(symbols[0].kind, lsp_types::SymbolKind::ENUM);
+            }
+            _ => panic!("Expected nested response"),
+        }
+    }
+
+    #[test]
+    fn document_symbols_when_has_function_block_then_not_in_type_environment() {
+        // Note: User-defined function blocks are currently stored in the SymbolEnvironment,
+        // not the TypeEnvironment. Only type declarations (TYPE...END_TYPE) appear in
+        // document symbols. This is a known limitation.
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content = "FUNCTION_BLOCK MyFB\nVAR\n  x : INT;\nEND_VAR\nEND_FUNCTION_BLOCK";
+        proj.change_text_document(&url, content.to_owned());
+
+        // Run semantic analysis to populate the context
+        let _ = proj.semantic(&url);
+
+        let result = proj.document_symbols(&url);
+
+        match result {
+            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
+                // Function blocks are not in the TypeEnvironment, so they won't appear
+                assert!(symbols.is_empty());
+            }
+            _ => panic!("Expected nested response"),
+        }
+    }
+
+    #[test]
+    fn document_symbols_when_multiple_types_then_returns_all() {
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content =
+            "TYPE\nMyStruct : STRUCT\n  field1 : INT;\nEND_STRUCT;\nMyEnum : (A, B);\nEND_TYPE";
+        proj.change_text_document(&url, content.to_owned());
+
+        // Run semantic analysis to populate the context
+        let _ = proj.semantic(&url);
+
+        let result = proj.document_symbols(&url);
+
+        match result {
+            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
+                assert_eq!(symbols.len(), 2);
+                let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
+                assert!(names.contains(&"MyStruct"));
+                assert!(names.contains(&"MyEnum"));
+            }
+            _ => panic!("Expected nested response"),
+        }
+    }
+
+    #[test]
+    fn span_to_range_when_single_line_then_correct_positions() {
+        use super::span_to_range;
+
+        let contents = "TYPE MyType : INT; END_TYPE";
+        let span = SourceSpan {
+            start: 5,
+            end: 11,
+            file_id: ironplc_dsl::core::FileId::default(),
+        };
+
+        let range = span_to_range(contents, &span);
+
+        assert_eq!(range.start.line, 0);
+        assert_eq!(range.start.character, 5);
+        assert_eq!(range.end.line, 0);
+        assert_eq!(range.end.character, 11);
+    }
+
+    #[test]
+    fn span_to_range_when_multiline_then_correct_positions() {
+        use super::span_to_range;
+
+        let contents = "TYPE\nMyStruct : STRUCT\n  field : INT;\nEND_STRUCT;\nEND_TYPE";
+        // Span covering "MyStruct" which starts at position 5 (after "TYPE\n")
+        let span = SourceSpan {
+            start: 5,
+            end: 13,
+            file_id: ironplc_dsl::core::FileId::default(),
+        };
+
+        let range = span_to_range(contents, &span);
+
+        assert_eq!(range.start.line, 1);
+        assert_eq!(range.start.character, 0);
+        assert_eq!(range.end.line, 1);
+        assert_eq!(range.end.character, 8);
+    }
+
+    #[test]
+    fn intermediate_type_to_symbol_kind_when_structure_then_struct() {
+        use super::intermediate_type_to_symbol_kind;
+        use ironplc_analyzer::IntermediateType;
+
+        let int_type = IntermediateType::Structure { fields: vec![] };
+        let kind = intermediate_type_to_symbol_kind(&int_type);
+
+        assert_eq!(kind, lsp_types::SymbolKind::STRUCT);
+    }
+
+    #[test]
+    fn intermediate_type_to_symbol_kind_when_enumeration_then_enum() {
+        use super::intermediate_type_to_symbol_kind;
+        use ironplc_analyzer::IntermediateType;
+
+        let int_type = IntermediateType::Enumeration {
+            underlying_type: Box::new(IntermediateType::Bool),
+        };
+        let kind = intermediate_type_to_symbol_kind(&int_type);
+
+        assert_eq!(kind, lsp_types::SymbolKind::ENUM);
+    }
+
+    #[test]
+    fn intermediate_type_to_symbol_kind_when_function_block_then_class() {
+        use super::intermediate_type_to_symbol_kind;
+        use ironplc_analyzer::IntermediateType;
+
+        let int_type = IntermediateType::FunctionBlock {
+            name: "TestFB".to_string(),
+            fields: vec![],
+        };
+        let kind = intermediate_type_to_symbol_kind(&int_type);
+
+        assert_eq!(kind, lsp_types::SymbolKind::CLASS);
     }
 }
