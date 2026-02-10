@@ -3,9 +3,13 @@
 //! This transform populates:
 //! - `SymbolEnvironment`: tracks declarations and scoping (variables, parameters, types, POUs)
 //! - `FunctionEnvironment`: tracks function signatures for call validation
+//!
+//! Function signatures store type names (not resolved types) to allow building
+//! complete signatures even when type resolution fails. Types are resolved
+//! on-demand during validation via TypeEnvironment.
 
 use ironplc_dsl::{
-    common::{Library, VariableType},
+    common::{Library, TypeReference, VariableType},
     core::{Id, Located},
     diagnostic::Diagnostic,
     visitor::Visitor,
@@ -13,28 +17,35 @@ use ironplc_dsl::{
 use log::debug;
 
 use crate::{
-    function_environment::FunctionEnvironment,
+    function_environment::{FunctionEnvironment, FunctionSignature},
+    intermediate_type::IntermediateFunctionParameter,
     result::SemanticResult,
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
-    type_environment::TypeEnvironment,
 };
 
 pub fn apply(
     lib: Library,
-    _type_environment: &TypeEnvironment,
     symbol_environment: &mut SymbolEnvironment,
-    _function_environment: &mut FunctionEnvironment,
+    function_environment: &mut FunctionEnvironment,
 ) -> Result<Library, Vec<Diagnostic>> {
-    apply_impl(&lib, symbol_environment)?;
+    apply_impl(&lib, symbol_environment, function_environment)?;
 
     Ok(lib)
 }
 
-pub fn apply_impl(lib: &Library, env: &mut SymbolEnvironment) -> SemanticResult {
-    let mut resolver = SymbolEnvironmentResolver { env, scope: None };
+pub fn apply_impl(
+    lib: &Library,
+    symbol_env: &mut SymbolEnvironment,
+    function_env: &mut FunctionEnvironment,
+) -> SemanticResult {
+    let mut resolver = EnvironmentResolver {
+        symbol_env,
+        function_env,
+        scope: None,
+    };
     let result = resolver.walk(lib).map_err(|e| vec![e]);
 
-    debug!("{:?}", resolver.env);
+    debug!("{:?}", resolver.symbol_env);
 
     match result {
         Ok(_) => Ok(()),
@@ -42,12 +53,13 @@ pub fn apply_impl(lib: &Library, env: &mut SymbolEnvironment) -> SemanticResult 
     }
 }
 
-struct SymbolEnvironmentResolver<'a> {
-    env: &'a mut SymbolEnvironment,
+struct EnvironmentResolver<'a> {
+    symbol_env: &'a mut SymbolEnvironment,
+    function_env: &'a mut FunctionEnvironment,
     scope: Option<Id>,
 }
 
-impl<'a> SymbolEnvironmentResolver<'a> {
+impl<'a> EnvironmentResolver<'a> {
     fn current_scope(&self) -> ScopeKind {
         match &self.scope {
             Some(name) => ScopeKind::Named(name.clone()),
@@ -56,7 +68,7 @@ impl<'a> SymbolEnvironmentResolver<'a> {
     }
 }
 
-impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
+impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
     type Value = ();
 
     // TODO fn visit_program_access_decl
@@ -83,7 +95,8 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
                         VariableType::External => SymbolKind::Variable, // Should not reach here due to above check
                     };
 
-                    self.env.insert(id, symbol_kind, &self.current_scope())?;
+                    self.symbol_env
+                        .insert(id, symbol_kind, &self.current_scope())?;
                 }
                 ironplc_dsl::common::VariableIdentifier::Direct(_) => {
                     // TODO: Handle direct variables (hardware-mapped I/O)
@@ -109,7 +122,7 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
         &mut self,
         node: &ironplc_dsl::common::EdgeVarDecl,
     ) -> Result<Self::Value, Diagnostic> {
-        self.env.insert(
+        self.symbol_env.insert(
             &node.identifier,
             SymbolKind::EdgeVariable,
             &self.current_scope(),
@@ -123,8 +136,51 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
     ) -> Result<Self::Value, Diagnostic> {
         self.scope = Some(node.name.clone());
 
-        self.env
-            .insert(&node.name, SymbolKind::Function, &ScopeKind::Global)?;
+        // Build function signature for function environment
+        // (Functions are tracked in FunctionEnvironment, not SymbolEnvironment)
+        // Collect parameters (INPUT, OUTPUT, INOUT variables)
+        //
+        // Note: We store TypeName references, not resolved types. This allows
+        // building complete signatures even when type resolution fails. Types
+        // are resolved on-demand during validation via TypeEnvironment.
+        let mut parameters = Vec::new();
+        for var_decl in &node.variables {
+            let is_parameter = matches!(
+                var_decl.var_type,
+                VariableType::Input | VariableType::Output | VariableType::InOut
+            );
+            if !is_parameter {
+                continue;
+            }
+
+            // Get parameter name
+            let param_name = match &var_decl.identifier {
+                ironplc_dsl::common::VariableIdentifier::Symbol(id) => id.clone(),
+                ironplc_dsl::common::VariableIdentifier::Direct(_) => continue,
+            };
+
+            // Get parameter type name (store as TypeName, resolve later)
+            let param_type = match var_decl.type_name() {
+                TypeReference::Named(type_name) => type_name,
+                _ => continue, // Inline or unspecified types not supported yet
+            };
+
+            parameters.push(IntermediateFunctionParameter {
+                name: param_name,
+                param_type,
+                is_input: var_decl.var_type == VariableType::Input,
+                is_output: var_decl.var_type == VariableType::Output,
+                is_inout: var_decl.var_type == VariableType::InOut,
+            });
+        }
+
+        // Store return type as TypeName (resolve later during validation)
+        let return_type = Some(node.return_type.clone());
+
+        // Build and insert function signature
+        let signature =
+            FunctionSignature::new(node.name.clone(), return_type, parameters, node.name.span());
+        self.function_env.insert(signature)?;
 
         let result = node.recurse_visit(self);
         self.scope = None;
@@ -137,7 +193,7 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
         node: &ironplc_dsl::common::FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.scope = Some(node.name.name.clone());
-        self.env.insert(
+        self.symbol_env.insert(
             &node.name.name,
             SymbolKind::FunctionBlock,
             &ScopeKind::Global,
@@ -153,7 +209,7 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
         node: &ironplc_dsl::common::ProgramDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.scope = Some(node.name.clone());
-        self.env
+        self.symbol_env
             .insert(&node.name, SymbolKind::Program, &ScopeKind::Global)?;
         let result = node.recurse_visit(self);
         self.scope = None;
@@ -167,28 +223,46 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
     ) -> Result<Self::Value, Diagnostic> {
         match node {
             ironplc_dsl::common::DataTypeDeclarationKind::Simple(decl) => {
-                self.env
-                    .insert(&decl.type_name.name, SymbolKind::Type, &ScopeKind::Global)?;
+                self.symbol_env.insert(
+                    &decl.type_name.name,
+                    SymbolKind::Type,
+                    &ScopeKind::Global,
+                )?;
             }
             ironplc_dsl::common::DataTypeDeclarationKind::Structure(decl) => {
-                self.env
-                    .insert(&decl.type_name.name, SymbolKind::Type, &ScopeKind::Global)?;
+                self.symbol_env.insert(
+                    &decl.type_name.name,
+                    SymbolKind::Type,
+                    &ScopeKind::Global,
+                )?;
             }
             ironplc_dsl::common::DataTypeDeclarationKind::Enumeration(decl) => {
-                self.env
-                    .insert(&decl.type_name.name, SymbolKind::Type, &ScopeKind::Global)?;
+                self.symbol_env.insert(
+                    &decl.type_name.name,
+                    SymbolKind::Type,
+                    &ScopeKind::Global,
+                )?;
             }
             ironplc_dsl::common::DataTypeDeclarationKind::Array(decl) => {
-                self.env
-                    .insert(&decl.type_name.name, SymbolKind::Type, &ScopeKind::Global)?;
+                self.symbol_env.insert(
+                    &decl.type_name.name,
+                    SymbolKind::Type,
+                    &ScopeKind::Global,
+                )?;
             }
             ironplc_dsl::common::DataTypeDeclarationKind::Subrange(decl) => {
-                self.env
-                    .insert(&decl.type_name.name, SymbolKind::Type, &ScopeKind::Global)?;
+                self.symbol_env.insert(
+                    &decl.type_name.name,
+                    SymbolKind::Type,
+                    &ScopeKind::Global,
+                )?;
             }
             ironplc_dsl::common::DataTypeDeclarationKind::String(decl) => {
-                self.env
-                    .insert(&decl.type_name.name, SymbolKind::Type, &ScopeKind::Global)?;
+                self.symbol_env.insert(
+                    &decl.type_name.name,
+                    SymbolKind::Type,
+                    &ScopeKind::Global,
+                )?;
             }
             ironplc_dsl::common::DataTypeDeclarationKind::LateBound(_) => {
                 // Skip late-bound types for now
@@ -204,7 +278,7 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
         &mut self,
         node: &ironplc_dsl::common::StructureElementDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.env.insert(
+        self.symbol_env.insert(
             &node.name,
             SymbolKind::StructureElement,
             &self.current_scope(),
@@ -217,13 +291,13 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
         node: &ironplc_dsl::common::EnumerationDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         // Add the enumeration type itself
-        self.env
+        self.symbol_env
             .insert(&node.type_name.name, SymbolKind::Type, &ScopeKind::Global)?;
 
         // Add each enumeration value
         if let ironplc_dsl::common::SpecificationKind::Inline(values) = &node.spec_init.spec {
             for value in &values.values {
-                self.env.insert_enumeration_value(
+                self.symbol_env.insert_enumeration_value(
                     &value.value,
                     &node.type_name,
                     &ScopeKind::Global,
@@ -239,9 +313,11 @@ impl<'a> Visitor<Diagnostic> for SymbolEnvironmentResolver<'a> {
 
 #[cfg(test)]
 mod test {
+    use ironplc_dsl::common::TypeName;
     use ironplc_dsl::core::Id;
 
     use crate::{
+        function_environment::FunctionEnvironment,
         symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
         test_helpers::parse_and_resolve_types,
         xform_resolve_symbol_and_function_environment::apply_impl,
@@ -261,16 +337,19 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
-        let mut env = SymbolEnvironment::new();
-        let result = apply_impl(&library, &mut env);
+        let mut symbol_env = SymbolEnvironment::new();
+        let mut function_env = FunctionEnvironment::new();
+        let result = apply_impl(&library, &mut symbol_env, &mut function_env);
 
         assert!(result.is_ok());
-        let attributes = env
+        let attributes = symbol_env
             .get(&Id::from("LEVEL"), &ScopeKind::Named(Id::from("LOGGER")))
             .unwrap();
         assert_eq!(attributes.kind, SymbolKind::Parameter);
 
-        let attributes = env.get(&Id::from("LOGGER"), &ScopeKind::Global).unwrap();
+        let attributes = symbol_env
+            .get(&Id::from("LOGGER"), &ScopeKind::Global)
+            .unwrap();
         assert_eq!(attributes.kind, SymbolKind::FunctionBlock);
     }
 
@@ -291,36 +370,113 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
-        let mut env = SymbolEnvironment::new();
-        let result = apply_impl(&library, &mut env);
+        let mut symbol_env = SymbolEnvironment::new();
+        let mut function_env = FunctionEnvironment::new();
+        let result = apply_impl(&library, &mut symbol_env, &mut function_env);
 
         assert!(result.is_ok());
 
         // Check that input parameters are captured
-        let reset_symbol = env
+        let reset_symbol = symbol_env
             .get(&Id::from("Reset"), &ScopeKind::Named(Id::from("Counter")))
             .unwrap();
         assert_eq!(reset_symbol.kind, SymbolKind::Parameter);
 
-        let count_symbol = env
+        let count_symbol = symbol_env
             .get(&Id::from("Count"), &ScopeKind::Named(Id::from("Counter")))
             .unwrap();
         assert_eq!(count_symbol.kind, SymbolKind::Parameter);
 
         // Check that output parameters are captured
-        let out_symbol = env
+        let out_symbol = symbol_env
             .get(&Id::from("OUT"), &ScopeKind::Named(Id::from("Counter")))
             .unwrap();
         assert_eq!(out_symbol.kind, SymbolKind::OutputParameter);
 
         // Check that local variables are captured
-        let cnt_symbol = env
+        let cnt_symbol = symbol_env
             .get(&Id::from("Cnt"), &ScopeKind::Named(Id::from("Counter")))
             .unwrap();
         assert_eq!(cnt_symbol.kind, SymbolKind::Variable);
 
         // Check that function block is captured
-        let counter_symbol = env.get(&Id::from("Counter"), &ScopeKind::Global).unwrap();
+        let counter_symbol = symbol_env
+            .get(&Id::from("Counter"), &ScopeKind::Global)
+            .unwrap();
         assert_eq!(counter_symbol.kind, SymbolKind::FunctionBlock);
+    }
+
+    #[test]
+    fn apply_when_function_declaration_then_populates_function_environment() {
+        let program = "
+FUNCTION ADD_INTS : INT
+VAR_INPUT
+    A : INT;
+    B : INT;
+END_VAR
+    ADD_INTS := A + B;
+END_FUNCTION";
+
+        let library = parse_and_resolve_types(program);
+        let mut symbol_env = SymbolEnvironment::new();
+        let mut function_env = FunctionEnvironment::new();
+        let result = apply_impl(&library, &mut symbol_env, &mut function_env);
+
+        assert!(result.is_ok());
+
+        // Functions are NOT registered in symbol environment (only in function environment)
+        assert!(symbol_env
+            .get(&Id::from("ADD_INTS"), &ScopeKind::Global)
+            .is_none());
+
+        // Check function is in function environment with correct signature
+        let func_sig = function_env.get(&Id::from("ADD_INTS")).unwrap();
+        assert_eq!(func_sig.name.original(), "ADD_INTS");
+        // Return type is now stored as TypeName, not resolved IntermediateType
+        assert_eq!(func_sig.return_type, Some(TypeName::from("INT")));
+        assert_eq!(func_sig.parameters.len(), 2);
+
+        // Check first parameter
+        assert_eq!(func_sig.parameters[0].name.original(), "A");
+        assert!(func_sig.parameters[0].is_input);
+        assert!(!func_sig.parameters[0].is_output);
+
+        // Check second parameter
+        assert_eq!(func_sig.parameters[1].name.original(), "B");
+        assert!(func_sig.parameters[1].is_input);
+    }
+
+    #[test]
+    fn apply_when_function_with_output_param_then_captures_output() {
+        let program = "
+FUNCTION SPLIT : INT
+VAR_INPUT
+    Value : INT;
+END_VAR
+VAR_OUTPUT
+    High : INT;
+    Low : INT;
+END_VAR
+    High := Value / 256;
+    Low := Value MOD 256;
+    SPLIT := 0;
+END_FUNCTION";
+
+        let library = parse_and_resolve_types(program);
+        let mut symbol_env = SymbolEnvironment::new();
+        let mut function_env = FunctionEnvironment::new();
+        let result = apply_impl(&library, &mut symbol_env, &mut function_env);
+
+        assert!(result.is_ok());
+
+        let func_sig = function_env.get(&Id::from("SPLIT")).unwrap();
+        assert_eq!(func_sig.parameters.len(), 3);
+
+        // Check input parameter
+        assert!(func_sig.parameters[0].is_input);
+
+        // Check output parameters
+        assert!(func_sig.parameters[1].is_output);
+        assert!(func_sig.parameters[2].is_output);
     }
 }

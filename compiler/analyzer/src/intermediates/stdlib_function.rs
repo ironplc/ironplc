@@ -7,80 +7,20 @@
 //! These functions are automatically available in the function environment
 //! and do not need to be declared by the user.
 
+use ironplc_dsl::common::TypeName;
 use ironplc_dsl::core::Id;
 
 use crate::function_environment::FunctionSignature;
-use crate::intermediate_type::{ByteSized, IntermediateFunctionParameter, IntermediateType};
+use crate::intermediate_type::IntermediateFunctionParameter;
 
 /// Helper to create an input parameter.
-fn input_param(name: &str, param_type: IntermediateType) -> IntermediateFunctionParameter {
+fn input_param(name: &str, param_type_name: &str) -> IntermediateFunctionParameter {
     IntermediateFunctionParameter {
         name: Id::from(name),
-        param_type,
+        param_type: TypeName::from(param_type_name),
         is_input: true,
         is_output: false,
         is_inout: false,
-    }
-}
-
-/// Common integer types for type conversion functions.
-fn sint_type() -> IntermediateType {
-    IntermediateType::Int {
-        size: ByteSized::B8,
-    }
-}
-
-fn int_type() -> IntermediateType {
-    IntermediateType::Int {
-        size: ByteSized::B16,
-    }
-}
-
-fn dint_type() -> IntermediateType {
-    IntermediateType::Int {
-        size: ByteSized::B32,
-    }
-}
-
-fn lint_type() -> IntermediateType {
-    IntermediateType::Int {
-        size: ByteSized::B64,
-    }
-}
-
-fn usint_type() -> IntermediateType {
-    IntermediateType::UInt {
-        size: ByteSized::B8,
-    }
-}
-
-fn uint_type() -> IntermediateType {
-    IntermediateType::UInt {
-        size: ByteSized::B16,
-    }
-}
-
-fn udint_type() -> IntermediateType {
-    IntermediateType::UInt {
-        size: ByteSized::B32,
-    }
-}
-
-fn ulint_type() -> IntermediateType {
-    IntermediateType::UInt {
-        size: ByteSized::B64,
-    }
-}
-
-fn real_type() -> IntermediateType {
-    IntermediateType::Real {
-        size: ByteSized::B32,
-    }
-}
-
-fn lreal_type() -> IntermediateType {
-    IntermediateType::Real {
-        size: ByteSized::B64,
     }
 }
 
@@ -88,43 +28,27 @@ fn lreal_type() -> IntermediateType {
 ///
 /// Type conversion functions follow the naming convention `<SOURCE>_TO_<TARGET>`
 /// and take a single input parameter of the source type, returning the target type.
-fn build_conversion_function(
-    source_name: &str,
-    source_type: IntermediateType,
-    target_name: &str,
-    target_type: IntermediateType,
-) -> FunctionSignature {
+fn build_conversion_function(source_name: &str, target_name: &str) -> FunctionSignature {
     let name = format!("{}_TO_{}", source_name, target_name);
-    FunctionSignature::stdlib(&name, target_type, vec![input_param("IN", source_type)])
+    FunctionSignature::stdlib(
+        &name,
+        TypeName::from(target_name),
+        vec![input_param("IN", source_name)],
+    )
 }
 
 // =============================================================================
 // Type Conversion Function Definitions (IEC 61131-3 Section 2.5.1.5)
 // =============================================================================
 
-/// Signed integer type variants for conversion functions.
-/// Each entry is (type_name, type_constructor).
-#[allow(clippy::type_complexity)]
-const SIGNED_INT_TYPES: &[(&str, fn() -> IntermediateType)] = &[
-    ("SINT", sint_type),
-    ("INT", int_type),
-    ("DINT", dint_type),
-    ("LINT", lint_type),
-];
+/// Signed integer type names for conversion functions.
+const SIGNED_INT_TYPES: &[&str] = &["SINT", "INT", "DINT", "LINT"];
 
-/// Unsigned integer type variants for conversion functions.
-#[allow(clippy::type_complexity)]
-const UNSIGNED_INT_TYPES: &[(&str, fn() -> IntermediateType)] = &[
-    ("USINT", usint_type),
-    ("UINT", uint_type),
-    ("UDINT", udint_type),
-    ("ULINT", ulint_type),
-];
+/// Unsigned integer type names for conversion functions.
+const UNSIGNED_INT_TYPES: &[&str] = &["USINT", "UINT", "UDINT", "ULINT"];
 
-/// Real (floating-point) type variants for conversion functions.
-#[allow(clippy::type_complexity)]
-const REAL_TYPES: &[(&str, fn() -> IntermediateType)] =
-    &[("REAL", real_type), ("LREAL", lreal_type)];
+/// Real (floating-point) type names for conversion functions.
+const REAL_TYPES: &[&str] = &["REAL", "LREAL"];
 
 /// Generates all integer-to-integer conversion functions.
 ///
@@ -133,54 +57,34 @@ fn get_int_to_int_conversions() -> Vec<FunctionSignature> {
     let mut functions = Vec::new();
 
     // All signed integer types
-    for (source_name, source_fn) in SIGNED_INT_TYPES {
-        for (target_name, target_fn) in SIGNED_INT_TYPES {
+    for source_name in SIGNED_INT_TYPES {
+        for target_name in SIGNED_INT_TYPES {
             if source_name != target_name {
-                functions.push(build_conversion_function(
-                    source_name,
-                    source_fn(),
-                    target_name,
-                    target_fn(),
-                ));
+                functions.push(build_conversion_function(source_name, target_name));
             }
         }
     }
 
     // All unsigned integer types
-    for (source_name, source_fn) in UNSIGNED_INT_TYPES {
-        for (target_name, target_fn) in UNSIGNED_INT_TYPES {
+    for source_name in UNSIGNED_INT_TYPES {
+        for target_name in UNSIGNED_INT_TYPES {
             if source_name != target_name {
-                functions.push(build_conversion_function(
-                    source_name,
-                    source_fn(),
-                    target_name,
-                    target_fn(),
-                ));
+                functions.push(build_conversion_function(source_name, target_name));
             }
         }
     }
 
     // Signed to unsigned conversions
-    for (source_name, source_fn) in SIGNED_INT_TYPES {
-        for (target_name, target_fn) in UNSIGNED_INT_TYPES {
-            functions.push(build_conversion_function(
-                source_name,
-                source_fn(),
-                target_name,
-                target_fn(),
-            ));
+    for source_name in SIGNED_INT_TYPES {
+        for target_name in UNSIGNED_INT_TYPES {
+            functions.push(build_conversion_function(source_name, target_name));
         }
     }
 
     // Unsigned to signed conversions
-    for (source_name, source_fn) in UNSIGNED_INT_TYPES {
-        for (target_name, target_fn) in SIGNED_INT_TYPES {
-            functions.push(build_conversion_function(
-                source_name,
-                source_fn(),
-                target_name,
-                target_fn(),
-            ));
+    for source_name in UNSIGNED_INT_TYPES {
+        for target_name in SIGNED_INT_TYPES {
+            functions.push(build_conversion_function(source_name, target_name));
         }
     }
 
@@ -194,26 +98,16 @@ fn get_int_to_real_conversions() -> Vec<FunctionSignature> {
     let mut functions = Vec::new();
 
     // Signed integer to real
-    for (source_name, source_fn) in SIGNED_INT_TYPES {
-        for (target_name, target_fn) in REAL_TYPES {
-            functions.push(build_conversion_function(
-                source_name,
-                source_fn(),
-                target_name,
-                target_fn(),
-            ));
+    for source_name in SIGNED_INT_TYPES {
+        for target_name in REAL_TYPES {
+            functions.push(build_conversion_function(source_name, target_name));
         }
     }
 
     // Unsigned integer to real
-    for (source_name, source_fn) in UNSIGNED_INT_TYPES {
-        for (target_name, target_fn) in REAL_TYPES {
-            functions.push(build_conversion_function(
-                source_name,
-                source_fn(),
-                target_name,
-                target_fn(),
-            ));
+    for source_name in UNSIGNED_INT_TYPES {
+        for target_name in REAL_TYPES {
+            functions.push(build_conversion_function(source_name, target_name));
         }
     }
 
@@ -227,26 +121,16 @@ fn get_real_to_int_conversions() -> Vec<FunctionSignature> {
     let mut functions = Vec::new();
 
     // Real to signed integer
-    for (source_name, source_fn) in REAL_TYPES {
-        for (target_name, target_fn) in SIGNED_INT_TYPES {
-            functions.push(build_conversion_function(
-                source_name,
-                source_fn(),
-                target_name,
-                target_fn(),
-            ));
+    for source_name in REAL_TYPES {
+        for target_name in SIGNED_INT_TYPES {
+            functions.push(build_conversion_function(source_name, target_name));
         }
     }
 
     // Real to unsigned integer
-    for (source_name, source_fn) in REAL_TYPES {
-        for (target_name, target_fn) in UNSIGNED_INT_TYPES {
-            functions.push(build_conversion_function(
-                source_name,
-                source_fn(),
-                target_name,
-                target_fn(),
-            ));
+    for source_name in REAL_TYPES {
+        for target_name in UNSIGNED_INT_TYPES {
+            functions.push(build_conversion_function(source_name, target_name));
         }
     }
 
@@ -259,15 +143,10 @@ fn get_real_to_int_conversions() -> Vec<FunctionSignature> {
 fn get_real_to_real_conversions() -> Vec<FunctionSignature> {
     let mut functions = Vec::new();
 
-    for (source_name, source_fn) in REAL_TYPES {
-        for (target_name, target_fn) in REAL_TYPES {
+    for source_name in REAL_TYPES {
+        for target_name in REAL_TYPES {
             if source_name != target_name {
-                functions.push(build_conversion_function(
-                    source_name,
-                    source_fn(),
-                    target_name,
-                    target_fn(),
-                ));
+                functions.push(build_conversion_function(source_name, target_name));
             }
         }
     }
@@ -313,25 +192,17 @@ mod tests {
 
     #[test]
     fn build_conversion_function_when_called_then_has_correct_signature() {
-        let sig = build_conversion_function("INT", int_type(), "REAL", real_type());
+        let sig = build_conversion_function("INT", "REAL");
 
         assert_eq!(sig.name.original(), "INT_TO_REAL");
         assert!(sig.is_stdlib());
         assert_eq!(sig.parameters.len(), 1);
         assert_eq!(sig.parameters[0].name.original(), "IN");
         assert!(sig.parameters[0].is_input);
-        assert_eq!(
-            sig.parameters[0].param_type,
-            IntermediateType::Int {
-                size: ByteSized::B16
-            }
-        );
-        assert_eq!(
-            sig.return_type,
-            Some(IntermediateType::Real {
-                size: ByteSized::B32
-            })
-        );
+        // Parameter type is now TypeName, not IntermediateType
+        assert_eq!(sig.parameters[0].param_type, TypeName::from("INT"));
+        // Return type is now TypeName, not IntermediateType
+        assert_eq!(sig.return_type, Some(TypeName::from("REAL")));
     }
 
     #[test]
