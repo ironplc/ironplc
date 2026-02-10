@@ -138,6 +138,7 @@ impl LspProject {
 
         let mut symbols = Vec::new();
 
+        // Add types (structures, enumerations, etc.)
         for (type_name, type_attrs) in context.types().iter() {
             // Skip built-in types (elementary and stdlib)
             if type_attrs.span().is_builtin() {
@@ -162,6 +163,35 @@ impl LspProject {
                 name: type_name.to_string(),
                 detail: Some(format!("{:?}", type_attrs.type_category)),
                 kind: symbol_kind,
+                tags: None,
+                deprecated: None,
+                range,
+                selection_range: range,
+                children: None,
+            };
+
+            symbols.push(symbol);
+        }
+
+        // Add functions from the function environment
+        for (_func_name, func_sig) in context.functions().iter() {
+            // Skip stdlib functions
+            if func_sig.is_stdlib() {
+                continue;
+            }
+
+            // Skip functions not in this file
+            if func_sig.span.file_id != file_id {
+                continue;
+            }
+
+            let range = span_to_range(contents, &func_sig.span);
+
+            #[allow(deprecated)]
+            let symbol = DocumentSymbol {
+                name: func_sig.name.to_string(),
+                detail: func_sig.return_type.as_ref().map(|t| format!("{:?}", t)),
+                kind: SymbolKind::FUNCTION,
                 tags: None,
                 deprecated: None,
                 range,
@@ -777,6 +807,29 @@ INVALID_SYNTAX"
             lsp_types::DocumentSymbolResponse::Nested(symbols) => {
                 // Function blocks are not in the TypeEnvironment, so they won't appear
                 assert!(symbols.is_empty());
+            }
+            _ => panic!("Expected nested response"),
+        }
+    }
+
+    #[test]
+    fn document_symbols_when_has_function_then_returns_function_symbol() {
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content =
+            "FUNCTION MyFunc : INT\nVAR_INPUT\n  x : INT;\nEND_VAR\nMyFunc := x * 2;\nEND_FUNCTION";
+        proj.change_text_document(&url, content.to_owned());
+
+        // Run semantic analysis to populate the context
+        let _ = proj.semantic(&url);
+
+        let result = proj.document_symbols(&url);
+
+        match result {
+            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
+                assert_eq!(symbols.len(), 1);
+                assert_eq!(symbols[0].name, "MyFunc");
+                assert_eq!(symbols[0].kind, lsp_types::SymbolKind::FUNCTION);
             }
             _ => panic!("Expected nested response"),
         }
