@@ -14,7 +14,7 @@ IEC 61131-3 Structured Text
 
 The primary language supported by IronPLC.
 
-:File Extensions: ``.st``, ``.iec``
+:File Extensions: :file:`.st`, :file:`.iec`
 
 The extension provides:
 
@@ -39,11 +39,11 @@ New Structured Text File
 
 Creates a new untitled file with the Structured Text language mode pre-selected.
 
-:Menu Location: File > New File > Structured Text File
+:Menu Location: :menuselection:`File --> New File... --> Structured Text File`
 
 To use this command:
 
-1. Open the Command Palette (Ctrl+Shift+P or Cmd+Shift+P)
+1. Open the Command Palette (:kbd:`Ctrl+Shift+P` or :kbd:`Cmd+Shift+P`)
 2. Type "New Structured Text File"
 3. Press Enter
 
@@ -58,17 +58,3 @@ The extension reports diagnostics from the IronPLC compiler in real-time:
 Each diagnostic includes a problem code (e.g., P0001) linking to documentation
 that explains the issue and how to resolve it. See :doc:`/compiler/problems/index`
 for the complete list.
-
-Architecture
-============
-
-The extension connects to the IronPLC compiler (``ironplcc``) which runs as a
-language server. When you open or edit a Structured Text file:
-
-1. The extension starts the compiler in language server mode
-2. The compiler analyzes your code in the background
-3. Diagnostics appear in the editor as you type
-4. Syntax highlighting provides visual feedback on code structure
-
-This architecture means the same analysis engine used for compilation also powers
-your editing experience.

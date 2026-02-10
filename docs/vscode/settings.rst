@@ -5,8 +5,8 @@ Settings Reference
 The IronPLC extension provides configuration settings to customize its behavior.
 Access these settings through:
 
-* File > Preferences > Settings (Windows/Linux)
-* Code > Preferences > Settings (macOS)
+* :menuselection:`File --> Preferences --> Settings` (Windows/Linux)
+* :menuselection:`Code --> Preferences --> Settings` (macOS)
 
 Then search for "ironplc" to find all extension settings.
 
@@ -19,7 +19,7 @@ ironplc.path
 :Type: String
 :Default: Empty (auto-discovery)
 
-Specifies the path to the ``ironplcc`` executable. When empty (the default), the
+Specifies the path to the :program:`ironplcc` executable. When empty (the default), the
 extension automatically searches for the compiler in standard locations.
 
 Use this setting when:
@@ -77,7 +77,7 @@ Example: ``/tmp/ironplc.log`` or ``C:\Users\username\ironplc.log``
 Settings in settings.json
 =========================
 
-You can also configure these settings directly in your ``settings.json`` file:
+You can also configure these settings directly in your :file:`settings.json` file:
 
 .. code-block:: json
 
@@ -87,14 +87,3 @@ You can also configure these settings directly in your ``settings.json`` file:
      "ironplc.logFile": "/tmp/ironplc-debug.log"
    }
 
-Workspace vs. User Settings
-===========================
-
-These settings can be configured at both the user level (applies to all projects)
-and the workspace level (applies only to the current project).
-
-Workspace settings are useful when:
-
-* Different projects use different compiler versions
-* A team wants to share consistent settings via version control
-* You need project-specific logging for debugging

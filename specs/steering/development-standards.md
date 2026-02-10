@@ -138,6 +138,31 @@ All IronPLC documentation follows the **Documentation Quadrants** approach, orga
 - **Reference + Explanation**: Both provide theoretical knowledge
 - **Tutorials + Explanation**: Both support learning and study
 
+### RST Annotation Conventions
+
+All Sphinx documentation must use the correct RST roles for consistent rendering. **Never use plain text or double backticks for elements that have a dedicated role.**
+
+| Element | Role | Example |
+|---------|------|---------|
+| Menu paths | `:menuselection:` | `:menuselection:\`File --> New File...\`` |
+| UI elements (buttons, panels) | `:guilabel:` | `:guilabel:\`Install\`` |
+| Keyboard shortcuts | `:kbd:` | `:kbd:\`Ctrl+Shift+P\`` |
+| File names and extensions | `:file:` | `:file:\`main.st\``, `:file:\`.st\`` |
+| Commands and executables | `:program:` | `:program:\`ironplcc --version\`` |
+| Code keywords | `:code:` | `:code:\`PROGRAM\`` |
+| User-typed text | `:samp:` | `:samp:\`IronPLC\`` |
+| Cross-document links | `:doc:` | `:doc:\`/compiler/problems/index\`` |
+
+**Menu paths** use ` --> ` as separator: `:menuselection:\`File --> Preferences --> Settings\``
+
+**Platform-specific keyboard shortcuts** use separate `:kbd:` roles: `:kbd:\`Ctrl+Shift+X\`` for Windows/Linux, `:kbd:\`⌘+Shift+X\`` for macOS.
+
+### Documentation Content Guidelines
+
+- **Do not document architecture or internals** in user-facing reference docs. Architecture belongs in `docs/explanation/` if anywhere.
+- **Do not explain standard VS Code concepts** (e.g., workspace vs. user settings). Assume the reader knows VS Code.
+- **Use platform tabs** (via `sphinx_inline_tabs`) for platform-specific instructions.
+
 ### Problem Documentation Format
 Each problem code must have a corresponding `.rst` file in `docs/compiler/problems/` with:
 
