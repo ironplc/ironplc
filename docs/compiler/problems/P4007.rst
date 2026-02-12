@@ -23,6 +23,10 @@ The following code will generate error P4007:
 
 The variable ``TRIG`` is used in the assignment but is not declared in the ``VAR`` section of the function block.
 
+If the variable name is similar to a declared variable, the compiler will suggest
+the closest match. For example, using ``conter`` when ``counter`` is declared will
+produce a "did you mean" suggestion.
+
 To fix this error, declare the variable in the appropriate variable section:
 
 .. code-block::
