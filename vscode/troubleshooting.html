@@ -274,6 +274,8 @@
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4014.html">P4014</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4015.html">P4015</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4016.html">P4016</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4017.html">P4017</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4018.html">P4018</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P6003.html">P6003</a></li>
@@ -353,7 +355,7 @@
 <section id="compiler-not-found-e0001">
 <h2>Compiler Not Found (E0001)<a class="headerlink" href="#compiler-not-found-e0001" title="Link to this heading">¶</a></h2>
 <p><strong>Symptom</strong>: Error message “E0001 - Unable to locate IronPLC compiler”</p>
-<p>The extension cannot find the <code class="docutils literal notranslate"><span class="pre">ironplcc</span></code> executable. The extension searches
+<p>The extension cannot find the <strong class="program">ironplcc</strong> executable. The extension searches
 these locations in order:</p>
 <ol class="arabic simple">
 <li><p><strong>Configuration</strong>: The path specified in <code class="docutils literal notranslate"><span class="pre">ironplc.path</span></code> setting</p></li>
@@ -363,7 +365,7 @@ these locations in order:</p>
 </ol>
 <p><strong>Solutions</strong>:</p>
 <ol class="arabic simple">
-<li><p><strong>Verify installation</strong>: Open a terminal and run <code class="docutils literal notranslate"><span class="pre">ironplcc</span> <span class="pre">--version</span></code>. If this
+<li><p><strong>Verify installation</strong>: Open a terminal and run <strong class="program">ironplcc --version</strong>. If this
 fails, the compiler is not installed or not in your PATH.</p></li>
 <li><p><strong>Install the compiler</strong>: See the <a class="reference internal" href="../quickstart/installation.html"><span class="doc">Installation</span></a> guide.</p></li>
 <li><p><strong>Configure the path manually</strong>: If the compiler is installed in a non-standard
@@ -376,7 +378,7 @@ location, set the <code class="docutils literal notranslate"><span class="pre">i
 <p><strong>Symptom</strong>: Structured Text files appear as plain text without colors.</p>
 <p><strong>Solutions</strong>:</p>
 <ol class="arabic simple">
-<li><p><strong>Check file extension</strong>: Ensure your file has a <code class="docutils literal notranslate"><span class="pre">.st</span></code> or <code class="docutils literal notranslate"><span class="pre">.iec</span></code> extension.</p></li>
+<li><p><strong>Check file extension</strong>: Ensure your file has a <code class="file docutils literal notranslate"><span class="pre">.st</span></code> or <code class="file docutils literal notranslate"><span class="pre">.iec</span></code> extension.</p></li>
 <li><p><strong>Check language mode</strong>: Look at the bottom-right corner of VS Code. It should
 show “IEC 61131-3” or “Structured Text”. Click it to change the language mode
 if needed.</p></li>
@@ -388,14 +390,14 @@ if needed.</p></li>
 <p><strong>Symptom</strong>: The extension does not show any errors or warnings, even for invalid code.</p>
 <p><strong>Solutions</strong>:</p>
 <ol class="arabic simple">
-<li><p><strong>Check the compiler is running</strong>: Look at the Output panel (View &gt; Output) and
+<li><p><strong>Check the compiler is running</strong>: Look at the Output panel (<span class="menuselection">View ‣ Output</span>) and
 select “IronPLC” from the dropdown. You should see startup messages.</p></li>
 <li><p><strong>Check for E0001</strong>: If the compiler was not found, diagnostics will not work.
 See the “Compiler Not Found” section above.</p></li>
 <li><p><strong>Enable debug logging</strong>: Set <code class="docutils literal notranslate"><span class="pre">ironplc.logLevel</span></code> to <code class="docutils literal notranslate"><span class="pre">DEBUG</span></code> and check the
 Output panel for error messages.</p></li>
-<li><p><strong>Check file type</strong>: Diagnostics only work for Structured Text files (<code class="docutils literal notranslate"><span class="pre">.st</span></code>,
-<code class="docutils literal notranslate"><span class="pre">.iec</span></code>), not PLCopen XML files currently.</p></li>
+<li><p><strong>Check file type</strong>: Diagnostics only work for Structured Text files (<code class="file docutils literal notranslate"><span class="pre">.st</span></code>,
+<code class="file docutils literal notranslate"><span class="pre">.iec</span></code>), not PLCopen XML files currently.</p></li>
 </ol>
 </section>
 <section id="extension-not-activating">
@@ -407,7 +409,7 @@ Output panel for error messages.</p></li>
 it shows as enabled, not disabled.</p></li>
 <li><p><strong>Check for conflicts</strong>: Disable other IEC 61131-3 or PLC extensions that might
 conflict.</p></li>
-<li><p><strong>View extension logs</strong>: Open Help &gt; Toggle Developer Tools, go to the Console
+<li><p><strong>View extension logs</strong>: Open <span class="menuselection">Help ‣ Toggle Developer Tools</span>, go to the Console
 tab, and look for messages containing “ironplc”.</p></li>
 <li><p><strong>Reinstall the extension</strong>: Uninstall the extension, reload VS Code, then
 reinstall it.</p></li>
@@ -419,9 +421,9 @@ reinstall it.</p></li>
 <ol class="arabic">
 <li><p><strong>Version information</strong>:</p>
 <ul class="simple">
-<li><p>VS Code version (Help &gt; About)</p></li>
+<li><p>VS Code version (<span class="menuselection">Help ‣ About</span>)</p></li>
 <li><p>IronPLC extension version (Extensions view)</p></li>
-<li><p>Compiler version (run <code class="docutils literal notranslate"><span class="pre">ironplcc</span> <span class="pre">--version</span></code>)</p></li>
+<li><p>Compiler version (run <strong class="program">ironplcc --version</strong>)</p></li>
 <li><p>Operating system and version</p></li>
 </ul>
 </li>
@@ -437,8 +439,8 @@ reinstall it.</p></li>
 <li><p><strong>Collect logs</strong>:</p>
 <ul class="simple">
 <li><p>The log file specified above</p></li>
-<li><p>Output panel content (View &gt; Output &gt; IronPLC)</p></li>
-<li><p>Developer Tools console (Help &gt; Toggle Developer Tools)</p></li>
+<li><p>Output panel content (<span class="menuselection">View ‣ Output ‣ IronPLC</span>)</p></li>
+<li><p>Developer Tools console (<span class="menuselection">Help ‣ Toggle Developer Tools</span>)</p></li>
 </ul>
 </li>
 <li><p><strong>Create an issue</strong> on <a class="reference external" href="https://github.com/ironplc/ironplc/issues">GitHub</a>

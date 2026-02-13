@@ -274,6 +274,8 @@
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4014.html">P4014</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4015.html">P4015</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4016.html">P4016</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4017.html">P4017</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4018.html">P4018</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P6003.html">P6003</a></li>
@@ -352,8 +354,8 @@
 <p>The IronPLC extension provides configuration settings to customize its behavior.
 Access these settings through:</p>
 <ul class="simple">
-<li><p>File &gt; Preferences &gt; Settings (Windows/Linux)</p></li>
-<li><p>Code &gt; Preferences &gt; Settings (macOS)</p></li>
+<li><p><span class="menuselection">File ‣ Preferences ‣ Settings</span> (Windows/Linux)</p></li>
+<li><p><span class="menuselection">Code ‣ Preferences ‣ Settings</span> (macOS)</p></li>
 </ul>
 <p>Then search for “ironplc” to find all extension settings.</p>
 <section id="available-settings">
@@ -368,7 +370,7 @@ Access these settings through:</p>
 <dd class="field-even"><p>Empty (auto-discovery)</p>
 </dd>
 </dl>
-<p>Specifies the path to the <code class="docutils literal notranslate"><span class="pre">ironplcc</span></code> executable. When empty (the default), the
+<p>Specifies the path to the <strong class="program">ironplcc</strong> executable. When empty (the default), the
 extension automatically searches for the compiler in standard locations.</p>
 <p>Use this setting when:</p>
 <ul class="simple">
@@ -435,7 +437,7 @@ file logging or delete the log file when troubleshooting is complete.</p>
 </section>
 <section id="settings-in-settings-json">
 <h2>Settings in settings.json<a class="headerlink" href="#settings-in-settings-json" title="Link to this heading">¶</a></h2>
-<p>You can also configure these settings directly in your <code class="docutils literal notranslate"><span class="pre">settings.json</span></code> file:</p>
+<p>You can also configure these settings directly in your <code class="file docutils literal notranslate"><span class="pre">settings.json</span></code> file:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;ironplc.path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/custom/path/to/ironplcc&quot;</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;ironplc.logLevel&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DEBUG&quot;</span><span class="p">,</span>
@@ -443,17 +445,6 @@ file logging or delete the log file when troubleshooting is complete.</p>
 <span class="p">}</span>
 </pre></div>
 </div>
-</section>
-<section id="workspace-vs-user-settings">
-<h2>Workspace vs. User Settings<a class="headerlink" href="#workspace-vs-user-settings" title="Link to this heading">¶</a></h2>
-<p>These settings can be configured at both the user level (applies to all projects)
-and the workspace level (applies only to the current project).</p>
-<p>Workspace settings are useful when:</p>
-<ul class="simple">
-<li><p>Different projects use different compiler versions</p></li>
-<li><p>A team wants to share consistent settings via version control</p></li>
-<li><p>You need project-specific logging for debugging</p></li>
-</ul>
 </section>
 </section>
 
@@ -528,7 +519,6 @@ and the workspace level (applies only to the current project).</p>
 </ul>
 </li>
 <li><a class="reference internal" href="#settings-in-settings-json">Settings in settings.json</a></li>
-<li><a class="reference internal" href="#workspace-vs-user-settings">Workspace vs. User Settings</a></li>
 </ul>
 </li>
 </ul>

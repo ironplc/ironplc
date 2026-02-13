@@ -3,10 +3,10 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="P6003" href="P6003.html"><link rel="prev" title="P6001" href="P6001.html">
+<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="P6001" href="P6001.html"><link rel="prev" title="P4017" href="P4017.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>P6002 - IronPLC documentation</title>
+        <title>P4018 - IronPLC documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
@@ -275,9 +275,9 @@
 <li class="toctree-l3"><a class="reference internal" href="P4015.html">P4015</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P4016.html">P4016</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P4017.html">P4017</a></li>
-<li class="toctree-l3"><a class="reference internal" href="P4018.html">P4018</a></li>
+<li class="toctree-l3 current current-page"><a class="current reference internal" href="#">P4018</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P6001.html">P6001</a></li>
-<li class="toctree-l3 current current-page"><a class="current reference internal" href="#">P6002</a></li>
+<li class="toctree-l3"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P6003.html">P6003</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P6004.html">P6004</a></li>
 <li class="toctree-l3"><a class="reference internal" href="P6005.html">P6005</a></li>
@@ -323,12 +323,12 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="https://github.com/ironplc/ironplc/blob/main/docs/compiler/problems/P6002.rst?plain=true" title="View this page">
+  <a class="muted-link" href="https://github.com/ironplc/ironplc/blob/main/docs/compiler/problems/P4018.rst?plain=true" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
 </div><div class="edit-this-page">
-  <a class="muted-link" href="https://github.com/ironplc/ironplc/edit/main/docs/compiler/problems/P6002.rst" rel="edit" title="Edit this page">
+  <a class="muted-link" href="https://github.com/ironplc/ironplc/edit/main/docs/compiler/problems/P4018.rst" rel="edit" title="Edit this page">
     <svg><use href="#svg-pencil"></use></svg>
     <span class="visually-hidden">Edit this page</span>
   </a>
@@ -349,34 +349,50 @@
 <p class="admonition-title">Attention</p>
 <p>These docs are a bit ambitious. The steps described are accurate but IronPLC cannot yet run programs.</p>
 </div>
-<section id="p6002">
-<h1>P6002<a class="headerlink" href="#p6002" title="Link to this heading">¶</a></h1>
+<section id="p4018">
+<h1>P4018<a class="headerlink" href="#p4018" title="Link to this heading">¶</a></h1>
 <dl class="simple">
-<dt><strong>Code</strong></dt><dd><p>P6002</p>
+<dt><strong>Code</strong></dt><dd><p>P4018</p>
 </dd>
-<dt><strong>Message</strong></dt><dd><p>Unable to read metadata for the path</p>
+<dt><strong>Message</strong></dt><dd><p>Function call has wrong number of arguments</p>
 </dd>
 </dl>
-<p>This error occurs when the compiler is unable to read metadata for a file or directory, typically due to permission issues, filesystem corruption, or the file being in an inaccessible state.</p>
+<p>This error occurs when calling a function with the wrong number of arguments.</p>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
-<p>This error typically occurs when:</p>
-<ol class="arabic simple">
-<li><p>The file exists but its metadata cannot be read due to permission restrictions</p></li>
-<li><p>The filesystem is corrupted or experiencing issues</p></li>
-<li><p>The file is locked by another process</p></li>
-<li><p>There are hardware issues with the storage device</p></li>
-</ol>
-<p>To fix this error, ensure that:</p>
-<ul class="simple">
-<li><p>You have appropriate permissions to read the file metadata</p></li>
-<li><p>The filesystem is functioning correctly</p></li>
-<li><p>The file is not locked by another process</p></li>
-<li><p>The storage device is working properly</p></li>
-</ul>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Example scenarios that might cause this error:</span>
-ironplcc<span class="w"> </span>check<span class="w"> </span><span class="s2">&quot;/proc/restricted/file.st&quot;</span><span class="w">      </span><span class="c1"># System file with restricted access</span>
-ironplcc<span class="w"> </span>check<span class="w"> </span><span class="s2">&quot;/mnt/corrupted/file.st&quot;</span><span class="w">        </span><span class="c1"># File on corrupted filesystem</span>
+<p>The following code will generate error P4018:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION</span> <span class="n">ADD_INTS</span> <span class="p">:</span> <span class="n">INT</span>
+<span class="n">VAR_INPUT</span>
+    <span class="n">A</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+    <span class="n">B</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+<span class="n">END_VAR</span>
+    <span class="n">ADD_INTS</span> <span class="o">:=</span> <span class="n">A</span> <span class="o">+</span> <span class="n">B</span><span class="p">;</span>
+<span class="n">END_FUNCTION</span>
+
+<span class="n">FUNCTION_BLOCK</span> <span class="n">CALLER</span>
+<span class="n">VAR</span>
+    <span class="n">result</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+<span class="n">END_VAR</span>
+    <span class="n">result</span> <span class="o">:=</span> <span class="n">ADD_INTS</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">Expected</span> <span class="mi">2</span> <span class="n">arguments</span><span class="p">,</span> <span class="n">got</span> <span class="mi">1</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_FUNCTION_BLOCK</span>
+</pre></div>
+</div>
+<p>The function <code class="docutils literal notranslate"><span class="pre">ADD_INTS</span></code> expects 2 input arguments (<code class="docutils literal notranslate"><span class="pre">A</span></code> and <code class="docutils literal notranslate"><span class="pre">B</span></code>), but only 1 was provided.</p>
+<p>To fix this error, provide the correct number of arguments:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION</span> <span class="n">ADD_INTS</span> <span class="p">:</span> <span class="n">INT</span>
+<span class="n">VAR_INPUT</span>
+    <span class="n">A</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+    <span class="n">B</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+<span class="n">END_VAR</span>
+    <span class="n">ADD_INTS</span> <span class="o">:=</span> <span class="n">A</span> <span class="o">+</span> <span class="n">B</span><span class="p">;</span>
+<span class="n">END_FUNCTION</span>
+
+<span class="n">FUNCTION_BLOCK</span> <span class="n">CALLER</span>
+<span class="n">VAR</span>
+    <span class="n">result</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+<span class="n">END_VAR</span>
+    <span class="n">result</span> <span class="o">:=</span> <span class="n">ADD_INTS</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">);</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Now</span> <span class="n">valid</span><span class="p">:</span> <span class="mi">2</span> <span class="n">arguments</span> <span class="n">provided</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_FUNCTION_BLOCK</span>
 </pre></div>
 </div>
 </section>
@@ -387,23 +403,23 @@ ironplcc<span class="w"> </span>check<span class="w"> </span><span class="s2">&q
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="P6003.html">
+          <a class="next-page" href="P6001.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">P6003</div>
+                <div class="title">P6001</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="P6001.html">
+          <a class="prev-page" href="P4017.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">P6001</div>
+                <div class="title">P4017</div>
                 
               </div>
             </a>
@@ -445,7 +461,7 @@ ironplcc<span class="w"> </span>check<span class="w"> </span><span class="s2">&q
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">P6002</a><ul>
+<li><a class="reference internal" href="#">P4018</a><ul>
 <li><a class="reference internal" href="#example">Example</a></li>
 </ul>
 </li>

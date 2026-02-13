@@ -274,6 +274,8 @@
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4014.html">P4014</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4015.html">P4015</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4016.html">P4016</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4017.html">P4017</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P4018.html">P4018</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P6003.html">P6003</a></li>
@@ -359,7 +361,7 @@ deployment.</p>
 <p>The primary language supported by IronPLC.</p>
 <dl class="field-list simple">
 <dt class="field-odd">File Extensions<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">.st</span></code>, <code class="docutils literal notranslate"><span class="pre">.iec</span></code></p>
+<dd class="field-odd"><p><code class="file docutils literal notranslate"><span class="pre">.st</span></code>, <code class="file docutils literal notranslate"><span class="pre">.iec</span></code></p>
 </dd>
 </dl>
 <p>The extension provides:</p>
@@ -384,12 +386,12 @@ Structured Text support inside CDATA sections.</p>
 <p>Creates a new untitled file with the Structured Text language mode pre-selected.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Menu Location<span class="colon">:</span></dt>
-<dd class="field-odd"><p>File &gt; New File &gt; Structured Text File</p>
+<dd class="field-odd"><p><span class="menuselection">File ‣ New File… ‣ Structured Text File</span></p>
 </dd>
 </dl>
 <p>To use this command:</p>
 <ol class="arabic simple">
-<li><p>Open the Command Palette (Ctrl+Shift+P or Cmd+Shift+P)</p></li>
+<li><p>Open the Command Palette (<kbd class="kbd docutils literal notranslate">Ctrl</kbd>+<kbd class="kbd docutils literal notranslate">Shift</kbd>+<kbd class="kbd docutils literal notranslate">P</kbd> or <kbd class="kbd docutils literal notranslate">Cmd</kbd>+<kbd class="kbd docutils literal notranslate">Shift</kbd>+<kbd class="kbd docutils literal notranslate">P</kbd>)</p></li>
 <li><p>Type “New Structured Text File”</p></li>
 <li><p>Press Enter</p></li>
 </ol>
@@ -405,19 +407,6 @@ Structured Text support inside CDATA sections.</p>
 <p>Each diagnostic includes a problem code (e.g., P0001) linking to documentation
 that explains the issue and how to resolve it. See <a class="reference internal" href="../compiler/problems/index.html"><span class="doc">Problem Codes</span></a>
 for the complete list.</p>
-</section>
-<section id="architecture">
-<h2>Architecture<a class="headerlink" href="#architecture" title="Link to this heading">¶</a></h2>
-<p>The extension connects to the IronPLC compiler (<code class="docutils literal notranslate"><span class="pre">ironplcc</span></code>) which runs as a
-language server. When you open or edit a Structured Text file:</p>
-<ol class="arabic simple">
-<li><p>The extension starts the compiler in language server mode</p></li>
-<li><p>The compiler analyzes your code in the background</p></li>
-<li><p>Diagnostics appear in the editor as you type</p></li>
-<li><p>Syntax highlighting provides visual feedback on code structure</p></li>
-</ol>
-<p>This architecture means the same analysis engine used for compilation also powers
-your editing experience.</p>
 </section>
 </section>
 
@@ -495,7 +484,6 @@ your editing experience.</p>
 </ul>
 </li>
 <li><a class="reference internal" href="#diagnostics">Diagnostics</a></li>
-<li><a class="reference internal" href="#architecture">Architecture</a></li>
 </ul>
 </li>
 </ul>

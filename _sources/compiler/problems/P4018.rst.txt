@@ -1,0 +1,51 @@
+=====
+P4018
+=====
+
+.. problem-summary:: P4018
+
+This error occurs when calling a function with the wrong number of arguments.
+
+Example
+-------
+
+The following code will generate error P4018:
+
+.. code-block::
+
+   FUNCTION ADD_INTS : INT
+   VAR_INPUT
+       A : INT;
+       B : INT;
+   END_VAR
+       ADD_INTS := A + B;
+   END_FUNCTION
+
+   FUNCTION_BLOCK CALLER
+   VAR
+       result : INT;
+   END_VAR
+       result := ADD_INTS(1);  (* Error: Expected 2 arguments, got 1 *)
+   END_FUNCTION_BLOCK
+
+The function ``ADD_INTS`` expects 2 input arguments (``A`` and ``B``), but only 1 was provided.
+
+To fix this error, provide the correct number of arguments:
+
+.. code-block::
+
+   FUNCTION ADD_INTS : INT
+   VAR_INPUT
+       A : INT;
+       B : INT;
+   END_VAR
+       ADD_INTS := A + B;
+   END_FUNCTION
+
+   FUNCTION_BLOCK CALLER
+   VAR
+       result : INT;
+   END_VAR
+       result := ADD_INTS(1, 2);  (* Now valid: 2 arguments provided *)
+   END_FUNCTION_BLOCK
+
