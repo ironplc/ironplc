@@ -204,6 +204,119 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
+    fn apply_when_abs_called_then_ok() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+    value : INT;
+END_VAR
+    result := ABS(value);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_sqrt_called_then_ok() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : REAL;
+    value : REAL;
+END_VAR
+    result := SQRT(value);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_min_called_then_ok() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+    a : INT;
+    b : INT;
+END_VAR
+    result := MIN(a, b);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_max_called_then_ok() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+    a : INT;
+    b : INT;
+END_VAR
+    result := MAX(a, b);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_limit_called_then_ok() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+    low : INT;
+    value : INT;
+    high : INT;
+END_VAR
+    result := LIMIT(low, value, high);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_limit_called_with_wrong_arg_count_then_error() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+    a : INT;
+    b : INT;
+END_VAR
+    result := LIMIT(a, b);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_err());
+        let diagnostics = result.unwrap_err();
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            Problem::FunctionCallWrongArgCount.code()
+        );
+    }
+
+    #[test]
     fn apply_when_too_few_args_then_error() {
         let program = "
 FUNCTION ADD_INTS : INT
