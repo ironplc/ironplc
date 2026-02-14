@@ -32,6 +32,21 @@
     "comments": {
       "patterns": [
         {
+          "name": "comment.block.annotation.st",
+          "begin": "\\(\\*@KEY@:(?!END_)[A-Z_]+\\*\\)",
+          "end": "\\(\\*@KEY@:END_[A-Z_]+\\*\\)",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.begin.st"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.end.st"
+            }
+          }
+        },
+        {
           "name": "comment.block.st",
           "begin": "\\(\\*",
           "end": "\\*\\)",

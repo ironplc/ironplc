@@ -1,0 +1,16 @@
+(*@KEY@:DESCRIPTION*)
+This is a description of the function block.
+(*@KEY@:END_DESCRIPTION*)
+FUNCTION_BLOCK MY_BLOCK
+
+VAR_INPUT
+    X : DWORD;
+END_VAR
+
+VAR_OUTPUT
+    Y : REAL;
+END_VAR
+
+Y := 0.0;
+
+END_FUNCTION_BLOCK
