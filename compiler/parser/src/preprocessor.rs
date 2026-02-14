@@ -13,35 +13,56 @@ pub fn preprocess(source: &str) -> String {
     remove_oscat_comment(source)
 }
 
-/// Removes the OSCAT ranged comment. This is not valid IEC 61131, but there
-/// are enough of these that it is worthwhile.
+/// Removes OSCAT ranged comments. These are not valid IEC 61131-3 but are
+/// common enough that it is worthwhile to handle them. The pattern is
+/// `(*@KEY@:NAME*)` ... `(*@KEY@:END_NAME*)` for any uppercase name.
 pub fn remove_oscat_comment(source: String) -> String {
-    let len_key = 21; // The length of "(*@KEY@:DESCRIPTION*)"
-    if let Some(start) = source.find("(*@KEY@:DESCRIPTION*)") {
-        if let Some(end) = source.find("(*@KEY@:END_DESCRIPTION*)") {
-            if start < end {
-                let prelude = &source[0..start + len_key];
-                let epilog = &source[end..source.len()];
+    let prefix = "(*@KEY@:";
+    let suffix = "*)";
 
-                let mut output = String::with_capacity(source.len());
-                output.push_str(prelude);
+    let Some(prefix_start) = source.find(prefix) else {
+        return source;
+    };
 
-                // Replace the comment internally character-by-character
-                // so that we retain the exact same positions
-                for c in source[start + len_key..end].chars() {
-                    if c == '\n' {
-                        output.push('\n');
-                    } else {
-                        output.push(' ');
-                    }
-                }
+    let after_prefix = prefix_start + prefix.len();
 
-                output.push_str(epilog);
-                return output;
-            }
+    // Find the closing *) for the opening marker
+    let Some(suffix_offset) = source[after_prefix..].find(suffix) else {
+        return source;
+    };
+
+    let name = &source[after_prefix..after_prefix + suffix_offset];
+
+    // The name must not start with END_ (that would be a closing marker)
+    if name.starts_with("END_") {
+        return source;
+    }
+
+    let open_end = after_prefix + suffix_offset + suffix.len();
+
+    // Build the expected closing marker: (*@KEY@:END_NAME*)
+    let close_marker = format!("{}END_{}{}", prefix, name, suffix);
+
+    let Some(close_start) = source[open_end..].find(&close_marker) else {
+        return source;
+    };
+    let close_start = open_end + close_start;
+
+    let mut output = String::with_capacity(source.len());
+    output.push_str(&source[..open_end]);
+
+    // Replace the comment internally character-by-character
+    // so that we retain the exact same positions
+    for c in source[open_end..close_start].chars() {
+        if c == '\n' {
+            output.push('\n');
+        } else {
+            output.push(' ');
         }
     }
-    source
+
+    output.push_str(&source[close_start..]);
+    output
 }
 
 #[cfg(test)]
@@ -93,5 +114,29 @@ END_TYPE";
 
         let res = preprocess(program);
         assert!(!res.is_empty());
+    }
+
+    #[test]
+    fn apply_when_oscat_worksheet_comment_then_removes() {
+        let program = "
+TYPE
+    (*@KEY@:WORKSHEET*)
+    any text
+    (*@KEY@:END_WORKSHEET*)
+END_TYPE";
+
+        // The whitespace here matters in order to keep the same
+        // character positions. The blank line has 12 spaces replacing
+        // "    any text".
+        let expected = concat!(
+            "\nTYPE\n",
+            "    (*@KEY@:WORKSHEET*)\n",
+            "            \n",
+            "    (*@KEY@:END_WORKSHEET*)\n",
+            "END_TYPE"
+        );
+
+        let output = preprocess(program);
+        assert_eq!(expected, output.as_str());
     }
 }
