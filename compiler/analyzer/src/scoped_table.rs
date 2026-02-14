@@ -153,6 +153,18 @@ impl<'a, K: Key, V: 'a + Value> ScopedTable<'a, K, V> {
         self.stack.iter_mut().find_map(|scope| scope.find(name))
     }
 
+    /// Returns all keys across all scopes.
+    ///
+    /// Keys from inner scopes appear before keys from outer scopes.
+    /// If the same key exists in multiple scopes, it may appear more
+    /// than once.
+    pub fn keys(&self) -> Vec<&K> {
+        self.stack
+            .iter()
+            .flat_map(|scope| scope.table.keys())
+            .collect()
+    }
+
     /// Removes the name from the inner-most scope if
     /// the name is in the scope.
     ///
