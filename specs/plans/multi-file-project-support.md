@@ -45,7 +45,6 @@ IronPLC already supports multi-file compilation:
 
 - No understanding of existing PLC project structures (Beremiz, TwinCAT)
 - No support for TwinCAT file formats (`.TcPOU`, `.TcGVL`, `.TcDUT`)
-- No recognition of `.scl` files (Siemens Structured Control Language)
 - LSP `related_information` is always `None` — secondary labels not surfaced to VS Code
 - Directory enumeration is non-recursive and order-undefined
 
@@ -53,7 +52,7 @@ IronPLC already supports multi-file compilation:
 
 ## Phase 1: Additional File Format Support
 
-**Goal**: Parse files from TwinCAT and Siemens environments using existing parsers.
+**Goal**: Parse TwinCAT file formats using existing parsers.
 
 ### 1.1 TwinCAT File Type Recognition
 
@@ -122,15 +121,16 @@ The parser extracts CDATA text and feeds it to the existing ST parser.
 - [ ] Create corresponding `docs/compiler/problems/PXXXX.rst` documentation file
 - [ ] Run `just compile` to regenerate Problem enum
 
-### 1.5 SCL Extension Recognition
+### 1.5 VS Code Extension File Registration
 
-Siemens SCL (Structured Control Language) is syntactically close to IEC 61131-3 Structured Text. Map `.scl` to the existing ST parser.
+Register TwinCAT and PLCopen XML file types in the VS Code extension so the LSP receives change notifications for these files.
 
-- [ ] Add `.scl` extension mapping to `FileType::StructuredText` in `from_path()`
-- [ ] Add `"scl"` to the extensions list for `StructuredText`
-- [ ] Write unit test for `.scl` extension recognition
+- [ ] In `integrations/vscode/package.json`: add `TcPOU`, `TcGVL`, `TcDUT` as recognized file extensions
+- [ ] Add file watcher patterns or language registrations for these extensions
+- [ ] Verify that `didChange` notifications are sent to the LSP for `.TcPOU` files opened in VS Code
+- [ ] Write manual test checklist for file change notification flow
 
-**Phase 1 Milestone**: `ironplcc check my_pou.TcPOU` and `ironplcc check my_program.scl` work.
+**Phase 1 Milestone**: `ironplcc check my_pou.TcPOU` works. VS Code sends file change notifications for TwinCAT files.
 
 ---
 
@@ -140,35 +140,59 @@ Siemens SCL (Structured Control Language) is syntactically close to IEC 61131-3 
 
 ### Architecture
 
-A chain of project detectors, each checking for a specific project structure. The first match wins; if none match, fall back to current behavior.
+A chain of project detectors, each checking for a specific project structure. The first match wins; if none match, fall back to current behavior. Discovery returns a structured result so that consumers (LSP, CLI) can adapt behavior based on the detected project type.
+
+```rust
+/// The type of PLC project that was detected.
+pub enum ProjectType {
+    /// Beremiz project (plc.xml found in directory)
+    Beremiz,
+    /// TwinCAT 3 project (.plcproj found in directory)
+    TwinCat,
+    /// No specific project structure detected; all supported files enumerated
+    Unstructured,
+}
+
+/// The result of project discovery.
+pub struct DiscoveredProject {
+    /// What kind of project was detected
+    pub project_type: ProjectType,
+    /// The root directory of the discovered project
+    pub root_dir: PathBuf,
+    /// The source files to load, in deterministic order
+    pub files: Vec<PathBuf>,
+}
+```
 
 ```
 Directory path
     ↓
-discovery::discover_files(dir) -> Vec<PathBuf>
-    ├─ detect_beremiz(dir)    → Some(vec![dir/plc.xml])
-    ├─ detect_twincat(dir)    → Some(vec![from .plcproj])
-    └─ detect_fallback(dir)   → vec![all supported files]
+discovery::discover(dir) -> Result<DiscoveredProject, Diagnostic>
+    ├─ detect_beremiz(dir)    → Some(DiscoveredProject { Beremiz, ... })
+    ├─ detect_twincat(dir)    → Some(DiscoveredProject { TwinCat, ... })
+    └─ detect_fallback(dir)   → DiscoveredProject { Unstructured, ... }
 ```
 
-Each detector is a function `fn(dir: &Path) -> Option<Vec<PathBuf>>` returning `None` if the project type is not detected, or `Some(files)` with the ordered file list.
+Each detector is a function `fn(dir: &Path) -> Option<DiscoveredProject>` returning `None` if the project type is not detected, or `Some(project)` with the detected type and ordered file list.
 
 ### 2.1 Discovery Module Structure
 
 - [ ] Create `compiler/sources/src/discovery/mod.rs`
-- [ ] Define public function `discover_files(dir: &Path) -> Result<Vec<PathBuf>, Diagnostic>`
+- [ ] Define `ProjectType` enum with `Beremiz`, `TwinCat`, `Unstructured` variants
+- [ ] Define `DiscoveredProject` struct with `project_type`, `root_dir`, `files` fields
+- [ ] Define public function `discover(dir: &Path) -> Result<DiscoveredProject, Diagnostic>`
 - [ ] Implement detector chain: try each detector in order, use first `Some` result
 - [ ] Export module from `compiler/sources/src/lib.rs`
-- [ ] Write unit test: empty directory returns empty vec
-- [ ] Write unit test: directory with unknown files returns empty vec
+- [ ] Write unit test: empty directory returns `Unstructured` with empty files
+- [ ] Write unit test: directory with unknown files returns `Unstructured` with empty files
 
 ### 2.2 Beremiz Project Detection
 
 A Beremiz project directory contains `plc.xml` (PLCopen TC6 XML) and optionally `beremiz.xml` (IDE settings). Without detection, pointing at a Beremiz directory would also try to parse `beremiz.xml` and build artifacts, producing errors.
 
-- [ ] Implement `detect_beremiz(dir: &Path) -> Option<Vec<PathBuf>>`
+- [ ] Implement `detect_beremiz(dir: &Path) -> Option<DiscoveredProject>`
 - [ ] Check for existence of `plc.xml` in the directory
-- [ ] Return `Some(vec![dir.join("plc.xml")])` if found
+- [ ] Return `Some(DiscoveredProject { project_type: Beremiz, files: vec![dir.join("plc.xml")] })` if found
 - [ ] Write unit test with mock directory containing `plc.xml`
 - [ ] Write unit test: directory without `plc.xml` returns `None`
 - [ ] Write integration test: Beremiz-like directory with `plc.xml` + `beremiz.xml` only loads `plc.xml`
@@ -186,31 +210,31 @@ A TwinCAT 3 project has a `.plcproj` file referencing all source files:
 </Project>
 ```
 
-- [ ] Implement `detect_twincat(dir: &Path) -> Option<Vec<PathBuf>>`
-- [ ] Search for a `.plcproj` file in the directory (non-recursive first pass)
+- [ ] Implement `detect_twincat(dir: &Path) -> Option<DiscoveredProject>`
+- [ ] Search for a `.plcproj` file in the directory (non-recursive)
 - [ ] Parse `.plcproj` XML to extract `<Compile Include="...">` paths
 - [ ] Resolve Include paths relative to the `.plcproj` file location
-- [ ] Return the ordered file list
-- [ ] Handle missing referenced files gracefully (warn and skip)
+- [ ] Return `DiscoveredProject { project_type: TwinCat, files }` with the ordered file list
+- [ ] When a referenced file does not exist: return a `Diagnostic` error (fail fast rather than silently skip)
 - [ ] Write unit test with mock `.plcproj` and referenced files
 - [ ] Write unit test: directory without `.plcproj` returns `None`
-- [ ] Write unit test: `.plcproj` with missing referenced file produces warning
+- [ ] Write unit test: `.plcproj` with missing referenced file returns diagnostic error
 
 ### 2.4 Fallback Detection
 
 When no specific project structure is detected, enumerate all supported files. Enhance current behavior with deterministic ordering.
 
-- [ ] Implement `detect_fallback(dir: &Path) -> Option<Vec<PathBuf>>`
-- [ ] Enumerate all files with supported extensions (`.st`, `.iec`, `.xml`, `.scl`, `.TcPOU`, `.TcGVL`, `.TcDUT`)
+- [ ] Implement `detect_fallback(dir: &Path) -> DiscoveredProject`
+- [ ] Enumerate all files with supported extensions (`.st`, `.iec`, `.xml`, `.TcPOU`, `.TcGVL`, `.TcDUT`) based on `FileType`
 - [ ] Sort files in deterministic order (alphabetical by path)
-- [ ] Always return `Some` (this is the catch-all)
+- [ ] Return `DiscoveredProject { project_type: Unstructured, files }` (this is the catch-all)
 - [ ] Write unit test: files are returned in alphabetical order
 
 ### 2.5 Integrate Discovery into CLI
 
 Replace the flat enumeration in `cli.rs` with the discovery pipeline for directory arguments. File arguments continue to bypass discovery.
 
-- [ ] In `cli.rs:enumerate_files`: when the path is a directory, call `discovery::discover_files()`
+- [ ] In `cli.rs:enumerate_files`: when the path is a directory, call `discovery::discover()` and use `project.files`
 - [ ] When the path is a file, continue returning it directly (no discovery)
 - [ ] Write integration test: `ironplcc check beremiz-dir/` loads only `plc.xml`
 - [ ] Write integration test: `ironplcc check file.st` bypasses discovery
@@ -219,7 +243,8 @@ Replace the flat enumeration in `cli.rs` with the discovery pipeline for directo
 
 Replace `SourceProject::initialize_from_directory`'s flat directory scan with the discovery pipeline.
 
-- [ ] In `sources/project.rs:initialize_from_directory`: call `discovery::discover_files()` instead of `fs::read_dir` with manual filtering
+- [ ] In `sources/project.rs:initialize_from_directory`: call `discovery::discover()` instead of `fs::read_dir` with manual filtering
+- [ ] Store `DiscoveredProject` on `SourceProject` so the LSP can access `project_type` for display
 - [ ] Preserve existing error handling for unreadable directories
 - [ ] Write integration test: LSP workspace initialization uses discovery
 
@@ -296,7 +321,7 @@ When a single workspace folder contains multiple PLC project structures (e.g., a
 
 | File | Phase | Nature of Change |
 |------|-------|-----------------|
-| `compiler/sources/src/file_type.rs` | 1 | Add `TwinCat` variant, `.scl` extension |
+| `compiler/sources/src/file_type.rs` | 1 | Add `TwinCat` variant and extensions |
 | `compiler/sources/src/parsers/mod.rs` | 1 | Add TwinCAT parser dispatch |
 | `compiler/sources/src/lib.rs` | 2 | Export discovery module |
 | `compiler/sources/src/project.rs` | 2 | Use discovery in `initialize_from_directory` |
@@ -304,6 +329,7 @@ When a single workspace folder contains multiple PLC project structures (e.g., a
 | `compiler/plc2x/src/lsp_project.rs` | 3 | Map secondary labels to LSP `related_information` |
 | `compiler/plc2x/src/lsp.rs` | 4 | Support multiple workspace folders |
 | `compiler/problems/resources/problem-codes.csv` | 1 | New problem code for TwinCAT errors |
+| `integrations/vscode/package.json` | 1 | Register TwinCAT file extensions |
 
 ## Dependencies
 
@@ -337,7 +363,7 @@ compiler/plc2x/resources/test/
 ### Risk 1: TwinCAT XML Schema Variations
 
 **Issue**: Different TwinCAT versions may produce slightly different XML structures.
-**Mitigation**: Parse defensively. Require only the elements we need (`<Declaration>`, `<Implementation><ST>`). Ignore unknown elements. Test against real TwinCAT exports.
+**Mitigation**: Parse defensively. Require only the elements we need (`<Declaration>`, `<Implementation><ST>`). Ignore unknown elements. Test against files in TwinCAT's normal on-disk format (`.TcPOU` etc. are standard XML files — no TwinCAT installation or export step needed to create test fixtures).
 
 ### Risk 2: Discovery Conflicts
 
@@ -349,35 +375,33 @@ compiler/plc2x/resources/test/
 **Issue**: Discovery scanning very large directories could be slow.
 **Mitigation**: Detection checks are lightweight (file existence, extension matching). Only the TwinCAT detector reads a file (the small `.plcproj` XML). No recursive scanning in the initial implementation.
 
-### Risk 4: SCL Dialect Differences
-
-**Issue**: Siemens SCL has extensions beyond IEC 61131-3 ST that may cause parse errors.
-**Mitigation**: Start with extension recognition only. Parse errors from dialect differences will surface as normal diagnostics. Dialect-specific parser extensions can be added later based on user feedback.
-
 ## Scope Exclusions
 
 The following are explicitly **out of scope** for this plan:
 
-1. **CODESYS File-Based Storage detection** — FBS is a paid add-on with limited adoption; the fallback detector handles loose `.st` files
+1. **Siemens SCL (`.scl`) support** — SCL has dialect differences from IEC 61131-3 ST that would cause confusing parse errors without a dedicated parser or dialect mode; Siemens project formats are proprietary binary
+2. **CODESYS File-Based Storage detection** — FBS is a paid add-on with limited adoption; the fallback detector handles loose `.st` files
 2. **PLCopen XML v1.0 support** — v2.01 is the current standard used by Beremiz and modern tools
 3. **TwinCAT nested POUs** — Methods and properties in `ParentName^/` subdirectories are deferred
 4. **Recursive directory scanning** — Not needed for any known project structure; can be added later
 5. **Compilation ordering** — IEC 61131-3 does not define compilation order; the existing "merge everything, then resolve" approach is correct
 6. **`.ironplcignore` or configuration files** — Contradicts the "no new files" principle; CLI explicit file arguments serve as the override mechanism
 
-## Open Questions
+## Design Decisions
 
-1. **Should TwinCAT detection search subdirectories for `.plcproj`?** TwinCAT projects often nest the PLC project inside a solution directory structure (`Solution/ProjectName/PLCProject/PLCProject.plcproj`). Non-recursive detection would miss this. Recommendation: Start non-recursive; add a single level of subdirectory scanning if real users need it.
+1. **TwinCAT detection is non-recursive.** TwinCAT projects sometimes nest the PLC project inside a solution directory structure (`Solution/ProjectName/PLCProject/PLCProject.plcproj`). Non-recursive detection may miss this. Start simple; add subdirectory scanning later if real users need it.
 
-2. **Should discovery produce a structured result or just file paths?** The current plan returns `Vec<PathBuf>`. A richer result (`DiscoveredProject { project_type, files, root_dir }`) could be useful for the LSP to display project information. Recommendation: Start with `Vec<PathBuf>` for simplicity; enrich later if needed.
+2. **Discovery returns a structured result.** `DiscoveredProject { project_type, root_dir, files }` enables the LSP and VS Code extension to display different information based on the detected project type (e.g., showing "Beremiz project" vs. "TwinCAT project" in the status bar).
 
-3. **How should the LSP handle file changes to non-ST files?** The VS Code extension currently registers only `61131-3-st` as the document selector. Files like `.TcPOU` or `.xml` won't trigger `didChange` notifications. Recommendation: Add additional file watchers or language registrations in a follow-up to the VS Code extension.
+3. **VS Code extension registers additional file extensions.** The extension currently registers only `61131-3-st` as the document selector. To receive `didChange` notifications for `.TcPOU`, `.TcGVL`, `.TcDUT`, and `.xml` files, the extension must register these as additional file types or file watchers. This is required for Phase 1 to work in the LSP.
+
+4. **TwinCAT detection fails fast on missing files.** When a `.plcproj` references a file that doesn't exist on disk, discovery returns a `Diagnostic` error rather than silently skipping the file. This makes project misconfiguration immediately visible.
 
 ## Summary
 
 | Phase | Goal | Key Deliverable |
 |-------|------|-----------------|
-| 1 | Parse more file formats | TwinCAT `.TcPOU`/`.TcGVL`/`.TcDUT` and Siemens `.scl` support |
+| 1 | Parse TwinCAT file formats | TwinCAT `.TcPOU`/`.TcGVL`/`.TcDUT` support |
 | 2 | Auto-detect project structures | `ironplcc check beremiz-project/` and `ironplcc check twincat-project/` just work |
 | 3 | Better cross-file diagnostics | Secondary labels visible in VS Code |
 | 4 | Multi-root workspaces | Multiple PLC projects in one VS Code workspace |
