@@ -25,6 +25,7 @@ mod scoped_table;
 mod semantic_context;
 pub mod stages;
 mod stdlib;
+mod string_similarity;
 mod symbol_environment;
 mod type_attributes;
 mod type_category;

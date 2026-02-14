@@ -50,6 +50,7 @@ use crate::{
     result::SemanticResult,
     scoped_table::{self, Key, ScopedTable, Value},
     semantic_context::SemanticContext,
+    string_similarity::find_closest_match,
 };
 
 pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
@@ -110,11 +111,21 @@ impl Visitor<Diagnostic> for ScopedTable<'_, Id, DummyNode> {
                 // We found the variable being referred to
                 Ok(())
             }
-            None => Err(Diagnostic::problem(
-                Problem::VariableUndefined,
-                Label::span(node.name.span(), "Undefined variable"),
-            )
-            .with_context_id("variable", &node.name)),
+            None => {
+                let suggestion = find_closest_match(
+                    node.name.original(),
+                    self.keys().iter().map(|k| k.original().as_str()),
+                );
+                let mut diagnostic = Diagnostic::problem(
+                    Problem::VariableUndefined,
+                    Label::span(node.name.span(), "Undefined variable"),
+                )
+                .with_context_id("variable", &node.name);
+                if let Some(suggestion) = suggestion {
+                    diagnostic = diagnostic.with_context("did you mean", &suggestion);
+                }
+                Err(diagnostic)
+            }
         }
     }
 }
@@ -226,5 +237,54 @@ END_FUNCTION_BLOCK";
         let result = apply(&library, &context);
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_typo_in_variable_name_then_suggests_closest_match() {
+        let program = "
+FUNCTION_BLOCK LOGGER
+VAR
+counter : INT;
+END_VAR
+
+conter := 1;
+END_FUNCTION_BLOCK";
+
+        let library = parse_and_resolve_types(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
+
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        let error = errors.first().unwrap();
+        assert!(error.described.contains(&"variable=conter".to_owned()));
+        assert!(error.described.contains(&"did you mean=counter".to_owned()));
+    }
+
+    #[test]
+    fn apply_when_no_similar_variable_then_no_suggestion() {
+        let program = "
+FUNCTION_BLOCK LOGGER
+VAR
+x : INT;
+END_VAR
+
+completely_different := 1;
+END_FUNCTION_BLOCK";
+
+        let library = parse_and_resolve_types(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context);
+
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        let error = errors.first().unwrap();
+        assert!(error
+            .described
+            .contains(&"variable=completely_different".to_owned()));
+        assert!(!error
+            .described
+            .iter()
+            .any(|d| d.starts_with("did you mean")));
     }
 }
