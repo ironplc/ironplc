@@ -79,7 +79,10 @@ function createClient(compilerFilePath: string, config: vscode.WorkspaceConfigur
 
   // Options to control the language client
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [{ scheme: 'file', language: '61131-3-st' }],
+    documentSelector: [
+      { scheme: 'file', language: '61131-3-st' },
+      { scheme: 'file', language: 'plcopen-xml' },
+    ],
   };
 
   // Create the language client and start the client.

@@ -91,9 +91,7 @@
           "IEC 61131-3 XML",
           "TC6 XML"
         ],
-        "extensions": [
-          ".plcxml"
-        ],
+        "extensions": [],
         "firstLine": "^<\\?xml[^>]*\\?>\\s*(<project\\s+xmlns\\s*=\\s*[\"']http://www\\.plcopen\\.org/xml/tc6|<project\\s[^>]*xmlns\\s*=\\s*[\"']http://www\\.plcopen\\.org/xml/tc6)",
         "configuration": "./decl/plcopen-xml-language-configuration.json"
       }
@@ -126,8 +124,8 @@
     "validate-grammars": "ajv validate -s schemas/tmlanguage.json -d \"syntaxes/*.tmLanguage.json\"",
     "lint": "eslint src/**/*.ts && npm run validate-grammars",
     "test:functional": "node ./out/test/functional/runTest.js",
-    "test:grammar": "vscode-tmgrammar-snap \"tests/grammar/snap/**/*.plcxml\" \"tests/grammar/snap/**/*.st\"",
-    "test:grammar:update": "vscode-tmgrammar-snap -u \"tests/grammar/snap/**/*.plcxml\" \"tests/grammar/snap/**/*.st\""
+    "test:grammar": "vscode-tmgrammar-snap -s source.plcopen-xml \"tests/grammar/snap/**/*.xml\" && vscode-tmgrammar-snap \"tests/grammar/snap/**/*.st\"",
+    "test:grammar:update": "vscode-tmgrammar-snap -u -s source.plcopen-xml \"tests/grammar/snap/**/*.xml\" && vscode-tmgrammar-snap -u \"tests/grammar/snap/**/*.st\""
   },
   "devDependencies": {
     "vscode-tmgrammar-test": "^0.1.3",
