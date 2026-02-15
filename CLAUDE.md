@@ -13,7 +13,18 @@ Before making changes, read the relevant steering files in `specs/steering/`:
 - **[IEC 61131-3 Compliance](specs/steering/iec-61131-3-compliance.md)** - Standards compliance and validation rules (especially relevant for `**/analyzer/**` files)
 - **[Steering File Guidelines](specs/steering/steering-file-guidelines.md)** - How to create and maintain steering files (for AI assistants updating documentation)
 
-## MANDATORY: Before Creating a PR
+## MANDATORY: Git Workflow
+
+**NEVER commit or push directly to `main`.** Always create a feature branch and open a pull request. This ensures CI validates all changes before they reach main.
+
+### Workflow
+
+1. Create a feature branch from `main`
+2. Make changes and commit to the feature branch
+3. Run the full CI pipeline: `cd compiler && just`
+4. Push the feature branch and create a PR via `gh pr create`
+
+### Before Creating a PR
 
 **You MUST run the full CI pipeline and verify it passes before creating any PR:**
 
@@ -51,8 +62,9 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 - `docs/` - Sphinx documentation website
 
 ### Critical Rules
-1. **Run `cd compiler && just` before creating any PR** - This runs clippy, tests, and all checks
-2. **BDD-style test names**: `function_when_condition_then_result`
-3. **Module size limit**: Max 1000 lines per module
-4. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
-5. **Version numbers**: Automatically managed - do not edit manually
+1. **NEVER push directly to `main`** - Always use a feature branch and pull request
+2. **Run `cd compiler && just` before creating any PR** - This runs clippy, tests, and all checks
+3. **BDD-style test names**: `function_when_condition_then_result`
+4. **Module size limit**: Max 1000 lines per module
+5. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
+6. **Version numbers**: Automatically managed - do not edit manually
