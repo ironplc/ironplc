@@ -68,12 +68,11 @@
 #              ^^^^^ source.61131-3-st keyword.declaration.type.st
 #                   ^ source.61131-3-st punctuation.section.brackets.st
 #                    ^ source.61131-3-st constant.numeric.decimal.st
-#                     ^ source.61131-3-st punctuation.accessor.st
-#                      ^ source.61131-3-st punctuation.accessor.st
+#                     ^^ source.61131-3-st punctuation.range.st
 #                       ^ source.61131-3-st constant.numeric.decimal.st
 #                        ^ source.61131-3-st punctuation.section.brackets.st
 #                         ^ source.61131-3-st
-#                          ^^ source.61131-3-st keyword.control.conditional.st
+#                          ^^ source.61131-3-st keyword.other.st
 #                            ^ source.61131-3-st
 #                             ^^^^ source.61131-3-st storage.type.primitive.integer.st
 #                                 ^ source.61131-3-st punctuation.separator.st
@@ -226,7 +225,7 @@
 #        ^ source.61131-3-st
 #         ^^^^^ source.61131-3-st variable.other.st
 #              ^ source.61131-3-st
-#               ^^ source.61131-3-st keyword.control.conditional.st
+#               ^^ source.61131-3-st keyword.other.st
 >        1: myBool := TRUE;
 #^^^^^^^^ source.61131-3-st
 #        ^ source.61131-3-st constant.numeric.decimal.st
@@ -373,8 +372,7 @@
 #         ^ source.61131-3-st
 #          ^^^^^ source.61131-3-st variable.other.st
 #               ^ source.61131-3-st
-#                ^ source.61131-3-st keyword.operator.comparison.st
-#                 ^ source.61131-3-st keyword.operator.comparison.st
+#                ^^ source.61131-3-st keyword.operator.comparison.st
 #                  ^ source.61131-3-st
 #                   ^^^^ source.61131-3-st constant.numeric.decimal.st
 >    END_REPEAT;
@@ -445,8 +443,7 @@
 #             ^ source.61131-3-st
 #              ^^^^^^ source.61131-3-st variable.other.st
 #                    ^ source.61131-3-st
-#                     ^ source.61131-3-st keyword.operator.comparison.st
-#                      ^ source.61131-3-st keyword.operator.comparison.st
+#                     ^^ source.61131-3-st keyword.operator.comparison.st
 #                       ^ source.61131-3-st
 #                        ^^^^^^ source.61131-3-st variable.other.st
 #                              ^ source.61131-3-st punctuation.separator.st
