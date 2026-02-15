@@ -93,16 +93,14 @@ TYPE
     INVALID_RANGE : INT(10..-10);
 END_TYPE";
 
-        // With the new implementation, invalid subranges are caught during type resolution
-        // The parse_and_resolve_types function will now fail, so we need to handle this differently
-        use crate::stages::resolve_types;
+        use crate::stages::analyze;
         use ironplc_dsl::core::FileId;
         use ironplc_parser::{options::ParseOptions, parse_program};
 
         let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let result = resolve_types(&[&library]);
+        let result = analyze(&[&library]);
 
-        // Should fail during type resolution due to invalid subrange
-        assert!(result.is_err());
+        let context = result.unwrap();
+        assert!(context.has_diagnostics());
     }
 }

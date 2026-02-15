@@ -29,9 +29,12 @@ use crate::{
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
 ///
-/// Returns `Ok(SemanticContext)` if analysis succeeded, containing all type, function,
-/// and symbol information gathered during analysis.
-/// Returns `Err(Diagnostic)` if analysis did not succeed.
+/// Returns `Ok(SemanticContext)` containing all type, function, and symbol information
+/// gathered during analysis. If any analysis step found errors, they are stored in
+/// `context.diagnostics()` rather than causing an `Err` return.
+///
+/// Returns `Err` only when no sources are provided or when foundational type resolution
+/// fails (declaration sorting or type environment building).
 pub fn analyze(sources: &[&Library]) -> Result<SemanticContext, Vec<Diagnostic>> {
     if sources.is_empty() {
         let span = SourceSpan::range(0, 0).with_file_id(&FileId::default());
@@ -40,14 +43,23 @@ pub fn analyze(sources: &[&Library]) -> Result<SemanticContext, Vec<Diagnostic>>
             Label::span(span, "First location"),
         )]);
     }
-    let (library, context) = resolve_types(sources)?;
-    semantic(&library, &context)?;
+    let (library, mut context) = resolve_types(sources)?;
+
+    if let Err(diagnostics) = semantic(&library, &context) {
+        context.add_diagnostics(diagnostics);
+    }
 
     // TODO this is currently in progress. It isn't clear to me yet how this will influence
     // semantic analysis, but it should because the type table should influence rule checking.
     // For now, this is just after the rules as they were originally written.
-    let type_table_result = type_table::apply(&library)?;
-    debug!("{type_table_result:?}");
+    match type_table::apply(&library) {
+        Ok(type_table_result) => {
+            debug!("{type_table_result:?}");
+        }
+        Err(diagnostics) => {
+            context.add_diagnostics(diagnostics);
+        }
+    }
 
     Ok(context)
 }
@@ -55,6 +67,8 @@ pub fn analyze(sources: &[&Library]) -> Result<SemanticContext, Vec<Diagnostic>>
 pub(crate) fn resolve_types(
     sources: &[&Library],
 ) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
+    let mut diagnostics: Vec<Diagnostic> = vec![];
+
     // We want to analyze this as a complete set, so we need to join the items together
     // into a single library. Extend owns the item so after this we are free to modify
     let mut library = Library::new();
@@ -62,6 +76,7 @@ pub(crate) fn resolve_types(
         library = library.extend((*x).clone());
     }
 
+    // Hard failures: these are foundational and all subsequent steps depend on them.
     let mut type_environment = TypeEnvironmentBuilder::new()
         .with_elementary_types()
         .with_stdlib_function_blocks()
@@ -74,30 +89,53 @@ pub(crate) fn resolve_types(
 
     let mut symbol_environment = SymbolEnvironment::new();
 
+    // Hard failure: declaration ordering is required for all subsequent transforms.
     let mut library = xform_toposort_declarations::apply(library)?;
 
-    let xforms: Vec<fn(Library, &mut TypeEnvironment) -> Result<Library, Vec<Diagnostic>>> = vec![
+    // Recoverable: Fold-based transforms consume the Library on error, so clone
+    // before each one. On failure, fall back to the pre-transform clone.
+    let recoverable_xforms: Vec<
+        fn(Library, &mut TypeEnvironment) -> Result<Library, Vec<Diagnostic>>,
+    > = vec![
         xform_resolve_type_decl_environment::apply,
         xform_resolve_late_bound_expr_kind::apply,
         xform_resolve_late_bound_type_initializer::apply,
     ];
 
-    for xform in xforms {
-        library = xform(library, &mut type_environment)?
+    for xform in recoverable_xforms {
+        let fallback = library.clone();
+        match xform(library, &mut type_environment) {
+            Ok(result) => library = result,
+            Err(errs) => {
+                diagnostics.extend(errs);
+                library = fallback;
+            }
+        }
     }
 
-    // Resolve symbols and function signatures
-    // Note: Function signatures store type names, not resolved types, to allow
-    // building complete signatures even when type resolution fails.
-    library = xform_resolve_symbol_and_function_environment::apply(
+    // Recoverable: takes Library by value; clone to recover on failure.
+    let fallback = library.clone();
+    match xform_resolve_symbol_and_function_environment::apply(
         library,
         &mut symbol_environment,
         &mut function_environment,
-    )?;
+    ) {
+        Ok(result) => library = result,
+        Err(errs) => {
+            diagnostics.extend(errs);
+            library = fallback;
+        }
+    }
 
-    // Resolve type aliases by duplicating values
-    library =
-        xform_resolve_type_aliases::apply(library, &type_environment, &mut symbol_environment)?;
+    // Recoverable: takes Library by value; clone to recover on failure.
+    let fallback = library.clone();
+    match xform_resolve_type_aliases::apply(library, &type_environment, &mut symbol_environment) {
+        Ok(result) => library = result,
+        Err(errs) => {
+            diagnostics.extend(errs);
+            library = fallback;
+        }
+    }
 
     // Generate and display useful symbol table information
     debug!("Type Environment:");
@@ -106,7 +144,9 @@ pub(crate) fn resolve_types(
     debug!("Symbol Environment:");
     debug!("{symbol_environment:?}");
 
-    let context = SemanticContext::new(type_environment, function_environment, symbol_environment);
+    let mut context =
+        SemanticContext::new(type_environment, function_environment, symbol_environment);
+    context.add_diagnostics(diagnostics);
 
     Ok((library, context))
 }
@@ -169,10 +209,11 @@ mod tests {
     }
 
     #[test]
-    fn analyze_when_first_steps_semantic_error_then_result_is_err() {
+    fn analyze_when_first_steps_semantic_error_then_ok_with_diagnostics() {
         let lib = parse_shared_library("first_steps_semantic_error.st");
         let res = analyze(&[&lib]);
-        assert!(res.is_err())
+        let context = res.unwrap();
+        assert!(context.has_diagnostics());
     }
 
     #[test]

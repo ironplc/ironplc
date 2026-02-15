@@ -14,7 +14,7 @@ P2004,EnumNotDeclared,Enumeration is not declared
 P2005,EnumRecursive,Recursive enumeration for type
 P2006,EnumValueNotDefined,Enumeration uses value that is not defined in the enumeration
 P2007,TypeDeclNameDuplicated,Type declaration name is duplicated
-P2008,UndeclaredUnknownType,Unknown type
+P2008,UndeclaredUnknownType,Cannot determine kind of type identifier
 P2009,ParentEnumNotDeclared,Parent enumeration is not declared
 P2010,RecursiveTypeCycle,Library has a recursive cycle in resolving type names
 P2011,ParentTypeNotDeclared,Parent type is not declared
@@ -30,6 +30,7 @@ P2021,StructFieldTypeNotDeclared,Structure field references undeclared type
 P2022,ArrayDimensionEmpty,Array must have at least one dimension
 P2023,ArraySizeOverflow,Array size calculation overflow
 P2024,ArrayDimensionInvalid,Array dimension range is invalid
+P2025,TypeEnvironmentUnknownType,Unknown type 
 P4001,FunctionCallMixedArgTypes,Function call mixes named (formal) and positional (non-format) input arguments
 P4002,FunctionInvocationMissingInput,Function invocation assigns named (formal) input that is not defined
 P4003,FunctionInvocationRequiresFormal,Function invocation requires non-formal inputs but the invocation has formal inputs
