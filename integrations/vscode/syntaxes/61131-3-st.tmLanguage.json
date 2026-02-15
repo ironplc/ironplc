@@ -122,7 +122,7 @@
       "patterns": [
         {
           "name": "keyword.control.conditional.st",
-          "match": "(?i)\\b(?:IF|THEN|ELSIF|ELSE|END_IF|CASE|OF|END_CASE)\\b"
+          "match": "(?i)\\b(?:IF|THEN|ELSIF|ELSE|END_IF|CASE|END_CASE)\\b"
         },
         {
           "name": "keyword.control.loop.st",
@@ -158,7 +158,7 @@
         },
         {
           "name": "keyword.other.st",
-          "match": "(?i)\\b(?:AT|ON|WITH|EN|ENO|F_EDGE|R_EDGE)\\b"
+          "match": "(?i)\\b(?:AT|OF|ON|WITH|EN|ENO|F_EDGE|R_EDGE)\\b"
         },
         {
           "name": "constant.language.boolean.st",
@@ -198,7 +198,7 @@
         },
         {
           "name": "keyword.operator.comparison.st",
-          "match": "(?:=|<>|<|>|<=|>=)"
+          "match": "(?:<=|>=|<>|<|>|=)"
         },
         {
           "name": "keyword.operator.logical.st",
@@ -206,7 +206,7 @@
         },
         {
           "name": "keyword.operator.arithmetic.st",
-          "match": "(?:\\+|\\-|\\*|/|\\*\\*|MOD)"
+          "match": "(?:\\+|\\-|\\*\\*|\\*|/)|(?i)\\bMOD\\b"
         },
         {
           "name": "keyword.operator.other.st",
@@ -257,12 +257,12 @@
           "match": "[\\{\\}]"
         },
         {
-          "name": "punctuation.accessor.st",
-          "match": "\\."
-        },
-        {
           "name": "punctuation.range.st",
           "match": "\\.\\."
+        },
+        {
+          "name": "punctuation.accessor.st",
+          "match": "\\."
         },
         {
           "name": "punctuation.hash.st",
