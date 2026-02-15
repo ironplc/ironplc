@@ -245,7 +245,9 @@ Use `just` for all build tasks. Key commands:
 
 For complete setup and development workflow instructions, see [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
-### CRITICAL: Pre-PR Quality Gate
+### CRITICAL: Git Workflow and Pre-PR Quality Gate
+
+**NEVER commit or push directly to `main`.** Always create a feature branch and open a pull request. This ensures CI validates all changes before they reach main.
 
 **Before creating any pull request, you MUST run and pass the full CI pipeline:**
 
@@ -256,6 +258,7 @@ cd compiler && just
 This runs compile, test, coverage, and lint. The **lint step includes clippy**, which catches common Rust issues. PRs that fail clippy will be rejected by CI.
 
 **Do not:**
+- Push directly to `main` — always use a feature branch and PR
 - Skip running `just` before creating a PR
 - Suppress clippy warnings with `#[allow(...)]` unless justified
 - Create a PR if any check fails
