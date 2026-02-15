@@ -1,0 +1,48 @@
+>(*@KEY@:DESCRIPTION*)
+#^^^^^^^^^^^^^^^^^^^^^ source.61131-3-st comment.block.annotation.st punctuation.definition.comment.begin.st
+>This is a description of the function block.
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.61131-3-st comment.block.annotation.st
+>(*@KEY@:END_DESCRIPTION*)
+#^^^^^^^^^^^^^^^^^^^^^^^^^ source.61131-3-st comment.block.annotation.st punctuation.definition.comment.end.st
+>FUNCTION_BLOCK MY_BLOCK
+#^^^^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+#              ^ source.61131-3-st
+#               ^^^^^^^^ source.61131-3-st entity.name.function.st
+>
+>VAR_INPUT
+#^^^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>    X : DWORD;
+#^^^^ source.61131-3-st
+#    ^ source.61131-3-st variable.other.st
+#     ^ source.61131-3-st
+#      ^ source.61131-3-st punctuation.separator.st
+#       ^ source.61131-3-st
+#        ^^^^^ source.61131-3-st storage.type.primitive.bit.st
+#             ^ source.61131-3-st punctuation.separator.st
+>END_VAR
+#^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>
+>VAR_OUTPUT
+#^^^^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>    Y : REAL;
+#^^^^ source.61131-3-st
+#    ^ source.61131-3-st variable.other.st
+#     ^ source.61131-3-st
+#      ^ source.61131-3-st punctuation.separator.st
+#       ^ source.61131-3-st
+#        ^^^^ source.61131-3-st storage.type.primitive.real.st
+#            ^ source.61131-3-st punctuation.separator.st
+>END_VAR
+#^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>
+>Y := 0.0;
+#^ source.61131-3-st variable.other.st
+# ^ source.61131-3-st
+#  ^^ source.61131-3-st keyword.operator.assignment.st
+#    ^ source.61131-3-st
+#     ^^^ source.61131-3-st constant.numeric.decimal.st
+#        ^ source.61131-3-st punctuation.separator.st
+>
+>END_FUNCTION_BLOCK
+#^^^^^^^^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+>
