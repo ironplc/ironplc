@@ -15,6 +15,18 @@ IronPLC uses [just](https://github.com/casey/just) as its command runner. All bu
 - **`docs/justfile`**: Documentation build and publishing
 - **`integrations/vscode/justfile`**: VS Code extension tasks
 
+## CRITICAL: Git Workflow
+
+**NEVER commit or push directly to `main`.** Always create a feature branch and open a pull request. This ensures CI validates all changes before they reach main.
+
+```bash
+git checkout -b feature/my-change    # Create a feature branch
+# ... make changes, commit ...
+cd compiler && just                   # Run full CI pipeline
+git push -u origin feature/my-change  # Push the branch
+gh pr create                          # Open a pull request
+```
+
 ## CRITICAL: Pre-PR Requirements
 
 **Before creating any pull request, you MUST run the full CI pipeline and ensure all checks pass.**
