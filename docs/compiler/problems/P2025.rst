@@ -1,0 +1,38 @@
+=====
+P2025
+=====
+
+.. problem-summary:: P2025
+
+This error occurs when a type is referenced that is not found in the type environment. The type environment contains all types that have been successfully resolved, including built-in types and user-declared types.
+
+This differs from P2008, which occurs earlier in the compilation pipeline when resolving late-bound type initializers. P2025 occurs when validating type usage against the resolved type environment.
+
+Example
+-------
+
+The following code will generate error P2025:
+
+.. code-block::
+
+   FUNCTION_BLOCK Example
+   VAR
+       MyVar : UndeclaredType;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+The variable ``MyVar`` uses the type ``UndeclaredType`` which is not present in the type environment because it was never declared.
+
+To fix this error, declare the type before using it:
+
+.. code-block::
+
+   TYPE
+       MyType : INT;
+   END_TYPE
+
+   FUNCTION_BLOCK Example
+   VAR
+       MyVar : MyType;
+   END_VAR
+   END_FUNCTION_BLOCK

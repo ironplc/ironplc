@@ -2,7 +2,7 @@
 
 ## Overview
 
-Preserve the `SemanticContext` (types, functions, symbols) even when semantic validation rules produce diagnostics. Currently, any validation error discards the entire context, breaking LSP features like document symbols, outline view, and future features (hover, go-to-definition). This change moves diagnostics into the `SemanticContext` so the context is always available to the LSP when type resolution succeeds.
+Preserve the `SemanticContext` (types, functions, symbols) even when semantic analysis produces diagnostics. Currently, any error in type resolution or validation discards the entire context, breaking LSP features like document symbols, outline view, and future features (hover, go-to-definition). This change makes the analysis pipeline resilient to partial failures so the context is always available to the LSP.
 
 ## Current State
 
@@ -10,6 +10,7 @@ Preserve the `SemanticContext` (types, functions, symbols) even when semantic va
 
 - **`analyze()` entry point**: `compiler/analyzer/src/stages.rs` — returns `Result<SemanticContext, Vec<Diagnostic>>`
 - **Two-phase pipeline**: Phase 1 (`resolve_types`) builds environments; Phase 2 (`semantic`) runs 14 validation rules
+- **`type_table::apply()`**: `compiler/analyzer/src/type_table.rs` — runs after `semantic()` in `analyze()`, also uses `?`
 - **`SemanticContext`**: `compiler/analyzer/src/semantic_context.rs` — bundles `TypeEnvironment`, `FunctionEnvironment`, `SymbolEnvironment`
 - **`SemanticResult` type alias**: `compiler/analyzer/src/result.rs` — `Result<(), Vec<Diagnostic>>`
 - **`FileBackedProject`**: `compiler/plc2x/src/project.rs` — caches `SemanticContext` only on `Ok`
@@ -18,8 +19,9 @@ Preserve the `SemanticContext` (types, functions, symbols) even when semantic va
 ### What's Missing
 
 - No way to return both a valid `SemanticContext` and diagnostics from `analyze()`
-- `FileBackedProject` discards the context whenever any validation rule fails
-- LSP features (document symbols, outline) go blank when a file has semantic errors
+- `resolve_types()` aborts entirely when any transform fails — the context is never built
+- `FileBackedProject` discards the context whenever any step fails
+- LSP features (document symbols, outline) go blank when a file has any semantic error
 - Future LSP features (hover, go-to-definition) will have the same problem
 
 ### Architecture
@@ -31,9 +33,17 @@ Source Files
        ↓
   Library (AST)
        ↓
-  resolve_types()          ← Builds SemanticContext (types, functions, symbols)
+  resolve_types()          ← Builds SemanticContext; aborts on any transform error
+    ├─ xform_toposort_declarations
+    ├─ xform_resolve_type_decl_environment
+    ├─ xform_resolve_late_bound_expr_kind        ← Fold; consumes Library on error
+    ├─ xform_resolve_late_bound_type_initializer ← Fold; consumes Library on error
+    ├─ xform_resolve_symbol_and_function_environment
+    └─ xform_resolve_type_aliases
        ↓
-  semantic()               ← Runs 14 validation rules; currently returns Err on any finding
+  semantic()               ← Runs 14 validation rules; returns Err on any finding
+       ↓
+  type_table::apply()      ← Builds TypeTable; uses ?
        ↓
   Result<SemanticContext, Vec<Diagnostic>>
        ↓
@@ -51,16 +61,36 @@ Source Files
        ↓
   Library (AST)
        ↓
-  resolve_types()          ← Builds SemanticContext (types, functions, symbols)
+  resolve_types()          ← Builds SemanticContext; resilient to transform failures
+    ├─ xform_toposort_declarations               ← Still hard failure (can't proceed)
+    ├─ xform_resolve_type_decl_environment       ← Clone-and-recover on failure
+    ├─ xform_resolve_late_bound_expr_kind        ← Clone-and-recover on failure
+    ├─ xform_resolve_late_bound_type_initializer ← Clone-and-recover on failure
+    ├─ xform_resolve_symbol_and_function_environment ← Clone-and-recover on failure
+    └─ xform_resolve_type_aliases                ← Clone-and-recover on failure
        ↓
-  semantic()               ← Runs 14 validation rules; writes diagnostics into context
+  semantic()               ← Runs 14 validation rules; unchanged signature
        ↓
-  Result<SemanticContext, Vec<Diagnostic>>   ← Ok now includes diagnostics in context
+  type_table::apply()      ← Errors captured into context
        ↓
-  FileBackedProject        ← Always caches context from Ok (even with diagnostics)
+  analyze()                ← Always returns Ok; diagnostics inside context
        ↓
-  LspProject               ← IDE features always work when context is available
+  Ok(SemanticContext)      ← Always available; diagnostics inside
+       ↓
+  FileBackedProject        ← Always caches context; extracts diagnostics
+       ↓
+  LspProject               ← IDE features always work
 ```
+
+### Design Rationale
+
+**Why clone-and-recover for transforms**: The Fold-based transforms (`xform_resolve_type_decl_environment`, `xform_resolve_late_bound_expr_kind`, `xform_resolve_late_bound_type_initializer`) consume the Library on error — the original is gone. To continue the pipeline after a failure, we clone the Library before the transform. If the transform succeeds, we use its result; if it fails, we fall back to the clone and capture the diagnostics. This is simple, safe, and avoids modifying transform internals.
+
+**Why keep only toposort as a hard failure**: `xform_toposort_declarations` establishes declaration ordering that all subsequent transforms depend on. Without it, later transforms would process declarations in the wrong order.
+
+**Why xform_resolve_type_decl_environment is recoverable**: Although this transform populates the `TypeEnvironment`, it also performs validation (e.g., subrange bounds checking via P2002) that can fail. Making it recoverable means that a single invalid type declaration doesn't prevent the rest of the pipeline from producing useful results for the LSP. The type environment will be partially populated with whatever succeeded before the error.
+
+**Why not change rule signatures**: The `semantic()` function already collects all diagnostics from all 14 validation rules into a single `Vec<Diagnostic>`. `analyze()` simply catches these and stores them in the context. No rule files need modification.
 
 ---
 
@@ -68,103 +98,102 @@ Source Files
 
 **Goal**: `SemanticContext` can hold diagnostics alongside environment data.
 
+**Status**: Complete.
+
 ### 1.1 Add Diagnostics Field
 
-- [ ] Add `diagnostics: Vec<Diagnostic>` field to `SemanticContext` in `compiler/analyzer/src/semantic_context.rs`
-- [ ] Add `add_diagnostic(&mut self, diagnostic: Diagnostic)` method
-- [ ] Add `add_diagnostics(&mut self, diagnostics: Vec<Diagnostic>)` method
-- [ ] Add `diagnostics(&self) -> &[Diagnostic]` accessor
-- [ ] Add `has_diagnostics(&self) -> bool` convenience method
-- [ ] Update `SemanticContext::new()` to initialize empty diagnostics vec
-- [ ] Update `SemanticContextBuilder::build()` to initialize empty diagnostics vec
+- [x] Add `diagnostics: Vec<Diagnostic>` field to `SemanticContext` in `compiler/analyzer/src/semantic_context.rs`
+- [x] Add `add_diagnostics(&mut self, diagnostics: Vec<Diagnostic>)` method
+- [x] Add `diagnostics(&self) -> &[Diagnostic]` accessor
+- [x] Add `has_diagnostics(&self) -> bool` convenience method
+- [x] Update `SemanticContext::new()` to initialize empty diagnostics vec
+- [x] Update `SemanticContextBuilder::build()` — no change needed (uses `new()`)
 
 ### 1.2 Update SemanticContext Tests
 
-- [ ] Add test: `semantic_context_when_add_diagnostic_then_has_diagnostics`
-- [ ] Add test: `semantic_context_when_no_diagnostics_then_has_diagnostics_false`
-- [ ] Add test: `semantic_context_when_add_diagnostics_then_all_present`
+- [x] Add test: `semantic_context_when_add_diagnostics_then_has_diagnostics`
+- [x] Add test: `semantic_context_when_no_diagnostics_then_has_diagnostics_false`
 
 **Phase 1 Milestone**: `SemanticContext` can store and return diagnostics.
 
 ---
 
-## Phase 2: Change Validation Rules to Write Into Context
+## Phase 2: Update analyze() and resolve_types() to Capture Diagnostics
 
-**Goal**: Validation rules write diagnostics into `SemanticContext` instead of returning them.
+**Goal**: `analyze()` always returns `Ok(SemanticContext)` with diagnostics inside, except when the program cannot be parsed or sorted at all.
 
-### 2.1 Update semantic() in stages.rs
+### 2.1 Make resolve_types() resilient in stages.rs
 
-- [ ] Change `semantic()` signature from `fn semantic(library: &Library, context: &SemanticContext) -> SemanticResult` to `fn semantic(library: &Library, context: &mut SemanticContext)`
-- [ ] Update the rule dispatch loop to pass `&mut context` and collect diagnostics into context
-- [ ] Remove `SemanticResult` return from `semantic()`
+The transforms in `resolve_types()` fall into two categories:
 
-### 2.2 Update Each Validation Rule
+**Hard failures** (abort the pipeline — no useful context is possible):
+- `TypeEnvironmentBuilder::build()` — stdlib initialization; should never fail in practice
+- `xform_toposort_declarations` — establishes declaration order; without it, subsequent transforms produce garbage
 
-Each `rule_*.rs` module changes from returning `SemanticResult` to writing diagnostics into the context:
+**Recoverable failures** (capture diagnostics, continue with pre-transform state):
+- `xform_resolve_type_decl_environment` — Fold; consumes Library; clone before, fallback on error
+- `xform_resolve_late_bound_expr_kind` — Fold; consumes Library; clone before, fallback on error
+- `xform_resolve_late_bound_type_initializer` — Fold; consumes Library; clone before, fallback on error
+- `xform_resolve_symbol_and_function_environment` — takes Library by value; clone before, fallback on error
+- `xform_resolve_type_aliases` — takes Library by value; clone before, fallback on error
 
-- [ ] `rule_decl_struct_element_unique_names.rs` — change `apply` to accept `&mut SemanticContext`, add diagnostics to context
-- [ ] `rule_decl_subrange_limits.rs` — change `apply` to accept `&mut SemanticContext`, add diagnostics to context
-- [ ] `rule_enumeration_values_unique.rs` — change `apply` to accept `&mut SemanticContext`, add diagnostics to context
-- [ ] `rule_function_block_invocation.rs` — change `apply` to accept `&mut SemanticContext`, add diagnostics to context
-- [ ] `rule_function_call_declared.rs` — change `apply` to accept `&mut SemanticContext`, add diagnostics to context
-- [ ] `rule_program_task_definition_exists.rs` — change `apply` to accept `&mut SemanticContext`, add diagnostics to context
-- [ ] `rule_stdlib_type_redefinition.rs` — change `apply` to accept `&mut SemanticContext`, add diagnostics to context
-- [ ] `rule_use_declared_enumerated_value.rs` — change `apply` to accept `&mut SemanticContext`, add diagnostics to context
-- [ ] `rule_use_declared_symbolic_var.rs` — change `apply` to accept `&mut SemanticContext`, add diagnostics to context
-- [ ] `rule_unsupported_stdlib_type.rs` — change `apply` to accept `&mut SemanticContext`, add diagnostics to context
-- [ ] `rule_var_decl_const_initialized.rs` — change `apply` to accept `&mut SemanticContext`, add diagnostics to context
-- [ ] `rule_var_decl_const_not_fb.rs` — change `apply` to accept `&mut SemanticContext`, add diagnostics to context
-- [ ] `rule_var_decl_global_const_requires_external_const.rs` — change `apply` to accept `&mut SemanticContext`, add diagnostics to context
-- [ ] `rule_pou_hierarchy.rs` — change `apply` to accept `&mut SemanticContext`, add diagnostics to context
+Implementation:
+- [x] Accumulate diagnostics in `resolve_types()` and store them in the context before returning
+- [x] Keep `?` for hard failures (toposort, TypeEnvironment build)
+- [x] For all recoverable transforms: clone Library before calling, catch `Err`, capture diagnostics, fall back to clone
 
-### 2.3 Remove or Repurpose SemanticResult
+### 2.2 Update analyze() in stages.rs
 
-- [ ] Evaluate whether `SemanticResult` type alias in `result.rs` is still needed
-- [ ] Remove if unused, or repurpose for internal use
+- [x] Capture `Err` from `semantic()` into `context.add_diagnostics()`
+- [x] Capture `Err` from `type_table::apply()` into `context.add_diagnostics()`
+- [x] Return `Ok(context)` after all steps
+- [x] Keep `Err` path only for hard failures in `resolve_types()` and empty sources
 
-### 2.4 Update analyze()
+### 2.3 Update Analyzer Tests
 
-- [ ] Change `analyze()` to call `semantic(&library, &mut context)` without `?`
-- [ ] Return `Ok(context)` after validation (context now carries diagnostics)
-- [ ] Keep `Err` path only for `resolve_types()` failure and empty sources
+- [x] Update `analyze_when_first_steps_semantic_error_then_result_is_err` → `analyze_when_first_steps_semantic_error_then_ok_with_diagnostics`
+- [x] Update `rule_use_declared_enumerated_value` test to check `Ok` with diagnostics
+- [x] Update `rule_decl_subrange_limits` test to check `Ok` with diagnostics
+- [x] Verify all other existing passing tests remain green
 
-### 2.5 Update Analyzer Tests
-
-- [ ] Update `stages.rs` tests: `analyze_when_first_steps_semantic_error_then_result_is_err` → check `Ok` with diagnostics
-- [ ] Update each `rule_*.rs` test module: check diagnostics on context instead of `Err` return
-- [ ] Verify existing passing tests remain green
-
-**Phase 2 Milestone**: Validation diagnostics flow through `SemanticContext` instead of `Result::Err`.
+**Phase 2 Status**: Complete.
 
 ---
 
 ## Phase 3: Update LSP Integration
 
-**Goal**: The LSP always has access to `SemanticContext` when type resolution succeeds.
+**Goal**: The LSP always has access to `SemanticContext` when analysis returns `Ok`.
 
 ### 3.1 Update FileBackedProject
 
-- [ ] Change `FileBackedProject::semantic()` to always cache context from `Ok(context)`
-- [ ] Extract diagnostics from `context.diagnostics()` and include in the returned `Err` when diagnostics are present
-- [ ] Preserve existing `Err` path for `analyze()` returning `Err` (type resolution failure)
+- [x] In `FileBackedProject::semantic()`, always cache context from `Ok(context)`
+- [x] After caching, extract diagnostics from `context.diagnostics()` and append to `all_diagnostics`
+- [x] Return `Err(all_diagnostics)` when diagnostics are present, `Ok(())` when clean
+- [x] Preserve existing `Err` path for `analyze()` returning `Err` (hard failures)
 
-### 3.2 Update Project Trait (if needed)
+### 3.2 Document Updated Project::semantic() Contract
 
-- [ ] Evaluate whether `Project::semantic()` return type needs to change
-- [ ] If unchanged, verify the contract still makes sense (diagnostics in `Err`, context always cached on successful resolution)
+The `Project::semantic()` return type remains `Result<(), Vec<Diagnostic>>`, but the contract changes:
+
+- `Ok(())` — analysis succeeded with no diagnostics; context is cached
+- `Err(diagnostics)` — either (a) hard failure and context is *not* cached, or (b) analysis completed with diagnostics, context *is* cached
+
+This means callers should use `semantic_context()` to check whether the context is available rather than relying on the `Ok`/`Err` distinction.
+
+- [x] Update doc comments on `Project::semantic()` to reflect the new contract
+- [x] Update doc comment on `Project::semantic_context()` to clarify it may return `Some` even after `semantic()` returns `Err`
 
 ### 3.3 Verify LspProject
 
-- [ ] Verify `LspProject::semantic()` correctly reports diagnostics (no functional change expected)
-- [ ] Verify `LspProject::document_symbols()` works when file has semantic errors (now returns symbols instead of empty)
+- [x] Verify `LspProject::semantic()` correctly reports diagnostics (no functional change — it already reads from the `Err` path)
+- [x] Verify `LspProject::document_symbols()` works when file has semantic errors (returns symbols instead of empty)
 
-### 3.4 Add Integration Tests
+### 3.4 Integration Tests
 
-- [ ] Add test: `semantic_when_validation_error_then_context_cached` — semantic analysis with errors still populates `semantic_context`
-- [ ] Add test: `document_symbols_when_semantic_errors_then_returns_symbols` — document symbols available even with semantic errors
-- [ ] Update test: `analyze_when_not_valid_then_err` in `project.rs` — verify context is cached despite diagnostics
+- [x] Add test: `semantic_when_validation_error_then_context_cached` — semantic analysis with errors still populates `semantic_context`
+- [x] Add test: `document_symbols_when_semantic_errors_then_returns_symbols` — document symbols available even with semantic errors
 
-**Phase 3 Milestone**: LSP features work even when the file has semantic validation errors.
+**Phase 3 Status**: Complete.
 
 ---
 
@@ -194,30 +223,23 @@ Each `rule_*.rs` module changes from returning `SemanticResult` to writing diagn
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/semantic_context.rs` | Modify | Add `diagnostics` field and methods |
-| `src/result.rs` | Modify/Remove | Remove or repurpose `SemanticResult` type alias |
-| `src/stages.rs` | Modify | Change `semantic()` and `analyze()` to use context for diagnostics |
-| `src/rule_decl_struct_element_unique_names.rs` | Modify | Write diagnostics to context |
-| `src/rule_decl_subrange_limits.rs` | Modify | Write diagnostics to context |
-| `src/rule_enumeration_values_unique.rs` | Modify | Write diagnostics to context |
-| `src/rule_function_block_invocation.rs` | Modify | Write diagnostics to context |
-| `src/rule_function_call_declared.rs` | Modify | Write diagnostics to context |
-| `src/rule_program_task_definition_exists.rs` | Modify | Write diagnostics to context |
-| `src/rule_stdlib_type_redefinition.rs` | Modify | Write diagnostics to context |
-| `src/rule_use_declared_enumerated_value.rs` | Modify | Write diagnostics to context |
-| `src/rule_use_declared_symbolic_var.rs` | Modify | Write diagnostics to context |
-| `src/rule_unsupported_stdlib_type.rs` | Modify | Write diagnostics to context |
-| `src/rule_var_decl_const_initialized.rs` | Modify | Write diagnostics to context |
-| `src/rule_var_decl_const_not_fb.rs` | Modify | Write diagnostics to context |
-| `src/rule_var_decl_global_const_requires_external_const.rs` | Modify | Write diagnostics to context |
-| `src/rule_pou_hierarchy.rs` | Modify | Write diagnostics to context |
+| `src/semantic_context.rs` | Done | Added `diagnostics` field and methods |
+| `src/stages.rs` | Modify | Make `resolve_types()` resilient; update `analyze()` to capture all diagnostics |
 
 ### Project/LSP Crate (`compiler/plc2x/`)
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/project.rs` | Modify | Always cache context from `Ok`; extract diagnostics from context |
+| `src/project.rs` | Modify | Always cache context from `Ok`; extract diagnostics from context; update doc comments |
 | `src/lsp_project.rs` | Verify | No functional change expected |
+
+### Files NOT Modified
+
+| File | Reason |
+|------|--------|
+| `src/result.rs` | `SemanticResult` stays in use by all 14 rules and `semantic()` |
+| `src/rule_*.rs` (14 files) | Rules continue to return `SemanticResult`; `analyze()` handles the conversion |
+| `src/xform_*.rs` (6 files) | Transform internals unchanged; `resolve_types()` wraps them with clone-and-recover |
 
 ## Dependencies
 
@@ -228,29 +250,27 @@ Each `rule_*.rs` module changes from returning `SemanticResult` to writing diagn
 
 The following are explicitly **out of scope** for this plan:
 
-1. **Making `resolve_types()` resilient** — When type resolution fails, the context is still discarded. Making `resolve_types()` accumulate errors and return a partial context is a separate, larger effort.
-2. **Diagnostic severity levels** — All diagnostics are currently treated as errors. Adding warning/info severity is a separate concern.
-3. **Incremental analysis** — Re-analyzing only changed files is out of scope.
+1. **Diagnostic severity levels** — All diagnostics are currently treated as errors. Adding warning/info severity is a separate concern.
+2. **Incremental analysis** — Re-analyzing only changed files is out of scope.
+3. **Changing rule signatures** — The 14 validation rules keep their current `fn apply(&Library, &SemanticContext) -> SemanticResult` signature.
+4. **Changing transform internals** — The `xform_*` modules are not modified. Resilience is achieved by cloning before Fold-based transforms and catching errors at the `resolve_types()` level.
 
 ## When Does analyze() Return Err?
 
 After this change, `Err` only occurs when:
 
 1. **No sources**: `sources.is_empty()` — the caller provided nothing to analyze.
-2. **Type resolution failure**: One of the `xform_*` transforms in `resolve_types()` fails:
+2. **Hard type resolution failure**:
+   - `TypeEnvironmentBuilder::build()` fails (stdlib initialization error — should not happen in practice)
    - Circular type dependencies (`xform_toposort_declarations`)
    - Unresolvable type declarations (`xform_resolve_type_decl_environment`)
-   - Unresolvable late-bound expressions (`xform_resolve_late_bound_expr_kind`)
-   - Unresolvable type initializers (`xform_resolve_late_bound_type_initializer`)
-   - Unresolvable symbols/functions (`xform_resolve_symbol_and_function_environment`)
-   - Unresolvable type aliases (`xform_resolve_type_aliases`)
 
-These are cases where the program structure is fundamentally broken and the environments cannot be reliably built.
+All other failures (late-bound resolution, symbol resolution, validation rules, type table) are captured as diagnostics inside the returned `SemanticContext`.
 
 ## Success Criteria
 
-1. `analyze()` returns `Ok(context)` even when validation rules find errors — diagnostics are in `context.diagnostics()`
-2. `FileBackedProject` always caches the `SemanticContext` when type resolution succeeds
+1. `analyze()` returns `Ok(context)` even when late-bound resolution or validation rules fail — diagnostics are in `context.diagnostics()`
+2. `FileBackedProject` always caches the `SemanticContext` when declaration sorting and type environment building succeed
 3. Document symbols are available in the LSP even when the file has semantic errors
 4. Diagnostics (error squiggles) still appear correctly in the editor
 5. All existing tests pass (with updated assertions)
@@ -258,10 +278,10 @@ These are cases where the program structure is fundamentally broken and the envi
 
 ## Summary
 
-| Phase | Tasks | Goal |
-|-------|-------|------|
-| 1 | 10 | Add diagnostics to SemanticContext |
-| 2 | 20 | Validation rules write into context |
-| 3 | 8 | LSP always has context |
-| 4 | 3 | End-to-end verification |
-| **Total** | **41** | Diagnostics in context, LSP always works |
+| Phase | Tasks | Files | Goal |
+|-------|-------|-------|------|
+| 1 | 8 | 1 | Add diagnostics to SemanticContext (done) |
+| 2 | 10 | 1 | Make resolve_types() resilient; capture diagnostics in analyze() |
+| 3 | 7 | 1-2 | LSP always has context |
+| 4 | 6 | 0 | End-to-end verification |
+| **Total** | **31** | **3-4** | Diagnostics in context, LSP always works |

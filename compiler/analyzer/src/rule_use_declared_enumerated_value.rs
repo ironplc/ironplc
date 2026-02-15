@@ -132,7 +132,8 @@ END_FUNCTION_BLOCK";
         let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
         let result = analyze(&[&library]);
 
-        assert!(result.is_err());
+        let context = result.unwrap();
+        assert!(context.has_diagnostics());
     }
 
     #[test]

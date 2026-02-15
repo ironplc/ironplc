@@ -899,6 +899,30 @@ INVALID_SYNTAX"
     }
 
     #[test]
+    fn document_symbols_when_semantic_errors_then_returns_symbols() {
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        // A valid struct (types resolve) plus a function block with an undefined variable
+        // (semantic validation error from rule_use_declared_symbolic_var)
+        let content = "TYPE\nMyStruct : STRUCT\n  field1 : INT;\nEND_STRUCT;\nEND_TYPE\n\nFUNCTION_BLOCK BadFB\nVAR\n  x : INT;\nEND_VAR\n  y := x;\nEND_FUNCTION_BLOCK";
+        proj.change_text_document(&url, content.to_owned());
+
+        // Semantic analysis will produce diagnostics for undefined variable 'y'
+        let diagnostics = proj.semantic(&url);
+        assert!(!diagnostics.is_empty());
+
+        // Document symbols should still be available despite the error
+        let result = proj.document_symbols(&url);
+        match result {
+            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
+                let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
+                assert!(names.contains(&"MyStruct"));
+            }
+            _ => panic!("Expected nested response"),
+        }
+    }
+
+    #[test]
     fn intermediate_type_to_symbol_kind_when_structure_then_struct() {
         use super::intermediate_type_to_symbol_kind;
         use ironplc_analyzer::IntermediateType;
