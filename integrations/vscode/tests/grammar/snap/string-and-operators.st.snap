@@ -1,0 +1,218 @@
+>FUNCTION_BLOCK MY_EXAMPLE
+#^^^^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+#              ^ source.61131-3-st
+#               ^^^^^^^^^^ source.61131-3-st entity.name.function.st
+>VAR
+#^^^ source.61131-3-st keyword.declaration.variable.st
+>  long_STRING160              : STRING(160);
+#^^ source.61131-3-st
+#  ^^^^^^^^^^^^^^ source.61131-3-st variable.other.st
+#                ^^^^^^^^^^^^^^ source.61131-3-st
+#                              ^ source.61131-3-st punctuation.separator.st
+#                               ^ source.61131-3-st
+#                                ^^^^^^ source.61131-3-st storage.type.primitive.string.st
+#                                      ^ source.61131-3-st punctuation.section.parens.st
+#                                       ^^^ source.61131-3-st constant.numeric.decimal.st
+#                                          ^ source.61131-3-st punctuation.section.parens.st
+#                                           ^ source.61131-3-st punctuation.separator.st
+>  sensor_bits                 : ARRAY [0..58]   OF BOOL;
+#^^ source.61131-3-st
+#  ^^^^^^^^^^^ source.61131-3-st variable.other.st
+#             ^^^^^^^^^^^^^^^^^ source.61131-3-st
+#                              ^ source.61131-3-st punctuation.separator.st
+#                               ^ source.61131-3-st
+#                                ^^^^^ source.61131-3-st keyword.declaration.type.st
+#                                     ^ source.61131-3-st
+#                                      ^ source.61131-3-st punctuation.section.brackets.st
+#                                       ^ source.61131-3-st constant.numeric.decimal.st
+#                                        ^^ source.61131-3-st punctuation.range.st
+#                                          ^^ source.61131-3-st constant.numeric.decimal.st
+#                                            ^ source.61131-3-st punctuation.section.brackets.st
+#                                             ^^^ source.61131-3-st
+#                                                ^^ source.61131-3-st keyword.other.st
+#                                                  ^ source.61131-3-st
+#                                                   ^^^^ source.61131-3-st storage.type.primitive.integer.st
+#                                                       ^ source.61131-3-st punctuation.separator.st
+>END_VAR
+#^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>
+>VAR_INPUT
+#^^^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>    DST_EN : BOOL;              (* daylight savings time enable *)
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^ source.61131-3-st punctuation.separator.st
+#            ^ source.61131-3-st
+#             ^^^^ source.61131-3-st storage.type.primitive.integer.st
+#                 ^ source.61131-3-st punctuation.separator.st
+#                  ^^^^^^^^^^^^^^ source.61131-3-st
+#                                ^^ source.61131-3-st comment.block.st punctuation.definition.comment.begin.st
+#                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.61131-3-st comment.block.st
+#                                                                ^^ source.61131-3-st comment.block.st punctuation.definition.comment.end.st
+>END_VAR
+#^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>
+>VAR CONSTANT
+#^^^ source.61131-3-st keyword.declaration.variable.st
+#   ^ source.61131-3-st
+#    ^^^^^^^^ source.61131-3-st keyword.modifier.st
+>    ITEMS : ARRAY [0..3] OF INT := [
+#^^^^ source.61131-3-st
+#    ^^^^^ source.61131-3-st variable.other.st
+#         ^ source.61131-3-st
+#          ^ source.61131-3-st punctuation.separator.st
+#           ^ source.61131-3-st
+#            ^^^^^ source.61131-3-st keyword.declaration.type.st
+#                 ^ source.61131-3-st
+#                  ^ source.61131-3-st punctuation.section.brackets.st
+#                   ^ source.61131-3-st constant.numeric.decimal.st
+#                    ^^ source.61131-3-st punctuation.range.st
+#                      ^ source.61131-3-st constant.numeric.decimal.st
+#                       ^ source.61131-3-st punctuation.section.brackets.st
+#                        ^ source.61131-3-st
+#                         ^^ source.61131-3-st keyword.other.st
+#                           ^ source.61131-3-st
+#                            ^^^ source.61131-3-st storage.type.primitive.integer.st
+#                               ^ source.61131-3-st
+#                                ^^ source.61131-3-st keyword.operator.assignment.st
+#                                  ^ source.61131-3-st
+#                                   ^ source.61131-3-st punctuation.section.brackets.st
+>        (name := 'First', day := -2, month := 0, use := 1),
+#^^^^^^^^ source.61131-3-st
+#        ^ source.61131-3-st punctuation.section.parens.st
+#         ^^^^ source.61131-3-st variable.other.st
+#             ^ source.61131-3-st
+#              ^^ source.61131-3-st keyword.operator.assignment.st
+#                ^ source.61131-3-st
+#                 ^^^^^^^ source.61131-3-st string.quoted.single.st punctuation.definition.string.st
+#                        ^ source.61131-3-st punctuation.separator.st
+#                         ^ source.61131-3-st
+#                          ^^^ source.61131-3-st variable.other.st
+#                             ^ source.61131-3-st
+#                              ^^ source.61131-3-st keyword.operator.assignment.st
+#                                ^ source.61131-3-st
+#                                 ^ source.61131-3-st keyword.operator.arithmetic.st
+#                                  ^ source.61131-3-st constant.numeric.decimal.st
+#                                   ^ source.61131-3-st punctuation.separator.st
+#                                    ^ source.61131-3-st
+#                                     ^^^^^ source.61131-3-st variable.other.st
+#                                          ^ source.61131-3-st
+#                                           ^^ source.61131-3-st keyword.operator.assignment.st
+#                                             ^ source.61131-3-st
+#                                              ^ source.61131-3-st constant.numeric.decimal.st
+#                                               ^ source.61131-3-st punctuation.separator.st
+#                                                ^ source.61131-3-st
+#                                                 ^^^ source.61131-3-st variable.other.st
+#                                                    ^ source.61131-3-st
+#                                                     ^^ source.61131-3-st keyword.operator.assignment.st
+#                                                       ^ source.61131-3-st
+#                                                        ^ source.61131-3-st constant.numeric.decimal.st
+#                                                         ^ source.61131-3-st punctuation.section.parens.st
+#                                                          ^ source.61131-3-st punctuation.separator.st
+>        (name := 'Last', day := 31, month := 12, use := 1)
+#^^^^^^^^ source.61131-3-st
+#        ^ source.61131-3-st punctuation.section.parens.st
+#         ^^^^ source.61131-3-st variable.other.st
+#             ^ source.61131-3-st
+#              ^^ source.61131-3-st keyword.operator.assignment.st
+#                ^ source.61131-3-st
+#                 ^^^^^^ source.61131-3-st string.quoted.single.st punctuation.definition.string.st
+#                       ^ source.61131-3-st punctuation.separator.st
+#                        ^ source.61131-3-st
+#                         ^^^ source.61131-3-st variable.other.st
+#                            ^ source.61131-3-st
+#                             ^^ source.61131-3-st keyword.operator.assignment.st
+#                               ^ source.61131-3-st
+#                                ^^ source.61131-3-st constant.numeric.decimal.st
+#                                  ^ source.61131-3-st punctuation.separator.st
+#                                   ^ source.61131-3-st
+#                                    ^^^^^ source.61131-3-st variable.other.st
+#                                         ^ source.61131-3-st
+#                                          ^^ source.61131-3-st keyword.operator.assignment.st
+#                                            ^ source.61131-3-st
+#                                             ^^ source.61131-3-st constant.numeric.decimal.st
+#                                               ^ source.61131-3-st punctuation.separator.st
+#                                                ^ source.61131-3-st
+#                                                 ^^^ source.61131-3-st variable.other.st
+#                                                    ^ source.61131-3-st
+#                                                     ^^ source.61131-3-st keyword.operator.assignment.st
+#                                                       ^ source.61131-3-st
+#                                                        ^ source.61131-3-st constant.numeric.decimal.st
+#                                                         ^ source.61131-3-st punctuation.section.parens.st
+>    ];
+#^^^^ source.61131-3-st
+#    ^ source.61131-3-st punctuation.section.brackets.st
+#     ^ source.61131-3-st punctuation.separator.st
+>END_VAR
+#^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>
+>    (* Test exponentiation operator *)
+#^^^^ source.61131-3-st
+#    ^^ source.61131-3-st comment.block.st punctuation.definition.comment.begin.st
+#      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.61131-3-st comment.block.st
+#                                    ^^ source.61131-3-st comment.block.st punctuation.definition.comment.end.st
+>    x := y ** 2;
+#^^^^ source.61131-3-st
+#    ^ source.61131-3-st variable.other.st
+#     ^ source.61131-3-st
+#      ^^ source.61131-3-st keyword.operator.assignment.st
+#        ^ source.61131-3-st
+#         ^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^^ source.61131-3-st keyword.operator.arithmetic.st
+#             ^ source.61131-3-st
+#              ^ source.61131-3-st constant.numeric.decimal.st
+#               ^ source.61131-3-st punctuation.separator.st
+>
+>    (* Test MOD operator *)
+#^^^^ source.61131-3-st
+#    ^^ source.61131-3-st comment.block.st punctuation.definition.comment.begin.st
+#      ^^^^^^^^^^^^^^^^^^^ source.61131-3-st comment.block.st
+#                         ^^ source.61131-3-st comment.block.st punctuation.definition.comment.end.st
+>    result := value MOD 10;
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^^ source.61131-3-st keyword.operator.assignment.st
+#             ^ source.61131-3-st
+#              ^^^^^ source.61131-3-st variable.other.st
+#                   ^ source.61131-3-st
+#                    ^^^ source.61131-3-st keyword.operator.arithmetic.st
+#                       ^ source.61131-3-st
+#                        ^^ source.61131-3-st constant.numeric.decimal.st
+#                          ^ source.61131-3-st punctuation.separator.st
+>
+>    (* Test comparison operators *)
+#^^^^ source.61131-3-st
+#    ^^ source.61131-3-st comment.block.st punctuation.definition.comment.begin.st
+#      ^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.61131-3-st comment.block.st
+#                                 ^^ source.61131-3-st comment.block.st punctuation.definition.comment.end.st
+>    flag := a >= b;
+#^^^^ source.61131-3-st
+#    ^^^^ source.61131-3-st variable.other.st
+#        ^ source.61131-3-st
+#         ^^ source.61131-3-st keyword.operator.assignment.st
+#           ^ source.61131-3-st
+#            ^ source.61131-3-st variable.other.st
+#             ^ source.61131-3-st
+#              ^^ source.61131-3-st keyword.operator.comparison.st
+#                ^ source.61131-3-st
+#                 ^ source.61131-3-st variable.other.st
+#                  ^ source.61131-3-st punctuation.separator.st
+>    flag := a <= b;
+#^^^^ source.61131-3-st
+#    ^^^^ source.61131-3-st variable.other.st
+#        ^ source.61131-3-st
+#         ^^ source.61131-3-st keyword.operator.assignment.st
+#           ^ source.61131-3-st
+#            ^ source.61131-3-st variable.other.st
+#             ^ source.61131-3-st
+#              ^^ source.61131-3-st keyword.operator.comparison.st
+#                ^ source.61131-3-st
+#                 ^ source.61131-3-st variable.other.st
+#                  ^ source.61131-3-st punctuation.separator.st
+>
+>END_FUNCTION_BLOCK
+#^^^^^^^^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+>
