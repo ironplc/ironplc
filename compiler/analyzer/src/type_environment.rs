@@ -226,7 +226,7 @@ impl TypeEnvironment {
             .map(|attrs| attrs.size_bytes())
             .ok_or_else(|| {
                 Diagnostic::problem(
-                    Problem::UndeclaredUnknownType,
+                    Problem::TypeEnvironmentUnknownType,
                     Label::span(type_name.span(), "Type reference"),
                 )
             })
@@ -241,7 +241,7 @@ impl TypeEnvironment {
     ) -> Result<(), Diagnostic> {
         let type_attrs = self.table.get(type_name).ok_or_else(|| {
             Diagnostic::problem(
-                Problem::UndeclaredUnknownType,
+                Problem::TypeEnvironmentUnknownType,
                 Label::span(type_name.span(), "Type reference"),
             )
         })?;
@@ -261,7 +261,7 @@ impl TypeEnvironment {
                 // Enumeration underlying types must be integer types
                 if !type_attrs.representation.is_integer() {
                     return Err(Diagnostic::problem(
-                        Problem::UndeclaredUnknownType, // Using existing code for now
+                        Problem::TypeEnvironmentUnknownType, // Using existing code for now
                         Label::span(type_name.span(), "Enumeration underlying type"),
                     ));
                 }
@@ -272,7 +272,7 @@ impl TypeEnvironment {
                     || type_attrs.representation.is_function()
                 {
                     return Err(Diagnostic::problem(
-                        Problem::UndeclaredUnknownType, // Using existing code for now
+                        Problem::TypeEnvironmentUnknownType, // Using existing code for now
                         Label::span(type_name.span(), "Array element type"),
                     ));
                 }
@@ -281,7 +281,7 @@ impl TypeEnvironment {
                 // Function return types cannot be function blocks
                 if type_attrs.representation.is_function_block() {
                     return Err(Diagnostic::problem(
-                        Problem::UndeclaredUnknownType, // Using existing code for now
+                        Problem::TypeEnvironmentUnknownType, // Using existing code for now
                         Label::span(type_name.span(), "Function return type"),
                     ));
                 }

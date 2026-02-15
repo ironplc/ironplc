@@ -31,6 +31,10 @@ pub struct SemanticContext {
     pub functions: FunctionEnvironment,
     /// Symbol environment containing variable and symbol declarations
     pub symbols: SymbolEnvironment,
+    /// Diagnostics collected during semantic analysis. When type resolution succeeds
+    /// but validation rules find errors, the diagnostics are stored here so that the
+    /// context remains available for LSP features.
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl SemanticContext {
@@ -44,7 +48,23 @@ impl SemanticContext {
             types,
             functions,
             symbols,
+            diagnostics: Vec::new(),
         }
+    }
+
+    /// Adds diagnostics to the context.
+    pub fn add_diagnostics(&mut self, diagnostics: Vec<Diagnostic>) {
+        self.diagnostics.extend(diagnostics);
+    }
+
+    /// Returns the diagnostics collected during semantic analysis.
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
+    }
+
+    /// Returns true if any diagnostics have been collected.
+    pub fn has_diagnostics(&self) -> bool {
+        !self.diagnostics.is_empty()
     }
 
     /// Provides read-only access to the type environment.
@@ -217,5 +237,37 @@ mod tests {
 
         // Functions will be empty until stdlib functions are implemented
         // This test will need to be updated when we add the actual functions
+    }
+
+    #[test]
+    fn semantic_context_when_no_diagnostics_then_has_diagnostics_false() {
+        let ctx = SemanticContextBuilder::new().build().unwrap();
+
+        assert!(!ctx.has_diagnostics());
+        assert!(ctx.diagnostics().is_empty());
+    }
+
+    #[test]
+    fn semantic_context_when_add_diagnostics_then_has_diagnostics() {
+        use ironplc_dsl::core::SourceSpan;
+        use ironplc_dsl::diagnostic::Label;
+        use ironplc_problems::Problem;
+
+        let mut ctx = SemanticContextBuilder::new().build().unwrap();
+
+        let diagnostics = vec![
+            Diagnostic::problem(
+                Problem::NoContent,
+                Label::span(SourceSpan::default(), "test diagnostic 1"),
+            ),
+            Diagnostic::problem(
+                Problem::NoContent,
+                Label::span(SourceSpan::default(), "test diagnostic 2"),
+            ),
+        ];
+        ctx.add_diagnostics(diagnostics);
+
+        assert!(ctx.has_diagnostics());
+        assert_eq!(ctx.diagnostics().len(), 2);
     }
 }

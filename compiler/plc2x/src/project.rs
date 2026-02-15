@@ -13,7 +13,7 @@ use ironplc_dsl::{
 use ironplc_parser::{options::ParseOptions, token::Token, tokenize_program};
 use ironplc_problems::Problem;
 use ironplc_sources::{Source, SourceProject};
-use log::trace;
+use log::{debug, trace};
 
 /// A project consisting of one or more files.
 ///
@@ -30,12 +30,19 @@ pub trait Project {
     fn tokenize(&self, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>);
 
     /// Requests semantic analysis for the project.
+    ///
+    /// Returns `Ok(())` when analysis completes with no diagnostics.
+    /// Returns `Err(diagnostics)` when diagnostics are present. Note that the
+    /// semantic context may still be cached even when this returns `Err` — use
+    /// `semantic_context()` to check availability.
     fn semantic(&mut self) -> Result<(), Vec<Diagnostic>>;
 
-    /// Gets the semantic context from the last successful analysis.
+    /// Gets the semantic context from the last analysis.
     ///
-    /// Returns `None` if semantic analysis has not been run or if
-    /// the last analysis failed.
+    /// Returns `Some` when the last call to `semantic()` succeeded in building
+    /// type, function, and symbol environments — even if `semantic()` returned
+    /// `Err` due to validation diagnostics. Returns `None` only if `semantic()`
+    /// has not been called or if foundational type resolution failed.
     fn semantic_context(&self) -> Option<&SemanticContext>;
 
     /// Gets the sources that are the project.
@@ -139,11 +146,20 @@ impl Project for FileBackedProject {
         // Do the analysis
         match analyze(&all_libraries) {
             Ok(context) => {
+                // Always cache the context so LSP features (document symbols, etc.)
+                // remain available even when there are semantic diagnostics.
+                debug!("FileBackedProject: Analysis completed {context:?}");
+                all_diagnostics.extend(context.diagnostics().iter().cloned());
                 self.semantic_context = Some(context);
-                Ok(())
+                if all_diagnostics.is_empty() {
+                    Ok(())
+                } else {
+                    Err(all_diagnostics)
+                }
             }
             Err(diagnostics) => {
-                // If we had an error, then add more diagnostics to any that we already had
+                debug!("FileBackedProject: Analysis errored {diagnostics:?}");
+                // Type resolution failed — context is not available
                 all_diagnostics.extend(diagnostics);
                 Err(all_diagnostics)
             }
@@ -199,6 +215,20 @@ mod test {
     fn analyze_when_not_valid_then_err() {
         let mut project = FileBackedProject::default();
         project.change_text_document(&FileId::default(), "AAA".to_owned());
+    }
+
+    #[test]
+    fn semantic_when_validation_error_then_context_cached() {
+        let mut project = FileBackedProject::default();
+        // Valid type declaration with an inverted subrange (semantic error)
+        let content = "TYPE\nINVALID_RANGE : INT(10..-10);\nEND_TYPE";
+        let file_id = FileId::from_string("test.st");
+        project.change_text_document(&file_id, content.to_owned());
+
+        let result = project.semantic();
+
+        assert!(result.is_err());
+        assert!(project.semantic_context().is_some());
     }
 
     #[test]
