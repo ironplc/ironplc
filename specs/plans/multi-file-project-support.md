@@ -39,13 +39,18 @@ IronPLC already supports multi-file compilation:
 - **Directory initialization** (`sources/project.rs:initialize_from_directory`): Flat directory read, filters to supported file types (`.st`, `.iec`, `.xml`)
 - **Semantic analysis** (`project.rs:semantic`): Parses all source files, passes all libraries to `analyze(&all_libraries)`
 - **Supported file types** (`file_type.rs`): `.st`, `.iec` (StructuredText), `.xml` (PLCopen XML)
+- **PLCopen XML content detection**: The compiler's XML parser (`xml/position.rs`) validates by content — checks for `<project>` root element with namespace `http://www.plcopen.org/xml/tc6_0201`. The VS Code extension also has a `firstLine` regex that detects PLCopen XML by namespace in the opening tag. All PLCopen XML tools (Beremiz, TwinCAT, CODESYS, OpenPLC) use plain `.xml` as the file extension — no product produces `.plcxml` files
+- **VS Code extension** (`package.json`): Registers `.st`, `.iec` (as `61131-3-st`) and a `plcopen-xml` language with `.plcxml` extension plus `firstLine` content detection. The `.plcxml` extension was added for test fixtures only — it should be removed since no product produces it
+- **VS Code LSP document selector** (`extension.ts`): Only includes `61131-3-st` — PLCopen XML files are syntax-highlighted but never sent to the LSP for analysis
 - **Diagnostics** (`dsl/diagnostic.rs`): Already support primary + secondary labels with `with_secondary()`
 
 ### What's Missing
 
 - No understanding of existing PLC project structures (Beremiz, TwinCAT)
 - No support for TwinCAT file formats (`.TcPOU`, `.TcGVL`, `.TcDUT`)
+- LSP document selector only includes `61131-3-st` — PLCopen XML and TwinCAT files are not sent to the LSP for analysis
 - LSP `related_information` is always `None` — secondary labels not surfaced to VS Code
+- CLI `enumerate_files` returns all directory entries without type filtering — filtering happens later in `Source::library()` via `FileType`
 - Directory enumeration is non-recursive and order-undefined
 
 ---
@@ -65,6 +70,8 @@ Add TwinCAT file extensions to `FileType`.
 - [ ] Mark `TwinCat` as supported in `is_supported()`
 - [ ] Add extensions to `extensions()` method
 - [ ] Write unit tests for each extension and case-insensitivity
+
+**Note on PLCopen XML**: The `.xml` extension is correct — all PLCopen XML tools (Beremiz, TwinCAT, CODESYS, OpenPLC) produce plain `.xml` files. The compiler already recognizes `.xml` and validates PLCopen XML by content (checking for `<project>` root element with `http://www.plcopen.org/xml/tc6_0201` namespace). No extension changes needed for PLCopen XML.
 
 ### 1.2 TwinCAT Parser
 
@@ -121,16 +128,32 @@ The parser extracts CDATA text and feeds it to the existing ST parser.
 - [ ] Create corresponding `docs/compiler/problems/PXXXX.rst` documentation file
 - [ ] Run `just compile` to regenerate Problem enum
 
-### 1.5 VS Code Extension File Registration
+### 1.5 VS Code Extension Updates
 
-Register TwinCAT and PLCopen XML file types in the VS Code extension so the LSP receives change notifications for these files.
+Register TwinCAT file types, fix the LSP document selector, and clean up the `.plcxml` extension.
 
-- [ ] In `integrations/vscode/package.json`: add `TcPOU`, `TcGVL`, `TcDUT` as recognized file extensions
-- [ ] Add file watcher patterns or language registrations for these extensions
+**Register TwinCAT files:**
+
+- [ ] In `integrations/vscode/package.json`: add `.TcPOU`, `.TcGVL`, `.TcDUT` as recognized file extensions (either as a new language entry or by extending an existing one)
 - [ ] Verify that `didChange` notifications are sent to the LSP for `.TcPOU` files opened in VS Code
-- [ ] Write manual test checklist for file change notification flow
 
-**Phase 1 Milestone**: `ironplcc check my_pou.TcPOU` works. VS Code sends file change notifications for TwinCAT files.
+**Fix LSP document selector:**
+
+The VS Code extension's LSP client (`extension.ts`) currently only includes `61131-3-st` in its `documentSelector`. This means PLCopen XML files (and TwinCAT files) are syntax-highlighted but never sent to the LSP for analysis.
+
+- [ ] In `integrations/vscode/src/extension.ts`: add `plcopen-xml` to the LSP `documentSelector`
+- [ ] Add the new TwinCAT language to the LSP `documentSelector`
+- [ ] Verify PLCopen XML files are sent to the LSP for analysis when opened
+
+**Remove `.plcxml` extension:**
+
+No product (Beremiz, TwinCAT, CODESYS, OpenPLC) produces `.plcxml` files — all use plain `.xml`. The `.plcxml` extension was added for test fixtures only. The VS Code `plcopen-xml` language already has a `firstLine` content-based regex that detects PLCopen XML by namespace, which handles `.xml` files correctly.
+
+- [ ] Remove `.plcxml` from the `extensions` array in the `plcopen-xml` language entry in `package.json`
+- [ ] Rename grammar test fixtures from `.plcxml` to `.xml` and update test configuration
+- [ ] Verify `firstLine` content detection still identifies PLCopen XML files with `.xml` extension
+
+**Phase 1 Milestone**: `ironplcc check my_pou.TcPOU` works. VS Code sends change notifications and LSP analysis requests for TwinCAT and PLCopen XML files.
 
 ---
 
@@ -269,43 +292,11 @@ The `Diagnostic` type already supports secondary labels (`secondary: Vec<Label>`
 
 ### 3.2 Add Cross-File Secondary Labels to Analyzer
 
-Identify analyzer rules that would benefit from pointing to related locations across files. Add secondary labels where they improve the user experience.
+**Deferred.** Adding secondary labels to analyzer rules is a separate concern from surfacing existing ones. Many rules already emit secondary labels (38+ call sites for `with_secondary()` across the analyzer). Phase 3.1 makes all of these visible in VS Code immediately.
 
-- [ ] Audit existing analyzer rules for cross-file scenarios (e.g., `VAR_EXTERNAL`/`VAR_GLOBAL` mismatches, duplicate definitions)
-- [ ] Add secondary labels to the highest-value cross-file error scenarios
-- [ ] Write tests for each new secondary label
+Identifying additional cross-file scenarios (e.g., `VAR_EXTERNAL`/`VAR_GLOBAL` mismatches, duplicate definitions across files) and adding secondary labels to them should be scoped in a separate plan once Phase 3.1 is complete and the value can be assessed.
 
-**Phase 3 Milestone**: Cross-file errors in VS Code show "Related information" linking to the other file.
-
----
-
-## Phase 4: LSP Multi-Root Workspace Support
-
-**Goal**: Handle VS Code workspaces containing multiple PLC projects.
-
-### Current State
-
-The LSP takes the **first** workspace folder only (`lsp.rs:start_with_connection` uses `folders.first()`). Multi-root workspaces and subdirectory projects are not supported.
-
-### 4.1 Support Multiple Workspace Folders
-
-- [ ] In `lsp.rs`: iterate over all workspace folders, not just the first
-- [ ] Create a separate `SourceProject` per workspace folder
-- [ ] Route file change notifications to the correct project by matching file paths
-- [ ] Run semantic analysis per project independently
-- [ ] Scope diagnostics to their respective project
-- [ ] Write tests for multi-folder workspace initialization
-
-### 4.2 Sub-Project Detection
-
-When a single workspace folder contains multiple PLC project structures (e.g., a monorepo), detect each as a separate compilation unit.
-
-- [ ] Extend discovery to scan for sub-projects within a directory
-- [ ] Each detected sub-project gets its own `SourceProject`
-- [ ] Avoid false cross-project symbol conflicts
-- [ ] Write tests for sub-project detection
-
-**Phase 4 Milestone**: A VS Code workspace with multiple PLC project folders analyzes each independently.
+**Phase 3 Milestone**: Existing secondary labels are visible in VS Code as "Related information".
 
 ---
 
@@ -321,15 +312,15 @@ When a single workspace folder contains multiple PLC project structures (e.g., a
 
 | File | Phase | Nature of Change |
 |------|-------|-----------------|
-| `compiler/sources/src/file_type.rs` | 1 | Add `TwinCat` variant and extensions |
+| `compiler/sources/src/file_type.rs` | 1 | Add `TwinCat` variant and TwinCAT extensions |
 | `compiler/sources/src/parsers/mod.rs` | 1 | Add TwinCAT parser dispatch |
 | `compiler/sources/src/lib.rs` | 2 | Export discovery module |
 | `compiler/sources/src/project.rs` | 2 | Use discovery in `initialize_from_directory` |
 | `compiler/plc2x/src/cli.rs` | 2 | Use discovery in `enumerate_files` for directories |
 | `compiler/plc2x/src/lsp_project.rs` | 3 | Map secondary labels to LSP `related_information` |
-| `compiler/plc2x/src/lsp.rs` | 4 | Support multiple workspace folders |
 | `compiler/problems/resources/problem-codes.csv` | 1 | New problem code for TwinCAT errors |
-| `integrations/vscode/package.json` | 1 | Register TwinCAT file extensions |
+| `integrations/vscode/package.json` | 1 | Register TwinCAT extensions; remove `.plcxml`; keep `firstLine` content detection |
+| `integrations/vscode/src/extension.ts` | 1 | Add `plcopen-xml` and TwinCAT languages to LSP `documentSelector` |
 
 ## Dependencies
 
@@ -381,11 +372,12 @@ The following are explicitly **out of scope** for this plan:
 
 1. **Siemens SCL (`.scl`) support** — SCL has dialect differences from IEC 61131-3 ST that would cause confusing parse errors without a dedicated parser or dialect mode; Siemens project formats are proprietary binary
 2. **CODESYS File-Based Storage detection** — FBS is a paid add-on with limited adoption; the fallback detector handles loose `.st` files
-2. **PLCopen XML v1.0 support** — v2.01 is the current standard used by Beremiz and modern tools
-3. **TwinCAT nested POUs** — Methods and properties in `ParentName^/` subdirectories are deferred
-4. **Recursive directory scanning** — Not needed for any known project structure; can be added later
-5. **Compilation ordering** — IEC 61131-3 does not define compilation order; the existing "merge everything, then resolve" approach is correct
-6. **`.ironplcignore` or configuration files** — Contradicts the "no new files" principle; CLI explicit file arguments serve as the override mechanism
+3. **PLCopen XML v1.0 support** — v2.01 is the current standard used by Beremiz and modern tools
+4. **TwinCAT nested POUs** — Methods and properties in `ParentName^/` subdirectories are deferred
+5. **Recursive directory scanning** — Not needed for any known project structure; can be added later
+6. **Compilation ordering** — IEC 61131-3 does not define compilation order; the existing "merge everything, then resolve" approach is correct
+7. **`.ironplcignore` or configuration files** — Contradicts the "no new files" principle; CLI explicit file arguments serve as the override mechanism
+8. **LSP multi-root workspace support** — Significant architectural change; out of scope
 
 ## Design Decisions
 
@@ -393,15 +385,16 @@ The following are explicitly **out of scope** for this plan:
 
 2. **Discovery returns a structured result.** `DiscoveredProject { project_type, root_dir, files }` enables the LSP and VS Code extension to display different information based on the detected project type (e.g., showing "Beremiz project" vs. "TwinCAT project" in the status bar).
 
-3. **VS Code extension registers additional file extensions.** The extension currently registers only `61131-3-st` as the document selector. To receive `didChange` notifications for `.TcPOU`, `.TcGVL`, `.TcDUT`, and `.xml` files, the extension must register these as additional file types or file watchers. This is required for Phase 1 to work in the LSP.
+3. **VS Code extension uses content-based detection for XML.** No product produces `.plcxml` files — all PLCopen XML tools use plain `.xml`. The VS Code `plcopen-xml` language uses a `firstLine` regex to detect PLCopen XML by the `http://www.plcopen.org/xml/tc6` namespace in the opening tag. TwinCAT files (`.TcPOU`, `.TcGVL`, `.TcDUT`) use distinctive extensions and don't need content detection. The LSP document selector must include all registered languages so files are sent for analysis, not just syntax-highlighted.
 
 4. **TwinCAT detection fails fast on missing files.** When a `.plcproj` references a file that doesn't exist on disk, discovery returns a `Diagnostic` error rather than silently skipping the file. This makes project misconfiguration immediately visible.
+
+5. **XML files are identified by content, not extension.** The `.xml` extension is ambiguous — it could be PLCopen XML, TwinCAT project files, or unrelated XML. Both the compiler and VS Code use content-based detection: the compiler checks for `<project>` root element with the `http://www.plcopen.org/xml/tc6_0201` namespace; VS Code uses a `firstLine` regex matching the same namespace. TwinCAT files use distinctive extensions (`.TcPOU`, `.TcGVL`, `.TcDUT`) that don't need content detection. No product produces `.plcxml` files — the extension was removed.
 
 ## Summary
 
 | Phase | Goal | Key Deliverable |
 |-------|------|-----------------|
-| 1 | Parse TwinCAT file formats | TwinCAT `.TcPOU`/`.TcGVL`/`.TcDUT` support |
+| 1 | Parse TwinCAT file formats | TwinCAT `.TcPOU`/`.TcGVL`/`.TcDUT` support; LSP receives all file types |
 | 2 | Auto-detect project structures | `ironplcc check beremiz-project/` and `ironplcc check twincat-project/` just work |
-| 3 | Better cross-file diagnostics | Secondary labels visible in VS Code |
-| 4 | Multi-root workspaces | Multiple PLC projects in one VS Code workspace |
+| 3 | Surface secondary labels in LSP | Existing secondary labels visible in VS Code |
