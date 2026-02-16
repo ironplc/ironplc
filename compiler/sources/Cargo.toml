@@ -1,16 +1,16 @@
 [package]
 name = "ironplc-sources"
 description = "Source file handling and parsing for IronPLC"
-version = "0.156.0"
+version = "0.157.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
-ironplc-dsl = { path = "../dsl", version = "0.156.0" }
-ironplc-parser = { path = "../parser", version = "0.156.0" }
-ironplc-problems = { path = "../problems", version = "0.156.0" }
+ironplc-dsl = { path = "../dsl", version = "0.157.0" }
+ironplc-parser = { path = "../parser", version = "0.157.0" }
+ironplc-problems = { path = "../problems", version = "0.157.0" }
 
 log = "0.4.20"
 encoding_rs = "0.8"
@@ -18,5 +18,5 @@ roxmltree = { version = "0.20", features = ["positions"] }
 time = "0.3.34"
 
 [dev-dependencies]
-ironplc-test = { path = "../test", version = "0.156.0" }
+ironplc-test = { path = "../test", version = "0.157.0" }
 tempfile = "3.8"
