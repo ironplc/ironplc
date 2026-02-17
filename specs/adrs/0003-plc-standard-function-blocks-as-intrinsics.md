@@ -16,6 +16,7 @@ Should timers, counters, and other standard function blocks be dedicated opcodes
 * **Standard FB API complexity** — TON has 4 parameters (IN, PT, Q, ET), CTUD has 7 (CU, CD, R, LD, PV, QU, QD); dedicated opcodes would need to encode all of these
 * **Future extensibility** — IEC 61131-3 edition 3 added new standard FBs; users may also want custom FB types with similar performance characteristics
 * **VM implementation simplicity** — fewer opcode categories means a simpler interpreter loop
+* **User-defined overrides of standard FBs** — IEC 61131-3 edition 3 introduced OOP features (`EXTENDS`, `OVERRIDE`) that allow users to derive from standard function blocks and override their behavior; the execution model must correctly handle derived FBs without silently applying the base intrinsic
 
 ## Considered Options
 
@@ -32,7 +33,8 @@ Chosen option: "Standard function blocks as VM intrinsics recognized at FB_CALL 
 * Good, because the instruction set is stable — adding support for a new standard FB (e.g., R_TRIG, F_TRIG, SR, RS) requires only a new intrinsic handler in the VM, not a new opcode
 * Good, because the bytecode for calling TON looks identical to calling any user FB — the compiler doesn't need special codegen paths for standard FBs
 * Good, because the VM can still use highly optimized native code for timers (direct hardware timer access, no interpretation overhead for the FB body)
-* Good, because user programs that subclass or wrap standard FBs work naturally through the same mechanism
+* Good, because user programs that wrap standard FBs via composition work naturally through the same mechanism
+* Good, because derived FBs (via EXTENDS) get distinct type IDs from the compiler, so they are never incorrectly matched to the base intrinsic — they fall through to bytecode interpretation automatically
 * Bad, because FB_CALL dispatch now has a conditional check: "is this a known intrinsic?" — one extra branch per FB_CALL, including for user-defined FBs that are not intrinsics
 * Bad, because the list of recognized intrinsics is a VM implementation detail not visible in the bytecode, which makes bytecode behavior dependent on the VM version
 
@@ -107,3 +109,51 @@ The branch predictor learns the pattern quickly because most programs call the s
 | F_TRIG | CLK, Q | Edge detection, called every scan |
 
 Additional FBs (SR, RS, string functions, etc.) can be added as intrinsics later based on profiling, without instruction set changes.
+
+### Interaction with FB inheritance (EXTENDS / OVERRIDE)
+
+IEC 61131-3 edition 3 introduced object-oriented features that allow users to derive from function blocks:
+
+```iecst
+FUNCTION_BLOCK FB_DebugTON EXTENDS TON
+VAR
+  callCount : UDINT;
+END_VAR
+```
+
+In environments like CODESYS and TwinCAT, users can use `EXTENDS` to inherit from a base FB and `OVERRIDE` to replace method behavior. Some runtimes mark standard FBs as `FINAL` to prevent this, but the language itself permits it, and not all runtimes restrict it.
+
+This creates a correctness risk for intrinsic dispatch: if the VM sees a call to an FB that extends TON and routes it to the native TON intrinsic, the user's overridden behavior is silently skipped. This would be a serious bug — the program appears to work but the custom logic never executes.
+
+**The solution is that intrinsic matching is by exact type ID, not by inheritance.**
+
+The compiler assigns each FB type (including derived types) a unique type ID. The intrinsic table in the VM maps specific, well-known type IDs to native implementations:
+
+```
+intrinsic_table = {
+  TYPE_ID_TON  => native_ton_handler,
+  TYPE_ID_TOF  => native_tof_handler,
+  TYPE_ID_TP   => native_tp_handler,
+  ...
+}
+```
+
+When `FB_DebugTON EXTENDS TON` is compiled, the compiler assigns it a new type ID (e.g., `TYPE_ID_FB_DEBUGTON`) that is distinct from `TYPE_ID_TON`. The FB_CALL instruction carries this derived type ID. At dispatch, the VM looks up `TYPE_ID_FB_DEBUGTON` in the intrinsic table, finds no match, and falls through to interpreting the FB's bytecode body — which includes the user's overridden behavior.
+
+This means:
+
+| Call target | Type ID | Intrinsic match? | Execution path |
+|-------------|---------|-------------------|---------------|
+| `TON` (standard) | `TYPE_ID_TON` | Yes | Native intrinsic |
+| `FB_DebugTON EXTENDS TON` | `TYPE_ID_FB_DEBUGTON` | No | Bytecode interpretation |
+| `FB_WrappedTON` (composition, not extends) | `TYPE_ID_FB_WRAPPEDTON` | No | Bytecode interpretation (internally calls TON, which hits the intrinsic) |
+
+The correctness invariant is: **only exact type matches receive intrinsic treatment.** The compiler enforces this by never reusing a standard FB's type ID for a derived type. No runtime inheritance check is needed.
+
+#### Derived FBs that don't override behavior
+
+A subtlety: `FB_DebugTON EXTENDS TON` might only *add* variables without overriding any behavior. In that case, the base TON logic is correct, and the intrinsic *could* safely execute. However, the VM cannot know this without inspecting the derived FB's bytecode — which defeats the purpose of fast-path dispatch. The simple rule (exact match only) sacrifices this optimization opportunity in favor of correctness and simplicity. If profiling shows this pattern is common, a future optimization could let the compiler annotate derived FBs that are "intrinsic-compatible" (no overrides), but this is not needed for the initial implementation.
+
+#### Name shadowing
+
+A user could also define a completely new FB named `TON` that shadows the standard library's `TON`. The compiler's namespace resolution handles this — the user's `TON` gets a different type ID in their project namespace, so it does not match the intrinsic table entry for the standard `TON`. This is correct: the user explicitly replaced the standard FB and should get their custom implementation.
