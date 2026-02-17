@@ -4,8 +4,9 @@
 
 This spec defines the bytecode instruction set for the IronPLC virtual PLC runtime. The instruction set is designed for a stack-based virtual machine that executes IEC 61131-3 programs compiled from Structured Text (and potentially other IEC 61131-3 languages).
 
-The instruction set makes three key design decisions documented as ADRs:
+The instruction set builds on four design decisions documented as ADRs:
 
+0. **[ADR-0000](../adrs/0000-stack-based-bytecode-vm.md)**: Stack-based bytecode VM as the execution model — chosen over register-based VM, native compilation, tree-walking interpretation, and C transpilation
 1. **[ADR-0001](../adrs/0001-bytecode-integer-arithmetic-type-strategy.md)**: Two-width integer arithmetic with explicit narrowing — sub-32-bit types are promoted to 32-bit on load; 64-bit types remain at 64-bit; explicit NARROW instructions handle truncation back to narrow types
 2. **[ADR-0002](../adrs/0002-bytecode-overflow-behavior.md)**: Configurable overflow behavior at narrowing points — the VM supports wrap, saturate, and fault modes as a startup configuration
 3. **[ADR-0003](../adrs/0003-plc-standard-function-blocks-as-intrinsics.md)**: Standard function blocks as VM intrinsics via FB_CALL — timers, counters, and other standard FBs use the same FB_CALL instruction as user-defined FBs, with the VM fast-pathing known types
