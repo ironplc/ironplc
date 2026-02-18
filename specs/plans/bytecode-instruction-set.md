@@ -113,6 +113,17 @@ Process image instructions access the PLC's input and output memory. Inputs are 
 
 The `region` byte encodes the access width: 0=bit (X), 1=byte (B), 2=word (W), 3=doubleword (D), 4=longword (L).
 
+#### Array Access
+
+Dedicated array opcodes enforce bounds checking on every access. The VM validates that the index is within the declared array bounds and traps on out-of-bounds access — eliminating buffer overflows by construction. The alternative (compiling array access to pointer arithmetic) would make bounds checking optional and fragile.
+
+The `type` byte encodes the element type: 0=I32, 1=U32, 2=I64, 3=U64, 4=F32, 5=F64, 6=buf_idx (STRING element), 7=buf_idx (WSTRING element), 8=fb_ref (struct/FB element). The `array` operand is a u16 index into the variable table identifying the array base.
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x24 | LOAD_ARRAY | array: u16, type: u8 | [I32] → [value] | Load element from array; index on stack; traps on out-of-bounds |
+| 0x25 | STORE_ARRAY | array: u16, type: u8 | [value, I32] → [] | Store element to array; index on stack; traps on out-of-bounds |
+
 #### Struct and FB Fields
 
 | # | Opcode | Operands | Stack effect | Description |
@@ -313,6 +324,15 @@ Note: the narrowed value remains at 32-bit width on the stack (since the VM alwa
 | 0xA2 | NARROW_U64_TO_U32 | — | [U64] → [U32] | Narrow 64-bit to 32-bit unsigned (with overflow policy) |
 | 0xA3 | NARROW_F64_TO_F32 | — | [F64] → [F32] | Narrow double to float (IEEE 754 rounding) |
 
+#### TIME Arithmetic
+
+TIME values are I64 microseconds. Although raw I64 arithmetic produces correct results, dedicated TIME opcodes enforce type discipline: the VM can verify that only TIME-typed values are passed to these instructions, catching accidental mixing of TIME and unrelated integers. This prevents a class of unit-confusion bugs (e.g., accidentally adding a loop counter to a timestamp).
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xA4 | TIME_ADD | — | [I64, I64] → [I64] | Add two TIME/duration values (microseconds) |
+| 0xA5 | TIME_SUB | — | [I64, I64] → [I64] | Subtract TIME/duration values (microseconds) |
+
 ---
 
 ### Control Flow
@@ -380,20 +400,22 @@ The VM manages two kinds of string buffers:
 - **Variable buffers** — each STRING/WSTRING variable has a fixed-size buffer in the variable table, sized per its declaration (e.g., 82 bytes for `STRING(80)`: 80 chars + current length + null terminator)
 - **Temporary buffers** — a pre-allocated pool of fixed-size buffers used for intermediate results from string operations (e.g., the result of CONCAT before it is stored). The compiler determines the required pool size by analyzing maximum expression depth.
 
-The `buf_idx` values on the operand stack are small indices (not pointers) into the buffer table. Stack operations like DUP and SWAP copy only the index, not the buffer contents. Actual buffer-to-buffer copies happen only at STR_STORE_VAR (string assignment) and within string operation handlers.
+The `buf_idx` values on the operand stack are small indices (not pointers) into the buffer table. Stack operations like DUP and SWAP copy only the index, not the buffer contents. Actual buffer-to-buffer copies happen only at STR_STORE_VAR / WSTR_STORE_VAR (string assignment) and within string operation handlers.
+
+STRING and WSTRING have separate opcode families. This makes the string encoding type statically checkable by the compiler: the VM can assert that a STR_* opcode always receives a single-byte STRING buffer and a WSTR_* opcode always receives a wide-character WSTRING buffer, trapping immediately on a mismatch rather than silently misinterpreting character data. The cost is a parallel set of opcodes, but this eliminates an entire class of silent data corruption bugs.
 
 String operations are implemented as VM built-in functions rather than inline bytecode. This keeps the instruction set compact while supporting the full IEC 61131-3 string function library. String operations that produce a string result (CONCAT, LEFT, etc.) write into a temporary buffer and push its index. If the result exceeds the temporary buffer's max length, it is truncated — matching standard PLC string truncation semantics.
 
-#### String Variable Access
+#### STRING Variable Access
 
 These opcodes replace the generic LOAD_VAR_REF/STORE_VAR_REF that were removed from the variable instructions. String assignment has different semantics from integer assignment — STR_STORE_VAR performs a buffer-to-buffer content copy (value semantics), not an index copy.
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0xE0 | STR_LOAD_VAR | index: u16 | [] → [buf_idx] | Push buffer index for a STRING/WSTRING variable |
-| 0xE1 | STR_STORE_VAR | index: u16 | [buf_idx] → [] | Copy buffer contents into destination variable's buffer (value-copy assignment) |
+| 0xE0 | STR_LOAD_VAR | index: u16 | [] → [buf_idx] | Push buffer index for a STRING variable |
+| 0xE1 | STR_STORE_VAR | index: u16 | [buf_idx] → [] | Copy buffer contents into STRING variable's buffer (value-copy assignment) |
 
-#### String Functions
+#### STRING Functions
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
@@ -409,15 +431,38 @@ These opcodes replace the generic LOAD_VAR_REF/STORE_VAR_REF that were removed f
 | 0xEB | STR_EQ | — | [buf_idx, buf_idx] → [I32] | String equality comparison |
 | 0xEC | STR_LT | — | [buf_idx, buf_idx] → [I32] | String less-than (lexicographic) |
 
+#### WSTRING Variable Access
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xED | WSTR_LOAD_VAR | index: u16 | [] → [buf_idx] | Push buffer index for a WSTRING variable |
+| 0xEE | WSTR_STORE_VAR | index: u16 | [buf_idx] → [] | Copy buffer contents into WSTRING variable's buffer (value-copy assignment) |
+
+#### WSTRING Functions
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xEF | WSTR_LEN | — | [buf_idx] → [I32] | Wide string length (LEN) |
+| 0xF0 | WSTR_CONCAT | — | [buf_idx, buf_idx] → [buf_idx] | Concatenate two wide strings (CONCAT) |
+| 0xF1 | WSTR_LEFT | — | [buf_idx, I32] → [buf_idx] | Left substring (LEFT) |
+| 0xF2 | WSTR_RIGHT | — | [buf_idx, I32] → [buf_idx] | Right substring (RIGHT) |
+| 0xF3 | WSTR_MID | — | [buf_idx, I32, I32] → [buf_idx] | Mid substring (MID); position, length on stack |
+| 0xF4 | WSTR_FIND | — | [buf_idx, buf_idx] → [I32] | Find substring position (FIND); 0 if not found |
+| 0xF5 | WSTR_INSERT | — | [buf_idx, buf_idx, I32] → [buf_idx] | Insert string at position (INSERT) |
+| 0xF6 | WSTR_DELETE | — | [buf_idx, I32, I32] → [buf_idx] | Delete characters (DELETE); position, length |
+| 0xF7 | WSTR_REPLACE | — | [buf_idx, buf_idx, I32, I32] → [buf_idx] | Replace characters (REPLACE) |
+| 0xF8 | WSTR_EQ | — | [buf_idx, buf_idx] → [I32] | Wide string equality comparison |
+| 0xF9 | WSTR_LT | — | [buf_idx, buf_idx] → [I32] | Wide string less-than (lexicographic) |
+
 ---
 
 ### Debug
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0xF0 | NOP | — | [] → [] | No operation |
-| 0xF1 | BREAKPOINT | — | [] → [] | Debug breakpoint (NOP in release mode) |
-| 0xF2 | LINE | line: u16 | [] → [] | Source line number marker for debugging |
+| 0xFC | NOP | — | [] → [] | No operation |
+| 0xFD | BREAKPOINT | — | [] → [] | Debug breakpoint (NOP in release mode) |
+| 0xFE | LINE | line: u16 | [] → [] | Source line number marker for debugging |
 
 ---
 
@@ -428,7 +473,8 @@ These opcodes replace the generic LOAD_VAR_REF/STORE_VAR_REF that were removed f
 | Load/Store Constants | 0x01–0x08 | 8 | Constant pool loads, boolean literals |
 | Load/Store Variables | 0x10–0x1D | 12 | Typed variable access (numeric types only) |
 | Process Image | 0x20–0x23 | 4 | I/O and memory access (%I, %Q, %M) |
-| Struct/FB Fields | 0x28–0x29 | 2 | Field access on references |
+| Array Access | 0x24–0x25 | 2 | Bounds-checked array element load/store |
+| Struct/FB Fields | 0x28–0x29 | 2 | Field access on FB references |
 | Integer Arithmetic 32 | 0x30–0x3A | 11 | I32 and U32 arithmetic |
 | Integer Arithmetic 64 | 0x3C–0x46 | 11 | I64 and U64 arithmetic |
 | Float Arithmetic | 0x48–0x51 | 10 | F32 and F64 arithmetic |
@@ -436,14 +482,16 @@ These opcodes replace the generic LOAD_VAR_REF/STORE_VAR_REF that were removed f
 | Bitwise | 0x58–0x67 | 16 | Bitwise ops and shifts, 32 and 64-bit |
 | Comparison | 0x68–0x8B | 36 | Typed comparisons across all VM types |
 | Type Conversion | 0x90–0xA3 | 16 | Narrowing, widening, cross-domain |
+| TIME Arithmetic | 0xA4–0xA5 | 2 | Type-checked TIME addition and subtraction |
 | Control Flow | 0xB0–0xB5 | 6 | Jumps, calls, returns |
 | Function Block | 0xC0–0xC3 | 4 | FB instance management and invocation |
 | Stack | 0xD0–0xD2 | 3 | Stack manipulation |
-| String | 0xE0–0xEC | 13 | String variable access and operations |
-| Debug | 0xF0–0xF2 | 3 | NOP, breakpoint, line info |
-| **Total** | | **159** | |
+| STRING | 0xE0–0xEC | 13 | STRING variable access and operations |
+| WSTRING | 0xED–0xF9 | 13 | WSTRING variable access and operations |
+| Debug | 0xFC–0xFE | 3 | NOP, breakpoint, line info |
+| **Total** | | **176** | |
 
-Note: The total remains 159. LOAD_VAR_REF and STORE_VAR_REF were removed from the variable section (-2) and replaced by STR_LOAD_VAR and STR_STORE_VAR in the string section (+2). The string function opcodes shifted by +2 in their numbering.
+The opcode budget uses 176 of 256 slots (69%), leaving 80 slots for future extensions (e.g., OOP method dispatch, pointer/reference operations).
 
 ## Compilation Examples
 
@@ -534,14 +582,16 @@ LOAD_TRUE                 -- push TRUE
 STORE_VAR_I32    0x0002  -- store output
 ```
 
-## Open Questions
+## Design Decisions
 
-1. **WSTRING vs STRING opcodes**: Should wide string operations be separate opcodes, or should the string opcodes be polymorphic over STRING and WSTRING? Since buffer indices carry type information (the variable table knows whether a buffer is STRING or WSTRING), the VM could dispatch to the correct implementation per index — but this adds a runtime check per string operation.
+The following questions were resolved with a "prioritize safety" principle: when in doubt, prefer opcodes that encode type information and invariants statically, so the VM can enforce them, over clever encodings that save opcode space but rely on the compiler always getting things right.
 
-2. **Array access**: This spec does not include array indexing opcodes. Arrays could be handled as computed offsets using arithmetic (base + index * element_size) with LOAD_FIELD/STORE_FIELD, or dedicated LOAD_ARRAY/STORE_ARRAY opcodes with bounds checking could be added.
+1. **WSTRING vs STRING opcodes → Separate opcodes.** Polymorphic dispatch would require a runtime type-tag check on every string operation, and a bug in the tag (or a stale `buf_idx`) would silently misinterpret character data — UTF-16 as single-byte or vice versa. Separate STR_* and WSTR_* opcode families make the encoding type statically checkable: the compiler emits the correct family, and the VM traps immediately on a type mismatch. The cost is 13 additional opcodes (one WSTR_* per STR_*), well within the 256-opcode budget.
 
-3. **CASE statement**: Currently compiled as a chain of JMP_IF comparisons. A TABLE_SWITCH opcode (like the JVM's `tableswitch`) could optimize dense CASE statements, but may not be worth the complexity for typical PLC programs.
+2. **Array access → Dedicated LOAD_ARRAY / STORE_ARRAY with mandatory bounds checking.** Compiling array access to pointer arithmetic (`base + index * size`) makes bounds checking optional and fragile — a compiler bug silently produces buffer overflows. A dedicated opcode makes bounds checking mandatory and atomic: the VM validates the index against the declared array size on every access and traps on out-of-bounds. Buffer overflows are the #1 class of safety bugs in embedded systems; this eliminates them by construction.
 
-4. **Exponentiation**: IEC 61131-3 defines the EXPT function. This could be a dedicated opcode or a standard library call. The performance requirement is unclear — exponentiation is rare in PLC programs.
+3. **CASE statement → No TABLE_SWITCH; keep JMP_IF chains.** A TABLE_SWITCH opcode requires the VM to validate that the jump table is well-formed (no out-of-range targets, no missing entries). A chain of CMP + JMP_IF comparisons is trivially verifiable — each jump target is individually validated. The performance difference is negligible for typical PLC CASE statements (5–20 arms). TABLE_SWITCH is a premature optimization that adds an opcode with a complex encoding and a new class of potential bugs.
 
-5. **TIME arithmetic**: TIME values are represented as I64 microseconds and can use I64 arithmetic directly. Should there be dedicated TIME_ADD / TIME_SUB opcodes for clarity, or is I64 arithmetic sufficient?
+4. **Exponentiation → Standard library call, not an opcode.** Exponentiation involves floating-point edge cases (0^0, negative base with fractional exponent, overflow). A library function can return explicit error indicators and be tested/audited independently. Baking it into the VM as an opcode fixes the error-handling semantics and makes them harder to inspect. Since EXPT is rare in PLC code, there is no performance argument for a dedicated opcode.
+
+5. **TIME arithmetic → Dedicated TIME_ADD / TIME_SUB opcodes.** Raw I64 arithmetic on TIME values is numerically correct but semantically invisible to the VM. If a programmer accidentally adds a TIME and a DINT, raw I64 arithmetic silently produces a nonsensical result. Dedicated TIME opcodes let the VM enforce type discipline: TIME_ADD only accepts two TIME-typed operands (or TIME + duration). This catches unit-confusion bugs at runtime and makes bytecode verification easier — an auditor can confirm that time values are never mixed with unrelated integers.
