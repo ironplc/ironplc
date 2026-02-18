@@ -595,3 +595,75 @@ The following questions were resolved with a "prioritize safety" principle: when
 4. **Exponentiation → Standard library call, not an opcode.** Exponentiation involves floating-point edge cases (0^0, negative base with fractional exponent, overflow). A library function can return explicit error indicators and be tested/audited independently. Baking it into the VM as an opcode fixes the error-handling semantics and makes them harder to inspect. Since EXPT is rare in PLC code, there is no performance argument for a dedicated opcode.
 
 5. **TIME arithmetic → Dedicated TIME_ADD / TIME_SUB opcodes.** Raw I64 arithmetic on TIME values is numerically correct but semantically invisible to the VM. If a programmer accidentally adds a TIME and a DINT, raw I64 arithmetic silently produces a nonsensical result. Dedicated TIME opcodes let the VM enforce type discipline: TIME_ADD only accepts two TIME-typed operands (or TIME + duration). This catches unit-confusion bugs at runtime and makes bytecode verification easier — an auditor can confirm that time values are never mixed with unrelated integers.
+
+## Arithmetic Edge Cases
+
+The following behaviors are normative. The VM must implement these exactly to ensure deterministic, portable execution across all targets.
+
+### Division by Zero
+
+All integer division and modulo instructions trap on division by zero. The VM halts the current scan cycle and reports a runtime fault. This applies to:
+
+- DIV_I32, DIV_U32, DIV_I64, DIV_U64
+- MOD_I32, MOD_U32, MOD_I64, MOD_U64
+
+Floating-point division by zero follows IEEE 754: `x / 0.0` produces `+Inf` or `-Inf` (depending on the sign of x), and `0.0 / 0.0` produces `NaN`. This applies to DIV_F32 and DIV_F64. The VM does not trap on floating-point division by zero.
+
+### Signed Integer Overflow on Negation
+
+NEG_I32 on `i32::MIN` (-2147483648) and NEG_I64 on `i64::MIN` produce a result governed by the configured overflow policy (ADR-0002):
+
+| Policy | NEG_I32 on -2147483648 | NEG_I64 on i64::MIN |
+|--------|------------------------|----------------------|
+| Wrap | -2147483648 (wraps to itself) | i64::MIN (wraps to itself) |
+| Saturate | 2147483647 (i32::MAX) | i64::MAX |
+| Fault | Runtime trap | Runtime trap |
+
+### Shift Amounts
+
+Shift and rotate instructions mask the shift amount to the bit width of the operand:
+
+| Instructions | Mask | Effect |
+|---|---|---|
+| SHL_32, SHR_32, ROL_32, ROR_32 | `amount & 31` | Shift amount 0–31 |
+| SHL_64, SHR_64, ROL_64, ROR_64 | `amount & 63` | Shift amount 0–63 |
+
+A shift by 32 on a 32-bit value produces the same result as a shift by 0. This matches Rust's `wrapping_shl` / `wrapping_shr` and ensures deterministic behavior across hardware platforms (ARM and x86 differ in their native shift behavior for out-of-range amounts).
+
+### Float-to-Integer Overflow
+
+When a floating-point value exceeds the range of the target integer type, the conversion instructions follow the configured overflow policy (ADR-0002):
+
+| Instructions | Target range |
+|---|---|
+| F32_TO_I32, F64_TO_I32 | -2147483648 to 2147483647 |
+| F64_TO_I64 | -9223372036854775808 to 9223372036854775807 |
+
+| Policy | Value > max | Value < min | Value is NaN |
+|--------|-------------|-------------|--------------|
+| Wrap | Truncate to target width | Truncate to target width | 0 |
+| Saturate | Target max | Target min | 0 |
+| Fault | Runtime trap | Runtime trap | Runtime trap |
+
+### Float Comparison with NaN
+
+All float comparison instructions (EQ_F32, LT_F32, etc.) follow IEEE 754 semantics:
+
+- `NaN == NaN` → 0 (false)
+- `NaN != NaN` → 1 (true)
+- `NaN < x` → 0 (false) for any x
+- `NaN > x` → 0 (false) for any x
+- `NaN <= x` → 0 (false) for any x
+- `NaN >= x` → 0 (false) for any x
+
+### Integer Overflow on Addition, Subtraction, Multiplication
+
+For full-width arithmetic (ADD_I32 on I32, ADD_I64 on I64, etc.), the overflow policy from ADR-0002 applies. The compiler inserts NARROW instructions at assignment points for sub-width types (SINT, INT), but full-width overflow can occur in intermediate computations:
+
+| Policy | Behavior |
+|--------|----------|
+| Wrap | Two's complement wrapping (Rust's `wrapping_add`, etc.) |
+| Saturate | Clamp to type min/max |
+| Fault | Runtime trap |
+
+The overflow policy is a VM startup configuration, not a per-instruction setting.
