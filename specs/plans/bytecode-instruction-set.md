@@ -46,8 +46,8 @@ Additional IEC 61131-3 types are handled as follows:
 | LWORD | U64 | Native width |
 | TIME | I64 | Microseconds since epoch; sign allows negative durations |
 | DATE, TOD, DT | I64 | Microseconds; specific interpretation is runtime-defined |
-| STRING | ref | Index to a fixed-size buffer (max length known at compile time); see String Operations |
-| WSTRING | ref | Index to a fixed-size wide-char buffer (max length known at compile time); see String Operations |
+| STRING | buf_idx | Index to a fixed-size buffer (max length known at compile time); see String Operations |
+| WSTRING | buf_idx | Index to a fixed-size wide-char buffer (max length known at compile time); see String Operations |
 
 ## Instruction Set
 
@@ -93,14 +93,12 @@ Variable instructions use a 16-bit index into the current scope's variable table
 | 0x13 | LOAD_VAR_U64 | index: u16 | [] → [U64] | Load 64-bit unsigned variable |
 | 0x14 | LOAD_VAR_F32 | index: u16 | [] → [F32] | Load 32-bit float variable |
 | 0x15 | LOAD_VAR_F64 | index: u16 | [] → [F64] | Load 64-bit float variable |
-| 0x16 | LOAD_VAR_REF | index: u16 | [] → [ref] | Load reference variable (STRING, WSTRING, FB instance) |
 | 0x18 | STORE_VAR_I32 | index: u16 | [I32] → [] | Store to 32-bit signed variable |
 | 0x19 | STORE_VAR_U32 | index: u16 | [U32] → [] | Store to 32-bit unsigned variable |
 | 0x1A | STORE_VAR_I64 | index: u16 | [I64] → [] | Store to 64-bit signed variable |
 | 0x1B | STORE_VAR_U64 | index: u16 | [U64] → [] | Store to 64-bit unsigned variable |
 | 0x1C | STORE_VAR_F32 | index: u16 | [F32] → [] | Store to 32-bit float variable |
 | 0x1D | STORE_VAR_F64 | index: u16 | [F64] → [] | Store to 64-bit float variable |
-| 0x1E | STORE_VAR_REF | index: u16 | [ref] → [] | Store reference variable |
 
 #### Process Image (I/O)
 
@@ -119,8 +117,8 @@ The `region` byte encodes the access width: 0=bit (X), 1=byte (B), 2=word (W), 3
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x28 | LOAD_FIELD | field: u8 | [ref] → [value] | Load field from struct/FB instance on stack |
-| 0x29 | STORE_FIELD | field: u8 | [value, ref] → [] | Store field to struct/FB instance on stack |
+| 0x28 | LOAD_FIELD | field: u8 | [fb_ref] → [value] | Load field from struct/FB instance on stack |
+| 0x29 | STORE_FIELD | field: u8 | [value, fb_ref] → [] | Store field to struct/FB instance on stack |
 
 ---
 
@@ -336,10 +334,10 @@ Function block invocation follows the pattern: load the FB instance reference, s
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0xC0 | FB_LOAD_INSTANCE | index: u16 | [] → [ref] | Push FB instance reference from variable table |
-| 0xC1 | FB_STORE_PARAM | field: u8 | [value, ref] → [ref] | Store input parameter on FB instance; keeps ref on stack |
-| 0xC2 | FB_LOAD_PARAM | field: u8 | [ref] → [value, ref] | Load output parameter from FB instance; keeps ref on stack |
-| 0xC3 | FB_CALL | type_id: u16 | [ref] → [] | Call function block (VM dispatches to intrinsic or bytecode body per ADR-0003) |
+| 0xC0 | FB_LOAD_INSTANCE | index: u16 | [] → [fb_ref] | Push FB instance reference from variable table |
+| 0xC1 | FB_STORE_PARAM | field: u8 | [value, fb_ref] → [fb_ref] | Store input parameter on FB instance; keeps fb_ref on stack |
+| 0xC2 | FB_LOAD_PARAM | field: u8 | [fb_ref] → [value, fb_ref] | Load output parameter from FB instance; keeps fb_ref on stack |
+| 0xC3 | FB_CALL | type_id: u16 | [fb_ref] → [] | Call function block (VM dispatches to intrinsic or bytecode body per ADR-0003) |
 
 #### Calling Convention
 
@@ -382,23 +380,34 @@ The VM manages two kinds of string buffers:
 - **Variable buffers** — each STRING/WSTRING variable has a fixed-size buffer in the variable table, sized per its declaration (e.g., 82 bytes for `STRING(80)`: 80 chars + current length + null terminator)
 - **Temporary buffers** — a pre-allocated pool of fixed-size buffers used for intermediate results from string operations (e.g., the result of CONCAT before it is stored). The compiler determines the required pool size by analyzing maximum expression depth.
 
-The `ref` values on the operand stack are small indices (not pointers) into the buffer table. Stack operations like DUP and SWAP copy only the index, not the buffer contents. Actual buffer-to-buffer copies happen only at STORE_VAR_REF (assignment) and within string operation handlers.
+The `buf_idx` values on the operand stack are small indices (not pointers) into the buffer table. Stack operations like DUP and SWAP copy only the index, not the buffer contents. Actual buffer-to-buffer copies happen only at STR_STORE_VAR (string assignment) and within string operation handlers.
 
 String operations are implemented as VM built-in functions rather than inline bytecode. This keeps the instruction set compact while supporting the full IEC 61131-3 string function library. String operations that produce a string result (CONCAT, LEFT, etc.) write into a temporary buffer and push its index. If the result exceeds the temporary buffer's max length, it is truncated — matching standard PLC string truncation semantics.
 
+#### String Variable Access
+
+These opcodes replace the generic LOAD_VAR_REF/STORE_VAR_REF that were removed from the variable instructions. String assignment has different semantics from integer assignment — STR_STORE_VAR performs a buffer-to-buffer content copy (value semantics), not an index copy.
+
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0xE0 | STR_LEN | — | [ref] → [I32] | String length (LEN) |
-| 0xE1 | STR_CONCAT | — | [ref, ref] → [ref] | Concatenate two strings (CONCAT) |
-| 0xE2 | STR_LEFT | — | [ref, I32] → [ref] | Left substring (LEFT) |
-| 0xE3 | STR_RIGHT | — | [ref, I32] → [ref] | Right substring (RIGHT) |
-| 0xE4 | STR_MID | — | [ref, I32, I32] → [ref] | Mid substring (MID); position, length on stack |
-| 0xE5 | STR_FIND | — | [ref, ref] → [I32] | Find substring position (FIND); 0 if not found |
-| 0xE6 | STR_INSERT | — | [ref, ref, I32] → [ref] | Insert string at position (INSERT) |
-| 0xE7 | STR_DELETE | — | [ref, I32, I32] → [ref] | Delete characters (DELETE); position, length |
-| 0xE8 | STR_REPLACE | — | [ref, ref, I32, I32] → [ref] | Replace characters (REPLACE) |
-| 0xE9 | STR_EQ | — | [ref, ref] → [I32] | String equality comparison |
-| 0xEA | STR_LT | — | [ref, ref] → [I32] | String less-than (lexicographic) |
+| 0xE0 | STR_LOAD_VAR | index: u16 | [] → [buf_idx] | Push buffer index for a STRING/WSTRING variable |
+| 0xE1 | STR_STORE_VAR | index: u16 | [buf_idx] → [] | Copy buffer contents into destination variable's buffer (value-copy assignment) |
+
+#### String Functions
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xE2 | STR_LEN | — | [buf_idx] → [I32] | String length (LEN) |
+| 0xE3 | STR_CONCAT | — | [buf_idx, buf_idx] → [buf_idx] | Concatenate two strings (CONCAT) |
+| 0xE4 | STR_LEFT | — | [buf_idx, I32] → [buf_idx] | Left substring (LEFT) |
+| 0xE5 | STR_RIGHT | — | [buf_idx, I32] → [buf_idx] | Right substring (RIGHT) |
+| 0xE6 | STR_MID | — | [buf_idx, I32, I32] → [buf_idx] | Mid substring (MID); position, length on stack |
+| 0xE7 | STR_FIND | — | [buf_idx, buf_idx] → [I32] | Find substring position (FIND); 0 if not found |
+| 0xE8 | STR_INSERT | — | [buf_idx, buf_idx, I32] → [buf_idx] | Insert string at position (INSERT) |
+| 0xE9 | STR_DELETE | — | [buf_idx, I32, I32] → [buf_idx] | Delete characters (DELETE); position, length |
+| 0xEA | STR_REPLACE | — | [buf_idx, buf_idx, I32, I32] → [buf_idx] | Replace characters (REPLACE) |
+| 0xEB | STR_EQ | — | [buf_idx, buf_idx] → [I32] | String equality comparison |
+| 0xEC | STR_LT | — | [buf_idx, buf_idx] → [I32] | String less-than (lexicographic) |
 
 ---
 
@@ -417,7 +426,7 @@ String operations are implemented as VM built-in functions rather than inline by
 | Category | Range | Count | Description |
 |----------|-------|-------|-------------|
 | Load/Store Constants | 0x01–0x08 | 8 | Constant pool loads, boolean literals |
-| Load/Store Variables | 0x10–0x1E | 14 | Typed variable access |
+| Load/Store Variables | 0x10–0x1D | 12 | Typed variable access (numeric types only) |
 | Process Image | 0x20–0x23 | 4 | I/O and memory access (%I, %Q, %M) |
 | Struct/FB Fields | 0x28–0x29 | 2 | Field access on references |
 | Integer Arithmetic 32 | 0x30–0x3A | 11 | I32 and U32 arithmetic |
@@ -430,9 +439,11 @@ String operations are implemented as VM built-in functions rather than inline by
 | Control Flow | 0xB0–0xB5 | 6 | Jumps, calls, returns |
 | Function Block | 0xC0–0xC3 | 4 | FB instance management and invocation |
 | Stack | 0xD0–0xD2 | 3 | Stack manipulation |
-| String | 0xE0–0xEA | 11 | String operations |
+| String | 0xE0–0xEC | 13 | String variable access and operations |
 | Debug | 0xF0–0xF2 | 3 | NOP, breakpoint, line info |
 | **Total** | | **159** | |
+
+Note: The total remains 159. LOAD_VAR_REF and STORE_VAR_REF were removed from the variable section (-2) and replaced by STR_LOAD_VAR and STR_STORE_VAR in the string section (+2). The string function opcodes shifted by +2 in their numbering.
 
 ## Compilation Examples
 
