@@ -46,8 +46,8 @@ Additional IEC 61131-3 types are handled as follows:
 | LWORD | U64 | Native width |
 | TIME | I64 | Microseconds since epoch; sign allows negative durations |
 | DATE, TOD, DT | I64 | Microseconds; specific interpretation is runtime-defined |
-| STRING | ref | Reference to heap-allocated string; see String Operations |
-| WSTRING | ref | Reference to heap-allocated wide string; see String Operations |
+| STRING | ref | Index to a fixed-size buffer (max length known at compile time); see String Operations |
+| WSTRING | ref | Index to a fixed-size wide-char buffer (max length known at compile time); see String Operations |
 
 ## Instruction Set
 
@@ -375,7 +375,16 @@ FB_STORE_PARAM and FB_LOAD_PARAM keep the instance reference on the stack to all
 
 ### String Operations
 
-String operations use reference values and are implemented as VM built-in functions rather than inline bytecode. This keeps the instruction set compact while supporting the full IEC 61131-3 string function library.
+IEC 61131-3 strings have a declared maximum length known at compile time (e.g., `STRING(20)` holds at most 20 characters). Strings are stored as fixed-size buffers — not heap-allocated — matching the behavior of PLC runtimes like CODESYS and TwinCAT. This ensures deterministic memory usage with no dynamic allocation during scan cycles.
+
+The VM manages two kinds of string buffers:
+
+- **Variable buffers** — each STRING/WSTRING variable has a fixed-size buffer in the variable table, sized per its declaration (e.g., 82 bytes for `STRING(80)`: 80 chars + current length + null terminator)
+- **Temporary buffers** — a pre-allocated pool of fixed-size buffers used for intermediate results from string operations (e.g., the result of CONCAT before it is stored). The compiler determines the required pool size by analyzing maximum expression depth.
+
+The `ref` values on the operand stack are small indices (not pointers) into the buffer table. Stack operations like DUP and SWAP copy only the index, not the buffer contents. Actual buffer-to-buffer copies happen only at STORE_VAR_REF (assignment) and within string operation handlers.
+
+String operations are implemented as VM built-in functions rather than inline bytecode. This keeps the instruction set compact while supporting the full IEC 61131-3 string function library. String operations that produce a string result (CONCAT, LEFT, etc.) write into a temporary buffer and push its index. If the result exceeds the temporary buffer's max length, it is truncated — matching standard PLC string truncation semantics.
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
@@ -516,7 +525,7 @@ STORE_VAR_I32    0x0002  -- store output
 
 ## Open Questions
 
-1. **WSTRING vs STRING opcodes**: Should wide string operations be separate opcodes, or should the string opcodes be polymorphic over STRING and WSTRING (distinguished by the reference type at runtime)?
+1. **WSTRING vs STRING opcodes**: Should wide string operations be separate opcodes, or should the string opcodes be polymorphic over STRING and WSTRING? Since buffer indices carry type information (the variable table knows whether a buffer is STRING or WSTRING), the VM could dispatch to the correct implementation per index — but this adds a runtime check per string operation.
 
 2. **Array access**: This spec does not include array indexing opcodes. Arrays could be handled as computed offsets using arithmetic (base + index * element_size) with LOAD_FIELD/STORE_FIELD, or dedicated LOAD_ARRAY/STORE_ARRAY opcodes with bounds checking could be added.
 
