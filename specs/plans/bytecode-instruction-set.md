@@ -504,13 +504,13 @@ The VM manages two kinds of string buffers:
 
 The `buf_idx` values on the operand stack are small indices (not pointers) into the buffer table. Stack operations like DUP and SWAP copy only the index, not the buffer contents. Actual buffer-to-buffer copies happen only at STR_STORE_VAR / WSTR_STORE_VAR (string assignment) and within string operation handlers.
 
-STRING and WSTRING have separate opcode families. This makes the string encoding type statically checkable by the compiler: the VM can assert that a STR_* opcode always receives a single-byte STRING buffer and a WSTR_* opcode always receives a wide-character WSTRING buffer, trapping immediately on a mismatch rather than silently misinterpreting character data. The cost is a parallel set of opcodes, but this eliminates an entire class of silent data corruption bugs.
+STRING and WSTRING are statically distinguished throughout the instruction set (ADR-0004). Variable access uses separate opcodes (STR_LOAD_VAR vs WSTR_LOAD_VAR), and string functions use separate BUILTIN func_id ranges (0x0100 for STRING, 0x0200 for WSTRING). The VM asserts that STRING operations always receive single-byte buffers and WSTRING operations always receive wide-character buffers, trapping immediately on a mismatch rather than silently misinterpreting character data.
 
 String operations are dispatched through the BUILTIN opcode (0xC4) with function-specific func_id values (ADR-0008). This keeps the instruction set compact while supporting the full IEC 61131-3 string function library and providing an extensible mechanism for future functions. String operations that produce a string result (CONCAT, LEFT, etc.) write into a temporary buffer and push its index. If the result exceeds the temporary buffer's max length, it is truncated — matching standard PLC string truncation semantics.
 
 #### STRING Variable Access
 
-These opcodes replace the generic LOAD_VAR_REF/STORE_VAR_REF that were removed from the variable instructions. String assignment has different semantics from integer assignment — STR_STORE_VAR performs a buffer-to-buffer content copy (value semantics), not an index copy.
+String variable access uses dedicated opcodes because string assignment has different semantics from integer assignment — STR_STORE_VAR performs a buffer-to-buffer content copy (value semantics), not an index copy.
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
@@ -527,8 +527,6 @@ These opcodes replace the generic LOAD_VAR_REF/STORE_VAR_REF that were removed f
 #### String Functions
 
 String functions (LEN, CONCAT, LEFT, RIGHT, MID, FIND, INSERT, DELETE, REPLACE, EQ, LT) for both STRING and WSTRING are dispatched through the BUILTIN opcode (0xC4) using func_id operands. See the Built-in Function Table in the Built-in Standard Library Functions section for the complete function ID assignments.
-
-Previously, each string function had a dedicated opcode. These were consolidated into the BUILTIN opcode per ADR-0008 to free opcode slots and provide an extensible mechanism for all standard library functions.
 
 ---
 
@@ -568,7 +566,7 @@ Previously, each string function had a dedicated opcode. These were consolidated
 | Debug | 0xFC–0xFE | 3 | NOP, breakpoint, line info |
 | **Total** | | **157** | |
 
-The opcode budget uses 157 of 256 slots (61%), leaving 99 slots for future extensions (e.g., OOP method dispatch, pointer/reference operations). The consolidation of string functions and numeric functions into the BUILTIN opcode (ADR-0008) freed 21 slots compared to the previous design.
+The opcode budget uses 157 of 256 slots (61%), leaving 99 slots for future extensions (e.g., OOP method dispatch, pointer/reference operations).
 
 ## Compilation Examples
 

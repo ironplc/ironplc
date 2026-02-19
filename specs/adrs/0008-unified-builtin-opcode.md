@@ -38,28 +38,30 @@ BUILTIN func_id: u16    — Call a built-in standard library function
 
 The `func_id` is a well-known constant shared between the compiler and VM. The verifier uses the func_id to determine the expected stack types and validate type correctness, exactly as it does for opcode-encoded type information.
 
-### What changes
+### Scope
 
-- **Removed**: 22 individual string function opcodes (STR_LEN through STR_LT, WSTR_LEN through WSTR_LT)
-- **Added**: 1 BUILTIN opcode at 0xC4
-- **Net**: 21 opcode slots freed (22 removed - 1 added)
-- **New opcode total**: 157 of 256 (61%), leaving 99 slots for future extensions
+The BUILTIN opcode handles all standard library function calls:
 
-### What stays unchanged
+- **String functions**: LEN, CONCAT, LEFT, RIGHT, MID, FIND, INSERT, DELETE, REPLACE, EQ, LT — for both STRING and WSTRING, distinguished by func_id range
+- **Numeric functions**: ABS, SQRT, MIN, MAX, LIMIT — with type-specific func_id variants (e.g., ABS_I32, ABS_F64)
 
-- **String variable access opcodes** (STR_LOAD_VAR, STR_STORE_VAR, WSTR_LOAD_VAR, WSTR_STORE_VAR) remain as dedicated opcodes because they are load/store operations with distinct stack semantics, not function calls
-- **Type conversion opcodes** (NARROW_*, WIDEN_*, cross-domain conversions) remain as dedicated opcodes because they are fundamental VM type operations that the verifier tracks for type state transitions
-- **TIME arithmetic opcodes** (TIME_ADD, TIME_SUB) remain as dedicated opcodes for the same reason
-- **FB_CALL** remains unchanged — function blocks and standard library functions use separate dispatch mechanisms because FBs have instance state and a multi-step parameter protocol (FB_LOAD_INSTANCE, FB_STORE_PARAM, FB_CALL)
+The following use dedicated opcodes, not BUILTIN:
+
+- **String variable access** (STR_LOAD_VAR, STR_STORE_VAR, WSTR_LOAD_VAR, WSTR_STORE_VAR) — load/store operations with distinct stack semantics, not function calls
+- **Type conversion opcodes** (NARROW_*, WIDEN_*, cross-domain conversions) — fundamental VM type operations that the verifier tracks for type state transitions
+- **TIME arithmetic opcodes** (TIME_ADD, TIME_SUB) — dedicated for the same reason
+- **FB_CALL** — function blocks use a separate dispatch mechanism because FBs have instance state and a multi-step parameter protocol (FB_LOAD_INSTANCE, FB_STORE_PARAM, FB_CALL)
+
+**Opcode total**: 157 of 256 (61%), leaving 99 slots for future extensions
 
 ### Consequences
 
-* Good, because 21 opcode slots are freed for future extensions (OOP method dispatch, pointer operations, new control flow)
+* Good, because the opcode budget is 157/256 (61%), leaving 99 slots for future extensions (OOP method dispatch, pointer operations, new control flow)
 * Good, because the standard library can grow without consuming opcode slots — adding a new function requires only a new func_id entry, not a new opcode
 * Good, because the pattern is consistent with FB_CALL — both use a single opcode with a dispatch operand for a family of operations
 * Good, because STRING/WSTRING type safety is preserved — the verifier checks func_id-specific type signatures, rejecting a buf_idx_str passed to a WSTR_* func_id or vice versa
 * Good, because the verifier's job is equivalent in difficulty — it maps func_id to a type signature the same way it currently maps opcode to a type signature
-* Bad, because each BUILTIN instruction is 3 bytes (1 opcode + 2 func_id) versus 1 byte for the former dedicated opcodes, increasing bytecode size for string-heavy programs by ~2 bytes per string operation
+* Bad, because each BUILTIN instruction is 3 bytes (1 opcode + 2 func_id) versus 1 byte for a dedicated opcode, increasing bytecode size for string-heavy programs by ~2 bytes per string operation
 * Bad, because the VM dispatch for BUILTIN requires a table lookup or switch on func_id, which is slightly slower than direct opcode dispatch — though string operations themselves (buffer copies, searches) dominate execution time
 * Neutral, because the security model is equivalent — the verifier statically checks type correctness whether the type is encoded in the opcode byte or the func_id operand
 
@@ -74,14 +76,14 @@ Verify by writing verifier test cases that:
 
 ## Pros and Cons of the Options
 
-### Per-Function Opcodes (previous approach)
+### Per-Function Opcodes
 
 Each standard library function gets its own opcode: STR_LEN, STR_CONCAT, ABS_I32, ABS_F32, etc.
 
 * Good, because dispatch is a single byte lookup — maximum interpreter speed
 * Good, because the opcode byte directly encodes the operation and type — no secondary lookup needed
 * Bad, because opcode slots are finite (256 total) and each new function consumes one — IEC 61131-3 defines dozens of standard functions, and supporting them all would exhaust the budget
-* Bad, because string functions alone consumed 22 slots (14% of the total budget) for a category of operations that is not performance-critical
+* Bad, because string functions alone would consume 22 slots (14% of the total budget) for a category of operations that is not performance-critical
 * Bad, because any addition to the standard library requires a new opcode, changing the instruction set and requiring VM updates
 
 ### Single BUILTIN Opcode with Function ID Dispatch (chosen)
@@ -117,7 +119,7 @@ ADR-0004 decided on separate STRING and WSTRING opcode families to prevent encod
 | Verifier mechanism | Map opcode → type signature | Map func_id → type signature |
 | Runtime defense-in-depth | VM asserts buffer encoding tag at opcode entry | VM asserts buffer encoding tag at func_id dispatch |
 
-The security invariant ("a STRING buf_idx can never reach a WSTRING operation") is preserved identically. The encoding mechanism changes from opcode-level to operand-level, but the verifier's ability to statically prove type safety is unchanged.
+The security invariant ("a STRING buf_idx can never reach a WSTRING operation") is preserved identically. The type information is encoded at the operand level (func_id) rather than the opcode level, but the verifier's ability to statically prove type safety is unchanged.
 
 ### Interaction with ADR-0005 (Safety-First)
 
@@ -126,7 +128,7 @@ The safety-first principle says "encode type information and invariants in the o
 1. The func_id is statically known at verification time — it is a constant in the bytecode, not a runtime value
 2. The verifier's type checking is equally strong — it maps func_id to exact type signatures
 3. The pattern already exists in the instruction set: FB_CALL uses type_id for dispatch, and the safety analysis accepted this
-4. The defense-in-depth property is maintained: the VM checks buffer encoding tags at BUILTIN dispatch, just as it did at per-function opcode entry
+4. The defense-in-depth property is maintained: the VM checks buffer encoding tags at BUILTIN dispatch
 
 ### Built-in function ID ranges
 
@@ -142,9 +144,4 @@ The func_id ranges are organized by category to enable efficient dispatch (range
 
 ### Bytecode size impact
 
-For a typical PLC program with 50 string operations per scan cycle:
-- Previous: 50 bytes (50 × 1-byte opcode)
-- New: 150 bytes (50 × 3-byte BUILTIN instruction)
-- Increase: 100 bytes
-
-This is negligible relative to the total bytecode size of a typical PLC program (2–20 KB) and the code section size limits of the container format.
+Each BUILTIN instruction is 3 bytes (1 opcode + 2 func_id), compared to 1 byte for a hypothetical dedicated opcode. For a typical PLC program with 50 string operations per scan cycle, this adds ~100 bytes — negligible relative to the total bytecode size of a typical PLC program (2–20 KB).

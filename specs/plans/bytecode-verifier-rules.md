@@ -59,7 +59,7 @@ Note: `buf_idx_str` and `buf_idx_wstr` are distinct verifier types even though b
 
 Every byte at an instruction position must be a defined opcode. Undefined opcode bytes (0x00, 0x0B–0x0F, 0x16, 0x17, 0x1E, 0x1F, 0x26, 0x27, 0x2A–0x2F, 0x3B, 0x47, 0x52, 0x53, 0xA6–0xAF, 0xB6–0xBF, 0xC5–0xCF, 0xD3–0xDF, 0xE4–0xFB, 0xFF) must be rejected.
 
-Note: opcode 0xC4 (BUILTIN) is valid. Opcodes 0xE0–0xE3 are the string variable access opcodes (STR_LOAD_VAR, STR_STORE_VAR, WSTR_LOAD_VAR, WSTR_STORE_VAR). Former string function opcodes (0xE4–0xF9) are now undefined — string functions are dispatched through BUILTIN (see ADR-0008).
+Opcodes 0xE0–0xE3 are the string variable access opcodes (STR_LOAD_VAR, STR_STORE_VAR, WSTR_LOAD_VAR, WSTR_STORE_VAR). String functions are dispatched through BUILTIN (0xC4) via func_id (see ADR-0008); bytes 0xE4–0xF9 are undefined.
 
 **Error**: `R0001(offset, byte_value)`
 
