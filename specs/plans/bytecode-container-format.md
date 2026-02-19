@@ -41,7 +41,7 @@ Sections appear in this fixed order. All multi-byte values are little-endian, ma
 
 ## File Header
 
-The header is exactly 96 bytes. The VM reads this in a single read and decides whether to proceed.
+The header is exactly 192 bytes. The VM reads this in a single read and decides whether to proceed.
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
@@ -49,7 +49,7 @@ The header is exactly 96 bytes. The VM reads this in a single read and decides w
 | 4 | format_version | u16 | Container format version (initially 1) |
 | 6 | profile | u8 | Required VM profile: 0=micro, 1=standard, 2=full |
 | 7 | flags | u8 | Bit 0: has content signature; Bit 1: has debug section; Bit 2: has type section |
-| 8 | content_hash | [u8; 32] | SHA-256 over type section + constant pool + code section (concatenated, in file order) |
+| 8 | content_hash | [u8; 32] | SHA-256 over `source_hash \|\| type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope) |
 | 40 | source_hash | [u8; 32] | SHA-256 of the source text that produced this bytecode (all zeros if unavailable) |
 | 72 | debug_hash | [u8; 32] | SHA-256 over debug section (all zeros if no debug section) |
 | 104 | max_stack_depth | u16 | Maximum operand stack depth across all functions |
@@ -207,8 +207,9 @@ Each ConstEntry:
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | const_type | u8 | 0=I32, 1=U32, 2=I64, 3=U64, 4=F32, 5=F64, 6=STRING_LITERAL, 7=WSTRING_LITERAL |
-| 1 | size | u8 | Size of value in bytes (4, 8, or variable for strings) |
-| 2 | value | [u8; size] | Little-endian value bytes. For strings: u16 length prefix followed by character bytes. |
+| 1 | reserved | u8 | Reserved; must be zero |
+| 2 | size | u16 | Size of value in bytes (4, 8, or variable for strings; u16 to accommodate string literals exceeding 255 bytes) |
+| 4 | value | [u8; size] | Little-endian value bytes. For strings: u16 length prefix followed by character bytes. |
 
 The verifier checks that every LOAD_CONST_* index is within `count` and that the constant type matches the opcode variant (e.g., LOAD_CONST_I32 references a type-0 entry).
 

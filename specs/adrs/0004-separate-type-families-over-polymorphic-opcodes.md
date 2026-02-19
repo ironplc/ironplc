@@ -36,10 +36,10 @@ Specifically:
 ### Consequences
 
 * Good, because a `buf_idx` value can never be consumed by an FB_* opcode (or vice versa) — the verifier rejects it statically
-* Good, because a STRING buffer can never be silently passed to a WSTR_* opcode — the verifier rejects it statically, and the VM can trap on mismatch as defense-in-depth
+* Good, because a STRING buffer can never be silently passed to a WSTR_* opcode — the verifier rejects it statically. As defense-in-depth, the VM maintains a one-byte encoding tag (narrow/wide) per buffer entry in the buffer table and asserts that STR_* opcodes always receive narrow-tagged buffers and WSTR_* opcodes always receive wide-tagged buffers, trapping immediately on mismatch. This tag costs one byte per buffer (not per stack value) and is only checked at string opcode entry points — a negligible overhead compared to the string operation itself.
 * Good, because the verifier does not need runtime type tags to prove type safety — the opcode itself encodes the expected type
 * Good, because this eliminates the entire class of "confused reference type" vulnerabilities that have led to sandbox escapes in the JVM and arbitrary code execution in Lua
-* Bad, because the WSTRING family adds 13 opcodes (one per STRING opcode), bringing the total from 163 to 176 — consuming 69% of the 256-opcode budget
+* Bad, because the WSTRING family adds 13 opcodes (one per STRING opcode), bringing the total from 163 to 176 — consuming 69% of the 256-opcode budget (178 with string constant opcodes from the instruction set spec)
 * Bad, because the interpreter has 13 additional dispatch handlers, most of which are near-identical to their STRING counterparts (differing only in character width)
 * Neutral, because the opcode budget still has 80 free slots after this decision, sufficient for planned future extensions (OOP method dispatch, pointer/reference operations)
 
@@ -104,4 +104,5 @@ Separate opcode families for STRING (`STR_*`), WSTRING (`WSTR_*`), and FB instan
 | Add WSTRING family (STR_* → STR_* + WSTR_*) | +13 | 163 | 93 |
 | Other decisions (arrays, TIME) | +4 | 167 | 89 |
 | Relocate debug opcodes | +0 | 167 | 89 |
-| Final total (with all changes) | | 176 | 80 |
+| Add string constant opcodes (LOAD_CONST_STR, LOAD_CONST_WSTR) | +2 | 169 | 87 |
+| Final total (with all changes) | | 178 | 78 |

@@ -53,6 +53,7 @@ Two signatures:
 * Bad, because key management is required — the PLC must have a trusted public key (or certificate) to verify signatures against
 * Bad, because two signatures means two verification checks at load time — though the debug signature is optional and only verified when debug info is used
 * Bad, because the source hash is only useful if the engineer has access to the original source and computes the hash independently — it's a verification mechanism, not a display mechanism
+* Bad, because the source hash does not protect against a Stuxnet-style attacker who controls the communication channel between the PLC and the engineer — if the attacker can intercept reads from the PLC, they can present a fake source_hash. The source_hash is effective against offline tampering (someone modifies the bytecode file on disk) but not against an attacker with MITM access to the PLC communication protocol. An out-of-band verification channel (e.g., physical access to read flash contents) is needed for the strongest assurance.
 
 ### Confirmation
 

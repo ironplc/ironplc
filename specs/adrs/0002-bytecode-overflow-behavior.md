@@ -1,4 +1,4 @@
-# Configurable Overflow Behavior at Narrowing Points
+# Configurable Overflow Behavior for Integer Arithmetic
 
 status: proposed
 date: 2026-02-17
@@ -8,6 +8,8 @@ date: 2026-02-17
 When the bytecode VM narrows a 32-bit arithmetic result back to a sub-32-bit type (e.g., I32 to SINT), the result may not fit in the target range. IEC 61131-3 does not mandate a specific overflow behavior — it states that exceeding a type's range is an "error" without specifying whether the runtime should wrap, saturate, or fault. Different PLC runtimes handle this differently, and programs ported between runtimes may depend on a specific behavior.
 
 How should the IronPLC bytecode VM handle integer overflow, and should it be configurable for cross-runtime compatibility?
+
+Note: while this ADR was originally motivated by narrowing operations, the overflow policy applies to **all integer arithmetic** — both sub-width narrowing (NARROW_I8 etc.) and full-width operations (ADD_I32, ADD_I64, etc.). Full-width arithmetic can overflow when the result exceeds the type's range (e.g., `i32::MAX + 1`). The instruction set spec defines the exact behavior per operation.
 
 ## Decision Drivers
 
@@ -36,6 +38,7 @@ The default policy is **wrap** (two's complement modular arithmetic for signed, 
 * Good, because safety-critical applications can use fault mode to detect all overflows
 * Good, because the instruction set is fixed — the policy is a VM configuration parameter, not encoded in bytecode, so the same compiled program can run under different policies
 * Bad, because programs that depend on wrapping behavior may silently produce different results if someone switches the VM to saturate mode without testing
+* Bad, because in saturate or fault mode, **every arithmetic instruction** (not just NARROW) must include an overflow check — this adds cost to the hot path; in wrap mode the cost is zero since two's complement wrapping is the hardware default
 * Bad, because the configurable policy adds a conditional branch to every NARROW execution (check which policy is active), though this can be mitigated with function pointers or compile-time monomorphization
 
 ### Confirmation

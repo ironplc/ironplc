@@ -47,8 +47,8 @@ The verifier tracks nine abstract types on the stack:
 | U64 | LOAD_VAR_U64, LOAD_CONST_U64, BIT_* 64 | STORE_VAR_U64, BIT_* 64, arithmetic U64, comparisons U64 |
 | F32 | LOAD_VAR_F32, LOAD_CONST_F32 | STORE_VAR_F32, arithmetic F32, comparisons F32 |
 | F64 | LOAD_VAR_F64, LOAD_CONST_F64 | STORE_VAR_F64, arithmetic F64, comparisons F64 |
-| buf_idx_str | STR_LOAD_VAR, STR_CONCAT, STR_LEFT, STR_RIGHT, STR_MID, STR_INSERT, STR_DELETE, STR_REPLACE | STR_STORE_VAR, STR_LEN, STR_CONCAT, STR_LEFT, STR_RIGHT, STR_MID, STR_FIND, STR_INSERT, STR_DELETE, STR_REPLACE, STR_EQ, STR_LT |
-| buf_idx_wstr | WSTR_LOAD_VAR, WSTR_CONCAT, WSTR_LEFT, WSTR_RIGHT, WSTR_MID, WSTR_INSERT, WSTR_DELETE, WSTR_REPLACE | WSTR_STORE_VAR, WSTR_LEN, WSTR_CONCAT, WSTR_LEFT, WSTR_RIGHT, WSTR_MID, WSTR_FIND, WSTR_INSERT, WSTR_DELETE, WSTR_REPLACE, WSTR_EQ, WSTR_LT |
+| buf_idx_str | STR_LOAD_VAR, LOAD_CONST_STR, STR_CONCAT, STR_LEFT, STR_RIGHT, STR_MID, STR_INSERT, STR_DELETE, STR_REPLACE | STR_STORE_VAR, STR_LEN, STR_CONCAT, STR_LEFT, STR_RIGHT, STR_MID, STR_FIND, STR_INSERT, STR_DELETE, STR_REPLACE, STR_EQ, STR_LT |
+| buf_idx_wstr | WSTR_LOAD_VAR, LOAD_CONST_WSTR, WSTR_CONCAT, WSTR_LEFT, WSTR_RIGHT, WSTR_MID, WSTR_INSERT, WSTR_DELETE, WSTR_REPLACE | WSTR_STORE_VAR, WSTR_LEN, WSTR_CONCAT, WSTR_LEFT, WSTR_RIGHT, WSTR_MID, WSTR_FIND, WSTR_INSERT, WSTR_DELETE, WSTR_REPLACE, WSTR_EQ, WSTR_LT |
 | fb_ref | FB_LOAD_INSTANCE | FB_STORE_PARAM, FB_LOAD_PARAM, FB_CALL, LOAD_FIELD, STORE_FIELD |
 
 Note: `buf_idx_str` and `buf_idx_wstr` are distinct verifier types even though both are represented as `buf_idx` on the operand stack at runtime. The verifier distinguishes them to prevent STRING/WSTRING cross-contamination.
@@ -57,7 +57,7 @@ Note: `buf_idx_str` and `buf_idx_wstr` are distinct verifier types even though b
 
 ### Rule R0001: Valid Opcodes
 
-Every byte at an instruction position must be a defined opcode. Undefined opcode bytes (0x00, 0x09, 0x0A–0x0F, 0x16, 0x17, 0x1E, 0x1F, 0x26, 0x27, 0x2A–0x2F, 0x3B, 0x47, 0x52, 0x53, 0xA6–0xAF, 0xB6–0xBF, 0xC4–0xCF, 0xD3–0xDF, 0xFA, 0xFB, 0xFF) must be rejected.
+Every byte at an instruction position must be a defined opcode. Undefined opcode bytes (0x00, 0x0B–0x0F, 0x16, 0x17, 0x1E, 0x1F, 0x26, 0x27, 0x2A–0x2F, 0x3B, 0x47, 0x52, 0x53, 0xA6–0xAF, 0xB6–0xBF, 0xC4–0xCF, 0xD3–0xDF, 0xFA, 0xFB, 0xFF) must be rejected.
 
 **Error**: `R0001(offset, byte_value)`
 
@@ -67,7 +67,7 @@ Every operand that is an index into a table must be within bounds:
 
 | Operand | Bound |
 |---------|-------|
-| LOAD_CONST_* index | < constant pool count |
+| LOAD_CONST_* / LOAD_CONST_STR / LOAD_CONST_WSTR index | < constant pool count |
 | LOAD_VAR_* / STORE_VAR_* index | < variable table count |
 | STR_LOAD_VAR / STR_STORE_VAR index | < variable table count AND variable type is STRING |
 | WSTR_LOAD_VAR / WSTR_STORE_VAR index | < variable table count AND variable type is WSTRING |
@@ -92,6 +92,8 @@ Every LOAD_CONST_* opcode must reference a constant pool entry whose type matche
 | LOAD_CONST_U64 | U64 |
 | LOAD_CONST_F32 | F32 |
 | LOAD_CONST_F64 | F64 |
+| LOAD_CONST_STR | STRING_LITERAL |
+| LOAD_CONST_WSTR | WSTRING_LITERAL |
 
 **Error**: `R0100(offset, expected_type, actual_type)`
 
@@ -165,6 +167,27 @@ Examples:
 - BOOL_AND requires [I32, I32]
 
 **Error**: `R0300(offset, opcode, expected_types, actual_types)`
+
+### Rule R0301: Function Call Parameter Type Correctness
+
+Every CALL instruction must have the correct number and types of arguments on the stack, matching the target function's signature from the type section. The verifier checks:
+
+1. The stack depth is >= the function's `num_params`
+2. Each argument type matches the declared `param_types` in the function signature (bottom-to-top on the stack matches left-to-right in the signature)
+3. The instruction's successor state has the function's `return_type` pushed (or nothing for void)
+
+**Error**: `R0301(offset, function_id, param_index, expected_type, actual_type)`
+
+### Rule R0302: Field Access Type Correctness
+
+Every LOAD_FIELD and STORE_FIELD instruction must access a field whose type matches the value on the stack:
+
+- For STORE_FIELD: the value being stored must match the field's declared `field_type` from the FB type descriptor
+- For LOAD_FIELD: the pushed value type is determined by the field's declared `field_type`
+
+Similarly, FB_STORE_PARAM and FB_LOAD_PARAM must match the field type of the target FB type.
+
+**Error**: `R0302(offset, opcode, field_index, expected_type, actual_type)`
 
 ### Rule R0400: Jump Target Validity
 
@@ -300,6 +323,8 @@ Multiple errors may be reported in a single verification pass (the verifier does
 | R0202 | No Stack Underflow | Stack discipline |
 | R0203 | No Stack Overflow | Stack discipline |
 | R0300 | Stack Type Correctness | Stack type correctness |
+| R0301 | Function Call Parameter Type Correctness | Stack type correctness |
+| R0302 | Field Access Type Correctness | Stack type correctness |
 | R0400 | Jump Target Validity | Control flow |
 | R0401 | Return Path Completeness | Control flow |
 | R0402 | Call Depth Exceeded | Control flow |
