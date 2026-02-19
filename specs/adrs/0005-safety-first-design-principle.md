@@ -11,7 +11,7 @@ The bytecode instruction set design repeatedly encounters trade-offs between opc
 
 * **PLC programs control physical processes** — a VM bug that corrupts memory or silently produces wrong values can cause physical damage (equipment destruction, safety hazards)
 * **PLC programs run unattended for years** — a latent bug triggered by a rare input combination has years of opportunity to manifest, unlike desktop software that is frequently restarted
-* **Opcode budget has room** — at 176 of 256 opcodes used, there are 80 slots available; economy is not a binding constraint
+* **Opcode budget has room** — at 178 of 256 opcodes used, there are 78 slots available; economy is not a binding constraint
 * **Interpreter complexity is manageable** — the interpreter runs in Rust, so additional dispatch handlers add flash size but not memory safety risk
 * **Verification is planned** — a bytecode verifier (ADR-0006) relies on the instruction set encoding enough type information to verify statically; safety-oriented design directly reduces verifier complexity
 
@@ -42,7 +42,7 @@ The principle is: **when a design choice improves safety (verification, type che
 * Good, because every type distinction is statically verifiable from the opcode stream — the verifier is simpler and more trustworthy
 * Good, because the VM enforces invariants (bounds, types) even if the verifier has a bug — defense-in-depth
 * Good, because the principle provides a clear, repeatable decision framework for future extensions — contributors don't need to re-derive the reasoning each time
-* Good, because the opcode budget (80 remaining slots) can absorb many more safety-oriented additions before becoming a constraint
+* Good, because the opcode budget (78 remaining slots) can absorb many more safety-oriented additions before becoming a constraint
 * Bad, because the interpreter binary is larger than a minimal design — estimated ~10 KB additional flash for the WSTRING family and array/TIME handlers
 * Bad, because the principle occasionally rejects designs that are safe in practice but not provably safe by the verifier (e.g., polymorphic string ops with correct runtime tags are safe, but we reject them because "correct runtime tags" is an assumption, not a proof)
 * Neutral, because this principle can be overridden for specific decisions when the safety cost is genuinely minimal and the economy benefit is large — it is a default, not an absolute rule

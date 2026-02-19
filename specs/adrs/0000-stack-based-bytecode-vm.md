@@ -129,6 +129,22 @@ Examples: MATIEC (open source IEC 61131-3 to C compiler), some commercial PLC to
 
 ## More Information
 
+### Why not compile to WebAssembly
+
+WebAssembly (Wasm) is a stack-based bytecode VM with mature runtimes (wasmtime, wasmer, wasm3 for embedded), built-in sandboxing, built-in verification, and optional JIT. It was considered but not selected because:
+
+1. **Scan cycle integration** — a PLC runtime must freeze inputs, execute the program, and flush outputs in a deterministic cycle. Wasm runtimes are designed for request/response or long-running computations, not cyclic execution with I/O synchronization. Adapting a Wasm runtime to the PLC scan model requires a host-function layer that effectively re-implements most of the PLC runtime anyway.
+
+2. **Process image access** — PLC programs access I/O through a process image (%I, %Q, %M). In Wasm, every I/O access would be a host function call with validation overhead. A custom VM integrates process image access as a first-class instruction with type-checked region access.
+
+3. **Function block semantics** — IEC 61131-3 function blocks have persistent instance state, named parameters, and a calling convention that doesn't map cleanly to Wasm's function model. The intrinsic dispatch mechanism (ADR-0003) for timers and counters would need to be layered on top of Wasm's import/export system.
+
+4. **Runtime size on embedded** — wasm3 (the smallest Wasm interpreter) requires ~64 KB flash and ~10 KB RAM overhead. A purpose-built PLC bytecode interpreter targets ~20 KB flash and ~2 KB fixed overhead, which matters on Cortex-M0 micro PLCs.
+
+5. **Bytecode verification** — Wasm has its own verifier, but it verifies Wasm type safety, not PLC-specific invariants (TIME type discipline, process image region validity, FB protocol). A custom verifier (ADR-0006) enforces domain-specific safety properties that would require a second verification layer on top of Wasm's.
+
+If the project later targets larger platforms where runtime size is not a concern, compiling to Wasm remains a viable alternative path — the instruction set is similar enough that a Wasm backend could reuse most of the compiler's codegen logic.
+
 ### Why stack-based over register-based
 
 The register-based option offers better steady-state performance (~25-45% fewer instructions). However, for this project:
