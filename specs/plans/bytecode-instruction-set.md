@@ -4,12 +4,13 @@
 
 This spec defines the bytecode instruction set for the IronPLC virtual PLC runtime. The instruction set is designed for a stack-based virtual machine that executes IEC 61131-3 programs compiled from Structured Text (and potentially other IEC 61131-3 languages).
 
-The instruction set builds on four design decisions documented as ADRs:
+The instruction set builds on five design decisions documented as ADRs:
 
 0. **[ADR-0000](../adrs/0000-stack-based-bytecode-vm.md)**: Stack-based bytecode VM as the execution model — chosen over register-based VM, native compilation, tree-walking interpretation, and C transpilation
 1. **[ADR-0001](../adrs/0001-bytecode-integer-arithmetic-type-strategy.md)**: Two-width integer arithmetic with explicit narrowing — sub-32-bit types are promoted to 32-bit on load; 64-bit types remain at 64-bit; explicit NARROW instructions handle truncation back to narrow types
 2. **[ADR-0002](../adrs/0002-bytecode-overflow-behavior.md)**: Configurable overflow behavior at narrowing points — the VM supports wrap, saturate, and fault modes as a startup configuration
 3. **[ADR-0003](../adrs/0003-plc-standard-function-blocks-as-intrinsics.md)**: Standard function blocks as VM intrinsics via FB_CALL — timers, counters, and other standard FBs use the same FB_CALL instruction as user-defined FBs, with the VM fast-pathing known types
+4. **[ADR-0008](../adrs/0008-unified-builtin-opcode.md)**: Unified BUILTIN opcode for standard library functions — string functions, numeric functions, and other standard library functions share a single BUILTIN opcode with func_id dispatch, freeing opcode slots for future extensions
 
 ## Encoding
 
@@ -393,6 +394,95 @@ FB_STORE_PARAM and FB_LOAD_PARAM keep the instance reference on the stack to all
 
 ---
 
+### Built-in Standard Library Functions
+
+The BUILTIN opcode provides a single dispatch mechanism for all standard library functions (string operations, numeric functions, and future extensions). Rather than dedicating a separate opcode to each function, BUILTIN uses a u16 `func_id` operand to identify the target function. The VM dispatches to the appropriate native implementation based on the func_id. The verifier uses the func_id to determine the expected stack types (see Built-in Function Table below).
+
+This approach parallels FB_CALL (ADR-0003): one opcode handles an extensible family of operations, with the operand identifying the specific operation. See ADR-0008 for the full rationale.
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xC4 | BUILTIN | func_id: u16 | [args...] → [result] | Call built-in function; stack effect depends on func_id |
+
+#### Built-in Function Table
+
+##### STRING Functions (func_id 0x0100–0x010A)
+
+| func_id | Name | Stack effect | Description |
+|---------|------|-------------|-------------|
+| 0x0100 | STR_LEN | [buf_idx_str] → [I32] | String length (LEN) |
+| 0x0101 | STR_CONCAT | [buf_idx_str, buf_idx_str] → [buf_idx_str] | Concatenate two strings (CONCAT) |
+| 0x0102 | STR_LEFT | [buf_idx_str, I32] → [buf_idx_str] | Left substring (LEFT) |
+| 0x0103 | STR_RIGHT | [buf_idx_str, I32] → [buf_idx_str] | Right substring (RIGHT) |
+| 0x0104 | STR_MID | [buf_idx_str, I32, I32] → [buf_idx_str] | Mid substring (MID); position, length on stack |
+| 0x0105 | STR_FIND | [buf_idx_str, buf_idx_str] → [I32] | Find substring position (FIND); 0 if not found |
+| 0x0106 | STR_INSERT | [buf_idx_str, buf_idx_str, I32] → [buf_idx_str] | Insert string at position (INSERT) |
+| 0x0107 | STR_DELETE | [buf_idx_str, I32, I32] → [buf_idx_str] | Delete characters (DELETE); position, length |
+| 0x0108 | STR_REPLACE | [buf_idx_str, buf_idx_str, I32, I32] → [buf_idx_str] | Replace characters (REPLACE) |
+| 0x0109 | STR_EQ | [buf_idx_str, buf_idx_str] → [I32] | String equality comparison |
+| 0x010A | STR_LT | [buf_idx_str, buf_idx_str] → [I32] | String less-than (lexicographic) |
+
+##### WSTRING Functions (func_id 0x0200–0x020A)
+
+| func_id | Name | Stack effect | Description |
+|---------|------|-------------|-------------|
+| 0x0200 | WSTR_LEN | [buf_idx_wstr] → [I32] | Wide string length (LEN) |
+| 0x0201 | WSTR_CONCAT | [buf_idx_wstr, buf_idx_wstr] → [buf_idx_wstr] | Concatenate two wide strings (CONCAT) |
+| 0x0202 | WSTR_LEFT | [buf_idx_wstr, I32] → [buf_idx_wstr] | Left substring (LEFT) |
+| 0x0203 | WSTR_RIGHT | [buf_idx_wstr, I32] → [buf_idx_wstr] | Right substring (RIGHT) |
+| 0x0204 | WSTR_MID | [buf_idx_wstr, I32, I32] → [buf_idx_wstr] | Mid substring (MID); position, length on stack |
+| 0x0205 | WSTR_FIND | [buf_idx_wstr, buf_idx_wstr] → [I32] | Find substring position (FIND); 0 if not found |
+| 0x0206 | WSTR_INSERT | [buf_idx_wstr, buf_idx_wstr, I32] → [buf_idx_wstr] | Insert string at position (INSERT) |
+| 0x0207 | WSTR_DELETE | [buf_idx_wstr, I32, I32] → [buf_idx_wstr] | Delete characters (DELETE); position, length |
+| 0x0208 | WSTR_REPLACE | [buf_idx_wstr, buf_idx_wstr, I32, I32] → [buf_idx_wstr] | Replace characters (REPLACE) |
+| 0x0209 | WSTR_EQ | [buf_idx_wstr, buf_idx_wstr] → [I32] | Wide string equality comparison |
+| 0x020A | WSTR_LT | [buf_idx_wstr, buf_idx_wstr] → [I32] | Wide string less-than (lexicographic) |
+
+##### Numeric Functions (func_id 0x0300–0x03FF)
+
+Numeric functions are monomorphized by the compiler from generic IEC 61131-3 signatures (ANY_NUM, ANY_REAL) to type-specific func_ids. The compiler determines the concrete type from the arguments and emits the appropriate func_id.
+
+| func_id | Name | Stack effect | Description |
+|---------|------|-------------|-------------|
+| 0x0300 | ABS_I32 | [I32] → [I32] | Absolute value (signed 32-bit) |
+| 0x0301 | ABS_I64 | [I64] → [I64] | Absolute value (signed 64-bit) |
+| 0x0302 | ABS_F32 | [F32] → [F32] | Absolute value (32-bit float) |
+| 0x0303 | ABS_F64 | [F64] → [F64] | Absolute value (64-bit float) |
+| 0x0310 | SQRT_F32 | [F32] → [F32] | Square root (32-bit float) |
+| 0x0311 | SQRT_F64 | [F64] → [F64] | Square root (64-bit float) |
+| 0x0320 | MIN_I32 | [I32, I32] → [I32] | Minimum (signed 32-bit) |
+| 0x0321 | MIN_U32 | [U32, U32] → [U32] | Minimum (unsigned 32-bit) |
+| 0x0322 | MIN_I64 | [I64, I64] → [I64] | Minimum (signed 64-bit) |
+| 0x0323 | MIN_U64 | [U64, U64] → [U64] | Minimum (unsigned 64-bit) |
+| 0x0324 | MIN_F32 | [F32, F32] → [F32] | Minimum (32-bit float) |
+| 0x0325 | MIN_F64 | [F64, F64] → [F64] | Minimum (64-bit float) |
+| 0x0330 | MAX_I32 | [I32, I32] → [I32] | Maximum (signed 32-bit) |
+| 0x0331 | MAX_U32 | [U32, U32] → [U32] | Maximum (unsigned 32-bit) |
+| 0x0332 | MAX_I64 | [I64, I64] → [I64] | Maximum (signed 64-bit) |
+| 0x0333 | MAX_U64 | [U64, U64] → [U64] | Maximum (unsigned 64-bit) |
+| 0x0334 | MAX_F32 | [F32, F32] → [F32] | Maximum (32-bit float) |
+| 0x0335 | MAX_F64 | [F64, F64] → [F64] | Maximum (64-bit float) |
+| 0x0340 | LIMIT_I32 | [I32, I32, I32] → [I32] | Clamp to range (signed 32-bit): MN, IN, MX |
+| 0x0341 | LIMIT_U32 | [U32, U32, U32] → [U32] | Clamp to range (unsigned 32-bit): MN, IN, MX |
+| 0x0342 | LIMIT_I64 | [I64, I64, I64] → [I64] | Clamp to range (signed 64-bit): MN, IN, MX |
+| 0x0343 | LIMIT_U64 | [U64, U64, U64] → [U64] | Clamp to range (unsigned 64-bit): MN, IN, MX |
+| 0x0344 | LIMIT_F32 | [F32, F32, F32] → [F32] | Clamp to range (32-bit float): MN, IN, MX |
+| 0x0345 | LIMIT_F64 | [F64, F64, F64] → [F64] | Clamp to range (64-bit float): MN, IN, MX |
+
+#### Built-in Function ID Ranges
+
+| Range | Category | Description |
+|-------|----------|-------------|
+| 0x0000–0x00FF | Reserved | Future use |
+| 0x0100–0x01FF | STRING functions | String operations on single-byte STRING buffers |
+| 0x0200–0x02FF | WSTRING functions | String operations on wide-character WSTRING buffers |
+| 0x0300–0x03FF | Numeric functions | ABS, SQRT, MIN, MAX, LIMIT (type-specific variants) |
+| 0x0400–0xFFFF | Reserved | Future standard library extensions (trigonometric, logarithmic, date/time, etc.) |
+
+STRING and WSTRING functions are in separate func_id ranges to preserve the type safety property from ADR-0004: the verifier can distinguish STRING operations from WSTRING operations by func_id alone, without runtime type tags.
+
+---
+
 ### Stack Operations
 
 | # | Opcode | Operands | Stack effect | Description |
@@ -416,7 +506,7 @@ The `buf_idx` values on the operand stack are small indices (not pointers) into 
 
 STRING and WSTRING have separate opcode families. This makes the string encoding type statically checkable by the compiler: the VM can assert that a STR_* opcode always receives a single-byte STRING buffer and a WSTR_* opcode always receives a wide-character WSTRING buffer, trapping immediately on a mismatch rather than silently misinterpreting character data. The cost is a parallel set of opcodes, but this eliminates an entire class of silent data corruption bugs.
 
-String operations are implemented as VM built-in functions rather than inline bytecode. This keeps the instruction set compact while supporting the full IEC 61131-3 string function library. String operations that produce a string result (CONCAT, LEFT, etc.) write into a temporary buffer and push its index. If the result exceeds the temporary buffer's max length, it is truncated — matching standard PLC string truncation semantics.
+String operations are dispatched through the BUILTIN opcode (0xC4) with function-specific func_id values (ADR-0008). This keeps the instruction set compact while supporting the full IEC 61131-3 string function library and providing an extensible mechanism for future functions. String operations that produce a string result (CONCAT, LEFT, etc.) write into a temporary buffer and push its index. If the result exceeds the temporary buffer's max length, it is truncated — matching standard PLC string truncation semantics.
 
 #### STRING Variable Access
 
@@ -427,44 +517,18 @@ These opcodes replace the generic LOAD_VAR_REF/STORE_VAR_REF that were removed f
 | 0xE0 | STR_LOAD_VAR | index: u16 | [] → [buf_idx] | Push buffer index for a STRING variable |
 | 0xE1 | STR_STORE_VAR | index: u16 | [buf_idx] → [] | Copy buffer contents into STRING variable's buffer (value-copy assignment) |
 
-#### STRING Functions
-
-| # | Opcode | Operands | Stack effect | Description |
-|---|--------|----------|-------------|-------------|
-| 0xE2 | STR_LEN | — | [buf_idx] → [I32] | String length (LEN) |
-| 0xE3 | STR_CONCAT | — | [buf_idx, buf_idx] → [buf_idx] | Concatenate two strings (CONCAT) |
-| 0xE4 | STR_LEFT | — | [buf_idx, I32] → [buf_idx] | Left substring (LEFT) |
-| 0xE5 | STR_RIGHT | — | [buf_idx, I32] → [buf_idx] | Right substring (RIGHT) |
-| 0xE6 | STR_MID | — | [buf_idx, I32, I32] → [buf_idx] | Mid substring (MID); position, length on stack |
-| 0xE7 | STR_FIND | — | [buf_idx, buf_idx] → [I32] | Find substring position (FIND); 0 if not found |
-| 0xE8 | STR_INSERT | — | [buf_idx, buf_idx, I32] → [buf_idx] | Insert string at position (INSERT) |
-| 0xE9 | STR_DELETE | — | [buf_idx, I32, I32] → [buf_idx] | Delete characters (DELETE); position, length |
-| 0xEA | STR_REPLACE | — | [buf_idx, buf_idx, I32, I32] → [buf_idx] | Replace characters (REPLACE) |
-| 0xEB | STR_EQ | — | [buf_idx, buf_idx] → [I32] | String equality comparison |
-| 0xEC | STR_LT | — | [buf_idx, buf_idx] → [I32] | String less-than (lexicographic) |
-
 #### WSTRING Variable Access
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0xED | WSTR_LOAD_VAR | index: u16 | [] → [buf_idx] | Push buffer index for a WSTRING variable |
-| 0xEE | WSTR_STORE_VAR | index: u16 | [buf_idx] → [] | Copy buffer contents into WSTRING variable's buffer (value-copy assignment) |
+| 0xE2 | WSTR_LOAD_VAR | index: u16 | [] → [buf_idx] | Push buffer index for a WSTRING variable |
+| 0xE3 | WSTR_STORE_VAR | index: u16 | [buf_idx] → [] | Copy buffer contents into WSTRING variable's buffer (value-copy assignment) |
 
-#### WSTRING Functions
+#### String Functions
 
-| # | Opcode | Operands | Stack effect | Description |
-|---|--------|----------|-------------|-------------|
-| 0xEF | WSTR_LEN | — | [buf_idx] → [I32] | Wide string length (LEN) |
-| 0xF0 | WSTR_CONCAT | — | [buf_idx, buf_idx] → [buf_idx] | Concatenate two wide strings (CONCAT) |
-| 0xF1 | WSTR_LEFT | — | [buf_idx, I32] → [buf_idx] | Left substring (LEFT) |
-| 0xF2 | WSTR_RIGHT | — | [buf_idx, I32] → [buf_idx] | Right substring (RIGHT) |
-| 0xF3 | WSTR_MID | — | [buf_idx, I32, I32] → [buf_idx] | Mid substring (MID); position, length on stack |
-| 0xF4 | WSTR_FIND | — | [buf_idx, buf_idx] → [I32] | Find substring position (FIND); 0 if not found |
-| 0xF5 | WSTR_INSERT | — | [buf_idx, buf_idx, I32] → [buf_idx] | Insert string at position (INSERT) |
-| 0xF6 | WSTR_DELETE | — | [buf_idx, I32, I32] → [buf_idx] | Delete characters (DELETE); position, length |
-| 0xF7 | WSTR_REPLACE | — | [buf_idx, buf_idx, I32, I32] → [buf_idx] | Replace characters (REPLACE) |
-| 0xF8 | WSTR_EQ | — | [buf_idx, buf_idx] → [I32] | Wide string equality comparison |
-| 0xF9 | WSTR_LT | — | [buf_idx, buf_idx] → [I32] | Wide string less-than (lexicographic) |
+String functions (LEN, CONCAT, LEFT, RIGHT, MID, FIND, INSERT, DELETE, REPLACE, EQ, LT) for both STRING and WSTRING are dispatched through the BUILTIN opcode (0xC4) using func_id operands. See the Built-in Function Table in the Built-in Standard Library Functions section for the complete function ID assignments.
+
+Previously, each string function had a dedicated opcode. These were consolidated into the BUILTIN opcode per ADR-0008 to free opcode slots and provide an extensible mechanism for all standard library functions.
 
 ---
 
@@ -497,13 +561,14 @@ These opcodes replace the generic LOAD_VAR_REF/STORE_VAR_REF that were removed f
 | TIME Arithmetic | 0xA4–0xA5 | 2 | Type-checked TIME addition and subtraction |
 | Control Flow | 0xB0–0xB5 | 6 | Jumps, calls, returns |
 | Function Block | 0xC0–0xC3 | 4 | FB instance management and invocation |
+| Built-in Functions | 0xC4 | 1 | BUILTIN dispatch for standard library functions (ADR-0008) |
 | Stack | 0xD0–0xD2 | 3 | Stack manipulation |
-| STRING | 0xE0–0xEC | 13 | STRING variable access and operations |
-| WSTRING | 0xED–0xF9 | 13 | WSTRING variable access and operations |
+| STRING Variable Access | 0xE0–0xE1 | 2 | STRING variable load/store |
+| WSTRING Variable Access | 0xE2–0xE3 | 2 | WSTRING variable load/store |
 | Debug | 0xFC–0xFE | 3 | NOP, breakpoint, line info |
-| **Total** | | **178** | |
+| **Total** | | **157** | |
 
-The opcode budget uses 178 of 256 slots (70%), leaving 78 slots for future extensions (e.g., OOP method dispatch, pointer/reference operations).
+The opcode budget uses 157 of 256 slots (61%), leaving 99 slots for future extensions (e.g., OOP method dispatch, pointer/reference operations). The consolidation of string functions and numeric functions into the BUILTIN opcode (ADR-0008) freed 21 slots compared to the previous design.
 
 ## Compilation Examples
 
@@ -606,7 +671,9 @@ The following questions were resolved with a "prioritize safety" principle: when
 
 4. **Exponentiation → Standard library call, not an opcode.** Exponentiation involves floating-point edge cases (0^0, negative base with fractional exponent, overflow). A library function can return explicit error indicators and be tested/audited independently. Baking it into the VM as an opcode fixes the error-handling semantics and makes them harder to inspect. Since EXPT is rare in PLC code, there is no performance argument for a dedicated opcode.
 
-5. **TIME arithmetic → Dedicated TIME_ADD / TIME_SUB opcodes.** Raw I64 arithmetic on TIME values is numerically correct but semantically invisible to the VM. If a programmer accidentally adds a TIME and a DINT, raw I64 arithmetic silently produces a nonsensical result. Dedicated TIME opcodes let the VM enforce type discipline: TIME_ADD only accepts two TIME-typed operands (or TIME + duration). This catches unit-confusion bugs at runtime and makes bytecode verification easier — an auditor can confirm that time values are never mixed with unrelated integers.
+5. **String and numeric functions → Single BUILTIN opcode with func_id dispatch (ADR-0008).** String operations (LEN, CONCAT, LEFT, etc.) and numeric functions (ABS, SQRT, MIN, MAX, LIMIT) are standard library functions, not fundamental type operations. A single BUILTIN opcode with a u16 func_id operand handles all of them, freeing 21 opcode slots. The type safety properties from ADR-0004 are preserved because STRING and WSTRING functions have distinct func_id ranges, and the verifier checks type correctness per func_id. The BUILTIN pattern mirrors FB_CALL: one opcode dispatches to an extensible set of native implementations.
+
+6. **TIME arithmetic → Dedicated TIME_ADD / TIME_SUB opcodes.** Raw I64 arithmetic on TIME values is numerically correct but semantically invisible to the VM. If a programmer accidentally adds a TIME and a DINT, raw I64 arithmetic silently produces a nonsensical result. Dedicated TIME opcodes let the VM enforce type discipline: TIME_ADD only accepts two TIME-typed operands (or TIME + duration). This catches unit-confusion bugs at runtime and makes bytecode verification easier — an auditor can confirm that time values are never mixed with unrelated integers.
 
 ## Arithmetic Edge Cases
 

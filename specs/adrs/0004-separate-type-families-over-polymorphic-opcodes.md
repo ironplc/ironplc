@@ -39,9 +39,9 @@ Specifically:
 * Good, because a STRING buffer can never be silently passed to a WSTR_* opcode — the verifier rejects it statically. As defense-in-depth, the VM maintains a one-byte encoding tag (narrow/wide) per buffer entry in the buffer table and asserts that STR_* opcodes always receive narrow-tagged buffers and WSTR_* opcodes always receive wide-tagged buffers, trapping immediately on mismatch. This tag costs one byte per buffer (not per stack value) and is only checked at string opcode entry points — a negligible overhead compared to the string operation itself.
 * Good, because the verifier does not need runtime type tags to prove type safety — the opcode itself encodes the expected type
 * Good, because this eliminates the entire class of "confused reference type" vulnerabilities that have led to sandbox escapes in the JVM and arbitrary code execution in Lua
-* Bad, because the WSTRING family adds 13 opcodes (one per STRING opcode), bringing the total from 163 to 176 — consuming 69% of the 256-opcode budget (178 with string constant opcodes from the instruction set spec)
-* Bad, because the interpreter has 13 additional dispatch handlers, most of which are near-identical to their STRING counterparts (differing only in character width)
-* Neutral, because the opcode budget still has 80 free slots after this decision, sufficient for planned future extensions (OOP method dispatch, pointer/reference operations)
+* Bad, because the WSTRING family originally added 13 opcodes (one per STRING opcode). However, ADR-0008 subsequently consolidated all string function opcodes into a single BUILTIN opcode with func_id dispatch, preserving the type safety of separate families through distinct func_id ranges while freeing 21 opcode slots
+* Bad, because the interpreter has additional dispatch handlers for STRING vs WSTRING, most of which are near-identical (differing only in character width) — though with ADR-0008's BUILTIN opcode, these are func_id handlers within a single opcode dispatcher rather than top-level opcode handlers
+* Neutral, because the opcode budget has 99 free slots after ADR-0008's consolidation, sufficient for planned future extensions (OOP method dispatch, pointer/reference operations)
 
 ### Confirmation
 
@@ -105,4 +105,8 @@ Separate opcode families for STRING (`STR_*`), WSTRING (`WSTR_*`), and FB instan
 | Other decisions (arrays, TIME) | +4 | 167 | 89 |
 | Relocate debug opcodes | +0 | 167 | 89 |
 | Add string constant opcodes (LOAD_CONST_STR, LOAD_CONST_WSTR) | +2 | 169 | 87 |
-| Final total (with all changes) | | 178 | 78 |
+| Pre-ADR-0008 total | | 178 | 78 |
+| ADR-0008: Consolidate string/numeric functions into BUILTIN | -21 (22 removed, 1 added) | 157 | 99 |
+| **Final total (with ADR-0008)** | | **157** | **99** |
+
+Note: ADR-0008 consolidated the 22 string function opcodes (11 STR_* + 11 WSTR_*) into a single BUILTIN opcode with func_id dispatch. The type safety properties of this ADR are preserved through distinct func_id ranges for STRING (0x0100–0x010A) and WSTRING (0x0200–0x020A) functions.

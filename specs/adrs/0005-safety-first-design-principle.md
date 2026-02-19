@@ -11,7 +11,7 @@ The bytecode instruction set design repeatedly encounters trade-offs between opc
 
 * **PLC programs control physical processes** — a VM bug that corrupts memory or silently produces wrong values can cause physical damage (equipment destruction, safety hazards)
 * **PLC programs run unattended for years** — a latent bug triggered by a rare input combination has years of opportunity to manifest, unlike desktop software that is frequently restarted
-* **Opcode budget has room** — at 178 of 256 opcodes used, there are 78 slots available; economy is not a binding constraint
+* **Opcode budget has room** — at 157 of 256 opcodes used (after ADR-0008 consolidation), there are 99 slots available; economy is not a binding constraint
 * **Interpreter complexity is manageable** — the interpreter runs in Rust, so additional dispatch handlers add flash size but not memory safety risk
 * **Verification is planned** — a bytecode verifier (ADR-0006) relies on the instruction set encoding enough type information to verify statically; safety-oriented design directly reduces verifier complexity
 
@@ -31,7 +31,7 @@ The principle is: **when a design choice improves safety (verification, type che
 
 | Trade-off | Safety choice | Alternative | Opcodes spent |
 |---|---|---|---|
-| STRING vs WSTRING | Separate opcode families (ADR-0004) | Polymorphic dispatch with runtime tag | +13 |
+| STRING vs WSTRING | Separate type families (ADR-0004), now via distinct BUILTIN func_id ranges (ADR-0008) | Polymorphic dispatch with runtime tag | +1 (BUILTIN opcode; distinct func_id ranges preserve type safety) |
 | Array access | Dedicated LOAD_ARRAY/STORE_ARRAY with mandatory bounds checking | Computed offsets via arithmetic | +2 |
 | TIME arithmetic | Dedicated TIME_ADD/TIME_SUB with type enforcement | Raw I64 arithmetic | +2 |
 | CASE compilation | JMP_IF chains (no TABLE_SWITCH) | TABLE_SWITCH opcode | +0 (avoided complexity) |
@@ -42,7 +42,7 @@ The principle is: **when a design choice improves safety (verification, type che
 * Good, because every type distinction is statically verifiable from the opcode stream — the verifier is simpler and more trustworthy
 * Good, because the VM enforces invariants (bounds, types) even if the verifier has a bug — defense-in-depth
 * Good, because the principle provides a clear, repeatable decision framework for future extensions — contributors don't need to re-derive the reasoning each time
-* Good, because the opcode budget (78 remaining slots) can absorb many more safety-oriented additions before becoming a constraint
+* Good, because the opcode budget (99 remaining slots after ADR-0008) can absorb many more safety-oriented additions before becoming a constraint
 * Bad, because the interpreter binary is larger than a minimal design — estimated ~10 KB additional flash for the WSTRING family and array/TIME handlers
 * Bad, because the principle occasionally rejects designs that are safe in practice but not provably safe by the verifier (e.g., polymorphic string ops with correct runtime tags are safe, but we reject them because "correct runtime tags" is an assumption, not a proof)
 * Neutral, because this principle can be overridden for specific decisions when the safety cost is genuinely minimal and the economy benefit is large — it is a default, not an absolute rule

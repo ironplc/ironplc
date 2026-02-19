@@ -41,14 +41,14 @@ The verifier tracks nine abstract types on the stack:
 
 | Abstract type | Produced by | Consumed by |
 |---|---|---|
-| I32 | LOAD_VAR_I32, LOAD_CONST_I32, LOAD_TRUE, LOAD_FALSE, comparisons, STR_LEN, WSTR_LEN, BOOL_*, NARROW_* | STORE_VAR_I32, JMP_IF, JMP_IF_NOT, BOOL_*, arithmetic I32, comparisons I32, NARROW_* |
+| I32 | LOAD_VAR_I32, LOAD_CONST_I32, LOAD_TRUE, LOAD_FALSE, comparisons, BUILTIN (STR_LEN, WSTR_LEN, STR_FIND, WSTR_FIND, STR_EQ, STR_LT, WSTR_EQ, WSTR_LT, numeric funcs), BOOL_*, NARROW_* | STORE_VAR_I32, JMP_IF, JMP_IF_NOT, BOOL_*, arithmetic I32, comparisons I32, NARROW_*, BUILTIN (STR_LEFT, STR_RIGHT, STR_MID, STR_DELETE, WSTR_LEFT, WSTR_RIGHT, WSTR_MID, WSTR_DELETE, STR_INSERT, WSTR_INSERT, STR_REPLACE, WSTR_REPLACE, numeric funcs) |
 | U32 | LOAD_VAR_U32, LOAD_CONST_U32, BIT_* 32 | STORE_VAR_U32, BIT_* 32, arithmetic U32, comparisons U32 |
 | I64 | LOAD_VAR_I64, LOAD_CONST_I64, TIME_ADD, TIME_SUB | STORE_VAR_I64, arithmetic I64, comparisons I64, TIME_ADD, TIME_SUB |
 | U64 | LOAD_VAR_U64, LOAD_CONST_U64, BIT_* 64 | STORE_VAR_U64, BIT_* 64, arithmetic U64, comparisons U64 |
 | F32 | LOAD_VAR_F32, LOAD_CONST_F32 | STORE_VAR_F32, arithmetic F32, comparisons F32 |
 | F64 | LOAD_VAR_F64, LOAD_CONST_F64 | STORE_VAR_F64, arithmetic F64, comparisons F64 |
-| buf_idx_str | STR_LOAD_VAR, LOAD_CONST_STR, STR_CONCAT, STR_LEFT, STR_RIGHT, STR_MID, STR_INSERT, STR_DELETE, STR_REPLACE | STR_STORE_VAR, STR_LEN, STR_CONCAT, STR_LEFT, STR_RIGHT, STR_MID, STR_FIND, STR_INSERT, STR_DELETE, STR_REPLACE, STR_EQ, STR_LT |
-| buf_idx_wstr | WSTR_LOAD_VAR, LOAD_CONST_WSTR, WSTR_CONCAT, WSTR_LEFT, WSTR_RIGHT, WSTR_MID, WSTR_INSERT, WSTR_DELETE, WSTR_REPLACE | WSTR_STORE_VAR, WSTR_LEN, WSTR_CONCAT, WSTR_LEFT, WSTR_RIGHT, WSTR_MID, WSTR_FIND, WSTR_INSERT, WSTR_DELETE, WSTR_REPLACE, WSTR_EQ, WSTR_LT |
+| buf_idx_str | STR_LOAD_VAR, LOAD_CONST_STR, BUILTIN (STR_CONCAT, STR_LEFT, STR_RIGHT, STR_MID, STR_INSERT, STR_DELETE, STR_REPLACE) | STR_STORE_VAR, BUILTIN (STR_LEN, STR_CONCAT, STR_LEFT, STR_RIGHT, STR_MID, STR_FIND, STR_INSERT, STR_DELETE, STR_REPLACE, STR_EQ, STR_LT) |
+| buf_idx_wstr | WSTR_LOAD_VAR, LOAD_CONST_WSTR, BUILTIN (WSTR_CONCAT, WSTR_LEFT, WSTR_RIGHT, WSTR_MID, WSTR_INSERT, WSTR_DELETE, WSTR_REPLACE) | WSTR_STORE_VAR, BUILTIN (WSTR_LEN, WSTR_CONCAT, WSTR_LEFT, WSTR_RIGHT, WSTR_MID, WSTR_FIND, WSTR_INSERT, WSTR_DELETE, WSTR_REPLACE, WSTR_EQ, WSTR_LT) |
 | fb_ref | FB_LOAD_INSTANCE | FB_STORE_PARAM, FB_LOAD_PARAM, FB_CALL, LOAD_FIELD, STORE_FIELD |
 
 Note: `buf_idx_str` and `buf_idx_wstr` are distinct verifier types even though both are represented as `buf_idx` on the operand stack at runtime. The verifier distinguishes them to prevent STRING/WSTRING cross-contamination.
@@ -57,7 +57,9 @@ Note: `buf_idx_str` and `buf_idx_wstr` are distinct verifier types even though b
 
 ### Rule R0001: Valid Opcodes
 
-Every byte at an instruction position must be a defined opcode. Undefined opcode bytes (0x00, 0x0B–0x0F, 0x16, 0x17, 0x1E, 0x1F, 0x26, 0x27, 0x2A–0x2F, 0x3B, 0x47, 0x52, 0x53, 0xA6–0xAF, 0xB6–0xBF, 0xC4–0xCF, 0xD3–0xDF, 0xFA, 0xFB, 0xFF) must be rejected.
+Every byte at an instruction position must be a defined opcode. Undefined opcode bytes (0x00, 0x0B–0x0F, 0x16, 0x17, 0x1E, 0x1F, 0x26, 0x27, 0x2A–0x2F, 0x3B, 0x47, 0x52, 0x53, 0xA6–0xAF, 0xB6–0xBF, 0xC5–0xCF, 0xD3–0xDF, 0xE4–0xFB, 0xFF) must be rejected.
+
+Note: opcode 0xC4 (BUILTIN) is valid. Opcodes 0xE0–0xE3 are the string variable access opcodes (STR_LOAD_VAR, STR_STORE_VAR, WSTR_LOAD_VAR, WSTR_STORE_VAR). Former string function opcodes (0xE4–0xF9) are now undefined — string functions are dispatched through BUILTIN (see ADR-0008).
 
 **Error**: `R0001(offset, byte_value)`
 
@@ -75,6 +77,7 @@ Every operand that is an index into a table must be within bounds:
 | LOAD_ARRAY / STORE_ARRAY array | < variable table count AND variable has array flag set |
 | CALL function_id | < function count |
 | FB_CALL type_id | < FB type count |
+| BUILTIN func_id | Must be a defined built-in function ID (see built-in function table in instruction set spec) |
 | FB_STORE_PARAM / FB_LOAD_PARAM field | < num_fields for the target FB type |
 | LOAD_FIELD / STORE_FIELD field | < num_fields for the current fb_ref's type |
 
@@ -162,9 +165,12 @@ Every instruction must find the correct types on the stack. The verifier checks 
 
 Examples:
 - ADD_I32 requires [I32, I32] on top of stack
-- STR_CONCAT requires [buf_idx_str, buf_idx_str]
+- BUILTIN 0x0101 (STR_CONCAT) requires [buf_idx_str, buf_idx_str]
+- BUILTIN 0x0300 (ABS_I32) requires [I32]
 - FB_STORE_PARAM requires [any_value, fb_ref] (with fb_ref on top, value below)
 - BOOL_AND requires [I32, I32]
+
+For BUILTIN instructions, the verifier determines the expected stack types from the func_id operand using the built-in function table. An undefined func_id is rejected by Rule R0002.
 
 **Error**: `R0300(offset, opcode, expected_types, actual_types)`
 
@@ -221,6 +227,20 @@ If the call graph contains cycles (recursion), the function is rejected. IEC 611
 FB_STORE_PARAM and FB_LOAD_PARAM must only appear after an FB_LOAD_INSTANCE (or after another FB_STORE_PARAM/FB_LOAD_PARAM that preserved the fb_ref on the stack). The verifier checks that the top of stack (for FB_LOAD_PARAM) or second-from-top (for FB_STORE_PARAM) is fb_ref.
 
 **Error**: `R0500(offset, opcode, actual_type)`
+
+### Rule R0510: BUILTIN Function ID Validity
+
+Every BUILTIN instruction's `func_id` operand must be a defined built-in function ID from the built-in function table. The verifier checks that:
+
+1. The func_id maps to a known standard library function
+2. The stack contains the correct number and types of arguments for that function (per the function's type signature in the built-in function table)
+3. The result type is pushed correctly after the call
+
+For STRING func_ids (0x0100–0x010A), all buf_idx arguments must be buf_idx_str. For WSTRING func_ids (0x0200–0x020A), all buf_idx arguments must be buf_idx_wstr. This preserves the STRING/WSTRING type safety property from ADR-0004.
+
+**Error**: `R0510(offset, func_id, reason)` where reason is "undefined_func_id", "wrong_arg_count", "wrong_arg_type", or "string_type_mismatch"
+
+---
 
 ### Rule R0600: Process Image Region Validity
 
@@ -330,5 +350,6 @@ Multiple errors may be reported in a single verification pass (the verifier does
 | R0402 | Call Depth Exceeded | Control flow |
 | R0403 | Recursive Call Detected | Control flow |
 | R0500 | FB Reference Required | Function block protocol |
+| R0510 | BUILTIN Function ID Validity | Function block protocol |
 | R0600 | Process Image Region Validity | Domain-specific type enforcement |
 | R0601 | TIME Opcode Type Enforcement | Domain-specific type enforcement |
