@@ -1,15 +1,11 @@
 //! Project management for multiple source files
 
-use std::{collections::HashMap, fs, path::Path};
+use std::{collections::HashMap, path::Path};
 
-use ironplc_dsl::{
-    core::FileId,
-    diagnostic::{Diagnostic, Label},
-};
-use ironplc_problems::Problem;
-use log::{info, trace, warn};
+use ironplc_dsl::{core::FileId, diagnostic::Diagnostic};
+use log::{info, trace};
 
-use crate::{file_type::FileType, source::Source};
+use crate::source::Source;
 
 /// A project consisting of one or more source files
 pub struct SourceProject {
@@ -69,39 +65,35 @@ impl SourceProject {
         self.sources.values_mut().collect()
     }
 
-    /// Initialize project from a directory, loading all supported files
+    /// Initialize project from a directory using project discovery.
+    ///
+    /// Detects existing project structures (Beremiz, TwinCAT) and loads
+    /// the appropriate set of files. Falls back to enumerating all
+    /// supported files when no specific project is detected.
     pub fn initialize_from_directory(&mut self, dir: &Path) -> Vec<Diagnostic> {
         info!("Initializing project from directory: {}", dir.display());
 
         self.sources.clear();
 
-        match fs::read_dir(dir) {
-            Ok(files) => {
-                let mut errors = vec![];
+        let discovered = match crate::discovery::discover(dir) {
+            Ok(project) => project,
+            Err(diag) => return vec![diag],
+        };
 
-                files
-                    .filter_map(Result::ok)
-                    .filter(|f| {
-                        let file_type = FileType::from_path(&f.path());
-                        file_type.is_supported()
-                    })
-                    .for_each(|f| {
-                        let file_id = FileId::from_dir_entry(f);
-                        if let Err(err) = self.add_file(file_id) {
-                            errors.push(err);
-                        }
-                    });
+        info!(
+            "Discovered {:?} project with {} files",
+            discovered.project_type,
+            discovered.files.len()
+        );
 
-                errors
-            }
-            Err(err) => {
-                warn!("Unable to read directory '{}': {}", dir.display(), err);
-                vec![Diagnostic::problem(
-                    Problem::CannotReadDirectory,
-                    Label::file(FileId::from_path(dir), err.to_string()),
-                )]
+        let mut errors = vec![];
+        for file_path in &discovered.files {
+            let file_id = FileId::from_path(file_path);
+            if let Err(err) = self.add_file(file_id) {
+                errors.push(err);
             }
         }
+        errors
     }
 
     /// Remove a source file from the project

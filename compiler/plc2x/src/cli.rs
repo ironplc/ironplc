@@ -17,7 +17,7 @@ use ironplc_problems::Problem;
 use log::{error, trace};
 use std::{
     collections::{HashMap, HashSet},
-    fs::{canonicalize, metadata, read_dir},
+    fs::{canonicalize, metadata},
     ops::Range,
     path::{Path, PathBuf},
 };
@@ -132,7 +132,8 @@ fn create_project(paths: &[PathBuf], suppress_output: bool) -> Result<FileBacked
 /// Enumerates all files at the path.
 ///
 /// If the path is a file, then returns the file. If the path is a directory,
-/// then returns all files in the directory.
+/// then uses project discovery to detect the project structure and return
+/// the appropriate set of files.
 fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, Vec<Diagnostic>> {
     // Get the canonical path so that error messages are unambiguous
     let path = canonicalize(path).map_err(|e| {
@@ -147,16 +148,8 @@ fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, Vec<Diagnostic>> {
     let metadata = metadata(&path)
         .map_err(|e| diagnostic(Problem::CannotReadMetadata, &path, e.to_string()))?;
     if metadata.is_dir() {
-        let paths = read_dir(&path)
-            .map_err(|e| diagnostic(Problem::CannotReadDirectory, &path, e.to_string()))?;
-        let paths: Vec<PathBuf> = paths
-            .into_iter()
-            .filter_map(|entry| match entry {
-                Ok(entry) => Some(entry.path()),
-                Err(_) => None,
-            })
-            .collect();
-        return Ok(paths);
+        let project = ironplc_sources::discovery::discover(&path).map_err(|e| vec![e])?;
+        return Ok(project.files);
     }
     if metadata.is_file() {
         return Ok(vec![path.to_path_buf()]);

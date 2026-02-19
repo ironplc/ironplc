@@ -32,7 +32,7 @@ pub fn tokenize_source(
             suppress_output,
             handle_diagnostics,
         ),
-        FileType::StructuredText | FileType::Unknown => tokenize_st(
+        FileType::StructuredText | FileType::TwinCat | FileType::Unknown => tokenize_st(
             src.as_string(),
             src.file_id(),
             project,

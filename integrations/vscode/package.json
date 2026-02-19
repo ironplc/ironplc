@@ -85,6 +85,36 @@
         "configuration": "./decl/61131-3-st-language-configuration.json"
       },
       {
+        "id": "twincat-pou",
+        "aliases": [
+          "TwinCAT POU"
+        ],
+        "extensions": [
+          ".TcPOU"
+        ],
+        "configuration": "./decl/61131-3-st-language-configuration.json"
+      },
+      {
+        "id": "twincat-gvl",
+        "aliases": [
+          "TwinCAT GVL"
+        ],
+        "extensions": [
+          ".TcGVL"
+        ],
+        "configuration": "./decl/61131-3-st-language-configuration.json"
+      },
+      {
+        "id": "twincat-dut",
+        "aliases": [
+          "TwinCAT DUT"
+        ],
+        "extensions": [
+          ".TcDUT"
+        ],
+        "configuration": "./decl/61131-3-st-language-configuration.json"
+      },
+      {
         "id": "plcopen-xml",
         "aliases": [
           "PLCopen XML",

@@ -9,6 +9,8 @@ pub enum FileType {
     StructuredText,
     /// XML files (.xml)
     Xml,
+    /// TwinCAT files (.TcPOU, .TcGVL, .TcDUT)
+    TwinCat,
     /// Unknown file type
     Unknown,
 }
@@ -20,13 +22,19 @@ impl FileType {
             Some(ext) if ext.eq_ignore_ascii_case("xml") => FileType::Xml,
             Some(ext) if ext.eq_ignore_ascii_case("st") => FileType::StructuredText,
             Some(ext) if ext.eq_ignore_ascii_case("iec") => FileType::StructuredText,
+            Some(ext) if ext.eq_ignore_ascii_case("tcpou") => FileType::TwinCat,
+            Some(ext) if ext.eq_ignore_ascii_case("tcgvl") => FileType::TwinCat,
+            Some(ext) if ext.eq_ignore_ascii_case("tcdut") => FileType::TwinCat,
             _ => FileType::Unknown,
         }
     }
 
     /// Returns true if this file type is supported
     pub fn is_supported(&self) -> bool {
-        matches!(self, FileType::StructuredText | FileType::Xml)
+        matches!(
+            self,
+            FileType::StructuredText | FileType::Xml | FileType::TwinCat
+        )
     }
 
     /// Returns the file extensions associated with this file type
@@ -34,6 +42,7 @@ impl FileType {
         match self {
             FileType::StructuredText => &["st", "iec"],
             FileType::Xml => &["xml"],
+            FileType::TwinCat => &["TcPOU", "TcGVL", "TcDUT"],
             FileType::Unknown => &[],
         }
     }
@@ -69,18 +78,40 @@ mod tests {
     }
 
     #[test]
+    fn file_type_from_path_tcpou() {
+        let path = PathBuf::from("MAIN.TcPOU");
+        assert_eq!(FileType::from_path(&path), FileType::TwinCat);
+    }
+
+    #[test]
+    fn file_type_from_path_tcgvl() {
+        let path = PathBuf::from("GVL_Main.TcGVL");
+        assert_eq!(FileType::from_path(&path), FileType::TwinCat);
+    }
+
+    #[test]
+    fn file_type_from_path_tcdut() {
+        let path = PathBuf::from("ST_MyStruct.TcDUT");
+        assert_eq!(FileType::from_path(&path), FileType::TwinCat);
+    }
+
+    #[test]
     fn file_type_case_insensitive() {
         let path = PathBuf::from("test.XML");
         assert_eq!(FileType::from_path(&path), FileType::Xml);
 
         let path = PathBuf::from("test.ST");
         assert_eq!(FileType::from_path(&path), FileType::StructuredText);
+
+        let path = PathBuf::from("main.tcpou");
+        assert_eq!(FileType::from_path(&path), FileType::TwinCat);
     }
 
     #[test]
     fn file_type_is_supported() {
         assert!(FileType::StructuredText.is_supported());
         assert!(FileType::Xml.is_supported());
+        assert!(FileType::TwinCat.is_supported());
         assert!(!FileType::Unknown.is_supported());
     }
 
@@ -88,6 +119,7 @@ mod tests {
     fn file_type_extensions() {
         assert_eq!(FileType::StructuredText.extensions(), &["st", "iec"]);
         assert_eq!(FileType::Xml.extensions(), &["xml"]);
+        assert_eq!(FileType::TwinCat.extensions(), &["TcPOU", "TcGVL", "TcDUT"]);
         let empty: &[&str] = &[];
         assert_eq!(FileType::Unknown.extensions(), empty);
     }

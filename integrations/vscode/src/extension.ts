@@ -82,6 +82,9 @@ function createClient(compilerFilePath: string, config: vscode.WorkspaceConfigur
     documentSelector: [
       { scheme: 'file', language: '61131-3-st' },
       { scheme: 'file', language: 'plcopen-xml' },
+      { scheme: 'file', language: 'twincat-pou' },
+      { scheme: 'file', language: 'twincat-gvl' },
+      { scheme: 'file', language: 'twincat-dut' },
     ],
   };
 

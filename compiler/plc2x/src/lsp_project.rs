@@ -8,8 +8,9 @@ use ironplc_dsl::core::{FileId, Located};
 use ironplc_parser::token::{Token, TokenType};
 use log::error;
 use lsp_types::{
-    CodeDescription, Diagnostic, DiagnosticSeverity, DocumentSymbol, DocumentSymbolResponse,
-    NumberOrString, SemanticTokenType, SymbolKind, WorkspaceFolder,
+    CodeDescription, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DocumentSymbol,
+    DocumentSymbolResponse, Location, NumberOrString, SemanticTokenType, SymbolKind,
+    WorkspaceFolder,
 };
 use lsp_types::{SemanticToken, Uri};
 
@@ -457,6 +458,26 @@ fn map_diagnostic(
         Err(_) => None,
     };
 
+    let related_information = if diagnostic.secondary.is_empty() {
+        None
+    } else {
+        Some(
+            diagnostic
+                .secondary
+                .iter()
+                .filter_map(|label| {
+                    let uri_str = format!("file://{}", label.file_id);
+                    let uri = Uri::from_str(&uri_str).ok()?;
+                    let range = map_label(label, project);
+                    Some(DiagnosticRelatedInformation {
+                        location: Location { uri, range },
+                        message: label.message.clone(),
+                    })
+                })
+                .collect(),
+        )
+    };
+
     lsp_types::Diagnostic {
         range,
         severity: Some(DiagnosticSeverity::ERROR),
@@ -464,7 +485,7 @@ fn map_diagnostic(
         code_description,
         source: Some("ironplc".into()),
         message: format!("{description}: {} ", diagnostic.primary.message),
-        related_information: None,
+        related_information,
         tags: None,
         data: None,
     }
@@ -492,7 +513,7 @@ fn map_label(label: &ironplc_dsl::diagnostic::Label, project: &dyn Project) -> l
 
         let mut end_line = start_line;
         let mut end_offset = start_offset;
-        for char in contents[label.location.start..label.location.start].chars() {
+        for char in contents[label.location.start..label.location.end.min(contents.len())].chars() {
             if char == '\n' {
                 end_line += 1;
                 end_offset = 0;
@@ -727,6 +748,70 @@ INVALID_SYNTAX"
 
         // Call semantic analysis which will internally call map_label when creating diagnostics
         let _diagnostics = proj.semantic(&url);
+    }
+
+    #[test]
+    fn map_diagnostic_when_secondary_labels_then_produces_related_information() {
+        use ironplc_dsl::core::FileId;
+        use ironplc_dsl::diagnostic::{
+            Diagnostic as DslDiagnostic, Label as DslLabel, Location as DslLocation,
+        };
+
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content = "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\nEND_PROGRAM";
+        proj.change_text_document(&url, content.to_owned());
+
+        let file_id = FileId::from_path(&std::path::PathBuf::from(url.path().as_str()));
+
+        let diag = DslDiagnostic::problem(
+            ironplc_problems::Problem::VariableUndefined,
+            DslLabel {
+                location: DslLocation { start: 0, end: 7 },
+                file_id: file_id.clone(),
+                message: "primary label".to_string(),
+            },
+        )
+        .with_secondary(DslLabel {
+            location: DslLocation { start: 20, end: 23 },
+            file_id: file_id.clone(),
+            message: "secondary label".to_string(),
+        });
+
+        let lsp_diag = super::map_diagnostic(diag, proj.wrapped.as_ref());
+
+        assert!(lsp_diag.related_information.is_some());
+        let related = lsp_diag.related_information.unwrap();
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].message, "secondary label");
+    }
+
+    #[test]
+    fn map_diagnostic_when_no_secondary_labels_then_related_information_is_none() {
+        use ironplc_dsl::core::FileId;
+        use ironplc_dsl::diagnostic::{
+            Diagnostic as DslDiagnostic, Label as DslLabel, Location as DslLocation,
+        };
+
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content = "PROGRAM Main\nEND_PROGRAM";
+        proj.change_text_document(&url, content.to_owned());
+
+        let file_id = FileId::from_path(&std::path::PathBuf::from(url.path().as_str()));
+
+        let diag = DslDiagnostic::problem(
+            ironplc_problems::Problem::SyntaxError,
+            DslLabel {
+                location: DslLocation { start: 0, end: 7 },
+                file_id,
+                message: "some error".to_string(),
+            },
+        );
+
+        let lsp_diag = super::map_diagnostic(diag, proj.wrapped.as_ref());
+
+        assert!(lsp_diag.related_information.is_none());
     }
 
     #[test]
