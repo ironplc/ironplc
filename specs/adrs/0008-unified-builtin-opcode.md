@@ -5,15 +5,15 @@ date: 2026-02-19
 
 ## Context and Problem Statement
 
-The bytecode instruction set uses dedicated opcodes for each string function: STR_LEN, STR_CONCAT, STR_LEFT, STR_RIGHT, STR_MID, STR_FIND, STR_INSERT, STR_DELETE, STR_REPLACE, STR_EQ, STR_LT (11 opcodes), and mirrored WSTR_* variants (11 more). This consumes 22 opcodes for string functions alone.
+The bytecode instruction set must support IEC 61131-3 standard library functions: string functions (LEN, CONCAT, LEFT, RIGHT, MID, FIND, INSERT, DELETE, REPLACE, EQ, LT for both STRING and WSTRING), numeric functions (ABS, SQRT, MIN, MAX, LIMIT), and type conversion functions (INT_TO_REAL, etc.). A per-function opcode approach would consume 22 opcodes for string functions alone (11 STRING + 11 WSTRING), plus additional slots for each numeric function variant.
 
-Additionally, IEC 61131-3 defines numeric standard library functions (ABS, SQRT, MIN, MAX, LIMIT) and type conversion functions (INT_TO_REAL, etc.) that the compiler must support. As the standard library grows, each new function would consume additional opcode slots under the current approach.
+As the standard library grows (IEC 61131-3 defines trigonometric, logarithmic, date/time, and additional string operations), a per-function model would consume increasing numbers of opcode slots.
 
-Should each standard library function continue to have its own opcode, or should they share a single dispatch opcode?
+Should each standard library function have its own opcode, or should they share a single dispatch opcode?
 
 ## Decision Drivers
 
-* **Opcode budget pressure** — 178 of 256 opcodes were in use, leaving 78 for all future extensions (OOP, pointers, new operations); string functions alone consumed 22 slots
+* **Opcode budget pressure** — a per-function opcode model would consume 22 slots for string functions alone (11 STRING + 11 WSTRING), plus additional slots for numeric function variants, leaving fewer slots for future extensions (OOP, pointers, new operations)
 * **Standard library growth** — IEC 61131-3 defines many more functions beyond the initial set (trigonometric, logarithmic, date/time, additional string operations); each would consume an opcode slot under the per-function model
 * **Consistency with FB_CALL** — function block invocation already uses a single opcode (FB_CALL) with a type_id operand for dispatch; the same pattern applies naturally to standard library functions
 * **Verifier complexity** — the verifier must know the type signature of each built-in function regardless of whether it is encoded as an opcode or a func_id; the verification work is equivalent
@@ -21,13 +21,13 @@ Should each standard library function continue to have its own opcode, or should
 
 ## Considered Options
 
-* Per-function opcodes (current approach)
+* Per-function opcodes
 * Single BUILTIN opcode with function ID dispatch
 * Extend the existing CALL opcode with intrinsic recognition (like FB_CALL)
 
 ## Decision Outcome
 
-Chosen option: "Single BUILTIN opcode with function ID dispatch", because it consolidates 22 string function opcodes into one, provides an extensible mechanism for all standard library functions, and preserves the type safety properties from ADR-0004 through the function ID rather than the opcode byte.
+Chosen option: "Single BUILTIN opcode with function ID dispatch", because it handles all standard library functions through a single opcode slot, provides an extensible mechanism for future functions, and preserves the type safety properties from ADR-0004 through the function ID.
 
 The new instruction:
 
@@ -110,16 +110,16 @@ Use the existing CALL instruction for standard library functions. The VM recogni
 
 ### Interaction with ADR-0004 (Separate Type Families)
 
-ADR-0004 decided on separate STRING and WSTRING opcode families to prevent encoding confusion. The BUILTIN opcode preserves this safety property through a different mechanism:
+ADR-0004 requires separate type families for STRING, WSTRING, and FB instances to prevent type confusion. The BUILTIN opcode enforces this through distinct func_id ranges:
 
-| Property | ADR-0004 approach | BUILTIN approach |
-|----------|-------------------|------------------|
-| STRING/WSTRING distinction | Different opcode bytes | Different func_id values |
-| Static verifiability | Opcode encodes expected type | func_id encodes expected type |
-| Verifier mechanism | Map opcode → type signature | Map func_id → type signature |
-| Runtime defense-in-depth | VM asserts buffer encoding tag at opcode entry | VM asserts buffer encoding tag at func_id dispatch |
+| Property | Mechanism |
+|----------|-----------|
+| STRING/WSTRING distinction | Different func_id ranges (0x0100–0x010A vs 0x0200–0x020A) |
+| Static verifiability | func_id encodes expected stack type (`buf_idx_str` vs `buf_idx_wstr`) |
+| Verifier mechanism | Map func_id → type signature; reject mismatched stack types |
+| Runtime defense-in-depth | VM asserts buffer encoding tag (narrow/wide) at func_id dispatch |
 
-The security invariant ("a STRING buf_idx can never reach a WSTRING operation") is preserved identically. The type information is encoded at the operand level (func_id) rather than the opcode level, but the verifier's ability to statically prove type safety is unchanged.
+The security invariant ("a STRING buf_idx can never reach a WSTRING operation") is enforced statically by the verifier through the func_id, with defense-in-depth buffer encoding tag checks at runtime.
 
 ### Interaction with ADR-0005 (Safety-First)
 
