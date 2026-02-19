@@ -430,6 +430,7 @@ parser! {
       / a:array_type_declaration() { DataTypeDeclarationKind::Array(a) }
       / subrange:subrange_type_declaration__with_range() { DataTypeDeclarationKind::Subrange(subrange) }
       / structure_type_declaration__with_constant()
+      / u:union_type_declaration() { DataTypeDeclarationKind::Union(u) }
       / enumerated:enumerated_type_declaration__with_value() { DataTypeDeclarationKind::Enumeration(enumerated) }
       / simple:simple_type_declaration__with_constant() { DataTypeDeclarationKind::Simple(simple )}
       // The remaining are structure, enumerated and simple without an initializer
@@ -620,6 +621,23 @@ parser! {
       StructureElementInit {
         name,
         init,
+      }
+    }
+
+    // Union type declarations (vendor extension, e.g., TwinCAT/Beckhoff)
+    rule union_type_name() -> TypeName = type_name()
+    rule union_type_declaration() -> UnionDeclaration =
+      type_name:union_type_name() _ tok(TokenType::Colon) _ decl:union_body() {
+        UnionDeclaration {
+          type_name,
+          elements: decl.elements,
+        }
+      }
+    rule union_body() -> UnionDeclaration = tok(TokenType::Union) _ elements:semisep_oneplus(<structure_element_declaration()>) _ tok(TokenType::EndUnion) {
+      UnionDeclaration {
+        // Requires a value but we don't know the name until one level up
+        type_name: TypeName::from(""),
+        elements,
       }
     }
 

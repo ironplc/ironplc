@@ -28,9 +28,9 @@ impl TypeCategory {
             | IntermediateType::Time
             | IntermediateType::Date
             | IntermediateType::String { .. } => TypeCategory::Elementary,
-            IntermediateType::Structure { .. } | IntermediateType::Enumeration { .. } => {
-                TypeCategory::UserDefined
-            }
+            IntermediateType::Structure { .. }
+            | IntermediateType::Union { .. }
+            | IntermediateType::Enumeration { .. } => TypeCategory::UserDefined,
             IntermediateType::Subrange { .. } | IntermediateType::Array { .. } => {
                 TypeCategory::Derived
             }

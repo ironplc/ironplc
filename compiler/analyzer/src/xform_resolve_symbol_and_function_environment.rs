@@ -264,6 +264,13 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
                     &ScopeKind::Global,
                 )?;
             }
+            ironplc_dsl::common::DataTypeDeclarationKind::Union(decl) => {
+                self.symbol_env.insert(
+                    &decl.type_name.name,
+                    SymbolKind::Type,
+                    &ScopeKind::Global,
+                )?;
+            }
             ironplc_dsl::common::DataTypeDeclarationKind::LateBound(_) => {
                 // Skip late-bound types for now
             }

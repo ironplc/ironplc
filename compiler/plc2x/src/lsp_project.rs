@@ -309,6 +309,8 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::Array => None,
             TokenType::Struct => Some(KEYWORD_INDEX),
             TokenType::EndStruct => Some(KEYWORD_INDEX),
+            TokenType::Union => Some(KEYWORD_INDEX),
+            TokenType::EndUnion => Some(KEYWORD_INDEX),
             TokenType::WString => Some(KEYWORD_INDEX),
             TokenType::Var => Some(KEYWORD_INDEX),
             TokenType::VarInput => Some(KEYWORD_INDEX),

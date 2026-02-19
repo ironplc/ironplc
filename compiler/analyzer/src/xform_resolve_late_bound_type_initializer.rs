@@ -27,6 +27,7 @@ enum TypeDefinitionKind {
     Simple,
     Array(ArraySpecificationKind),
     Structure,
+    Union,
     StructureInitialization,
     String(StringType, Integer),
     FunctionBlock,
@@ -103,6 +104,9 @@ impl Visitor<Diagnostic> for ScopedTable<'_, TypeName, TypeDefinitionKind> {
             ),
             DataTypeDeclarationKind::Structure(node) => {
                 self.add_if_new(&node.type_name, TypeDefinitionKind::Structure)
+            }
+            DataTypeDeclarationKind::Union(node) => {
+                self.add_if_new(&node.type_name, TypeDefinitionKind::Union)
             }
             DataTypeDeclarationKind::StructureInitialization(node) => {
                 self.add_if_new(&node.type_name, TypeDefinitionKind::StructureInitialization)
@@ -189,12 +193,14 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                                 },
                             ))
                         }
-                        TypeDefinitionKind::Structure => Ok(InitialValueAssignmentKind::Structure(
-                            StructureInitializationDeclaration {
-                                type_name: name,
-                                elements_init: vec![],
-                            },
-                        )),
+                        TypeDefinitionKind::Structure | TypeDefinitionKind::Union => {
+                            Ok(InitialValueAssignmentKind::Structure(
+                                StructureInitializationDeclaration {
+                                    type_name: name,
+                                    elements_init: vec![],
+                                },
+                            ))
+                        }
                         TypeDefinitionKind::String(width, length) => {
                             Ok(InitialValueAssignmentKind::String(StringInitializer {
                                 length: Some(length.clone()),

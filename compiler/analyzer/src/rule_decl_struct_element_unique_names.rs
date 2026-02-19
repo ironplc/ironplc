@@ -56,31 +56,56 @@ impl Visitor<Diagnostic> for RuleStructElementNamesUnique {
         &mut self,
         node: &StructureDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        let mut element_names: HashSet<&Id> = HashSet::new();
-
-        for element in &node.elements {
-            let seen = element_names.get(&element.name);
-            match seen {
-                Some(first) => {
-                    self.diagnostics.push(
-                        Diagnostic::problem(
-                            Problem::StructureDuplicatedElement,
-                            Label::span(node.type_name.span(), "Structure"),
-                        )
-                        .with_context_type("structure", &node.type_name)
-                        .with_context_id("element", &element.name)
-                        .with_secondary(Label::span(first.span(), "First use of name"))
-                        .with_secondary(Label::span(element.name.span(), "Second use of name")),
-                    );
-                }
-                None => {
-                    element_names.insert(&element.name);
-                }
-            }
-            if element_names.contains(&element.name) {}
-        }
-
+        check_element_names_unique(
+            &node.elements,
+            &node.type_name,
+            "structure",
+            &mut self.diagnostics,
+        );
         Ok(())
+    }
+
+    fn visit_union_declaration(
+        &mut self,
+        node: &UnionDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        check_element_names_unique(
+            &node.elements,
+            &node.type_name,
+            "union",
+            &mut self.diagnostics,
+        );
+        Ok(())
+    }
+}
+
+fn check_element_names_unique(
+    elements: &[StructureElementDeclaration],
+    type_name: &TypeName,
+    kind: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let mut element_names: HashSet<&Id> = HashSet::new();
+
+    for element in elements {
+        let seen = element_names.get(&element.name);
+        match seen {
+            Some(first) => {
+                diagnostics.push(
+                    Diagnostic::problem(
+                        Problem::StructureDuplicatedElement,
+                        Label::span(type_name.span(), kind),
+                    )
+                    .with_context_type(kind, type_name)
+                    .with_context_id("element", &element.name)
+                    .with_secondary(Label::span(first.span(), "First use of name"))
+                    .with_secondary(Label::span(element.name.span(), "Second use of name")),
+                );
+            }
+            None => {
+                element_names.insert(&element.name);
+            }
+        }
     }
 }
 

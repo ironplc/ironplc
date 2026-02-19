@@ -70,6 +70,15 @@ impl TypeEnvironment {
                         },
                     ))
                 }
+                IntermediateType::Union { fields: _ } => {
+                    // Union aliases are handled similarly to structure aliases
+                    Ok(DataTypeDeclarationKind::StructureInitialization(
+                        StructureInitializationDeclaration {
+                            type_name: node.base_type_name,
+                            elements_init: vec![],
+                        },
+                    ))
+                }
                 IntermediateType::Array {
                     element_type: _,
                     size: _,
@@ -256,6 +265,15 @@ impl Fold<Diagnostic> for TypeEnvironment {
     ) -> Result<StructureDeclaration, Diagnostic> {
         // Use the structure processing module to create the structure type
         let attrs = crate::intermediates::structure::try_from(&node.type_name, &node, self)?;
+        self.insert_type(&node.type_name, attrs)?;
+        Ok(node)
+    }
+
+    fn fold_union_declaration(
+        &mut self,
+        node: UnionDeclaration,
+    ) -> Result<UnionDeclaration, Diagnostic> {
+        let attrs = crate::intermediates::union_type::try_from(&node.type_name, &node, self)?;
         self.insert_type(&node.type_name, attrs)?;
         Ok(node)
     }

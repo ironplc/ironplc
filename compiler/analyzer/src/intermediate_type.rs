@@ -83,6 +83,13 @@ pub enum IntermediateType {
         /// Ordered list of fields in the structure
         fields: Vec<IntermediateStructField>,
     },
+    /// Union type where all members share the same memory location (offset 0).
+    /// The size of the union is the size of its largest member.
+    /// This is a vendor extension (e.g., TwinCAT/Beckhoff).
+    Union {
+        /// Ordered list of fields in the union (all at offset 0)
+        fields: Vec<IntermediateStructField>,
+    },
     /// Array type with element type and optional fixed size
     Array {
         /// Type of elements in the array
@@ -139,6 +146,11 @@ impl IntermediateType {
     /// Returns if the type is a structure.
     pub fn is_structure(&self) -> bool {
         matches!(self, IntermediateType::Structure { .. })
+    }
+
+    /// Returns if the type is a union.
+    pub fn is_union(&self) -> bool {
+        matches!(self, IntermediateType::Union { .. })
     }
 
     /// Returns if the type is an array.
@@ -224,6 +236,31 @@ impl IntermediateType {
 
                 Some(total_size as u8)
             }
+            IntermediateType::Union { fields } => {
+                if fields.is_empty() {
+                    return None;
+                }
+
+                // Union size is the maximum size of all fields
+                let max_field_size = fields
+                    .iter()
+                    .map(|field| field.field_type.size_in_bytes())
+                    .collect::<Option<Vec<_>>>()?
+                    .into_iter()
+                    .max()
+                    .unwrap_or(0);
+
+                // Pad to union alignment
+                let alignment = self.alignment_bytes() as u32;
+                let padding = (alignment - (max_field_size as u32 % alignment)) % alignment;
+                let total_size = (max_field_size as u32).saturating_add(padding);
+
+                if total_size > u8::MAX as u32 {
+                    return None;
+                }
+
+                Some(total_size as u8)
+            }
             IntermediateType::Array { element_type, size } => {
                 let array_size = (*size)?;
                 let elem_size = element_type.size_in_bytes()?;
@@ -292,6 +329,14 @@ impl IntermediateType {
                     .max()
                     .unwrap_or(1)
             }
+            IntermediateType::Union { fields } => {
+                // Union alignment is the maximum alignment of all fields
+                fields
+                    .iter()
+                    .map(|field| field.field_type.alignment_bytes())
+                    .max()
+                    .unwrap_or(1)
+            }
             IntermediateType::Array { element_type, .. } => element_type.alignment_bytes(),
             IntermediateType::FunctionBlock { fields, .. } => {
                 // Function block alignment is the maximum alignment of all fields
@@ -331,6 +376,7 @@ impl IntermediateType {
                 underlying_type.has_explicit_size()
             }
             IntermediateType::Structure { .. } => true, // Structures always have explicit size in IEC 61131-3
+            IntermediateType::Union { .. } => true,     // Unions always have explicit size
             IntermediateType::Array { element_type, size } => {
                 // Array has explicit size if it has known dimensions and elements have explicit size
                 size.is_some() && element_type.has_explicit_size()

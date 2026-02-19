@@ -164,6 +164,16 @@ fn nested_structure_has_all_defaults(
     fields.iter().all(|field| field.has_default)
 }
 
+/// Resolves the field type from an initial value assignment.
+/// Also used by union type processing since union fields use the same
+/// element declaration format as structure fields.
+pub fn resolve_field_type_for_union(
+    init: &InitialValueAssignmentKind,
+    type_environment: &TypeEnvironment,
+) -> Result<IntermediateType, Diagnostic> {
+    resolve_field_type(init, type_environment)
+}
+
 /// Resolves the field type from an initial value assignment
 fn resolve_field_type(
     init: &InitialValueAssignmentKind,

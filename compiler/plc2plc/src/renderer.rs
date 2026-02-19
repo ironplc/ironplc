@@ -350,6 +350,30 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_initial_value_assignment_kind(&node.init)
     }
 
+    fn visit_union_declaration(
+        &mut self,
+        node: &UnionDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_type_name(&node.type_name)?;
+
+        self.write_ws(":");
+
+        self.write_ws("UNION");
+
+        self.indent();
+        self.newline();
+        for item in node.elements.iter() {
+            self.visit_structure_element_declaration(item)?;
+            self.write_ws(";");
+            self.newline();
+        }
+        self.outdent();
+
+        self.write_ws("END_UNION");
+
+        Ok(())
+    }
+
     // 2.3.3.1
     fn visit_structure_initialization_declaration(
         &mut self,

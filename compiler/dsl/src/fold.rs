@@ -147,6 +147,9 @@ pub trait Fold<E> {
     // 2.3.3.1
     dispatch!(StructureElementInit);
 
+    // Vendor extension (TwinCAT/Beckhoff)
+    dispatch!(UnionDeclaration);
+
     // 2.3.3.1
     dispatch!(StringDeclaration);
 

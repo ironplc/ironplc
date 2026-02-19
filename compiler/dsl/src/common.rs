@@ -1035,6 +1035,9 @@ pub enum DataTypeDeclarationKind {
     Array(ArrayDeclaration),
     Structure(StructureDeclaration),
     StructureInitialization(StructureInitializationDeclaration),
+    /// Union data type where all members share the same memory location.
+    /// This is a vendor extension (e.g., TwinCAT/Beckhoff).
+    Union(UnionDeclaration),
     String(StringDeclaration),
     /// Data declaration that is ambiguous at parse time and must be
     /// resolved to a data type declaration after parsing all types.
@@ -1344,6 +1347,21 @@ pub struct StructureElementInit {
     /// The name of the element in the structure to initialize.
     pub name: Id,
     pub init: StructInitialValueAssignmentKind,
+}
+
+/// Union declaration creates a data type where all members share the same
+/// memory location. The size of the union is the size of its largest element.
+/// Union members are accessed by name, similar to structures, but writing to
+/// one member affects the value of all other members.
+///
+/// This is a vendor extension supported by environments like TwinCAT/Beckhoff.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub struct UnionDeclaration {
+    /// The name of the union type.
+    pub type_name: TypeName,
+    /// The elements (members) of the union declaration. Each element shares
+    /// the same memory location (offset 0).
+    pub elements: Vec<StructureElementDeclaration>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

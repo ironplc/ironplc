@@ -109,6 +109,12 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
                             DataTypeDeclarationKind::StructureInitialization(decl),
                         );
                     }
+                    DataTypeDeclarationKind::Union(decl) => {
+                        types_by_name.insert(
+                            decl.type_name.name.clone(),
+                            DataTypeDeclarationKind::Union(decl),
+                        );
+                    }
                     DataTypeDeclarationKind::String(decl) => {
                         // Can refer to other declarations, but does not have any declarations itself
                         types_by_name.insert(
@@ -317,6 +323,17 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
     fn visit_structure_declaration(
         &mut self,
         node: &StructureDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.current_from = Some(node.type_name.name.clone());
+        self.declarations.add_node(&node.type_name.name);
+        let res = node.recurse_visit(self);
+        self.current_from = None;
+        res
+    }
+
+    fn visit_union_declaration(
+        &mut self,
+        node: &UnionDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.type_name.name.clone());
         self.declarations.add_node(&node.type_name.name);

@@ -257,6 +257,11 @@ pub enum TokenType {
     #[token("END_STRUCT", ignore(case))]
     EndStruct,
 
+    #[token("UNION", ignore(case))]
+    Union,
+    #[token("END_UNION", ignore(case))]
+    EndUnion,
+
     #[token("TASK", ignore(case))]
     Task,
     #[token("END_TASK", ignore(case))]
@@ -493,6 +498,8 @@ impl TokenType {
             TokenType::Step => "'STEP'",
             TokenType::Struct => "'STRUCT'",
             TokenType::EndStruct => "'END_STRUCT'",
+            TokenType::Union => "'UNION'",
+            TokenType::EndUnion => "'END_UNION'",
             TokenType::Task => "'TASK'",
             TokenType::EndTask => "'END_TASK'",
             TokenType::Transition => "'TRANSITION'",
@@ -693,6 +700,8 @@ mod tests {
             (Step, "STEP"),
             (Struct, "STRUCT"),
             (EndStruct, "END_STRUCT"),
+            (Union, "UNION"),
+            (EndUnion, "END_UNION"),
             (Task, "TASK"),
             (EndTask, "END_TASK"),
             (Transition, "TRANSITION"),

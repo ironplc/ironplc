@@ -5,3 +5,4 @@ pub mod stdlib_function_block;
 pub mod string;
 pub mod structure;
 pub mod subrange;
+pub mod union_type;
