@@ -59,7 +59,7 @@ Note: `buf_idx_str` and `buf_idx_wstr` are distinct verifier types even though b
 
 Every byte at an instruction position must be a defined opcode. Undefined opcode bytes (0x00, 0x0B–0x0F, 0x16, 0x17, 0x1E, 0x1F, 0x26, 0x27, 0x2A–0x2F, 0x3B, 0x47, 0x52, 0x53, 0xA6–0xAF, 0xB6–0xBF, 0xC5–0xCF, 0xD3–0xDF, 0xE4–0xFB, 0xFF) must be rejected.
 
-Opcodes 0xE0–0xE3 are the string variable access opcodes (STR_LOAD_VAR, STR_STORE_VAR, WSTR_LOAD_VAR, WSTR_STORE_VAR). String functions are dispatched through BUILTIN (0xC4) via func_id (see ADR-0008); bytes 0xE4–0xF9 are undefined.
+Opcodes 0xE0–0xE3 are the string variable access opcodes (STR_LOAD_VAR, STR_STORE_VAR, WSTR_LOAD_VAR, WSTR_STORE_VAR). String functions are dispatched through BUILTIN (0xC4) via func_id; bytes 0xE4–0xF9 are undefined.
 
 **Error**: `R0001(offset, byte_value)`
 
@@ -236,7 +236,7 @@ Every BUILTIN instruction's `func_id` operand must be a defined built-in functio
 2. The stack contains the correct number and types of arguments for that function (per the function's type signature in the built-in function table)
 3. The result type is pushed correctly after the call
 
-For STRING func_ids (0x0100–0x010A), all buf_idx arguments must be buf_idx_str. For WSTRING func_ids (0x0200–0x020A), all buf_idx arguments must be buf_idx_wstr. This preserves the STRING/WSTRING type safety property from ADR-0004.
+For STRING func_ids (0x0100–0x010A), all buf_idx arguments must be buf_idx_str. For WSTRING func_ids (0x0200–0x020A), all buf_idx arguments must be buf_idx_wstr.
 
 **Error**: `R0510(offset, func_id, reason)` where reason is "undefined_func_id", "wrong_arg_count", "wrong_arg_type", or "string_type_mismatch"
 

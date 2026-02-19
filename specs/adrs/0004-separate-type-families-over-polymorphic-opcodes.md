@@ -39,8 +39,8 @@ Specifically:
 * Good, because a STRING buffer can never be silently passed to a WSTR_* opcode — the verifier rejects it statically. As defense-in-depth, the VM maintains a one-byte encoding tag (narrow/wide) per buffer entry in the buffer table and asserts that STR_* opcodes always receive narrow-tagged buffers and WSTR_* opcodes always receive wide-tagged buffers, trapping immediately on mismatch. This tag costs one byte per buffer (not per stack value) and is only checked at string opcode entry points — a negligible overhead compared to the string operation itself.
 * Good, because the verifier does not need runtime type tags to prove type safety — the opcode itself encodes the expected type
 * Good, because this eliminates the entire class of "confused reference type" vulnerabilities that have led to sandbox escapes in the JVM and arbitrary code execution in Lua
-* Bad, because the WSTRING family requires separate dispatch handlers for each STRING operation — though with ADR-0008's BUILTIN opcode, STRING and WSTRING functions share a single opcode with distinct func_id ranges, keeping the type safety properties while using only one opcode slot
-* Bad, because the interpreter has additional dispatch handlers for STRING vs WSTRING, most of which are near-identical (differing only in character width) — with BUILTIN, these are func_id handlers within a single opcode dispatcher rather than top-level opcode handlers
+* Bad, because the WSTRING family requires separate dispatch handlers for each STRING operation — though STRING and WSTRING functions share a single BUILTIN opcode with distinct func_id ranges, keeping the type safety properties while using only one opcode slot
+* Bad, because the interpreter has additional dispatch handlers for STRING vs WSTRING, most of which are near-identical (differing only in character width) — these are func_id handlers within BUILTIN's dispatcher rather than top-level opcode handlers
 * Neutral, because the opcode budget has 99 free slots, sufficient for planned future extensions (OOP method dispatch, pointer/reference operations)
 
 ### Confirmation
@@ -102,7 +102,7 @@ Separate opcode families for STRING (`STR_*`), WSTRING (`WSTR_*`), and FB instan
 | Split `ref` → `buf_idx` + `fb_ref` | +0 | Stack type renamed; no opcode changes |
 | STRING variable access (STR_LOAD_VAR, STR_STORE_VAR) | +2 | Dedicated opcodes for value-copy semantics |
 | WSTRING variable access (WSTR_LOAD_VAR, WSTR_STORE_VAR) | +2 | Dedicated opcodes for value-copy semantics |
-| STRING/WSTRING function operations | +0 | Dispatched via BUILTIN func_id (ADR-0008), not separate opcodes |
+| STRING/WSTRING function operations | +0 | Dispatched via BUILTIN func_id, not separate opcodes |
 | **Total from this ADR** | **+4** | |
 
 The full instruction set uses 157 of 256 opcode slots (61%), leaving 99 for future extensions.

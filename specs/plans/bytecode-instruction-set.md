@@ -10,7 +10,7 @@ The instruction set builds on five design decisions documented as ADRs:
 1. **[ADR-0001](../adrs/0001-bytecode-integer-arithmetic-type-strategy.md)**: Two-width integer arithmetic with explicit narrowing — sub-32-bit types are promoted to 32-bit on load; 64-bit types remain at 64-bit; explicit NARROW instructions handle truncation back to narrow types
 2. **[ADR-0002](../adrs/0002-bytecode-overflow-behavior.md)**: Configurable overflow behavior at narrowing points — the VM supports wrap, saturate, and fault modes as a startup configuration
 3. **[ADR-0003](../adrs/0003-plc-standard-function-blocks-as-intrinsics.md)**: Standard function blocks as VM intrinsics via FB_CALL — timers, counters, and other standard FBs use the same FB_CALL instruction as user-defined FBs, with the VM fast-pathing known types
-4. **[ADR-0008](../adrs/0008-unified-builtin-opcode.md)**: Unified BUILTIN opcode for standard library functions — string functions, numeric functions, and other standard library functions share a single BUILTIN opcode with func_id dispatch, freeing opcode slots for future extensions
+4. **[ADR-0008](../adrs/0008-unified-builtin-opcode.md)**: Unified BUILTIN opcode for standard library functions — string functions, numeric functions, and other standard library functions share a single BUILTIN opcode with func_id dispatch
 
 ## Encoding
 
@@ -398,7 +398,7 @@ FB_STORE_PARAM and FB_LOAD_PARAM keep the instance reference on the stack to all
 
 The BUILTIN opcode provides a single dispatch mechanism for all standard library functions (string operations, numeric functions, and future extensions). Rather than dedicating a separate opcode to each function, BUILTIN uses a u16 `func_id` operand to identify the target function. The VM dispatches to the appropriate native implementation based on the func_id. The verifier uses the func_id to determine the expected stack types (see Built-in Function Table below).
 
-This approach parallels FB_CALL (ADR-0003): one opcode handles an extensible family of operations, with the operand identifying the specific operation. See ADR-0008 for the full rationale.
+This approach parallels FB_CALL: one opcode handles an extensible family of operations, with the operand identifying the specific operation.
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
@@ -479,7 +479,7 @@ Numeric functions are monomorphized by the compiler from generic IEC 61131-3 sig
 | 0x0300–0x03FF | Numeric functions | ABS, SQRT, MIN, MAX, LIMIT (type-specific variants) |
 | 0x0400–0xFFFF | Reserved | Future standard library extensions (trigonometric, logarithmic, date/time, etc.) |
 
-STRING and WSTRING functions are in separate func_id ranges to preserve the type safety property from ADR-0004: the verifier can distinguish STRING operations from WSTRING operations by func_id alone, without runtime type tags.
+STRING and WSTRING functions are in separate func_id ranges so the verifier can distinguish STRING operations from WSTRING operations by func_id alone, without runtime type tags.
 
 ---
 
@@ -504,9 +504,9 @@ The VM manages two kinds of string buffers:
 
 The `buf_idx` values on the operand stack are small indices (not pointers) into the buffer table. Stack operations like DUP and SWAP copy only the index, not the buffer contents. Actual buffer-to-buffer copies happen only at STR_STORE_VAR / WSTR_STORE_VAR (string assignment) and within string operation handlers.
 
-STRING and WSTRING are statically distinguished throughout the instruction set (ADR-0004). Variable access uses separate opcodes (STR_LOAD_VAR vs WSTR_LOAD_VAR), and string functions use separate BUILTIN func_id ranges (0x0100 for STRING, 0x0200 for WSTRING). The VM asserts that STRING operations always receive single-byte buffers and WSTRING operations always receive wide-character buffers, trapping immediately on a mismatch rather than silently misinterpreting character data.
+STRING and WSTRING are statically distinguished throughout the instruction set. Variable access uses separate opcodes (STR_LOAD_VAR vs WSTR_LOAD_VAR), and string functions use separate BUILTIN func_id ranges (0x0100 for STRING, 0x0200 for WSTRING). The VM asserts that STRING operations always receive single-byte buffers and WSTRING operations always receive wide-character buffers, trapping immediately on a mismatch rather than silently misinterpreting character data.
 
-String operations are dispatched through the BUILTIN opcode (0xC4) with function-specific func_id values (ADR-0008). This keeps the instruction set compact while supporting the full IEC 61131-3 string function library and providing an extensible mechanism for future functions. String operations that produce a string result (CONCAT, LEFT, etc.) write into a temporary buffer and push its index. If the result exceeds the temporary buffer's max length, it is truncated — matching standard PLC string truncation semantics.
+String operations are dispatched through the BUILTIN opcode (0xC4) with function-specific func_id values. This keeps the instruction set compact while supporting the full IEC 61131-3 string function library and providing an extensible mechanism for future functions. String operations that produce a string result (CONCAT, LEFT, etc.) write into a temporary buffer and push its index. If the result exceeds the temporary buffer's max length, it is truncated — matching standard PLC string truncation semantics.
 
 #### STRING Variable Access
 
@@ -559,7 +559,7 @@ String functions (LEN, CONCAT, LEFT, RIGHT, MID, FIND, INSERT, DELETE, REPLACE, 
 | TIME Arithmetic | 0xA4–0xA5 | 2 | Type-checked TIME addition and subtraction |
 | Control Flow | 0xB0–0xB5 | 6 | Jumps, calls, returns |
 | Function Block | 0xC0–0xC3 | 4 | FB instance management and invocation |
-| Built-in Functions | 0xC4 | 1 | BUILTIN dispatch for standard library functions (ADR-0008) |
+| Built-in Functions | 0xC4 | 1 | BUILTIN dispatch for standard library functions |
 | Stack | 0xD0–0xD2 | 3 | Stack manipulation |
 | STRING Variable Access | 0xE0–0xE1 | 2 | STRING variable load/store |
 | WSTRING Variable Access | 0xE2–0xE3 | 2 | WSTRING variable load/store |
@@ -669,7 +669,7 @@ The following questions were resolved with a "prioritize safety" principle: when
 
 4. **Exponentiation → Standard library call, not an opcode.** Exponentiation involves floating-point edge cases (0^0, negative base with fractional exponent, overflow). A library function can return explicit error indicators and be tested/audited independently. Baking it into the VM as an opcode fixes the error-handling semantics and makes them harder to inspect. Since EXPT is rare in PLC code, there is no performance argument for a dedicated opcode.
 
-5. **String and numeric functions → Single BUILTIN opcode with func_id dispatch (ADR-0008).** String operations (LEN, CONCAT, LEFT, etc.) and numeric functions (ABS, SQRT, MIN, MAX, LIMIT) are standard library functions, not fundamental type operations. A single BUILTIN opcode with a u16 func_id operand handles all of them, freeing 21 opcode slots. The type safety properties from ADR-0004 are preserved because STRING and WSTRING functions have distinct func_id ranges, and the verifier checks type correctness per func_id. The BUILTIN pattern mirrors FB_CALL: one opcode dispatches to an extensible set of native implementations.
+5. **String and numeric functions → Single BUILTIN opcode with func_id dispatch.** String operations (LEN, CONCAT, LEFT, etc.) and numeric functions (ABS, SQRT, MIN, MAX, LIMIT) are standard library functions, not fundamental type operations. A single BUILTIN opcode with a u16 func_id operand handles all of them. STRING and WSTRING functions have distinct func_id ranges, and the verifier checks type correctness per func_id. The BUILTIN pattern mirrors FB_CALL: one opcode dispatches to an extensible set of native implementations.
 
 6. **TIME arithmetic → Dedicated TIME_ADD / TIME_SUB opcodes.** Raw I64 arithmetic on TIME values is numerically correct but semantically invisible to the VM. If a programmer accidentally adds a TIME and a DINT, raw I64 arithmetic silently produces a nonsensical result. Dedicated TIME opcodes let the VM enforce type discipline: TIME_ADD only accepts two TIME-typed operands (or TIME + duration). This catches unit-confusion bugs at runtime and makes bytecode verification easier — an auditor can confirm that time values are never mixed with unrelated integers.
 
