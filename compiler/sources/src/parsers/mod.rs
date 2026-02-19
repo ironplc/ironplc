@@ -1,6 +1,7 @@
 //! Parsers for different file types
 
 pub mod st_parser;
+pub mod twincat_parser;
 pub mod xml_parser;
 
 use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
@@ -17,6 +18,7 @@ pub fn parse_source(
     match file_type {
         FileType::StructuredText => st_parser::parse(content, file_id),
         FileType::Xml => xml_parser::parse(content, file_id),
+        FileType::TwinCat => twincat_parser::parse(content, file_id),
         FileType::Unknown => Err(Diagnostic::problem(
             Problem::UnsupportedFileType,
             ironplc_dsl::diagnostic::Label::file(
@@ -62,6 +64,25 @@ mod tests {
         assert!(result.is_ok());
         let library = result.unwrap();
         assert_eq!(library.elements.len(), 0);
+    }
+
+    #[test]
+    fn parse_source_twincat() {
+        let content = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    x : INT;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[x := x + 1;]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>"#;
+        let file_id = FileId::from_string("test.TcPOU");
+        let result = parse_source(FileType::TwinCat, content, &file_id);
+        assert!(result.is_ok());
     }
 
     #[test]
