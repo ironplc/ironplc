@@ -105,7 +105,6 @@ fn detect_beremiz(dir: &Path) -> Option<DiscoveredProject> {
 /// the `.plcproj` is found but malformed or references missing files.
 fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
     let entries = fs::read_dir(dir).ok()?;
-    
 
     let plcproj = entries.filter_map(Result::ok).find(|entry| {
         trace!("Check if file {entry:?} is plcproj");
