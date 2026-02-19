@@ -80,6 +80,8 @@ These instructions move values between the operand stack and memory regions.
 | 0x06 | LOAD_CONST_F64 | index: u16 | [] → [F64] | Push 64-bit float from constant pool |
 | 0x07 | LOAD_TRUE | — | [] → [I32] | Push I32 value 1 (boolean TRUE) |
 | 0x08 | LOAD_FALSE | — | [] → [I32] | Push I32 value 0 (boolean FALSE) |
+| 0x09 | LOAD_CONST_STR | index: u16 | [] → [buf_idx] | Copy STRING literal from constant pool into a temporary buffer; push buf_idx |
+| 0x0A | LOAD_CONST_WSTR | index: u16 | [] → [buf_idx] | Copy WSTRING literal from constant pool into a temporary buffer; push buf_idx |
 
 #### Variables
 
@@ -111,7 +113,17 @@ Process image instructions access the PLC's input and output memory. Inputs are 
 | 0x22 | LOAD_MEMORY | region: u8, index: u16 | [] → [value] | Read from memory region (%M) |
 | 0x23 | STORE_MEMORY | region: u8, index: u16 | [value] → [] | Write to memory region (%M) |
 
-The `region` byte encodes the access width: 0=bit (X), 1=byte (B), 2=word (W), 3=doubleword (D), 4=longword (L).
+The `region` byte encodes the access width and determines the stack value type:
+
+| Region | Width | IEC notation | Stack type |
+|--------|-------|-------------|------------|
+| 0 | Bit | X | I32 (0 or 1) |
+| 1 | Byte | B | U32 (zero-extended) |
+| 2 | Word | W | U32 (zero-extended) |
+| 3 | Doubleword | D | U32 |
+| 4 | Longword | L | U64 |
+
+The verifier uses this mapping to determine the type pushed by LOAD_INPUT / LOAD_MEMORY and the type expected by STORE_OUTPUT / STORE_MEMORY.
 
 #### Array Access
 
@@ -470,7 +482,7 @@ These opcodes replace the generic LOAD_VAR_REF/STORE_VAR_REF that were removed f
 
 | Category | Range | Count | Description |
 |----------|-------|-------|-------------|
-| Load/Store Constants | 0x01–0x08 | 8 | Constant pool loads, boolean literals |
+| Load/Store Constants | 0x01–0x0A | 10 | Constant pool loads, boolean literals, string constants |
 | Load/Store Variables | 0x10–0x1D | 12 | Typed variable access (numeric types only) |
 | Process Image | 0x20–0x23 | 4 | I/O and memory access (%I, %Q, %M) |
 | Array Access | 0x24–0x25 | 2 | Bounds-checked array element load/store |
@@ -489,9 +501,9 @@ These opcodes replace the generic LOAD_VAR_REF/STORE_VAR_REF that were removed f
 | STRING | 0xE0–0xEC | 13 | STRING variable access and operations |
 | WSTRING | 0xED–0xF9 | 13 | WSTRING variable access and operations |
 | Debug | 0xFC–0xFE | 3 | NOP, breakpoint, line info |
-| **Total** | | **176** | |
+| **Total** | | **178** | |
 
-The opcode budget uses 176 of 256 slots (69%), leaving 80 slots for future extensions (e.g., OOP method dispatch, pointer/reference operations).
+The opcode budget uses 178 of 256 slots (70%), leaving 78 slots for future extensions (e.g., OOP method dispatch, pointer/reference operations).
 
 ## Compilation Examples
 
@@ -667,3 +679,29 @@ For full-width arithmetic (ADD_I32 on I32, ADD_I64 on I64, etc.), the overflow p
 | Fault | Runtime trap |
 
 The overflow policy is a VM startup configuration, not a per-instruction setting.
+
+## Known Limitations
+
+The following are known limitations of this version of the instruction set. They are intentional trade-offs for the initial implementation and may be addressed in future versions.
+
+1. **Jump offset range** — Jump offsets are i16 (range -32768..+32767 bytes from the next instruction). Functions whose bytecode exceeds ~32 KB cannot use jumps that span the entire body. This is sufficient for typical PLC programs. A future JMP_FAR with i32 offset could be added if needed.
+
+2. **Array bounds** — Array descriptor bounds are i16 (range -32768..32767). Arrays with more than ~32K elements or arbitrary LINT-typed bounds cannot be represented. This is sufficient for typical PLC array usage.
+
+3. **Field index** — LOAD_FIELD/STORE_FIELD use a u8 field index, limiting FB types to 255 fields. This is sufficient for all standard function blocks and typical user-defined FBs.
+
+4. **No runtime service opcodes** — There is no CLOCK or SYSCALL instruction for bytecode to access runtime services (wall clock, hardware timers). Standard FBs that need timer access (TON, TOF, TP) are implemented as intrinsics (ADR-0003). User-defined FBs that extend standard timer FBs via EXTENDS will fall through to bytecode interpretation and will not have direct timer access. Such FBs should use composition (wrapping a standard timer instance) rather than inheritance to access timer functionality.
+
+## Out of Scope for Version 1
+
+The following PLC runtime features are **not addressed** by this instruction set and will require separate specifications:
+
+1. **Multi-tasking** — IEC 61131-3 supports TASK configurations where multiple programs run at different priorities and intervals. This spec assumes single-threaded execution within a single scan cycle. Multi-task support (scheduling, shared memory, priority) will be a separate spec.
+
+2. **Online change** — Updating the running program without stopping the PLC (hot-swapping bytecode while preserving variable state). This requires careful handling of variable persistence, bytecode replacement at scan cycle boundaries, and FB instance state migration.
+
+3. **RETAIN / PERSISTENT variables** — IEC 61131-3 variables with RETAIN or PERSISTENT qualifiers survive power cycles (stored in non-volatile memory). The variable table currently has no flag for this. A future container format revision should add retention flags to VarEntry.
+
+4. **User-defined types** — Enumerations and subrange types are compiled to their underlying integer types. Enumeration symbolic names are preserved only in the debug section. Subrange constraints are not enforced at runtime (they could be added as specialized NARROW instructions in a future version).
+
+5. **Pointer / reference types** — IEC 61131-3 edition 3 introduces REFERENCE TO and pointer types. These are not supported in version 1. The opcode budget has reserved slots for future pointer operations.
