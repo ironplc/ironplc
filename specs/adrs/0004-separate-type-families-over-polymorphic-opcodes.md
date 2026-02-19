@@ -13,7 +13,7 @@ Should the instruction set use a single generic reference type (e.g., `ref`) for
 
 * **Type confusion prevention** — type confusion between string buffers and FB references is a classic VM exploitation primitive (CVE-2012-1723 in the JVM, every Lua bytecode-to-RCE exploit)
 * **Static verifiability** — a bytecode verifier should be able to prove type safety by analyzing opcodes and operands alone, without runtime type tags
-* **Encoding safety for strings** — STRING (single-byte) and WSTRING (UTF-16) have different character widths; misinterpreting one as the other silently corrupts data
+* **Encoding safety for strings** — STRING (single-byte) and WSTRING (UCS-2) have different character widths; misinterpreting one as the other silently corrupts data
 * **Opcode budget** — separate families consume more of the 256-opcode space
 * **Interpreter complexity** — more type-specific dispatch paths means more handlers
 
@@ -45,7 +45,7 @@ Specifically:
 * Good, because this eliminates the entire class of "confused reference type" vulnerabilities that have led to sandbox escapes in the JVM and arbitrary code execution in Lua
 * Bad, because the WSTRING family requires separate dispatch handlers for each STRING operation — these are func_id handlers within the BUILTIN dispatcher, keeping the type safety properties while using only one opcode slot
 * Bad, because the interpreter has additional dispatch handlers for STRING vs WSTRING, most of which are near-identical (differing only in character width)
-* Neutral, because the opcode budget has 99 free slots, sufficient for planned future extensions (OOP method dispatch, pointer/reference operations)
+* Neutral, because the opcode budget has 85 free slots, sufficient for planned future extensions (OOP method dispatch)
 
 ### Confirmation
 
@@ -65,7 +65,7 @@ A single `ref` type on the operand stack, with a runtime type tag (string-narrow
 * Good, because the opcode count is minimal — one set of string operations handles both STRING and WSTRING
 * Good, because the interpreter has fewer dispatch handlers
 * Bad, because every string operation must check the type tag at runtime — one extra branch per operation
-* Bad, because a bug in the type tag (stale value, corrupted memory, verifier bypass) silently misinterprets character data — UTF-16 bytes read as single-byte characters, or vice versa
+* Bad, because a bug in the type tag (stale value, corrupted memory, verifier bypass) silently misinterprets character data — UCS-2 bytes read as single-byte characters, or vice versa
 * Bad, because the verifier cannot distinguish `buf_idx` from `fb_ref` by opcode alone — it must track type tags through the abstract interpretation, which is the exact pattern that led to eBPF verifier bypasses (CVE-2020-8835, CVE-2023-2163)
 * Bad, because type confusion between `ref` kinds (string vs FB) becomes a single-bug-away exploit primitive, as demonstrated in JVM CVE-2012-1723
 
@@ -110,6 +110,6 @@ Separate stack types for STRING (`buf_idx_str`), WSTRING (`buf_idx_wstr`), and F
 | STRING/WSTRING function operations | +0 | Dispatched via BUILTIN func_id ranges, not separate opcodes |
 | **Total** | **+4** | |
 
-The full instruction set uses 157 of 256 opcode slots (61%), leaving 99 for future extensions.
+The full instruction set uses 171 of 256 opcode slots (67%), leaving 85 for future extensions.
 
 The type safety properties are enforced through distinct func_id ranges for STRING (0x0100–0x010A) and WSTRING (0x0200–0x020A) functions within the BUILTIN opcode. The verifier distinguishes STRING from WSTRING operations by func_id, providing the same static guarantees as if they were separate opcode families.
