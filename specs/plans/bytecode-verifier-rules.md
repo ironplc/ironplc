@@ -30,34 +30,35 @@ All verifier errors use codes in the format `R####` (R0001 through R9999). Codes
 The verifier performs **abstract interpretation** over the bytecode. For each instruction, it tracks:
 
 - **Stack depth** — the number of values on the operand stack
-- **Stack types** — the type of each value on the stack (I32, U32, I64, U64, F32, F64, buf_idx_str, buf_idx_wstr, fb_ref)
+- **Stack types** — the type of each value on the stack (I32, U32, I64, U64, F32, F64, buf_idx_str, buf_idx_wstr, fb_ref, var_ref)
 - **Local types** — the type of each local variable (set on first store, checked on subsequent loads)
 
 The verifier processes instructions in order, following control flow. At branch merge points (jump targets, loop headers), it checks that all incoming paths agree on stack depth and types.
 
 ### Abstract Types
 
-The verifier tracks nine abstract types on the stack:
+The verifier tracks ten abstract types on the stack:
 
 | Abstract type | Produced by | Consumed by |
 |---|---|---|
 | I32 | LOAD_VAR_I32, LOAD_CONST_I32, LOAD_TRUE, LOAD_FALSE, comparisons, BUILTIN (STR_LEN, WSTR_LEN, STR_FIND, WSTR_FIND, STR_EQ, STR_LT, WSTR_EQ, WSTR_LT, numeric funcs), BOOL_*, NARROW_* | STORE_VAR_I32, JMP_IF, JMP_IF_NOT, BOOL_*, arithmetic I32, comparisons I32, NARROW_*, BUILTIN (STR_LEFT, STR_RIGHT, STR_MID, STR_DELETE, WSTR_LEFT, WSTR_RIGHT, WSTR_MID, WSTR_DELETE, STR_INSERT, WSTR_INSERT, STR_REPLACE, WSTR_REPLACE, numeric funcs) |
 | U32 | LOAD_VAR_U32, LOAD_CONST_U32, BIT_* 32 | STORE_VAR_U32, BIT_* 32, arithmetic U32, comparisons U32 |
-| I64 | LOAD_VAR_I64, LOAD_CONST_I64, TIME_ADD, TIME_SUB | STORE_VAR_I64, arithmetic I64, comparisons I64, TIME_ADD, TIME_SUB |
+| I64 | LOAD_VAR_I64, LOAD_CONST_I64, LOAD_CONST_TIME, TIME_ADD, TIME_SUB | STORE_VAR_I64, arithmetic I64, comparisons I64, TIME_ADD, TIME_SUB |
 | U64 | LOAD_VAR_U64, LOAD_CONST_U64, BIT_* 64 | STORE_VAR_U64, BIT_* 64, arithmetic U64, comparisons U64 |
 | F32 | LOAD_VAR_F32, LOAD_CONST_F32 | STORE_VAR_F32, arithmetic F32, comparisons F32 |
 | F64 | LOAD_VAR_F64, LOAD_CONST_F64 | STORE_VAR_F64, arithmetic F64, comparisons F64 |
 | buf_idx_str | STR_LOAD_VAR, LOAD_CONST_STR, BUILTIN (STR_CONCAT, STR_LEFT, STR_RIGHT, STR_MID, STR_INSERT, STR_DELETE, STR_REPLACE) | STR_STORE_VAR, BUILTIN (STR_LEN, STR_CONCAT, STR_LEFT, STR_RIGHT, STR_MID, STR_FIND, STR_INSERT, STR_DELETE, STR_REPLACE, STR_EQ, STR_LT) |
 | buf_idx_wstr | WSTR_LOAD_VAR, LOAD_CONST_WSTR, BUILTIN (WSTR_CONCAT, WSTR_LEFT, WSTR_RIGHT, WSTR_MID, WSTR_INSERT, WSTR_DELETE, WSTR_REPLACE) | WSTR_STORE_VAR, BUILTIN (WSTR_LEN, WSTR_CONCAT, WSTR_LEFT, WSTR_RIGHT, WSTR_MID, WSTR_FIND, WSTR_INSERT, WSTR_DELETE, WSTR_REPLACE, WSTR_EQ, WSTR_LT) |
-| fb_ref | FB_LOAD_INSTANCE | FB_STORE_PARAM, FB_LOAD_PARAM, FB_CALL, LOAD_FIELD, STORE_FIELD |
+| fb_ref | FB_LOAD_INSTANCE, FB_CALL | FB_STORE_PARAM, FB_LOAD_PARAM, FB_CALL, LOAD_FIELD, STORE_FIELD |
+| var_ref | LOAD_VAR_REF | DEREF_LOAD, DEREF_STORE |
 
-Note: `buf_idx_str` and `buf_idx_wstr` are distinct verifier types even though both are represented as `buf_idx` on the operand stack at runtime. The verifier distinguishes them to prevent STRING/WSTRING cross-contamination.
+Note: `buf_idx_str` and `buf_idx_wstr` are distinct verifier types even though both are represented as `buf_idx` on the operand stack at runtime. The verifier distinguishes them to prevent STRING/WSTRING cross-contamination. Similarly, `var_ref` is a distinct type from `fb_ref` — the verifier rejects a `var_ref` passed to FB_CALL or an `fb_ref` passed to DEREF_LOAD.
 
 ## Rules
 
 ### Rule R0001: Valid Opcodes
 
-Every byte at an instruction position must be a defined opcode. Undefined opcode bytes (0x00, 0x0B–0x0F, 0x16, 0x17, 0x1E, 0x1F, 0x26, 0x27, 0x2A–0x2F, 0x3B, 0x47, 0x52, 0x53, 0xA6–0xAF, 0xB6–0xBF, 0xC5–0xCF, 0xD3–0xDF, 0xE4–0xFB, 0xFF) must be rejected.
+Every byte at an instruction position must be a defined opcode. Undefined opcode bytes (0x00, 0x0C–0x0F, 0x16, 0x17, 0x1E, 0x1F, 0x26, 0x27, 0x2A–0x2F, 0x3B, 0x47, 0x52, 0x53, 0xAD–0xAF, 0xB9–0xBF, 0xC8–0xCF, 0xD3–0xDF, 0xE4–0xFB, 0xFF) must be rejected.
 
 Opcodes 0xE0–0xE3 are the string variable access opcodes (STR_LOAD_VAR, STR_STORE_VAR, WSTR_LOAD_VAR, WSTR_STORE_VAR). String functions are dispatched through BUILTIN (0xC4) via func_id; bytes 0xE4–0xF9 are undefined.
 
@@ -69,11 +70,12 @@ Every operand that is an index into a table must be within bounds:
 
 | Operand | Bound |
 |---------|-------|
-| LOAD_CONST_* / LOAD_CONST_STR / LOAD_CONST_WSTR index | < constant pool count |
+| LOAD_CONST_* / LOAD_CONST_STR / LOAD_CONST_WSTR / LOAD_CONST_TIME index | < constant pool count |
 | LOAD_VAR_* / STORE_VAR_* index | < variable table count |
 | STR_LOAD_VAR / STR_STORE_VAR index | < variable table count AND variable type is STRING |
 | WSTR_LOAD_VAR / WSTR_STORE_VAR index | < variable table count AND variable type is WSTRING |
 | FB_LOAD_INSTANCE index | < variable table count AND variable type is FB_INSTANCE |
+| LOAD_VAR_REF index | < variable table count |
 | LOAD_ARRAY / STORE_ARRAY array | < variable table count AND variable has array flag set |
 | CALL function_id | < function count |
 | FB_CALL type_id | < FB type count |
@@ -97,6 +99,7 @@ Every LOAD_CONST_* opcode must reference a constant pool entry whose type matche
 | LOAD_CONST_F64 | F64 |
 | LOAD_CONST_STR | STRING_LITERAL |
 | LOAD_CONST_WSTR | WSTRING_LITERAL |
+| LOAD_CONST_TIME | I64 (verifier produces I64_time subtype) |
 
 **Error**: `R0100(offset, expected_type, actual_type)`
 
@@ -195,9 +198,17 @@ Similarly, FB_STORE_PARAM and FB_LOAD_PARAM must match the field type of the tar
 
 **Error**: `R0302(offset, opcode, field_index, expected_type, actual_type)`
 
+### Rule R0303: Reference Type Consistency
+
+Every DEREF_LOAD and DEREF_STORE instruction's `type` byte must match the type of the referenced variable. The verifier determines the referenced variable from the preceding LOAD_VAR_REF instruction (or from the var_ref type tracking through the abstract interpretation). The type byte encoding matches the array access type encoding (0=I32, 1=U32, 2=I64, 3=U64, 4=F32, 5=F64, 6=STRING, 7=WSTRING).
+
+For DEREF_LOAD, the value pushed must match the type byte. For DEREF_STORE, the value on the stack below the var_ref must match the type byte. A mismatch between the type byte and the variable's declared type is rejected.
+
+**Error**: `R0303(offset, opcode, type_byte, variable_type)`
+
 ### Rule R0400: Jump Target Validity
 
-Every JMP, JMP_IF, and JMP_IF_NOT offset must satisfy:
+Every JMP, JMP_IF, JMP_IF_NOT, JMP_FAR, JMP_IF_FAR, and JMP_IF_NOT_FAR offset must satisfy:
 
 1. The computed target `(current_pc + operand_size + offset)` must be >= 0 and < the function's bytecode length
 2. The target must land on a valid instruction boundary (the first byte of an instruction, not in the middle of an operand)
@@ -221,6 +232,14 @@ The verifier constructs a static call graph from CALL and FB_CALL instructions. 
 If the call graph contains cycles (recursion), the function is rejected. IEC 61131-3 does not permit recursion in standard PLC programs.
 
 **Error**: `R0402(function_id, depth, max_depth)` or `R0403(function_id, cycle_path)`
+
+### Rule R0404: No Unreachable Code
+
+All bytes in a function body must be part of a reachable instruction. The verifier builds a reachability set during abstract interpretation (phase 2 of the verification algorithm). After processing all reachable paths, any bytecode offset that is within the function body but not in the reachability set is rejected.
+
+This catches dead code injected after unconditional jumps or returns, which could be used to hide malicious payloads or confuse disassemblers. It also detects compiler bugs that emit unreachable instructions.
+
+**Error**: `R0404(function_id, unreachable_offset)`
 
 ### Rule R0500: FB_STORE_PARAM / FB_LOAD_PARAM Require Active FB Reference
 
@@ -258,11 +277,25 @@ Values >= 5 are rejected.
 
 **Error**: `R0600(offset, region_value)`
 
+### Rule R0602: Process Image Bounds
+
+Every LOAD_INPUT, STORE_OUTPUT, LOAD_MEMORY, and STORE_MEMORY instruction's index must be within the declared process image size. The verifier computes the byte offset from the instruction's `index` operand and `region` (access width), and checks that the access does not exceed the declared image size from the container header:
+
+| Opcode | Image size field |
+|--------|-----------------|
+| LOAD_INPUT | input_image_bytes |
+| STORE_OUTPUT | output_image_bytes |
+| LOAD_MEMORY, STORE_MEMORY | memory_image_bytes |
+
+The access width in bytes is: Bit=1 (byte-addressed), Byte=1, Word=2, Doubleword=4, Longword=8. The computed byte offset plus access width must be <= the declared image size.
+
+**Error**: `R0602(offset, opcode, computed_byte_offset, access_width, image_size)`
+
 ### Rule R0601: TIME Opcode Type Enforcement
 
 TIME_ADD and TIME_SUB require two I64 values on the stack. The verifier further checks (via variable type metadata) that the source values are TIME-typed variables, not arbitrary I64 values.
 
-To enforce this, the verifier tracks a sub-type for I64 stack slots: `I64_integer` (from LOAD_VAR_I64 of a LINT variable) vs `I64_time` (from LOAD_VAR_I64 of a TIME/DATE/TOD/DT variable, or from TIME_ADD/TIME_SUB output). TIME_ADD and TIME_SUB require `I64_time` inputs.
+To enforce this, the verifier tracks a sub-type for I64 stack slots: `I64_integer` (from LOAD_VAR_I64 of a LINT variable) vs `I64_time` (from LOAD_VAR_I64 of a TIME/DATE/TOD/DT variable, from LOAD_CONST_TIME, or from TIME_ADD/TIME_SUB output). TIME_ADD and TIME_SUB require `I64_time` inputs. LOAD_CONST_TIME always produces `I64_time`, ensuring that TIME literal constants participate correctly in the type discipline chain.
 
 **Error**: `R0601(offset, opcode, expected_subtype, actual_subtype)`
 
@@ -321,7 +354,7 @@ The memory cost is one abstract state per merge point. Each abstract state conta
 
 The verifier produces structured error messages that include:
 
-1. The rule code (R0001 through R0601)
+1. The rule code (R0001 through R0602)
 2. The bytecode offset of the offending instruction
 3. The specific values that caused the failure (expected vs. actual types, bounds, depths)
 
@@ -345,11 +378,14 @@ Multiple errors may be reported in a single verification pass (the verifier does
 | R0300 | Stack Type Correctness | Stack type correctness |
 | R0301 | Function Call Parameter Type Correctness | Stack type correctness |
 | R0302 | Field Access Type Correctness | Stack type correctness |
+| R0303 | Reference Type Consistency | Stack type correctness |
 | R0400 | Jump Target Validity | Control flow |
 | R0401 | Return Path Completeness | Control flow |
 | R0402 | Call Depth Exceeded | Control flow |
 | R0403 | Recursive Call Detected | Control flow |
+| R0404 | No Unreachable Code | Control flow |
 | R0500 | FB Reference Required | Function block protocol |
 | R0510 | BUILTIN Function ID Validity | Function block protocol |
 | R0600 | Process Image Region Validity | Domain-specific type enforcement |
 | R0601 | TIME Opcode Type Enforcement | Domain-specific type enforcement |
+| R0602 | Process Image Bounds | Domain-specific type enforcement |
