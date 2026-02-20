@@ -23,8 +23,8 @@ Sections appear in this fixed order. All multi-byte values are little-endian, ma
 
 ```
 ┌─────────────────────────────────────────┐  offset 0
-│ File Header (96 bytes, fixed size)      │
-├─────────────────────────────────────────┤  offset 96
+│ File Header (192 bytes, fixed size)     │
+├─────────────────────────────────────────┤  offset 192
 │ Content Signature Section               │
 ├─────────────────────────────────────────┤
 │ Debug Signature Section (optional)      │
@@ -77,7 +77,11 @@ The header is exactly 192 bytes. The VM reads this in a single read and decides 
 | 166 | code_section_size | u32 | Size of code section |
 | 170 | debug_section_offset | u32 | Offset of debug section (0 if absent) |
 | 174 | debug_section_size | u32 | Size of debug section |
-| 178 | reserved | [u8; 14] | Reserved for future use; must be zero |
+| 178 | input_image_bytes | u16 | Total input process image size in bytes (%I) |
+| 180 | output_image_bytes | u16 | Total output process image size in bytes (%Q) |
+| 182 | memory_image_bytes | u16 | Total memory region size in bytes (%M) |
+| 184 | entry_function_id | u16 | Function ID of the scan-cycle entry point (the function the VM calls once per scan cycle) |
+| 186 | reserved | [u8; 6] | Reserved for future use; must be zero |
 
 Total header size: 192 bytes.
 
@@ -173,12 +177,13 @@ Each FB type descriptor defines the field layout for a function block type.
 | 2 | num_fields | u8 | Number of fields |
 | 3 | fields | [FieldEntry; num_fields] | Field descriptors |
 
-Each FieldEntry:
+Each FieldEntry (4 bytes):
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | field_type | u8 | Field type (same encoding as VarEntry.var_type) |
-| 1 | field_extra | u8 | For STRING/WSTRING: max length / 4 (rounded up). For FB: nested fb_type_id low byte. |
+| 1 | reserved | u8 | Reserved; must be zero |
+| 2 | field_extra | u16 | For STRING/WSTRING: max length in characters. For FB_INSTANCE: nested fb_type_id. For other types: 0. |
 
 The verifier checks that every FB_STORE_PARAM/FB_LOAD_PARAM `field` index is within `num_fields` for the target FB type.
 
@@ -280,7 +285,7 @@ The VM loads a bytecode container in this order:
    c. Verify signature over content_hash
    d. If invalid → reject with "signature verification failed" error
 8. Read type + constant + code sections
-9. Compute SHA-256 over type + constant + code sections
+9. Compute SHA-256 over source_hash || type + constant + code sections
 10. Compare computed hash to content_hash in header
     If mismatch → reject with "content hash mismatch" error
 11. If on-device verification is enabled:

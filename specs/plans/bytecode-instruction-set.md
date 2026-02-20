@@ -20,7 +20,8 @@ All opcodes are encoded as a single byte (0x00–0xFF). Operands follow the opco
 |-------------|------|-------------|
 | u8 | 1 byte | Small index (field index, type tag) |
 | u16 | 2 bytes | Variable/constant pool index |
-| i16 | 2 bytes | Signed jump offset |
+| i16 | 2 bytes | Signed jump offset (near jumps) |
+| i32 | 4 bytes | Signed jump offset (far jumps) |
 | u32 | 4 bytes | Extended index (for large constant pools) |
 
 ## Type System
@@ -49,6 +50,11 @@ Additional IEC 61131-3 types are handled as follows:
 | DATE, TOD, DT | I64 | Microseconds; specific interpretation is runtime-defined |
 | STRING | buf_idx | Index to a fixed-size buffer (max length known at compile time); see String Operations |
 | WSTRING | buf_idx | Index to a fixed-size wide-char buffer (max length known at compile time); see String Operations |
+| VAR_IN_OUT reference | var_ref | Reference to a variable slot; used for VAR_IN_OUT parameter passing (see Reference Operations) |
+
+### Stack Slot Layout
+
+All stack slots are 8 bytes wide (uniform width). Smaller values (I32, U32, F32, buf_idx, fb_ref, var_ref) occupy the low bytes of the slot; the upper bytes are zero-filled. This uniform layout simplifies the interpreter — POP, DUP, and SWAP operate on fixed-size slots without consulting a type tag. The 8-byte width accommodates the widest native types (I64, U64, F64) without padding or spilling.
 
 ## Instruction Set
 
@@ -83,6 +89,7 @@ These instructions move values between the operand stack and memory regions.
 | 0x08 | LOAD_FALSE | — | [] → [I32] | Push I32 value 0 (boolean FALSE) |
 | 0x09 | LOAD_CONST_STR | index: u16 | [] → [buf_idx] | Copy STRING literal from constant pool into a temporary buffer; push buf_idx |
 | 0x0A | LOAD_CONST_WSTR | index: u16 | [] → [buf_idx] | Copy WSTRING literal from constant pool into a temporary buffer; push buf_idx |
+| 0x0B | LOAD_CONST_TIME | index: u16 | [] → [I64] | Push TIME/DATE/TOD/DT constant from constant pool as I64 microseconds; verifier produces I64_time subtype |
 
 #### Variables
 
@@ -143,6 +150,8 @@ The `type` byte encodes the element type: 0=I32, 1=U32, 2=I64, 3=U64, 4=F32, 5=F
 |---|--------|----------|-------------|-------------|
 | 0x28 | LOAD_FIELD | field: u8 | [fb_ref] → [value] | Load field from struct/FB instance on stack |
 | 0x29 | STORE_FIELD | field: u8 | [value, fb_ref] → [] | Store field to struct/FB instance on stack |
+
+The type of `value` pushed by LOAD_FIELD (and expected by STORE_FIELD) is determined by the field's declared `field_type` in the FB type descriptor. The verifier resolves the fb_ref to its type_id, looks up the field descriptor, and uses the field_type to check type correctness.
 
 ---
 
@@ -212,6 +221,8 @@ Boolean operations operate on I32 values where 0 = FALSE and 1 = TRUE. Bitwise o
 | 0x56 | BOOL_XOR | — | [I32, I32] → [I32] | Logical XOR (result is 0 or 1) |
 | 0x57 | BOOL_NOT | — | [I32] → [I32] | Logical NOT (result is 0 or 1) |
 
+Boolean operations coerce inputs: any non-zero I32 value is treated as TRUE and normalized to 1 before the operation. The result is always 0 or 1. This means `BOOL_AND` on inputs (5, 3) produces 1, not a bitwise AND. The compiler is responsible for ensuring BOOL-typed variables contain only 0 or 1, but the boolean opcodes are defensive against non-canonical inputs.
+
 #### Bitwise (operate on full-width integer values)
 
 | # | Opcode | Operands | Stack effect | Description |
@@ -232,6 +243,8 @@ Boolean operations operate on I32 values where 0 = FALSE and 1 = TRUE. Bitwise o
 | 0x65 | SHR_64 | — | [U64, U64] → [U64] | Shift right (logical), 64-bit |
 | 0x66 | ROL_64 | — | [U64, U64] → [U64] | Rotate left, 64-bit |
 | 0x67 | ROR_64 | — | [U64, U64] → [U64] | Rotate right, 64-bit |
+
+IEC 61131-3 shift functions (SHL, SHR, ROL, ROR) accept ANY_INT for the shift amount, but the bytecode shift opcodes require U32 for the shift amount (both 32-bit and 64-bit variants). The compiler is responsible for emitting appropriate type conversions (e.g., I32_TO_U32 via REINTERPRET_I32_U32) when the source shift amount is a signed type.
 
 ---
 
@@ -333,13 +346,27 @@ Note: the narrowed value remains at 32-bit width on the stack (since the VM alwa
 | 0x9E | F32_TO_I32 | — | [F32] → [I32] | Float to signed integer (truncates toward zero) |
 | 0x9F | F64_TO_I32 | — | [F64] → [I32] | Double to signed integer (truncates toward zero) |
 | 0xA0 | F64_TO_I64 | — | [F64] → [I64] | Double to signed long (truncates toward zero) |
+| 0xA6 | F32_TO_U32 | — | [F32] → [U32] | Float to unsigned 32-bit (truncates toward zero) |
+| 0xA7 | F64_TO_U32 | — | [F64] → [U32] | Double to unsigned 32-bit (truncates toward zero) |
+| 0xA8 | F64_TO_U64 | — | [F64] → [U64] | Double to unsigned 64-bit (truncates toward zero) |
 | 0xA1 | NARROW_I64_TO_I32 | — | [I64] → [I32] | Narrow 64-bit to 32-bit signed (with overflow policy) |
 | 0xA2 | NARROW_U64_TO_U32 | — | [U64] → [U32] | Narrow 64-bit to 32-bit unsigned (with overflow policy) |
 | 0xA3 | NARROW_F64_TO_F32 | — | [F64] → [F32] | Narrow double to float (IEEE 754 rounding) |
 
+#### Reinterpretation (bitcast)
+
+These instructions reinterpret the bit pattern of a value as a different signedness without changing any bits. They are zero-cost at runtime (the value is unchanged on the stack; only the verifier's type tracking changes). The compiler emits these when IEC 61131-3 semantics require treating a signed value as unsigned or vice versa (e.g., assigning a DINT to a UDINT, or passing a signed shift amount to a bitwise shift opcode).
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xA9 | REINTERPRET_I32_U32 | — | [I32] → [U32] | Reinterpret signed 32-bit as unsigned 32-bit (bitcast) |
+| 0xAA | REINTERPRET_U32_I32 | — | [U32] → [I32] | Reinterpret unsigned 32-bit as signed 32-bit (bitcast) |
+| 0xAB | REINTERPRET_I64_U64 | — | [I64] → [U64] | Reinterpret signed 64-bit as unsigned 64-bit (bitcast) |
+| 0xAC | REINTERPRET_U64_I64 | — | [U64] → [I64] | Reinterpret unsigned 64-bit as signed 64-bit (bitcast) |
+
 #### TIME Arithmetic
 
-TIME values are I64 microseconds. Although raw I64 arithmetic produces correct results, dedicated TIME opcodes enforce type discipline: the VM can verify that only TIME-typed values are passed to these instructions, catching accidental mixing of TIME and unrelated integers. This prevents a class of unit-confusion bugs (e.g., accidentally adding a loop counter to a timestamp).
+TIME values are I64 microseconds. Although raw I64 arithmetic produces correct results, dedicated TIME opcodes enforce type discipline: the VM can verify that only TIME-typed values are passed to these instructions, catching accidental mixing of TIME and unrelated integers. This prevents a class of unit-confusion bugs (e.g., accidentally adding a loop counter to a timestamp). TIME constants are loaded via LOAD_CONST_TIME (0x0B), which the verifier tags as I64_time subtype, ensuring the type discipline chain is unbroken from constant loading through arithmetic.
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
@@ -358,6 +385,9 @@ TIME values are I64 microseconds. Although raw I64 arithmetic produces correct r
 | 0xB3 | CALL | index: u16 | [args...] → [result] | Call function by index; pushes return value |
 | 0xB4 | RET | — | [result] → [] | Return from function; pops return value |
 | 0xB5 | RET_VOID | — | [] → [] | Return from function with no return value |
+| 0xB6 | JMP_FAR | offset: i32 | [] → [] | Unconditional far jump (relative to next instruction); for functions exceeding i16 range |
+| 0xB7 | JMP_IF_FAR | offset: i32 | [I32] → [] | Far conditional jump if top of stack is nonzero (TRUE) |
+| 0xB8 | JMP_IF_NOT_FAR | offset: i32 | [I32] → [] | Far conditional jump if top of stack is zero (FALSE) |
 
 ---
 
@@ -370,7 +400,7 @@ Function block invocation follows the pattern: load the FB instance reference, s
 | 0xC0 | FB_LOAD_INSTANCE | index: u16 | [] → [fb_ref] | Push FB instance reference from variable table |
 | 0xC1 | FB_STORE_PARAM | field: u8 | [value, fb_ref] → [fb_ref] | Store input parameter on FB instance; keeps fb_ref on stack |
 | 0xC2 | FB_LOAD_PARAM | field: u8 | [fb_ref] → [value, fb_ref] | Load output parameter from FB instance; keeps fb_ref on stack |
-| 0xC3 | FB_CALL | type_id: u16 | [fb_ref] → [] | Call function block (VM dispatches to intrinsic or bytecode body per ADR-0003) |
+| 0xC3 | FB_CALL | type_id: u16 | [fb_ref] → [fb_ref] | Call function block (VM dispatches to intrinsic or bytecode body per ADR-0003); preserves fb_ref for output parameter access |
 
 #### Calling Convention
 
@@ -382,15 +412,63 @@ A typical FB invocation compiles to:
 FB_LOAD_INSTANCE  0x0001      -- push myTimer instance ref
 LOAD_VAR_I32      0x0002      -- push start variable
 FB_STORE_PARAM    0            -- store to IN (field 0), ref stays on stack
-LOAD_CONST_I64    0x0003      -- push T#5s as I64 microseconds
+LOAD_CONST_TIME   0x0003      -- push T#5s as I64 microseconds (TIME subtype)
 FB_STORE_PARAM    1            -- store to PT (field 1), ref stays on stack
-FB_CALL           0x0010      -- call TON (type_id 0x0010); VM may use intrinsic
-FB_LOAD_INSTANCE  0x0001      -- push myTimer instance ref again
-FB_LOAD_PARAM     3            -- load ET (field 3)
+FB_CALL           0x0010      -- call TON (type_id 0x0010); ref stays on stack
+FB_LOAD_PARAM     3            -- load ET (field 3); ref still on stack
 STORE_VAR_I64     0x0004      -- store to elapsed variable
+POP                            -- discard fb_ref
 ```
 
-FB_STORE_PARAM and FB_LOAD_PARAM keep the instance reference on the stack to allow chaining multiple parameter operations without reloading the reference.
+FB_STORE_PARAM, FB_LOAD_PARAM, and FB_CALL all keep the instance reference on the stack. This allows chaining parameter stores, the call, and output parameter loads without reloading the reference. The caller must POP the fb_ref when done (or let it be consumed by a subsequent operation).
+
+---
+
+### Reference Operations (VAR_IN_OUT)
+
+IEC 61131-3 VAR_IN_OUT parameters pass a *reference* to a variable, allowing the called function block to read and write the caller's variable directly. The reference operations support this by pushing a `var_ref` (a reference to a variable slot) onto the stack, and by loading/storing values through that reference.
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xC5 | LOAD_VAR_REF | index: u16 | [] → [var_ref] | Push reference to variable at index in the variable table |
+| 0xC6 | DEREF_LOAD | type: u8 | [var_ref] → [value] | Load value through reference; type byte determines the value type pushed |
+| 0xC7 | DEREF_STORE | type: u8 | [value, var_ref] → [] | Store value through reference; type byte determines the value type expected |
+
+The `type` byte for DEREF_LOAD and DEREF_STORE uses the same encoding as the array access `type` byte: 0=I32, 1=U32, 2=I64, 3=U64, 4=F32, 5=F64, 6=buf_idx (STRING), 7=buf_idx (WSTRING).
+
+#### VAR_IN_OUT Compilation Example
+
+```
+(* Source *)
+FUNCTION_BLOCK Accumulator
+  VAR_IN_OUT
+    counter : DINT;
+  END_VAR
+  VAR_INPUT
+    increment : DINT;
+  END_VAR
+  counter := counter + increment;
+END_FUNCTION_BLOCK
+
+(* Caller *)
+VAR myCounter : DINT; END_VAR
+myAccum(counter := myCounter, increment := 5);
+
+(* Caller bytecode *)
+FB_LOAD_INSTANCE  0x0001      -- push myAccum instance ref
+LOAD_VAR_REF      0x0000      -- push reference to myCounter
+FB_STORE_PARAM    0            -- store ref to VAR_IN_OUT counter (field 0)
+LOAD_CONST_I32    0x0005      -- push 5
+FB_STORE_PARAM    1            -- store to increment (field 1)
+FB_CALL           0x0020      -- call Accumulator
+POP                            -- discard fb_ref
+
+(* FB body bytecode for counter := counter + increment *)
+DEREF_LOAD        0            -- load I32 through VAR_IN_OUT counter reference
+LOAD_FIELD        1            -- load increment from self
+ADD_I32                        -- counter + increment
+DEREF_STORE       0            -- store I32 through VAR_IN_OUT counter reference
+```
 
 ---
 
@@ -504,9 +582,13 @@ The VM manages two kinds of string buffers:
 
 The `buf_idx` values on the operand stack are small indices (not pointers) into the buffer table. Stack operations like DUP and SWAP copy only the index, not the buffer contents. Actual buffer-to-buffer copies happen only at STR_STORE_VAR / WSTR_STORE_VAR (string assignment) and within string operation handlers.
 
+WSTRING uses UCS-2 encoding (ISO 10646 Basic Multilingual Plane, 2 bytes per character), as specified by IEC 61131-3. UCS-2 is a fixed-width encoding restricted to code points U+0000 through U+FFFF; surrogate pairs are not supported. This means WSTRING cannot represent characters outside the BMP (e.g., emoji, CJK Extension B). The `max_wstr_length` in the container header counts UCS-2 code units (2-byte characters), not bytes.
+
 STRING and WSTRING are statically distinguished throughout the instruction set. Variable access uses separate opcodes (STR_LOAD_VAR vs WSTR_LOAD_VAR), and string functions use separate BUILTIN func_id ranges (0x0100 for STRING, 0x0200 for WSTRING). The VM asserts that STRING operations always receive single-byte buffers and WSTRING operations always receive wide-character buffers, trapping immediately on a mismatch rather than silently misinterpreting character data.
 
 String operations are dispatched through the BUILTIN opcode (0xC4) with function-specific func_id values. This keeps the instruction set compact while supporting the full IEC 61131-3 string function library and providing an extensible mechanism for future functions. String operations that produce a string result (CONCAT, LEFT, etc.) write into a temporary buffer and push its index. If the result exceeds the temporary buffer's max length, it is truncated — matching standard PLC string truncation semantics.
+
+**Buffer Lifecycle.** Temporary string buffers are allocated from the pre-allocated pool at the start of a string operation and are valid until the next string operation that allocates a temporary buffer, or until STR_STORE_VAR / WSTR_STORE_VAR copies the buffer contents into a variable. The compiler must ensure that no temporary buf_idx is live across a subsequent string operation that could reuse the same temporary buffer slot. In practice, the compiler emits STR_STORE_VAR / WSTR_STORE_VAR immediately after a string expression completes, before starting the next string expression. The verifier does not enforce buffer lifetime (this is a compiler correctness invariant, not a verifiable property), but the fixed pool size in the header guarantees that the pool is never exhausted if the compiler's analysis is correct.
 
 #### STRING Variable Access
 
@@ -544,7 +626,7 @@ String functions (LEN, CONCAT, LEFT, RIGHT, MID, FIND, INSERT, DELETE, REPLACE, 
 
 | Category | Range | Count | Description |
 |----------|-------|-------|-------------|
-| Load/Store Constants | 0x01–0x0A | 10 | Constant pool loads, boolean literals, string constants |
+| Load/Store Constants | 0x01–0x0B | 11 | Constant pool loads, boolean literals, string constants, TIME constant |
 | Load/Store Variables | 0x10–0x1D | 12 | Typed variable access (numeric types only) |
 | Process Image | 0x20–0x23 | 4 | I/O and memory access (%I, %Q, %M) |
 | Array Access | 0x24–0x25 | 2 | Bounds-checked array element load/store |
@@ -555,18 +637,21 @@ String functions (LEN, CONCAT, LEFT, RIGHT, MID, FIND, INSERT, DELETE, REPLACE, 
 | Boolean | 0x54–0x57 | 4 | Logical AND/OR/XOR/NOT |
 | Bitwise | 0x58–0x67 | 16 | Bitwise ops and shifts, 32 and 64-bit |
 | Comparison | 0x68–0x8B | 36 | Typed comparisons across all VM types |
-| Type Conversion | 0x90–0xA3 | 16 | Narrowing, widening, cross-domain |
+| Type Conversion (narrow/widen) | 0x90–0xA3 | 16 | Narrowing, widening, cross-domain |
+| Float-to-Unsigned Conversion | 0xA6–0xA8 | 3 | Float/double to unsigned integer |
+| Reinterpretation | 0xA9–0xAC | 4 | Signed/unsigned bitcast (zero-cost) |
 | TIME Arithmetic | 0xA4–0xA5 | 2 | Type-checked TIME addition and subtraction |
-| Control Flow | 0xB0–0xB5 | 6 | Jumps, calls, returns |
+| Control Flow | 0xB0–0xB8 | 9 | Jumps (near/far), calls, returns |
 | Function Block | 0xC0–0xC3 | 4 | FB instance management and invocation |
 | Built-in Functions | 0xC4 | 1 | BUILTIN dispatch for standard library functions |
+| Reference Operations | 0xC5–0xC7 | 3 | VAR_IN_OUT reference load/deref/store |
 | Stack | 0xD0–0xD2 | 3 | Stack manipulation |
 | STRING Variable Access | 0xE0–0xE1 | 2 | STRING variable load/store |
 | WSTRING Variable Access | 0xE2–0xE3 | 2 | WSTRING variable load/store |
 | Debug | 0xFC–0xFE | 3 | NOP, breakpoint, line info |
-| **Total** | | **157** | |
+| **Total** | | **171** | |
 
-The opcode budget uses 157 of 256 slots (61%), leaving 99 slots for future extensions (e.g., OOP method dispatch, pointer/reference operations).
+The opcode budget uses 171 of 256 slots (67%), leaving 85 slots for future extensions (e.g., OOP method dispatch).
 
 ## Compilation Examples
 
@@ -647,11 +732,12 @@ END_IF;
 FB_LOAD_INSTANCE 0x0000  -- push myTimer ref
 LOAD_VAR_I32     0x0001  -- push startButton
 FB_STORE_PARAM   0        -- store IN parameter
-LOAD_CONST_I64   0x0000  -- push 5000000 (5s in microseconds)
+LOAD_CONST_TIME  0x0000  -- push 5000000 (5s in microseconds, TIME subtype)
 FB_STORE_PARAM   1        -- store PT parameter
-FB_CALL          0x0010  -- invoke TON (intrinsic per ADR-0003)
-FB_LOAD_INSTANCE 0x0000  -- push myTimer ref
-FB_LOAD_PARAM    2        -- load Q output
+FB_CALL          0x0010  -- invoke TON; ref stays on stack
+FB_LOAD_PARAM    2        -- load Q output; ref still on stack
+SWAP                      -- [fb_ref, Q] → [Q, fb_ref]
+POP                       -- discard fb_ref
 JMP_IF_NOT       +4       -- skip if Q is FALSE
 LOAD_TRUE                 -- push TRUE
 STORE_VAR_I32    0x0002  -- store output
@@ -714,7 +800,9 @@ When a floating-point value exceeds the range of the target integer type, the co
 | Instructions | Target range |
 |---|---|
 | F32_TO_I32, F64_TO_I32 | -2147483648 to 2147483647 |
+| F32_TO_U32, F64_TO_U32 | 0 to 4294967295 |
 | F64_TO_I64 | -9223372036854775808 to 9223372036854775807 |
+| F64_TO_U64 | 0 to 18446744073709551615 |
 
 | Policy | Value > max | Value < min | Value is NaN |
 |--------|-------------|-------------|--------------|
@@ -749,13 +837,15 @@ The overflow policy is a VM startup configuration, not a per-instruction setting
 
 The following are known limitations of this version of the instruction set. They are intentional trade-offs for the initial implementation and may be addressed in future versions.
 
-1. **Jump offset range** — Jump offsets are i16 (range -32768..+32767 bytes from the next instruction). Functions whose bytecode exceeds ~32 KB cannot use jumps that span the entire body. This is sufficient for typical PLC programs. A future JMP_FAR with i32 offset could be added if needed.
+1. **Jump offset range** — The primary jump opcodes (JMP, JMP_IF, JMP_IF_NOT) use i16 offsets (range -32768..+32767 bytes from the next instruction), which is sufficient for typical PLC programs. For functions whose bytecode exceeds ~32 KB, the far jump variants (JMP_FAR, JMP_IF_FAR, JMP_IF_NOT_FAR) use i32 offsets (range ±2 GB). The compiler emits near jumps by default and promotes to far jumps only when the target is out of i16 range.
 
 2. **Array bounds** — Array descriptor bounds are i16 (range -32768..32767). Arrays with more than ~32K elements or arbitrary LINT-typed bounds cannot be represented. This is sufficient for typical PLC array usage.
 
 3. **Field index** — LOAD_FIELD/STORE_FIELD use a u8 field index, limiting FB types to 255 fields. This is sufficient for all standard function blocks and typical user-defined FBs.
 
-4. **No runtime service opcodes** — There is no CLOCK or SYSCALL instruction for bytecode to access runtime services (wall clock, hardware timers). Standard FBs that need timer access (TON, TOF, TP) are implemented as intrinsics (ADR-0003). User-defined FBs that extend standard timer FBs via EXTENDS will fall through to bytecode interpretation and will not have direct timer access. Such FBs should use composition (wrapping a standard timer instance) rather than inheritance to access timer functionality.
+4. **Multi-dimensional arrays** — IEC 61131-3 supports multi-dimensional arrays (e.g., `ARRAY[1..3, 1..4] OF INT`). The bytecode instruction set supports only one-dimensional arrays. The compiler flattens multi-dimensional arrays to 1D using row-major order and computes the linear index from the multi-dimensional subscripts. For example, `arr[i, j]` in a `[1..3, 1..4]` array becomes `arr[(i-1)*4 + (j-1)]` in the flattened 1D representation.
+
+5. **No runtime service opcodes** — There is no CLOCK or SYSCALL instruction for bytecode to access runtime services (wall clock, hardware timers). Standard FBs that need timer access (TON, TOF, TP) are implemented as intrinsics (ADR-0003). User-defined FBs that extend standard timer FBs via EXTENDS will fall through to bytecode interpretation and will not have direct timer access. Such FBs should use composition (wrapping a standard timer instance) rather than inheritance to access timer functionality.
 
 ## Out of Scope for Version 1
 
@@ -769,4 +859,4 @@ The following PLC runtime features are **not addressed** by this instruction set
 
 4. **User-defined types** — Enumerations and subrange types are compiled to their underlying integer types. Enumeration symbolic names are preserved only in the debug section. Subrange constraints are not enforced at runtime (they could be added as specialized NARROW instructions in a future version).
 
-5. **Pointer / reference types** — IEC 61131-3 edition 3 introduces REFERENCE TO and pointer types. These are not supported in version 1. The opcode budget has reserved slots for future pointer operations.
+5. **Pointer / reference types** — IEC 61131-3 edition 3 introduces REFERENCE TO and pointer types. General-purpose pointers and REFERENCE TO are not supported in version 1. VAR_IN_OUT pass-by-reference is supported via the Reference Operations (LOAD_VAR_REF, DEREF_LOAD, DEREF_STORE), but these are restricted to variable-table references and do not support arbitrary pointer arithmetic.
