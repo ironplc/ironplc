@@ -95,13 +95,18 @@ ram_required =
   + (max_call_depth × frame_size)               // call stack
   + (num_variables × variable_slot_size)         // variable table
   + (num_fb_instances × fb_instance_overhead)    // FB instance table
-  + (num_str_buffers × (max_str_length + 2))     // STRING variable buffers
-  + (num_wstr_buffers × (max_wstr_length × 2 + 2)) // WSTRING variable buffers
-  + (num_temp_str_bufs × (max_str_length + 2))   // temporary STRING buffers
+  + (num_str_buffers × (max_str_length + 1))     // STRING variable buffers (1-byte length prefix + data)
+  + (num_wstr_buffers × (max_wstr_length × 2 + 2)) // WSTRING variable buffers (2-byte length prefix + data)
+  + (num_temp_str_bufs × (max_str_length + 1))   // temporary STRING buffers
   + (num_temp_wstr_bufs × (max_wstr_length × 2 + 2)) // temporary WSTRING buffers
+  + input_image_bytes                            // input process image snapshot
+  + output_image_bytes                           // output staging buffer
+  + memory_image_bytes                           // memory region (%M)
 ```
 
 If `ram_required` exceeds available RAM, the VM rejects the program at load time with a clear error, before allocating anything.
+
+String buffers use a length-prefix format with no null terminator. The length prefix is the sole indicator of string extent. See the [Runtime Execution Model](runtime-execution-model.md) for the full memory budget and string buffer lifecycle.
 
 ### Profile Definitions
 
