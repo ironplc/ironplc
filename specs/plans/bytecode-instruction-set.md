@@ -577,7 +577,7 @@ IEC 61131-3 strings have a declared maximum length known at compile time (e.g., 
 
 The VM manages two kinds of string buffers:
 
-- **Variable buffers** — each STRING/WSTRING variable has a fixed-size buffer in the variable table, sized per its declaration (e.g., 82 bytes for `STRING(80)`: 80 chars + current length + null terminator)
+- **Variable buffers** — each STRING/WSTRING variable has a fixed-size buffer in the variable table, sized per its declaration (e.g., 81 bytes for `STRING(80)`: 1-byte length prefix + 80 chars data)
 - **Temporary buffers** — a pre-allocated pool of fixed-size buffers used for intermediate results from string operations (e.g., the result of CONCAT before it is stored). The compiler determines the required pool size by analyzing maximum expression depth.
 
 The `buf_idx` values on the operand stack are small indices (not pointers) into the buffer table. Stack operations like DUP and SWAP copy only the index, not the buffer contents. Actual buffer-to-buffer copies happen only at STR_STORE_VAR / WSTR_STORE_VAR (string assignment) and within string operation handlers.
