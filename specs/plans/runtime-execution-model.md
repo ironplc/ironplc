@@ -312,16 +312,16 @@ Each STRING or WSTRING variable has a dedicated buffer in the string buffer tabl
 
 | Buffer type | Allocation size | Description |
 |-------------|----------------|-------------|
-| STRING variable | `max_str_length + 1` bytes | 1 byte current length + `max_str_length` bytes character data |
-| WSTRING variable | `max_wstr_length * 2 + 2` bytes | 2 bytes current length (in UCS-2 code units) + `max_wstr_length * 2` bytes character data |
+| STRING variable | `declared_length + 1` bytes | 1 byte current length + `declared_length` bytes character data |
+| WSTRING variable | `declared_length * 2 + 2` bytes | 2 bytes current length (in UCS-2 code units) + `declared_length * 2` bytes character data |
 
 No null terminator is stored. The length prefix is the sole indicator of string extent. The VM never passes string buffers to external C code; all string operations use the length prefix to determine valid data. This avoids the maintenance burden of keeping a null terminator in sync on every mutation.
 
-The `max_str_length` and `max_wstr_length` values come from the container header. All STRING variable buffers are the same size (the maximum declared across all STRING variables), and all WSTRING variable buffers are the same size. This uniform sizing simplifies buffer management at the cost of some wasted space for variables with smaller declared lengths.
+Each variable buffer is sized to its own declared length (from `VarEntry.extra`). The compiler pre-computes the total bytes for all STRING and WSTRING variable buffers and stores the sums in the container header as `total_str_var_bytes` and `total_wstr_var_bytes`. This avoids wasting memory when variables have different declared lengths (e.g., a `STRING(10)` gets 11 bytes, not the program-wide maximum).
 
 ### Temporary Buffers
 
-The temporary buffer pool provides scratch space for intermediate string results. The pool contains `num_temp_str_bufs` STRING buffers and `num_temp_wstr_bufs` WSTRING buffers, each sized identically to the corresponding variable buffers.
+The temporary buffer pool provides scratch space for intermediate string results. The pool contains `num_temp_str_bufs` STRING buffers and `num_temp_wstr_bufs` WSTRING buffers. Unlike variable buffers (which are sized per-variable), all temp buffers must be sized to the worst case: `max_str_length + 1` for STRING temps and `max_wstr_length × 2 + 2` for WSTRING temps. This is because any string expression could produce a result up to the program-wide maximum length.
 
 ### Buffer Index Space
 
@@ -329,8 +329,8 @@ Variable buffers and temporary buffers share a single `buf_idx` index space:
 
 ```
 buf_idx layout:
-  0 .. num_str_buffers-1                             STRING variable buffers
-  num_str_buffers .. num_str_buffers+num_temp-1      STRING temporary buffers
+  0 .. num_str_vars-1                                STRING variable buffers (each sized per declaration)
+  num_str_vars .. num_str_vars+num_temp-1             STRING temporary buffers (each sized to max)
   (WSTRING indices follow the same pattern in a separate table)
 ```
 
@@ -503,8 +503,8 @@ When the VM transitions from LOADING to READY, it allocates and initializes all 
   6    Allocate FB instance table (total size computed from FB type descriptors)
   7    Zero-fill FB instance table
   8    Apply initial values to FB instance fields from FB type descriptors
-  9    Allocate STRING variable buffers (num_str_buffers × buffer_size)
- 10    Allocate WSTRING variable buffers (num_wstr_buffers × buffer_size)
+  9    Allocate STRING variable buffers (total_str_var_bytes, per-variable sizing)
+ 10    Allocate WSTRING variable buffers (total_wstr_var_bytes, per-variable sizing)
  11    Zero-fill all string variable buffers (current_length = 0, empty string)
  12    Apply STRING/WSTRING initial values from constant pool
  13    Allocate STRING temp buffer pool (num_temp_str_bufs × buffer_size)
@@ -530,8 +530,8 @@ total_ram =
   + (max_call_depth × call_frame_size)                       // call stack
   + (num_variables × 8)                                      // variable table
   + (fb_instance_total_size)                                 // FB instances
-  + (num_str_buffers × (max_str_length + 1))                 // STRING var buffers
-  + (num_wstr_buffers × (max_wstr_length × 2 + 2))          // WSTRING var buffers
+  + total_str_var_bytes                                      // STRING var buffers (compiler-summed)
+  + total_wstr_var_bytes                                     // WSTRING var buffers (compiler-summed)
   + (num_temp_str_bufs × (max_str_length + 1))               // STRING temp buffers
   + (num_temp_wstr_bufs × (max_wstr_length × 2 + 2))        // WSTRING temp buffers
   + input_image_bytes                                        // input snapshot
