@@ -417,6 +417,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ironplc-container"
+version = "0.157.0"
+
+[[package]]
 name = "ironplc-dsl"
 version = "0.157.0"
 dependencies = [
@@ -478,6 +482,13 @@ dependencies = [
 [[package]]
 name = "ironplc-test"
 version = "0.157.0"
+
+[[package]]
+name = "ironplc-vm"
+version = "0.157.0"
+dependencies = [
+ "ironplc-container",
+]
 
 [[package]]
 name = "ironplcc"

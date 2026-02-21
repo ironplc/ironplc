@@ -1,0 +1,11 @@
+[package]
+name = "ironplc-vm"
+description = "Bytecode virtual machine for IronPLC"
+version = "0.157.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ironplc-container = { path = "../container", version = "0.157.0" }

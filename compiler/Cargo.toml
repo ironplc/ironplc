@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "analyzer",
+    "container",
     "plc2x",
     "plc2plc",
     "dsl",
@@ -8,7 +9,8 @@ members = [
     "parser",
     "problems",
     "sources",
-    "test"
+    "test",
+    "vm"
 ]
 resolver = "2"
 

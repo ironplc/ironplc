@@ -52,7 +52,7 @@ impl Label {
     /// explanations or fix guidance.
     ///
     /// # Examples
-    /// ```rust
+    /// ```text
     /// Label::span(name.span(), "Type declaration")     // ✅ What's there
     /// Label::span(base.span(), "Base type")           // ✅ What's there
     /// Label::span(name.span(), "Fix by adding type")  // ❌ Fix guidance
@@ -209,7 +209,7 @@ impl Diagnostic {
     /// and should describe what is located at those spans.
     ///
     /// # Examples
-    /// ```rust
+    /// ```text
     /// // ✅ Correct: Different spans, describes locations
     /// Diagnostic::problem(Problem::ParentTypeNotDeclared,
     ///     Label::span(decl_span, "Type declaration"))
