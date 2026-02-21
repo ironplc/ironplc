@@ -123,8 +123,7 @@ mod tests {
         section.write_to(&mut buf).unwrap();
 
         let mut cursor = Cursor::new(&buf);
-        let decoded =
-            CodeSection::read_from(&mut cursor, 1, section.section_size()).unwrap();
+        let decoded = CodeSection::read_from(&mut cursor, 1, section.section_size()).unwrap();
 
         assert_eq!(decoded.functions.len(), 1);
         assert_eq!(decoded.functions[0].function_id, 0);

@@ -76,9 +76,7 @@ impl ConstantPool {
             .get(index as usize)
             .ok_or(ContainerError::InvalidConstantIndex(index))?;
         if entry.const_type != ConstType::I32 {
-            return Err(ContainerError::InvalidConstantType(
-                entry.const_type as u8,
-            ));
+            return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
         }
         Ok(i32::from_le_bytes([
             entry.value[0],
