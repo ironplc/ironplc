@@ -47,7 +47,7 @@ The header is exactly 256 bytes. The VM reads this in a single read and decides 
 |--------|-------|------|-------------|
 | 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
 | 4 | format_version | u16 | Container format version (initially 1) |
-| 6 | profile | u8 | Required VM profile: 0=micro, 1=standard, 2=full |
+| 6 | profile | u8 | Reserved for future VM profile definitions; must be zero |
 | 7 | flags | u8 | Bit 0: has content signature; Bit 1: has debug section; Bit 2: has type section |
 | 8 | content_hash | [u8; 32] | SHA-256 over `source_hash \|\| type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope) |
 | 40 | source_hash | [u8; 32] | SHA-256 of the source text that produced this bytecode (all zeros if unavailable) |
@@ -109,16 +109,6 @@ ram_required =
 If `ram_required` exceeds available RAM, the VM rejects the program at load time with a clear error, before allocating anything.
 
 String buffers use a length-prefix format with no null terminator. The length prefix is the sole indicator of string extent. See the [Runtime Execution Model](runtime-execution-model.md) for the full memory budget and string buffer lifecycle.
-
-### Profile Definitions
-
-| Profile | Value | Types available | Description |
-|---------|-------|-----------------|-------------|
-| Micro | 0 | I32, U32, BOOL | Minimal boolean/integer control |
-| Standard | 1 | + I64, U64, F32, STRING, TIME | Typical PLC with analog I/O |
-| Full | 2 | + F64, WSTRING | Full IEC 61131-3 type set |
-
-The VM rejects bytecode requiring a higher profile than it supports. The compiler sets the profile to the minimum required by the program's type usage.
 
 ## Content Signature Section
 
@@ -288,32 +278,31 @@ The VM loads a bytecode container in this order:
 1. Read file header (256 bytes)
 2. Validate magic number ("IPLC")
 3. Check format_version is supported
-4. Check profile is supported by this VM
-5. Compute RAM requirement from resource summary
-6. If RAM insufficient → reject with "insufficient resources" error
-7. Verify content signature:
+4. Compute RAM requirement from resource summary
+5. If RAM insufficient → reject with "insufficient resources" error
+6. Verify content signature:
    a. Read content signature section
    b. Look up public key by key_id
    c. Verify signature over content_hash
    d. If invalid → reject with "signature verification failed" error
-8. Read type + constant + code sections
-9. Compute SHA-256 over source_hash || type + constant + code sections
-10. Compare computed hash to content_hash in header
+7. Read type + constant + code sections
+8. Compute SHA-256 over source_hash || type + constant + code sections
+9. Compare computed hash to content_hash in header
     If mismatch → reject with "content hash mismatch" error
-11. If on-device verification is enabled:
+10. If on-device verification is enabled:
     a. Run bytecode verifier using type section metadata
     b. If verification fails → reject with specific verifier error
-12. Mark bytecode memory as read-only (if platform supports it)
-13. Allocate runtime resources (stack, variable table, buffers)
-14. If debug section present and debug signature present:
+11. Mark bytecode memory as read-only (if platform supports it)
+12. Allocate runtime resources (stack, variable table, buffers)
+13. If debug section present and debug signature present:
     a. Verify debug signature over debug_hash
     b. Compute SHA-256 over debug section
     c. Compare to debug_hash in header
     d. If valid → load debug info; if invalid → discard debug info (non-fatal)
-15. Begin execution
+14. Begin execution
 ```
 
-Steps 7–10 are the minimum for constrained targets (signature fallback). Steps 11 adds on-device verification for capable targets. Step 14 is optional — invalid debug info is discarded, not fatal.
+Steps 6–9 are the minimum for constrained targets (signature fallback). Step 10 adds on-device verification for capable targets. Step 13 is optional — invalid debug info is discarded, not fatal.
 
 ## Content Hash Scope
 
