@@ -38,13 +38,28 @@ pub struct ConstEntry {
 /// The constant pool section of a bytecode container.
 #[derive(Clone, Debug, Default)]
 pub struct ConstantPool {
-    pub entries: Vec<ConstEntry>,
+    entries: Vec<ConstEntry>,
 }
 
 impl ConstantPool {
+    /// Adds a constant entry.
+    pub fn push(&mut self, entry: ConstEntry) {
+        self.entries.push(entry);
+    }
+
+    /// Returns the number of entries in the constant pool.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Returns true if the constant pool has no entries.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
     /// Returns the serialized size of this constant pool section in bytes.
     ///
-    /// Format: count(u16) + for each entry: type(u8) + reserved(u8) + size(u16) + value
+    /// Only called at construction/save time, not during execution.
     pub fn section_size(&self) -> u32 {
         let mut size: u32 = 2; // count
         for entry in &self.entries {
@@ -114,18 +129,15 @@ mod tests {
 
     #[test]
     fn constant_pool_write_read_when_i32_constants_then_roundtrips() {
-        let pool = ConstantPool {
-            entries: vec![
-                ConstEntry {
-                    const_type: ConstType::I32,
-                    value: 10i32.to_le_bytes().to_vec(),
-                },
-                ConstEntry {
-                    const_type: ConstType::I32,
-                    value: 32i32.to_le_bytes().to_vec(),
-                },
-            ],
-        };
+        let mut pool = ConstantPool::default();
+        pool.push(ConstEntry {
+            const_type: ConstType::I32,
+            value: 10i32.to_le_bytes().to_vec(),
+        });
+        pool.push(ConstEntry {
+            const_type: ConstType::I32,
+            value: 32i32.to_le_bytes().to_vec(),
+        });
 
         let mut buf = Vec::new();
         pool.write_to(&mut buf).unwrap();
@@ -133,32 +145,25 @@ mod tests {
         let mut cursor = Cursor::new(&buf);
         let decoded = ConstantPool::read_from(&mut cursor).unwrap();
 
-        assert_eq!(decoded.entries.len(), 2);
-        assert_eq!(decoded.entries[0].const_type, ConstType::I32);
-        assert_eq!(decoded.entries[0].value, 10i32.to_le_bytes());
-        assert_eq!(decoded.entries[1].const_type, ConstType::I32);
-        assert_eq!(decoded.entries[1].value, 32i32.to_le_bytes());
+        assert_eq!(decoded.len(), 2);
+        assert_eq!(decoded.get_i32(0).unwrap(), 10);
+        assert_eq!(decoded.get_i32(1).unwrap(), 32);
     }
 
     #[test]
     fn constant_pool_get_i32_when_valid_index_then_returns_value() {
-        let pool = ConstantPool {
-            entries: vec![
-                ConstEntry {
-                    const_type: ConstType::I32,
-                    value: 42i32.to_le_bytes().to_vec(),
-                },
-            ],
-        };
+        let mut pool = ConstantPool::default();
+        pool.push(ConstEntry {
+            const_type: ConstType::I32,
+            value: 42i32.to_le_bytes().to_vec(),
+        });
 
         assert_eq!(pool.get_i32(0).unwrap(), 42);
     }
 
     #[test]
     fn constant_pool_get_i32_when_out_of_bounds_then_error() {
-        let pool = ConstantPool {
-            entries: vec![],
-        };
+        let pool = ConstantPool::default();
 
         assert!(matches!(
             pool.get_i32(0),

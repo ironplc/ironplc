@@ -31,8 +31,11 @@ impl CodeSection {
     }
 
     /// Returns the bytecode slice for the given function ID.
+    ///
+    /// Uses direct indexing (O(1)) since function IDs are compiler-assigned
+    /// sequential indices starting from 0.
     pub fn get_function_bytecode(&self, function_id: u16) -> Option<&[u8]> {
-        let entry = self.functions.iter().find(|f| f.function_id == function_id)?;
+        let entry = self.functions.get(function_id as usize)?;
         let start = entry.bytecode_offset as usize;
         let end = start + entry.bytecode_length as usize;
         self.bytecode.get(start..end)
@@ -129,5 +132,24 @@ mod tests {
         assert_eq!(decoded.functions[0].max_stack_depth, 2);
         assert_eq!(decoded.functions[0].num_locals, 1);
         assert_eq!(decoded.bytecode, vec![0x01, 0x00, 0x00, 0xB5]);
+    }
+
+    #[test]
+    fn func_entry_write_when_single_entry_then_exactly_func_entry_size_bytes() {
+        let section = CodeSection {
+            functions: vec![FuncEntry {
+                function_id: 0,
+                bytecode_offset: 0,
+                bytecode_length: 0,
+                max_stack_depth: 0,
+                num_locals: 0,
+            }],
+            bytecode: vec![],
+        };
+
+        let mut buf = Vec::new();
+        section.write_to(&mut buf).unwrap();
+
+        assert_eq!(buf.len(), FUNC_ENTRY_SIZE);
     }
 }

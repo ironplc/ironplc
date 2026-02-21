@@ -7,7 +7,7 @@ use crate::header::FileHeader;
 pub struct ContainerBuilder {
     num_variables: u16,
     max_stack_depth: u16,
-    constants: Vec<ConstEntry>,
+    constant_pool: ConstantPool,
     functions: Vec<FuncEntry>,
     bytecode: Vec<u8>,
 }
@@ -17,7 +17,7 @@ impl ContainerBuilder {
         ContainerBuilder {
             num_variables: 0,
             max_stack_depth: 0,
-            constants: Vec::new(),
+            constant_pool: ConstantPool::default(),
             functions: Vec::new(),
             bytecode: Vec::new(),
         }
@@ -31,7 +31,7 @@ impl ContainerBuilder {
 
     /// Adds an i32 constant to the constant pool.
     pub fn add_i32_constant(mut self, value: i32) -> Self {
-        self.constants.push(ConstEntry {
+        self.constant_pool.push(ConstEntry {
             const_type: ConstType::I32,
             value: value.to_le_bytes().to_vec(),
         });
@@ -64,9 +64,7 @@ impl ContainerBuilder {
 
     /// Builds the container, computing header fields from the added data.
     pub fn build(self) -> Container {
-        let constant_pool = ConstantPool {
-            entries: self.constants,
-        };
+        let constant_pool = self.constant_pool;
         let code = CodeSection {
             functions: self.functions,
             bytecode: self.bytecode,
