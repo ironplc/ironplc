@@ -4,31 +4,6 @@ Troubleshooting
 
 This guide helps you resolve common issues with the IronPLC extension.
 
-Compiler Not Found (E0001)
-==========================
-
-**Symptom**: Error message "E0001 - Unable to locate IronPLC compiler"
-
-The extension cannot find the :program:`ironplcc` executable. The extension searches
-these locations in order:
-
-1. **Configuration**: The path specified in ``ironplc.path`` setting
-2. **Environment variable**: The ``IRONPLC`` environment variable
-3. **Homebrew** (macOS only): ``/opt/homebrew/bin/ironplcc``
-4. **Windows AppData**: ``%LOCALAPPDATA%\Programs\IronPLC Compiler\bin\ironplcc.exe``
-
-**Solutions**:
-
-1. **Verify installation**: Open a terminal and run :program:`ironplcc --version`. If this
-   fails, the compiler is not installed or not in your PATH.
-
-2. **Install the compiler**: See the :doc:`/quickstart/installation` guide.
-
-3. **Configure the path manually**: If the compiler is installed in a non-standard
-   location, set the ``ironplc.path`` setting to the full path of the executable.
-
-4. **Check permissions**: Ensure the compiler executable has execute permissions.
-
 No Syntax Highlighting
 ======================
 
@@ -55,7 +30,7 @@ No Diagnostics Appearing
    select "IronPLC" from the dropdown. You should see startup messages.
 
 2. **Check for E0001**: If the compiler was not found, diagnostics will not work.
-   See the "Compiler Not Found" section above.
+   See :doc:`problems/E0001`.
 
 3. **Enable debug logging**: Set ``ironplc.logLevel`` to ``DEBUG`` and check the
    Output panel for error messages.
