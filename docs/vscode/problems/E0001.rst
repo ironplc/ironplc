@@ -5,6 +5,23 @@ E0001
 .. problem-summary:: E0001
 
 The IronPLC Visual Studio Code Extension failed to locate the IronPLC Compiler.
-The IronPLC Compiler may not be installed.
 
-Verify that you have installed the IronPLC Compiler.
+The extension cannot find the :program:`ironplcc` executable. The extension searches
+these locations in order:
+
+1. **Configuration**: The path specified in ``ironplc.path`` setting
+2. **Environment variable**: The ``IRONPLC`` environment variable
+3. **Homebrew** (macOS only): ``/opt/homebrew/bin/ironplcc``
+4. **Windows AppData**: ``%LOCALAPPDATA%\Programs\IronPLC Compiler\bin\ironplcc.exe``
+
+**Solutions**:
+
+1. **Verify installation**: Open a terminal and run :program:`ironplcc --version`. If this
+   fails, the compiler is not installed or not in your PATH.
+
+2. **Install the compiler**: See the :doc:`/quickstart/installation` guide.
+
+3. **Configure the path manually**: If the compiler is installed in a non-standard
+   location, set the ``ironplc.path`` setting to the full path of the executable.
+
+4. **Check permissions**: Ensure the compiler executable has execute permissions.

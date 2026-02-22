@@ -193,6 +193,14 @@ To fix this error, [solution]:
    [Corrected example]
 ```
 
+### Supported File Format Synchronization
+File extensions and format details are listed in **two** canonical locations. All other docs cross-reference these rather than repeating extension lists. When adding or modifying a supported source file format, update:
+
+1. **Compiler source** - `compiler/sources/src/file_type.rs` (the source of truth for detection)
+2. **VS Code extension** - `integrations/vscode/package.json` (language contributions) and `integrations/vscode/src/extension.ts` (document selector)
+3. **Source format reference page** - the format-specific page in `docs/compiler/source-formats/` (e.g., `twincat.rst`)
+4. **VS Code overview** - `docs/vscode/overview.rst` (Supported Languages section)
+
 ### README Synchronization
 The project has multiple README files that must stay synchronized:
 
