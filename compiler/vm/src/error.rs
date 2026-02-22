@@ -1,7 +1,5 @@
 use std::fmt;
 
-use ironplc_container::ContainerError;
-
 /// Runtime traps that halt VM execution.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Trap {
@@ -28,37 +26,4 @@ impl fmt::Display for Trap {
     }
 }
 
-/// Errors produced by VM operations.
-#[derive(Debug)]
-pub enum VmError {
-    /// A runtime trap occurred during execution.
-    Trap(Trap),
-    /// An error occurred while loading or reading the container.
-    Container(ContainerError),
-    /// The VM is not in the correct state for the requested operation.
-    InvalidState(&'static str),
-}
-
-impl fmt::Display for VmError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            VmError::Trap(t) => write!(f, "trap: {t}"),
-            VmError::Container(e) => write!(f, "container error: {e}"),
-            VmError::InvalidState(msg) => write!(f, "invalid VM state: {msg}"),
-        }
-    }
-}
-
-impl std::error::Error for VmError {}
-
-impl From<Trap> for VmError {
-    fn from(t: Trap) -> Self {
-        VmError::Trap(t)
-    }
-}
-
-impl From<ContainerError> for VmError {
-    fn from(e: ContainerError) -> Self {
-        VmError::Container(e)
-    }
-}
+impl std::error::Error for Trap {}
