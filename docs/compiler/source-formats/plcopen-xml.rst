@@ -62,3 +62,11 @@ IronPLC supports the following PLCopen XML elements:
 - Transitions with ST conditions
 - Actions with ST bodies
 - Action associations with qualifiers (N, R, S, L, D, P)
+
+-----------------
+Project Discovery
+-----------------
+
+When you point IronPLC at a directory, it automatically detects Beremiz projects
+by the presence of a :file:`plc.xml` file. If found, IronPLC loads :file:`plc.xml`
+as a PLCopen XML file.
