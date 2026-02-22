@@ -11,11 +11,8 @@ No Syntax Highlighting
 
 **Solutions**:
 
-1. **Check file extension**: Ensure your file has a supported extension:
-
-   * Structured Text: :file:`.st`, :file:`.iec`
-   * TwinCAT: :file:`.TcPOU`, :file:`.TcGVL`, :file:`.TcDUT`
-   * PLCopen XML: detected automatically by XML namespace
+1. **Check file extension**: Ensure your file has a supported extension.
+   See :doc:`overview` for the full list of supported languages and extensions.
 
 2. **Check language mode**: Look at the bottom-right corner of VS Code. It should
    show "IEC 61131-3", "Structured Text", "TwinCAT POU", or "PLCopen XML".

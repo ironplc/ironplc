@@ -13,11 +13,8 @@ for correctness.
 Check with the VS Code Extension
 -----------------------------------
 
-The IronPLC VS Code extension automatically recognizes TwinCAT file types
-(:file:`.TcPOU`, :file:`.TcGVL`, :file:`.TcDUT`).
-
 1. Open your TwinCAT project folder in VS Code.
-2. Open any :file:`.TcPOU`, :file:`.TcGVL`, or :file:`.TcDUT` file.
+2. Open any TwinCAT source file.
 3. The extension highlights errors and warnings in the editor as you type.
 
 -------------------------------------------
@@ -38,19 +35,5 @@ source files to analyze:
 
    ironplcc check path/to/my-twincat-project
 
--------------------------------------------
-Supported TwinCAT File Types
--------------------------------------------
-
-IronPLC supports these TwinCAT file types:
-
-- :file:`.TcPOU` - Program Organization Units (programs, function blocks, functions)
-- :file:`.TcGVL` - Global Variable Lists
-- :file:`.TcDUT` - Data Unit Types (type declarations)
-
-Only Structured Text implementations are supported. Function Block Diagram,
-Ladder Diagram, and other graphical languages within TwinCAT files are not
-analyzed.
-
-See :doc:`/compiler/source-formats/twincat` for complete details on TwinCAT
-format support.
+See :doc:`/compiler/source-formats/twincat` for supported file types and
+format details.
