@@ -31,6 +31,16 @@ The extension detects PLCopen XML files by looking for the PLCopen namespace
 in the opening XML tags. It provides XML syntax highlighting with embedded
 Structured Text support inside CDATA sections.
 
+TwinCAT
+-------
+
+Beckhoff TwinCAT 3 project files containing IEC 61131-3 source code.
+
+:File Extensions: :file:`.TcPOU`, :file:`.TcGVL`, :file:`.TcDUT`
+
+The extension provides XML syntax highlighting with embedded Structured Text
+support and real-time diagnostic analysis.
+
 Commands
 ========
 

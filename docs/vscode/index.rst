@@ -10,5 +10,4 @@ Code.
 
    Overview <overview>
    Settings <settings>
-   Troubleshooting <troubleshooting>
    Problem Codes <problems/index>

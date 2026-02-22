@@ -3,62 +3,32 @@ PLCopen XML
 =============
 
 IronPLC supports the PLCopen XML interchange format (TC6 XML) for importing
-IEC 61131-3 programs from other development environments.
+IEC 61131-3 programs from other development environments. The supported version
+is **PLCopen TC6 XML version 2.01** (namespace: ``http://www.plcopen.org/xml/tc6_0201``).
 
------------------
-Supported Version
------------------
+---------------
+File Extensions
+---------------
 
-IronPLC supports **PLCopen TC6 XML version 2.01** (namespace: ``http://www.plcopen.org/xml/tc6_0201``).
+PLCopen XML files use the ``.xml`` extension. IronPLC detects PLCopen XML files
+by the presence of the TC6 XML namespace, not by file extension alone.
 
 -------------------
 Supported Languages
 -------------------
 
-Within PLCopen XML files, IronPLC supports the following programming languages:
-
-**Fully Supported:**
-
-- **Structured Text (ST)** - Text-based programming language
-- **Sequential Function Chart (SFC)** - State-machine based programming with ST action bodies
-
-**Not Supported:**
-
-- **Function Block Diagram (FBD)** - Graphical language
-- **Ladder Diagram (LD)** - Graphical language
-- **Instruction List (IL)** - Deprecated text-based language
+.. include:: ../../includes/supported-languages.rst
 
 ------------------
 Supported Elements
 ------------------
 
-IronPLC supports the following PLCopen XML elements:
+.. include:: ../../includes/supported-elements.rst
 
-**Data Types:**
+-----------------
+Project Discovery
+-----------------
 
-- Elementary types (BOOL, INT, REAL, STRING, etc.)
-- Enumeration types
-- Array types (single and multi-dimensional)
-- Structure types
-- Subrange types
-- Type aliases (derived types)
-
-**Program Organization Units:**
-
-- Functions
-- Function Blocks
-- Programs
-
-**Configuration:**
-
-- Configurations
-- Resources
-- Tasks
-- Program instances
-
-**SFC Elements:**
-
-- Steps (including initial step)
-- Transitions with ST conditions
-- Actions with ST bodies
-- Action associations with qualifiers (N, R, S, L, D, P)
+When you point IronPLC at a directory, it automatically detects Beremiz projects
+by the presence of a :file:`plc.xml` file. If found, IronPLC loads :file:`plc.xml`
+as a PLCopen XML file.
