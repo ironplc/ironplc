@@ -38,9 +38,10 @@ automatically detect file names with the :file:`.st` extension as IEC
 61131-3 programs.
 
 .. seealso::
-   IronPLC supports multiple source formats including Text (``.st``) and
-   PLCopen XML. See :doc:`source-formats/index` for details on supported
-   formats and their capabilities.
+   IronPLC supports multiple source formats including Text (``.st``, ``.iec``),
+   PLCopen XML, and TwinCAT (``.TcPOU``, ``.TcGVL``, ``.TcDUT``). See
+   :doc:`source-formats/index` for details on supported formats and their
+   capabilities.
 
 In the same terminal, enter the commands in :ref:`Create Hello World Program <compiler-create-hello-world>`
 to create a program.

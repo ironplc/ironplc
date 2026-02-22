@@ -193,6 +193,16 @@ To fix this error, [solution]:
    [Corrected example]
 ```
 
+### Supported File Format Synchronization
+When adding or modifying a supported source file format (e.g., adding a new file extension or format), update **all** of the following locations:
+
+1. **Compiler source** - `compiler/sources/src/file_type.rs` (the source of truth)
+2. **VS Code extension** - `integrations/vscode/package.json` (language contributions) and `integrations/vscode/src/extension.ts` (document selector)
+3. **Source formats reference** - `docs/compiler/source-formats/index.rst` and the format-specific page
+4. **VS Code overview** - `docs/vscode/overview.rst` (Supported Languages section)
+5. **VS Code troubleshooting** - `docs/vscode/troubleshooting.rst` (file extension lists)
+6. **Basic usage** - `docs/compiler/basicusage.rst` (seealso box)
+
 ### README Synchronization
 The project has multiple README files that must stay synchronized:
 

@@ -7,15 +7,19 @@ This guide helps you resolve common issues with the IronPLC extension.
 No Syntax Highlighting
 ======================
 
-**Symptom**: Structured Text files appear as plain text without colors.
+**Symptom**: Files appear as plain text without colors.
 
 **Solutions**:
 
-1. **Check file extension**: Ensure your file has a :file:`.st` or :file:`.iec` extension.
+1. **Check file extension**: Ensure your file has a supported extension:
+
+   * Structured Text: :file:`.st`, :file:`.iec`
+   * TwinCAT: :file:`.TcPOU`, :file:`.TcGVL`, :file:`.TcDUT`
+   * PLCopen XML: detected automatically by XML namespace
 
 2. **Check language mode**: Look at the bottom-right corner of VS Code. It should
-   show "IEC 61131-3" or "Structured Text". Click it to change the language mode
-   if needed.
+   show "IEC 61131-3", "Structured Text", "TwinCAT POU", or "PLCopen XML".
+   Click it to change the language mode if needed.
 
 3. **Reload the window**: Run "Developer: Reload Window" from the Command Palette.
 
@@ -34,9 +38,6 @@ No Diagnostics Appearing
 
 3. **Enable debug logging**: Set ``ironplc.logLevel`` to ``DEBUG`` and check the
    Output panel for error messages.
-
-4. **Check file type**: Diagnostics only work for Structured Text files (:file:`.st`,
-   :file:`.iec`), not PLCopen XML files currently.
 
 Extension Not Activating
 ========================

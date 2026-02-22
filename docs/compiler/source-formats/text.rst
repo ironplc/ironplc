@@ -9,9 +9,8 @@ programs. This is the native format for developing new IEC 61131-3 code.
 File Extension
 --------------
 
-IronPLC recognizes files with the ``.st`` extension as Structured Text source
-files. You can also use any file extension and IronPLC will detect the format
-from the content.
+IronPLC recognizes files with the ``.st`` or ``.iec`` extension as Structured Text
+source files.
 
 -------------------
 Supported Languages
