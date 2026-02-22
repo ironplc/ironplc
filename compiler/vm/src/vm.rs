@@ -108,6 +108,11 @@ impl VmRunning {
         Ok(slot.as_i32())
     }
 
+    /// Returns the number of variable slots in the loaded container.
+    pub fn num_variables(&self) -> u16 {
+        self.container.header.num_variables
+    }
+
     /// Returns the number of completed scan cycles.
     pub fn scan_count(&self) -> u64 {
         self.scan_count
