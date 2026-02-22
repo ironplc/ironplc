@@ -487,7 +487,14 @@ version = "0.157.0"
 name = "ironplc-vm"
 version = "0.157.0"
 dependencies = [
+ "assert_cmd",
+ "clap",
+ "env_logger",
  "ironplc-container",
+ "log",
+ "predicates",
+ "tempfile",
+ "time",
 ]
 
 [[package]]
