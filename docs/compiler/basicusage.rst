@@ -5,9 +5,7 @@ Basic Usage
 You can use the command line interface to check a file (and sets of files)
 for correctness.
 
-.. note::
-   This section assumes you have installed the IronPLC Compiler. See :ref:`installation steps target`
-   if you have not already installed the IronPLC Compiler.
+.. include:: ../includes/requires-compiler.rst
 
 --------------------------
 Create a Project Directory

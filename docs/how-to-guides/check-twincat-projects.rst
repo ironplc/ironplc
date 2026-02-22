@@ -5,9 +5,7 @@ Check TwinCAT 3 Projects
 This guide shows how to use IronPLC to check a Beckhoff TwinCAT 3 project
 for correctness.
 
-.. note::
-   This guide assumes you have installed the IronPLC Compiler. See
-   :ref:`installation steps target` if you have not already installed it.
+.. include:: ../includes/requires-compiler.rst
 
 -----------------------------------
 Check with the VS Code Extension

@@ -19,53 +19,13 @@ IronPLC recognizes the following TwinCAT file extensions (case-insensitive):
 Supported Languages
 -------------------
 
-Within TwinCAT files, IronPLC supports the following programming languages:
-
-**Fully Supported:**
-
-- **Structured Text (ST)** - Text-based programming language
-- **Sequential Function Chart (SFC)** - State-machine based programming with ST action bodies
-
-**Not Supported:**
-
-- **Function Block Diagram (FBD)** - Graphical language
-- **Ladder Diagram (LD)** - Graphical language
-- **Instruction List (IL)** - Deprecated text-based language
+.. include:: ../../includes/supported-languages.rst
 
 ------------------
 Supported Elements
 ------------------
 
-IronPLC supports the following elements in TwinCAT files:
-
-**Data Types:**
-
-- Elementary types (BOOL, INT, REAL, STRING, etc.)
-- Enumeration types
-- Array types (single and multi-dimensional)
-- Structure types
-- Subrange types
-- Type aliases (derived types)
-
-**Program Organization Units:**
-
-- Functions
-- Function Blocks
-- Programs
-
-**Configuration:**
-
-- Configurations
-- Resources
-- Tasks
-- Program instances
-
-**SFC Elements:**
-
-- Steps (including initial step)
-- Transitions with ST conditions
-- Actions with ST bodies
-- Action associations with qualifiers (N, R, S, L, D, P)
+.. include:: ../../includes/supported-elements.rst
 
 -----------------
 Project Discovery
