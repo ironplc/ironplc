@@ -26,6 +26,18 @@ impl ConstType {
             _ => Err(ContainerError::InvalidConstantType(v)),
         }
     }
+
+    /// Returns the human-readable name for this constant type.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ConstType::I32 => "I32",
+            ConstType::U32 => "U32",
+            ConstType::I64 => "I64",
+            ConstType::U64 => "U64",
+            ConstType::F32 => "F32",
+            ConstType::F64 => "F64",
+        }
+    }
 }
 
 /// A single entry in the constant pool.
@@ -190,5 +202,15 @@ mod tests {
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].const_type, ConstType::I32);
         assert_eq!(entries[1].const_type, ConstType::F64);
+    }
+
+    #[test]
+    fn const_type_as_str_when_i32_then_returns_i32_string() {
+        assert_eq!(ConstType::I32.as_str(), "I32");
+    }
+
+    #[test]
+    fn const_type_as_str_when_f64_then_returns_f64_string() {
+        assert_eq!(ConstType::F64.as_str(), "F64");
     }
 }
