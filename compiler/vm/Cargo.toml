@@ -1,14 +1,14 @@
 [package]
 name = "ironplc-vm"
 description = "Bytecode virtual machine for IronPLC"
-version = "0.157.0"
+version = "0.158.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
-ironplc-container = { path = "../container", version = "0.157.0" }
+ironplc-container = { path = "../container", version = "0.158.0" }
 
 time = "0.3.17"
 clap = { version = "4.0", features = ["derive", "wrap_help"] }
