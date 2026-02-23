@@ -215,8 +215,10 @@
 </ul>
 </li>
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../how-to-guides/index.html">How-to guides</a><input aria-label="Toggle navigation of How-to guides" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../how-to-guides/check-beremiz-projects.html">Check Beremiz Projects</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../how-to-guides/check-twincat-projects.html">Check TwinCAT 3 Projects</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../how-to-guides/update.html">Update IronPLC on your computer</a></li>
-<li class="toctree-l2 current"><a class="current reference internal" href="#">Troubleshoot the VS Code Extension</a></li>
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Troubleshoot the VS Code Extension</a></li>
 </ul>
 </li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../compiler/index.html">Compiler reference</a><input aria-label="Toggle navigation of Compiler reference" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -224,6 +226,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="../compiler/source-formats/index.html">Source Formats</a><input aria-label="Toggle navigation of Source Formats" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/source-formats/text.html">Text</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/source-formats/plcopen-xml.html">PLCopen XML</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../compiler/source-formats/twincat.html">TwinCAT</a></li>
 </ul>
 </li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="../compiler/problems/index.html">Problems</a><input aria-label="Toggle navigation of Problems" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -235,6 +238,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P0006.html">P0006</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P0007.html">P0007</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P0008.html">P0008</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P0009.html">P0009</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P2001.html">P2001</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P2002.html">P2002</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/problems/P2003.html">P2003</a></li>
@@ -294,10 +298,9 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l1 current has-children"><a class="reference internal" href="index.html">Visual Studio Code extension reference</a><input aria-label="Toggle navigation of Visual Studio Code extension reference" checked="" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l1 has-children"><a class="reference internal" href="index.html">Visual Studio Code extension reference</a><input aria-label="Toggle navigation of Visual Studio Code extension reference" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="overview.html">Overview</a></li>
 <li class="toctree-l2"><a class="reference internal" href="settings.html">Settings</a></li>
-<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Troubleshooting</a></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="problems/index.html">Problem Codes</a><input aria-label="Toggle navigation of Problem Codes" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="problems/E0001.html">E0001</a></li>
 </ul>
@@ -353,36 +356,16 @@
 <section id="troubleshooting">
 <h1>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this heading">¶</a></h1>
 <p>This guide helps you resolve common issues with the IronPLC extension.</p>
-<section id="compiler-not-found-e0001">
-<h2>Compiler Not Found (E0001)<a class="headerlink" href="#compiler-not-found-e0001" title="Link to this heading">¶</a></h2>
-<p><strong>Symptom</strong>: Error message “E0001 - Unable to locate IronPLC compiler”</p>
-<p>The extension cannot find the <strong class="program">ironplcc</strong> executable. The extension searches
-these locations in order:</p>
-<ol class="arabic simple">
-<li><p><strong>Configuration</strong>: The path specified in <code class="docutils literal notranslate"><span class="pre">ironplc.path</span></code> setting</p></li>
-<li><p><strong>Environment variable</strong>: The <code class="docutils literal notranslate"><span class="pre">IRONPLC</span></code> environment variable</p></li>
-<li><p><strong>Homebrew</strong> (macOS only): <code class="docutils literal notranslate"><span class="pre">/opt/homebrew/bin/ironplcc</span></code></p></li>
-<li><p><strong>Windows AppData</strong>: <code class="docutils literal notranslate"><span class="pre">%LOCALAPPDATA%\Programs\IronPLC</span> <span class="pre">Compiler\bin\ironplcc.exe</span></code></p></li>
-</ol>
-<p><strong>Solutions</strong>:</p>
-<ol class="arabic simple">
-<li><p><strong>Verify installation</strong>: Open a terminal and run <strong class="program">ironplcc --version</strong>. If this
-fails, the compiler is not installed or not in your PATH.</p></li>
-<li><p><strong>Install the compiler</strong>: See the <a class="reference internal" href="../quickstart/installation.html"><span class="doc">Installation</span></a> guide.</p></li>
-<li><p><strong>Configure the path manually</strong>: If the compiler is installed in a non-standard
-location, set the <code class="docutils literal notranslate"><span class="pre">ironplc.path</span></code> setting to the full path of the executable.</p></li>
-<li><p><strong>Check permissions</strong>: Ensure the compiler executable has execute permissions.</p></li>
-</ol>
-</section>
 <section id="no-syntax-highlighting">
 <h2>No Syntax Highlighting<a class="headerlink" href="#no-syntax-highlighting" title="Link to this heading">¶</a></h2>
-<p><strong>Symptom</strong>: Structured Text files appear as plain text without colors.</p>
+<p><strong>Symptom</strong>: Files appear as plain text without colors.</p>
 <p><strong>Solutions</strong>:</p>
 <ol class="arabic simple">
-<li><p><strong>Check file extension</strong>: Ensure your file has a <code class="file docutils literal notranslate"><span class="pre">.st</span></code> or <code class="file docutils literal notranslate"><span class="pre">.iec</span></code> extension.</p></li>
+<li><p><strong>Check file extension</strong>: Ensure your file has a supported extension.
+See <a class="reference internal" href="overview.html"><span class="doc">Overview</span></a> for the full list of supported languages and extensions.</p></li>
 <li><p><strong>Check language mode</strong>: Look at the bottom-right corner of VS Code. It should
-show “IEC 61131-3” or “Structured Text”. Click it to change the language mode
-if needed.</p></li>
+show “IEC 61131-3”, “Structured Text”, “TwinCAT POU”, or “PLCopen XML”.
+Click it to change the language mode if needed.</p></li>
 <li><p><strong>Reload the window</strong>: Run “Developer: Reload Window” from the Command Palette.</p></li>
 </ol>
 </section>
@@ -394,11 +377,9 @@ if needed.</p></li>
 <li><p><strong>Check the compiler is running</strong>: Look at the Output panel (<span class="menuselection">View ‣ Output</span>) and
 select “IronPLC” from the dropdown. You should see startup messages.</p></li>
 <li><p><strong>Check for E0001</strong>: If the compiler was not found, diagnostics will not work.
-See the “Compiler Not Found” section above.</p></li>
+See <a class="reference internal" href="problems/E0001.html"><span class="doc">E0001</span></a>.</p></li>
 <li><p><strong>Enable debug logging</strong>: Set <code class="docutils literal notranslate"><span class="pre">ironplc.logLevel</span></code> to <code class="docutils literal notranslate"><span class="pre">DEBUG</span></code> and check the
 Output panel for error messages.</p></li>
-<li><p><strong>Check file type</strong>: Diagnostics only work for Structured Text files (<code class="file docutils literal notranslate"><span class="pre">.st</span></code>,
-<code class="file docutils literal notranslate"><span class="pre">.iec</span></code>), not PLCopen XML files currently.</p></li>
 </ol>
 </section>
 <section id="extension-not-activating">
@@ -550,7 +531,6 @@ structures. Simplify where possible.</p></li>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Troubleshooting</a><ul>
-<li><a class="reference internal" href="#compiler-not-found-e0001">Compiler Not Found (E0001)</a></li>
 <li><a class="reference internal" href="#no-syntax-highlighting">No Syntax Highlighting</a></li>
 <li><a class="reference internal" href="#no-diagnostics-appearing">No Diagnostics Appearing</a></li>
 <li><a class="reference internal" href="#extension-not-activating">Extension Not Activating</a></li>

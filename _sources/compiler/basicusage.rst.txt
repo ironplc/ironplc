@@ -5,9 +5,7 @@ Basic Usage
 You can use the command line interface to check a file (and sets of files)
 for correctness.
 
-.. note::
-   This section assumes you have installed the IronPLC Compiler. See :ref:`installation steps target`
-   if you have not already installed the IronPLC Compiler.
+.. include:: ../includes/requires-compiler.rst
 
 --------------------------
 Create a Project Directory
@@ -38,9 +36,8 @@ automatically detect file names with the :file:`.st` extension as IEC
 61131-3 programs.
 
 .. seealso::
-   IronPLC supports multiple source formats including Text (``.st``) and
-   PLCopen XML. See :doc:`source-formats/index` for details on supported
-   formats and their capabilities.
+   IronPLC also supports PLCopen XML and TwinCAT formats. See
+   :doc:`source-formats/index` for all supported formats.
 
 In the same terminal, enter the commands in :ref:`Create Hello World Program <compiler-create-hello-world>`
 to create a program.
