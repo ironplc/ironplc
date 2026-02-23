@@ -14,6 +14,7 @@ use lsp_types::{
     WorkspaceServerCapabilities,
 };
 use serde::{de::DeserializeOwned, Serialize};
+use std::str::FromStr;
 
 use crate::lsp_project::{LspProject, TOKEN_TYPE_LEGEND};
 
@@ -179,6 +180,28 @@ impl<'a> LspServer<'a> {
             }
             Err(req) => req,
         };
+
+        // Handle custom requests by method name
+        if _req.method == "ironplc/disassemble" {
+            let params: serde_json::Value = serde_json::from_value(_req.params).unwrap_or_default();
+            let uri_str = params["uri"].as_str().unwrap_or("");
+
+            let result = match lsp_types::Uri::from_str(uri_str) {
+                Ok(uri) => {
+                    let path_str = uri_to_file_path(&uri);
+                    let path = std::path::Path::new(&path_str);
+                    crate::disassemble::disassemble_file(path)
+                }
+                Err(_) => serde_json::json!({"error": "Invalid URI"}),
+            };
+
+            let response = lsp_server::Response::new_ok(req_id, result);
+            self.sender
+                .send(lsp_server::Message::Response(response))
+                .unwrap();
+            return "ironplc/disassemble";
+        }
+
         ""
     }
 
@@ -292,6 +315,21 @@ impl<'a> LspServer<'a> {
             .send(Message::Notification(notification))
             .unwrap()
     }
+}
+
+/// Converts a `file:` URI to a filesystem path string.
+///
+/// On Windows, file URIs have the form `file:///C:/path` where the URI path
+/// component is `/C:/path`. This function strips the leading `/` so the
+/// result is a valid Windows path like `C:/path`.
+fn uri_to_file_path(uri: &lsp_types::Uri) -> String {
+    let path = uri.path().as_str();
+    // On Windows, strip the leading / before the drive letter (e.g. /C:/foo -> C:/foo)
+    #[cfg(windows)]
+    if path.len() >= 3 && path.as_bytes()[0] == b'/' && path.as_bytes()[2] == b':' {
+        return path[1..].to_string();
+    }
+    path.to_string()
 }
 
 #[cfg(test)]
@@ -416,6 +454,20 @@ mod test {
                 .unwrap();
         }
 
+        fn send_raw_request(&mut self, method: &str, params: serde_json::Value) -> RequestId {
+            self.request_id_counter += 1;
+            let message = lsp_server::Request {
+                id: RequestId::from(self.request_id_counter),
+                method: method.to_string(),
+                params: serde_json::to_value(params).unwrap(),
+            };
+            self.client_connection
+                .sender
+                .send(Message::Request(message))
+                .unwrap();
+            RequestId::from(self.request_id_counter)
+        }
+
         fn receive(&mut self) {
             let timeout = Duration::from_secs(60);
             let message = self
@@ -469,5 +521,46 @@ mod test {
         );
 
         server.receive_notification::<PublishDiagnosticsParams>();
+    }
+
+    #[test]
+    fn disassemble_request_when_valid_iplc_file_then_returns_json() {
+        use ironplc_container::ContainerBuilder;
+        use std::io::Write;
+
+        let proj = Box::new(FileBackedProject::default());
+        let mut server = TestServer::new(proj);
+
+        // Build a small .iplc file
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
+            0x18, 0x00, 0x00,  // STORE_VAR_I32  var[0]
+            0xB5,              // RET_VOID
+        ];
+        let container = ContainerBuilder::new()
+            .num_variables(1)
+            .add_i32_constant(42)
+            .add_function(0, &bytecode, 1, 1)
+            .build();
+        let mut buf = Vec::new();
+        container.write_to(&mut buf).unwrap();
+
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        tmp.write_all(&buf).unwrap();
+        tmp.flush().unwrap();
+
+        let path_str = tmp.path().display().to_string().replace('\\', "/");
+        let uri = if path_str.starts_with('/') {
+            format!("file://{path_str}")
+        } else {
+            format!("file:///{path_str}")
+        };
+        let params = serde_json::json!({"uri": uri});
+        let req_id = server.send_raw_request("ironplc/disassemble", params);
+        let result: serde_json::Value = server.receive_response(req_id);
+
+        assert_eq!(result["header"]["numFunctions"], 1);
+        assert_eq!(result["constants"][0]["value"], "42");
     }
 }
