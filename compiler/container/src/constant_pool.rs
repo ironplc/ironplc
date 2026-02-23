@@ -57,6 +57,11 @@ impl ConstantPool {
         self.entries.is_empty()
     }
 
+    /// Returns an iterator over the constant pool entries.
+    pub fn iter(&self) -> std::slice::Iter<'_, ConstEntry> {
+        self.entries.iter()
+    }
+
     /// Returns the serialized size of this constant pool section in bytes.
     ///
     /// Only called at construction/save time, not during execution.
@@ -167,5 +172,23 @@ mod tests {
             pool.get_i32(0),
             Err(ContainerError::InvalidConstantIndex(0))
         ));
+    }
+
+    #[test]
+    fn constant_pool_iter_when_two_entries_then_returns_both() {
+        let mut pool = ConstantPool::default();
+        pool.push(ConstEntry {
+            const_type: ConstType::I32,
+            value: 10i32.to_le_bytes().to_vec(),
+        });
+        pool.push(ConstEntry {
+            const_type: ConstType::F64,
+            value: 3.14f64.to_le_bytes().to_vec(),
+        });
+
+        let entries: Vec<_> = pool.iter().collect();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].const_type, ConstType::I32);
+        assert_eq!(entries[1].const_type, ConstType::F64);
     }
 }
