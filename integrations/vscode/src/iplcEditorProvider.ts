@@ -41,7 +41,8 @@ export class IplcEditorProvider implements vscode.CustomReadonlyEditorProvider<I
         uri: document.uri.toString(),
       });
       webviewPanel.webview.html = this.getDisassemblyHtml(result as DisassemblyResult);
-    } catch (err) {
+    }
+    catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       webviewPanel.webview.html = this.getErrorHtml(`Failed to disassemble: ${message}`);
     }
@@ -150,12 +151,20 @@ export class IplcEditorProvider implements vscode.CustomReadonlyEditorProvider<I
   }
 
   private renderHeader(header: DisassemblyHeader): string {
-    if (!header) { return ''; }
+    if (!header) {
+      return '';
+    }
 
     const flagsList = [];
-    if (header.flags?.hasContentSignature) { flagsList.push('Content Signature'); }
-    if (header.flags?.hasDebugSection) { flagsList.push('Debug Section'); }
-    if (header.flags?.hasTypeSection) { flagsList.push('Type Section'); }
+    if (header.flags?.hasContentSignature) {
+      flagsList.push('Content Signature');
+    }
+    if (header.flags?.hasDebugSection) {
+      flagsList.push('Debug Section');
+    }
+    if (header.flags?.hasTypeSection) {
+      flagsList.push('Type Section');
+    }
     const flagsStr = flagsList.length > 0 ? flagsList.join(', ') : 'None';
 
     return `
@@ -206,8 +215,8 @@ export class IplcEditorProvider implements vscode.CustomReadonlyEditorProvider<I
       return '<details><summary>Functions (none)</summary></details>';
     }
 
-    return functions.map(func => {
-      const instrRows = func.instructions.map(instr => {
+    return functions.map((func) => {
+      const instrRows = func.instructions.map((instr) => {
         const opcodeClass = getOpcodeClass(instr.opcode);
         const commentHtml = instr.comment
           ? `<span class="comment">  ${escapeHtml(instr.comment)}</span>`
@@ -299,12 +308,26 @@ function formatOffset(offset: number): string {
 }
 
 function getOpcodeClass(opcode: string): string {
-  if (opcode.startsWith('LOAD')) { return 'op-load'; }
-  if (opcode.startsWith('STORE')) { return 'op-store'; }
-  if (opcode.startsWith('ADD') || opcode.startsWith('SUB') ||
-      opcode.startsWith('MUL') || opcode.startsWith('DIV')) { return 'op-arith'; }
-  if (opcode.startsWith('RET') || opcode.startsWith('CALL') ||
-      opcode.startsWith('JMP') || opcode.startsWith('BR')) { return 'op-ctrl'; }
-  if (opcode.startsWith('UNKNOWN')) { return 'op-unknown'; }
+  if (opcode.startsWith('LOAD')) {
+    return 'op-load';
+  }
+  if (opcode.startsWith('STORE')) {
+    return 'op-store';
+  }
+  if (opcode.startsWith('ADD')
+    || opcode.startsWith('SUB')
+    || opcode.startsWith('MUL')
+    || opcode.startsWith('DIV')) {
+    return 'op-arith';
+  }
+  if (opcode.startsWith('RET')
+    || opcode.startsWith('CALL')
+    || opcode.startsWith('JMP')
+    || opcode.startsWith('BR')) {
+    return 'op-ctrl';
+  }
+  if (opcode.startsWith('UNKNOWN')) {
+    return 'op-unknown';
+  }
   return '';
 }
