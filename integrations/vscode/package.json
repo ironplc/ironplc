@@ -22,7 +22,9 @@
     "url": "http://github.com/ironplc/ironplc.git",
     "directory": "integrations/vscode"
   },
-  "activationEvents": [],
+  "activationEvents": [
+    "onCustomEditor:ironplc.iplcViewer"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -139,6 +141,18 @@
         "embeddedLanguages": {
           "meta.embedded.block.st": "61131-3-st"
         }
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "ironplc.iplcViewer",
+        "displayName": "IPLC Bytecode Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.iplc"
+          }
+        ],
+        "priority": "default"
       }
     ]
   },

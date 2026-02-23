@@ -7,6 +7,7 @@ import {
   TransportKind,
   ServerOptions,
 } from 'vscode-languageclient/node';
+import { IplcEditorProvider } from './iplcEditorProvider';
 
 const VERBOSITY = new Map<string, string[]>([
   ['ERROR', []],
@@ -42,6 +43,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   if (client) {
     client.start();
+    context.subscriptions.push(IplcEditorProvider.register(context, client));
     console.debug('Extension "ironplc" is active!');
   }
   else {
