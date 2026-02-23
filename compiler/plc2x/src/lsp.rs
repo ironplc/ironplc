@@ -317,6 +317,21 @@ impl<'a> LspServer<'a> {
     }
 }
 
+/// Converts a `file:` URI to a filesystem path string.
+///
+/// On Windows, file URIs have the form `file:///C:/path` where the URI path
+/// component is `/C:/path`. This function strips the leading `/` so the
+/// result is a valid Windows path like `C:/path`.
+fn uri_to_file_path(uri: &lsp_types::Uri) -> String {
+    let path = uri.path().as_str();
+    // On Windows, strip the leading / before the drive letter (e.g. /C:/foo -> C:/foo)
+    #[cfg(windows)]
+    if path.len() >= 3 && path.as_bytes()[0] == b'/' && path.as_bytes()[2] == b':' {
+        return path[1..].to_string();
+    }
+    path.to_string()
+}
+
 #[cfg(test)]
 mod test {
     use core::time::Duration;
@@ -535,7 +550,12 @@ mod test {
         tmp.write_all(&buf).unwrap();
         tmp.flush().unwrap();
 
-        let uri = lsp_types::Uri::from_file_path(tmp.path()).unwrap().to_string();
+        let path_str = tmp.path().display().to_string().replace('\\', "/");
+        let uri = if path_str.starts_with('/') {
+            format!("file://{path_str}")
+        } else {
+            format!("file:///{path_str}")
+        };
         let params = serde_json::json!({"uri": uri});
         let req_id = server.send_raw_request("ironplc/disassemble", params);
         let result: serde_json::Value = server.receive_response(req_id);
