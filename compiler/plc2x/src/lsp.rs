@@ -188,7 +188,7 @@ impl<'a> LspServer<'a> {
 
             let result = match lsp_types::Uri::from_str(uri_str) {
                 Ok(uri) => {
-                    let path_str = uri.path().to_string();
+                    let path_str = uri_to_file_path(&uri);
                     let path = std::path::Path::new(&path_str);
                     crate::disassemble::disassemble_file(path)
                 }
@@ -535,7 +535,7 @@ mod test {
         tmp.write_all(&buf).unwrap();
         tmp.flush().unwrap();
 
-        let uri = format!("file://{}", tmp.path().display());
+        let uri = lsp_types::Uri::from_file_path(tmp.path()).unwrap().to_string();
         let params = serde_json::json!({"uri": uri});
         let req_id = server.send_raw_request("ironplc/disassemble", params);
         let result: serde_json::Value = server.receive_response(req_id);
