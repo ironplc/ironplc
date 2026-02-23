@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { LanguageClient } from 'vscode-languageclient/node';
+import { LanguageClient, State } from 'vscode-languageclient/node';
 
 interface IplcDocument extends vscode.CustomDocument {
   readonly uri: vscode.Uri;
@@ -10,7 +10,7 @@ export class IplcEditorProvider implements vscode.CustomReadonlyEditorProvider<I
 
   constructor(private readonly client: LanguageClient) {}
 
-  public static register(context: vscode.ExtensionContext, client: LanguageClient): vscode.Disposable {
+  public static register(_context: vscode.ExtensionContext, client: LanguageClient): vscode.Disposable {
     const provider = new IplcEditorProvider(client);
     return vscode.window.registerCustomEditorProvider(
       IplcEditorProvider.viewType,
@@ -29,11 +29,16 @@ export class IplcEditorProvider implements vscode.CustomReadonlyEditorProvider<I
   ): Promise<void> {
     webviewPanel.webview.options = { enableScripts: false };
 
+    // The LSP client may still be starting when the custom editor opens.
+    // Wait briefly for it to reach the Running state.
     if (!this.client.isRunning()) {
-      webviewPanel.webview.html = this.getErrorHtml(
-        'IronPLC compiler not found. Install the compiler to view .iplc files.',
-      );
-      return;
+      const ready = await this.waitForClient(5000);
+      if (!ready) {
+        webviewPanel.webview.html = this.getErrorHtml(
+          'IronPLC compiler not found. Install the compiler to view .iplc files.',
+        );
+        return;
+      }
     }
 
     try {
@@ -46,6 +51,31 @@ export class IplcEditorProvider implements vscode.CustomReadonlyEditorProvider<I
       const message = err instanceof Error ? err.message : String(err);
       webviewPanel.webview.html = this.getErrorHtml(`Failed to disassemble: ${message}`);
     }
+  }
+
+  private waitForClient(timeoutMs: number): Promise<boolean> {
+    if (this.client.isRunning()) {
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        disposable.dispose();
+        resolve(false);
+      }, timeoutMs);
+
+      const disposable = this.client.onDidChangeState((e) => {
+        if (e.newState === State.Running) {
+          clearTimeout(timer);
+          disposable.dispose();
+          resolve(true);
+        }
+        else if (e.newState === State.Stopped) {
+          clearTimeout(timer);
+          disposable.dispose();
+          resolve(false);
+        }
+      });
+    });
   }
 
   private getErrorHtml(message: string): string {
