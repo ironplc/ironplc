@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.0">
+  <DUT Name="MyStruct" Id="{00000000-0000-0000-0000-000000000002}">
+    <Declaration><![CDATA[TYPE MyStruct :
+STRUCT
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

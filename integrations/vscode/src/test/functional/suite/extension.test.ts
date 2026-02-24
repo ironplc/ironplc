@@ -25,6 +25,33 @@ suite('Extension Test Suite', () => {
     assert.equal(languageId, '61131-3-st');
   });
 
+  test('detects TcPOU extension as twincat-pou', async () => {
+    const filePath = testResourcePath('valid.TcPOU');
+    const textDocument = await vscode.workspace.openTextDocument(filePath);
+    await vscode.window.showTextDocument(textDocument);
+    const file = vscode.window.activeTextEditor!.document as any | undefined;
+
+    assert.equal(file.languageId, 'twincat-pou');
+  });
+
+  test('detects TcGVL extension as twincat-gvl', async () => {
+    const filePath = testResourcePath('valid.TcGVL');
+    const textDocument = await vscode.workspace.openTextDocument(filePath);
+    await vscode.window.showTextDocument(textDocument);
+    const file = vscode.window.activeTextEditor!.document as any | undefined;
+
+    assert.equal(file.languageId, 'twincat-gvl');
+  });
+
+  test('detects TcDUT extension as twincat-dut', async () => {
+    const filePath = testResourcePath('valid.TcDUT');
+    const textDocument = await vscode.workspace.openTextDocument(filePath);
+    await vscode.window.showTextDocument(textDocument);
+    const file = vscode.window.activeTextEditor!.document as any | undefined;
+
+    assert.equal(file.languageId, 'twincat-dut');
+  });
+
   test('does not detect non-ST extension as 61131-3-st', async () => {
     const filePath = testResourcePath('invalid-ext.notst');
     const textDocument = await vscode.workspace.openTextDocument(filePath);

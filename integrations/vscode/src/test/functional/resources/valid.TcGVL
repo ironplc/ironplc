@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.0">
+  <GVL Name="GVL_Main" Id="{00000000-0000-0000-0000-000000000001}">
+    <Declaration><![CDATA[VAR_GLOBAL
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>
