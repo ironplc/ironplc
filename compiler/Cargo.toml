@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "analyzer",
+    "codegen",
     "container",
     "plc2x",
     "plc2plc",

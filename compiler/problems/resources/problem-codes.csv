@@ -31,7 +31,8 @@ P2021,StructFieldTypeNotDeclared,Structure field references undeclared type
 P2022,ArrayDimensionEmpty,Array must have at least one dimension
 P2023,ArraySizeOverflow,Array size calculation overflow
 P2024,ArrayDimensionInvalid,Array dimension range is invalid
-P2025,TypeEnvironmentUnknownType,Unknown type 
+P2025,TypeEnvironmentUnknownType,Unknown type
+P2026,ConstantOverflow,Constant value overflows the target type
 P4001,FunctionCallMixedArgTypes,Function call mixes named (formal) and positional (non-format) input arguments
 P4002,FunctionInvocationMissingInput,Function invocation assigns named (formal) input that is not defined
 P4003,FunctionInvocationRequiresFormal,Function invocation requires non-formal inputs but the invocation has formal inputs

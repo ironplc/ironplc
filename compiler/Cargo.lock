@@ -417,6 +417,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ironplc-codegen"
+version = "0.158.0"
+dependencies = [
+ "ironplc-container",
+ "ironplc-dsl",
+ "ironplc-parser",
+ "ironplc-problems",
+ "ironplc-vm",
+]
+
+[[package]]
 name = "ironplc-container"
 version = "0.158.0"
 
