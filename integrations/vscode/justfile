@@ -7,6 +7,7 @@ ci:
   just compile
   just lint
   just test-grammar
+  just test-unit
   just test
 
 # Setup required dependencies. Use this to bootstrap a new host.
@@ -35,6 +36,10 @@ _test-linux:
 # Check the code for compliance with style (lint) rules.
 lint:
   npm run lint
+
+# Run unit tests with coverage enforcement.
+test-unit:
+  npm run test:unit
 
 # Run grammar snapshot tests to verify syntax highlighting.
 test-grammar:

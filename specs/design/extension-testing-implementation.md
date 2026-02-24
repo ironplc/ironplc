@@ -1,6 +1,6 @@
 # VS Code Extension Testing Implementation
 
-This document describes the specific code changes needed to bring the VS Code extension to the testing standards defined in [extension-testing-requirements.md](./extension-testing-requirements.md).
+This document describes the specific code changes needed to bring the VS Code extension to the testing standards defined in [extension-testing-requirements.md](../steering/extension-testing-requirements.md).
 
 ## Overview of Changes
 
@@ -36,6 +36,36 @@ Extract the following from `iplcEditorProvider.ts` into a new module:
 - `renderFunctions(functions: DisassemblyFunction[]): string`
 - `getDisassemblyHtml(data: DisassemblyResult): string`
 
+**Shared HTML infrastructure:**
+
+Both `getErrorHtml` and `getDisassemblyHtml` produce full HTML documents with overlapping CSS (body styles, VS Code CSS variables). Extract the shared CSS into a constant and create a helper:
+
+```typescript
+const BASE_STYLES = `
+  body {
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    font-family: var(--vscode-font-family);
+    padding: 20px;
+  }
+`;
+
+export function wrapInHtmlDocument(body: string, extraStyles: string = ''): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>${BASE_STYLES}${extraStyles}</style>
+</head>
+<body>
+  ${body}
+</body>
+</html>`;
+}
+```
+
+`getErrorHtml` and `getDisassemblyHtml` then call `wrapInHtmlDocument` with their specific body content and any additional styles, eliminating the duplicated HTML boilerplate.
+
 After extraction, `iplcEditorProvider.ts` imports and calls these functions. The class retains only:
 - `register()`, `openCustomDocument()`, `resolveCustomEditor()` — VS Code API integration
 - `waitForClient()` — LSP lifecycle management
@@ -56,10 +86,12 @@ src/test/unit/
 
 Add to `package.json`:
 ```json
-"test:unit": "c8 --check-coverage --lines 80 mocha 'out/test/unit/**/*.test.js'"
+"test:unit": "c8 --check-coverage --lines 80 --include 'out/iplcRendering.js' --include 'out/compilerDiscovery.js' mocha 'out/test/unit/**/*.test.js'"
 ```
 
-The `compile` step already compiles all TypeScript under `src/` to `out/`, so the unit tests will be compiled alongside everything else.
+The `--include` flags restrict coverage measurement to the extracted unit-testable modules. Without them, `c8` would measure coverage of all loaded files (including test helpers and test files themselves), producing misleading numbers.
+
+The `compile` step already compiles all TypeScript under `src/` to `out/` (tsconfig has `"outDir": "out"` and `"rootDir": "src"`), so the unit tests will be compiled alongside everything else and the `out/test/unit/` glob will find them.
 
 **Test helpers (`testHelpers.ts`):**
 
@@ -121,12 +153,9 @@ export function createTestDisassemblyResult(overrides?: Partial<DisassemblyResul
 ### 1c. Unit Test Cases for `iplcRendering.ts`
 
 **`escapeHtml`:**
-- `escapeHtml_when_ampersand_then_escaped`
-- `escapeHtml_when_less_than_then_escaped`
-- `escapeHtml_when_greater_than_then_escaped`
-- `escapeHtml_when_double_quote_then_escaped`
 - `escapeHtml_when_no_special_chars_then_unchanged`
-- `escapeHtml_when_multiple_special_chars_then_all_escaped`
+- `escapeHtml_when_all_special_chars_then_all_escaped` — input contains `&`, `<`, `>`, and `"` together; verify each is escaped in the output
+- `escapeHtml_when_empty_string_then_returns_empty`
 
 **`formatOffset`:**
 - `formatOffset_when_zero_then_returns_0x0000`
@@ -134,16 +163,12 @@ export function createTestDisassemblyResult(overrides?: Partial<DisassemblyResul
 - `formatOffset_when_large_value_then_hex_formatted`
 
 **`getOpcodeClass`:**
+
+Use a data-driven approach to reduce test count while maintaining full branch coverage:
 - `getOpcodeClass_when_load_prefix_then_op_load`
 - `getOpcodeClass_when_store_prefix_then_op_store`
-- `getOpcodeClass_when_add_prefix_then_op_arith`
-- `getOpcodeClass_when_sub_prefix_then_op_arith`
-- `getOpcodeClass_when_mul_prefix_then_op_arith`
-- `getOpcodeClass_when_div_prefix_then_op_arith`
-- `getOpcodeClass_when_ret_prefix_then_op_ctrl`
-- `getOpcodeClass_when_call_prefix_then_op_ctrl`
-- `getOpcodeClass_when_jmp_prefix_then_op_ctrl`
-- `getOpcodeClass_when_br_prefix_then_op_ctrl`
+- `getOpcodeClass_when_arithmetic_prefix_then_op_arith` — test one representative (e.g. `ADD_INT`); the four prefixes (`ADD`, `SUB`, `MUL`, `DIV`) share a single code path
+- `getOpcodeClass_when_control_flow_prefix_then_op_ctrl` — test one representative (e.g. `JMP`); the four prefixes (`RET`, `CALL`, `JMP`, `BR`) share a single code path
 - `getOpcodeClass_when_unknown_prefix_then_op_unknown`
 - `getOpcodeClass_when_unrecognized_prefix_then_empty_string`
 
@@ -231,9 +256,17 @@ export interface LanguageClientLike {
 
 Change the `IplcEditorProvider` constructor to accept `LanguageClientLike` instead of `LanguageClient`. The real `LanguageClient` already satisfies this interface, so no changes needed at the call site.
 
+Export the numeric values of `State.Running` (2) and `State.Stopped` (1) as constants from the test helpers so that mock implementations in unit tests don't need to import `vscode-languageclient`:
+
+```typescript
+// In testHelpers.ts — values match vscode-languageclient's State enum
+export const CLIENT_STATE_STOPPED = 1;
+export const CLIENT_STATE_RUNNING = 2;
+```
+
 ### 3b. Unit Test Cases for `resolveCustomEditor`
 
-These tests use mock implementations of `LanguageClientLike` and a mock `WebviewPanel`:
+These tests use mock implementations of `LanguageClientLike` and a mock `WebviewPanel`. The mock panel must support property assignment on `webview.options` since `resolveCustomEditor` sets `enableScripts: false`:
 
 ```typescript
 function createMockPanel(): { webview: { html: string; options: any } } {
@@ -289,6 +322,12 @@ import * as path from 'path';
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf-8'));
 
+// Exceptions: capabilities that are intentionally not tested, with justification.
+// Each key is the capability ID; the value is the reason it is excluded.
+const EXCEPTIONS: Record<string, string> = {
+  'plcopen-xml': 'Uses firstLine detection (no file extension); requires XML content matching which is not reliably testable via openTextDocument',
+};
+
 // Collect all test file contents
 const testFiles = findTestFiles(path.join(__dirname));
 const testContent = testFiles.map(f => fs.readFileSync(f, 'utf-8')).join('\n');
@@ -297,6 +336,9 @@ let failures: string[] = [];
 
 // Check languages with extensions
 for (const lang of packageJson.contributes.languages) {
+  if (EXCEPTIONS[lang.id]) {
+    continue;
+  }
   if (lang.extensions && lang.extensions.length > 0) {
     if (!testContent.includes(lang.id)) {
       failures.push(`Language '${lang.id}' has no test reference`);
@@ -306,6 +348,9 @@ for (const lang of packageJson.contributes.languages) {
 
 // Check commands
 for (const cmd of packageJson.contributes.commands) {
+  if (EXCEPTIONS[cmd.command]) {
+    continue;
+  }
   if (!testContent.includes(cmd.command)) {
     failures.push(`Command '${cmd.command}' has no test reference`);
   }
@@ -313,9 +358,19 @@ for (const cmd of packageJson.contributes.commands) {
 
 // Check custom editors
 for (const editor of packageJson.contributes.customEditors) {
+  if (EXCEPTIONS[editor.viewType]) {
+    continue;
+  }
   if (!testContent.includes(editor.viewType)) {
     failures.push(`Custom editor '${editor.viewType}' has no test reference`);
   }
+}
+
+// Report exceptions for visibility
+const usedExceptions = Object.entries(EXCEPTIONS);
+if (usedExceptions.length > 0) {
+  console.log('Exceptions (intentionally untested):');
+  usedExceptions.forEach(([id, reason]) => console.log(`  - ${id}: ${reason}`));
 }
 
 if (failures.length > 0) {
