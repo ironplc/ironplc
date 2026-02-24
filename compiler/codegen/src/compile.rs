@@ -44,13 +44,7 @@ fn find_program(library: &Library) -> Result<&ProgramDeclaration, Diagnostic> {
             return Ok(program);
         }
     }
-    Err(Diagnostic::problem(
-        Problem::NotImplemented,
-        Label::span(
-            SourceSpan::default(),
-            "No PROGRAM declaration found in library",
-        ),
-    ))
+    Err(Diagnostic::todo(file!(), line!()))
 }
 
 /// Compiles a single PROGRAM into a container.
@@ -148,10 +142,7 @@ fn compile_body(
             compile_statements(emitter, ctx, statements)
         }
         FunctionBlockBodyKind::Empty => Ok(()),
-        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(SourceSpan::default(), "SFC bodies are not yet supported"),
-        )),
+        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::todo(file!(), line!())),
     }
 }
 
@@ -183,38 +174,36 @@ fn compile_statement(
             emitter.emit_store_var_i32(var_index);
             Ok(())
         }
-        StmtKind::FbCall(fb_call) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(fb_call.span(), "Function block call statement"),
+        StmtKind::FbCall(fb_call) => {
+            Err(Diagnostic::todo_with_span(fb_call.span(), file!(), line!()))
+        }
+        StmtKind::If(if_stmt) => Err(Diagnostic::todo_with_span(
+            expr_span(&if_stmt.expr),
+            file!(),
+            line!(),
         )),
-        StmtKind::If(if_stmt) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(expr_span(&if_stmt.expr), "If statement"),
+        StmtKind::Case(case_stmt) => Err(Diagnostic::todo_with_span(
+            expr_span(&case_stmt.selector),
+            file!(),
+            line!(),
         )),
-        StmtKind::Case(case_stmt) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(expr_span(&case_stmt.selector), "Case statement"),
+        StmtKind::For(for_stmt) => Err(Diagnostic::todo_with_span(
+            for_stmt.control.span(),
+            file!(),
+            line!(),
         )),
-        StmtKind::For(for_stmt) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(for_stmt.control.span(), "For statement"),
+        StmtKind::While(while_stmt) => Err(Diagnostic::todo_with_span(
+            expr_span(&while_stmt.condition),
+            file!(),
+            line!(),
         )),
-        StmtKind::While(while_stmt) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(expr_span(&while_stmt.condition), "While statement"),
+        StmtKind::Repeat(repeat_stmt) => Err(Diagnostic::todo_with_span(
+            expr_span(&repeat_stmt.until),
+            file!(),
+            line!(),
         )),
-        StmtKind::Repeat(repeat_stmt) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(expr_span(&repeat_stmt.until), "Repeat statement"),
-        )),
-        StmtKind::Return => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(SourceSpan::default(), "Return statement"),
-        )),
-        StmtKind::Exit => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(SourceSpan::default(), "Exit statement"),
-        )),
+        StmtKind::Return => Err(Diagnostic::todo(file!(), line!())),
+        StmtKind::Exit => Err(Diagnostic::todo(file!(), line!())),
     }
 }
 
@@ -239,11 +228,11 @@ fn compile_expr(
                     emitter.emit_add_i32();
                     Ok(())
                 }
-                _ => Err(Diagnostic::problem(
-                    Problem::NotImplemented,
-                    Label::span(expr_span(&binary.left), "Binary operator"),
-                )
-                .with_context("operator", &format!("{:?}", binary.op))),
+                _ => Err(Diagnostic::todo_with_span(
+                    expr_span(&binary.left),
+                    file!(),
+                    line!(),
+                )),
             }
         }
         ExprKind::UnaryOp(unary) => match unary.op {
@@ -264,20 +253,18 @@ fn compile_expr(
                     emitter.emit_load_const_i32(pool_index);
                     Ok(())
                 } else {
-                    Err(Diagnostic::problem(
-                        Problem::NotImplemented,
-                        Label::span(
-                            expr_span(&unary.term),
-                            "Unary negation of non-constant expression",
-                        ),
+                    Err(Diagnostic::todo_with_span(
+                        expr_span(&unary.term),
+                        file!(),
+                        line!(),
                     ))
                 }
             }
-            _ => Err(Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(expr_span(&unary.term), "Unary operator"),
-            )
-            .with_context("operator", &format!("{:?}", unary.op))),
+            _ => Err(Diagnostic::todo_with_span(
+                expr_span(&unary.term),
+                file!(),
+                line!(),
+            )),
         },
         ExprKind::LateBound(late_bound) => {
             // LateBound values are unresolved identifiers from the parser.
@@ -290,18 +277,18 @@ fn compile_expr(
             Ok(())
         }
         ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner),
-        ExprKind::Compare(compare) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(expr_span(&compare.left), "Compare expression"),
-        )
-        .with_context("operator", &format!("{:?}", compare.op))),
-        ExprKind::EnumeratedValue(enum_val) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(enum_val.span(), "Enumerated value expression"),
+        ExprKind::Compare(compare) => Err(Diagnostic::todo_with_span(
+            expr_span(&compare.left),
+            file!(),
+            line!(),
         )),
-        ExprKind::Function(func) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(func.name.span(), "Function call expression"),
+        ExprKind::EnumeratedValue(enum_val) => {
+            Err(Diagnostic::todo_with_span(enum_val.span(), file!(), line!()))
+        }
+        ExprKind::Function(func) => Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
         )),
     }
 }
@@ -338,38 +325,14 @@ fn compile_constant(
             emitter.emit_load_const_i32(pool_index);
             Ok(())
         }
-        ConstantKind::RealLiteral(_) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(SourceSpan::default(), "Real literal constant"),
-        )),
-        ConstantKind::Boolean(_) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(SourceSpan::default(), "Boolean literal constant"),
-        )),
-        ConstantKind::CharacterString(_) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(SourceSpan::default(), "String literal constant"),
-        )),
-        ConstantKind::Duration(_) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(SourceSpan::default(), "Duration literal constant"),
-        )),
-        ConstantKind::TimeOfDay(_) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(SourceSpan::default(), "Time-of-day literal constant"),
-        )),
-        ConstantKind::Date(_) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(SourceSpan::default(), "Date literal constant"),
-        )),
-        ConstantKind::DateAndTime(_) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(SourceSpan::default(), "Date-and-time literal constant"),
-        )),
-        ConstantKind::BitStringLiteral(_) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(SourceSpan::default(), "Bit-string literal constant"),
-        )),
+        ConstantKind::RealLiteral(_) => Err(Diagnostic::todo(file!(), line!())),
+        ConstantKind::Boolean(_) => Err(Diagnostic::todo(file!(), line!())),
+        ConstantKind::CharacterString(_) => Err(Diagnostic::todo(file!(), line!())),
+        ConstantKind::Duration(_) => Err(Diagnostic::todo(file!(), line!())),
+        ConstantKind::TimeOfDay(_) => Err(Diagnostic::todo(file!(), line!())),
+        ConstantKind::Date(_) => Err(Diagnostic::todo(file!(), line!())),
+        ConstantKind::DateAndTime(_) => Err(Diagnostic::todo(file!(), line!())),
+        ConstantKind::BitStringLiteral(_) => Err(Diagnostic::todo(file!(), line!())),
     }
 }
 
@@ -380,18 +343,19 @@ fn resolve_variable(ctx: &CompileContext, variable: &Variable) -> Result<u16, Di
             SymbolicVariableKind::Named(named) => {
                 ctx.var_index(&named.name.to_string(), named.span())
             }
-            SymbolicVariableKind::Array(array) => Err(Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(array.span(), "Array variable access"),
-            )),
-            SymbolicVariableKind::Structured(structured) => Err(Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(structured.span(), "Structured variable access"),
+            SymbolicVariableKind::Array(array) => {
+                Err(Diagnostic::todo_with_span(array.span(), file!(), line!()))
+            }
+            SymbolicVariableKind::Structured(structured) => Err(Diagnostic::todo_with_span(
+                structured.span(),
+                file!(),
+                line!(),
             )),
         },
-        Variable::Direct(direct) => Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(direct.position.clone(), "Direct (hardware) variable"),
+        Variable::Direct(direct) => Err(Diagnostic::todo_with_span(
+            direct.position.clone(),
+            file!(),
+            line!(),
         )),
     }
 }
