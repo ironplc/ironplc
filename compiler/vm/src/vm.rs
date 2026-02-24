@@ -1,10 +1,10 @@
 use ironplc_container::Container;
 
 use crate::error::Trap;
-use crate::opcode;
 use crate::stack::OperandStack;
 use crate::value::Slot;
 use crate::variable_table::VariableTable;
+use ironplc_container::opcode;
 
 /// A newly created VM with no loaded program.
 ///

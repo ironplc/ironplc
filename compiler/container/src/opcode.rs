@@ -1,3 +1,5 @@
+//! Bytecode opcode definitions shared between the compiler and VM.
+
 /// Load a 32-bit integer constant from the constant pool.
 /// Operand: u16 constant pool index (little-endian).
 pub const LOAD_CONST_I32: u8 = 0x01;
