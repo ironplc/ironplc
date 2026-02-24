@@ -16,12 +16,14 @@ use ironplc_container::{Container, ContainerBuilder};
 use ironplc_dsl::common::{
     ConstantKind, FunctionBlockBodyKind, Library, LibraryElementKind, ProgramDeclaration, VarDecl,
 };
+use ironplc_dsl::core::{Located, SourceSpan};
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     ExprKind, Operator, Statements, StmtKind, SymbolicVariableKind, UnaryOp, Variable,
 };
+use ironplc_problems::Problem;
 
 use crate::emit::Emitter;
-use crate::error::CodegenError;
 
 /// Compiles a library into a bytecode container.
 ///
@@ -30,25 +32,29 @@ use crate::error::CodegenError;
 ///
 /// Returns an error if no program is found or if the program contains
 /// unsupported constructs.
-pub fn compile(library: &Library) -> Result<Container, CodegenError> {
+pub fn compile(library: &Library) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
     compile_program(program)
 }
 
 /// Finds the first PROGRAM declaration in the library.
-fn find_program(library: &Library) -> Result<&ProgramDeclaration, CodegenError> {
+fn find_program(library: &Library) -> Result<&ProgramDeclaration, Diagnostic> {
     for element in &library.elements {
         if let LibraryElementKind::ProgramDeclaration(program) = element {
             return Ok(program);
         }
     }
-    Err(CodegenError::Unsupported(
-        "no PROGRAM declaration found".to_string(),
+    Err(Diagnostic::problem(
+        Problem::NotImplemented,
+        Label::span(
+            SourceSpan::default(),
+            "No PROGRAM declaration found in library",
+        ),
     ))
 }
 
 /// Compiles a single PROGRAM into a container.
-fn compile_program(program: &ProgramDeclaration) -> Result<Container, CodegenError> {
+fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic> {
     let mut ctx = CompileContext::new();
 
     // Assign variable indices for all declared variables.
@@ -93,12 +99,18 @@ impl CompileContext {
         }
     }
 
-    /// Looks up a variable index by name.
-    fn var_index(&self, name: &str) -> Result<u16, CodegenError> {
+    /// Looks up a variable index by name, using the provided span for error reporting.
+    fn var_index(&self, name: &str, span: SourceSpan) -> Result<u16, Diagnostic> {
         self.variables
             .get(&name.to_lowercase())
             .copied()
-            .ok_or_else(|| CodegenError::UndeclaredVariable(name.to_string()))
+            .ok_or_else(|| {
+                Diagnostic::problem(
+                    Problem::VariableUndefined,
+                    Label::span(span, "Variable reference"),
+                )
+                .with_context("variable", &name.to_string())
+            })
     }
 
     /// Adds an i32 constant to the pool and returns its index.
@@ -116,10 +128,7 @@ impl CompileContext {
 }
 
 /// Assigns variable table indices for all variable declarations.
-fn assign_variables(
-    ctx: &mut CompileContext,
-    declarations: &[VarDecl],
-) -> Result<(), CodegenError> {
+fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Result<(), Diagnostic> {
     for decl in declarations {
         let name = decl.identifier.to_string().to_lowercase();
         let index = ctx.variables.len() as u16;
@@ -133,14 +142,15 @@ fn compile_body(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     body: &FunctionBlockBodyKind,
-) -> Result<(), CodegenError> {
+) -> Result<(), Diagnostic> {
     match body {
         FunctionBlockBodyKind::Statements(statements) => {
             compile_statements(emitter, ctx, statements)
         }
         FunctionBlockBodyKind::Empty => Ok(()),
-        FunctionBlockBodyKind::Sfc(_) => Err(CodegenError::Unsupported(
-            "SFC bodies are not yet supported".to_string(),
+        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(SourceSpan::default(), "SFC bodies are not yet supported"),
         )),
     }
 }
@@ -150,7 +160,7 @@ fn compile_statements(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     statements: &Statements,
-) -> Result<(), CodegenError> {
+) -> Result<(), Diagnostic> {
     for stmt in &statements.body {
         compile_statement(emitter, ctx, stmt)?;
     }
@@ -162,7 +172,7 @@ fn compile_statement(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     stmt: &StmtKind,
-) -> Result<(), CodegenError> {
+) -> Result<(), Diagnostic> {
     match stmt {
         StmtKind::Assignment(assignment) => {
             // Compile the right-hand side expression (pushes value onto stack).
@@ -173,9 +183,38 @@ fn compile_statement(
             emitter.emit_store_var_i32(var_index);
             Ok(())
         }
-        _ => Err(CodegenError::Unsupported(format!(
-            "statement type: {stmt:?}"
-        ))),
+        StmtKind::FbCall(fb_call) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(fb_call.span(), "Function block call statement"),
+        )),
+        StmtKind::If(if_stmt) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(expr_span(&if_stmt.expr), "If statement"),
+        )),
+        StmtKind::Case(case_stmt) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(expr_span(&case_stmt.selector), "Case statement"),
+        )),
+        StmtKind::For(for_stmt) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(for_stmt.control.span(), "For statement"),
+        )),
+        StmtKind::While(while_stmt) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(expr_span(&while_stmt.condition), "While statement"),
+        )),
+        StmtKind::Repeat(repeat_stmt) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(expr_span(&repeat_stmt.until), "Repeat statement"),
+        )),
+        StmtKind::Return => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(SourceSpan::default(), "Return statement"),
+        )),
+        StmtKind::Exit => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(SourceSpan::default(), "Exit statement"),
+        )),
     }
 }
 
@@ -184,7 +223,7 @@ fn compile_expr(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     expr: &ExprKind,
-) -> Result<(), CodegenError> {
+) -> Result<(), Diagnostic> {
     match expr {
         ExprKind::Const(constant) => compile_constant(emitter, ctx, constant),
         ExprKind::Variable(variable) => {
@@ -200,10 +239,11 @@ fn compile_expr(
                     emitter.emit_add_i32();
                     Ok(())
                 }
-                _ => Err(CodegenError::Unsupported(format!(
-                    "binary operator: {:?}",
-                    binary.op
-                ))),
+                _ => Err(Diagnostic::problem(
+                    Problem::NotImplemented,
+                    Label::span(expr_span(&binary.left), "Binary operator"),
+                )
+                .with_context("operator", &format!("{:?}", binary.op))),
             }
         }
         ExprKind::UnaryOp(unary) => match unary.op {
@@ -214,24 +254,30 @@ fn compile_expr(
                     let unsigned = lit.value.value.value as i128;
                     let signed = -unsigned;
                     let value = i32::try_from(signed).map_err(|_| {
-                        CodegenError::ConstantOverflow(format!(
-                            "integer literal -{} overflows i32",
-                            unsigned
-                        ))
+                        Diagnostic::problem(
+                            Problem::ConstantOverflow,
+                            Label::span(lit.value.value.span(), "Integer literal"),
+                        )
+                        .with_context("value", &format!("-{}", unsigned))
                     })?;
                     let pool_index = ctx.add_i32_constant(value);
                     emitter.emit_load_const_i32(pool_index);
                     Ok(())
                 } else {
-                    Err(CodegenError::Unsupported(
-                        "unary negation of non-constant expressions".to_string(),
+                    Err(Diagnostic::problem(
+                        Problem::NotImplemented,
+                        Label::span(
+                            expr_span(&unary.term),
+                            "Unary negation of non-constant expression",
+                        ),
                     ))
                 }
             }
-            _ => Err(CodegenError::Unsupported(format!(
-                "unary operator: {:?}",
-                unary.op
-            ))),
+            _ => Err(Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(expr_span(&unary.term), "Unary operator"),
+            )
+            .with_context("operator", &format!("{:?}", unary.op))),
         },
         ExprKind::LateBound(late_bound) => {
             // LateBound values are unresolved identifiers from the parser.
@@ -239,12 +285,24 @@ fn compile_expr(
             // of assignments appear as LateBound. Treat them as variable
             // references.
             let name = late_bound.value.to_string();
-            let var_index = ctx.var_index(&name)?;
+            let var_index = ctx.var_index(&name, late_bound.value.span())?;
             emitter.emit_load_var_i32(var_index);
             Ok(())
         }
         ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner),
-        _ => Err(CodegenError::Unsupported(format!("expression: {expr:?}"))),
+        ExprKind::Compare(compare) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(expr_span(&compare.left), "Compare expression"),
+        )
+        .with_context("operator", &format!("{:?}", compare.op))),
+        ExprKind::EnumeratedValue(enum_val) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(enum_val.span(), "Enumerated value expression"),
+        )),
+        ExprKind::Function(func) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(func.name.span(), "Function call expression"),
+        )),
     }
 }
 
@@ -253,48 +311,107 @@ fn compile_constant(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     constant: &ConstantKind,
-) -> Result<(), CodegenError> {
+) -> Result<(), Diagnostic> {
     match constant {
         ConstantKind::IntegerLiteral(lit) => {
+            let span = lit.value.value.span();
             let value = if lit.value.is_neg {
                 let unsigned = lit.value.value.value as i128;
                 let signed = -unsigned;
                 i32::try_from(signed).map_err(|_| {
-                    CodegenError::ConstantOverflow(format!(
-                        "integer literal {} overflows i32",
-                        signed
-                    ))
+                    Diagnostic::problem(
+                        Problem::ConstantOverflow,
+                        Label::span(span.clone(), "Integer literal"),
+                    )
+                    .with_context("value", &signed.to_string())
                 })?
             } else {
                 i32::try_from(lit.value.value.value).map_err(|_| {
-                    CodegenError::ConstantOverflow(format!(
-                        "integer literal {} overflows i32",
-                        lit.value.value.value
-                    ))
+                    Diagnostic::problem(
+                        Problem::ConstantOverflow,
+                        Label::span(span.clone(), "Integer literal"),
+                    )
+                    .with_context("value", &lit.value.value.value.to_string())
                 })?
             };
             let pool_index = ctx.add_i32_constant(value);
             emitter.emit_load_const_i32(pool_index);
             Ok(())
         }
-        _ => Err(CodegenError::Unsupported(format!(
-            "constant type: {constant:?}"
-        ))),
+        ConstantKind::RealLiteral(_) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(SourceSpan::default(), "Real literal constant"),
+        )),
+        ConstantKind::Boolean(_) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(SourceSpan::default(), "Boolean literal constant"),
+        )),
+        ConstantKind::CharacterString(_) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(SourceSpan::default(), "String literal constant"),
+        )),
+        ConstantKind::Duration(_) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(SourceSpan::default(), "Duration literal constant"),
+        )),
+        ConstantKind::TimeOfDay(_) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(SourceSpan::default(), "Time-of-day literal constant"),
+        )),
+        ConstantKind::Date(_) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(SourceSpan::default(), "Date literal constant"),
+        )),
+        ConstantKind::DateAndTime(_) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(SourceSpan::default(), "Date-and-time literal constant"),
+        )),
+        ConstantKind::BitStringLiteral(_) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(SourceSpan::default(), "Bit-string literal constant"),
+        )),
     }
 }
 
 /// Resolves a variable reference to its variable table index.
-fn resolve_variable(ctx: &CompileContext, variable: &Variable) -> Result<u16, CodegenError> {
+fn resolve_variable(ctx: &CompileContext, variable: &Variable) -> Result<u16, Diagnostic> {
     match variable {
         Variable::Symbolic(symbolic) => match symbolic {
-            SymbolicVariableKind::Named(named) => ctx.var_index(&named.name.to_string()),
-            _ => Err(CodegenError::Unsupported(format!(
-                "variable kind: {symbolic:?}"
-            ))),
+            SymbolicVariableKind::Named(named) => {
+                ctx.var_index(&named.name.to_string(), named.span())
+            }
+            SymbolicVariableKind::Array(array) => Err(Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(array.span(), "Array variable access"),
+            )),
+            SymbolicVariableKind::Structured(structured) => Err(Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(structured.span(), "Structured variable access"),
+            )),
         },
-        Variable::Direct(_) => Err(CodegenError::Unsupported(
-            "direct (hardware) variables are not yet supported".to_string(),
+        Variable::Direct(direct) => Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(direct.position.clone(), "Direct (hardware) variable"),
         )),
+    }
+}
+
+/// Extracts a source span from an expression for error reporting.
+///
+/// Attempts to find the most specific span available in the expression tree.
+/// Falls back to `SourceSpan::default()` for expressions that lack span info.
+fn expr_span(expr: &ExprKind) -> SourceSpan {
+    match expr {
+        ExprKind::Variable(Variable::Symbolic(sym)) => sym.span(),
+        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => lit.value.value.span(),
+        ExprKind::LateBound(late) => late.value.span(),
+        ExprKind::Function(func) => func.name.span(),
+        ExprKind::EnumeratedValue(e) => e.span(),
+        ExprKind::BinaryOp(binary) => expr_span(&binary.left),
+        ExprKind::UnaryOp(unary) => expr_span(&unary.term),
+        ExprKind::Compare(compare) => expr_span(&compare.left),
+        ExprKind::Expression(inner) => expr_span(inner),
+        _ => SourceSpan::default(),
     }
 }
 
@@ -361,6 +478,8 @@ END_FUNCTION_BLOCK
         let result = compile(&library);
 
         assert!(result.is_err());
+        let diagnostic = result.unwrap_err();
+        assert_eq!(diagnostic.code, Problem::NotImplemented.code());
     }
 
     #[test]
@@ -453,5 +572,25 @@ END_PROGRAM
         let container = compile(&library).unwrap();
 
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), -5);
+    }
+
+    #[test]
+    fn compile_when_unsupported_statement_then_diagnostic_with_problem_code() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  IF x > 0 THEN
+    x := 1;
+  END_IF;
+END_PROGRAM
+";
+        let library = parse(source);
+        let result = compile(&library);
+
+        assert!(result.is_err());
+        let diagnostic = result.unwrap_err();
+        assert_eq!(diagnostic.code, Problem::NotImplemented.code());
     }
 }
