@@ -35,7 +35,7 @@ export class IplcEditorProvider implements vscode.CustomReadonlyEditorProvider<I
       const ready = await this.waitForClient(5000);
       if (!ready) {
         webviewPanel.webview.html = this.getErrorHtml(
-          'IronPLC compiler not found. Install the compiler to view .iplc files.',
+          'E0002 - IronPLC compiler not found. Install the compiler to view .iplc files.',
         );
         return;
       }
@@ -49,7 +49,7 @@ export class IplcEditorProvider implements vscode.CustomReadonlyEditorProvider<I
     }
     catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      webviewPanel.webview.html = this.getErrorHtml(`Failed to disassemble: ${message}`);
+      webviewPanel.webview.html = this.getErrorHtml(`E0003 - Failed to disassemble .iplc file: ${message}`);
     }
   }
 
