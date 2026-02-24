@@ -117,8 +117,16 @@ CODESYS is the most widely-used IEC 61131-3 development system and provides a us
 
 **Cycle overrun handling:**
 - If a task overruns its cycle time, the next cycle starts immediately when the current one completes
+- If the task has calculated longer than twice the cycle time, lost cycles are discarded and the next start time is the next cycle time in the future
 - A **watchdog timer** per task detects excessive overruns — configurable response (log warning, stop task, stop PLC)
 - Overrun counter is exposed in diagnostics
+
+**Watchdog configuration:**
+- Each task has a configurable watchdog time (ms) and **sensitivity** parameter
+- Sensitivity = 0 or 1: watchdog fires on the first overrun exceeding the watchdog time
+- Sensitivity = N: fires after N consecutive overruns, or if a single cycle exceeds N × watchdog time
+- Default action on watchdog trigger is PLC stop; can be overridden via a `excpt_watchdog` callback
+- In CODESYS V3, the action is configurable in PLC settings (suspend task, raise alarm, restart)
 
 **I/O update model:**
 - Each task has its own I/O update — inputs are read at the start of the task cycle, outputs are written at the end
@@ -165,39 +173,69 @@ Siemens uses **Organization Blocks (OBs)** rather than the IEC 61131-3 task synt
 - Separate "last-good-value" mode vs. "substitute value" mode per output
 - Startup OB for one-time initialization before cyclic execution begins
 
+### B&R Automation Studio (Automation Runtime)
+
+B&R uses the Automation Runtime, a proprietary real-time OS with a distinctive **task class** hierarchy.
+
+**Task types:**
+- **8 task classes** (numbered 1–8), each with a fixed cycle time
+- Task class 1 is highest priority with the shortest cycle time (e.g., 400 µs)
+- Cycle times are hierarchical: each task class's cycle time must be an integer multiple of the next-higher-priority class
+- Multiple programs can be assigned to the same task class
+
+**Scheduling:**
+- Preemptive, priority-based scheduling on the real-time OS
+- Higher-priority task classes always preempt lower-priority ones
+- Within a task class, programs execute sequentially in defined order
+- Synchronized to POWERLINK fieldbus for deterministic I/O timing
+
+**Notable features:**
+- Each task class has a configurable **tolerance** (max overrun before error)
+- The strict hierarchical cycle time ratios prevent jitter accumulation
+- Safety tasks (SIL 3 / PL e) run in a separate certified safety runtime
+
 ### OpenPLC
 
 **Approach:**
 - Single cyclic task model — one main program, one cycle time
+- All POUs are compiled into a single Structured Text program executed within one scan cycle
 - No multi-task support in the open-source runtime
-- Simpler model suitable for soft-real-time applications
+- Simpler model suitable for soft-real-time and educational applications
 
 ### Summary of Industry Features
 
-| Feature | CODESYS | TwinCAT | Siemens S7 | OpenPLC |
-|---------|---------|---------|-----------|---------|
-| Cyclic tasks | Yes | Yes | Yes (OB30+) | 1 only |
-| Event tasks | Yes | Yes | Yes (OB40+) | No |
-| Freewheeling tasks | Yes | No | Yes (OB1) | Yes (default) |
-| Per-task watchdog | Yes | Yes | Yes | Global only |
-| Preemptive scheduling | Optional | Yes | Yes | N/A |
-| Per-task I/O image | Yes | Yes | Yes | N/A |
-| Startup hook | No | No | Yes (OB100) | No |
-| Fault handler tasks | No | No | Yes (OB80+) | No |
-| Task enable/disable | Yes | Yes | No | No |
-| Cycle overrun diagnostics | Yes | Yes | Yes | No |
+| Feature | CODESYS | TwinCAT | Siemens S7 | B&R | OpenPLC |
+|---------|---------|---------|-----------|-----|---------|
+| Cyclic tasks | Yes | Yes | Yes (OB30+) | Yes (8 classes) | 1 only |
+| Event tasks | Yes | Yes | Yes (OB40+) | Yes | No |
+| Freewheeling tasks | Yes | No | Yes (OB1) | Yes (background) | Yes (default) |
+| Per-task watchdog | Yes (sensitivity) | Yes (multiplier) | Yes (scan time) | Yes (tolerance) | No |
+| Preemptive scheduling | Optional | Yes | Yes | Yes | N/A |
+| Per-task I/O image | Yes | Yes | Yes | Yes | N/A |
+| Startup hook | No | No | Yes (OB100) | Yes (init task) | No |
+| Fault handler tasks | No | No | Yes (OB80+) | No | No |
+| Task enable/disable | Yes | Yes | No | No | No |
+| Cycle overrun diagnostics | Yes | Yes | Yes | Yes | No |
+| Min cycle time | ~1 ms | 50 µs | 1 ms | 400 µs | ~10 ms |
+| Priority levels | 32 (0–31) | 31 (1–31) | 29 (1–29) | 8 classes | 1 |
 
 ## Current Architecture Gaps
 
 ### What already exists
 
-The IronPLC **parser and AST** already handle the full IEC 61131-3 configuration syntax:
+The IronPLC **parser and AST** handle most of the IEC 61131-3 configuration syntax:
 
 - `ConfigurationDeclaration` with global variables and resource declarations (`compiler/dsl/src/configuration.rs`)
 - `ResourceDeclaration` with tasks and program configurations
 - `TaskConfiguration` with `name`, `priority` (u32), and `interval` (optional `DurationLiteral`)
 - `ProgramConfiguration` with `task_name`, sources, and sinks
 - Semantic validation that task names referenced by programs actually exist (`compiler/analyzer/src/rule_program_task_definition_exists.rs`)
+
+**Parser gaps:**
+- The `SINGLE` parameter in task initialization is not parsed — only `INTERVAL` and `PRIORITY` are supported
+- The `data_source` rule only supports constants, not global variable references
+- The `INTERVAL` parser panics on non-duration constant types instead of returning a proper error
+- The renderer has a typo: outputs `INTERNAL` instead of `INTERVAL`
 
 ### What is missing
 
@@ -233,7 +271,7 @@ The IronPLC **parser and AST** already handle the full IEC 61131-3 configuration
 
 3. **Isolated program instances** — each program instance gets its own variable table partition. Configuration and resource globals are shared through a separate shared region.
 
-4. **Backward compatible** — containers without task metadata (format version 1) continue to work as a single-program, single-task execution.
+4. **Task table is required** — every container must have a task table section. There are no public users of the current format, so backward compatibility with the single-entry-point container is not a concern. If the source contains bare PROGRAM declarations without a CONFIGURATION wrapper, the compiler synthesizes a default configuration with a single cyclic task.
 
 ### Container Format Changes
 
@@ -271,7 +309,7 @@ Add a **task table section** to the container, between the type section and the 
 | 6 | tasks | [TaskEntry; num_tasks] | Task descriptors |
 | varies | programs | [ProgramInstanceEntry; num_program_instances] | Program instance descriptors |
 
-Each **TaskEntry** (16 bytes):
+Each **TaskEntry** (32 bytes):
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
@@ -281,6 +319,10 @@ Each **TaskEntry** (16 bytes):
 | 5 | flags | u8 | Bit 0: enabled at start. Reserved bits must be zero. |
 | 6 | interval_us | u64 | Cycle interval in microseconds (0 for event/freewheeling tasks) |
 | 14 | single_var_index | u16 | Variable index of SINGLE trigger variable (0xFFFF if not event task) |
+| 16 | watchdog_us | u64 | Watchdog timeout in microseconds (0 = no watchdog) |
+| 24 | input_image_offset | u16 | Reserved for future per-task I/O images (must be 0) |
+| 26 | output_image_offset | u16 | Reserved for future per-task I/O images (must be 0) |
+| 28 | reserved | [u8; 4] | Reserved; must be zero |
 
 Each **ProgramInstanceEntry** (16 bytes):
 
@@ -297,25 +339,20 @@ Each **ProgramInstanceEntry** (16 bytes):
 
 #### Header Changes
 
-Add to the file header (using reserved bytes at offset 226):
+Replace `entry_function_id` and add task table fields to the file header (using reserved bytes at offset 226):
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
-| 226 | task_section_offset | u32 | Offset of task table section (0 if absent) |
+| 226 | task_section_offset | u32 | Offset of task table section |
 | 230 | task_section_size | u32 | Size of task table section |
-| 234 | num_tasks | u16 | Number of tasks (duplicated from task table for fast reject) |
+| 234 | num_tasks | u16 | Number of tasks (duplicated from task table for fast access) |
 | 236 | num_program_instances | u16 | Total program instances |
 | 238 | shared_globals_count | u16 | Variable slots for shared globals |
 | 240 | reserved | [u8; 16] | Remaining reserved bytes |
 
-Add a new flag bit:
-- `flags` bit 3: has task table section
+#### Task Table is Mandatory
 
-#### Backward Compatibility
-
-When `flags` bit 3 is clear (no task table), the VM falls back to the current behavior: `entry_function_id` from the header is the sole program, run on a single implicit cyclic task using the VM-level `scan_interval`. This means existing format version 1 containers work without modification — they just run as a single-task, single-program configuration.
-
-When `flags` bit 3 is set, the VM ignores `entry_function_id` in the header and uses the task table instead.
+The task table section is always present. The `entry_function_id` field in the header is removed; the VM uses the task table to determine what to execute. There are no public users of the current single-entry-point format, so backward compatibility is not a concern.
 
 ### Variable Table Partitioning
 
@@ -445,9 +482,16 @@ This is simpler than per-task I/O images and sufficient for single-threaded coop
 
 #### Watchdog
 
-Each task has its own watchdog timeout. For now, the VM-level `max_scan_time` applies to each task execution individually. If any single task's EXECUTE phase exceeds `max_scan_time`, the VM traps.
+Each task has a per-task watchdog timeout stored in the task table. The watchdog fires when a single task execution exceeds the configured timeout. Industry practice varies on watchdog behavior:
 
-**Future extension:** Per-task watchdog timeouts could be stored in the task table (adding a `watchdog_us` field to `TaskEntry`).
+- **CODESYS**: Configurable sensitivity (N consecutive overruns or single overrun exceeding N × watchdog time)
+- **TwinCAT**: Watchdog = cycle time × configurable multiplier (default 4×)
+- **Siemens**: Scan cycle monitoring time; unhandled violation stops the CPU
+- **B&R**: Per-task-class tolerance (cycle_time + tolerance)
+
+IronPLC uses the simplest model: a single `watchdog_us` timeout per task. If any task's EXECUTE phase exceeds its watchdog timeout, the VM traps. This matches the CODESYS sensitivity=1 behavior (fire on first overrun).
+
+The `TaskEntry` includes a `watchdog_us` field (u64). A value of 0 means no watchdog (the task can run indefinitely). When set, the watchdog time should typically be larger than the task's cycle interval to allow for occasional jitter.
 
 #### Trap Handling
 
@@ -513,7 +557,7 @@ CODESYS and TwinCAT allow tasks to be enabled or disabled at runtime through dia
 
 The compiler's code generation must change from "find first PROGRAM and compile it" to:
 
-1. **Find the CONFIGURATION declaration** (or synthesize one if the source only contains standalone programs — for backward compatibility)
+1. **Find the CONFIGURATION declaration** or synthesize one if the source only contains standalone programs.
 
 2. **For each RESOURCE in the configuration:**
    a. Assign variable indices for configuration globals (shared across all resources)
@@ -526,7 +570,7 @@ The compiler's code generation must change from "find first PROGRAM and compile 
 
 3. **Synthesize a default configuration** when the source contains bare PROGRAM declarations without a CONFIGURATION wrapper:
    ```
-   (* Implicit configuration for backward compatibility *)
+   (* Synthesized by compiler *)
    CONFIGURATION default_config
      RESOURCE default_resource ON default_cpu
        TASK default_task(INTERVAL := T#10ms, PRIORITY := 0);
@@ -534,6 +578,7 @@ The compiler's code generation must change from "find first PROGRAM and compile 
      END_RESOURCE
    END_CONFIGURATION
    ```
+   This ensures every container always has a task table, simplifying the VM.
 
 4. **Variable index assignment** follows the deterministic ordering rules from the container format spec, extended to handle the partitioned layout:
    - Shared globals first (sorted by qualified name)
@@ -552,7 +597,7 @@ Options:
   --continuous           Run until interrupted (Ctrl+C)
 ```
 
-In single-scan mode (`--scans 1`, the default), the scheduler executes one round: all ready tasks run once. This preserves backward compatibility.
+In single-scan mode (`--scans 1`, the default), the scheduler executes one round: all ready tasks run once.
 
 In continuous mode, the scheduler runs its loop indefinitely, respecting task intervals and priorities, until the process receives SIGINT/SIGTERM.
 
@@ -569,13 +614,21 @@ The diagnostic interface should be extended to expose per-task information:
 
 ## Phased Implementation
 
+### Phase 0: Parser and AST Completeness
+
+- Add `SINGLE` parameter to `TaskConfiguration` AST (new `DataSourceKind` type)
+- Parse `SINGLE` in `task_initialization` rule (support both constants and variable references)
+- Fix `INTERVAL` parser panic — return proper error for non-duration types
+- Fix renderer typo (`INTERNAL` → `INTERVAL`) and add `SINGLE` rendering
+- Add semantic rule: task names unique within a resource (P4019)
+
 ### Phase 1: Container Format (task table section)
 
 - Add the task table section to the container format
+- Replace `entry_function_id` with task table — task table is always present
 - Add header fields for task table offset/size
 - Update the container builder to accept task entries
 - Update the container reader to parse task entries
-- Backward-compatible: containers without task table work as before
 
 ### Phase 2: VM Task Scheduler (cyclic tasks only)
 
@@ -590,7 +643,7 @@ The diagnostic interface should be extended to expose per-task information:
 
 - Add event task support (SINGLE variable edge detection)
 - Add freewheeling task support
-- Per-task watchdog timeouts (task table extension)
+- Enable per-task watchdog enforcement (field already in task table from Phase 1)
 
 ### Phase 4: Codegen Integration
 
@@ -605,16 +658,72 @@ The diagnostic interface should be extended to expose per-task information:
 - Add optional `startup_function_id` support
 - Execute once during READY → RUNNING transition
 
-## Open Questions
+## Open Questions (Resolved)
 
-1. **Per-task I/O images vs. shared I/O image.** The initial design uses a shared process image for simplicity. Should we plan the container format to support per-task images from the start (adding fields now even if unused), or defer entirely?
+These questions were identified during design and resolved through comparative research across CODESYS, TwinCAT 3, Siemens S7, B&R Automation Runtime, and OpenPLC.
 
-2. **Task overrun policy.** When a cyclic task can't keep up with its interval, should the VM: (a) skip the missed cycle and schedule at the next interval boundary, (b) execute immediately and let cycles bunch up, or (c) be configurable? The current design uses option (a) with an overrun counter. CODESYS uses option (b) by default.
+### 1. Per-task I/O images vs. shared I/O image
 
-3. **Maximum number of tasks and priority levels.** The current design uses u16 for task_id and priority, allowing 65536 tasks and priority levels. In practice, PLCs have 4–32 tasks. Should we restrict this in the verifier?
+**Decision: Defer per-task images; shared image is sufficient for Phase 1.**
 
-4. **Variable table size limits.** With partitioned variable tables, the total variable count could exceed u16 range for large configurations. Is this a realistic concern, or is u16 sufficient?
+All commercial PLCs (CODESYS, TwinCAT, Siemens, B&R) use per-task I/O images in their full implementations. However, per-task images are primarily important for preemptive scheduling, where a high-priority task could preempt a low-priority task mid-execution and see inconsistent I/O. With cooperative scheduling (Phase 2 of this design), all tasks execute sequentially within a scheduling round, so a shared image is consistent.
 
-5. **Multi-resource support.** This design compiles each resource to a separate container. Should the CLI support loading multiple containers for multi-resource configurations, or is that a host application concern?
+Reserve two u16 fields in `TaskEntry` (using reserved bytes) for future `input_image_offset` and `output_image_offset`, but leave them zero and unused. This avoids a container format version bump when per-task images are added later.
 
-6. **Per-task fault isolation.** Should a fault in one task stop all tasks (current design), or should only the faulting task stop while others continue? The latter is more resilient but more complex (what about shared state consistency?).
+### 2. Task overrun policy
+
+**Decision: Option (a) — skip to next interval boundary — with overrun counter. Configurable behavior deferred.**
+
+Industry approaches vary:
+- **CODESYS**: Restarts the task immediately when the current cycle completes. If the task has calculated longer than twice the cycle time, lost cycles are discarded. The next start time is the next cycle time in the future.
+- **TwinCAT**: The cycle stretches (next cycle is delayed). Persistent overruns trigger the watchdog.
+- **Siemens**: Calls OB80 (time error handler). If OB80 is not programmed, the CPU goes to STOP.
+- **B&R**: Each task class has a tolerance parameter; overruns exceeding cycle_time + tolerance trigger an error.
+
+Option (a) with realignment to the next interval boundary is the safest default: it prevents cycle bunching (which could starve lower-priority tasks) and matches the CODESYS behavior of discarding lost cycles. The overrun counter provides diagnostics. Future phases can add configurable policies.
+
+### 3. Maximum number of tasks and priority levels
+
+**Decision: u16 in the container format, but no verifier restriction initially.**
+
+Industry ranges:
+- **CODESYS**: 32 priority levels (0–31)
+- **TwinCAT**: 31 levels (1–31)
+- **Siemens**: 29 priority classes (1–29)
+- **B&R**: 8 task classes
+
+u16 provides ample headroom. Adding a verifier restriction now would be premature — real-world usage will determine reasonable limits. The u16 container format is correct; if a practical limit is needed later, the analyzer can enforce it.
+
+### 4. Variable table size limits
+
+**Decision: u16 is sufficient; no changes needed.**
+
+65,536 variable slots far exceed the needs of any practical PLC configuration. Even industrial applications with hundreds of I/O points and dozens of program instances are unlikely to approach this limit. If exceeded in the future, the container format version can be bumped.
+
+### 5. Multi-resource support
+
+**Decision: One container per resource is correct. Multi-container loading is a host application concern.**
+
+This matches industry practice:
+- **TwinCAT**: Tasks run on isolated CPU cores; each core is effectively a separate execution environment.
+- **B&R**: The Automation Runtime is a single-resource RTOS per controller.
+- **Siemens**: Each CPU runs a single program/resource.
+
+The CLI can run one container at a time (`ironplcvm run`). For multi-resource configurations, a host application or orchestrator would launch multiple VM instances, one per container. This keeps the VM simple and self-contained.
+
+### 6. Per-task fault isolation
+
+**Decision: Fault stops all tasks (current design). Per-task isolation deferred.**
+
+Industry precedent:
+- **Siemens**: Unhandled faults stop the CPU entirely (all OBs). This is the safest default.
+- **CODESYS**: Watchdog violations stop the PLC by default; a callback can override this.
+- **B&R**: Configurable per task class, but the default is to stop the controller.
+
+Per-task fault isolation introduces shared-state consistency risks: if task A faults after writing half of a shared data structure, task B may read inconsistent data. The safe default is to stop all tasks. Per-task isolation can be added later as an opt-in feature for applications that explicitly manage shared state.
+
+## Remaining Open Questions
+
+1. **SINGLE data source type.** The IEC 61131-3 grammar defines `data_source` as `constant | global_var_reference`. The parser currently only supports constants for data sources. Should SINGLE accept variable references (the common use case for event tasks) in the initial implementation, or defer to a future parser extension?
+
+2. **Default task for unassociated programs.** When a PROGRAM is declared without a WITH clause, should the compiler synthesize a freewheeling task, or should this be an error? CODESYS creates an implicit freewheeling task; Siemens requires explicit OB association.
