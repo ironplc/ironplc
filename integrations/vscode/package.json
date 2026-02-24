@@ -141,6 +141,30 @@
         "embeddedLanguages": {
           "meta.embedded.block.st": "61131-3-st"
         }
+      },
+      {
+        "language": "twincat-pou",
+        "scopeName": "source.plcopen-xml",
+        "path": "./syntaxes/plcopen-xml.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.st": "61131-3-st"
+        }
+      },
+      {
+        "language": "twincat-gvl",
+        "scopeName": "source.plcopen-xml",
+        "path": "./syntaxes/plcopen-xml.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.st": "61131-3-st"
+        }
+      },
+      {
+        "language": "twincat-dut",
+        "scopeName": "source.plcopen-xml",
+        "path": "./syntaxes/plcopen-xml.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.st": "61131-3-st"
+        }
       }
     ],
     "customEditors": [
@@ -170,7 +194,8 @@
     "test:unit": "c8 --check-coverage --lines 80 --include 'out/*.js' mocha --ui tdd 'out/test/unit/**/*.test.js'",
     "test:functional": "node ./out/test/functional/runTest.js",
     "test:grammar": "vscode-tmgrammar-snap -s source.plcopen-xml \"tests/grammar/snap/**/*.xml\" && vscode-tmgrammar-snap \"tests/grammar/snap/**/*.st\"",
-    "test:grammar:update": "vscode-tmgrammar-snap -u -s source.plcopen-xml \"tests/grammar/snap/**/*.xml\" && vscode-tmgrammar-snap -u \"tests/grammar/snap/**/*.st\""
+    "test:grammar:update": "vscode-tmgrammar-snap -u -s source.plcopen-xml \"tests/grammar/snap/**/*.xml\" && vscode-tmgrammar-snap -u \"tests/grammar/snap/**/*.st\"",
+    "check-invariants": "node out/test/checkInvariants.js"
   },
   "devDependencies": {
     "vscode-tmgrammar-test": "^0.1.3",
