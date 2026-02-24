@@ -56,12 +56,12 @@ _package-windows version filename target:
 
 _package-macos version filename target:
   cargo build --release --target {{target}}
-  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc
+  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm
   shasum -a 256 {{filename}} > {{filename}}.sha256
 
 _package-linux version filename target:
   cargo build --release --target {{target}}
-  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc
+  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm
   sha256sum {{filename}} > {{filename}}.sha256
 
 # Builds the Homebrew repository to release for Mac and Linux

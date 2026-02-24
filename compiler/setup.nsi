@@ -31,6 +31,7 @@
 ; considering integrations.
 !define NAME "IronPLC Compiler"
 !define APPFILE "ironplcc${EXTENSION}"
+!define VMFILE "ironplcvm${EXTENSION}"
 !define SLUG "${NAME} v${VERSION}"
 !define REGPATH_APPPATHSUBKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}"
 !define REGPATH_UNINSTSUBKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NAME}"
@@ -87,7 +88,8 @@ Section "Program files"
     File "..\LICENSE" 
 
     SetOutPath "$INSTDIR\bin"
-    File "${ARTIFACTSDIR}\${APPFILE}" 
+    File "${ARTIFACTSDIR}\${APPFILE}"
+    File "${ARTIFACTSDIR}\${VMFILE}"
 
     SetOutPath "$INSTDIR\examples"
     File "..\examples\getting_started.st"
