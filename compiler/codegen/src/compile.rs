@@ -404,6 +404,10 @@ END_PROGRAM
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.header.num_functions, 1);
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), 10);
+
+        // LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0, RET_VOID
+        let bytecode = container.code.get_function_bytecode(0).unwrap();
+        assert_eq!(bytecode, &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00, 0xB5]);
     }
 
     #[test]
@@ -424,6 +428,23 @@ END_PROGRAM
         assert_eq!(container.header.num_variables, 2);
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), 10);
         assert_eq!(container.constant_pool.get_i32(1).unwrap(), 32);
+
+        // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
+        // y := x + 32: LOAD_VAR_I32 var:0, LOAD_CONST_I32 pool:1, ADD_I32, STORE_VAR_I32 var:1
+        // RET_VOID
+        let bytecode = container.code.get_function_bytecode(0).unwrap();
+        assert_eq!(
+            bytecode,
+            &[
+                0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0
+                0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
+                0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
+                0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1
+                0x30, // ADD_I32
+                0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+                0xB5, // RET_VOID
+            ]
+        );
     }
 
     #[test]
@@ -498,6 +519,21 @@ END_PROGRAM
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), 1);
         assert_eq!(container.constant_pool.get_i32(1).unwrap(), 2);
         assert_eq!(container.constant_pool.get_i32(2).unwrap(), 3);
+
+        // (1 + 2) + 3: left-associative evaluation
+        let bytecode = container.code.get_function_bytecode(0).unwrap();
+        assert_eq!(
+            bytecode,
+            &[
+                0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
+                0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (2)
+                0x30, // ADD_I32
+                0x01, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (3)
+                0x30, // ADD_I32
+                0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
+                0xB5, // RET_VOID
+            ]
+        );
     }
 
     #[test]
@@ -517,6 +553,21 @@ END_PROGRAM
 
         assert_eq!(container.header.num_variables, 2);
         assert_eq!(container.header.num_functions, 1);
+
+        // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
+        // y := x:  LOAD_VAR_I32 var:0, STORE_VAR_I32 var:1
+        // RET_VOID
+        let bytecode = container.code.get_function_bytecode(0).unwrap();
+        assert_eq!(
+            bytecode,
+            &[
+                0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0
+                0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
+                0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
+                0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+                0xB5, // RET_VOID
+            ]
+        );
     }
 
     #[test]
@@ -533,6 +584,10 @@ END_PROGRAM
         let container = compile(&library).unwrap();
 
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), -5);
+
+        // LOAD_CONST_I32 pool:0 (-5), STORE_VAR_I32 var:0, RET_VOID
+        let bytecode = container.code.get_function_bytecode(0).unwrap();
+        assert_eq!(bytecode, &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00, 0xB5]);
     }
 
     #[test]
