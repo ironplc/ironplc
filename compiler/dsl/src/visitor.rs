@@ -308,6 +308,9 @@ pub trait Visitor<E> {
     // 2.7.2
     dispatch!(SymbolicAccessPath);
 
+    // 2.7.1
+    dispatch!(DataSourceKind);
+
     // 2.7.2
     dispatch!(TaskConfiguration);
 

@@ -735,6 +735,7 @@ fn transform_task(task: &Task, file_id: &FileId) -> Result<TaskConfiguration, Di
         name,
         priority,
         interval,
+        single: None,
     })
 }
 

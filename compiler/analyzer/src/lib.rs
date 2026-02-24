@@ -15,6 +15,7 @@ mod rule_function_call_declared;
 mod rule_pou_hierarchy;
 mod rule_program_task_definition_exists;
 mod rule_stdlib_type_redefinition;
+mod rule_task_names_unique;
 mod rule_unsupported_stdlib_type;
 mod rule_use_declared_enumerated_value;
 mod rule_use_declared_symbolic_var;
