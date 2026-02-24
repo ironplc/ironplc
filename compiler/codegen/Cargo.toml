@@ -1,0 +1,17 @@
+[package]
+name = "ironplc-codegen"
+description = "Bytecode code generator for IronPLC"
+version = "0.158.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ironplc-dsl = { path = "../dsl", version = "0.158.0" }
+ironplc-container = { path = "../container", version = "0.158.0" }
+ironplc-problems = { path = "../problems", version = "0.158.0" }
+
+[dev-dependencies]
+ironplc-parser = { path = "../parser", version = "0.158.0" }
+ironplc-vm = { path = "../vm", version = "0.158.0" }
