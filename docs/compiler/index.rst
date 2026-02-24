@@ -14,4 +14,4 @@ This chapter describes how to use the command line interface.
 
    Basic Usage <basicusage>
    Source Formats <source-formats/index>
-   Problems <problems/index>
+   Problem Code Index <problems/index>

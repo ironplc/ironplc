@@ -10,4 +10,4 @@ Code.
 
    Overview <overview>
    Settings <settings>
-   Problem Codes <problems/index>
+   Problem Code Index <problems/index>
