@@ -4,6 +4,19 @@ import {
   DisassemblyFunction,
   DisassemblyResult,
 } from '../../iplcRendering';
+import { LanguageClientLike, STATE_RUNNING, STATE_STOPPED } from '../../iplcEditorLogic';
+
+// Re-export state constants for test use.
+export { STATE_RUNNING, STATE_STOPPED };
+
+export function createMockClient(overrides?: Partial<LanguageClientLike>): LanguageClientLike {
+  return {
+    isRunning: () => true,
+    sendRequest: () => Promise.resolve(createTestDisassemblyResult()),
+    onDidChangeState: () => ({ dispose: () => {} }),
+    ...overrides,
+  };
+}
 
 export function createTestHeader(overrides?: Partial<DisassemblyHeader>): DisassemblyHeader {
   return {
