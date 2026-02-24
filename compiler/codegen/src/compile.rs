@@ -279,9 +279,11 @@ fn compile_expr(
             file!(),
             line!(),
         )),
-        ExprKind::EnumeratedValue(enum_val) => {
-            Err(Diagnostic::todo_with_span(enum_val.span(), file!(), line!()))
-        }
+        ExprKind::EnumeratedValue(enum_val) => Err(Diagnostic::todo_with_span(
+            enum_val.span(),
+            file!(),
+            line!(),
+        )),
         ExprKind::Function(func) => Err(Diagnostic::todo_with_span(
             func.name.span(),
             file!(),
