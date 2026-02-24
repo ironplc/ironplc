@@ -95,10 +95,14 @@ jobs:
           # Bump the suffix (v1 -> v2, etc.) to force a fresh NSIS install
           key: ${{ runner.os }}-nsis-v1
       - name: Install NSIS
-        if: ${{ matrix.os == 'windows-2025' && steps.cache-nsis.outputs.cache-hit != 'true' }}
+        if: ${{ matrix.os == 'windows-2025' }}
         shell: powershell
         run: |
-          choco install nsis --no-progress
+          if (-not (Test-Path "C:\Program Files (x86)\NSIS\Bin\makensis.exe")) {
+            choco install nsis --no-progress
+          } else {
+            Write-Host "NSIS restored from cache"
+          }
         
       # Execute build recipe
       - name: Build the Compiler
