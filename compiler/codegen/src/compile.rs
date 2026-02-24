@@ -16,7 +16,7 @@ use ironplc_container::{Container, ContainerBuilder};
 use ironplc_dsl::common::{
     ConstantKind, FunctionBlockBodyKind, Library, LibraryElementKind, ProgramDeclaration, VarDecl,
 };
-use ironplc_dsl::core::{Located, SourceSpan};
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     ExprKind, Operator, Statements, StmtKind, SymbolicVariableKind, UnaryOp, Variable,
@@ -79,8 +79,8 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
 
 /// Tracks state during compilation of a single program.
 struct CompileContext {
-    /// Maps variable names (lowercase) to their variable table indices.
-    variables: HashMap<String, u16>,
+    /// Maps variable identifiers to their variable table indices.
+    variables: HashMap<Id, u16>,
     /// Ordered list of i32 constants added to the constant pool.
     constants: Vec<i32>,
 }
@@ -93,18 +93,15 @@ impl CompileContext {
         }
     }
 
-    /// Looks up a variable index by name, using the provided span for error reporting.
-    fn var_index(&self, name: &str, span: SourceSpan) -> Result<u16, Diagnostic> {
-        self.variables
-            .get(&name.to_lowercase())
-            .copied()
-            .ok_or_else(|| {
-                Diagnostic::problem(
-                    Problem::VariableUndefined,
-                    Label::span(span, "Variable reference"),
-                )
-                .with_context("variable", &name.to_string())
-            })
+    /// Looks up a variable index by identifier, using the provided span for error reporting.
+    fn var_index(&self, name: &Id) -> Result<u16, Diagnostic> {
+        self.variables.get(name).copied().ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::VariableUndefined,
+                Label::span(name.span(), "Variable reference"),
+            )
+            .with_context("variable", &name.to_string())
+        })
     }
 
     /// Adds an i32 constant to the pool and returns its index.
@@ -124,9 +121,10 @@ impl CompileContext {
 /// Assigns variable table indices for all variable declarations.
 fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Result<(), Diagnostic> {
     for decl in declarations {
-        let name = decl.identifier.to_string().to_lowercase();
-        let index = ctx.variables.len() as u16;
-        ctx.variables.insert(name, index);
+        if let Some(id) = decl.identifier.symbolic_id() {
+            let index = ctx.variables.len() as u16;
+            ctx.variables.insert(id.clone(), index);
+        }
     }
     Ok(())
 }
@@ -271,8 +269,7 @@ fn compile_expr(
             // Without the analyzer pass, variable references on the RHS
             // of assignments appear as LateBound. Treat them as variable
             // references.
-            let name = late_bound.value.to_string();
-            let var_index = ctx.var_index(&name, late_bound.value.span())?;
+            let var_index = ctx.var_index(&late_bound.value)?;
             emitter.emit_load_var_i32(var_index);
             Ok(())
         }
@@ -340,9 +337,7 @@ fn compile_constant(
 fn resolve_variable(ctx: &CompileContext, variable: &Variable) -> Result<u16, Diagnostic> {
     match variable {
         Variable::Symbolic(symbolic) => match symbolic {
-            SymbolicVariableKind::Named(named) => {
-                ctx.var_index(&named.name.to_string(), named.span())
-            }
+            SymbolicVariableKind::Named(named) => ctx.var_index(&named.name),
             SymbolicVariableKind::Array(array) => {
                 Err(Diagnostic::todo_with_span(array.span(), file!(), line!()))
             }

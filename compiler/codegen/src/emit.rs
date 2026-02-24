@@ -1,16 +1,8 @@
 //! Low-level bytecode emitter.
 //!
 //! Provides a builder that appends opcodes and operands to a byte buffer.
-//! The opcodes match those defined in `compiler/vm/src/opcode.rs`.
 
-/// Opcode constants matching the VM.
-pub mod opcode {
-    pub const LOAD_CONST_I32: u8 = 0x01;
-    pub const LOAD_VAR_I32: u8 = 0x10;
-    pub const STORE_VAR_I32: u8 = 0x18;
-    pub const ADD_I32: u8 = 0x30;
-    pub const RET_VOID: u8 = 0xB5;
-}
+use ironplc_container::opcode;
 
 /// Accumulates bytecode instructions.
 pub struct Emitter {

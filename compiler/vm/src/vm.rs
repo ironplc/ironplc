@@ -1,7 +1,7 @@
 use ironplc_container::Container;
 
 use crate::error::Trap;
-use crate::opcode;
+use ironplc_container::opcode;
 use crate::stack::OperandStack;
 use crate::value::Slot;
 use crate::variable_table::VariableTable;
