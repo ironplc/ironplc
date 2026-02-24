@@ -5,6 +5,7 @@ default: compile lint
 # The primary set of tasks for continuous integration validation.
 ci:
   just compile
+  just check-invariants
   just lint
   just test-grammar
   just test-unit
@@ -36,6 +37,10 @@ _test-linux:
 # Check the code for compliance with style (lint) rules.
 lint:
   npm run lint
+
+# Verify that all declared capabilities have test coverage.
+check-invariants:
+  npm run check-invariants
 
 # Run unit tests with coverage enforcement.
 test-unit:

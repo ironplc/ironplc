@@ -7,6 +7,7 @@ import {
   STATE_STOPPED,
 } from './testHelpers';
 
+// Tests for the logic behind the ironplc.iplcViewer custom editor.
 suite('waitForClient', () => {
   test('waitForClient_when_already_running_then_resolves_true_immediately', async () => {
     const client = createMockClient({ isRunning: () => true });
