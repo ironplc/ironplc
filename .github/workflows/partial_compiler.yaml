@@ -86,8 +86,16 @@ jobs:
           # Include target triple in cache key for cross-compilation
           key: ${{ matrix.rust_target }}
       - uses: taiki-e/install-action@cargo-llvm-cov
-      - name: Install NSIS
+      - name: Cache NSIS
         if: ${{ matrix.os == 'windows-2025' }}
+        id: cache-nsis
+        uses: actions/cache@v4
+        with:
+          path: 'C:\Program Files (x86)\NSIS'
+          # Bump the suffix (v1 -> v2, etc.) to force a fresh NSIS install
+          key: ${{ runner.os }}-nsis-v1
+      - name: Install NSIS
+        if: ${{ matrix.os == 'windows-2025' && steps.cache-nsis.outputs.cache-hit != 'true' }}
         shell: powershell
         run: |
           choco install nsis --no-progress
