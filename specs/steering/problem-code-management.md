@@ -1,13 +1,22 @@
 # Problem Code Management
 
-This steering file provides specific guidance for managing problem codes in the IronPLC compiler. It applies when working with files in the `compiler/problems/` directory or when adding new error handling.
+This steering file provides specific guidance for managing problem codes in IronPLC. It applies when working with error handling in the compiler or the VS Code extension.
 
 > **Note**: This file covers the technical implementation of error handling. For general development workflow and build processes, see [CONTRIBUTING.md](../../CONTRIBUTING.md).
+
+## Fundamental Rule
+
+**Every user-facing error message MUST have a unique problem code.** This applies to all components — the compiler, the VS Code extension, and any other tooling. Error codes allow users to look up documentation, search for solutions, and report issues precisely. Never display an error to the user without an associated code.
+
+- **Compiler errors** use the `P####` prefix (e.g., P2016)
+- **VS Code extension errors** use the `E####` prefix (e.g., E0001)
 
 ## Applies To
 
 This guidance is particularly relevant when working with:
 - Files in `compiler/problems/*`
+- Files in `integrations/vscode/src/*` (extension error handling)
+- Files in `integrations/vscode/resources/problem-codes.csv`
 
 ## Problem Code Lifecycle
 
@@ -68,25 +77,74 @@ To fix this error, [specific guidance]:
 
 ## Problem Code Categories
 
-### Parsing Errors (P0001-P1999)
+### Compiler Problem Codes (P-prefix)
+
+#### Parsing Errors (P0001-P1999)
 - Syntax errors, unexpected tokens, malformed input
 - Examples: P0001 (OpenComment), P0002 (SyntaxError)
 
-### Type System Errors (P2000-P3999)
+#### Type System Errors (P2000-P3999)
 - Type declaration issues, type compatibility problems
 - Examples: P2002 (SubrangeMinStrictlyLessMax), P2016 (SubrangeOutOfBounds)
 
-### Semantic Analysis Errors (P4000-P5999)
+#### Semantic Analysis Errors (P4000-P5999)
 - Variable scoping, function calls, semantic validation
 - Examples: P4007 (VariableUndefined), P4012 (FunctionBlockNotInScope)
 
-### File System Errors (P6000-P7999)
+#### File System Errors (P6000-P7999)
 - File I/O, path resolution, encoding issues
 - Examples: P6001 (CannotCanonicalizePath), P6004 (CannotReadFile)
 
-### Internal Errors (P9000+)
+#### Internal Errors (P9000+)
 - Compiler bugs and unimplemented features
 - Examples: P9998 (InternalError), P9999 (NotImplemented)
+
+### VS Code Extension Error Codes (E-prefix)
+
+Extension errors use the `E####` format and are tracked separately from compiler problem codes.
+
+- **Registry**: `integrations/vscode/resources/problem-codes.csv`
+- **Documentation**: `docs/vscode/problems/E####.rst`
+- **Index**: `docs/vscode/problems/index.rst`
+
+#### Adding New Extension Error Codes
+
+1. **Choose the next available code**: Use the next sequential E#### number
+2. **Add to CSV**: Update `integrations/vscode/resources/problem-codes.csv`
+3. **Create documentation**: Add `docs/vscode/problems/E####.rst`
+4. **Update index**: Add the new entry to `docs/vscode/problems/index.rst`
+5. **Use the code in the error message**: Prefix user-facing messages with the code (e.g., `'E0002 - ...'`)
+
+#### Extension Error Message Pattern
+
+Error messages displayed to the user must include the code prefix:
+
+```typescript
+// In VS Code notification messages:
+vscode.window.showErrorMessage('E0001 - Unable to locate IronPLC compiler. ...');
+
+// In webview HTML error displays:
+this.getErrorHtml('E0002 - IronPLC compiler not found. ...');
+```
+
+#### Extension Error Documentation Template
+
+Create `docs/vscode/problems/E####.rst`:
+
+```rst
+=====
+E####
+=====
+
+.. problem-summary:: E####
+
+[Clear description of when this error occurs]
+
+**Solutions**:
+
+1. [First solution with clear steps]
+2. [Additional solutions]
+```
 
 ## Implementation Patterns
 
@@ -211,7 +269,9 @@ Problem codes are part of the public API:
 
 ## Quality Checklist
 
-Before adding a new problem code:
+### Compiler Problem Codes (P-prefix)
+
+Before adding a new compiler problem code:
 
 - [ ] Code follows P#### format
 - [ ] Name is descriptive and follows PascalCase
@@ -222,6 +282,17 @@ Before adding a new problem code:
 - [ ] Test exists that verifies the error is generated
 - [ ] Test verifies the correct problem code is returned
 - [ ] Build passes with new problem code
+
+### Extension Error Codes (E-prefix)
+
+Before adding a new extension error code:
+
+- [ ] Code follows E#### format
+- [ ] Added to `integrations/vscode/resources/problem-codes.csv`
+- [ ] Documentation file created in `docs/vscode/problems/E####.rst`
+- [ ] Added to `docs/vscode/problems/index.rst`
+- [ ] Error message in code is prefixed with the code (e.g., `'E0002 - ...'`)
+- [ ] Documentation describes the error condition and solutions
 
 ## Common Patterns
 

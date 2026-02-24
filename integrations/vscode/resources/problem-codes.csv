@@ -1,2 +1,4 @@
 Code,Name,Message
 E0001,NoCompiler,Unable to locate IronPLC compiler
+E0002,ViewerCompilerNotFound,IronPLC compiler not found when opening .iplc file
+E0003,DisassemblyFailed,Failed to disassemble .iplc bytecode file
