@@ -6,6 +6,7 @@ mod constant_pool;
 mod container;
 mod error;
 mod header;
+pub mod opcode;
 
 pub use builder::ContainerBuilder;
 pub use code_section::{CodeSection, FuncEntry};
