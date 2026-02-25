@@ -51,6 +51,7 @@ P4015,StdlibTypeRedefinition,User-defined type has the same name as a standard l
 P4016,FunctionDeclNameDuplicated,Function declaration name is duplicated
 P4017,FunctionCallUndeclared,Function is not declared
 P4018,FunctionCallWrongArgCount,Function call has wrong number of arguments
+P4019,DuplicateTaskName,Task name is duplicated within a resource
 P6001,CannotCanonicalizePath,Unable to canonicalize the path
 P6002,CannotReadMetadata,Unable to read metadata for the path
 P6003,CannotReadDirectory,Unable to read directory

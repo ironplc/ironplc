@@ -1236,22 +1236,26 @@ parser! {
       TaskConfiguration {
         name,
         priority: init.0,
-        // TODO This needs to set the interval
         interval: init.1,
+        single: init.2,
       }
     }
     rule task_name() -> Id = identifier()
-    // TODO add single and interval
-    pub rule task_initialization() -> (u32, Option<DurationLiteral>) = tok(TokenType::LeftParen) _ interval:task_initialization_interval()? _ priority:task_initialization_priority() _ tok(TokenType::RightParen) { (priority, interval) }
-    rule task_initialization_interval() -> DurationLiteral = id_eq("INTERVAL") _ tok(TokenType::Assignment) _ source:data_source() _ tok(TokenType::Comma) {
-      // TODO The interval may not necessarily be a duration, but for now, only support Duration types
+    pub rule task_initialization() -> (u32, Option<DurationLiteral>, Option<DataSourceKind>) = tok(TokenType::LeftParen) _ single:task_initialization_single()? _ interval:task_initialization_interval()? _ priority:task_initialization_priority() _ tok(TokenType::RightParen) { (priority, interval, single) }
+    rule task_initialization_single() -> DataSourceKind = id_eq("SINGLE") _ tok(TokenType::Assignment) _ source:data_source_kind() _ tok(TokenType::Comma) { source }
+    rule task_initialization_interval() -> DurationLiteral = id_eq("INTERVAL") _ tok(TokenType::Assignment) _ source:data_source_kind() _ tok(TokenType::Comma) {?
       match source {
-        ConstantKind::Duration(duration) => duration,
-        _ => panic!("Only supporting Duration types for now"),
+        DataSourceKind::Constant(ConstantKind::Duration(duration)) => Ok(duration),
+        _ => Err("duration literal for INTERVAL"),
       }
      }
-    rule task_initialization_priority() -> u32 = id_eq("PRIORITY") _ tok(TokenType::Assignment) _ i:integer() {? i.value.try_into().map_err(|e| "priority") }
-    // TODO there are more here, but only supporting Constant for now
+    rule task_initialization_priority() -> u32 = id_eq("PRIORITY") _ tok(TokenType::Assignment) _ i:integer() {? i.value.try_into().map_err(|_e| "priority") }
+    /// Parses a data source, which is either a constant or a global variable reference.
+    /// See IEC 61131-3 production rule `data_source`.
+    pub rule data_source_kind() -> DataSourceKind =
+      constant:constant() { DataSourceKind::Constant(constant) }
+      / gvr:global_var_reference() { DataSourceKind::GlobalVarReference(gvr) }
+    // Keep for backward compatibility with existing callers
     pub rule data_source() -> ConstantKind = constant:constant() { constant }
     pub rule program_configuration() -> ProgramConfiguration = tok(TokenType::Program) _ storage:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ name:program_name() task_name:( _ tok(TokenType::With) _ t:task_name() { t })? _ tok(TokenType::Colon) _ pt:program_type_name() elements:(_ tok(TokenType::LeftParen) _ e:prog_conf_elements() _ tok(TokenType::RightParen) { e })? {
       let mut sources: Vec<ProgramConnectionSource> = Vec::new();

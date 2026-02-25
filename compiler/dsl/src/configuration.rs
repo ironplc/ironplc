@@ -122,17 +122,31 @@ pub enum Direction {
     ReadOnly,
 }
 
+/// The data source for a task initialization parameter.
+///
+/// The IEC 61131-3 grammar defines `data_source` as `constant | global_var_reference`.
+/// This enum represents both possibilities.
+///
+/// See section 2.7.1.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub enum DataSourceKind {
+    Constant(ConstantKind),
+    GlobalVarReference(GlobalVarReference),
+}
+
 /// Task configuration.
 ///
-/// See section 2.7.2.
+/// See section 2.7.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct TaskConfiguration {
     pub name: Id,
     #[recurse(ignore)]
     pub priority: u32,
-    // TODO this might not be optional
     #[recurse(ignore)]
     pub interval: Option<DurationLiteral>,
+    /// The SINGLE parameter for event-triggered tasks.
+    /// References a boolean variable whose rising edge triggers execution.
+    pub single: Option<DataSourceKind>,
 }
 
 #[derive(Clone, Debug, PartialEq, Recurse)]
