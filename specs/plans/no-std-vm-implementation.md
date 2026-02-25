@@ -4,6 +4,8 @@
 
 This spec defines the implementation plan for making the `ironplc-vm` and `ironplc-container` crates compile under `no_std`, enabling deployment on Arduino and other bare-metal microcontroller targets.
 
+The core strategy is **two separate crates** instead of feature flags: `ironplc-vm` is always `#![no_std]` (the execution engine), and a new `ironplc-vm-cli` crate provides the desktop CLI binary with `std`. This makes the `no_std` constraint structural — if `ironplc-vm` compiles, it works on embedded targets. No conditional compilation in the VM.
+
 This spec implements the decision in:
 
 - **[ADR-0010: no_std VM for Embedded Targets](../adrs/0010-no-std-vm-for-embedded-targets.md)**: The architectural decision to support `no_std` without `alloc`
@@ -12,14 +14,15 @@ This spec builds on:
 
 - **[Bytecode Container Format](bytecode-container-format.md)**: The container format that needs a zero-copy parsing path
 - **[Runtime Execution Model](runtime-execution-model.md)**: The VM lifecycle that must work with borrowed data
-- **[VM CLI](vm-cli.md)**: The CLI binary that will be gated behind the `std` feature
+- **[VM CLI](vm-cli.md)**: The CLI binary that moves to the `ironplc-vm-cli` crate
 
 ## Design Goals
 
-1. **Zero external dependencies in embedded builds** — the `no_std` build of `ironplc-vm` depends only on `ironplc-container` (itself `no_std`)
+1. **Zero external dependencies in embedded builds** — `ironplc-vm` depends only on `ironplc-container` (no_std) and `log`
 2. **Zero-copy container loading** — bytecode is parsed in place from a `&[u8]` slice; no intermediate copies or heap buffers
 3. **Fully deterministic memory** — all allocation sizes are known from the container header; no heap, no fragmentation
-4. **No change for desktop users** — `default = ["std"]` preserves the current API and behavior
+4. **No conditional compilation in the VM** — two crates replace feature flags; each crate is unconditionally `no_std` or `std`
+5. **CI-verified on every build** — a bare-metal build target in the justfile ensures the `no_std` constraint is never accidentally broken
 
 ## Current `std` Dependency Inventory
 
@@ -139,11 +142,49 @@ mod container;
 // ...
 ```
 
-## Phase 2: VM Execution Core
+## Phase 2: Split VM into Two Crates
+
+Instead of feature flags, the VM becomes two crates. `ironplc-vm` is always `#![no_std]` — no conditional compilation. A new `ironplc-vm-cli` crate provides the desktop CLI binary with full `std`.
+
+### `ironplc-vm` — the no_std execution engine
+
+This crate contains the core VM and nothing else. It is unconditionally `#![no_std]`.
+
+**`lib.rs`:**
+
+```rust
+#![no_std]
+
+pub mod error;
+pub(crate) mod stack;
+pub(crate) mod value;
+pub(crate) mod variable_table;
+mod vm;
+
+pub use error::Trap;
+pub use value::Slot;
+pub use vm::{Vm, VmReady, VmRunning};
+```
+
+No `#[cfg]` gates. No optional dependencies. Every module is always compiled.
+
+**`Cargo.toml`:**
+
+```toml
+[package]
+name = "ironplc-vm"
+# ...
+
+[dependencies]
+ironplc-container = { path = "../container", default-features = false }
+log = "0.4.20"
+```
+
+No `[features]` section at all. The dependency on `ironplc-container` uses `default-features = false` to get only the no_std subset.
 
 ### Replace `Vec<Slot>` with caller-provided slices
 
-Rather than const generics (which propagate through the type signatures of `Vm`, `VmReady`, `VmRunning`), the VM accepts `&mut [Slot]` slices for the stack and variable table. The caller is responsible for allocation — on desktop this is a `Vec`, on embedded this is a stack-allocated or static array.
+The VM accepts `&mut [Slot]` slices for the stack and variable table. The caller is responsible for allocation — on desktop this is a `Vec`, on embedded this is a stack-allocated or static array.
 
 **`OperandStack`:**
 
@@ -205,11 +246,82 @@ impl Vm {
 }
 ```
 
-On desktop (with `std`), a convenience wrapper can allocate `Vec<Slot>` buffers from the header sizes.
+### Error types
 
-### Gate CLI modules
+`core::fmt::Display` is available in `no_std`. `std::error::Error` is not needed in the VM crate at all — it lives in the CLI crate if required:
 
-In `ironplc-vm/src/lib.rs`:
+```rust
+use core::fmt;
+
+impl fmt::Display for Trap { ... }
+```
+
+### `ironplc-vm-cli` — the desktop CLI binary
+
+A new crate at `compiler/vm-cli/` that provides the `ironplcvm` binary. This is a normal `std` crate with no conditional compilation.
+
+**`Cargo.toml`:**
+
+```toml
+[package]
+name = "ironplc-vm-cli"
+# ...
+
+[[bin]]
+name = "ironplcvm"
+path = "src/main.rs"
+
+[dependencies]
+ironplc-vm = { path = "../vm" }
+ironplc-container = { path = "../container" }
+clap = { version = "4.0", features = ["derive", "wrap_help"] }
+env_logger = "0.10.0"
+log = "0.4.20"
+time = "0.3.17"
+```
+
+All dependencies are unconditional. No `[features]` section.
+
+**Contents:** move the existing `cli.rs`, `logger.rs`, and `bin/main.rs` from `ironplc-vm` into this crate. Add convenience wrappers that load a container from a file and allocate `Vec<Slot>` buffers from the header sizes.
+
+### Workspace update
+
+Add the new crate to `compiler/Cargo.toml`:
+
+```toml
+[workspace]
+members = [
+    # ... existing members ...
+    "vm-cli",
+]
+```
+
+## Phase 3: Container Crate Feature Flags
+
+The container crate still uses feature flags because it serves two roles: the compiler writes containers (needs `std::io`, `Vec`), and the VM reads them (needs only `no_std`). This is a clean, contained split.
+
+### `ironplc-container/Cargo.toml`
+
+```toml
+[features]
+default = ["std"]
+std = []
+```
+
+### Gate existing I/O behind `std`
+
+Wrap the following with `#[cfg(feature = "std")]`:
+
+- `Container::read_from(impl Read)`
+- `Container::write_to(impl Write)`
+- `FileHeader::read_from(impl Read)` / `write_to(impl Write)`
+- `CodeSection::read_from(impl Read)` / `write_to(impl Write)`
+- `ConstantPool::read_from(impl Read)` / `write_to(impl Write)`
+- `ContainerBuilder` (uses `Vec` internally; only needed by compiler)
+- `ContainerError::Io(io::Error)` variant and `From<io::Error>` impl
+- `impl std::error::Error for ContainerError`
+
+### Container crate `lib.rs` changes
 
 ```rust
 #![no_std]
@@ -218,82 +330,23 @@ In `ironplc-vm/src/lib.rs`:
 extern crate std;
 
 #[cfg(feature = "std")]
-pub mod cli;
+extern crate alloc;
+
+// Always available (no_std)
+pub mod opcode;
+mod container_ref;
+mod header;
+// ...
+
+// Only with std
 #[cfg(feature = "std")]
-pub mod logger;
-
-pub mod error;
-pub(crate) mod stack;
-pub(crate) mod value;
-pub(crate) mod variable_table;
-mod vm;
-```
-
-### Error types
-
-`core::fmt::Display` is available in `no_std`. Gate only `std::error::Error`:
-
-```rust
-use core::fmt;
-
-impl fmt::Display for Trap { ... }
-
+mod builder;
 #[cfg(feature = "std")]
-impl std::error::Error for Trap {}
+mod container;
+// ...
 ```
 
-Same pattern for `ContainerError`.
-
-## Phase 3: Cargo Feature Flags
-
-### `ironplc-container/Cargo.toml`
-
-```toml
-[features]
-default = ["std"]
-std = ["alloc"]
-alloc = []
-```
-
-### `ironplc-vm/Cargo.toml`
-
-```toml
-[features]
-default = ["std"]
-std = ["alloc", "ironplc-container/std", "clap", "env_logger", "time"]
-alloc = ["ironplc-container/alloc"]
-
-[dependencies]
-ironplc-container = { path = "../container", version = "...", default-features = false }
-log = "0.4.20"
-
-# std-only dependencies
-clap = { version = "4.0", features = ["derive", "wrap_help"], optional = true }
-env_logger = { version = "0.10.0", optional = true }
-time = { version = "0.3.17", optional = true }
-```
-
-### Binary target
-
-The `[[bin]]` target only compiles when `std` is available. Gate it with a `required-features`:
-
-```toml
-[[bin]]
-name = "ironplcvm"
-path = "bin/main.rs"
-required-features = ["std"]
-```
-
-## Phase 4: External Dependency Audit
-
-| Dependency | Action |
-|---|---|
-| `clap` | Make optional, activated by `std` feature |
-| `env_logger` | Make optional, activated by `std` feature |
-| `log` | Keep as always-on dependency (supports `no_std`) |
-| `time` | Make optional, activated by `std` feature |
-
-After gating, `cargo tree --no-default-features` for `ironplc-vm` shows only `ironplc-container` and `log`.
+The `#[cfg]` usage is confined to the container crate. The VM crate and CLI crate have zero conditional compilation.
 
 ## Embedded Deployment Model
 
@@ -329,26 +382,35 @@ fn main() -> ! {
 
 ## Verification
 
-### CI checks
+### Justfile CI integration
 
-Add to CI:
+Add a `build-nostd` target to `compiler/justfile` and wire it into the default CI pipeline:
 
-1. `cargo build -p ironplc-container --no-default-features --target thumbv7em-none-eabihf` — verifies container crate is `no_std`
-2. `cargo build -p ironplc-vm --no-default-features --target thumbv7em-none-eabihf` — verifies VM crate is `no_std`
-3. Existing `cargo build` and `cargo test` (default features) — verifies no regression
+```just
+default: compile coverage lint build-nostd
 
-### Test matrix
+# Build the no_std VM for a bare-metal target to verify it compiles
+build-nostd:
+    rustup target add thumbv7em-none-eabihf
+    cargo build -p ironplc-vm --target thumbv7em-none-eabihf
+    cargo build -p ironplc-container --no-default-features --target thumbv7em-none-eabihf
+```
 
-| Build | Features | Target | What it validates |
-|---|---|---|---|
-| Default | `std` | host | Existing behavior unchanged |
-| `--no-default-features --features alloc` | `alloc` | host | `alloc` tier compiles and tests pass |
-| `--no-default-features` | none | `thumbv7em-none-eabihf` | Fully static `no_std` compiles |
+This runs on every `cd compiler && just` invocation, so a PR that accidentally introduces a `std` dependency into `ironplc-vm` will fail CI.
+
+Note: `ironplc-vm` needs no `--no-default-features` flag because it has no features — it is unconditionally `no_std`. The container crate needs `--no-default-features` to disable its `std` feature.
+
+### What CI validates
+
+| Build step | What it validates |
+|---|---|
+| `cargo build` (default) | `ironplc-vm-cli` and all std crates compile |
+| `cargo test` / `coverage` | Existing tests pass, coverage stays above 85% |
+| `cargo build -p ironplc-vm --target thumbv7em-none-eabihf` | VM crate is genuinely `no_std` — would fail if any `std` usage crept in |
+| `cargo build -p ironplc-container --no-default-features --target thumbv7em-none-eabihf` | Container crate's no_std path compiles for bare-metal |
 
 ## Open Questions
 
 1. **Const generics vs. caller-provided slices** — this plan proposes caller-provided `&mut [Slot]` slices. Const generics (`OperandStack<const N: usize>`) are an alternative that moves the size into the type system but propagate through all type signatures. Which is preferred?
 
-2. **`alloc` tier priority** — the `alloc` feature is defined for completeness but may not be immediately useful. Should it be implemented in the first pass, or deferred until an RTOS target materializes?
-
-3. **Desktop convenience API** — should the `std` build retain the current `Vm::load(Container)` signature as a convenience wrapper, or should all callers switch to the slice-based API?
+2. **Container crate split** — this plan keeps feature flags in the container crate. An alternative is splitting into `ironplc-container` (no_std, read-only) and `ironplc-container-builder` (std, write-only). This would eliminate all feature flags from the project but adds another crate. Worth it?
