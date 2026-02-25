@@ -193,8 +193,8 @@
     "lint": "eslint src/**/*.ts && npm run validate-grammars",
     "test:unit": "c8 --check-coverage --lines 80 --include 'out/*.js' mocha --ui tdd 'out/test/unit/**/*.test.js'",
     "test:functional": "node ./out/test/functional/runTest.js",
-    "test:grammar": "vscode-tmgrammar-snap -s source.plcopen-xml \"tests/grammar/snap/**/*.xml\" && vscode-tmgrammar-snap \"tests/grammar/snap/**/*.st\"",
-    "test:grammar:update": "vscode-tmgrammar-snap -u -s source.plcopen-xml \"tests/grammar/snap/**/*.xml\" && vscode-tmgrammar-snap -u \"tests/grammar/snap/**/*.st\"",
+    "test:grammar": "vscode-tmgrammar-snap -s source.plcopen-xml \"tests/grammar/snap/**/*.xml\" && vscode-tmgrammar-snap \"tests/grammar/snap/**/*.st\" && vscode-tmgrammar-snap \"tests/grammar/snap/**/*.TcPOU\" && vscode-tmgrammar-snap \"tests/grammar/snap/**/*.TcGVL\" && vscode-tmgrammar-snap \"tests/grammar/snap/**/*.TcDUT\"",
+    "test:grammar:update": "vscode-tmgrammar-snap -u -s source.plcopen-xml \"tests/grammar/snap/**/*.xml\" && vscode-tmgrammar-snap -u \"tests/grammar/snap/**/*.st\" && vscode-tmgrammar-snap -u \"tests/grammar/snap/**/*.TcPOU\" && vscode-tmgrammar-snap -u \"tests/grammar/snap/**/*.TcGVL\" && vscode-tmgrammar-snap -u \"tests/grammar/snap/**/*.TcDUT\"",
     "check-invariants": "node out/test/checkInvariants.js"
   },
   "devDependencies": {
