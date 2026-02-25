@@ -337,22 +337,65 @@ Each **ProgramInstanceEntry** (16 bytes):
 | 12 | fb_instance_count | u16 | Number of FB instance slots for this instance |
 | 14 | reserved | u16 | Reserved; must be zero |
 
-#### Header Changes
+#### Header Restructure
 
-Replace `entry_function_id` and add task table fields to the file header (using reserved bytes at offset 226):
+The file header is restructured for logical grouping. Since there are no public consumers of the current format, backward compatibility is not a concern. The `entry_function_id` field is removed; the VM uses the task table to determine what to execute. The task table section offset/size is added to the section directory alongside the other sections.
+
+The new layout groups fields into four regions:
+
+1. **Identification** (bytes 0-7): magic, version, profile, flags
+2. **Hashes** (bytes 8-135): content, source, debug, layout hashes
+3. **Section directory** (bytes 136-191): 7 offset/size pairs in file-layout order
+4. **Runtime parameters** (bytes 192-231): stack/memory budgets, I/O image sizes
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
-| 226 | task_section_offset | u32 | Offset of task table section |
-| 230 | task_section_size | u32 | Size of task table section |
-| 234 | num_tasks | u16 | Number of tasks (duplicated from task table for fast access) |
-| 236 | num_program_instances | u16 | Total program instances |
-| 238 | shared_globals_count | u16 | Variable slots for shared globals |
-| 240 | reserved | [u8; 16] | Remaining reserved bytes |
+| 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
+| 4 | format_version | u16 | Container format version (initially 1) |
+| 6 | profile | u8 | Reserved; must be zero |
+| 7 | flags | u8 | Bit 0: has content signature; Bit 1: has debug section; Bit 2: has type section |
+| 8 | content_hash | [u8; 32] | SHA-256 over content (see bytecode-container-format spec) |
+| 40 | source_hash | [u8; 32] | SHA-256 of source text |
+| 72 | debug_hash | [u8; 32] | SHA-256 over debug section |
+| 104 | layout_hash | [u8; 32] | SHA-256 over memory layout signature |
+| **136** | **sig_section_offset** | **u32** | **Offset of content signature section** |
+| 140 | sig_section_size | u32 | Size of content signature section |
+| 144 | debug_sig_offset | u32 | Offset of debug signature section |
+| 148 | debug_sig_size | u32 | Size of debug signature section |
+| 152 | type_section_offset | u32 | Offset of type section |
+| 156 | type_section_size | u32 | Size of type section |
+| **160** | **task_section_offset** | **u32** | **Offset of task table section (NEW)** |
+| **164** | **task_section_size** | **u32** | **Size of task table section (NEW)** |
+| 168 | const_section_offset | u32 | Offset of constant pool section |
+| 172 | const_section_size | u32 | Size of constant pool section |
+| 176 | code_section_offset | u32 | Offset of code section |
+| 180 | code_section_size | u32 | Size of code section |
+| 184 | debug_section_offset | u32 | Offset of debug section |
+| 188 | debug_section_size | u32 | Size of debug section |
+| **192** | **max_stack_depth** | **u16** | **Maximum operand stack depth** |
+| 194 | max_call_depth | u16 | Maximum call nesting depth |
+| 196 | num_variables | u16 | Total variable table entries |
+| 198 | num_fb_instances | u16 | Total FB instance slots |
+| 200 | total_fb_instance_bytes | u32 | Total bytes for FB instance memory |
+| 204 | total_str_var_bytes | u32 | Total bytes for STRING buffers |
+| 208 | total_wstr_var_bytes | u32 | Total bytes for WSTRING buffers |
+| 212 | num_temp_str_bufs | u16 | Temporary STRING buffer pool size |
+| 214 | num_temp_wstr_bufs | u16 | Temporary WSTRING buffer pool size |
+| 216 | max_str_length | u16 | Largest STRING(n) declaration |
+| 218 | max_wstr_length | u16 | Largest WSTRING(n) declaration |
+| 220 | num_functions | u16 | Number of functions in code section |
+| 222 | num_fb_types | u16 | Number of FB type descriptors |
+| 224 | num_arrays | u16 | Number of array descriptors |
+| 226 | input_image_bytes | u16 | Total input process image size (%I) |
+| 228 | output_image_bytes | u16 | Total output process image size (%Q) |
+| 230 | memory_image_bytes | u16 | Total memory region size (%M) |
+| 232 | reserved | [u8; 24] | Reserved; must be zero |
+
+Total header size: 256 bytes (unchanged).
 
 #### Task Table is Mandatory
 
-The task table section is always present. The `entry_function_id` field in the header is removed; the VM uses the task table to determine what to execute. There are no public users of the current single-entry-point format, so backward compatibility is not a concern.
+The task table section is always present. There are no public users of the current single-entry-point format, so backward compatibility is not a concern.
 
 ### Variable Table Partitioning
 
