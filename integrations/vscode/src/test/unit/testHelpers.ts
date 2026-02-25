@@ -29,7 +29,6 @@ export function createTestHeader(overrides?: Partial<DisassemblyHeader>): Disass
     numFunctions: 1,
     numFbTypes: 0,
     numArrays: 0,
-    entryFunctionId: 0,
     inputImageBytes: 64,
     outputImageBytes: 64,
     memoryImageBytes: 128,

@@ -27,11 +27,13 @@ const RET_VOID: u8 = 0xB5;
 /// - `functions`: array of function disassemblies with decoded instructions
 pub fn disassemble(container: &Container) -> Value {
     let header = disassemble_header(container);
+    let task_table = disassemble_task_table(container);
     let constants = disassemble_constants(container);
     let functions = disassemble_functions(container);
 
     json!({
         "header": header,
+        "taskTable": task_table,
         "constants": constants,
         "functions": functions,
     })
@@ -118,6 +120,49 @@ fn disassemble_header(container: &Container) -> Value {
             "offset": h.task_section_offset,
             "size": h.task_section_size,
         },
+    })
+}
+
+/// Converts the task table into a JSON object with tasks and programs.
+fn disassemble_task_table(container: &Container) -> Value {
+    let tt = &container.task_table;
+
+    let tasks: Vec<Value> = tt
+        .tasks
+        .iter()
+        .map(|t| {
+            json!({
+                "taskId": t.task_id,
+                "priority": t.priority,
+                "taskType": t.task_type.as_str(),
+                "enabled": (t.flags & 0x01) != 0,
+                "intervalUs": t.interval_us,
+                "singleVarIndex": t.single_var_index,
+                "watchdogUs": t.watchdog_us,
+            })
+        })
+        .collect();
+
+    let programs: Vec<Value> = tt
+        .programs
+        .iter()
+        .map(|p| {
+            json!({
+                "instanceId": p.instance_id,
+                "taskId": p.task_id,
+                "entryFunctionId": p.entry_function_id,
+                "varTableOffset": p.var_table_offset,
+                "varTableCount": p.var_table_count,
+                "fbInstanceOffset": p.fb_instance_offset,
+                "fbInstanceCount": p.fb_instance_count,
+            })
+        })
+        .collect();
+
+    json!({
+        "sharedGlobalsSize": tt.shared_globals_size,
+        "tasks": tasks,
+        "programs": programs,
     })
 }
 
@@ -350,8 +395,39 @@ mod tests {
     fn disassemble_when_steel_thread_then_header_has_task_section() {
         let container = steel_thread_container();
         let result = disassemble(&container);
-        assert_eq!(result["header"]["taskSection"]["offset"], 0);
-        assert_eq!(result["header"]["taskSection"]["size"], 0);
+        assert_eq!(result["header"]["taskSection"]["offset"], 256);
+        assert!(result["header"]["taskSection"]["size"].as_u64().unwrap() > 0);
+    }
+
+    // ---------------------------------------------------------------
+    // Task table tests
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn disassemble_when_steel_thread_then_has_task_table() {
+        let container = steel_thread_container();
+        let result = disassemble(&container);
+        assert!(result["taskTable"].is_object());
+    }
+
+    #[test]
+    fn disassemble_when_steel_thread_then_task_table_has_one_task() {
+        let container = steel_thread_container();
+        let result = disassemble(&container);
+        let tasks = result["taskTable"]["tasks"].as_array().unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0]["taskType"], "Freewheeling");
+        assert_eq!(tasks[0]["enabled"], true);
+    }
+
+    #[test]
+    fn disassemble_when_steel_thread_then_task_table_has_one_program() {
+        let container = steel_thread_container();
+        let result = disassemble(&container);
+        let programs = result["taskTable"]["programs"].as_array().unwrap();
+        assert_eq!(programs.len(), 1);
+        assert_eq!(programs[0]["entryFunctionId"], 0);
+        assert_eq!(programs[0]["varTableCount"], 2);
     }
 
     // ---------------------------------------------------------------
