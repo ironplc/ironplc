@@ -1,0 +1,94 @@
+><?xml version="1.0" encoding="utf-8"?>
+#^^ source.plcopen-xml meta.tag.preprocessor.xml punctuation.definition.tag.begin.xml
+#  ^^^ source.plcopen-xml meta.tag.preprocessor.xml keyword.other.xml-declaration.xml
+#     ^ source.plcopen-xml meta.tag.preprocessor.xml
+#      ^^^^^^^ source.plcopen-xml meta.tag.preprocessor.xml entity.other.attribute-name.xml
+#             ^ source.plcopen-xml meta.tag.preprocessor.xml punctuation.separator.key-value.xml
+#              ^^^^^ source.plcopen-xml meta.tag.preprocessor.xml string.quoted.double.xml
+#                   ^ source.plcopen-xml meta.tag.preprocessor.xml
+#                    ^^^^^^^^ source.plcopen-xml meta.tag.preprocessor.xml entity.other.attribute-name.xml
+#                            ^ source.plcopen-xml meta.tag.preprocessor.xml punctuation.separator.key-value.xml
+#                             ^^^^^^^ source.plcopen-xml meta.tag.preprocessor.xml string.quoted.double.xml
+#                                    ^^ source.plcopen-xml meta.tag.preprocessor.xml punctuation.definition.tag.end.xml
+><TcPlcObject Version="1.0">
+#^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+# ^^^^^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.tag.xml
+#            ^ source.plcopen-xml meta.tag.xml
+#             ^^^^^^^ source.plcopen-xml meta.tag.xml entity.other.attribute-name.xml
+#                    ^ source.plcopen-xml meta.tag.xml punctuation.separator.key-value.xml
+#                     ^^^^^ source.plcopen-xml meta.tag.xml string.quoted.double.xml
+#                          ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
+>  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}">
+#^^ source.plcopen-xml
+#  ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+#   ^^^ source.plcopen-xml meta.tag.xml entity.name.tag.xml
+#      ^ source.plcopen-xml meta.tag.xml
+#       ^^^^ source.plcopen-xml meta.tag.xml entity.other.attribute-name.xml
+#           ^ source.plcopen-xml meta.tag.xml punctuation.separator.key-value.xml
+#            ^^^^^^ source.plcopen-xml meta.tag.xml string.quoted.double.xml
+#                  ^ source.plcopen-xml meta.tag.xml
+#                   ^^ source.plcopen-xml meta.tag.xml entity.other.attribute-name.xml
+#                     ^ source.plcopen-xml meta.tag.xml punctuation.separator.key-value.xml
+#                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.xml string.quoted.double.xml
+#                                                              ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
+>    <Declaration><![CDATA[PROGRAM MAIN
+#^^^^ source.plcopen-xml
+#    ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+#     ^^^^^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.tag.xml
+#                ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
+#                 ^^^^^^^^^ source.plcopen-xml punctuation.definition.string.begin.xml
+#                          ^^^^^^^ source.plcopen-xml meta.embedded.block.st keyword.declaration.pou.st
+#                                 ^ source.plcopen-xml meta.embedded.block.st
+#                                  ^^^^ source.plcopen-xml meta.embedded.block.st entity.name.function.st
+>VAR
+#^^^ source.plcopen-xml meta.embedded.block.st keyword.declaration.variable.st
+>  x : INT;
+#^^ source.plcopen-xml meta.embedded.block.st
+#  ^ source.plcopen-xml meta.embedded.block.st variable.other.st
+#   ^ source.plcopen-xml meta.embedded.block.st
+#    ^ source.plcopen-xml meta.embedded.block.st punctuation.separator.st
+#     ^ source.plcopen-xml meta.embedded.block.st
+#      ^^^ source.plcopen-xml meta.embedded.block.st storage.type.primitive.integer.st
+#         ^ source.plcopen-xml meta.embedded.block.st punctuation.separator.st
+>END_VAR]]></Declaration>
+#^^^^^^^ source.plcopen-xml meta.embedded.block.st keyword.declaration.variable.st
+#       ^^^ source.plcopen-xml punctuation.definition.string.end.xml
+#          ^^ source.plcopen-xml meta.tag.close.xml punctuation.definition.tag.begin.xml
+#            ^^^^^^^^^^^ source.plcopen-xml meta.tag.close.xml entity.name.tag.xml
+#                       ^ source.plcopen-xml meta.tag.close.xml punctuation.definition.tag.end.xml
+>    <Implementation>
+#^^^^ source.plcopen-xml
+#    ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+#     ^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.tag.xml
+#                   ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
+>      <ST><![CDATA[x := 1;]]></ST>
+#^^^^^^ source.plcopen-xml
+#      ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.begin.xml
+#       ^^ source.plcopen-xml meta.tag.xml entity.name.tag.body-language.plcopen-xml
+#         ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
+#          ^^^^^^^^^ source.plcopen-xml punctuation.definition.string.begin.xml
+#                   ^ source.plcopen-xml meta.embedded.block.st variable.other.st
+#                    ^ source.plcopen-xml meta.embedded.block.st
+#                     ^^ source.plcopen-xml meta.embedded.block.st keyword.operator.assignment.st
+#                       ^ source.plcopen-xml meta.embedded.block.st
+#                        ^ source.plcopen-xml meta.embedded.block.st constant.numeric.decimal.st
+#                         ^ source.plcopen-xml meta.embedded.block.st punctuation.separator.st
+#                          ^^^ source.plcopen-xml punctuation.definition.string.end.xml
+#                             ^^ source.plcopen-xml meta.tag.close.xml punctuation.definition.tag.begin.xml
+#                               ^^ source.plcopen-xml meta.tag.close.xml entity.name.tag.body-language.plcopen-xml
+#                                 ^ source.plcopen-xml meta.tag.close.xml punctuation.definition.tag.end.xml
+>    </Implementation>
+#^^^^ source.plcopen-xml
+#    ^^ source.plcopen-xml meta.tag.close.xml punctuation.definition.tag.begin.xml
+#      ^^^^^^^^^^^^^^ source.plcopen-xml meta.tag.close.xml entity.name.tag.xml
+#                    ^ source.plcopen-xml meta.tag.close.xml punctuation.definition.tag.end.xml
+>  </POU>
+#^^ source.plcopen-xml
+#  ^^ source.plcopen-xml meta.tag.close.xml punctuation.definition.tag.begin.xml
+#    ^^^ source.plcopen-xml meta.tag.close.xml entity.name.tag.xml
+#       ^ source.plcopen-xml meta.tag.close.xml punctuation.definition.tag.end.xml
+></TcPlcObject>
+#^^ source.plcopen-xml meta.tag.close.xml punctuation.definition.tag.begin.xml
+#  ^^^^^^^^^^^ source.plcopen-xml meta.tag.close.xml entity.name.tag.xml
+#             ^ source.plcopen-xml meta.tag.close.xml punctuation.definition.tag.end.xml
+>
