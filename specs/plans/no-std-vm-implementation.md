@@ -409,8 +409,8 @@ Note: `ironplc-vm` needs no `--no-default-features` flag because it has no featu
 | `cargo build -p ironplc-vm --target thumbv7em-none-eabihf` | VM crate is genuinely `no_std` — would fail if any `std` usage crept in |
 | `cargo build -p ironplc-container --no-default-features --target thumbv7em-none-eabihf` | Container crate's no_std path compiles for bare-metal |
 
-## Open Questions
+## Decisions
 
-1. **Const generics vs. caller-provided slices** — this plan proposes caller-provided `&mut [Slot]` slices. Const generics (`OperandStack<const N: usize>`) are an alternative that moves the size into the type system but propagate through all type signatures. Which is preferred?
+1. **Caller-provided slices** — the VM accepts `&mut [Slot]` slices rather than const generics. The container header determines sizes at runtime, so const generics would add type noise without real safety benefit. Slices keep VM types simple (`VmRunning<'a>` — one lifetime) and let each caller choose its allocation strategy.
 
-2. **Container crate split** — this plan keeps feature flags in the container crate. An alternative is splitting into `ironplc-container` (no_std, read-only) and `ironplc-container-builder` (std, write-only). This would eliminate all feature flags from the project but adds another crate. Worth it?
+2. **Feature flags confined to the container crate** — the container crate uses `#[cfg(feature = "std")]` to gate its I/O and builder modules. The shared types (`FileHeader`, opcodes, `ContainerError`) make a crate split awkward, and the `#[cfg]` usage is minimal and contained. The VM crate and CLI crate have zero conditional compilation.
