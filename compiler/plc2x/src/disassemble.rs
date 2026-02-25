@@ -87,7 +87,6 @@ fn disassemble_header(container: &Container) -> Value {
         "numFunctions": h.num_functions,
         "numFbTypes": h.num_fb_types,
         "numArrays": h.num_arrays,
-        "entryFunctionId": h.entry_function_id,
         "inputImageBytes": h.input_image_bytes,
         "outputImageBytes": h.output_image_bytes,
         "memoryImageBytes": h.memory_image_bytes,
@@ -114,6 +113,10 @@ fn disassemble_header(container: &Container) -> Value {
         "debugSection": {
             "offset": h.debug_section_offset,
             "size": h.debug_section_size,
+        },
+        "taskSection": {
+            "offset": h.task_section_offset,
+            "size": h.task_section_size,
         },
     })
 }
@@ -344,10 +347,11 @@ mod tests {
     }
 
     #[test]
-    fn disassemble_when_steel_thread_then_header_has_entry_function_id() {
+    fn disassemble_when_steel_thread_then_header_has_task_section() {
         let container = steel_thread_container();
         let result = disassemble(&container);
-        assert_eq!(result["header"]["entryFunctionId"], 0);
+        assert_eq!(result["header"]["taskSection"]["offset"], 0);
+        assert_eq!(result["header"]["taskSection"]["size"], 0);
     }
 
     // ---------------------------------------------------------------

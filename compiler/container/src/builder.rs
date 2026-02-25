@@ -74,7 +74,6 @@ impl ContainerBuilder {
             num_variables: self.num_variables,
             max_stack_depth: self.max_stack_depth,
             num_functions: code.functions.len() as u16,
-            entry_function_id: 0,
             ..FileHeader::default()
         };
 

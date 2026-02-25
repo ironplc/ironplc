@@ -84,7 +84,9 @@ impl VmRunning {
     /// On success, the VM remains in the running state.
     /// On a trap, returns `Err(VmFaulted)`.
     pub fn run_single_scan(&mut self) -> Result<(), Trap> {
-        let entry_id = self.container.header.entry_function_id;
+        // TODO: Read entry point from task table once implemented.
+        // For now, function 0 is always the entry point.
+        let entry_id: u16 = 0;
         let bytecode = self
             .container
             .code
