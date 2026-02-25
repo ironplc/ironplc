@@ -297,9 +297,7 @@ After gating, `cargo tree --no-default-features` for `ironplc-vm` shows only `ir
 
 ## Embedded Deployment Model
 
-The embedded deployment does **not** require users to have a local Rust compiler or build toolchain. Instead, the project provides a prebuilt VM binary for each supported target. The user's bytecode (`.iplc` file) is appended to this binary to produce a self-contained firmware image. At startup, the VM locates the bytecode from a known offset within its own binary image and parses it via `ContainerRef::from_slice`.
-
-This is conceptually similar to `include_bytes!` but avoids requiring a Rust toolchain on the user's machine — the bytecode is concatenated onto the prebuilt binary rather than compiled into it.
+The embedded deployment does **not** require users to have a local Rust compiler or build toolchain. The application binary contains both the VM and the user's bytecode. At startup, the VM obtains a `&[u8]` reference to the bytecode and parses it via `ContainerRef::from_slice`.
 
 ### Embedded usage sketch
 
@@ -312,10 +310,7 @@ use ironplc_vm::{Slot, Vm};
 
 #[arduino_hal::entry]
 fn main() -> ! {
-    // Locate the bytecode appended after the VM binary image.
-    // The exact mechanism for locating the appended payload is
-    // target-specific (e.g., a known flash offset or a trailer marker).
-    let program: &[u8] = locate_appended_bytecode();
+    let program: &[u8] = get_program_bytecode();
 
     let container = ContainerRef::from_slice(program).unwrap();
 
