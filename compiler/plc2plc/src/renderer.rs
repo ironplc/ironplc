@@ -94,6 +94,29 @@ impl LibraryRenderer {
     fn outdent(&mut self) {
         self.indents -= 1;
     }
+
+    fn render_data_source_kind(
+        &mut self,
+        source: &dsl::configuration::DataSourceKind,
+    ) -> Result<(), Diagnostic> {
+        match source {
+            dsl::configuration::DataSourceKind::Constant(constant) => {
+                self.visit_constant_kind(constant)?;
+            }
+            dsl::configuration::DataSourceKind::GlobalVarReference(gvr) => {
+                if let Some(resource_name) = &gvr.resource_name {
+                    self.visit_id(resource_name)?;
+                    self.write(".");
+                }
+                self.visit_id(&gvr.global_var_name)?;
+                if let Some(structure_element) = &gvr.structure_element_name {
+                    self.write(".");
+                    self.visit_id(structure_element)?;
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Visitor<Diagnostic> for LibraryRenderer {
@@ -1092,7 +1115,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    // 2.7.2
+    // 2.7.1
     fn visit_task_configuration(
         &mut self,
         node: &dsl::configuration::TaskConfiguration,
@@ -1102,8 +1125,15 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_id(&node.name)?;
         self.write_ws("(");
 
+        if let Some(single) = &node.single {
+            self.write_ws("SINGLE");
+            self.write_ws(":=");
+            self.render_data_source_kind(single)?;
+            self.write_ws(",");
+        }
+
         if let Some(interval) = &node.interval {
-            self.write_ws("INTERNAL");
+            self.write_ws("INTERVAL");
             self.write_ws(":=");
             self.visit_duration_literal(interval)?;
             self.write_ws(",");

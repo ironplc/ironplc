@@ -1,0 +1,36 @@
+=====
+P4019
+=====
+
+.. problem-summary:: P4019
+
+This error occurs when a resource declaration contains two or more tasks with the same name. Each task within a resource must have a unique name.
+
+Example
+-------
+
+The following code will generate error P4019:
+
+.. code-block::
+
+   CONFIGURATION config
+       RESOURCE resource1 ON PLC
+           TASK my_task(INTERVAL := T#100ms, PRIORITY := 1);
+           TASK my_task(INTERVAL := T#200ms, PRIORITY := 2);  (* Error: Duplicate task name *)
+           PROGRAM instance1 WITH my_task : my_prg;
+       END_RESOURCE
+   END_CONFIGURATION
+
+The code defines two tasks with the same name ``my_task`` within the same resource, which is not allowed.
+
+To fix this error, give each task a unique name:
+
+.. code-block::
+
+   CONFIGURATION config
+       RESOURCE resource1 ON PLC
+           TASK fast_task(INTERVAL := T#100ms, PRIORITY := 1);
+           TASK slow_task(INTERVAL := T#200ms, PRIORITY := 2);
+           PROGRAM instance1 WITH fast_task : my_prg;
+       END_RESOURCE
+   END_CONFIGURATION

@@ -31,6 +31,8 @@ Sections appear in this fixed order. All multi-byte values are little-endian, ma
 ├─────────────────────────────────────────┤
 │ Type Section                            │
 ├─────────────────────────────────────────┤
+│ Task Table Section                      │
+├─────────────────────────────────────────┤
 │ Constant Pool Section                   │
 ├─────────────────────────────────────────┤
 │ Code Section                            │
@@ -43,6 +45,13 @@ Sections appear in this fixed order. All multi-byte values are little-endian, ma
 
 The header is exactly 256 bytes. The VM reads this in a single read and decides whether to proceed.
 
+The header is organized into four logical regions:
+
+1. **Identification** (bytes 0-7): magic, version, profile, flags
+2. **Hashes** (bytes 8-135): content, source, debug, layout hashes
+3. **Section directory** (bytes 136-191): offset/size pairs for each section, in file-layout order
+4. **Runtime parameters** (bytes 192-231): stack/memory budgets, counts, I/O image sizes
+
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
@@ -53,37 +62,38 @@ The header is exactly 256 bytes. The VM reads this in a single read and decides 
 | 40 | source_hash | [u8; 32] | SHA-256 of the source text that produced this bytecode (all zeros if unavailable) |
 | 72 | debug_hash | [u8; 32] | SHA-256 over debug section (all zeros if no debug section) |
 | 104 | layout_hash | [u8; 32] | SHA-256 over the memory layout signature (see Layout Hash and Online Change) |
-| 136 | max_stack_depth | u16 | Maximum operand stack depth across all functions |
-| 138 | max_call_depth | u16 | Maximum call nesting depth |
-| 140 | num_variables | u16 | Total variable table entries (including compiler-generated hidden variables) |
-| 142 | num_fb_instances | u16 | Total function block instance slots (including array elements and nested instances) |
-| 144 | total_fb_instance_bytes | u32 | Total bytes for FB instance memory (compiler-summed: `Σ(num_fields × 8)` for each instance) |
-| 148 | total_str_var_bytes | u32 | Total bytes for STRING variable buffers (compiler-summed: `Σ(declared_length + 1)` for each STRING variable) |
-| 152 | total_wstr_var_bytes | u32 | Total bytes for WSTRING variable buffers (compiler-summed: `Σ(declared_length × 2 + 2)` for each WSTRING variable) |
-| 156 | num_temp_str_bufs | u16 | Temporary STRING buffer pool size |
-| 158 | num_temp_wstr_bufs | u16 | Temporary WSTRING buffer pool size |
-| 160 | max_str_length | u16 | Largest STRING(n) declaration in characters (for temp buffer sizing) |
-| 162 | max_wstr_length | u16 | Largest WSTRING(n) declaration in characters (for temp buffer sizing) |
-| 164 | num_functions | u16 | Number of function entries in the code section |
-| 166 | num_fb_types | u16 | Number of FB type descriptors in the type section |
-| 168 | num_arrays | u16 | Number of array descriptors in the type section |
-| 170 | sig_section_offset | u32 | Offset of content signature section (0 if absent) |
-| 174 | sig_section_size | u32 | Size of content signature section |
-| 178 | debug_sig_offset | u32 | Offset of debug signature section (0 if absent) |
-| 182 | debug_sig_size | u32 | Size of debug signature section |
-| 186 | type_section_offset | u32 | Offset of type section (0 if stripped) |
-| 190 | type_section_size | u32 | Size of type section |
-| 194 | const_section_offset | u32 | Offset of constant pool section |
-| 198 | const_section_size | u32 | Size of constant pool section |
-| 202 | code_section_offset | u32 | Offset of code section |
-| 206 | code_section_size | u32 | Size of code section |
-| 210 | debug_section_offset | u32 | Offset of debug section (0 if absent) |
-| 214 | debug_section_size | u32 | Size of debug section |
-| 218 | input_image_bytes | u16 | Total input process image size in bytes (%I) |
-| 220 | output_image_bytes | u16 | Total output process image size in bytes (%Q) |
-| 222 | memory_image_bytes | u16 | Total memory region size in bytes (%M) |
-| 224 | entry_function_id | u16 | Function ID of the scan-cycle entry point (the function the VM calls once per scan cycle) |
-| 226 | reserved | [u8; 30] | Reserved for future use; must be zero |
+| 136 | sig_section_offset | u32 | Offset of content signature section (0 if absent) |
+| 140 | sig_section_size | u32 | Size of content signature section |
+| 144 | debug_sig_offset | u32 | Offset of debug signature section (0 if absent) |
+| 148 | debug_sig_size | u32 | Size of debug signature section |
+| 152 | type_section_offset | u32 | Offset of type section (0 if stripped) |
+| 156 | type_section_size | u32 | Size of type section |
+| 160 | task_section_offset | u32 | Offset of task table section (0 if absent; see [Task Support Design](../design/61131-task-support.md)) |
+| 164 | task_section_size | u32 | Size of task table section |
+| 168 | const_section_offset | u32 | Offset of constant pool section |
+| 172 | const_section_size | u32 | Size of constant pool section |
+| 176 | code_section_offset | u32 | Offset of code section |
+| 180 | code_section_size | u32 | Size of code section |
+| 184 | debug_section_offset | u32 | Offset of debug section (0 if absent) |
+| 188 | debug_section_size | u32 | Size of debug section |
+| 192 | max_stack_depth | u16 | Maximum operand stack depth across all functions |
+| 194 | max_call_depth | u16 | Maximum call nesting depth |
+| 196 | num_variables | u16 | Total variable table entries (including compiler-generated hidden variables) |
+| 198 | num_fb_instances | u16 | Total function block instance slots (including array elements and nested instances) |
+| 200 | total_fb_instance_bytes | u32 | Total bytes for FB instance memory (compiler-summed: `Σ(num_fields × 8)` for each instance) |
+| 204 | total_str_var_bytes | u32 | Total bytes for STRING variable buffers (compiler-summed: `Σ(declared_length + 1)` for each STRING variable) |
+| 208 | total_wstr_var_bytes | u32 | Total bytes for WSTRING variable buffers (compiler-summed: `Σ(declared_length × 2 + 2)` for each WSTRING variable) |
+| 212 | num_temp_str_bufs | u16 | Temporary STRING buffer pool size |
+| 214 | num_temp_wstr_bufs | u16 | Temporary WSTRING buffer pool size |
+| 216 | max_str_length | u16 | Largest STRING(n) declaration in characters (for temp buffer sizing) |
+| 218 | max_wstr_length | u16 | Largest WSTRING(n) declaration in characters (for temp buffer sizing) |
+| 220 | num_functions | u16 | Number of function entries in the code section |
+| 222 | num_fb_types | u16 | Number of FB type descriptors in the type section |
+| 224 | num_arrays | u16 | Number of array descriptors in the type section |
+| 226 | input_image_bytes | u16 | Total input process image size in bytes (%I) |
+| 228 | output_image_bytes | u16 | Total output process image size in bytes (%Q) |
+| 230 | memory_image_bytes | u16 | Total memory region size in bytes (%M) |
+| 232 | reserved | [u8; 24] | Reserved for future use; must be zero |
 
 Total header size: 256 bytes.
 
