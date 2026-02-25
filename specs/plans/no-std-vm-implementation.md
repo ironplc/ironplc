@@ -17,7 +17,7 @@ This spec builds on:
 ## Design Goals
 
 1. **Zero external dependencies in embedded builds** — the `no_std` build of `ironplc-vm` depends only on `ironplc-container` (itself `no_std`)
-2. **Zero-copy container loading** — on embedded targets, bytecode lives in flash and is parsed in place via `&[u8]`
+2. **Zero-copy container loading** — bytecode is parsed in place from a `&[u8]` slice; no intermediate copies or heap buffers
 3. **Fully deterministic memory** — all allocation sizes are known from the container header; no heap, no fragmentation
 4. **No change for desktop users** — `default = ["std"]` preserves the current API and behavior
 
@@ -69,7 +69,7 @@ Add a new `ContainerRef<'a>` type that borrows a byte slice and provides read-on
 /// A borrowed view of a bytecode container in a flat byte slice.
 ///
 /// No heap allocation. The lifetime `'a` ties the view to the
-/// underlying byte buffer (typically flash memory on embedded).
+/// underlying byte buffer.
 pub struct ContainerRef<'a> {
     header: FileHeader,
     const_pool_bytes: &'a [u8],
@@ -295,7 +295,13 @@ required-features = ["std"]
 
 After gating, `cargo tree --no-default-features` for `ironplc-vm` shows only `ironplc-container` and `log`.
 
-## Arduino Usage Example
+## Embedded Deployment Model
+
+The embedded deployment does **not** require users to have a local Rust compiler or build toolchain. Instead, the project provides a prebuilt VM binary for each supported target. The user's bytecode (`.iplc` file) is appended to this binary to produce a self-contained firmware image. At startup, the VM locates the bytecode from a known offset within its own binary image and parses it via `ContainerRef::from_slice`.
+
+This is conceptually similar to `include_bytes!` but avoids requiring a Rust toolchain on the user's machine — the bytecode is concatenated onto the prebuilt binary rather than compiled into it.
+
+### Embedded usage sketch
 
 ```rust
 #![no_std]
@@ -304,11 +310,14 @@ After gating, `cargo tree --no-default-features` for `ironplc-vm` shows only `ir
 use ironplc_container::ContainerRef;
 use ironplc_vm::{Slot, Vm};
 
-static PROGRAM: &[u8] = include_bytes!("program.iplc");
-
 #[arduino_hal::entry]
 fn main() -> ! {
-    let container = ContainerRef::from_slice(PROGRAM).unwrap();
+    // Locate the bytecode appended after the VM binary image.
+    // The exact mechanism for locating the appended payload is
+    // target-specific (e.g., a known flash offset or a trailer marker).
+    let program: &[u8] = locate_appended_bytecode();
+
+    let container = ContainerRef::from_slice(program).unwrap();
 
     let mut stack_buf = [Slot::default(); 16];
     let mut var_buf = [Slot::default(); 32];

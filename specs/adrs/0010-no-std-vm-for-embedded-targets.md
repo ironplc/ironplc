@@ -33,7 +33,7 @@ See [no-std-vm-implementation.md](../plans/no-std-vm-implementation.md) for the 
 
 * Good, because the VM can run on Arduino and other bare-metal targets without modification — the same crate compiles for both desktop and embedded
 * Good, because the execution core becomes truly zero-allocation — deterministic memory usage with no heap fragmentation, which aligns with PLC safety requirements
-* Good, because the `include_bytes!` + `ContainerRef::from_slice` pattern is zero-copy — bytecode stays in flash, no RAM duplication
+* Good, because zero-copy container parsing (`ContainerRef::from_slice`) means bytecode can stay in flash with no RAM duplication
 * Good, because existing desktop users see no change — `default = ["std"]` preserves current behavior
 * Good, because the container header already declares all sizes up front — the design was already implicitly targeting static allocation
 * Bad, because const generic or slice-based storage adds API complexity — `OperandStack<N>` is less simple than `OperandStack` with an internal `Vec`
@@ -46,7 +46,7 @@ See [no-std-vm-implementation.md](../plans/no-std-vm-implementation.md) for the 
 The implementation is confirmed when:
 
 1. `cargo build --no-default-features --target thumbv7em-none-eabihf` succeeds for both `ironplc-container` and `ironplc-vm`
-2. A minimal Arduino Due example using `include_bytes!` loads a container from flash and executes one scan cycle
+2. A minimal Arduino Due example loads a container from flash and executes one scan cycle
 3. `cargo build` (with default features) still succeeds and all existing tests pass
 4. The embedded build produces no linker errors for `std` symbols
 
