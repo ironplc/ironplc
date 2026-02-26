@@ -14,6 +14,37 @@ IronPLC consists of three primary components that must be kept in sync:
 
 **Critical**: The build will fail if these components get out of sync. Always ensure version numbers, problem codes, and language features are synchronized across all three components.
 
+## Specs Directory Structure
+
+The `specs/` directory contains internal technical documentation organized into four folders:
+
+### `specs/adrs/` — Architecture Decision Records
+
+Trade-off analyses that capture **why** a particular approach was chosen over alternatives. ADRs are numbered (`0000-topic.md`) and are permanent records — they are not updated after the decision is made.
+
+### `specs/design/` — Design Documents
+
+Specifications that describe **what** to build: architecture, formats, interfaces, algorithms, data structures, and component interactions. A design document answers "what does this system look like?" without prescribing the step-by-step work to get there. Cross-reference the implementation plan if one exists.
+
+### `specs/plans/` — Implementation Plans
+
+Work breakdowns that describe **how** to implement: phased task lists, specific code changes, file modifications, and verification steps. A plan document answers "what steps do I follow to build this?" Plans reference the design they implement.
+
+### `specs/steering/` — AI Steering Files
+
+Guidance for AI assistants working with the codebase (conventions, patterns, workflows). See [steering-file-guidelines.md](./steering-file-guidelines.md).
+
+### Choosing the Right Location
+
+| Question | Location |
+|----------|----------|
+| Why did we choose approach X over Y? | `specs/adrs/` |
+| What should the container format look like? | `specs/design/` |
+| What are the steps to implement the container format? | `specs/plans/` |
+| How should AI assistants name tests? | `specs/steering/` |
+
+When a document contains both design and plan content, split it into two files with cross-references between them. The design file goes in `specs/design/` and the plan file goes in `specs/plans/`.
+
 ## Code Organization
 
 ### Module Structure
