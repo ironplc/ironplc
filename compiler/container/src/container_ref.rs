@@ -133,8 +133,8 @@ impl<'a> ContainerRef<'a> {
             return Err(ContainerError::SectionSizeMismatch);
         }
         let mut pos: usize = 0;
-        for i in 0..num_consts as usize {
-            const_offset_buf[i] = pos as u32;
+        for slot in const_offset_buf.iter_mut().take(num_consts as usize) {
+            *slot = pos as u32;
             // Each entry: type(1) + reserved(1) + size(2) + value(size)
             if pos + 4 > const_pool_bytes.len() {
                 return Err(ContainerError::SectionSizeMismatch);
