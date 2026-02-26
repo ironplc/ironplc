@@ -8,7 +8,7 @@ use std::process::Command;
 use tempfile::TempDir;
 
 /// One-time generator for golden test files. Run with:
-/// cargo test -p ironplc-vm --test cli generate_golden -- --ignored --nocapture
+/// cargo test -p ironplc-vm-cli --test cli generate_golden -- --ignored --nocapture
 #[test]
 #[ignore]
 fn generate_golden_files() {
