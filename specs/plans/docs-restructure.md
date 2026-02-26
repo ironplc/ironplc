@@ -201,7 +201,59 @@ Update the three hardcoded directory paths:
 'https://www.ironplc.com/reference/editor/problems/' + code + '.html'
 ```
 
-### Task 8: Verify the build
+### Task 8: Add tests that documentation paths match runtime URLs
+
+The runtime URLs in Task 7 are plain strings with no connection to the Sphinx build. Add tests that assert the URL path segments correspond to actual directories containing `.rst` files, so future path moves cause a test failure.
+
+**Rust test** — add to the `#[cfg(test)] mod test` block in `compiler/plc2x/src/lsp_project.rs`:
+
+Extract the URL path segment `reference/compiler/problems` into a constant (or use it inline in the test). The test navigates from `CARGO_MANIFEST_DIR` (`compiler/plc2x/`) up to the repo root and asserts the docs directory exists and contains problem code `.rst` files:
+
+```rust
+#[test]
+fn map_diagnostic_when_problem_code_url_then_docs_directory_exists() {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // compiler/plc2x/ -> repo root
+    path.push("../..");
+    path.push("docs/reference/compiler/problems");
+    assert!(path.is_dir(), "Documentation directory for compiler problem codes does not exist: {}", path.display());
+
+    // Verify at least one problem code .rst file exists
+    let has_problem_files = std::fs::read_dir(&path)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .any(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            name.starts_with('P') && name.ends_with(".rst")
+        });
+    assert!(has_problem_files, "No P*.rst files found in {}", path.display());
+}
+```
+
+**TypeScript test** — add a new file `integrations/vscode/src/test/unit/problemUrls.test.ts`:
+
+The test navigates from the test file's location up to the repo root and asserts the docs directory exists with E-code `.rst` files:
+
+```typescript
+import * as assert from 'assert';
+import * as path from 'path';
+import * as fs from 'fs';
+
+suite('problemUrls', () => {
+  test('openProblemInBrowser_when_url_path_then_docs_directory_exists', () => {
+    // From out/test/unit/ -> repo root is 5 levels up (out/test/unit -> out/test -> out -> vscode -> integrations -> root)
+    const repoRoot = path.resolve(__dirname, '..', '..', '..', '..', '..');
+    const docsDir = path.join(repoRoot, 'docs', 'reference', 'editor', 'problems');
+    assert.ok(fs.existsSync(docsDir), `Documentation directory does not exist: ${docsDir}`);
+
+    const files = fs.readdirSync(docsDir);
+    const hasErrorFiles = files.some(f => f.startsWith('E') && f.endsWith('.rst'));
+    assert.ok(hasErrorFiles, `No E*.rst files found in ${docsDir}`);
+  });
+});
+```
+
+### Task 9: Verify the build
 
 ```bash
 cd docs && just compile
