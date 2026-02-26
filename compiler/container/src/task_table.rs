@@ -1,5 +1,7 @@
 use std::io::{Read, Write};
+use std::vec::Vec;
 
+use crate::task_type::TaskType;
 use crate::ContainerError;
 
 /// Size of a single task entry in bytes.
@@ -7,35 +9,6 @@ const TASK_ENTRY_SIZE: usize = 32;
 
 /// Size of a single program instance entry in bytes.
 const PROGRAM_INSTANCE_ENTRY_SIZE: usize = 16;
-
-/// Type tags for task scheduling types.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub enum TaskType {
-    Cyclic = 0,
-    Event = 1,
-    Freewheeling = 2,
-}
-
-impl TaskType {
-    fn from_u8(v: u8) -> Result<Self, ContainerError> {
-        match v {
-            0 => Ok(TaskType::Cyclic),
-            1 => Ok(TaskType::Event),
-            2 => Ok(TaskType::Freewheeling),
-            _ => Err(ContainerError::InvalidTaskType(v)),
-        }
-    }
-
-    /// Returns the human-readable name for this task type.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            TaskType::Cyclic => "Cyclic",
-            TaskType::Event => "Event",
-            TaskType::Freewheeling => "Freewheeling",
-        }
-    }
-}
 
 /// A single task entry in the task table (32 bytes fixed).
 #[derive(Clone, Debug)]
@@ -183,6 +156,8 @@ impl TaskTable {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::vec;
+    use std::vec::Vec;
 
     #[test]
     fn section_size_when_empty_then_returns_header_only() {

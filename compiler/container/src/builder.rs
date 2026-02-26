@@ -1,8 +1,13 @@
+use std::vec;
+use std::vec::Vec;
+
 use crate::code_section::{CodeSection, FuncEntry};
-use crate::constant_pool::{ConstEntry, ConstType, ConstantPool};
+use crate::const_type::ConstType;
+use crate::constant_pool::{ConstEntry, ConstantPool};
 use crate::container::Container;
 use crate::header::FileHeader;
-use crate::task_table::{ProgramInstanceEntry, TaskEntry, TaskTable, TaskType};
+use crate::task_table::{ProgramInstanceEntry, TaskEntry, TaskTable};
+use crate::task_type::TaskType;
 
 /// Fluent builder for constructing a [`Container`] in tests.
 pub struct ContainerBuilder {
@@ -160,6 +165,8 @@ impl Default for ContainerBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::vec;
+    use std::vec::Vec;
 
     #[test]
     fn builder_when_steel_thread_program_then_builds_valid_container() {
