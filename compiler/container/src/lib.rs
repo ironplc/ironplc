@@ -10,6 +10,7 @@ mod error;
 mod header;
 pub mod opcode;
 mod task_type;
+mod container_ref;
 
 // Only available with std
 #[cfg(feature = "std")]
@@ -28,6 +29,7 @@ pub use const_type::ConstType;
 pub use error::ContainerError;
 pub use header::{FileHeader, FORMAT_VERSION, HEADER_SIZE, MAGIC};
 pub use task_type::TaskType;
+pub use container_ref::{ContainerRef, ProgramEntryRef, TaskEntryRef};
 
 // std-only re-exports
 #[cfg(feature = "std")]
