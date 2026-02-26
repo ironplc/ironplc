@@ -3,12 +3,14 @@ use std::io::{Cursor, Read, Write};
 use crate::code_section::CodeSection;
 use crate::constant_pool::ConstantPool;
 use crate::header::{FileHeader, HEADER_SIZE};
+use crate::task_table::TaskTable;
 use crate::ContainerError;
 
-/// A complete bytecode container: header + constant pool + code section.
+/// A complete bytecode container: header + task table + constant pool + code section.
 #[derive(Clone, Debug)]
 pub struct Container {
     pub header: FileHeader,
+    pub task_table: TaskTable,
     pub constant_pool: ConstantPool,
     pub code: CodeSection,
 }
@@ -19,12 +21,16 @@ impl Container {
     /// Computes section offsets and fills the header before writing
     /// sections in file-layout order.
     pub fn write_to(&self, w: &mut impl Write) -> Result<(), ContainerError> {
-        let const_section_offset = HEADER_SIZE as u32;
+        let task_section_offset = HEADER_SIZE as u32;
+        let task_section_size = self.task_table.section_size();
+        let const_section_offset = task_section_offset + task_section_size;
         let const_section_size = self.constant_pool.section_size();
         let code_section_offset = const_section_offset + const_section_size;
         let code_section_size = self.code.section_size();
 
         let mut header = self.header.clone();
+        header.task_section_offset = task_section_offset;
+        header.task_section_size = task_section_size;
         header.const_section_offset = const_section_offset;
         header.const_section_size = const_section_size;
         header.code_section_offset = code_section_offset;
@@ -32,6 +38,7 @@ impl Container {
         header.num_functions = self.code.functions.len() as u16;
 
         header.write_to(w)?;
+        self.task_table.write_to(w)?;
         self.constant_pool.write_to(w)?;
         self.code.write_to(w)?;
         Ok(())
@@ -48,6 +55,10 @@ impl Container {
 
         let base = HEADER_SIZE as u32;
 
+        let task_start = (header.task_section_offset - base) as usize;
+        let task_end = task_start + header.task_section_size as usize;
+        let task_table = TaskTable::read_from(&mut Cursor::new(&rest[task_start..task_end]))?;
+
         let const_start = (header.const_section_offset - base) as usize;
         let const_end = const_start + header.const_section_size as usize;
         let constant_pool =
@@ -63,6 +74,7 @@ impl Container {
 
         Ok(Container {
             header,
+            task_table,
             constant_pool,
             code,
         })
@@ -99,6 +111,19 @@ mod tests {
         container.write_to(&mut buf).unwrap();
 
         let decoded = Container::read_from(&mut Cursor::new(&buf)).unwrap();
+
+        // Verify synthesized default task table
+        assert_eq!(decoded.task_table.tasks.len(), 1);
+        assert_eq!(decoded.task_table.tasks[0].task_id, 0);
+        assert_eq!(
+            decoded.task_table.tasks[0].task_type,
+            crate::TaskType::Freewheeling
+        );
+        assert_eq!(decoded.task_table.tasks[0].flags, 0x01);
+        assert_eq!(decoded.task_table.programs.len(), 1);
+        assert_eq!(decoded.task_table.programs[0].instance_id, 0);
+        assert_eq!(decoded.task_table.programs[0].task_id, 0);
+        assert_eq!(decoded.task_table.programs[0].var_table_count, 2);
 
         assert_eq!(decoded.constant_pool.get_i32(0).unwrap(), 10);
         assert_eq!(decoded.constant_pool.get_i32(1).unwrap(), 32);
