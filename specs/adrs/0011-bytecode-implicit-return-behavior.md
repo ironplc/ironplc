@@ -1,4 +1,4 @@
-# Bytecode Implicit Return Behavior
+# Trap on Missing RET_VOID at End of Bytecode
 
 status: proposed
 date: 2026-02-26
