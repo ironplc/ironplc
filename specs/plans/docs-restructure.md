@@ -201,7 +201,102 @@ Update the three hardcoded directory paths:
 'https://www.ironplc.com/reference/editor/problems/' + code + '.html'
 ```
 
-### Task 8: Add tests that documentation paths match runtime URLs
+### Task 8: Generate redirect pages for old problem code URLs
+
+Older versions of the compiler and editor extension hardcode URLs to `/compiler/problems/P*.html` and `/vscode/problems/E*.html`. Users who haven't updated will still follow those links, so the old URLs must redirect to the new locations. The same applies to anyone who bookmarked a problem code page.
+
+Add a `generate_redirects` function to `docs/extensions/ironplc_problemcode.py` that hooks into Sphinx's `build-finished` event. It scans the build output for problem code HTML files at their new paths and creates minimal redirect pages at the old paths.
+
+**Redirect mapping:**
+
+| Old path (in `_build/`) | New path (in `_build/`) |
+|---|---|
+| `compiler/problems/P*.html` | `reference/compiler/problems/P*.html` |
+| `compiler/problems/index.html` | `reference/compiler/problems/index.html` |
+| `vscode/problems/E*.html` | `reference/editor/problems/E*.html` |
+| `vscode/problems/index.html` | `reference/editor/problems/index.html` |
+
+**Redirect HTML template** — each generated file uses both `<meta http-equiv="refresh">` (works without JS) and a JavaScript redirect for immediate navigation:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Redirecting…</title>
+  <link rel="canonical" href="/reference/compiler/problems/P0001.html">
+  <meta http-equiv="refresh" content="0; url=/reference/compiler/problems/P0001.html">
+  <script>window.location.replace('/reference/compiler/problems/P0001.html');</script>
+</head>
+<body>
+  <p>This page has moved to
+     <a href="/reference/compiler/problems/P0001.html">/reference/compiler/problems/P0001.html</a>.</p>
+</body>
+</html>
+```
+
+**Implementation** — add to `ironplc_problemcode.py`:
+
+```python
+REDIRECT_TEMPLATE = """\
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Redirecting\u2026</title>
+  <link rel="canonical" href="/{new_path}">
+  <meta http-equiv="refresh" content="0; url=/{new_path}">
+  <script>window.location.replace('/{new_path}');</script>
+</head>
+<body>
+  <p>This page has moved to <a href="/{new_path}">/{new_path}</a>.</p>
+</body>
+</html>
+"""
+
+# Old path prefix -> new path prefix (relative to build output root)
+PROBLEM_REDIRECTS = [
+    ('compiler/problems', 'reference/compiler/problems'),
+    ('vscode/problems',   'reference/editor/problems'),
+]
+
+def generate_redirects(app, exception):
+    """Generate redirect HTML pages at old URLs after a successful build."""
+    if exception:
+        return
+
+    from sphinx.util import logging
+    logger = logging.getLogger(__name__)
+
+    outdir = Path(app.outdir)
+
+    for old_prefix, new_prefix in PROBLEM_REDIRECTS:
+        new_dir = outdir / new_prefix
+        if not new_dir.exists():
+            logger.warning(f"Expected output directory not found: {new_dir}")
+            continue
+
+        old_dir = outdir / old_prefix
+        old_dir.mkdir(parents=True, exist_ok=True)
+
+        for html_file in new_dir.glob('*.html'):
+            new_path = f"{new_prefix}/{html_file.name}"
+            redirect_file = old_dir / html_file.name
+            redirect_file.write_text(
+                REDIRECT_TEMPLATE.format(new_path=new_path),
+                encoding='utf-8',
+            )
+
+        logger.info(f"Generated redirects: {old_prefix}/ -> {new_prefix}/")
+```
+
+Register the event handler in `setup()`:
+
+```python
+app.connect('build-finished', generate_redirects)
+```
+
+### Task 9: Add tests that documentation paths match runtime URLs
 
 The runtime URLs in Task 7 are plain strings with no connection to the Sphinx build. Add tests that assert the URL path segments correspond to actual directories containing `.rst` files, so future path moves cause a test failure.
 
@@ -253,7 +348,8 @@ suite('problemUrls', () => {
 });
 ```
 
-### Task 9: Verify the build
+### Task 10: Verify the build
+
 
 ```bash
 cd docs && just compile
