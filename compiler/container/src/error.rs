@@ -16,6 +16,8 @@ pub enum ContainerError {
     InvalidConstantIndex(u16),
     /// A section's actual size does not match the declared size.
     SectionSizeMismatch,
+    /// A task entry has an unrecognized task type tag.
+    InvalidTaskType(u8),
 }
 
 impl fmt::Display for ContainerError {
@@ -31,6 +33,9 @@ impl fmt::Display for ContainerError {
                 write!(f, "constant pool index out of bounds: {i}")
             }
             ContainerError::SectionSizeMismatch => write!(f, "section size mismatch"),
+            ContainerError::InvalidTaskType(t) => {
+                write!(f, "invalid task type tag: {t}")
+            }
         }
     }
 }

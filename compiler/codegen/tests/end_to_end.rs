@@ -13,7 +13,7 @@ fn parse_and_run(source: &str) -> ironplc_vm::VmRunning {
     let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
     let container = compile(&library).unwrap();
     let mut vm = Vm::new().load(container).start();
-    vm.run_single_scan().unwrap();
+    vm.run_round().unwrap();
     vm
 }
 
@@ -149,10 +149,10 @@ END_PROGRAM
     let mut vm = Vm::new().load(container).start();
 
     // Run multiple scans - result should be the same each time
-    vm.run_single_scan().unwrap();
+    vm.run_round().unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 99);
 
-    vm.run_single_scan().unwrap();
+    vm.run_round().unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 99);
     assert_eq!(vm.scan_count(), 2);
 }

@@ -38,9 +38,9 @@ fn steel_thread_when_full_round_trip_then_x_is_10_y_is_42() {
     // 3. Deserialize from bytes.
     let loaded = Container::read_from(&mut Cursor::new(&buf)).unwrap();
 
-    // 4. Load into VM, start, and run one scan cycle.
+    // 4. Load into VM, start, and run one scheduling round.
     let mut vm = Vm::new().load(loaded).start();
-    vm.run_single_scan().unwrap();
+    vm.run_round().unwrap();
 
     // 5. Verify results.
     assert_eq!(vm.read_variable(0).unwrap(), 10);

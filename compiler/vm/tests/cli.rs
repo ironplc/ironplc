@@ -58,7 +58,7 @@ fn run_when_valid_container_file_then_ok() -> Result<(), Box<dyn std::error::Err
     write_steel_thread_container(&container_path);
 
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
-    cmd.arg("run").arg(&container_path);
+    cmd.arg("run").arg(&container_path).arg("--scans").arg("1");
     cmd.assert().success().stdout(predicate::str::is_empty());
 
     Ok(())
@@ -76,7 +76,9 @@ fn run_when_valid_container_file_and_dump_vars_then_writes_variables(
     cmd.arg("run")
         .arg(&container_path)
         .arg("--dump-vars")
-        .arg(&dump_path);
+        .arg(&dump_path)
+        .arg("--scans")
+        .arg("1");
     cmd.assert().success();
 
     let contents = std::fs::read_to_string(&dump_path)?;
@@ -121,7 +123,9 @@ fn run_when_golden_container_file_then_ok() -> Result<(), Box<dyn std::error::Er
     cmd.arg("run")
         .arg(&golden_path)
         .arg("--dump-vars")
-        .arg(&dump_path);
+        .arg(&dump_path)
+        .arg("--scans")
+        .arg("1");
     cmd.assert().success();
 
     let contents = std::fs::read_to_string(&dump_path)?;

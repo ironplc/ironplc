@@ -17,7 +17,6 @@ export interface DisassemblyHeader {
   numFunctions: number;
   numFbTypes: number;
   numArrays: number;
-  entryFunctionId: number;
   inputImageBytes: number;
   outputImageBytes: number;
   memoryImageBytes: number;
@@ -203,7 +202,6 @@ export function renderHeader(header: DisassemblyHeader): string {
     <tr><th>Field</th><th>Value</th></tr>
     <tr><td>Format Version</td><td>${header.formatVersion}</td></tr>
     <tr><td>Flags</td><td>${escapeHtml(flagsStr)}</td></tr>
-    <tr><td>Entry Function ID</td><td>${header.entryFunctionId}</td></tr>
     <tr><td>Functions</td><td>${header.numFunctions}</td></tr>
     <tr><td>Variables</td><td>${header.numVariables}</td></tr>
     <tr><td>Max Stack Depth</td><td>${header.maxStackDepth}</td></tr>

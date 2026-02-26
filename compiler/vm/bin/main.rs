@@ -25,7 +25,7 @@ struct Args {
 
 #[derive(clap::Subcommand, Debug)]
 enum Action {
-    /// Loads and executes one scan cycle from a bytecode container file.
+    /// Loads and executes a bytecode container file.
     Run {
         /// Path to the bytecode container file (.iplc).
         file: PathBuf,
@@ -33,6 +33,10 @@ enum Action {
         /// Write variable dump to the specified file after execution.
         #[arg(long)]
         dump_vars: Option<PathBuf>,
+
+        /// Run N scheduling rounds then stop (default: continuous until Ctrl+C).
+        #[arg(long)]
+        scans: Option<u64>,
     },
     /// Prints the version number of the virtual machine.
     Version,
@@ -44,7 +48,11 @@ pub fn main() -> Result<(), String> {
     logger::configure(args.verbose, args.log_file)?;
 
     match args.action {
-        Action::Run { file, dump_vars } => cli::run(&file, dump_vars.as_deref()),
+        Action::Run {
+            file,
+            dump_vars,
+            scans,
+        } => cli::run(&file, dump_vars.as_deref(), scans),
         Action::Version => {
             println!("ironplcvm version {VERSION}");
             Ok(())

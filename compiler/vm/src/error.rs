@@ -10,6 +10,7 @@ pub enum Trap {
     InvalidConstantIndex(u16),
     InvalidVariableIndex(u16),
     InvalidFunctionId(u16),
+    WatchdogTimeout(u16),
 }
 
 impl fmt::Display for Trap {
@@ -22,8 +23,20 @@ impl fmt::Display for Trap {
             Trap::InvalidConstantIndex(i) => write!(f, "invalid constant index: {i}"),
             Trap::InvalidVariableIndex(i) => write!(f, "invalid variable index: {i}"),
             Trap::InvalidFunctionId(id) => write!(f, "invalid function ID: {id}"),
+            Trap::WatchdogTimeout(id) => write!(f, "watchdog timeout on task {id}"),
         }
     }
 }
 
 impl std::error::Error for Trap {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trap_display_when_watchdog_timeout_then_includes_task_id() {
+        let trap = Trap::WatchdogTimeout(3);
+        assert_eq!(format!("{trap}"), "watchdog timeout on task 3");
+    }
+}

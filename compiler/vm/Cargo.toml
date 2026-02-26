@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 ironplc-container = { path = "../container", version = "0.158.0" }
+ctrlc = "3"
 
 time = "0.3.17"
 clap = { version = "4.0", features = ["derive", "wrap_help"] }
