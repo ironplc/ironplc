@@ -8,4 +8,4 @@ pub(crate) mod variable_table;
 mod vm;
 
 pub use value::Slot;
-pub use vm::{StopHandle, Vm, VmFaulted, VmReady, VmRunning, VmStopped};
+pub use vm::{FaultContext, StopHandle, Vm, VmFaulted, VmReady, VmRunning, VmStopped};

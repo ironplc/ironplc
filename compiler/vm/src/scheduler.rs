@@ -19,7 +19,6 @@ pub struct TaskState {
 /// Per-program-instance runtime state.
 #[derive(Clone, Debug)]
 pub struct ProgramInstanceState {
-    #[allow(dead_code)] // used in fault context (Task 7)
     pub instance_id: u16,
     pub task_id: u16,
     pub entry_function_id: u16,
@@ -109,12 +108,7 @@ impl TaskScheduler {
     }
 
     /// Records that a task executed, updating timing and overrun tracking.
-    pub fn record_execution(
-        &mut self,
-        task_index: usize,
-        elapsed_us: u64,
-        current_time_us: u64,
-    ) {
+    pub fn record_execution(&mut self, task_index: usize, elapsed_us: u64, current_time_us: u64) {
         let task = &mut self.task_states[task_index];
         task.scan_count += 1;
         task.last_execute_us = elapsed_us;

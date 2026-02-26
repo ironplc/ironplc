@@ -25,8 +25,7 @@ impl VariableScope {
     /// Checks whether a variable index is within this scope's allowed range.
     pub fn check_access(&self, index: u16) -> Result<(), Trap> {
         if index < self.shared_globals_size
-            || (index >= self.instance_offset
-                && index < self.instance_offset + self.instance_count)
+            || (index >= self.instance_offset && index < self.instance_offset + self.instance_count)
         {
             Ok(())
         } else {

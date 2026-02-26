@@ -48,7 +48,11 @@ pub fn main() -> Result<(), String> {
     logger::configure(args.verbose, args.log_file)?;
 
     match args.action {
-        Action::Run { file, dump_vars, scans } => cli::run(&file, dump_vars.as_deref(), scans),
+        Action::Run {
+            file,
+            dump_vars,
+            scans,
+        } => cli::run(&file, dump_vars.as_deref(), scans),
         Action::Version => {
             println!("ironplcvm version {VERSION}");
             Ok(())

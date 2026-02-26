@@ -25,6 +25,14 @@ impl StopHandle {
     }
 }
 
+/// Context for a fault that occurred during task execution.
+#[derive(Debug)]
+pub struct FaultContext {
+    pub trap: Trap,
+    pub task_id: u16,
+    pub instance_id: u16,
+}
+
 /// A newly created VM with no loaded program.
 ///
 /// The only valid operation is [`load`](Vm::load), which consumes
@@ -107,10 +115,10 @@ impl VmRunning {
     /// Executes one scheduling round: collects ready tasks, executes them
     /// in priority order, and updates timing.
     ///
-    /// Returns `Ok(())` if the round completes. Returns `Err(Trap)` if
+    /// Returns `Ok(())` if the round completes. Returns `Err(FaultContext)` if
     /// a trap occurs during execution. The caller should transition to
     /// `VmFaulted` on trap.
-    pub fn run_round(&mut self) -> Result<(), Trap> {
+    pub fn run_round(&mut self) -> Result<(), FaultContext> {
         let current_us = self.start_instant.elapsed().as_micros() as u64;
 
         let ready = self.scheduler.collect_ready_tasks(current_us);
@@ -140,7 +148,11 @@ impl VmRunning {
                     .container
                     .code
                     .get_function_bytecode(prog.entry_function_id)
-                    .ok_or(Trap::InvalidFunctionId(prog.entry_function_id))?;
+                    .ok_or(FaultContext {
+                        trap: Trap::InvalidFunctionId(prog.entry_function_id),
+                        task_id,
+                        instance_id: prog.instance_id,
+                    })?;
 
                 let scope = VariableScope {
                     shared_globals_size: self.scheduler.shared_globals_size,
@@ -154,14 +166,23 @@ impl VmRunning {
                     &mut self.stack,
                     &mut self.variables,
                     &scope,
-                )?;
+                )
+                .map_err(|trap| FaultContext {
+                    trap,
+                    task_id,
+                    instance_id: prog.instance_id,
+                })?;
             }
 
             let task_elapsed = self.start_instant.elapsed().as_micros() as u64 - task_start;
 
             // Watchdog check
             if watchdog_us > 0 && task_elapsed > watchdog_us {
-                return Err(Trap::WatchdogTimeout(task_id));
+                return Err(FaultContext {
+                    trap: Trap::WatchdogTimeout(task_id),
+                    task_id,
+                    instance_id: 0,
+                });
             }
 
             self.scheduler
@@ -217,11 +238,11 @@ impl VmRunning {
     }
 
     /// Transitions to the faulted state (trap occurred).
-    pub fn fault(self, trap: Trap, task_id: u16, instance_id: u16) -> VmFaulted {
+    pub fn fault(self, ctx: FaultContext) -> VmFaulted {
         VmFaulted {
-            trap,
-            task_id,
-            instance_id,
+            trap: ctx.trap,
+            task_id: ctx.task_id,
+            instance_id: ctx.instance_id,
             container: self.container,
             variables: self.variables,
         }
@@ -410,7 +431,9 @@ mod tests {
 
         let result = vm.run_round();
 
-        assert!(matches!(result, Err(Trap::InvalidInstruction(0xFF))));
+        assert!(result.is_err());
+        let ctx = result.unwrap_err();
+        assert!(matches!(ctx.trap, Trap::InvalidInstruction(0xFF)));
     }
 
     #[test]
@@ -432,7 +455,12 @@ mod tests {
     #[test]
     fn vm_fault_when_called_then_returns_faulted_with_context() {
         let vm = Vm::new().load(steel_thread_container()).start();
-        let faulted = vm.fault(Trap::WatchdogTimeout(3), 3, 1);
+        let ctx = FaultContext {
+            trap: Trap::WatchdogTimeout(3),
+            task_id: 3,
+            instance_id: 1,
+        };
+        let faulted = vm.fault(ctx);
         assert_eq!(*faulted.trap(), Trap::WatchdogTimeout(3));
         assert_eq!(faulted.task_id(), 3);
         assert_eq!(faulted.instance_id(), 1);
