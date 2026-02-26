@@ -4,7 +4,7 @@
 
 **Rationale:** The homepage already groups content by Diátaxis quadrants (Tutorials, How-to guides, Reference) in prose, but the URL structure does not reflect that organization — `/compiler/`, `/vscode/`, `/how-to-guides/`, and `/quickstart/` are all top-level peers. This restructure makes the hierarchy self-documenting and fixes a quadrant violation where troubleshooting (a how-to guide) lives under a reference URL.
 
-**Tech Stack:** Sphinx (reStructuredText), Furo theme, custom `ironplc_problemcode` extension
+**Tech Stack:** Sphinx (reStructuredText), Furo theme, custom `ironplc_problemcode` extension, Rust compiler crate, VS Code extension (TypeScript)
 
 ---
 
@@ -24,7 +24,7 @@ Six files contain cross-references to paths that will change:
 | `docs/how-to-guides/check-beremiz-projects.rst` | `:doc:\`/compiler/source-formats/plcopen-xml\`` | `:doc:\`/reference/compiler/source-formats/plcopen-xml\`` |
 | `docs/how-to-guides/check-twincat-projects.rst` | `:doc:\`/compiler/source-formats/twincat\`` | `:doc:\`/reference/compiler/source-formats/twincat\`` |
 
-### Extension paths that need updating
+### Sphinx extension paths that need updating
 
 The custom Sphinx extension `docs/extensions/ironplc_problemcode.py` has three hardcoded paths:
 
@@ -33,6 +33,15 @@ The custom Sphinx extension `docs/extensions/ironplc_problemcode.py` has three h
 | 16 | `join('compiler', 'problems')` | `join('reference', 'compiler', 'problems')` |
 | 17 | `join('vscode', 'problems')` | `join('reference', 'vscode', 'problems')` |
 | 74 | `srcdir / 'compiler' / 'problems'` | `srcdir / 'reference' / 'compiler' / 'problems'` |
+
+### Runtime documentation URLs that need updating
+
+The compiler and VS Code extension construct URLs to the documentation website at runtime. These hardcoded URL bases must be updated:
+
+| File | Line | Current | New |
+|------|------|---------|-----|
+| `compiler/plc2x/src/lsp_project.rs` | 452 | `https://www.ironplc.com/compiler/problems/{}.html` | `https://www.ironplc.com/reference/compiler/problems/{}.html` |
+| `integrations/vscode/src/extension.ts` | 24 | `https://www.ironplc.com/vscode/problems/' + code + '.html` | `https://www.ironplc.com/reference/vscode/problems/' + code + '.html` |
 
 ### What is unaffected
 
@@ -171,7 +180,27 @@ Update the three hardcoded directory paths:
 - Line 17: `join('vscode', 'problems')` → `join('reference', 'vscode', 'problems')`
 - Line 74: `srcdir / 'compiler' / 'problems'` → `srcdir / 'reference' / 'compiler' / 'problems'`
 
-### Task 7: Verify the build
+### Task 7: Update runtime documentation URLs
+
+**`compiler/plc2x/src/lsp_project.rs`** (line 452):
+
+```rust
+// Before
+"https://www.ironplc.com/compiler/problems/{}.html"
+// After
+"https://www.ironplc.com/reference/compiler/problems/{}.html"
+```
+
+**`integrations/vscode/src/extension.ts`** (line 24):
+
+```typescript
+// Before
+'https://www.ironplc.com/vscode/problems/' + code + '.html'
+// After
+'https://www.ironplc.com/reference/vscode/problems/' + code + '.html'
+```
+
+### Task 8: Verify the build
 
 ```bash
 cd docs && just compile
