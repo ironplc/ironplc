@@ -288,6 +288,8 @@ impl FileHeader {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::vec;
+    use std::vec::Vec;
 
     #[test]
     fn header_write_read_when_default_then_roundtrips() {

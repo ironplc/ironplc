@@ -1,4 +1,5 @@
 use std::io::{Cursor, Read, Write};
+use std::vec::Vec;
 
 use crate::code_section::CodeSection;
 use crate::constant_pool::ConstantPool;
@@ -84,6 +85,9 @@ impl Container {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::vec;
+    use std::vec::Vec;
+
     use crate::ContainerBuilder;
 
     #[test]
