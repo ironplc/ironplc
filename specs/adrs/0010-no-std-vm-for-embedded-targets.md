@@ -25,7 +25,7 @@ Today, both the `ironplc-vm` and `ironplc-container` crates depend on `std`. Sho
 
 ## Decision Outcome
 
-Chosen option: "`no_std` without `alloc` (fully static)", because it maximizes the range of deployable targets (including AVR with 8 KB SRAM) and aligns with the PLC philosophy of deterministic, bounded resource usage. The `alloc` and `std` tiers are preserved as Cargo feature flags for convenience on platforms that support them.
+Chosen option: "`no_std` without `alloc` (fully static)", because it maximizes the range of deployable targets (including AVR with 8 KB SRAM) and aligns with the PLC philosophy of deterministic, bounded resource usage. The implementation uses **two separate crates** instead of feature flags: `ironplc-vm` is unconditionally `#![no_std]` (the execution engine), and a new `ironplc-vm-cli` crate provides the desktop CLI binary with full `std`. Feature flags are confined to the `ironplc-container` crate, which uses `#[cfg(feature = "std")]` to gate its I/O serialization and builder modules.
 
 See [no-std-vm-implementation.md](../plans/no-std-vm-implementation.md) for the implementation plan.
 
@@ -34,18 +34,19 @@ See [no-std-vm-implementation.md](../plans/no-std-vm-implementation.md) for the 
 * Good, because the VM can run on Arduino and other bare-metal targets without modification — the same crate compiles for both desktop and embedded
 * Good, because the execution core becomes truly zero-allocation — deterministic memory usage with no heap fragmentation, which aligns with PLC safety requirements
 * Good, because zero-copy container parsing (`ContainerRef::from_slice`) means bytecode can stay in flash with no RAM duplication
-* Good, because existing desktop users see no change — `default = ["std"]` preserves current behavior
+* Good, because existing desktop users see no change — the CLI crate preserves the current `ironplcvm` binary interface
 * Good, because the container header already declares all sizes up front — the design was already implicitly targeting static allocation
-* Bad, because const generic or slice-based storage adds API complexity — `OperandStack<N>` is less simple than `OperandStack` with an internal `Vec`
-* Bad, because the VM gains two ways to load a container (`from_slice` for embedded, `read_from` for desktop) — but these serve genuinely different use cases
-* Bad, because `#[cfg(feature = ...)]` gates throughout the code increase maintenance burden and make it easier to accidentally break one configuration
-* Neutral, because `clap` does not need a `no_std` replacement — it simply does not apply on embedded targets where there is no command line
+* Good, because the two-crate split makes the `no_std` constraint structural — if `ironplc-vm` compiles, it works on embedded; no risk of accidentally breaking one feature-flag configuration
+* Bad, because slice-based storage adds API complexity — `OperandStack` backed by `&mut [Slot]` requires the caller to provide buffers, unlike the simpler `Vec`-backed version
+* Bad, because the VM gains two ways to load a container (`ContainerRef::from_slice` for the VM, `Container::read_from` for the CLI) — but these serve genuinely different use cases
+* Bad, because the container crate uses `#[cfg(feature = "std")]` gates — but this is confined to one crate and the split is clean (I/O serialization vs. zero-copy parsing)
+* Neutral, because `clap` does not need a `no_std` replacement — it moves to the CLI crate where `std` is available
 
 ### Confirmation
 
 The implementation is confirmed when:
 
-1. `cargo build --no-default-features --target thumbv7em-none-eabihf` succeeds for both `ironplc-container` and `ironplc-vm`
+1. `cargo build -p ironplc-vm --target thumbv7em-none-eabihf` succeeds (no `--no-default-features` needed — the VM crate is unconditionally `no_std`), and `cargo build -p ironplc-container --no-default-features --target thumbv7em-none-eabihf` succeeds
 2. A minimal Arduino Due example loads a container from flash and executes one scan cycle
 3. `cargo build` (with default features) still succeeds and all existing tests pass
 4. The embedded build produces no linker errors for `std` symbols
@@ -99,4 +100,4 @@ A minimal VM instance needs: header (256 bytes) + stack (`max_stack_depth * 8` b
 
 * **ADR-0000 (Stack-based bytecode VM)** — the stack-based architecture is particularly well-suited for `no_std` because the operand stack has a known maximum depth
 * **ADR-0005 (Safety-first design)** — static allocation is safer than dynamic allocation for PLC runtimes; bounded resource usage prevents runtime allocation failures
-* **ADR-0009 (Typestate VM lifecycle)** — the typestate pattern works unchanged in `no_std`; the generic parameters may need to carry const generic sizes for the stack and variable table
+* **ADR-0009 (Typestate VM lifecycle)** — the typestate pattern works unchanged in `no_std`; the VM state types carry a single lifetime parameter `'a` for the borrowed buffers
