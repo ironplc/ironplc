@@ -1,4 +1,4 @@
-use ironplc_container::{TaskEntry, TaskTable, TaskType, ProgramInstanceEntry};
+use ironplc_container::{TaskTable, TaskType};
 
 /// Per-task runtime state tracked by the scheduler.
 #[derive(Clone, Debug)]
@@ -19,6 +19,7 @@ pub struct TaskState {
 /// Per-program-instance runtime state.
 #[derive(Clone, Debug)]
 pub struct ProgramInstanceState {
+    #[allow(dead_code)] // used in fault context (Task 7)
     pub instance_id: u16,
     pub task_id: u16,
     pub entry_function_id: u16,
@@ -152,6 +153,7 @@ impl TaskScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ironplc_container::{ProgramInstanceEntry, TaskEntry};
 
     fn freewheeling_task_table() -> TaskTable {
         TaskTable {

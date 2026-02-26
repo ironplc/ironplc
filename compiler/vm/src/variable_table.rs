@@ -13,7 +13,7 @@ pub struct VariableScope {
 
 impl VariableScope {
     /// Creates a permissive scope that allows access to all `num_variables` slots.
-    /// Used when there is only one program instance (the common case).
+    #[cfg(test)]
     pub fn permissive(num_variables: u16) -> Self {
         VariableScope {
             shared_globals_size: num_variables,
