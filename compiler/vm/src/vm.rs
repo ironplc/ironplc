@@ -1,9 +1,11 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 use ironplc_container::Container;
 
 use crate::error::Trap;
+use crate::scheduler::TaskScheduler;
 use crate::stack::OperandStack;
 use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
@@ -68,12 +70,15 @@ impl VmReady {
     /// Starts the VM for scan execution.
     /// Consumes the ready VM and returns a running VM.
     pub fn start(self) -> VmRunning {
+        let scheduler = TaskScheduler::from_task_table(&self.container.task_table);
         VmRunning {
             container: self.container,
             stack: self.stack,
             variables: self.variables,
+            scheduler,
             scan_count: 0,
             stop_flag: Arc::new(AtomicBool::new(false)),
+            start_instant: Instant::now(),
         }
     }
 
@@ -86,41 +91,84 @@ impl VmReady {
 
 /// A VM that is actively executing scan cycles.
 ///
-/// Call [`run_single_scan`](VmRunning::run_single_scan) repeatedly
-/// to execute the program. On a trap, the VM transitions to
-/// [`VmFaulted`].
+/// Call [`run_round`](VmRunning::run_round) repeatedly to execute tasks.
+/// On a trap, the VM transitions to [`VmFaulted`].
 pub struct VmRunning {
     container: Container,
     stack: OperandStack,
     variables: VariableTable,
+    scheduler: TaskScheduler,
     scan_count: u64,
     stop_flag: Arc<AtomicBool>,
+    start_instant: Instant,
 }
 
 impl VmRunning {
-    /// Executes one scan cycle by running the entry function.
+    /// Executes one scheduling round: collects ready tasks, executes them
+    /// in priority order, and updates timing.
     ///
-    /// On success, the VM remains in the running state.
-    /// On a trap, returns `Err(VmFaulted)`.
-    pub fn run_single_scan(&mut self) -> Result<(), Trap> {
-        // TODO: Read entry point from task table once implemented.
-        // For now, function 0 is always the entry point.
-        let entry_id: u16 = 0;
-        let bytecode = self
-            .container
-            .code
-            .get_function_bytecode(entry_id)
-            .ok_or(Trap::InvalidFunctionId(entry_id))?;
+    /// Returns `Ok(())` if the round completes. Returns `Err(Trap)` if
+    /// a trap occurs during execution. The caller should transition to
+    /// `VmFaulted` on trap.
+    pub fn run_round(&mut self) -> Result<(), Trap> {
+        let current_us = self.start_instant.elapsed().as_micros() as u64;
 
-        let scope = VariableScope::permissive(self.container.header.num_variables);
+        let ready = self.scheduler.collect_ready_tasks(current_us);
 
-        execute(
-            bytecode,
-            &self.container,
-            &mut self.stack,
-            &mut self.variables,
-            &scope,
-        )?;
+        if ready.is_empty() {
+            // Sleep until the next cyclic task is due
+            if let Some(next_due) = self.scheduler.next_due_us() {
+                if next_due > current_us {
+                    std::thread::sleep(std::time::Duration::from_micros(next_due - current_us));
+                }
+            }
+            return Ok(());
+        }
+
+        // Stub: INPUT_FREEZE (no-op)
+
+        for &task_idx in &ready {
+            let task_state = &self.scheduler.task_states[task_idx];
+            let task_id = task_state.task_id;
+            let watchdog_us = task_state.watchdog_us;
+
+            let programs = self.scheduler.programs_for_task(task_id);
+            let task_start = self.start_instant.elapsed().as_micros() as u64;
+
+            for prog in &programs {
+                let bytecode = self
+                    .container
+                    .code
+                    .get_function_bytecode(prog.entry_function_id)
+                    .ok_or(Trap::InvalidFunctionId(prog.entry_function_id))?;
+
+                let scope = VariableScope {
+                    shared_globals_size: self.scheduler.shared_globals_size,
+                    instance_offset: prog.var_table_offset,
+                    instance_count: prog.var_table_count,
+                };
+
+                execute(
+                    bytecode,
+                    &self.container,
+                    &mut self.stack,
+                    &mut self.variables,
+                    &scope,
+                )?;
+            }
+
+            let task_elapsed = self.start_instant.elapsed().as_micros() as u64 - task_start;
+
+            // Watchdog check
+            if watchdog_us > 0 && task_elapsed > watchdog_us {
+                return Err(Trap::WatchdogTimeout(task_id));
+            }
+
+            self.scheduler
+                .record_execution(task_idx, task_elapsed, task_start);
+        }
+
+        // Stub: OUTPUT_FLUSH (no-op)
 
         self.scan_count += 1;
         Ok(())
@@ -341,17 +389,17 @@ mod tests {
     }
 
     #[test]
-    fn vm_run_single_scan_when_steel_thread_then_x_is_10_y_is_42() {
+    fn vm_run_round_when_steel_thread_then_x_is_10_y_is_42() {
         let mut vm = Vm::new().load(steel_thread_container()).start();
 
-        vm.run_single_scan().unwrap();
+        vm.run_round().unwrap();
 
         assert_eq!(vm.read_variable(0).unwrap(), 10);
         assert_eq!(vm.read_variable(1).unwrap(), 42);
     }
 
     #[test]
-    fn vm_run_single_scan_when_invalid_opcode_then_trap() {
+    fn vm_run_round_when_invalid_opcode_then_trap() {
         let bytecode = vec![0xFF]; // invalid opcode
         let container = ContainerBuilder::new()
             .num_variables(0)
@@ -360,7 +408,7 @@ mod tests {
 
         let mut vm = Vm::new().load(container).start();
 
-        let result = vm.run_single_scan();
+        let result = vm.run_round();
 
         assert!(matches!(result, Err(Trap::InvalidInstruction(0xFF))));
     }
