@@ -3,7 +3,7 @@ use ironplc_container::Container;
 use crate::error::Trap;
 use crate::stack::OperandStack;
 use crate::value::Slot;
-use crate::variable_table::VariableTable;
+use crate::variable_table::{VariableScope, VariableTable};
 use ironplc_container::opcode;
 
 /// A newly created VM with no loaded program.
@@ -93,11 +93,14 @@ impl VmRunning {
             .get_function_bytecode(entry_id)
             .ok_or(Trap::InvalidFunctionId(entry_id))?;
 
+        let scope = VariableScope::permissive(self.container.header.num_variables);
+
         execute(
             bytecode,
             &self.container,
             &mut self.stack,
             &mut self.variables,
+            &scope,
         )?;
 
         self.scan_count += 1;
@@ -131,6 +134,7 @@ fn execute(
     container: &Container,
     stack: &mut OperandStack,
     variables: &mut VariableTable,
+    scope: &VariableScope,
 ) -> Result<(), Trap> {
     let mut pc: usize = 0;
 
@@ -149,11 +153,13 @@ fn execute(
             }
             opcode::LOAD_VAR_I32 => {
                 let index = read_u16_le(bytecode, &mut pc);
+                scope.check_access(index)?;
                 let slot = variables.load(index)?;
                 stack.push(slot)?;
             }
             opcode::STORE_VAR_I32 => {
                 let index = read_u16_le(bytecode, &mut pc);
+                scope.check_access(index)?;
                 let slot = stack.pop()?;
                 variables.store(index, slot)?;
             }
