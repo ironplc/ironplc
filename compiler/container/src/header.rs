@@ -1,3 +1,4 @@
+#[cfg(feature = "std")]
 use std::io::{Read, Write};
 
 use crate::ContainerError;
@@ -112,6 +113,7 @@ impl Default for FileHeader {
 
 impl FileHeader {
     /// Writes the header to the given writer as exactly 256 bytes.
+    #[cfg(feature = "std")]
     pub fn write_to(&self, w: &mut impl Write) -> Result<(), ContainerError> {
         // Region 1: Identification (bytes 0-7)
         w.write_all(&self.magic.to_le_bytes())?;
@@ -161,11 +163,8 @@ impl FileHeader {
         Ok(())
     }
 
-    /// Reads a header from the given reader, consuming exactly 256 bytes.
-    pub fn read_from(r: &mut impl Read) -> Result<Self, ContainerError> {
-        let mut buf = [0u8; HEADER_SIZE];
-        r.read_exact(&mut buf)?;
-
+    /// Parses a header from a fixed-size 256-byte array.
+    pub fn from_bytes(buf: &[u8; HEADER_SIZE]) -> Result<Self, ContainerError> {
         // Region 1: Identification (bytes 0-7)
         let magic = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
         if magic != MAGIC {
@@ -275,6 +274,14 @@ impl FileHeader {
             reserved,
         })
     }
+
+    /// Reads a header from the given reader, consuming exactly 256 bytes.
+    #[cfg(feature = "std")]
+    pub fn read_from(r: &mut impl Read) -> Result<Self, ContainerError> {
+        let mut buf = [0u8; HEADER_SIZE];
+        r.read_exact(&mut buf)?;
+        Self::from_bytes(&buf)
+    }
 }
 
 #[cfg(test)]
@@ -323,5 +330,26 @@ mod tests {
         header.write_to(&mut buf).unwrap();
 
         assert_eq!(buf.len(), HEADER_SIZE);
+    }
+
+    #[test]
+    fn header_from_bytes_when_valid_default_then_parses() {
+        let original = FileHeader::default();
+        let mut buf = Vec::new();
+        original.write_to(&mut buf).unwrap();
+        let bytes: [u8; HEADER_SIZE] = buf.try_into().unwrap();
+        let decoded = FileHeader::from_bytes(&bytes).unwrap();
+        assert_eq!(decoded.magic, MAGIC);
+        assert_eq!(decoded.format_version, FORMAT_VERSION);
+        assert_eq!(decoded.num_variables, 0);
+    }
+
+    #[test]
+    fn header_from_bytes_when_invalid_magic_then_error() {
+        let mut bytes = [0u8; HEADER_SIZE];
+        bytes[0..4].copy_from_slice(&0xDEADBEEFu32.to_le_bytes());
+        bytes[4..6].copy_from_slice(&FORMAT_VERSION.to_le_bytes());
+        let result = FileHeader::from_bytes(&bytes);
+        assert!(matches!(result, Err(ContainerError::InvalidMagic)));
     }
 }
