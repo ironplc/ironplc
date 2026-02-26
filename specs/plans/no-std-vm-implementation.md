@@ -38,16 +38,19 @@ This spec builds on:
 | `builder.rs` | `Vec` only | Heap allocation |
 | `opcode.rs` | **None** | Ready as-is |
 
-Heap types used: `Vec<u8>`, `Vec<FuncEntry>`, `Vec<ConstEntry>`.
+Heap types used (container): `Vec<u8>`, `Vec<FuncEntry>`, `Vec<ConstEntry>`.
+
+Heap types used (VM): `Vec<Slot>` (stack, variable table), `Vec<TaskState>`, `Vec<ProgramInstanceState>`, `Vec<usize>`, `Vec<&ProgramInstanceState>` (scheduler).
 
 ### `ironplc-vm` crate
 
 | File | `std` usage | Category |
 |---|---|---|
-| `vm.rs` | **None** | Ready as-is |
+| `vm.rs` | `std::sync::atomic::{AtomicBool, Ordering}`, `std::sync::Arc`, `std::time::Instant`, `std::thread::sleep` | Concurrency, timing |
 | `value.rs` | **None** | Ready as-is |
 | `stack.rs` | `Vec<Slot>` (via `Vec::with_capacity`, `push`, `pop`) | Heap allocation |
 | `variable_table.rs` | `Vec<Slot>` (via `vec![]`, `get`, `get_mut`) | Heap allocation |
+| `scheduler.rs` | `Vec<TaskState>`, `Vec<ProgramInstanceState>`, `Vec<usize>`, `Vec<&ProgramInstanceState>` | Heap allocation |
 | `error.rs` | `std::fmt::Display`, `std::error::Error` | Error traits |
 | `cli.rs` | `std::fs::File`, `std::io::Write`, `std::path::Path` | CLI only |
 | `logger.rs` | `env_logger`, `std::fs::File`, `time::OffsetDateTime` | CLI only |
@@ -58,6 +61,7 @@ Heap types used: `Vec<u8>`, `Vec<FuncEntry>`, `Vec<ConstEntry>`.
 | Dependency | Used by | `no_std` compatible? |
 |---|---|---|
 | `clap` | `bin/main.rs` | No |
+| `ctrlc` | `cli.rs` | No |
 | `env_logger` | `logger.rs` | No |
 | `log` | `logger.rs` | Yes |
 | `time` | `logger.rs` | No |
@@ -220,6 +224,119 @@ impl<'a> OperandStack<'a> {
 
 **`VariableTable`:** same pattern — wraps `&mut [Slot]`.
 
+### Replace `Vec` in `TaskScheduler` with caller-provided slices
+
+The scheduler currently uses `Vec<TaskState>`, `Vec<ProgramInstanceState>`, and returns `Vec<usize>` from `collect_ready_tasks`. These must become caller-provided slices, just like the stack and variable table.
+
+**`TaskScheduler`:**
+
+```rust
+pub struct TaskScheduler<'a> {
+    pub task_states: &'a mut [TaskState],
+    pub program_instances: &'a [ProgramInstanceState],
+    pub shared_globals_size: u16,
+}
+```
+
+**`collect_ready_tasks`** writes into a caller-provided buffer and returns the used portion:
+
+```rust
+pub fn collect_ready_tasks<'b>(
+    &self,
+    current_time_us: u64,
+    buf: &'b mut [usize],
+) -> &'b [usize] {
+    // Fill buf with indices of ready tasks, sort by priority, return used slice
+}
+```
+
+**`programs_for_task`** writes into a caller-provided buffer instead of returning a `Vec`:
+
+```rust
+pub fn programs_for_task<'b>(
+    &self,
+    task_id: u16,
+    buf: &'b mut [&'a ProgramInstanceState],
+) -> &'b [&'a ProgramInstanceState] {
+    // Fill buf with matching program instances, return used slice
+}
+```
+
+The caller allocates these buffers. On desktop, this is `Vec`; on embedded, stack-allocated arrays sized from the container header (which declares the number of tasks and programs).
+
+### Move `StopHandle` and `Arc<AtomicBool>` to the CLI crate
+
+The current VM uses `Arc<AtomicBool>` for cross-thread stop signaling (`StopHandle`). This is a desktop/CLI concern — it exists to support `ctrlc::set_handler` in `cli.rs`. On embedded, the main loop is single-threaded and the caller controls when to stop.
+
+In the no_std VM, replace the atomic stop flag with a simple `bool`:
+
+```rust
+pub struct VmRunning<'a> {
+    // ...
+    stop_requested: bool,
+}
+
+impl<'a> VmRunning<'a> {
+    pub fn stop_requested(&self) -> bool {
+        self.stop_requested
+    }
+
+    pub fn request_stop(&mut self) {
+        self.stop_requested = true;
+    }
+}
+```
+
+The CLI crate wraps this with `Arc<AtomicBool>` for signal handler support:
+
+```rust
+// In ironplc-vm-cli
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+let stop_flag = Arc::new(AtomicBool::new(false));
+let handle = stop_flag.clone();
+ctrlc::set_handler(move || handle.store(true, Ordering::Relaxed))?;
+
+loop {
+    if stop_flag.load(Ordering::Relaxed) {
+        running.request_stop();
+    }
+    // ...
+}
+```
+
+This keeps `std::sync` entirely out of the VM crate.
+
+### Move `Instant` and `thread::sleep` to the CLI crate
+
+The current VM uses `std::time::Instant` internally for scheduling and watchdog timing. The scheduler is already time-agnostic (it accepts `current_time_us: u64`), but `VmRunning::run_round` wraps this with `Instant::now().elapsed()`.
+
+In the no_std VM, `run_round` accepts the current time as a parameter:
+
+```rust
+impl<'a> VmRunning<'a> {
+    pub fn run_round(&mut self, current_time_us: u64) -> Result<(), FaultContext> {
+        let ready = self.scheduler.collect_ready_tasks(current_time_us, &mut self.ready_buf);
+        // ...
+    }
+}
+```
+
+The CLI crate provides the time source:
+
+```rust
+// In ironplc-vm-cli
+let start = std::time::Instant::now();
+loop {
+    let current_us = start.elapsed().as_micros() as u64;
+    running.run_round(current_us)?;
+    // Sleep logic lives here, not in the VM
+}
+```
+
+On embedded, the caller reads a hardware timer or tick counter to supply `current_time_us`.
+
 ### Update the typestate VM to use `ContainerRef` and slices
 
 The `VmRunning` struct becomes:
@@ -229,11 +346,14 @@ pub struct VmRunning<'a> {
     container: ContainerRef<'a>,
     stack: OperandStack<'a>,
     variables: VariableTable<'a>,
+    scheduler: TaskScheduler<'a>,
     scan_count: u64,
+    stop_requested: bool,
+    ready_buf: &'a mut [usize],
 }
 ```
 
-The `Vm::load` method accepts a `ContainerRef` and `&mut [Slot]` buffers:
+The `Vm::load` method accepts a `ContainerRef` and caller-provided buffers:
 
 ```rust
 impl Vm {
@@ -242,6 +362,9 @@ impl Vm {
         container: ContainerRef<'a>,
         stack_buf: &'a mut [Slot],
         var_buf: &'a mut [Slot],
+        task_states: &'a mut [TaskState],
+        program_instances: &'a [ProgramInstanceState],
+        ready_buf: &'a mut [usize],
     ) -> VmReady<'a> { ... }
 }
 ```
@@ -275,6 +398,7 @@ path = "src/main.rs"
 ironplc-vm = { path = "../vm" }
 ironplc-container = { path = "../container" }
 clap = { version = "4.0", features = ["derive", "wrap_help"] }
+ctrlc = "3"
 env_logger = "0.10.0"
 log = "0.4.20"
 time = "0.3.17"
@@ -369,13 +493,24 @@ fn main() -> ! {
 
     let mut stack_buf = [Slot::default(); 16];
     let mut var_buf = [Slot::default(); 32];
+    let mut task_states = [/* initialized from container header */];
+    let program_instances = [/* initialized from container header */];
+    let mut ready_buf = [0usize; 4];
 
     let mut vm = Vm::new()
-        .load(container, &mut stack_buf, &mut var_buf)
+        .load(
+            container,
+            &mut stack_buf,
+            &mut var_buf,
+            &mut task_states,
+            &program_instances,
+            &mut ready_buf,
+        )
         .start();
 
     loop {
-        vm.run_single_scan().unwrap();
+        let current_us = read_hardware_timer_us();
+        vm.run_round(current_us).unwrap();
     }
 }
 ```
