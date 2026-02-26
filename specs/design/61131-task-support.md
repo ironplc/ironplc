@@ -8,9 +8,9 @@ This document describes the changes needed to the container format, VM execution
 
 ### Building On
 
-- **[Bytecode Container Format](../plans/bytecode-container-format.md)** — the current single-entry-point container
-- **[Runtime Execution Model](../plans/runtime-execution-model.md)** — the current single-scan-cycle model
-- **[Bytecode Instruction Set](../plans/bytecode-instruction-set.md)** — the instruction set (unchanged by this design)
+- **[Bytecode Container Format](bytecode-container-format.md)** — the current single-entry-point container
+- **[Runtime Execution Model](runtime-execution-model.md)** — the current single-scan-cycle model
+- **[Bytecode Instruction Set](bytecode-instruction-set.md)** — the instruction set (unchanged by this design)
 
 ## IEC 61131-3 Task Model
 
@@ -655,51 +655,9 @@ The diagnostic interface should be extended to expose per-task information:
 | Program instances | instance_id, task_id, entry_function_id | On request |
 | Ready queue | Currently ready tasks and their order | On request |
 
-## Phased Implementation
+## Implementation Plan
 
-### Phase 0: Parser and AST Completeness
-
-- Add `SINGLE` parameter to `TaskConfiguration` AST (new `DataSourceKind` type)
-- Parse `SINGLE` in `task_initialization` rule (support both constants and variable references)
-- Fix `INTERVAL` parser panic — return proper error for non-duration types
-- Fix renderer typo (`INTERNAL` → `INTERVAL`) and add `SINGLE` rendering
-- Add semantic rule: task names unique within a resource (P4019)
-
-### Phase 1: Container Format (task table section)
-
-- Add the task table section to the container format
-- Replace `entry_function_id` with task table — task table is always present
-- Add header fields for task table offset/size
-- Update the container builder to accept task entries
-- Update the container reader to parse task entries
-
-### Phase 2: VM Task Scheduler (cyclic tasks only)
-
-- Implement `TaskScheduler` with cyclic task support
-- Implement the cooperative scheduling loop
-- Implement per-task execution (INPUT_FREEZE, EXECUTE per program instance, OUTPUT_FLUSH)
-- Variable table partitioning (shared globals + per-instance regions)
-- Per-task trap diagnostics
-- Update CLI with `--scans` and `--continuous` options
-
-### Phase 3: Event and Freewheeling Tasks
-
-- Add event task support (SINGLE variable edge detection)
-- Add freewheeling task support
-- Enable per-task watchdog enforcement (field already in task table from Phase 1)
-
-### Phase 4: Codegen Integration
-
-- Compile CONFIGURATION/RESOURCE/TASK declarations
-- Emit task table section
-- Variable table partitioning in codegen
-- Synthesize default configuration for bare PROGRAM declarations
-- Program connection source/sink compilation (I/O mappings)
-
-### Phase 5: Startup Function
-
-- Add optional `startup_function_id` support
-- Execute once during READY → RUNNING transition
+See [Implementation Plan: IEC 61131-3 Task Support](../plans/61131-task-support-impl.md) for the phased implementation roadmap.
 
 ## Open Questions (Resolved)
 
