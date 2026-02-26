@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use ironplc_vm::cli;
-use ironplc_vm::logger;
+mod cli;
+mod logger;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 

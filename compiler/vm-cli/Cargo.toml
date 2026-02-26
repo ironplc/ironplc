@@ -1,0 +1,27 @@
+[package]
+name = "ironplc-vm-cli"
+description = "Command line interface for the IronPLC bytecode virtual machine"
+version = "0.158.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "ironplcvm"
+path = "src/main.rs"
+
+[dependencies]
+ironplc-vm = { path = "../vm", version = "0.158.0" }
+ironplc-container = { path = "../container", version = "0.158.0" }
+clap = { version = "4.0", features = ["derive", "wrap_help"] }
+ctrlc = "3"
+env_logger = "0.10.0"
+log = "0.4.20"
+time = "0.3.17"
+
+[dev-dependencies]
+assert_cmd = { version = "2.0" }
+ironplc-container = { path = "../container", version = "0.158.0" }
+predicates = { version = "3.0" }
+tempfile = "3"

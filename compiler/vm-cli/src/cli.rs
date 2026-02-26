@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
-use crate::vm::Vm;
+use ironplc_vm::Vm;
 
 /// Loads a container file and executes it.
 ///
@@ -60,7 +60,7 @@ pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<
     Ok(())
 }
 
-fn dump_variables_stopped(stopped: &crate::vm::VmStopped, dump_path: &Path) -> Result<(), String> {
+fn dump_variables_stopped(stopped: &ironplc_vm::VmStopped, dump_path: &Path) -> Result<(), String> {
     let num_vars = stopped.num_variables();
     let mut out = File::create(dump_path)
         .map_err(|e| format!("Unable to create dump file {}: {e}", dump_path.display()))?;
@@ -74,7 +74,7 @@ fn dump_variables_stopped(stopped: &crate::vm::VmStopped, dump_path: &Path) -> R
     Ok(())
 }
 
-fn dump_variables_faulted(faulted: &crate::vm::VmFaulted, dump_path: &Path) -> Result<(), String> {
+fn dump_variables_faulted(faulted: &ironplc_vm::VmFaulted, dump_path: &Path) -> Result<(), String> {
     let num_vars = faulted.num_variables();
     let mut out = File::create(dump_path)
         .map_err(|e| format!("Unable to create dump file {}: {e}", dump_path.display()))?;
