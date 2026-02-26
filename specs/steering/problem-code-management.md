@@ -111,21 +111,35 @@ Extension errors use the `E####` format and are tracked separately from compiler
 
 1. **Choose the next available code**: Use the next sequential E#### number
 2. **Add to CSV**: Update `integrations/vscode/resources/problem-codes.csv`
-3. **Create documentation**: Add `docs/vscode/problems/E####.rst`
-4. **Update index**: Add the new entry to `docs/vscode/problems/index.rst`
-5. **Use the code in the error message**: Prefix user-facing messages with the code (e.g., `'E0002 - ...'`)
+3. **Run the build**: The `generate-problems` script auto-generates `src/problems.ts` from the CSV
+4. **Create documentation**: Add `docs/vscode/problems/E####.rst`
+5. **Update index**: Add the new entry to `docs/vscode/problems/index.rst`
+6. **Use the generated constants**: Import `ProblemCode` and `formatProblem` from `./problems`
 
 #### Extension Error Message Pattern
 
-Error messages displayed to the user must include the code prefix:
+Error messages are generated from `integrations/vscode/resources/problem-codes.csv`
+at build time. The generated `src/problems.ts` module provides typed constants and
+a formatting helper. Use `formatProblem()` to compose messages:
 
 ```typescript
+import { ProblemCode, formatProblem } from './problems';
+
 // In VS Code notification messages:
-vscode.window.showErrorMessage('E0001 - Unable to locate IronPLC compiler. ...');
+vscode.window.showErrorMessage(
+  formatProblem(ProblemCode.NoCompiler, 'IronPLC is not installed or not configured.'),
+);
 
 // In webview HTML error displays:
-this.getErrorHtml('E0002 - IronPLC compiler not found. ...');
+getErrorHtml(
+  formatProblem(ProblemCode.ViewerCompilerNotFound, 'Install the compiler to view .iplc files.'),
+);
 ```
+
+The output format is: `{code} - {primary message}[. {contextual detail}]`
+
+**Do not** hardcode error code strings (e.g., `'E0001 - ...'`) — always use the
+generated constants so that messages stay in sync with the CSV and documentation.
 
 #### Extension Error Documentation Template
 
@@ -289,9 +303,10 @@ Before adding a new extension error code:
 
 - [ ] Code follows E#### format
 - [ ] Added to `integrations/vscode/resources/problem-codes.csv`
+- [ ] Build generates updated `src/problems.ts` (run `npm run generate-problems`)
+- [ ] Error message uses `formatProblem(ProblemCode.Name, context)` — no hardcoded strings
 - [ ] Documentation file created in `docs/vscode/problems/E####.rst`
 - [ ] Added to `docs/vscode/problems/index.rst`
-- [ ] Error message in code is prefixed with the code (e.g., `'E0002 - ...'`)
 - [ ] Documentation describes the error condition and solutions
 
 ## Common Patterns

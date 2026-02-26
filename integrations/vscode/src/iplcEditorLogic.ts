@@ -1,4 +1,5 @@
 import { DisassemblyResult, getErrorHtml, getDisassemblyHtml } from './iplcRendering';
+import { ProblemCode, formatProblem } from './problems';
 
 // Numeric values match vscode-languageclient's State enum.
 export const STATE_RUNNING = 2;
@@ -52,7 +53,7 @@ export async function resolveEditorContent(
     const ready = await waitForClient(client, timeoutMs);
     if (!ready) {
       return getErrorHtml(
-        'E0002 - IronPLC compiler not found. Install the compiler to view .iplc files.',
+        formatProblem(ProblemCode.ViewerCompilerNotFound, 'Install the compiler to view .iplc files.'),
       );
     }
   }
@@ -65,6 +66,6 @@ export async function resolveEditorContent(
   }
   catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return getErrorHtml(`E0003 - Failed to disassemble .iplc file: ${message}`);
+    return getErrorHtml(formatProblem(ProblemCode.DisassemblyFailed, message));
   }
 }

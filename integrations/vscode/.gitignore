@@ -2,3 +2,4 @@
 /out
 /.vscode-test
 /coverage
+/src/problems.ts

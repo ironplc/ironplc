@@ -8,6 +8,7 @@ import {
 } from 'vscode-languageclient/node';
 import { IplcEditorProvider } from './iplcEditorProvider';
 import { CompilerEnvironment, findCompilerPath } from './compilerDiscovery';
+import { ProblemCode, formatProblem } from './problems';
 
 const VERBOSITY = new Map<string, string[]>([
   ['ERROR', []],
@@ -19,7 +20,7 @@ const VERBOSITY = new Map<string, string[]>([
 
 let client: LanguageClient | undefined;
 
-function openProblemInBrowser(code: string) {
+function openProblemInBrowser(code: ProblemCode) {
   vscode.env.openExternal(vscode.Uri.parse('https://www.ironplc.com/vscode/problems/' + code + '.html'));
 }
 
@@ -43,10 +44,10 @@ export function activate(context: vscode.ExtensionContext) {
   const result = findCompilerPath(env);
   if (!result) {
     vscode.window.showErrorMessage(
-      'E0001 - Unable to locate IronPLC compiler. IronPLC is not installed or not configured.',
+      formatProblem(ProblemCode.NoCompiler, 'IronPLC is not installed or not configured.'),
       'Open Online Help',
     ).then(() => {
-      openProblemInBrowser('E0001');
+      openProblemInBrowser(ProblemCode.NoCompiler);
     });
     return;
   }
