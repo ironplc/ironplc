@@ -68,7 +68,7 @@ The header is organized into four logical regions:
 | 148 | debug_sig_size | u32 | Size of debug signature section |
 | 152 | type_section_offset | u32 | Offset of type section (0 if stripped) |
 | 156 | type_section_size | u32 | Size of type section |
-| 160 | task_section_offset | u32 | Offset of task table section (0 if absent; see [Task Support Design](../design/61131-task-support.md)) |
+| 160 | task_section_offset | u32 | Offset of task table section (0 if absent; see [Task Support Design](61131-task-support.md)) |
 | 164 | task_section_size | u32 | Size of task table section |
 | 168 | const_section_offset | u32 | Offset of constant pool section |
 | 172 | const_section_size | u32 | Size of constant pool section |
