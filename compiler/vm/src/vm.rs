@@ -1,3 +1,6 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use ironplc_container::Container;
 
 use crate::error::Trap;
@@ -5,6 +8,20 @@ use crate::stack::OperandStack;
 use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
 use ironplc_container::opcode;
+
+/// A cloneable handle for requesting the VM to stop.
+/// Used by signal handlers to stop the VM from another context.
+#[derive(Clone)]
+pub struct StopHandle {
+    flag: Arc<AtomicBool>,
+}
+
+impl StopHandle {
+    /// Requests the VM to stop after the current scheduling round.
+    pub fn request_stop(&self) {
+        self.flag.store(true, Ordering::Relaxed);
+    }
+}
 
 /// A newly created VM with no loaded program.
 ///
@@ -56,6 +73,7 @@ impl VmReady {
             stack: self.stack,
             variables: self.variables,
             scan_count: 0,
+            stop_flag: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -76,6 +94,7 @@ pub struct VmRunning {
     stack: OperandStack,
     variables: VariableTable,
     scan_count: u64,
+    stop_flag: Arc<AtomicBool>,
 }
 
 impl VmRunning {
@@ -121,6 +140,105 @@ impl VmRunning {
     /// Returns the number of completed scan cycles.
     pub fn scan_count(&self) -> u64 {
         self.scan_count
+    }
+
+    /// Returns a cloneable handle that can request the VM to stop.
+    pub fn stop_handle(&self) -> StopHandle {
+        StopHandle {
+            flag: self.stop_flag.clone(),
+        }
+    }
+
+    /// Returns true if a stop has been requested.
+    pub fn stop_requested(&self) -> bool {
+        self.stop_flag.load(Ordering::Relaxed)
+    }
+
+    /// Requests the VM to stop after the current round.
+    pub fn request_stop(&self) {
+        self.stop_flag.store(true, Ordering::Relaxed);
+    }
+
+    /// Transitions to the stopped state (clean shutdown).
+    pub fn stop(self) -> VmStopped {
+        VmStopped {
+            container: self.container,
+            variables: self.variables,
+            scan_count: self.scan_count,
+        }
+    }
+
+    /// Transitions to the faulted state (trap occurred).
+    pub fn fault(self, trap: Trap, task_id: u16, instance_id: u16) -> VmFaulted {
+        VmFaulted {
+            trap,
+            task_id,
+            instance_id,
+            container: self.container,
+            variables: self.variables,
+        }
+    }
+}
+
+/// A VM that has been cleanly stopped.
+pub struct VmStopped {
+    container: Container,
+    variables: VariableTable,
+    scan_count: u64,
+}
+
+impl VmStopped {
+    /// Reads a variable value as an i32.
+    pub fn read_variable(&self, index: u16) -> Result<i32, Trap> {
+        let slot = self.variables.load(index)?;
+        Ok(slot.as_i32())
+    }
+
+    /// Returns the number of variable slots.
+    pub fn num_variables(&self) -> u16 {
+        self.container.header.num_variables
+    }
+
+    /// Returns the total number of completed scheduling rounds.
+    pub fn scan_count(&self) -> u64 {
+        self.scan_count
+    }
+}
+
+/// A VM that has stopped due to a trap.
+pub struct VmFaulted {
+    trap: Trap,
+    task_id: u16,
+    instance_id: u16,
+    container: Container,
+    variables: VariableTable,
+}
+
+impl VmFaulted {
+    /// Returns the trap that caused the fault.
+    pub fn trap(&self) -> &Trap {
+        &self.trap
+    }
+
+    /// Returns the task that was executing when the trap occurred.
+    pub fn task_id(&self) -> u16 {
+        self.task_id
+    }
+
+    /// Returns the program instance that was executing when the trap occurred.
+    pub fn instance_id(&self) -> u16 {
+        self.instance_id
+    }
+
+    /// Reads a variable value as an i32.
+    pub fn read_variable(&self, index: u16) -> Result<i32, Trap> {
+        let slot = self.variables.load(index)?;
+        Ok(slot.as_i32())
+    }
+
+    /// Returns the number of variable slots.
+    pub fn num_variables(&self) -> u16 {
+        self.container.header.num_variables
     }
 }
 
@@ -245,5 +363,30 @@ mod tests {
         let result = vm.run_single_scan();
 
         assert!(matches!(result, Err(Trap::InvalidInstruction(0xFF))));
+    }
+
+    #[test]
+    fn vm_stop_handle_when_request_stop_then_stop_requested() {
+        let vm = Vm::new().load(steel_thread_container()).start();
+        let handle = vm.stop_handle();
+        assert!(!vm.stop_requested());
+        handle.request_stop();
+        assert!(vm.stop_requested());
+    }
+
+    #[test]
+    fn vm_stop_when_called_then_returns_stopped() {
+        let vm = Vm::new().load(steel_thread_container()).start();
+        let stopped = vm.stop();
+        assert_eq!(stopped.read_variable(0).unwrap(), 0); // not yet executed
+    }
+
+    #[test]
+    fn vm_fault_when_called_then_returns_faulted_with_context() {
+        let vm = Vm::new().load(steel_thread_container()).start();
+        let faulted = vm.fault(Trap::WatchdogTimeout(3), 3, 1);
+        assert_eq!(*faulted.trap(), Trap::WatchdogTimeout(3));
+        assert_eq!(faulted.task_id(), 3);
+        assert_eq!(faulted.instance_id(), 1);
     }
 }
