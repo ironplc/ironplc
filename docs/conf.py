@@ -79,7 +79,7 @@ html_theme_options = {
 }
 
 rst_prolog = """.. attention::
-    These docs are a bit ambitious. The steps described are accurate but IronPLC cannot yet run programs.
+    IronPLC can only run very simple programs. The steps described are accurate but many language features are not yet supported.
 """
 
 # -- Version configuration ---------------------------------------------------

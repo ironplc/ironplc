@@ -67,4 +67,4 @@ immediately.
 .. seealso::
 
    For command-line usage of the compiler, see
-   :doc:`/reference/compiler/basicusage`.
+   :doc:`/reference/compiler/overview`.
