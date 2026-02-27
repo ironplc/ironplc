@@ -430,6 +430,27 @@ mod tests {
         }
     }
 
+    /// Builds a container with one function from the given bytecode,
+    /// with `num_vars` variables and the given constants.
+    /// Uses a generous max_stack_depth (16) suitable for most tests.
+    fn single_function_container(bytecode: &[u8], num_vars: u16, constants: &[i32]) -> Container {
+        let mut builder = ContainerBuilder::new().num_variables(num_vars);
+        for &c in constants {
+            builder = builder.add_i32_constant(c);
+        }
+        builder.add_function(0, bytecode, 16, num_vars).build()
+    }
+
+    /// Asserts that a run_round produces a specific trap.
+    fn assert_trap(vm: &mut VmRunning, expected: Trap) {
+        let result = vm.run_round(0);
+        assert!(
+            result.is_err(),
+            "expected trap {expected} but run_round succeeded"
+        );
+        assert_eq!(result.unwrap_err().trap, expected);
+    }
+
     fn steel_thread_container() -> Container {
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
@@ -491,12 +512,7 @@ mod tests {
 
     #[test]
     fn vm_run_round_when_invalid_opcode_then_trap() {
-        let bytecode = vec![0xFF]; // invalid opcode
-        let c = ContainerBuilder::new()
-            .num_variables(0)
-            .add_function(0, &bytecode, 1, 0)
-            .build();
-
+        let c = single_function_container(&[0xFF], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
         let mut vm = Vm::new()
             .load(
@@ -509,11 +525,7 @@ mod tests {
             )
             .start();
 
-        let result = vm.run_round(0);
-
-        assert!(result.is_err());
-        let ctx = result.unwrap_err();
-        assert!(matches!(ctx.trap, Trap::InvalidInstruction(0xFF)));
+        assert_trap(&mut vm, Trap::InvalidInstruction(0xFF));
     }
 
     #[test]
@@ -586,6 +598,7 @@ mod tests {
     #[test]
     fn execute_when_stack_overflow_then_trap() {
         // max_stack_depth: 1, but bytecode pushes two values
+        // Cannot use single_function_container because it uses max_stack=16.
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
             0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
@@ -609,21 +622,13 @@ mod tests {
                 &mut b.ready,
             )
             .start();
-        let result = vm.run_round(0);
-
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().trap, Trap::StackOverflow);
+        assert_trap(&mut vm, Trap::StackOverflow);
     }
 
     #[test]
     fn execute_when_stack_underflow_then_trap() {
         // ADD_I32 tries to pop 2 values from an empty stack
-        let bytecode: Vec<u8> = vec![0x30]; // ADD_I32
-        let c = ContainerBuilder::new()
-            .num_variables(0)
-            .add_function(0, &bytecode, 1, 0)
-            .build();
-
+        let c = single_function_container(&[0x30], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
         let mut vm = Vm::new()
             .load(
@@ -635,10 +640,8 @@ mod tests {
                 &mut b.ready,
             )
             .start();
-        let result = vm.run_round(0);
 
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().trap, Trap::StackUnderflow);
+        assert_trap(&mut vm, Trap::StackUnderflow);
     }
 
     #[test]
@@ -648,11 +651,7 @@ mod tests {
         let bytecode: Vec<u8> = vec![
             0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
         ];
-        let c = ContainerBuilder::new()
-            .num_variables(0)
-            .add_function(0, &bytecode, 1, 0)
-            .build();
-
+        let c = single_function_container(&bytecode, 0, &[]);
         let mut b = VmBuffers::from_container(&c);
         let mut vm = Vm::new()
             .load(
@@ -664,10 +663,8 @@ mod tests {
                 &mut b.ready,
             )
             .start();
-        let result = vm.run_round(0);
 
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().trap, Trap::InvalidConstantIndex(0));
+        assert_trap(&mut vm, Trap::InvalidConstantIndex(0));
     }
 
     #[test]
@@ -678,12 +675,7 @@ mod tests {
             0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
             0x18, 0x05, 0x00,  // STORE_VAR_I32 var[5]
         ];
-        let c = ContainerBuilder::new()
-            .num_variables(1)
-            .add_i32_constant(42)
-            .add_function(0, &bytecode, 1, 1)
-            .build();
-
+        let c = single_function_container(&bytecode, 1, &[42]);
         let mut b = VmBuffers::from_container(&c);
         let mut vm = Vm::new()
             .load(
@@ -695,10 +687,8 @@ mod tests {
                 &mut b.ready,
             )
             .start();
-        let result = vm.run_round(0);
 
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().trap, Trap::InvalidVariableIndex(5));
+        assert_trap(&mut vm, Trap::InvalidVariableIndex(5));
     }
 
     #[test]
@@ -708,11 +698,7 @@ mod tests {
         let bytecode: Vec<u8> = vec![
             0x10, 0x05, 0x00,  // LOAD_VAR_I32 var[5]
         ];
-        let c = ContainerBuilder::new()
-            .num_variables(1)
-            .add_function(0, &bytecode, 1, 1)
-            .build();
-
+        let c = single_function_container(&bytecode, 1, &[]);
         let mut b = VmBuffers::from_container(&c);
         let mut vm = Vm::new()
             .load(
@@ -724,22 +710,15 @@ mod tests {
                 &mut b.ready,
             )
             .start();
-        let result = vm.run_round(0);
 
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().trap, Trap::InvalidVariableIndex(5));
+        assert_trap(&mut vm, Trap::InvalidVariableIndex(5));
     }
 
     // Phase 1, Step 1.2: Execute edge-case tests
 
     #[test]
     fn execute_when_empty_bytecode_then_ok() {
-        let bytecode: Vec<u8> = vec![];
-        let c = ContainerBuilder::new()
-            .num_variables(0)
-            .add_function(0, &bytecode, 1, 0)
-            .build();
-
+        let c = single_function_container(&[], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
         let mut vm = Vm::new()
             .load(
@@ -751,9 +730,8 @@ mod tests {
                 &mut b.ready,
             )
             .start();
-        let result = vm.run_round(0);
 
-        assert!(result.is_ok());
+        assert!(vm.run_round(0).is_ok());
     }
 
     #[test]
@@ -766,13 +744,7 @@ mod tests {
             0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
             0xB5,              // RET_VOID
         ];
-        let c = ContainerBuilder::new()
-            .num_variables(1)
-            .add_i32_constant(i32::MAX)
-            .add_i32_constant(1)
-            .add_function(0, &bytecode, 2, 1)
-            .build();
-
+        let c = single_function_container(&bytecode, 1, &[i32::MAX, 1]);
         let mut b = VmBuffers::from_container(&c);
         let mut vm = Vm::new()
             .load(
@@ -799,13 +771,7 @@ mod tests {
             0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
             0xB5,              // RET_VOID
         ];
-        let c = ContainerBuilder::new()
-            .num_variables(1)
-            .add_i32_constant(i32::MIN)
-            .add_i32_constant(-1)
-            .add_function(0, &bytecode, 2, 1)
-            .build();
-
+        let c = single_function_container(&bytecode, 1, &[i32::MIN, -1]);
         let mut b = VmBuffers::from_container(&c);
         let mut vm = Vm::new()
             .load(

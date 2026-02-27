@@ -104,8 +104,8 @@ fn scenario_when_stop_then_scan_count_reflects_completed_rounds() {
     assert_eq!(stopped.read_variable(0).unwrap(), 5);
 }
 
-/// A program that stores 42 to var[0] then faults. After the fault,
-/// we run two successful scans of a counter first, then fault on scan 3.
+/// One task with two program instances: the counter runs first, then a
+/// fault program traps. The counter's write is visible on the faulted VM.
 ///
 /// Setup: one task with two program instances.
 /// - Program instance 0: counter (increments var[0] each scan)
@@ -130,51 +130,14 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
     // Function 1: always faults
     let fault_bytecode: Vec<u8> = vec![0xFF]; // invalid opcode
 
-    let task = TaskEntry {
-        task_id: 0,
-        priority: 0,
-        task_type: TaskType::Freewheeling,
-        flags: 0x01, // enabled
-        interval_us: 0,
-        single_var_index: 0xFFFF,
-        watchdog_us: 0,
-        input_image_offset: 0,
-        output_image_offset: 0,
-        reserved: [0; 4],
-    };
-
-    // Program instance 0 runs the counter (function 0)
-    let prog0 = ProgramInstanceEntry {
-        instance_id: 0,
-        task_id: 0,
-        entry_function_id: 0,
-        var_table_offset: 0,
-        var_table_count: 1,
-        fb_instance_offset: 0,
-        fb_instance_count: 0,
-        reserved: 0,
-    };
-
-    // Program instance 1 runs the fault program (function 1)
-    let prog1 = ProgramInstanceEntry {
-        instance_id: 1,
-        task_id: 0,
-        entry_function_id: 1,
-        var_table_offset: 0,
-        var_table_count: 1,
-        fb_instance_offset: 0,
-        fb_instance_count: 0,
-        reserved: 0,
-    };
-
     let c = ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(1)
         .add_function(0, &counter_bytecode, 2, 1)
         .add_function(1, &fault_bytecode, 1, 0)
-        .add_task(task)
-        .add_program_instance(prog0)
-        .add_program_instance(prog1)
+        .add_task(freewheeling_task(0, 0, 0))
+        .add_program_instance(program_instance(0, 0, 0, 0, 1))
+        .add_program_instance(program_instance(1, 0, 1, 0, 1))
         .build();
 
     let mut b = VmBuffers::from_container(&c);

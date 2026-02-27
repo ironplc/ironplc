@@ -22,6 +22,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use ironplc_dsl::common::Library;
+
 use crate::project::{FileBackedProject, Project};
 
 // Checks specified files.
@@ -84,6 +86,43 @@ pub fn tokenize(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> 
     for src in project.sources() {
         crate::tokenizer::tokenize_source(src, &project, suppress_output, &handle_diagnostics)?;
     }
+
+    Ok(())
+}
+
+/// Compiles source files into a bytecode container (.iplc) file.
+///
+/// Parses the source files and generates bytecode without running semantic
+/// analysis. Currently supports only the steel-thread subset of the language.
+pub fn compile(paths: &[PathBuf], output: &Path, suppress_output: bool) -> Result<(), String> {
+    let mut project = create_project(paths, suppress_output)?;
+
+    // Parse all sources and merge into a single library
+    let mut combined = Library::new();
+    for src in project.sources_mut() {
+        match src.library() {
+            Ok(library) => {
+                combined.elements.extend(library.elements.iter().cloned());
+            }
+            Err(diagnostics) => {
+                handle_diagnostics(&diagnostics, None, suppress_output);
+                return Err(String::from("Error parsing source files"));
+            }
+        }
+    }
+
+    // Generate bytecode
+    let container = ironplc_codegen::compile(&combined).map_err(|err| {
+        handle_diagnostics(&[err], Some(&project), suppress_output);
+        String::from("Error during code generation")
+    })?;
+
+    // Write the container to the output file
+    let mut out_file =
+        std::fs::File::create(output).map_err(|e| format!("Failed to create output file: {e}"))?;
+    container
+        .write_to(&mut out_file)
+        .map_err(|e| format!("Failed to write output file: {e}"))?;
 
     Ok(())
 }
@@ -264,7 +303,7 @@ fn diagnostic(problem: Problem, path: &Path, message: String) -> Vec<Diagnostic>
 mod tests {
     use ironplc_test::shared_resource_path;
 
-    use crate::{cli::check, cli::echo, cli::tokenize, test_helpers::resource_path};
+    use crate::{cli::check, cli::compile, cli::echo, cli::tokenize, test_helpers::resource_path};
 
     #[test]
     fn check_first_steps_when_invalid_syntax_then_error() {
@@ -313,5 +352,35 @@ mod tests {
         let paths = vec![resource_path("simple.xml")];
         let result = tokenize(&paths, true);
         assert!(result.is_ok())
+    }
+
+    #[test]
+    fn compile_when_steel_thread_then_creates_output() {
+        let paths = vec![shared_resource_path("steel_thread.st")];
+        let output = tempfile::NamedTempFile::new().unwrap();
+        let result = compile(&paths, output.path(), true);
+        assert!(result.is_ok());
+        assert!(output.path().metadata().unwrap().len() > 0);
+    }
+
+    #[test]
+    fn compile_when_syntax_error_then_error() {
+        let paths = vec![shared_resource_path("first_steps_syntax_error.st")];
+        let output = tempfile::NamedTempFile::new().unwrap();
+        let result = compile(&paths, output.path(), true);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn compile_when_output_is_valid_container_then_roundtrips() {
+        let paths = vec![shared_resource_path("steel_thread.st")];
+        let output = tempfile::NamedTempFile::new().unwrap();
+        compile(&paths, output.path(), true).unwrap();
+
+        // Verify the output is a valid container by reading it back
+        let mut file = std::fs::File::open(output.path()).unwrap();
+        let container = ironplc_container::Container::read_from(&mut file).unwrap();
+        assert_eq!(container.header.num_variables, 2);
+        assert_eq!(container.header.num_functions, 1);
     }
 }

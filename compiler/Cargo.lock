@@ -566,6 +566,7 @@ dependencies = [
  "encoding_rs",
  "env_logger",
  "ironplc-analyzer",
+ "ironplc-codegen",
  "ironplc-container",
  "ironplc-dsl",
  "ironplc-parser",
