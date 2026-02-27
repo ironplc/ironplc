@@ -16,5 +16,9 @@ pub const STORE_VAR_I32: u8 = 0x18;
 /// Pops two values, pushes their sum.
 pub const ADD_I32: u8 = 0x30;
 
+/// Subtract two 32-bit integers (wrapping).
+/// Pops two values (b then a), pushes a - b.
+pub const SUB_I32: u8 = 0x31;
+
 /// Return from the current function (void return).
 pub const RET_VOID: u8 = 0xB5;
