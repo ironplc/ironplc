@@ -4,17 +4,54 @@
 //! bytecode, verifying that variables contain the expected values after a scan.
 
 use ironplc_codegen::compile;
+use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::ParseOptions;
 use ironplc_parser::parse_program;
-use ironplc_vm::Vm;
+use ironplc_vm::{ProgramInstanceState, Slot, TaskState, Vm};
 
-fn parse_and_run(source: &str) -> ironplc_vm::VmRunning {
+/// Helper struct that allocates Vec-backed buffers for VM usage.
+struct VmBuffers {
+    stack: Vec<Slot>,
+    vars: Vec<Slot>,
+    tasks: Vec<TaskState>,
+    programs: Vec<ProgramInstanceState>,
+    ready: Vec<usize>,
+}
+
+impl VmBuffers {
+    fn from_container(c: &Container) -> Self {
+        let h = &c.header;
+        let task_count = c.task_table.tasks.len();
+        let program_count = c.task_table.programs.len();
+        VmBuffers {
+            stack: vec![Slot::default(); h.max_stack_depth as usize],
+            vars: vec![Slot::default(); h.num_variables as usize],
+            tasks: vec![TaskState::default(); task_count],
+            programs: vec![ProgramInstanceState::default(); program_count],
+            ready: vec![0usize; task_count.max(1)],
+        }
+    }
+}
+
+fn parse_and_run(source: &str) -> (Container, VmBuffers) {
     let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
     let container = compile(&library).unwrap();
-    let mut vm = Vm::new().load(container).start();
-    vm.run_round().unwrap();
-    vm
+    let mut bufs = VmBuffers::from_container(&container);
+    {
+        let mut vm = Vm::new()
+            .load(
+                &container,
+                &mut bufs.stack,
+                &mut bufs.vars,
+                &mut bufs.tasks,
+                &mut bufs.programs,
+                &mut bufs.ready,
+            )
+            .start();
+        vm.run_round(0).unwrap();
+    }
+    (container, bufs)
 }
 
 #[test]
@@ -27,9 +64,9 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-    let vm = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source);
 
-    assert_eq!(vm.read_variable(0).unwrap(), 42);
+    assert_eq!(bufs.vars[0].as_i32(), 42);
 }
 
 #[test]
@@ -44,10 +81,10 @@ PROGRAM main
   y := x + 32;
 END_PROGRAM
 ";
-    let vm = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source);
 
-    assert_eq!(vm.read_variable(0).unwrap(), 10);
-    assert_eq!(vm.read_variable(1).unwrap(), 42);
+    assert_eq!(bufs.vars[0].as_i32(), 10);
+    assert_eq!(bufs.vars[1].as_i32(), 42);
 }
 
 #[test]
@@ -60,9 +97,9 @@ PROGRAM main
   result := 1 + 2 + 3;
 END_PROGRAM
 ";
-    let vm = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source);
 
-    assert_eq!(vm.read_variable(0).unwrap(), 6);
+    assert_eq!(bufs.vars[0].as_i32(), 6);
 }
 
 #[test]
@@ -79,11 +116,11 @@ PROGRAM main
   c := a + b;
 END_PROGRAM
 ";
-    let vm = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source);
 
-    assert_eq!(vm.read_variable(0).unwrap(), 100);
-    assert_eq!(vm.read_variable(1).unwrap(), 200);
-    assert_eq!(vm.read_variable(2).unwrap(), 300);
+    assert_eq!(bufs.vars[0].as_i32(), 100);
+    assert_eq!(bufs.vars[1].as_i32(), 200);
+    assert_eq!(bufs.vars[2].as_i32(), 300);
 }
 
 #[test]
@@ -96,9 +133,9 @@ PROGRAM main
   x := -5;
 END_PROGRAM
 ";
-    let vm = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source);
 
-    assert_eq!(vm.read_variable(0).unwrap(), -5);
+    assert_eq!(bufs.vars[0].as_i32(), -5);
 }
 
 #[test]
@@ -111,9 +148,9 @@ PROGRAM main
   x := 0;
 END_PROGRAM
 ";
-    let vm = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source);
 
-    assert_eq!(vm.read_variable(0).unwrap(), 0);
+    assert_eq!(bufs.vars[0].as_i32(), 0);
 }
 
 #[test]
@@ -128,10 +165,10 @@ PROGRAM main
   y := x;
 END_PROGRAM
 ";
-    let vm = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source);
 
-    assert_eq!(vm.read_variable(0).unwrap(), 7);
-    assert_eq!(vm.read_variable(1).unwrap(), 7);
+    assert_eq!(bufs.vars[0].as_i32(), 7);
+    assert_eq!(bufs.vars[1].as_i32(), 7);
 }
 
 #[test]
@@ -146,13 +183,23 @@ END_PROGRAM
 ";
     let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
     let container = compile(&library).unwrap();
-    let mut vm = Vm::new().load(container).start();
+    let mut bufs = VmBuffers::from_container(&container);
+    let mut vm = Vm::new()
+        .load(
+            &container,
+            &mut bufs.stack,
+            &mut bufs.vars,
+            &mut bufs.tasks,
+            &mut bufs.programs,
+            &mut bufs.ready,
+        )
+        .start();
 
     // Run multiple scans - result should be the same each time
-    vm.run_round().unwrap();
+    vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 99);
 
-    vm.run_round().unwrap();
+    vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 99);
     assert_eq!(vm.scan_count(), 2);
 }

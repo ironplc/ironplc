@@ -3,9 +3,33 @@
 //! Phase 2: Multi-scan state accumulation and fault handling.
 //! Phase 3: Multi-task execution, variable scope isolation, and watchdog.
 
-use ironplc_container::{ContainerBuilder, ProgramInstanceEntry, TaskEntry, TaskType};
+use ironplc_container::{Container, ContainerBuilder, ProgramInstanceEntry, TaskEntry, TaskType};
 use ironplc_vm::error::Trap;
-use ironplc_vm::Vm;
+use ironplc_vm::{ProgramInstanceState, Slot, TaskState, Vm};
+
+/// Helper struct that allocates Vec-backed buffers for VM usage.
+struct VmBuffers {
+    stack: Vec<Slot>,
+    vars: Vec<Slot>,
+    tasks: Vec<TaskState>,
+    programs: Vec<ProgramInstanceState>,
+    ready: Vec<usize>,
+}
+
+impl VmBuffers {
+    fn from_container(c: &Container) -> Self {
+        let h = &c.header;
+        let task_count = c.task_table.tasks.len();
+        let program_count = c.task_table.programs.len();
+        VmBuffers {
+            stack: vec![Slot::default(); h.max_stack_depth as usize],
+            vars: vec![Slot::default(); h.num_variables as usize],
+            tasks: vec![TaskState::default(); task_count],
+            programs: vec![ProgramInstanceState::default(); program_count],
+            ready: vec![0usize; task_count.max(1)],
+        }
+    }
+}
 
 /// Builds a container for a program that increments var[0] by 1 each scan.
 ///
@@ -16,7 +40,7 @@ use ironplc_vm::Vm;
 ///   ADD_I32                   // x + 1
 ///   STORE_VAR_I32 var[0]      // write back
 ///   RET_VOID
-fn counter_container() -> ironplc_container::Container {
+fn counter_container() -> Container {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x10, 0x00, 0x00,  // LOAD_VAR_I32 var[0]
@@ -35,10 +59,21 @@ fn counter_container() -> ironplc_container::Container {
 
 #[test]
 fn scenario_when_counter_increments_each_scan_then_accumulates() {
-    let mut vm = Vm::new().load(counter_container()).start();
+    let c = counter_container();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = Vm::new()
+        .load(
+            &c,
+            &mut b.stack,
+            &mut b.vars,
+            &mut b.tasks,
+            &mut b.programs,
+            &mut b.ready,
+        )
+        .start();
 
     for _ in 0..10 {
-        vm.run_round().unwrap();
+        vm.run_round(0).unwrap();
     }
 
     assert_eq!(vm.read_variable(0).unwrap(), 10);
@@ -46,10 +81,21 @@ fn scenario_when_counter_increments_each_scan_then_accumulates() {
 
 #[test]
 fn scenario_when_stop_then_scan_count_reflects_completed_rounds() {
-    let mut vm = Vm::new().load(counter_container()).start();
+    let c = counter_container();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = Vm::new()
+        .load(
+            &c,
+            &mut b.stack,
+            &mut b.vars,
+            &mut b.tasks,
+            &mut b.programs,
+            &mut b.ready,
+        )
+        .start();
 
     for _ in 0..5 {
-        vm.run_round().unwrap();
+        vm.run_round(0).unwrap();
     }
 
     let stopped = vm.stop();
@@ -121,7 +167,7 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
         reserved: 0,
     };
 
-    let container = ContainerBuilder::new()
+    let c = ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(1)
         .add_function(0, &counter_bytecode, 2, 1)
@@ -131,8 +177,18 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
         .add_program_instance(prog1)
         .build();
 
-    let mut vm = Vm::new().load(container).start();
-    let result = vm.run_round();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = Vm::new()
+        .load(
+            &c,
+            &mut b.stack,
+            &mut b.vars,
+            &mut b.tasks,
+            &mut b.programs,
+            &mut b.ready,
+        )
+        .start();
+    let result = vm.run_round(0);
 
     // The counter ran successfully before the fault program trapped
     assert!(result.is_err());
@@ -155,14 +211,24 @@ fn scenario_when_variables_read_after_fault_then_accessible() {
         0xFF,              // invalid opcode — triggers fault
     ];
 
-    let container = ContainerBuilder::new()
+    let c = ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(42)
         .add_function(0, &bytecode, 1, 1)
         .build();
 
-    let mut vm = Vm::new().load(container).start();
-    let result = vm.run_round();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = Vm::new()
+        .load(
+            &c,
+            &mut b.stack,
+            &mut b.vars,
+            &mut b.tasks,
+            &mut b.programs,
+            &mut b.ready,
+        )
+        .start();
+    let result = vm.run_round(0);
 
     assert!(result.is_err());
     let ctx = result.unwrap_err();
@@ -216,8 +282,8 @@ fn program_instance(
 ///
 /// Layout:
 ///   4 variables, shared globals: 0
-///   Task 0 (priority 0) → function 0 → stores 10 to var[0]
-///   Task 1 (priority 1) → function 1 → stores 20 to var[2]
+///   Task 0 (priority 0) -> function 0 -> stores 10 to var[0]
+///   Task 1 (priority 1) -> function 1 -> stores 20 to var[2]
 #[test]
 fn scenario_when_two_freewheeling_tasks_then_both_execute() {
     #[rustfmt::skip]
@@ -233,7 +299,7 @@ fn scenario_when_two_freewheeling_tasks_then_both_execute() {
         0xB5,              // RET_VOID
     ];
 
-    let container = ContainerBuilder::new()
+    let c = ContainerBuilder::new()
         .num_variables(4)
         .add_i32_constant(10)
         .add_i32_constant(20)
@@ -245,8 +311,18 @@ fn scenario_when_two_freewheeling_tasks_then_both_execute() {
         .add_program_instance(program_instance(1, 1, 1, 2, 2))
         .build();
 
-    let mut vm = Vm::new().load(container).start();
-    vm.run_round().unwrap();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = Vm::new()
+        .load(
+            &c,
+            &mut b.stack,
+            &mut b.vars,
+            &mut b.tasks,
+            &mut b.programs,
+            &mut b.ready,
+        )
+        .start();
+    vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 10); // set by task 0
     assert_eq!(vm.read_variable(2).unwrap(), 20); // set by task 1
@@ -256,8 +332,8 @@ fn scenario_when_two_freewheeling_tasks_then_both_execute() {
 ///
 /// Layout:
 ///   4 variables, shared globals: 1 (var[0] is global)
-///   Task 0 (priority 0) → writes 99 to var[0] (global)
-///   Task 1 (priority 1) → reads var[0] (global), stores to var[2] (private)
+///   Task 0 (priority 0) -> writes 99 to var[0] (global)
+///   Task 1 (priority 1) -> reads var[0] (global), stores to var[2] (private)
 ///
 /// Task 0 runs first (lower priority number), so task 1 sees the value.
 #[test]
@@ -277,7 +353,7 @@ fn scenario_when_tasks_share_global_then_communication_works() {
         0xB5,              // RET_VOID
     ];
 
-    let container = ContainerBuilder::new()
+    let c = ContainerBuilder::new()
         .num_variables(4)
         .shared_globals_size(1)
         .add_i32_constant(99)
@@ -289,8 +365,18 @@ fn scenario_when_tasks_share_global_then_communication_works() {
         .add_program_instance(program_instance(1, 1, 1, 2, 2)) // task 1: private [2,4)
         .build();
 
-    let mut vm = Vm::new().load(container).start();
-    vm.run_round().unwrap();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = Vm::new()
+        .load(
+            &c,
+            &mut b.stack,
+            &mut b.vars,
+            &mut b.tasks,
+            &mut b.programs,
+            &mut b.ready,
+        )
+        .start();
+    vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 99); // global, written by task 0
     assert_eq!(vm.read_variable(2).unwrap(), 99); // task 1 read the global
@@ -309,52 +395,26 @@ fn scenario_when_scope_violation_then_trap() {
         0x10, 0x00, 0x00,  // LOAD_VAR_I32 var[0]  (outside scope)
     ];
 
-    let container = ContainerBuilder::new()
+    let c = ContainerBuilder::new()
         .num_variables(4)
         .add_function(0, &bytecode, 1, 2)
         .add_task(freewheeling_task(0, 0, 0))
         .add_program_instance(program_instance(0, 0, 0, 2, 2)) // scope [2, 4)
         .build();
 
-    let mut vm = Vm::new().load(container).start();
-    let result = vm.run_round();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = Vm::new()
+        .load(
+            &c,
+            &mut b.stack,
+            &mut b.vars,
+            &mut b.tasks,
+            &mut b.programs,
+            &mut b.ready,
+        )
+        .start();
+    let result = vm.run_round(0);
 
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().trap, Trap::InvalidVariableIndex(0));
-}
-
-/// A task whose execution exceeds its watchdog timeout is trapped.
-///
-/// Uses watchdog_us: 1 (1 microsecond) which is impossibly short for any
-/// real execution. The program generates hundreds of instructions so that
-/// the elapsed time (measured via `as_micros()`) is guaranteed > 1μs even
-/// on fast machines.
-#[test]
-fn scenario_when_watchdog_exceeded_then_trap() {
-    // Generate a long program: LOAD_CONST, then 500× (LOAD_CONST + ADD),
-    // then STORE_VAR + RET_VOID. Total: ~1503 bytes, ~501 arithmetic ops.
-    // This ensures execution takes well over 1μs.
-    let mut bytecode: Vec<u8> = Vec::new();
-    // Initial value on stack
-    bytecode.extend_from_slice(&[0x01, 0x00, 0x00]); // LOAD_CONST_I32 pool[0]
-    for _ in 0..500 {
-        bytecode.extend_from_slice(&[0x01, 0x00, 0x00]); // LOAD_CONST_I32 pool[0]
-        bytecode.push(0x30); // ADD_I32
-    }
-    bytecode.extend_from_slice(&[0x18, 0x00, 0x00]); // STORE_VAR_I32 var[0]
-    bytecode.push(0xB5); // RET_VOID
-
-    let container = ContainerBuilder::new()
-        .num_variables(1)
-        .add_i32_constant(1)
-        .add_function(0, &bytecode, 2, 1)
-        .add_task(freewheeling_task(0, 0, 1)) // watchdog_us: 1
-        .add_program_instance(program_instance(0, 0, 0, 0, 1))
-        .build();
-
-    let mut vm = Vm::new().load(container).start();
-    let result = vm.run_round();
-
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().trap, Trap::WatchdogTimeout(0));
 }

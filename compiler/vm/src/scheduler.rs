@@ -1,7 +1,7 @@
-use ironplc_container::{TaskTable, TaskType};
+use ironplc_container::TaskType;
 
 /// Per-task runtime state tracked by the scheduler.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct TaskState {
     pub task_id: u16,
     pub priority: u16,
@@ -17,7 +17,7 @@ pub struct TaskState {
 }
 
 /// Per-program-instance runtime state.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ProgramInstanceState {
     pub instance_id: u16,
     pub task_id: u16,
@@ -30,81 +30,66 @@ pub struct ProgramInstanceState {
 ///
 /// The scheduler is time-agnostic: callers pass the current time as a `u64`
 /// microsecond value. This makes the scheduler fully testable without mocking clocks.
-pub struct TaskScheduler {
-    pub task_states: Vec<TaskState>,
-    pub program_instances: Vec<ProgramInstanceState>,
-    pub shared_globals_size: u16,
+pub struct TaskScheduler<'a> {
+    pub task_states: &'a mut [TaskState],
 }
 
-impl TaskScheduler {
-    /// Builds a scheduler from a container's task table.
-    pub fn from_task_table(table: &TaskTable) -> Self {
-        let task_states = table
-            .tasks
-            .iter()
-            .map(|t| TaskState {
-                task_id: t.task_id,
-                priority: t.priority,
-                task_type: t.task_type,
-                interval_us: t.interval_us,
-                watchdog_us: t.watchdog_us,
-                enabled: (t.flags & 0x01) != 0,
-                next_due_us: 0,
-                scan_count: 0,
-                last_execute_us: 0,
-                max_execute_us: 0,
-                overrun_count: 0,
-            })
-            .collect();
-
-        let program_instances = table
-            .programs
-            .iter()
-            .map(|p| ProgramInstanceState {
-                instance_id: p.instance_id,
-                task_id: p.task_id,
-                entry_function_id: p.entry_function_id,
-                var_table_offset: p.var_table_offset,
-                var_table_count: p.var_table_count,
-            })
-            .collect();
-
-        TaskScheduler {
-            task_states,
-            program_instances,
-            shared_globals_size: table.shared_globals_size,
-        }
+impl<'a> TaskScheduler<'a> {
+    /// Creates a scheduler from a caller-provided task state slice.
+    pub fn new(task_states: &'a mut [TaskState]) -> Self {
+        TaskScheduler { task_states }
     }
 
     /// Returns indices into `task_states` for tasks that are ready to execute,
     /// sorted by priority (ascending) then task_id (ascending).
-    pub fn collect_ready_tasks(&self, current_time_us: u64) -> Vec<usize> {
-        let mut ready: Vec<usize> = self
-            .task_states
-            .iter()
-            .enumerate()
-            .filter(|(_, t)| {
-                if !t.enabled {
-                    return false;
-                }
-                match t.task_type {
-                    TaskType::Freewheeling => true,
-                    TaskType::Cyclic => current_time_us >= t.next_due_us,
-                    TaskType::Event => false, // Phase 3
-                }
-            })
-            .map(|(i, _)| i)
-            .collect();
+    ///
+    /// Writes into the caller-provided buffer and returns a sub-slice of ready indices.
+    pub fn collect_ready_tasks<'b>(
+        &self,
+        current_time_us: u64,
+        buf: &'b mut [usize],
+    ) -> &'b [usize] {
+        let mut count = 0;
+        for (i, t) in self.task_states.iter().enumerate() {
+            if !t.enabled {
+                continue;
+            }
+            let ready = match t.task_type {
+                TaskType::Freewheeling => true,
+                TaskType::Cyclic => current_time_us >= t.next_due_us,
+                TaskType::Event => false, // Phase 3
+            };
+            if ready && count < buf.len() {
+                buf[count] = i;
+                count += 1;
+            }
+        }
 
-        ready.sort_by(|&a, &b| {
-            let ta = &self.task_states[a];
-            let tb = &self.task_states[b];
-            ta.priority
-                .cmp(&tb.priority)
-                .then(ta.task_id.cmp(&tb.task_id))
-        });
+        let ready = &mut buf[..count];
 
-        ready
+        // Sort by priority (ascending) then task_id (ascending).
+        // Use a simple insertion sort since the number of tasks is small.
+        for i in 1..ready.len() {
+            let mut j = i;
+            while j > 0 {
+                let a = ready[j - 1];
+                let b = ready[j];
+                let ta = &self.task_states[a];
+                let tb = &self.task_states[b];
+                let cmp = ta
+                    .priority
+                    .cmp(&tb.priority)
+                    .then(ta.task_id.cmp(&tb.task_id));
+                if cmp == core::cmp::Ordering::Greater {
+                    ready.swap(j - 1, j);
+                    j -= 1;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        &buf[..count]
     }
 
     /// Records that a task executed, updating timing and overrun tracking.
@@ -125,16 +110,10 @@ impl TaskScheduler {
         }
     }
 
-    /// Returns the program instances associated with a task, in declaration order.
-    pub fn programs_for_task(&self, task_id: u16) -> Vec<&ProgramInstanceState> {
-        self.program_instances
-            .iter()
-            .filter(|p| p.task_id == task_id)
-            .collect()
-    }
-
     /// Returns the earliest `next_due_us` across all enabled cyclic tasks,
     /// or `None` if no cyclic tasks exist.
+    // Used in tests; will be called from the CLI run-loop once cyclic sleep is added.
+    #[allow(dead_code)]
     pub fn next_due_us(&self) -> Option<u64> {
         self.task_states
             .iter()
@@ -147,7 +126,7 @@ impl TaskScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironplc_container::{ProgramInstanceEntry, TaskEntry};
+    use ironplc_container::{ProgramInstanceEntry, TaskEntry, TaskTable};
 
     fn freewheeling_task_table() -> TaskTable {
         TaskTable {
@@ -231,59 +210,111 @@ mod tests {
         }
     }
 
+    /// Populates task_states from a TaskTable.
+    fn populate_task_states(table: &TaskTable, task_states: &mut [TaskState]) {
+        for (i, t) in table.tasks.iter().enumerate() {
+            task_states[i] = TaskState {
+                task_id: t.task_id,
+                priority: t.priority,
+                task_type: t.task_type,
+                interval_us: t.interval_us,
+                watchdog_us: t.watchdog_us,
+                enabled: (t.flags & 0x01) != 0,
+                next_due_us: 0,
+                scan_count: 0,
+                last_execute_us: 0,
+                max_execute_us: 0,
+                overrun_count: 0,
+            };
+        }
+    }
+
     #[test]
     fn from_task_table_when_freewheeling_then_one_task_one_program() {
-        let sched = TaskScheduler::from_task_table(&freewheeling_task_table());
+        let table = freewheeling_task_table();
+        let mut task_states = vec![TaskState::default(); table.tasks.len()];
+        populate_task_states(&table, &mut task_states);
+        let sched = TaskScheduler::new(&mut task_states);
+
         assert_eq!(sched.task_states.len(), 1);
-        assert_eq!(sched.program_instances.len(), 1);
         assert_eq!(sched.task_states[0].task_type, TaskType::Freewheeling);
         assert!(sched.task_states[0].enabled);
     }
 
     #[test]
     fn collect_ready_when_freewheeling_then_always_ready() {
-        let sched = TaskScheduler::from_task_table(&freewheeling_task_table());
-        let ready = sched.collect_ready_tasks(0);
-        assert_eq!(ready, vec![0]);
+        let table = freewheeling_task_table();
+        let mut task_states = vec![TaskState::default(); table.tasks.len()];
+        populate_task_states(&table, &mut task_states);
+        let sched = TaskScheduler::new(&mut task_states);
+
+        let mut buf = [0usize; 8];
+        let ready = sched.collect_ready_tasks(0, &mut buf);
+        assert_eq!(ready, &[0]);
     }
 
     #[test]
     fn collect_ready_when_cyclic_at_time_zero_then_all_due() {
-        let sched = TaskScheduler::from_task_table(&two_cyclic_tasks_table());
-        let ready = sched.collect_ready_tasks(0);
-        assert_eq!(ready, vec![1, 0]);
+        let table = two_cyclic_tasks_table();
+        let mut task_states = vec![TaskState::default(); table.tasks.len()];
+        populate_task_states(&table, &mut task_states);
+        let sched = TaskScheduler::new(&mut task_states);
+
+        let mut buf = [0usize; 8];
+        let ready = sched.collect_ready_tasks(0, &mut buf);
+        assert_eq!(ready, &[1, 0]);
     }
 
     #[test]
     fn collect_ready_when_cyclic_not_due_then_empty() {
-        let mut sched = TaskScheduler::from_task_table(&two_cyclic_tasks_table());
+        let table = two_cyclic_tasks_table();
+        let mut task_states = vec![TaskState::default(); table.tasks.len()];
+        populate_task_states(&table, &mut task_states);
+        let mut sched = TaskScheduler::new(&mut task_states);
+
         sched.record_execution(0, 100, 0);
         sched.record_execution(1, 100, 0);
-        let ready = sched.collect_ready_tasks(5_000);
+
+        let mut buf = [0usize; 8];
+        let ready = sched.collect_ready_tasks(5_000, &mut buf);
         assert!(ready.is_empty());
     }
 
     #[test]
     fn collect_ready_when_fast_task_due_slow_not_then_only_fast() {
-        let mut sched = TaskScheduler::from_task_table(&two_cyclic_tasks_table());
+        let table = two_cyclic_tasks_table();
+        let mut task_states = vec![TaskState::default(); table.tasks.len()];
+        populate_task_states(&table, &mut task_states);
+        let mut sched = TaskScheduler::new(&mut task_states);
+
         sched.record_execution(0, 100, 0);
         sched.record_execution(1, 100, 0);
-        let ready = sched.collect_ready_tasks(10_000);
-        assert_eq!(ready, vec![1]);
+
+        let mut buf = [0usize; 8];
+        let ready = sched.collect_ready_tasks(10_000, &mut buf);
+        assert_eq!(ready, &[1]);
     }
 
     #[test]
     fn collect_ready_when_task_disabled_then_skipped() {
         let mut table = freewheeling_task_table();
         table.tasks[0].flags = 0x00;
-        let sched = TaskScheduler::from_task_table(&table);
-        let ready = sched.collect_ready_tasks(0);
+        let mut task_states = vec![TaskState::default(); table.tasks.len()];
+        populate_task_states(&table, &mut task_states);
+        let sched = TaskScheduler::new(&mut task_states);
+
+        let mut buf = [0usize; 8];
+        let ready = sched.collect_ready_tasks(0, &mut buf);
         assert!(ready.is_empty());
     }
 
     #[test]
     fn record_execution_when_cyclic_overrun_then_realigns() {
-        let mut sched = TaskScheduler::from_task_table(&two_cyclic_tasks_table());
+        let table = two_cyclic_tasks_table();
+        let mut task_states = vec![TaskState::default(); table.tasks.len()];
+        populate_task_states(&table, &mut task_states);
+        let mut sched = TaskScheduler::new(&mut task_states);
+
         sched.record_execution(1, 100, 0);
         assert_eq!(sched.task_states[1].next_due_us, 10_000);
         sched.record_execution(1, 100, 25_000);
@@ -292,16 +323,12 @@ mod tests {
     }
 
     #[test]
-    fn programs_for_task_when_two_tasks_then_returns_correct_programs() {
-        let sched = TaskScheduler::from_task_table(&two_cyclic_tasks_table());
-        let progs = sched.programs_for_task(1);
-        assert_eq!(progs.len(), 1);
-        assert_eq!(progs[0].entry_function_id, 1);
-    }
-
-    #[test]
     fn next_due_when_cyclic_tasks_then_returns_earliest() {
-        let mut sched = TaskScheduler::from_task_table(&two_cyclic_tasks_table());
+        let table = two_cyclic_tasks_table();
+        let mut task_states = vec![TaskState::default(); table.tasks.len()];
+        populate_task_states(&table, &mut task_states);
+        let mut sched = TaskScheduler::new(&mut task_states);
+
         sched.record_execution(0, 100, 0);
         sched.record_execution(1, 100, 0);
         assert_eq!(sched.next_due_us(), Some(10_000));
@@ -309,7 +336,11 @@ mod tests {
 
     #[test]
     fn next_due_when_only_freewheeling_then_none() {
-        let sched = TaskScheduler::from_task_table(&freewheeling_task_table());
+        let table = freewheeling_task_table();
+        let mut task_states = vec![TaskState::default(); table.tasks.len()];
+        populate_task_states(&table, &mut task_states);
+        let sched = TaskScheduler::new(&mut task_states);
+
         assert_eq!(sched.next_due_us(), None);
     }
 }
