@@ -4,7 +4,7 @@ Check Beremiz Projects
 
 This guide shows how to use IronPLC to check a Beremiz project for correctness.
 
-.. include:: ../includes/requires-compiler.rst
+.. include:: ../../includes/requires-compiler.rst
 
 -----------------------------------
 Check with the VS Code Extension
