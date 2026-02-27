@@ -13,8 +13,8 @@ from os.path import join
 
 # Check that for each problem code that the compiler can emit that we have a file
 # for that code and create a variable with the message text.
-compiler_help_topics = set([v.split('.')[0] for v in listdir(join('compiler', 'problems'))])
-extension_help_topics = set([v.split('.')[0] for v in listdir(join('vscode', 'problems'))])
+compiler_help_topics = set([v.split('.')[0] for v in listdir(join('reference', 'compiler', 'problems'))])
+extension_help_topics = set([v.split('.')[0] for v in listdir(join('reference', 'editor', 'problems'))])
 help_topics = compiler_help_topics.union(extension_help_topics)
 problem_infos = dict()
 
@@ -71,7 +71,7 @@ def generate_problem_index(app, config):
     
     # Get the source directory from Sphinx
     srcdir = Path(app.srcdir)
-    problems_dir = srcdir / 'compiler' / 'problems'
+    problems_dir = srcdir / 'reference' / 'compiler' / 'problems'
     index_path = problems_dir / 'index.rst'
     
     if not problems_dir.exists():
@@ -122,11 +122,63 @@ Problem Codes
     
     logger.info(f"Generated problem codes index with {len(problem_files)} codes")
 
+REDIRECT_TEMPLATE = """\
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Redirecting\u2026</title>
+  <link rel="canonical" href="/{new_path}">
+  <meta http-equiv="refresh" content="0; url=/{new_path}">
+  <script>window.location.replace('/{new_path}');</script>
+</head>
+<body>
+  <p>This page has moved to <a href="/{new_path}">/{new_path}</a>.</p>
+</body>
+</html>
+"""
+
+# Old path prefix -> new path prefix (relative to build output root)
+PROBLEM_REDIRECTS = [
+    ('compiler/problems', 'reference/compiler/problems'),
+    ('vscode/problems',   'reference/editor/problems'),
+]
+
+def generate_redirects(app, exception):
+    """Generate redirect HTML pages at old URLs after a successful build."""
+    if exception:
+        return
+
+    from sphinx.util import logging
+    logger = logging.getLogger(__name__)
+
+    outdir = Path(app.outdir)
+
+    for old_prefix, new_prefix in PROBLEM_REDIRECTS:
+        new_dir = outdir / new_prefix
+        if not new_dir.exists():
+            logger.warning(f"Expected output directory not found: {new_dir}")
+            continue
+
+        old_dir = outdir / old_prefix
+        old_dir.mkdir(parents=True, exist_ok=True)
+
+        for html_file in new_dir.glob('*.html'):
+            new_path = f"{new_prefix}/{html_file.name}"
+            redirect_file = old_dir / html_file.name
+            redirect_file.write_text(
+                REDIRECT_TEMPLATE.format(new_path=new_path),
+                encoding='utf-8',
+            )
+
+        logger.info(f"Generated redirects: {old_prefix}/ -> {new_prefix}/")
+
 def setup(app):
     app.add_directive("problem-summary", ProblemSummary)
-    
+
     # Connect to the config-inited event to generate the index before building
     app.connect('config-inited', generate_problem_index)
+    app.connect('build-finished', generate_redirects)
 
     return {
         'version': '0.2',

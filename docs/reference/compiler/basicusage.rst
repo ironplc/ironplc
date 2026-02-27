@@ -5,7 +5,7 @@ Basic Usage
 You can use the command line interface to check a file (and sets of files)
 for correctness.
 
-.. include:: ../includes/requires-compiler.rst
+.. include:: ../../includes/requires-compiler.rst
 
 --------------------------
 Create a Project Directory
