@@ -24,7 +24,11 @@
   },
   "activationEvents": [
     "onCustomEditor:ironplc.iplcViewer",
-    "onLanguage:61131-3-st"
+    "onLanguage:61131-3-st",
+    "onLanguage:twincat-pou",
+    "onLanguage:twincat-gvl",
+    "onLanguage:twincat-dut",
+    "onLanguage:plcopen-xml"
   ],
   "main": "./out/extension.js",
   "contributes": {
