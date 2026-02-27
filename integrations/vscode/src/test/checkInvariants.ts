@@ -62,6 +62,18 @@ for (const editor of packageJson.contributes.customEditors) {
   }
 }
 
+// Check task definitions
+if (packageJson.contributes.taskDefinitions) {
+  for (const taskDef of packageJson.contributes.taskDefinitions) {
+    if (EXCEPTIONS.has(taskDef.type)) {
+      continue;
+    }
+    if (!testContent.includes(taskDef.type)) {
+      failures.push(`Task definition '${taskDef.type}' has no test reference`);
+    }
+  }
+}
+
 // Report exceptions for visibility
 if (EXCEPTIONS.size > 0) {
   console.log('Exceptions (intentionally untested):');

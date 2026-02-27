@@ -57,6 +57,13 @@ To use this command:
 2. Type "New Structured Text File"
 3. Press Enter
 
+Build Tasks
+===========
+
+The extension provides a build task that compiles your project to a bytecode
+container (``.iplc``) file. Use :kbd:`Ctrl+Shift+B` to run the build task.
+See :doc:`build-tasks` for details.
+
 Diagnostics
 ===========
 

@@ -23,7 +23,12 @@
     "directory": "integrations/vscode"
   },
   "activationEvents": [
-    "onCustomEditor:ironplc.iplcViewer"
+    "onCustomEditor:ironplc.iplcViewer",
+    "onLanguage:61131-3-st",
+    "onLanguage:twincat-pou",
+    "onLanguage:twincat-gvl",
+    "onLanguage:twincat-dut",
+    "onLanguage:plcopen-xml"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -177,6 +182,23 @@
           }
         ],
         "priority": "default"
+      }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "ironplc",
+        "required": [
+          "task"
+        ],
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "The IronPLC task to perform.",
+            "enum": [
+              "compile"
+            ]
+          }
+        }
       }
     ]
   },
