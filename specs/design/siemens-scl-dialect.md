@@ -47,9 +47,9 @@ All block-local variables in SCL use a `#` prefix:
 #output := #error * #gain;
 ```
 
-**Design:** The lexer already produces a `Hash` token for `#`. The parser, when in SCL mode, treats `Hash` followed by `Identifier` as a variable reference. The `#` prefix is syntactic sugar — it does not change the variable's identity. The AST stores the variable name without the `#` prefix.
+**Design:** The lexer produces `Hash` + `Identifier` tokens. A dialect token filter (see [dialect-token-transforms.md](dialect-token-transforms.md#category-3-token-filtering)) removes `Hash` tokens that are immediately followed by `Identifier`. The `Identifier` token retains its own span and text — the parser sees a normal variable reference. The `#` is not part of the variable name.
 
-At the token transform level (in `xform_tokens.rs` or a new SCL-specific transform), a `Hash + Identifier` pair is merged into a single `Identifier` token with the text set to the identifier name (stripping the `#`). This keeps the parser grammar unchanged — it sees an `Identifier` token in expression positions regardless of dialect.
+This filter is safe because `Hash` + `Identifier` never occurs in standard IEC 61131-3 — the standard uses `#` only between type keywords and literal values (e.g., `INT#5` is `Int` + `Hash` + `Digits`).
 
 #### 1.2 Curly-Brace Pragmas
 
@@ -61,9 +61,9 @@ SCL uses `{ }` for compile-time directives:
 {DB_Specific := 'FALSE'}
 ```
 
-**Design:** Add a token transform that, when in SCL mode, collapses a sequence of `LeftBrace ... RightBrace` tokens into a single `Pragma` token (new token type). The parser treats `Pragma` tokens as whitespace/comments — they are preserved in the token stream for position fidelity but skipped during parsing.
+**Design:** A dialect token transform collapses `LeftBrace ... RightBrace` sequences into a single `Pragma` token (see [dialect-token-transforms.md](dialect-token-transforms.md#category-4-token-collapsing)). The parser skips `Pragma` tokens like whitespace.
 
-The pragma content is opaque — the parser does not interpret key-value pairs inside pragmas. Future work could extract structured metadata from pragmas for use in analysis.
+The pragma content is opaque — the parser does not interpret key-value pairs inside pragmas. Future work could extract structured metadata from pragmas for use in analysis. This transform is shared with the Beckhoff TwinCAT dialect.
 
 #### 1.3 `REGION` / `END_REGION`
 
@@ -75,9 +75,7 @@ REGION Initialization
 END_REGION
 ```
 
-**Design:** Add `Region` and `EndRegion` as new token types in the lexer. The region name (the text after `REGION` up to the newline) is captured as part of the `Region` token text but not parsed further.
-
-In the parser, `Region` and `EndRegion` tokens are treated as whitespace — they are allowed at any statement boundary and discarded. The tokens between `REGION` and `END_REGION` are parsed normally.
+**Design:** After keyword promotion, `REGION` and `END_REGION` identifiers become `Region` and `EndRegion` token types. A dialect token filter (see [dialect-token-transforms.md](dialect-token-transforms.md#what-about-region--end_region)) removes `Region` tokens plus the following tokens up to the next `Newline` (the region name text), and removes standalone `EndRegion` tokens. The tokens between regions are parsed normally.
 
 #### 1.4 Double-Quoted Block Names
 
@@ -95,9 +93,9 @@ And in call expressions:
 "FC_Calculate"(Input := 5.0);
 ```
 
-**Design:** The lexer already produces `DoubleByteString` tokens for `"..."`. In SCL mode, when a `DoubleByteString` appears in a name position (after `FUNCTION_BLOCK`, `FUNCTION`, `PROGRAM`, `DATA_BLOCK`, `ORGANIZATION_BLOCK`, or in a call expression), the parser accepts it as an identifier. The quotes are stripped and the content becomes the identifier name.
+**Design:** The lexer produces `DoubleByteString` tokens for `"..."`. In SCL, double-quoted text is always an identifier — never a string literal (string literals use single quotes). A dialect token rewrite (see [dialect-token-transforms.md](dialect-token-transforms.md#category-2-token-rewriting)) converts ALL `DoubleByteString` tokens to `Identifier` tokens, stripping the quotes from `text` while preserving the original `span`. This is a blanket rule — no context sensitivity needed.
 
-This is implemented as a token transform: in SCL mode, `DoubleByteString` tokens are rewritten to `Identifier` tokens with the quotes removed from the text. This avoids grammar changes in the parser.
+The span still covers the full `"FB_Motor"` range in the source file including quotes, so error messages highlight the quoted name in context.
 
 #### 1.5 `VERSION` Declaration
 
@@ -283,59 +281,14 @@ The `Dialect` enum controls which token transforms and parser grammar extensions
 
 ## Token Transform Pipeline
 
-SCL-specific syntax normalization happens at the token transform level, between lexing and parsing. This keeps the parser grammar as close to standard as possible.
+SCL-specific syntax normalization is handled by the dialect token transform pipeline described in [dialect-token-transforms.md](dialect-token-transforms.md). The SCL dialect applies these transforms in order:
 
-### Keyword promotion: Identifier → keyword TokenType
+1. **Keyword promotion** — `REGION`, `END_REGION`, `VERSION`, `BEGIN`, `DATA_BLOCK`, `END_DATA_BLOCK`, `ORGANIZATION_BLOCK`, `END_ORGANIZATION_BLOCK`, `VAR_STAT`, `GOTO`
+2. **Token rewriting** — all `DoubleByteString` → `Identifier` (strip quotes)
+3. **Pragma collapsing** — `{ ... }` → single `Pragma` token (shared with Beckhoff)
+4. **Token filtering** — remove `Hash` before `Identifier`; remove `Region`...`Newline` and `EndRegion`
 
-The logos lexer in `token.rs` only knows IEC 61131-3 keywords. Vendor-specific keywords like `REGION`, `END_REGION`, `VERSION`, `BEGIN`, `DATA_BLOCK`, `ORGANIZATION_BLOCK`, `VAR_STAT`, `GOTO`, etc. are **not** added to the logos grammar. If they were, they would always be keywords — even in standard mode where `REGION` or `BEGIN` are valid identifiers.
-
-Instead, when the dialect is `SiemensSCL`, a token transform promotes `Identifier` tokens whose text matches SCL keywords into the appropriate `TokenType` variant:
-
-```rust
-fn promote_scl_keywords(tokens: Vec<Token>) -> Vec<Token> {
-    tokens.into_iter().map(|mut tok| {
-        if tok.token_type == TokenType::Identifier {
-            tok.token_type = match tok.text.to_uppercase().as_str() {
-                "REGION" => TokenType::Region,
-                "END_REGION" => TokenType::EndRegion,
-                "VERSION" => TokenType::Version,
-                "BEGIN" => TokenType::Begin,
-                "DATA_BLOCK" => TokenType::DataBlock,
-                "END_DATA_BLOCK" => TokenType::EndDataBlock,
-                "ORGANIZATION_BLOCK" => TokenType::OrganizationBlock,
-                "END_ORGANIZATION_BLOCK" => TokenType::EndOrganizationBlock,
-                "VAR_STAT" => TokenType::VarStat,
-                "GOTO" => TokenType::Goto,
-                _ => tok.token_type,
-            };
-        }
-        tok
-    }).collect()
-}
-```
-
-The `TokenType` enum gains new variants for these keywords **without** `#[token(...)]` attributes — they have no logos lexer rules and are populated exclusively by this promotion transform. This ensures standard mode is unaffected: `BEGIN` remains a valid `Identifier` when parsing `.st` files.
-
-Note that `VAR_STAT`, `DATA_BLOCK`, `END_DATA_BLOCK`, `ORGANIZATION_BLOCK`, and `END_ORGANIZATION_BLOCK` contain underscores, so the logos `[A-Za-z_][A-Za-z0-9_]*` regex matches them as single `Identifier` tokens — they do not need special multi-token handling.
-
-### Full transform pipeline
-
-```
-Source text
-  → Logos lexer (standard IEC 61131-3 keywords only — same for all dialects)
-  → Preprocessor (OSCAT comments — same for all dialects)
-  → SCL keyword promotion (when dialect == SiemensSCL):
-      Promote Identifier tokens to SCL keyword TokenTypes
-  → SCL syntax transforms (when dialect == SiemensSCL):
-      1. Collapse { ... } into Pragma tokens (skip during parsing)
-      2. Merge Hash + Identifier into Identifier (strip #)
-      3. Rewrite DoubleByteString to Identifier in name positions (strip quotes)
-      4. Mark Region/EndRegion for skip during parsing
-  → Standard token transforms (insert keyword terminators, etc.)
-  → Parser
-```
-
-This approach has a precedent in the codebase: `xform_tokens.rs` already transforms the token stream before parsing. The SCL transforms follow the same pattern. The Beckhoff TwinCAT dialect uses an identical keyword promotion mechanism (see [beckhoff-twincat-dialect.md](beckhoff-twincat-dialect.md#keyword-promotion-via-token-transform-not-lexer)).
+See the transform pipeline design for the full architecture, ordering constraints, and span preservation invariants.
 
 ## AST Representation
 

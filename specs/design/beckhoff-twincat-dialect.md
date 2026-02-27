@@ -392,83 +392,16 @@ END_TYPE
 
 ## Parser Integration
 
-### Keyword Promotion via Token Transform (Not Lexer)
+### Token Transform Pipeline
 
-The logos lexer in `token.rs` declares IEC 61131-3 keywords with `#[token("KEYWORD", ignore(case))]` at higher priority than the `Identifier` regex. This means standard keywords always lex as their keyword token type — `FUNCTION_BLOCK` is always `TokenType::FunctionBlock`, never `Identifier`.
+TwinCAT dialect tokens are handled by the shared transform pipeline described in [dialect-token-transforms.md](dialect-token-transforms.md). The TwinCAT dialect applies:
 
-Vendor-specific keywords like `METHOD`, `EXTENDS`, `INTERFACE`, `PROPERTY` etc. **must not** be added to the logos lexer. If they were, they would always be keywords in every dialect, breaking standard mode where these are valid identifiers. For example, a standard IEC 61131-3 program can legally have a variable named `method` or `interface`.
+1. **Keyword promotion** — all OOP keywords, type keywords, and variable section keywords (see table below)
+2. **Pragma collapsing** — `{ ... }` → single `Pragma` token (shared with Siemens SCL)
 
-Instead, vendor keywords are promoted from `Identifier` to the appropriate `TokenType` by a **dialect-aware token transform** that runs after lexing. This follows the existing pattern in `xform_tokens.rs`:
+No token rewriting or filtering is needed for TwinCAT — double-quoted strings remain `DoubleByteString` (WSTRING literals), and there is no `#` variable prefix.
 
-```
-Source text
-  → Logos lexer (standard IEC 61131-3 keywords only)
-  → Preprocessor (OSCAT comments)
-  → Dialect keyword promotion (when dialect != Standard):
-      For each Identifier token, check if its text (case-insensitive)
-      matches a vendor keyword for the active dialect.
-      If so, replace the token_type while preserving span/line/col/text.
-  → Other token transforms (pragma collapsing, # stripping, etc.)
-  → Standard token transforms (insert keyword terminators)
-  → Parser
-```
-
-The keyword promotion function is a simple lookup table:
-
-```rust
-fn promote_twincat_keywords(tokens: Vec<Token>) -> Vec<Token> {
-    tokens.into_iter().map(|mut tok| {
-        if tok.token_type == TokenType::Identifier {
-            tok.token_type = match tok.text.to_uppercase().as_str() {
-                "METHOD" => TokenType::Method,
-                "EXTENDS" => TokenType::Extends,
-                "IMPLEMENTS" => TokenType::Implements,
-                "INTERFACE" => TokenType::Interface,
-                "PROPERTY" => TokenType::Property,
-                "ABSTRACT" => TokenType::Abstract,
-                "FINAL" => TokenType::Final,
-                "PUBLIC" => TokenType::Public,
-                "PRIVATE" => TokenType::Private,
-                "PROTECTED" => TokenType::Protected,
-                "INTERNAL" => TokenType::Internal,
-                "OVERRIDE" => TokenType::Override,
-                "THIS" => TokenType::This,
-                "POINTER" => TokenType::Pointer,
-                "REFERENCE" => TokenType::Reference,
-                "UNION" => TokenType::Union,
-                "CONTINUE" => TokenType::Continue,
-                // compound keywords like END_METHOD, END_INTERFACE
-                // are already split by the lexer into separate tokens
-                // and handled by the parser
-                _ => tok.token_type,
-            };
-        }
-        tok
-    }).collect()
-}
-```
-
-For compound keywords like `END_METHOD`, `END_INTERFACE`, etc., note that the lexer does not produce these as single tokens because they are not in the logos grammar. They arrive as two tokens: `Identifier("END_METHOD")` — wait, actually the `_` in `END_METHOD` makes this a single identifier token since `[A-Za-z_][A-Za-z0-9_]*` matches it. So these compound vendor keywords are also promoted from `Identifier` in the same lookup table:
-
-```rust
-"END_METHOD" => TokenType::EndMethod,
-"END_PROPERTY" => TokenType::EndProperty,
-"END_INTERFACE" => TokenType::EndInterface,
-"END_UNION" => TokenType::EndUnion,
-"VAR_INST" => TokenType::VarInst,
-"VAR_STAT" => TokenType::VarStat,
-"AND_THEN" => TokenType::AndThen,
-"OR_ELSE" => TokenType::OrElse,
-```
-
-Multi-token operators like `POINTER TO`, `REFERENCE TO`, `REF=`, `S=`, and `R=` are handled by the parser, not by token promotion. The parser sees `Pointer` + `To` (where `To` is already a standard keyword) and recognizes the type constructor. For `REF=`, `S=`, `R=`, the parser recognizes the `Identifier("REF")` or `Identifier("S")` followed by `Equal` in the appropriate context — or alternatively, these can be collapsed in a separate token transform pass.
-
-**Why this approach:**
-- The logos lexer stays dialect-neutral — it only knows IEC 61131-3
-- No conditional compilation or feature flags in the lexer
-- Standard mode is unaffected — `METHOD` remains a valid `Identifier`
-- The token transform is simple, testable, and composable
-- Source spans are perfectly preserved — only `token_type` changes
+Multi-token constructs (`POINTER TO`, `REFERENCE TO`, `REF=`, `S=`, `R=`) are composed by the parser, not by token promotion. The parser sees `Pointer` + `To` (where `To` is already a standard keyword) and recognizes the type constructor.
 
 ### TwinCAT XML Parser Changes
 
