@@ -9,5 +9,6 @@ Code.
    :maxdepth: 1
 
    Overview <overview>
+   Build Tasks <build-tasks>
    Settings <settings>
    Problem Code Index <problems/index>
