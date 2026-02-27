@@ -30,6 +30,14 @@ Chosen option: "Accept as-is", because requiring users to modify or convert thei
 
 The principle is: **IronPLC must be able to parse any file that the vendor's own toolchain accepts, producing zero parse errors on syntactically valid vendor code.** Semantic analysis of vendor-specific constructs is a separate, incremental concern — the parser accepts the syntax first, and semantic support follows over time.
 
+### No mixing of vendor dialects within a file
+
+A single file belongs to exactly one vendor dialect. IronPLC does not allow mixing Siemens and Beckhoff constructs (or any other combination of vendor-specific extensions) in the same file. The dialect is determined per-file from the file extension, and only that dialect's extensions are enabled for parsing that file.
+
+A workspace (project) may contain files from different vendors — for example, some `.scl` files and some `.TcPOU` files — and each file is parsed independently with its own dialect. But within any single file, only one vendor's extensions are valid.
+
+The reason is **round-trip fidelity**: a file written for Siemens TIA Portal should remain valid Siemens SCL, and a file written for Beckhoff TwinCAT should remain valid TwinCAT ST. If IronPLC accepted a hybrid file that used constructs from multiple vendors, that file would not be loadable in *any* vendor's toolchain. Accepting mixed-dialect files would mean IronPLC is creating a new dialect that doesn't exist anywhere else — the opposite of "accept as-is."
+
 ### How this applies to current vendor dialects
 
 | Vendor | File formats | Key extensions to parse |
@@ -58,7 +66,7 @@ Dialect selection enables the appropriate set of lexer extensions and parser gra
 * Good, because the existing parser architecture (logos lexer + hand-written recursive descent) naturally supports additive token types and grammar rules without architectural changes
 * Bad, because each vendor dialect adds maintenance surface — new tokens, grammar rules, AST nodes, and test fixtures
 * Bad, because users may expect semantic analysis of vendor-specific constructs (e.g., type checking `POINTER TO` dereferences) once parsing succeeds — clear messaging about "parsed but not yet analyzed" is needed
-* Bad, because dialect interactions create combinatorial complexity — a file might use constructs from multiple dialects if the user mixes conventions (rare in practice since files come from specific vendor tools)
+* Neutral, because dialect interactions are avoided by design — each file belongs to exactly one dialect (no mixing), so there is no combinatorial complexity within a file; a workspace may contain files from different dialects, but each is parsed independently
 * Neutral, because the lexer and parser already support one vendor extension mechanism (TwinCAT XML wrappers, OSCAT comment removal, `allow_c_style_comments` option) — this decision formalizes and extends the existing pattern
 
 ### Confirmation
