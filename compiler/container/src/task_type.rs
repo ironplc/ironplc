@@ -1,9 +1,10 @@
 use crate::ContainerError;
 
 /// Type tags for task scheduling types.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(u8)]
 pub enum TaskType {
+    #[default]
     Cyclic = 0,
     Event = 1,
     Freewheeling = 2,
