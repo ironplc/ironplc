@@ -1,4 +1,4 @@
-use std::fmt;
+use core::fmt;
 
 /// Runtime traps that halt VM execution.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -27,8 +27,6 @@ impl fmt::Display for Trap {
         }
     }
 }
-
-impl std::error::Error for Trap {}
 
 #[cfg(test)]
 mod tests {
