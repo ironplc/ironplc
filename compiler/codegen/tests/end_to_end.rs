@@ -156,3 +156,39 @@ END_PROGRAM
     assert_eq!(vm.read_variable(0).unwrap(), 99);
     assert_eq!(vm.scan_count(), 2);
 }
+
+#[test]
+fn end_to_end_when_counter_program_then_increments_across_scans() {
+    let source = "
+PROGRAM main
+  VAR
+    count : INT;
+  END_VAR
+  count := count + 1;
+END_PROGRAM
+";
+    let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
+    let container = compile(&library).unwrap();
+    let mut vm = Vm::new().load(container).start();
+
+    for _ in 0..5 {
+        vm.run_round().unwrap();
+    }
+
+    assert_eq!(vm.read_variable(0).unwrap(), 5);
+}
+
+#[test]
+fn end_to_end_when_deeply_nested_expression_then_correct_result() {
+    let source = "
+PROGRAM main
+  VAR
+    result : INT;
+  END_VAR
+  result := 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10;
+END_PROGRAM
+";
+    let vm = parse_and_run(source);
+
+    assert_eq!(vm.read_variable(0).unwrap(), 55);
+}
