@@ -465,4 +465,167 @@ mod tests {
         assert_eq!(faulted.task_id(), 3);
         assert_eq!(faulted.instance_id(), 1);
     }
+
+    // Phase 1, Step 1.1: Execute error path tests
+    // These verify that each Trap variant that can fire inside execute()
+    // is triggered through the full Vm::new().load(c).start().run_round() path.
+
+    #[test]
+    fn execute_when_stack_overflow_then_trap() {
+        // max_stack_depth: 1, but bytecode pushes two values
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
+            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]
+        ];
+        let container = ContainerBuilder::new()
+            .num_variables(0)
+            .add_i32_constant(1)
+            .add_i32_constant(2)
+            .add_function(0, &bytecode, 1, 0)
+            .build();
+
+        let mut vm = Vm::new().load(container).start();
+        let result = vm.run_round();
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().trap, Trap::StackOverflow);
+    }
+
+    #[test]
+    fn execute_when_stack_underflow_then_trap() {
+        // ADD_I32 tries to pop 2 values from an empty stack
+        let bytecode: Vec<u8> = vec![0x30]; // ADD_I32
+        let container = ContainerBuilder::new()
+            .num_variables(0)
+            .add_function(0, &bytecode, 1, 0)
+            .build();
+
+        let mut vm = Vm::new().load(container).start();
+        let result = vm.run_round();
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().trap, Trap::StackUnderflow);
+    }
+
+    #[test]
+    fn execute_when_invalid_constant_index_then_trap() {
+        // 0 constants in pool, but bytecode references pool[0]
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
+        ];
+        let container = ContainerBuilder::new()
+            .num_variables(0)
+            .add_function(0, &bytecode, 1, 0)
+            .build();
+
+        let mut vm = Vm::new().load(container).start();
+        let result = vm.run_round();
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().trap, Trap::InvalidConstantIndex(0));
+    }
+
+    #[test]
+    fn execute_when_invalid_variable_index_on_store_then_trap() {
+        // 1 variable, but bytecode stores to var[5]
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
+            0x18, 0x05, 0x00,  // STORE_VAR_I32 var[5]
+        ];
+        let container = ContainerBuilder::new()
+            .num_variables(1)
+            .add_i32_constant(42)
+            .add_function(0, &bytecode, 1, 1)
+            .build();
+
+        let mut vm = Vm::new().load(container).start();
+        let result = vm.run_round();
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().trap, Trap::InvalidVariableIndex(5));
+    }
+
+    #[test]
+    fn execute_when_invalid_variable_index_on_load_then_trap() {
+        // 1 variable, but bytecode loads from var[5]
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x10, 0x05, 0x00,  // LOAD_VAR_I32 var[5]
+        ];
+        let container = ContainerBuilder::new()
+            .num_variables(1)
+            .add_function(0, &bytecode, 1, 1)
+            .build();
+
+        let mut vm = Vm::new().load(container).start();
+        let result = vm.run_round();
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().trap, Trap::InvalidVariableIndex(5));
+    }
+
+    // Phase 1, Step 1.2: Execute edge-case tests
+
+    #[test]
+    fn execute_when_empty_bytecode_then_ok() {
+        let bytecode: Vec<u8> = vec![];
+        let container = ContainerBuilder::new()
+            .num_variables(0)
+            .add_function(0, &bytecode, 1, 0)
+            .build();
+
+        let mut vm = Vm::new().load(container).start();
+        let result = vm.run_round();
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn execute_when_add_i32_wraps_at_max_then_correct() {
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MAX)
+            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (1)
+            0x30,              // ADD_I32
+            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+            0xB5,              // RET_VOID
+        ];
+        let container = ContainerBuilder::new()
+            .num_variables(1)
+            .add_i32_constant(i32::MAX)
+            .add_i32_constant(1)
+            .add_function(0, &bytecode, 2, 1)
+            .build();
+
+        let mut vm = Vm::new().load(container).start();
+        vm.run_round().unwrap();
+
+        assert_eq!(vm.read_variable(0).unwrap(), i32::MIN);
+    }
+
+    #[test]
+    fn execute_when_add_i32_wraps_at_min_then_correct() {
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MIN)
+            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (-1)
+            0x30,              // ADD_I32
+            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+            0xB5,              // RET_VOID
+        ];
+        let container = ContainerBuilder::new()
+            .num_variables(1)
+            .add_i32_constant(i32::MIN)
+            .add_i32_constant(-1)
+            .add_function(0, &bytecode, 2, 1)
+            .build();
+
+        let mut vm = Vm::new().load(container).start();
+        vm.run_round().unwrap();
+
+        assert_eq!(vm.read_variable(0).unwrap(), i32::MAX);
+    }
 }
