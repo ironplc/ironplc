@@ -13,6 +13,6 @@ This chapter describes how to use the command line interface.
    :maxdepth: 1
 
    Command Reference <ironplcc>
-   Basic Usage <basicusage>
+   Overview <overview>
    Source Formats <source-formats/index>
    Problem Code Index <problems/index>
