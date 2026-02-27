@@ -26,6 +26,14 @@ struct Args {
     action: Action,
 }
 
+/// Shared arguments for commands that operate on source files.
+#[derive(clap::Args, Debug)]
+struct FileArgs {
+    /// Files to include. Directory names can be given to
+    /// add all files in the given directory.
+    files: Vec<PathBuf>,
+}
+
 #[derive(clap::Subcommand, Debug)]
 enum Action {
     /// The check action checks a file (or set of files) for syntax and semantic correctness.
@@ -33,9 +41,20 @@ enum Action {
     /// When multiple files specified, then the files are checked as a single
     /// compilation unit (essentially by combining the files) for analysis.
     Check {
-        /// Files to include in the check. Directory names can be given to
-        /// add all files in the given directory.
-        files: Vec<PathBuf>,
+        #[command(flatten)]
+        file_args: FileArgs,
+    },
+    /// Compiles source files into a bytecode container (.iplc) file.
+    ///
+    /// When multiple files are specified, then the files are compiled as a single
+    /// compilation unit (essentially by combining the files).
+    Compile {
+        #[command(flatten)]
+        file_args: FileArgs,
+
+        /// Output file path for the compiled bytecode container (.iplc).
+        #[arg(short, long)]
+        output: PathBuf,
     },
     /// The echo action reads (parses) the libraries and writes the context to the
     /// standard output.
@@ -43,9 +62,8 @@ enum Action {
     /// The echo acton is primarily for diagnostics to understand the internal
     /// structure of the parsed files.
     Echo {
-        /// Files to include in the check. Directory names can be given to
-        /// add all files in the given directory.
-        files: Vec<PathBuf>,
+        #[command(flatten)]
+        file_args: FileArgs,
     },
     /// The tokenize action checks a file if it can be tokenized with all content
     /// matching a token.
@@ -76,8 +94,9 @@ pub fn main() -> Result<(), String> {
             let proj = LspProject::new(Box::<FileBackedProject>::default());
             lsp::start(proj)
         }
-        Action::Check { files } => cli::check(&files, false),
-        Action::Echo { files } => cli::echo(&files, false),
+        Action::Check { file_args } => cli::check(&file_args.files, false),
+        Action::Compile { file_args, output } => cli::compile(&file_args.files, &output, false),
+        Action::Echo { file_args } => cli::echo(&file_args.files, false),
         Action::Tokenize { files } => cli::tokenize(&files, false),
         Action::Version => {
             println!("ironplcc version {VERSION}");
