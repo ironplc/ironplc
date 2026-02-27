@@ -64,6 +64,13 @@ The extension provides a build task that compiles your project to a bytecode
 container (``.iplc``) file. Use :kbd:`Ctrl+Shift+B` to run the build task.
 See :doc:`build-tasks` for details.
 
+Bytecode Viewer
+===============
+
+Opening an :file:`.iplc` bytecode file displays a human-readable disassembly of
+the compiled program, including the file header, constant pool, and function
+instructions with color-coded opcodes. See :doc:`bytecode-viewer` for details.
+
 Diagnostics
 ===========
 
