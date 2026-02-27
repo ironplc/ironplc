@@ -12,6 +12,7 @@ This chapter describes how to use the command line interface.
 .. toctree::
    :maxdepth: 1
 
+   Command Reference <ironplcc>
    Basic Usage <basicusage>
    Source Formats <source-formats/index>
    Problem Code Index <problems/index>

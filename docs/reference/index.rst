@@ -8,4 +8,5 @@ Technical reference material for IronPLC tools.
    :maxdepth: 1
 
    Compiler <compiler/index>
+   Runtime <runtime/index>
    Editor Extension <editor/index>
