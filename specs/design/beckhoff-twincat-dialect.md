@@ -392,6 +392,84 @@ END_TYPE
 
 ## Parser Integration
 
+### Keyword Promotion via Token Transform (Not Lexer)
+
+The logos lexer in `token.rs` declares IEC 61131-3 keywords with `#[token("KEYWORD", ignore(case))]` at higher priority than the `Identifier` regex. This means standard keywords always lex as their keyword token type — `FUNCTION_BLOCK` is always `TokenType::FunctionBlock`, never `Identifier`.
+
+Vendor-specific keywords like `METHOD`, `EXTENDS`, `INTERFACE`, `PROPERTY` etc. **must not** be added to the logos lexer. If they were, they would always be keywords in every dialect, breaking standard mode where these are valid identifiers. For example, a standard IEC 61131-3 program can legally have a variable named `method` or `interface`.
+
+Instead, vendor keywords are promoted from `Identifier` to the appropriate `TokenType` by a **dialect-aware token transform** that runs after lexing. This follows the existing pattern in `xform_tokens.rs`:
+
+```
+Source text
+  → Logos lexer (standard IEC 61131-3 keywords only)
+  → Preprocessor (OSCAT comments)
+  → Dialect keyword promotion (when dialect != Standard):
+      For each Identifier token, check if its text (case-insensitive)
+      matches a vendor keyword for the active dialect.
+      If so, replace the token_type while preserving span/line/col/text.
+  → Other token transforms (pragma collapsing, # stripping, etc.)
+  → Standard token transforms (insert keyword terminators)
+  → Parser
+```
+
+The keyword promotion function is a simple lookup table:
+
+```rust
+fn promote_twincat_keywords(tokens: Vec<Token>) -> Vec<Token> {
+    tokens.into_iter().map(|mut tok| {
+        if tok.token_type == TokenType::Identifier {
+            tok.token_type = match tok.text.to_uppercase().as_str() {
+                "METHOD" => TokenType::Method,
+                "EXTENDS" => TokenType::Extends,
+                "IMPLEMENTS" => TokenType::Implements,
+                "INTERFACE" => TokenType::Interface,
+                "PROPERTY" => TokenType::Property,
+                "ABSTRACT" => TokenType::Abstract,
+                "FINAL" => TokenType::Final,
+                "PUBLIC" => TokenType::Public,
+                "PRIVATE" => TokenType::Private,
+                "PROTECTED" => TokenType::Protected,
+                "INTERNAL" => TokenType::Internal,
+                "OVERRIDE" => TokenType::Override,
+                "THIS" => TokenType::This,
+                "POINTER" => TokenType::Pointer,
+                "REFERENCE" => TokenType::Reference,
+                "UNION" => TokenType::Union,
+                "CONTINUE" => TokenType::Continue,
+                // compound keywords like END_METHOD, END_INTERFACE
+                // are already split by the lexer into separate tokens
+                // and handled by the parser
+                _ => tok.token_type,
+            };
+        }
+        tok
+    }).collect()
+}
+```
+
+For compound keywords like `END_METHOD`, `END_INTERFACE`, etc., note that the lexer does not produce these as single tokens because they are not in the logos grammar. They arrive as two tokens: `Identifier("END_METHOD")` — wait, actually the `_` in `END_METHOD` makes this a single identifier token since `[A-Za-z_][A-Za-z0-9_]*` matches it. So these compound vendor keywords are also promoted from `Identifier` in the same lookup table:
+
+```rust
+"END_METHOD" => TokenType::EndMethod,
+"END_PROPERTY" => TokenType::EndProperty,
+"END_INTERFACE" => TokenType::EndInterface,
+"END_UNION" => TokenType::EndUnion,
+"VAR_INST" => TokenType::VarInst,
+"VAR_STAT" => TokenType::VarStat,
+"AND_THEN" => TokenType::AndThen,
+"OR_ELSE" => TokenType::OrElse,
+```
+
+Multi-token operators like `POINTER TO`, `REFERENCE TO`, `REF=`, `S=`, and `R=` are handled by the parser, not by token promotion. The parser sees `Pointer` + `To` (where `To` is already a standard keyword) and recognizes the type constructor. For `REF=`, `S=`, `R=`, the parser recognizes the `Identifier("REF")` or `Identifier("S")` followed by `Equal` in the appropriate context — or alternatively, these can be collapsed in a separate token transform pass.
+
+**Why this approach:**
+- The logos lexer stays dialect-neutral — it only knows IEC 61131-3
+- No conditional compilation or feature flags in the lexer
+- Standard mode is unaffected — `METHOD` remains a valid `Identifier`
+- The token transform is simple, testable, and composable
+- Source spans are perfectly preserved — only `token_type` changes
+
 ### TwinCAT XML Parser Changes
 
 The `twincat_parser.rs` module currently handles `POU`, `GVL`, and `DUT` XML elements. It needs to be extended:
@@ -406,14 +484,16 @@ Each sub-element follows the same pattern as the existing POU parsing: extract D
 
 The ST parser (`compiler/parser/`) needs:
 
-1. **New keyword tokens** — approximately 25 new tokens (see full list below)
+1. **New `TokenType` variants** — approximately 30 new variants (see full list below), but these are only added to the enum, **not** to the logos lexer grammar
 2. **Grammar extensions** — method/property declarations within function blocks, interface declarations, `EXTENDS`/`IMPLEMENTS` clauses, pointer/reference types, union types, access modifiers
 3. **Dialect-aware parsing** — some grammar rules are only active when the dialect is TwinCAT (though most TwinCAT extensions don't conflict with standard syntax)
 
-### New Keyword Tokens
+### New TokenType Variants
 
-| Token | Keyword | Priority |
-|-------|---------|----------|
+These are added to the `TokenType` enum **without** `#[token(...)]` attributes — they have no logos lexer rules. They are populated exclusively by the dialect keyword promotion transform.
+
+| Token | Promoted from `Identifier` text | Priority |
+|-------|-------------------------------|----------|
 | `Method` | `METHOD` | 1 |
 | `EndMethod` | `END_METHOD` | 1 |
 | `Property` | `PROPERTY` | 1 |
@@ -435,7 +515,6 @@ The ST parser (`compiler/parser/`) needs:
 | `This` | `THIS` | 1 |
 | `Pointer` | `POINTER` | 2 |
 | `Reference` | `REFERENCE` | 2 |
-| `RefAssign` | `REF=` | 2 |
 | `Union` | `UNION` | 2 |
 | `EndUnion` | `END_UNION` | 2 |
 | `Ltime` | `LTIME` | 2 |
@@ -448,10 +527,14 @@ The ST parser (`compiler/parser/`) needs:
 | `OrElse` | `OR_ELSE` | 3 |
 | `Override` | `OVERRIDE` | 3 |
 | `Continue` | `CONTINUE` | 3 |
-| `SetAssign` | `S=` | 4 |
-| `ResetAssign` | `R=` | 4 |
 
-Note: `Super` can be handled as an identifier rather than a keyword since it's only meaningful in expression context with `^`. Identifiers starting with `__` (`__NEW`, `__DELETE`, `__POUNAME`, `__POSITION`, `__QUERYINTERFACE`, `__ISVALIDREF`, `__VARINFO`) are already valid identifiers — they need no lexer changes, only semantic recognition.
+Multi-token constructs handled by parser context (not promotion):
+- `POINTER TO` — parser sees `Pointer` + `To` (standard keyword)
+- `REFERENCE TO` — parser sees `Reference` + `To`
+- `REF=` — parser sees `Identifier("REF")` + `Equal` or promoted in a separate pass
+- `S=` / `R=` — parser sees `Identifier("S")` + `Equal`
+
+Note: `Super` can be handled as an identifier rather than a keyword since it's only meaningful in expression context with `^`. Identifiers starting with `__` (`__NEW`, `__DELETE`, `__POUNAME`, `__POSITION`, `__QUERYINTERFACE`, `__ISVALIDREF`, `__VARINFO`) are already valid identifiers — they need no promotion, only semantic recognition.
 
 ## AST Extensions
 

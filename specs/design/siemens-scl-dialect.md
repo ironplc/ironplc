@@ -283,22 +283,59 @@ The `Dialect` enum controls which token transforms and parser grammar extensions
 
 ## Token Transform Pipeline
 
-SCL-specific syntax normalization happens at the token transform level, between lexing and parsing. This keeps the parser grammar as close to standard as possible:
+SCL-specific syntax normalization happens at the token transform level, between lexing and parsing. This keeps the parser grammar as close to standard as possible.
+
+### Keyword promotion: Identifier → keyword TokenType
+
+The logos lexer in `token.rs` only knows IEC 61131-3 keywords. Vendor-specific keywords like `REGION`, `END_REGION`, `VERSION`, `BEGIN`, `DATA_BLOCK`, `ORGANIZATION_BLOCK`, `VAR_STAT`, `GOTO`, etc. are **not** added to the logos grammar. If they were, they would always be keywords — even in standard mode where `REGION` or `BEGIN` are valid identifiers.
+
+Instead, when the dialect is `SiemensSCL`, a token transform promotes `Identifier` tokens whose text matches SCL keywords into the appropriate `TokenType` variant:
+
+```rust
+fn promote_scl_keywords(tokens: Vec<Token>) -> Vec<Token> {
+    tokens.into_iter().map(|mut tok| {
+        if tok.token_type == TokenType::Identifier {
+            tok.token_type = match tok.text.to_uppercase().as_str() {
+                "REGION" => TokenType::Region,
+                "END_REGION" => TokenType::EndRegion,
+                "VERSION" => TokenType::Version,
+                "BEGIN" => TokenType::Begin,
+                "DATA_BLOCK" => TokenType::DataBlock,
+                "END_DATA_BLOCK" => TokenType::EndDataBlock,
+                "ORGANIZATION_BLOCK" => TokenType::OrganizationBlock,
+                "END_ORGANIZATION_BLOCK" => TokenType::EndOrganizationBlock,
+                "VAR_STAT" => TokenType::VarStat,
+                "GOTO" => TokenType::Goto,
+                _ => tok.token_type,
+            };
+        }
+        tok
+    }).collect()
+}
+```
+
+The `TokenType` enum gains new variants for these keywords **without** `#[token(...)]` attributes — they have no logos lexer rules and are populated exclusively by this promotion transform. This ensures standard mode is unaffected: `BEGIN` remains a valid `Identifier` when parsing `.st` files.
+
+Note that `VAR_STAT`, `DATA_BLOCK`, `END_DATA_BLOCK`, `ORGANIZATION_BLOCK`, and `END_ORGANIZATION_BLOCK` contain underscores, so the logos `[A-Za-z_][A-Za-z0-9_]*` regex matches them as single `Identifier` tokens — they do not need special multi-token handling.
+
+### Full transform pipeline
 
 ```
 Source text
-  → Lexer (produces raw tokens — same for all dialects)
+  → Logos lexer (standard IEC 61131-3 keywords only — same for all dialects)
   → Preprocessor (OSCAT comments — same for all dialects)
-  → SCL token transforms (when dialect == SiemensSCL):
-      1. Collapse { ... } into Pragma tokens
-      2. Merge # + Identifier into Identifier (strip #)
-      3. Rewrite "quoted" DoubleByteString to Identifier (strip quotes)
-      4. Skip REGION/END_REGION tokens
+  → SCL keyword promotion (when dialect == SiemensSCL):
+      Promote Identifier tokens to SCL keyword TokenTypes
+  → SCL syntax transforms (when dialect == SiemensSCL):
+      1. Collapse { ... } into Pragma tokens (skip during parsing)
+      2. Merge Hash + Identifier into Identifier (strip #)
+      3. Rewrite DoubleByteString to Identifier in name positions (strip quotes)
+      4. Mark Region/EndRegion for skip during parsing
   → Standard token transforms (insert keyword terminators, etc.)
   → Parser
 ```
 
-This approach has a precedent in the codebase: `xform_tokens.rs` already transforms the token stream before parsing. The SCL transforms follow the same pattern.
+This approach has a precedent in the codebase: `xform_tokens.rs` already transforms the token stream before parsing. The SCL transforms follow the same pattern. The Beckhoff TwinCAT dialect uses an identical keyword promotion mechanism (see [beckhoff-twincat-dialect.md](beckhoff-twincat-dialect.md#keyword-promotion-via-token-transform-not-lexer)).
 
 ## AST Representation
 
