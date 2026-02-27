@@ -33,5 +33,5 @@ source files to analyze:
 
    ironplcc check path/to/my-twincat-project
 
-See :doc:`/compiler/source-formats/twincat` for supported file types and
+See :doc:`/reference/compiler/source-formats/twincat` for supported file types and
 format details.

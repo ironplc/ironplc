@@ -21,7 +21,7 @@ const VERBOSITY = new Map<string, string[]>([
 let client: LanguageClient | undefined;
 
 function openProblemInBrowser(code: ProblemCode) {
-  vscode.env.openExternal(vscode.Uri.parse('https://www.ironplc.com/vscode/problems/' + code + '.html'));
+  vscode.env.openExternal(vscode.Uri.parse('https://www.ironplc.com/reference/editor/problems/' + code + '.html'));
 }
 
 // This method is called when this extension is activated.

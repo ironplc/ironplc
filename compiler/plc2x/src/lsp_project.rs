@@ -449,7 +449,7 @@ fn map_diagnostic(
 
     let code_description = match Uri::from_str(
         format!(
-            "https://www.ironplc.com/compiler/problems/{}.html",
+            "https://www.ironplc.com/reference/compiler/problems/{}.html",
             diagnostic.code
         )
         .as_str(),
@@ -535,6 +535,7 @@ fn map_label(label: &ironplc_dsl::diagnostic::Label, project: &dyn Project) -> l
 
 #[cfg(test)]
 mod test {
+    use std::path::PathBuf;
     use std::str::FromStr;
 
     use ironplc_dsl::core::SourceSpan;
@@ -1005,6 +1006,33 @@ INVALID_SYNTAX"
             }
             _ => panic!("Expected nested response"),
         }
+    }
+
+    #[test]
+    fn map_diagnostic_when_problem_code_url_then_docs_directory_exists() {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        // compiler/plc2x/ -> repo root
+        path.push("../..");
+        path.push("docs/reference/compiler/problems");
+        assert!(
+            path.is_dir(),
+            "Documentation directory for compiler problem codes does not exist: {}",
+            path.display()
+        );
+
+        // Verify at least one problem code .rst file exists
+        let has_problem_files = std::fs::read_dir(&path)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                name.starts_with('P') && name.ends_with(".rst")
+            });
+        assert!(
+            has_problem_files,
+            "No P*.rst files found in {}",
+            path.display()
+        );
     }
 
     #[test]

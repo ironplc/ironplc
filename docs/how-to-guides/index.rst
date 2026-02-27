@@ -12,4 +12,4 @@ These guides presuppose some familiarity with IronPLC.
    Check Beremiz Projects <check-beremiz-projects>
    Check TwinCAT 3 Projects <check-twincat-projects>
    Update IronPLC on your computer <update>
-   Troubleshoot the VS Code Extension </vscode/troubleshooting>
+   Troubleshoot the Editor Extension <troubleshoot-editor>
