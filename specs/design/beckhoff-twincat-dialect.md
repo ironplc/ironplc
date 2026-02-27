@@ -293,7 +293,71 @@ And region markers:
 
 For TwinCAT, pragmas are always present (they appear in virtually every `.TcPOU` file), so the pragma collapsing transform should be automatically enabled for the TwinCAT dialect.
 
-#### 3.4 `__NEW`, `__DELETE`, `__TRY`/`__CATCH`/`__FINALLY`
+#### 3.4 Short-Circuit Boolean Operators
+
+TwinCAT adds `AND_THEN` and `OR_ELSE` for short-circuit evaluation, critical for safe pointer checks:
+
+```
+IF (ptr <> 0 AND_THEN ptr^ = 99) THEN
+    // safe: ptr^ is only evaluated if ptr <> 0
+END_IF;
+```
+
+**Design:** Add `AndThen` and `OrElse` as keyword tokens. These are binary operators with the same precedence as `AND` and `OR` respectively. In the AST, they map to new boolean operator variants. Semantically they are identical to `AND`/`OR` except for evaluation order, which is a code generation concern.
+
+#### 3.5 `OVERRIDE` and `CONTINUE` Keywords
+
+`OVERRIDE` marks a method as overriding a base class method:
+
+```
+METHOD OVERRIDE Start : BOOL
+    // ...
+END_METHOD
+```
+
+`CONTINUE` skips to the next loop iteration (common extension):
+
+```
+FOR i := 0 TO 100 DO
+    IF arr[i] = 0 THEN
+        CONTINUE;
+    END_IF;
+    // process arr[i]
+END_FOR;
+```
+
+**Design:** Add `Override` and `Continue` as keyword tokens. `OVERRIDE` is a method modifier alongside `ABSTRACT`/`FINAL`. `CONTINUE` is a statement keyword, parallel to `EXIT`.
+
+#### 3.6 Extended Assignment Operators
+
+TwinCAT adds `S=` (latching set) and `R=` (latching reset):
+
+```
+bMotorRunning S= bStartButton;   // once TRUE, stays TRUE until R=
+bMotorRunning R= bStopButton;    // once TRUE, resets to FALSE
+```
+
+**Design:** Add `SetAssign` (`S=`) and `ResetAssign` (`R=`) as operator tokens. These are assignment operators used in statement context. In the AST, they map to new assignment variants.
+
+#### 3.7 Address and Size Operators
+
+```
+pAddr := ADR(myVariable);      // get pointer to variable
+nSize := SIZEOF(myStruct);     // get size in bytes
+```
+
+**Design:** `ADR`, `SIZEOF`, `BITADR`, and `INDEXOF` are function-like operators. Since they look syntactically identical to function calls (identifier followed by parenthesized arguments), the parser already handles them as function call expressions. They only need special handling during semantic analysis, not parsing. No parser changes needed.
+
+#### 3.8 Diagnostic Pseudo-Variables
+
+```
+sName := __POUNAME;      // returns name of current POU as STRING
+sPos  := __POSITION;     // returns source position as STRING
+```
+
+**Design:** These are identifiers that start with `__`. The lexer already accepts `__POUNAME` and `__POSITION` as valid identifiers (they match the `[A-Za-z_][A-Za-z0-9_]*` pattern). No lexer changes needed. Semantic analysis would recognize them as built-in pseudo-variables.
+
+#### 3.9 `__NEW`, `__DELETE`, `__TRY`/`__CATCH`/`__FINALLY`
 
 Advanced runtime features:
 
@@ -310,9 +374,9 @@ __FINALLY
 __ENDTRY
 ```
 
-**Design:** These are low priority. They can be parsed as keyword-prefixed statement blocks. Add the keywords and recognize the block structure, but represent the bodies as opaque statement lists initially.
+**Design:** These are low priority. `__NEW` and `__DELETE` look like function calls to the parser (identifier + parenthesized args) so need no grammar changes. `__TRY`/`__CATCH`/`__FINALLY`/`__ENDTRY` require new keyword tokens and a new statement block structure.
 
-#### 3.5 Enum with Underlying Type
+#### 3.10 Enum with Underlying Type
 
 ```
 TYPE E_Color :
@@ -380,8 +444,14 @@ The ST parser (`compiler/parser/`) needs:
 | `LdateAndTime` | `LDT` / `LDATE_AND_TIME` | 2 |
 | `VarInst` | `VAR_INST` | 3 |
 | `VarStat` | `VAR_STAT` | 3 |
+| `AndThen` | `AND_THEN` | 3 |
+| `OrElse` | `OR_ELSE` | 3 |
+| `Override` | `OVERRIDE` | 3 |
+| `Continue` | `CONTINUE` | 3 |
+| `SetAssign` | `S=` | 4 |
+| `ResetAssign` | `R=` | 4 |
 
-Note: `Super` can be handled as an identifier rather than a keyword since it's only meaningful in expression context with `^`.
+Note: `Super` can be handled as an identifier rather than a keyword since it's only meaningful in expression context with `^`. Identifiers starting with `__` (`__NEW`, `__DELETE`, `__POUNAME`, `__POSITION`, `__QUERYINTERFACE`, `__ISVALIDREF`, `__VARINFO`) are already valid identifiers — they need no lexer changes, only semantic recognition.
 
 ## AST Extensions
 
@@ -493,11 +563,14 @@ ExprKind:
    - `POINTER TO` / `REFERENCE TO`
    - `REF=` operator
    - `UNION` / `END_UNION`
-   - Additional time types
+   - Additional time types (`LTIME`, `LDT`, `LTOD`, `LDATE`)
    - `VAR_INST`, `VAR_STAT`
    - Enum underlying types
+   - `AND_THEN` / `OR_ELSE` short-circuit operators
+   - `OVERRIDE` method modifier
+   - `CONTINUE` statement
 
 4. **Phase 4 — Advanced features**:
-   - `__NEW` / `__DELETE`
+   - `S=` / `R=` extended assignment operators
    - `__TRY` / `__CATCH` / `__FINALLY` / `__ENDTRY`
-   - `__QUERYINTERFACE`, `__ISVALIDREF`
+   - Conditional compilation pragmas (`{IF defined(...)}` / `{END_IF}`)
