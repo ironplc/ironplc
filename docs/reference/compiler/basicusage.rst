@@ -78,4 +78,50 @@ to check your program's syntax.
 
 On success, the command produces no output.
 
-For now, that's it. Presently, IronPLC does not create runnable programs.
+-------------------
+Compile the Program
+-------------------
+
+.. warning::
+
+   The compile command currently supports only trivial programs. Supported
+   features include: ``PROGRAM`` declarations, ``INT`` variable declarations,
+   assignment statements, integer literal constants, and the ``+`` (add)
+   operator. Programs using other features will produce a code generation
+   error.
+
+You can compile a source file into a bytecode container (``.iplc``) file
+using the ``compile`` command. Run the commands in
+:ref:`Compile Program <compiler-compile-program>` to compile your program.
+
+.. code-block:: shell
+   :caption: Compile Program
+   :name: compiler-compile-program
+
+   ironplcc compile main.st --output main.iplc
+
+On success, the command produces no output and creates the ``.iplc`` file
+at the specified output path.
+
+You can also use the short form ``-o`` for the output flag:
+
+.. code-block:: shell
+
+   ironplcc compile main.st -o main.iplc
+
+---------------------
+Execute the .iplc File
+---------------------
+
+To run a compiled ``.iplc`` file, use the IronPLC virtual machine runtime
+:program:`ironplcvm`:
+
+.. code-block:: shell
+
+   ironplcvm run main.iplc
+
+You can inspect variable values after execution by specifying a dump file:
+
+.. code-block:: shell
+
+   ironplcvm run main.iplc --dump-vars output.txt
