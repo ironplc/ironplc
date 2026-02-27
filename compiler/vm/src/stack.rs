@@ -2,32 +2,37 @@ use crate::error::Trap;
 use crate::value::Slot;
 
 /// Fixed-capacity operand stack for VM execution.
-pub struct OperandStack {
-    data: Vec<Slot>,
-    max_depth: usize,
+pub struct OperandStack<'a> {
+    data: &'a mut [Slot],
+    len: usize,
 }
 
-impl OperandStack {
-    /// Creates a new operand stack with the given maximum depth.
-    pub fn new(max_depth: u16) -> Self {
+impl<'a> OperandStack<'a> {
+    /// Creates a new operand stack backed by the given slice.
+    pub fn new(backing: &'a mut [Slot]) -> Self {
         OperandStack {
-            data: Vec::with_capacity(max_depth as usize),
-            max_depth: max_depth as usize,
+            data: backing,
+            len: 0,
         }
     }
 
     /// Pushes a slot onto the stack.
     pub fn push(&mut self, slot: Slot) -> Result<(), Trap> {
-        if self.data.len() >= self.max_depth {
+        if self.len >= self.data.len() {
             return Err(Trap::StackOverflow);
         }
-        self.data.push(slot);
+        self.data[self.len] = slot;
+        self.len += 1;
         Ok(())
     }
 
     /// Pops a slot from the stack.
     pub fn pop(&mut self) -> Result<Slot, Trap> {
-        self.data.pop().ok_or(Trap::StackUnderflow)
+        if self.len == 0 {
+            return Err(Trap::StackUnderflow);
+        }
+        self.len -= 1;
+        Ok(self.data[self.len])
     }
 }
 
@@ -37,7 +42,8 @@ mod tests {
 
     #[test]
     fn stack_push_when_exceeds_max_depth_then_stack_overflow() {
-        let mut stack = OperandStack::new(1);
+        let mut buf = [Slot::default(); 1];
+        let mut stack = OperandStack::new(&mut buf);
         stack.push(Slot::from_i32(1)).unwrap();
 
         assert_eq!(stack.push(Slot::from_i32(2)), Err(Trap::StackOverflow));
@@ -45,14 +51,16 @@ mod tests {
 
     #[test]
     fn stack_pop_when_empty_then_stack_underflow() {
-        let mut stack = OperandStack::new(4);
+        let mut buf = [Slot::default(); 4];
+        let mut stack = OperandStack::new(&mut buf);
 
         assert_eq!(stack.pop(), Err(Trap::StackUnderflow));
     }
 
     #[test]
     fn stack_push_pop_when_values_pushed_then_lifo_order() {
-        let mut stack = OperandStack::new(4);
+        let mut buf = [Slot::default(); 4];
+        let mut stack = OperandStack::new(&mut buf);
         stack.push(Slot::from_i32(10)).unwrap();
         stack.push(Slot::from_i32(20)).unwrap();
 

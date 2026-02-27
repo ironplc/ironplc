@@ -5,5 +5,6 @@ pub(crate) mod value;
 pub(crate) mod variable_table;
 mod vm;
 
+pub use scheduler::{ProgramInstanceState, TaskState};
 pub use value::Slot;
-pub use vm::{FaultContext, StopHandle, Vm, VmFaulted, VmReady, VmRunning, VmStopped};
+pub use vm::{FaultContext, Vm, VmFaulted, VmReady, VmRunning, VmStopped};
