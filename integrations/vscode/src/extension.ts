@@ -7,6 +7,7 @@ import {
   ServerOptions,
 } from 'vscode-languageclient/node';
 import { IplcEditorProvider } from './iplcEditorProvider';
+import { IronplcTaskProvider } from './ironplcTaskProvider';
 import { CompilerEnvironment, findCompilerPath } from './compilerDiscovery';
 import { ProblemCode, formatProblem } from './problems';
 
@@ -51,6 +52,13 @@ export function activate(context: vscode.ExtensionContext) {
     });
     return;
   }
+
+  context.subscriptions.push(
+    vscode.tasks.registerTaskProvider(
+      IronplcTaskProvider.type,
+      new IronplcTaskProvider(result.path),
+    ),
+  );
 
   const config = vscode.workspace.getConfiguration('ironplc');
   client = createClient(result.path, config);
