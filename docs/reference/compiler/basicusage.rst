@@ -109,9 +109,9 @@ You can also use the short form ``-o`` for the output flag:
 
    ironplcc compile main.st -o main.iplc
 
----------------------
+----------------------
 Execute the .iplc File
----------------------
+----------------------
 
 To run a compiled ``.iplc`` file, use the IronPLC virtual machine runtime
 :program:`ironplcvm`:
