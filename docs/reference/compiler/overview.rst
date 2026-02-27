@@ -1,6 +1,6 @@
-===========
-Basic Usage
-===========
+========
+Overview
+========
 
 You can use the command line interface to check a file (and sets of files)
 for correctness.
