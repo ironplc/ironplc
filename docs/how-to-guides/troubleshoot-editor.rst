@@ -12,7 +12,7 @@ No Syntax Highlighting
 **Solutions**:
 
 1. **Check file extension**: Ensure your file has a supported extension.
-   See :doc:`overview` for the full list of supported languages and extensions.
+   See :doc:`/reference/editor/overview` for the full list of supported languages and extensions.
 
 2. **Check language mode**: Look at the bottom-right corner of VS Code. It should
    show "IEC 61131-3", "Structured Text", "TwinCAT POU", or "PLCopen XML".
@@ -31,7 +31,7 @@ No Diagnostics Appearing
    select "IronPLC" from the dropdown. You should see startup messages.
 
 2. **Check for E0001**: If the compiler was not found, diagnostics will not work.
-   See :doc:`problems/E0001`.
+   See :doc:`/reference/editor/problems/E0001`.
 
 3. **Enable debug logging**: Set ``ironplc.logLevel`` to ``DEBUG`` and check the
    Output panel for error messages.

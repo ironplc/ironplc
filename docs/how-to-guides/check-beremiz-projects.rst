@@ -31,5 +31,5 @@ the presence of :file:`plc.xml` and loads it automatically:
 
    ironplcc check path/to/my-beremiz-project
 
-See :doc:`/compiler/source-formats/plcopen-xml` for complete details on PLCopen
+See :doc:`/reference/compiler/source-formats/plcopen-xml` for complete details on PLCopen
 XML format support.

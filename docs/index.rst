@@ -35,14 +35,13 @@ contributor. IronPLC is MIT licensed and we aim to keep it that way.
 
         Technical reference material, for
         
-        * :doc:`compiler/index`
-        * :doc:`vscode/index`
+        * :doc:`reference/compiler/index`
+        * :doc:`reference/editor/index`
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
    :hidden:
 
    Quick start <quickstart/index>
    How-to guides <how-to-guides/index>
-   Compiler reference <compiler/index>
-   Visual Studio Code extension reference <vscode/index>
+   Reference <reference/index>

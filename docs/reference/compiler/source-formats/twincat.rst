@@ -19,13 +19,13 @@ IronPLC recognizes the following TwinCAT file extensions (case-insensitive):
 Supported Languages
 -------------------
 
-.. include:: ../../includes/supported-languages.rst
+.. include:: ../../../includes/supported-languages.rst
 
 ------------------
 Supported Elements
 ------------------
 
-.. include:: ../../includes/supported-elements.rst
+.. include:: ../../../includes/supported-elements.rst
 
 -----------------
 Project Discovery

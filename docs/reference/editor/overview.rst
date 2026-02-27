@@ -66,5 +66,5 @@ The extension reports diagnostics from the IronPLC compiler in real-time:
 * **Warnings** (yellow underline): Code that may indicate problems
 
 Each diagnostic includes a problem code (e.g., P0001) linking to documentation
-that explains the issue and how to resolve it. See :doc:`/compiler/problems/index`
+that explains the issue and how to resolve it. See :doc:`/reference/compiler/problems/index`
 for the complete list.
