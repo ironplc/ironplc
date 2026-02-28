@@ -147,16 +147,20 @@ FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor IMPLEMENTS I_Drivable, I_Loggab
 
 #### 1.5 Access Modifiers
 
+Access modifiers in TwinCAT apply to **methods and properties only**, not to individual variables or VAR sections. This is confirmed by the [Beckhoff documentation](https://infosys.beckhoff.com/content/1033/tc3_plc_intro/3537661579.html) and [community references](https://stefanhenneken.net/2017/04/23/iec-61131-3-methods-properties-and-inheritance/).
+
 ```
 FUNCTION_BLOCK FB_Example
-VAR
-    PUBLIC myPublicVar : INT;
-    PRIVATE myPrivateVar : INT;
-    PROTECTED myProtectedVar : INT;
-    INTERNAL myInternalVar : INT;
-END_VAR
 
 PUBLIC METHOD DoWork : BOOL
+    ...
+END_METHOD
+
+PRIVATE METHOD InternalHelper : BOOL
+    ...
+END_METHOD
+
+PROTECTED METHOD ForSubclasses : BOOL
     ...
 END_METHOD
 
@@ -169,7 +173,9 @@ END_METHOD
 END_FUNCTION_BLOCK
 ```
 
-**Design:** Add `Public`, `Private`, `Protected`, `Internal`, `Abstract`, `Final` as keyword tokens. These appear as optional modifiers before variable declarations and method/property declarations. The parser accepts them in modifier positions and stores them as metadata. No semantic enforcement initially.
+The default access modifier is `PUBLIC` when none is specified.
+
+**Design:** Add `Public`, `Private`, `Protected`, `Internal`, `Abstract`, `Final` as keyword tokens. These appear as optional modifiers before method and property declarations. The parser accepts them in modifier positions and stores them as metadata on the `MethodDeclaration` and `PropertyDeclaration` AST nodes. No semantic enforcement initially.
 
 #### 1.6 `THIS^` and `SUPER^`
 
@@ -180,7 +186,7 @@ THIS^.myMethod();
 SUPER^.Start();
 ```
 
-**Design:** Add `This` and `Super` as keyword tokens. The parser recognizes `THIS^` and `SUPER^` as primary expressions (like variable references) that can be followed by member access (`.`). The `^` is the existing dereference operator in IEC 61131-3. In the AST, these map to new expression variants.
+**Design:** Add `This` and `Super` as keyword tokens. Both are promoted from identifiers by the token transform, ensuring consistent treatment. The parser recognizes `THIS^` and `SUPER^` as primary expressions (like variable references) that can be followed by member access (`.`). The `^` is the existing dereference operator in IEC 61131-3. In the AST, these map to new expression variants.
 
 ### Priority 2: Type System Extensions
 
@@ -198,7 +204,7 @@ pMotor^.Start();
 refValue REF= someInt;
 ```
 
-**Design:** Add `Pointer` and `Reference` as keyword tokens (note: `To` already exists). The parser recognizes `POINTER TO type` and `REFERENCE TO type` as type specifiers in variable declarations. The `REF=` operator is a new assignment operator token.
+**Design:** Add `Pointer` and `Reference` as keyword tokens (note: `To` already exists). The parser recognizes `POINTER TO type` and `REFERENCE TO type` as type specifiers in variable declarations. The `REF=` operator is handled in assignment context at the parser level (see section 3.6).
 
 **AST representation:** New type wrapper variants: `TypeSpec::PointerTo(Box<TypeSpec>)` and `TypeSpec::ReferenceTo(Box<TypeSpec>)`.
 
@@ -330,14 +336,31 @@ END_FOR;
 
 #### 3.6 Extended Assignment Operators
 
-TwinCAT adds `S=` (latching set) and `R=` (latching reset):
+TwinCAT adds `S=` (latching set), `R=` (latching reset), and `REF=` (reference assignment). See the [Beckhoff S= documentation](https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2528254091.html), [R= documentation](https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2528259467.html), and [REF= documentation](https://infosys.beckhoff.com/content/1033/tc3_plc_intro/4978163979.html).
 
 ```
 bMotorRunning S= bStartButton;   // once TRUE, stays TRUE until R=
 bMotorRunning R= bStopButton;    // once TRUE, resets to FALSE
+refA REF= stA;                   // assign reference (address of stA to refA)
 ```
 
-**Design:** Add `SetAssign` (`S=`) and `ResetAssign` (`R=`) as operator tokens. These are assignment operators used in statement context. In the AST, they map to new assignment variants.
+Both operands of `S=` and `R=` must be `BOOL`. These operators can be chained on a single line, where all assignments refer to the operand at the end:
+
+```
+bSetVariable S= bResetVariable R= F_Sample(bIn := bVar);
+```
+
+**Design:** These operators **cannot be handled at the token transform level**. The tokens `S`, `R`, and `REF` are all valid variable names, so collapsing `Identifier("S") + Equal` into a single token at the transform stage would incorrectly transform expressions like `IF S = 5 THEN` (where `S` is a variable being compared with `=`).
+
+Instead, these are handled at the **parser level in assignment/statement context**. After parsing the LHS expression of a statement, the parser checks for the assignment operator:
+- `:=` → standard assignment
+- `Identifier("S")` + `Equal` → set-assignment (`S=`)
+- `Identifier("R")` + `Equal` → reset-assignment (`R=`)
+- `Identifier("REF")` + `Equal` → reference-assignment (`REF=`)
+
+This is unambiguous because in IEC 61131-3, `:=` is the assignment operator and `=` is only used for comparison. In statement position after an LHS expression, `Identifier + Equal` cannot be a comparison — comparisons appear inside expressions, not as statements.
+
+**AST representation:** New assignment statement variants: `SetAssign`, `ResetAssign`, `RefAssign`. See AST Extensions section.
 
 #### 3.7 Address and Size Operators
 
@@ -392,6 +415,14 @@ END_TYPE
 
 ## Parser Integration
 
+### Dialect Gating: Token Transforms as the Gate
+
+The dialect gate lives in the **token transform layer**, not in the parser. The parser grammar rules for TwinCAT constructs (e.g., `METHOD ... END_METHOD`, `EXTENDS`, `INTERFACE`) are always present in the PEG grammar. They simply never fire in standard mode because the tokens that trigger them (`Method`, `Extends`, `Interface`, etc.) are only produced by the TwinCAT keyword promotion transform.
+
+This means the parser itself needs no dialect awareness or `ParseOptions` access for most features. A grammar rule like `tok(TokenType::Method) _ name() _ ...` will never match when parsing standard IEC 61131-3 because `METHOD` remains an `Identifier` token — it is never promoted to `Method`.
+
+The only exception would be grammar rules that must distinguish between standard and TwinCAT behavior for the *same* token. No such cases have been identified in the current design — all TwinCAT grammar extensions use tokens that only exist after promotion.
+
 ### Token Transform Pipeline
 
 TwinCAT dialect tokens are handled by the shared transform pipeline described in [dialect-token-transforms.md](dialect-token-transforms.md). The TwinCAT dialect applies:
@@ -401,25 +432,27 @@ TwinCAT dialect tokens are handled by the shared transform pipeline described in
 
 No token rewriting or filtering is needed for TwinCAT — double-quoted strings remain `DoubleByteString` (WSTRING literals), and there is no `#` variable prefix.
 
-Multi-token constructs (`POINTER TO`, `REFERENCE TO`, `REF=`, `S=`, `R=`) are composed by the parser, not by token promotion. The parser sees `Pointer` + `To` (where `To` is already a standard keyword) and recognizes the type constructor.
+Multi-token constructs (`POINTER TO`, `REFERENCE TO`) are composed by the parser, not by token promotion. The parser sees `Pointer` + `To` (where `To` is already a standard keyword) and recognizes the type constructor. Extended assignment operators (`S=`, `R=`, `REF=`) are also handled at the parser level in assignment context (see section 3.6).
 
 ### TwinCAT XML Parser Changes
 
 The `twincat_parser.rs` module currently handles `POU`, `GVL`, and `DUT` XML elements. It needs to be extended:
 
-1. **Method elements** — iterate over `<Method>` children of a POU and parse each one
-2. **Property elements** — iterate over `<Property>` children, including their `<Get>` and `<Set>` sub-elements
+1. **Method elements** — iterate over `<Method>` children of a POU and parse each as a **standalone declaration**
+2. **Property elements** — iterate over `<Property>` children; parse each `<Get>` and `<Set>` body as a standalone statement list
 3. **Interface elements** — handle `<Itf>` as a new top-level object type alongside POU/GVL/DUT
 
-Each sub-element follows the same pattern as the existing POU parsing: extract Declaration CDATA, extract Implementation/ST CDATA, concatenate with closing keyword, parse, adjust positions.
+Each sub-element is parsed independently following the existing CDATA extraction pattern: extract Declaration CDATA, extract Implementation/ST CDATA (if present), concatenate with closing keyword, parse, adjust positions. The parsed results are then attached to the parent FB's AST node.
+
+In real TwinCAT projects, methods and properties are **always separate XML elements** — they never appear inline in the function block's ST body. The FB's Declaration CDATA has the header + VARs, its Implementation CDATA has the body, and methods are sibling `<Method>` elements. The `twincat_parser.rs` module orchestrates parsing each piece and assembling the final AST.
 
 ### ST Parser Changes
 
 The ST parser (`compiler/parser/`) needs:
 
 1. **New `TokenType` variants** — approximately 30 new variants (see full list below), but these are only added to the enum, **not** to the logos lexer grammar
-2. **Grammar extensions** — method/property declarations within function blocks, interface declarations, `EXTENDS`/`IMPLEMENTS` clauses, pointer/reference types, union types, access modifiers
-3. **Dialect-aware parsing** — some grammar rules are only active when the dialect is TwinCAT (though most TwinCAT extensions don't conflict with standard syntax)
+2. **Grammar extensions** — method/property declarations, interface declarations, `EXTENDS`/`IMPLEMENTS` clauses, pointer/reference types, union types, access modifiers on methods/properties, extended assignment operators
+3. **No dialect-aware parsing needed** — grammar rules are self-gating through token promotion (see "Dialect Gating" above)
 
 ### New TokenType Variants
 
@@ -446,6 +479,7 @@ These are added to the `TokenType` enum **without** `#[token(...)]` attributes �
 | `Abstract` | `ABSTRACT` | 1 |
 | `Final` | `FINAL` | 1 |
 | `This` | `THIS` | 1 |
+| `Super` | `SUPER` | 1 |
 | `Pointer` | `POINTER` | 2 |
 | `Reference` | `REFERENCE` | 2 |
 | `Union` | `UNION` | 2 |
@@ -464,66 +498,193 @@ These are added to the `TokenType` enum **without** `#[token(...)]` attributes �
 Multi-token constructs handled by parser context (not promotion):
 - `POINTER TO` — parser sees `Pointer` + `To` (standard keyword)
 - `REFERENCE TO` — parser sees `Reference` + `To`
-- `REF=` — parser sees `Identifier("REF")` + `Equal` or promoted in a separate pass
-- `S=` / `R=` — parser sees `Identifier("S")` + `Equal`
+- `REF=` — parser sees `Identifier("REF")` + `Equal` in assignment context (see section 3.6)
+- `S=` / `R=` — parser sees `Identifier("S"|"R")` + `Equal` in assignment context (see section 3.6)
 
-Note: `Super` can be handled as an identifier rather than a keyword since it's only meaningful in expression context with `^`. Identifiers starting with `__` (`__NEW`, `__DELETE`, `__POUNAME`, `__POSITION`, `__QUERYINTERFACE`, `__ISVALIDREF`, `__VARINFO`) are already valid identifiers — they need no promotion, only semantic recognition.
+Note: Identifiers starting with `__` (`__NEW`, `__DELETE`, `__POUNAME`, `__POSITION`, `__QUERYINTERFACE`, `__ISVALIDREF`, `__VARINFO`) are already valid identifiers — they need no promotion, only semantic recognition.
 
-## AST Extensions
+## AST Extensions (DSL Crate)
+
+These are the concrete changes needed in the `compiler/dsl/` crate to represent TwinCAT constructs. The DSL must represent parsed constructs, not just parse them — downstream analysis and future code generation depend on having a complete AST.
 
 ### New Declaration Types
 
+These types are added to `compiler/dsl/src/common.rs`.
+
+**Top-level: `LibraryElementKind` extension**
+
+```rust
+pub enum LibraryElementKind {
+    // ... existing variants ...
+    InterfaceDeclaration(InterfaceDeclaration),  // NEW
+}
 ```
-LibraryElementKind:
-    + InterfaceDeclaration { name, methods: Vec<MethodSignature> }
 
-// Within FunctionBlock:
-    + methods: Vec<MethodDeclaration>
-    + properties: Vec<PropertyDeclaration>
-    + extends: Option<Identifier>
-    + implements: Vec<Identifier>
+**`FunctionBlockDeclaration` extension**
 
-MethodDeclaration:
-    name: Identifier
-    return_type: Option<TypeSpec>
-    access: Option<AccessModifier>
-    is_abstract: bool
-    is_final: bool
-    variables: Vec<VariableList>
-    body: Vec<StmtKind>
+```rust
+pub struct FunctionBlockDeclaration {
+    pub name: TypeName,
+    pub variables: Vec<VarDecl>,
+    pub edge_variables: Vec<EdgeVarDecl>,
+    pub body: FunctionBlockBodyKind,
+    pub span: SourceSpan,
+    // NEW fields:
+    pub extends: Option<TypeName>,          // EXTENDS base_name
+    pub implements: Vec<TypeName>,          // IMPLEMENTS I_Foo, I_Bar
+    pub methods: Vec<MethodDeclaration>,    // METHOD ... END_METHOD
+    pub properties: Vec<PropertyDeclaration>, // PROPERTY ... END_PROPERTY
+}
+```
 
-PropertyDeclaration:
-    name: Identifier
-    prop_type: TypeSpec
-    access: Option<AccessModifier>
-    getter: Option<PropertyAccessor>
-    setter: Option<PropertyAccessor>
+**New structs**
 
-PropertyAccessor:
-    variables: Vec<VariableList>
-    body: Vec<StmtKind>
+```rust
+/// An interface declaration: INTERFACE name ... END_INTERFACE
+pub struct InterfaceDeclaration {
+    pub name: Id,
+    pub extends: Option<TypeName>,         // interfaces can extend other interfaces
+    pub methods: Vec<MethodSignature>,     // method signatures (no bodies)
+    pub properties: Vec<PropertySignature>, // property signatures (no bodies)
+    pub span: SourceSpan,
+}
 
-AccessModifier: Public | Private | Protected | Internal
+/// A method signature (interface context — no body).
+pub struct MethodSignature {
+    pub name: Id,
+    pub return_type: Option<TypeName>,
+    pub variables: Vec<VarDecl>,           // VAR_INPUT, VAR_OUTPUT params
+    pub span: SourceSpan,
+}
+
+/// A property signature (interface context — no body).
+pub struct PropertySignature {
+    pub name: Id,
+    pub prop_type: TypeName,
+    pub span: SourceSpan,
+}
+
+/// A method declaration with optional body (function block context).
+pub struct MethodDeclaration {
+    pub name: Id,
+    pub return_type: Option<TypeName>,
+    pub access: Option<AccessModifier>,
+    pub is_abstract: bool,
+    pub is_final: bool,
+    pub is_override: bool,
+    pub variables: Vec<VarDecl>,
+    pub body: Vec<StmtKind>,
+    pub span: SourceSpan,
+}
+
+/// A property declaration (function block context).
+pub struct PropertyDeclaration {
+    pub name: Id,
+    pub prop_type: TypeName,
+    pub access: Option<AccessModifier>,
+    pub getter: Option<PropertyAccessor>,
+    pub setter: Option<PropertyAccessor>,
+    pub span: SourceSpan,
+}
+
+/// A property getter or setter body.
+pub struct PropertyAccessor {
+    pub variables: Vec<VarDecl>,
+    pub body: Vec<StmtKind>,
+    pub span: SourceSpan,
+}
+
+/// Access modifier for methods and properties.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccessModifier {
+    Public,
+    Private,
+    Protected,
+    Internal,
+}
+```
+
+### New Variable Section Type
+
+```rust
+pub enum VariableType {
+    // ... existing variants ...
+    Instance,   // VAR_INST (NEW) — instance vars in methods
+    Static,     // VAR_STAT (NEW) — static vars in functions
+}
 ```
 
 ### New Type Variants
 
-```
+```rust
+// In the type specification representation:
 TypeSpec:
-    + PointerTo(Box<TypeSpec>)
-    + ReferenceTo(Box<TypeSpec>)
+    + PointerTo(Box<TypeSpec>)     // POINTER TO type
+    + ReferenceTo(Box<TypeSpec>)   // REFERENCE TO type
 
-TypeDeclarationBody:
-    + Union { fields: Vec<StructField> }
+// In data type declarations:
+DataTypeDeclarationKind:
+    + Union(UnionDeclaration)      // UNION ... END_UNION
+
+pub struct UnionDeclaration {
+    pub type_name: TypeName,
+    pub elements: Vec<StructureElementDeclaration>,  // reuses struct field representation
+}
+
+// Enum extension for underlying type:
+pub struct EnumerationDeclaration {
+    // ... existing fields ...
+    pub underlying_type: Option<TypeName>,  // NEW: the optional UINT/INT after )
+}
 ```
 
 ### New Expression Variants
 
+```rust
+// In compiler/dsl/src/textual.rs:
+pub enum ExprKind {
+    // ... existing variants ...
+    ThisRef(SourceSpan),           // THIS — self-reference
+    SuperRef(SourceSpan),          // SUPER — parent-reference
+    Dereference(Box<ExprKind>),    // expr^ — pointer dereference
+}
 ```
-ExprKind:
-    + ThisRef          // THIS^
-    + SuperRef         // SUPER^
-    + Dereference(Box<ExprKind>)  // expr^  (may already exist)
+
+Note: `THIS^` and `SUPER^` are parsed as `ThisRef`/`SuperRef` + dereference. The `^` applies the existing dereference operator to the self/parent reference. Member access (`THIS^.method()`) uses the existing member access expression with a `ThisRef` or `SuperRef` as the base.
+
+### New Statement Variants
+
+```rust
+pub enum StmtKind {
+    // ... existing variants ...
+    SetAssign {                    // bVar S= bOperand;
+        target: Variable,
+        operand: ExprKind,
+        span: SourceSpan,
+    },
+    ResetAssign {                  // bVar R= bOperand;
+        target: Variable,
+        operand: ExprKind,
+        span: SourceSpan,
+    },
+    RefAssign {                    // refVar REF= sourceVar;
+        target: Variable,
+        source: ExprKind,
+        span: SourceSpan,
+    },
+    Continue(SourceSpan),          // CONTINUE;
+}
+```
+
+### New Operator Variants
+
+```rust
+// For AND_THEN / OR_ELSE short-circuit operators:
+pub enum Operator {
+    // ... existing variants ...
+    AndThen,   // AND_THEN — short-circuit AND
+    OrElse,    // OR_ELSE — short-circuit OR
+}
 ```
 
 ## Testing Strategy
@@ -541,13 +702,17 @@ ExprKind:
 - `METHOD` and `END_METHOD` within function blocks
 - `PROPERTY` with `GET`/`SET` accessors
 - `INTERFACE` with method signatures
-- Access modifiers on variables and methods
+- Access modifiers on methods and properties
 - `POINTER TO` and `REFERENCE TO` type declarations
 - `UNION` type declarations
 - `VAR_INST` and `VAR_STAT` sections
 - `{attribute}` pragmas (verify they're skipped cleanly)
 - Additional time types (`LTIME`, `LDT`, etc.)
 - Enum with underlying type
+- `S=` / `R=` / `REF=` extended assignment operators
+- `S=`/`R=` chained on a single line
+- `AND_THEN` / `OR_ELSE` short-circuit operators
+- `CONTINUE` statement in loops
 
 ### Regression tests
 
@@ -561,32 +726,36 @@ ExprKind:
 
 ## Phased Implementation
 
-1. **Phase 1 — Pragmas and basic method/property recognition**:
-   - `{ }` pragma collapsing (shared with Siemens SCL)
+1. **Phase 1 — Core OOP and pragmas** (enables parsing most real TwinCAT projects):
+   - `Dialect` enum and `ParseOptions` extension (shared infrastructure)
+   - Token transform pipeline: keyword promotion + pragma collapsing (shared with Siemens SCL)
+   - `{ }` pragma collapsing
    - `METHOD` / `END_METHOD` parsing in ST
    - `PROPERTY` / `END_PROPERTY` with `GET`/`SET` parsing in ST
-   - Method and Property XML element handling in `twincat_parser.rs`
-   - `Dialect` integration with `ParseOptions`
-
-2. **Phase 2 — OOP declarations**:
+   - `EXTENDS` / `IMPLEMENTS` on function blocks (virtually every FB uses these)
+   - Method, Property, and Interface XML element handling in `twincat_parser.rs`
    - `INTERFACE` / `END_INTERFACE`
-   - `EXTENDS` / `IMPLEMENTS` on function blocks
-   - Access modifiers (`PUBLIC`, `PRIVATE`, `PROTECTED`, `INTERNAL`)
-   - `ABSTRACT` / `FINAL`
+   - DSL: `MethodDeclaration`, `PropertyDeclaration`, `InterfaceDeclaration`, `extends`/`implements` fields
+
+2. **Phase 2 — Access modifiers and expressions**:
+   - Access modifiers on methods/properties (`PUBLIC`, `PRIVATE`, `PROTECTED`, `INTERNAL`)
+   - `ABSTRACT` / `FINAL` / `OVERRIDE` method modifiers
    - `THIS^` / `SUPER^` expressions
+   - DSL: `AccessModifier`, `ThisRef`, `SuperRef`
 
 3. **Phase 3 — Type system extensions**:
    - `POINTER TO` / `REFERENCE TO`
-   - `REF=` operator
+   - `REF=` operator (parser-level, assignment context)
    - `UNION` / `END_UNION`
    - Additional time types (`LTIME`, `LDT`, `LTOD`, `LDATE`)
    - `VAR_INST`, `VAR_STAT`
    - Enum underlying types
    - `AND_THEN` / `OR_ELSE` short-circuit operators
-   - `OVERRIDE` method modifier
    - `CONTINUE` statement
+   - DSL: `PointerTo`, `ReferenceTo`, `UnionDeclaration`, `RefAssign`, `Continue`, `AndThen`/`OrElse`
 
 4. **Phase 4 — Advanced features**:
-   - `S=` / `R=` extended assignment operators
+   - `S=` / `R=` extended assignment operators (parser-level, assignment context)
    - `__TRY` / `__CATCH` / `__FINALLY` / `__ENDTRY`
    - Conditional compilation pragmas (`{IF defined(...)}` / `{END_IF}`)
+   - DSL: `SetAssign`, `ResetAssign`
