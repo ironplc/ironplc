@@ -1,10 +1,8 @@
 # IronPLC Visual Studio Code Extension
 
-IronPLC brings IEC 61131-3 support to Visual Studio Code.
-
-⚠ This project's capabilities are limited to a parser, semantic analyzer, and
-Visual Studio Code Extension that are building blocks for a complete
-IEC 61131-3 runtime and development environment.
+IronPLC brings IEC 61131-3 support to Visual Studio Code, providing
+real-time code analysis, syntax highlighting, build tasks, and a bytecode
+viewer for programs written in the IEC 61131-3 Structured Text language.
 
 ## Quick Start
 
@@ -18,6 +16,7 @@ on your system.
 |---------------|----------------|-----------------|
 | Structured Text | `.st`, `.iec` | IEC 61131-3 Structured Text source files |
 | PLCopen XML | Auto-detected | PLCopen TC6 XML project files with embedded Structured Text |
+| TwinCAT | `.TcPOU`, `.TcGVL`, `.TcDUT` | Beckhoff TwinCAT 3 project files with embedded Structured Text |
 
 ## Features
 
@@ -56,6 +55,20 @@ The extension automatically closes:
 ### Bracket Colorization
 
 Matching brackets are colorized to help visualize nesting levels.
+
+### Build Tasks
+
+The extension integrates with the VS Code build system to compile IEC 61131-3
+projects into bytecode container (`.iplc`) files without leaving the editor.
+
+* Press `Ctrl+Shift+B` (or `Cmd+Shift+B` on macOS) and select **ironplc: compile**
+* Output is written to a `.iplc` file in the workspace root
+
+### Bytecode Viewer
+
+Opening an `.iplc` bytecode file displays a human-readable disassembly of
+the compiled program, including the file header, constant pool, task table,
+and function instructions with color-coded opcodes.
 
 ## Commands
 
