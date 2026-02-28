@@ -2,11 +2,7 @@
 
 ![](docs/images/banner.svg)
 
-⚠ This project's capabilities are limited to a parser, semantic analyzer, and
-Visual Studio Code Extension that are that are building blocks for a complete
-IEC 61131-3 runtime and development environment.
-
-IronPLC aims to be a SoftPLC written entirely in safe Rust for embedded
+IronPLC is a SoftPLC written entirely in safe Rust for embedded
 devices running programs written in the IEC 61131-3 language.
 
 [![IronPLC Integration](https://github.com/ironplc/ironplc/actions/workflows/integration.yaml/badge.svg)](https://github.com/ironplc/ironplc/actions/workflows/integration.yaml)
@@ -27,24 +23,27 @@ to be written entirely in safe Rust to prevent security issues. The development
 environment aims to be available via Visual Studio Code to provide
 a first class environment.
 
-### Progress
+### What Works Today
 
-The project is progressing towards a minimum loveable product.
-What works today:
+* ✅ **Compiler** (`ironplcc`) — parses and analyzes IEC 61131-3 Structured Text with 60+ diagnostic checks
+* ✅ **Code Generation** — compiles programs to a bytecode container (`.iplc`) format
+* ✅ **Runtime** (`ironplcvm`) — executes compiled bytecode with task scheduling
+* ✅ **Visual Studio Code Extension** — syntax highlighting, real-time diagnostics, build tasks, and bytecode viewer
+* ✅ **Multiple Source Formats** — Structured Text (`.st`, `.iec`), PLCopen XML (`.xml`), and TwinCAT (`.TcPOU`, `.TcGVL`, `.TcDUT`)
+* ✅ **Documentation website**
 
-* ✅ Syntax highlighting
-* ✅ Analysis of structured text files
-* ✅ Visual Studio Code Extension
-* ✅ Documentation website
+### Limitations
 
-What doesn't work:
-* Executing structured text
+Code generation and the runtime currently support a minimal subset of the language:
+`PROGRAM` declarations, `INT` variable declarations, assignment statements,
+integer literal constants, and arithmetic operators (`+`, `-`, `*`, `/`).
+The full IEC 61131-3 language is supported by the parser and semantic analyzer.
 
-IronPLC supports:
+### Platform Support
 
 * ✅ Windows
-* ✅ MacOS
-* ✅ Linux (probably)
+* ✅ macOS
+* ✅ Linux
 
 ## Usage
 
@@ -61,7 +60,7 @@ Contributions are very welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for detai
 
 ## Similar Projects
 
-* [RuSTy](https://github.com/PLC-lang/rusty) - Structured text compiler written in Rust. RuSTy is further along but the LGPL and LGPL licenses are difficult for industrial uses.
+* [RuSTy](https://github.com/PLC-lang/rusty) - Structured text compiler written in Rust. RuSTy is further along but the LGPL and GPL licenses are difficult for industrial uses.
 * [Structured Text language Support](https://github.com/Serhioromano/vscode-st) - Structured text language support for Visual Studio Code.
 * [Beremiz](https://beremiz.org/) - A Python-based PLC programming environment.
 * [RoboPLC](https://github.com/roboplc/roboplc/) - A Rust framework for creating industrial control appliances
