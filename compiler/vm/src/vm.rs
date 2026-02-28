@@ -400,6 +400,14 @@ fn execute(
                 }
                 stack.push(Slot::from_i32(a.wrapping_div(b)))?;
             }
+            opcode::MOD_I32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                if b == 0 {
+                    return Err(Trap::DivideByZero);
+                }
+                stack.push(Slot::from_i32(a.wrapping_rem(b)))?;
+            }
             opcode::RET_VOID => {
                 return Ok(());
             }

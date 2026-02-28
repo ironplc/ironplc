@@ -8,6 +8,7 @@
 //! - end_to_end_sub.rs (SUB operator)
 //! - end_to_end_mul.rs (MUL operator)
 //! - end_to_end_div.rs (DIV operator)
+//! - end_to_end_mod.rs (MOD operator)
 
 mod common;
 

@@ -20,6 +20,7 @@ const ADD_I32: u8 = 0x30;
 const SUB_I32: u8 = 0x31;
 const MUL_I32: u8 = 0x32;
 const DIV_I32: u8 = 0x33;
+const MOD_I32: u8 = 0x34;
 const RET_VOID: u8 = 0xB5;
 
 /// Disassembles a bytecode container into a structured JSON value.
@@ -314,6 +315,15 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 instructions.push(json!({
                     "offset": offset,
                     "opcode": "DIV_I32",
+                    "operands": "",
+                    "comment": "",
+                }));
+                pc += 1;
+            }
+            MOD_I32 => {
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "MOD_I32",
                     "operands": "",
                     "comment": "",
                 }));
