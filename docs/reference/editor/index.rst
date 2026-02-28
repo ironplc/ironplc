@@ -10,5 +10,6 @@ Code.
 
    Overview <overview>
    Build Tasks <build-tasks>
+   Bytecode Viewer <bytecode-viewer>
    Settings <settings>
    Problem Code Index <problems/index>
