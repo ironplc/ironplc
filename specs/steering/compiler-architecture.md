@@ -80,6 +80,62 @@ Use consistent patterns for AST transformations:
 - Use helper functions for common test setup
 - Keep tests focused and independent
 
+### External Test Files for VM and Codegen
+
+Operator/opcode-specific tests live in **external test files**, not inline `#[cfg(test)]` modules. Inline tests are reserved for infrastructure concerns (VM state transitions, general error paths, private API unit tests).
+
+#### VM crate (`compiler/vm/tests/`)
+
+Per-opcode integration tests that exercise the VM directly with hand-crafted bytecode:
+
+| File pattern | Purpose | Example |
+|---|---|---|
+| `execute_<op>_i32.rs` | Tests for a single opcode | `execute_add_i32.rs`, `execute_div_i32.rs` |
+| `common/mod.rs` | Shared helpers (`VmBuffers`, `single_function_container`, `assert_trap`) | — |
+| `scenarios.rs` | Multi-scan, multi-task, scope tests | — |
+| `steel_thread.rs` | Serialization roundtrip | — |
+
+Template for a new opcode file:
+```rust
+//! Integration tests for the <OP>_I32 opcode.
+mod common;
+use common::{assert_trap, single_function_container, VmBuffers};
+use ironplc_vm::error::Trap;
+use ironplc_vm::Vm;
+```
+
+#### Codegen crate (`compiler/codegen/tests/`)
+
+Two layers of external tests — bytecode-level and end-to-end:
+
+| File pattern | Purpose | Example |
+|---|---|---|
+| `compile_<op>.rs` | Bytecode assertions (parse → compile → inspect bytecode) | `compile_add.rs`, `compile_mul.rs` |
+| `end_to_end_<op>.rs` | Runtime assertions (parse → compile → VM run → check variable values) | `end_to_end_add.rs`, `end_to_end_div.rs` |
+| `end_to_end.rs` | General infrastructure tests (assignment, scan behavior) | — |
+| `common/mod.rs` | Shared helpers (`parse`, `parse_and_run`, `VmBuffers`) | — |
+
+Template for a new bytecode test file:
+```rust
+//! Bytecode-level integration tests for the <OP> operator compilation.
+mod common;
+use common::parse;
+use ironplc_codegen::compile;
+```
+
+Template for a new end-to-end test file:
+```rust
+//! End-to-end integration tests for the <OP> operator.
+mod common;
+use common::parse_and_run;
+```
+
+#### What stays inline
+
+- **`emit.rs`**: Emitter unit tests (private module — `Emitter` accessed via `super::*`)
+- **`compile.rs`**: General compiler tests (assignment, error paths, constant dedup)
+- **`vm.rs`**: VM lifecycle tests (state transitions, generic trap paths, empty bytecode)
+
 ### Test Coverage
 - Test both success and failure cases
 - Include edge cases and boundary conditions
