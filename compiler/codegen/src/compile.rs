@@ -7,7 +7,7 @@
 //! - PROGRAM declarations with INT variables
 //! - Assignment statements
 //! - Integer literal constants
-//! - Binary Add, Sub, and Mul operators
+//! - Binary Add, Sub, Mul, and Div operators
 //! - Variable references (named symbolic variables)
 
 use std::collections::HashMap;
@@ -232,6 +232,10 @@ fn compile_expr(
                 }
                 Operator::Mul => {
                     emitter.emit_mul_i32();
+                    Ok(())
+                }
+                Operator::Div => {
+                    emitter.emit_div_i32();
                     Ok(())
                 }
                 _ => Err(Diagnostic::todo_with_span(
@@ -615,6 +619,71 @@ END_PROGRAM
                 0x32, // MUL_I32
                 0x01, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (4)
                 0x32, // MUL_I32
+                0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
+                0xB5, // RET_VOID
+            ]
+        );
+    }
+
+    #[test]
+    fn compile_when_div_expression_then_produces_div_bytecode() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+    y : INT;
+  END_VAR
+  x := 12;
+  y := x / 4;
+END_PROGRAM
+";
+        let library = parse(source);
+        let container = compile(&library).unwrap();
+
+        assert_eq!(container.header.num_variables, 2);
+        assert_eq!(container.constant_pool.get_i32(0).unwrap(), 12);
+        assert_eq!(container.constant_pool.get_i32(1).unwrap(), 4);
+
+        let bytecode = container.code.get_function_bytecode(0).unwrap();
+        assert_eq!(
+            bytecode,
+            &[
+                0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0
+                0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
+                0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
+                0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1
+                0x33, // DIV_I32
+                0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+                0xB5, // RET_VOID
+            ]
+        );
+    }
+
+    #[test]
+    fn compile_when_chain_of_divisions_then_correct_bytecode() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  x := 100 / 5 / 2;
+END_PROGRAM
+";
+        let library = parse(source);
+        let container = compile(&library).unwrap();
+
+        assert_eq!(container.constant_pool.len(), 3);
+
+        // (100 / 5) / 2: left-associative evaluation
+        let bytecode = container.code.get_function_bytecode(0).unwrap();
+        assert_eq!(
+            bytecode,
+            &[
+                0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (100)
+                0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (5)
+                0x33, // DIV_I32
+                0x01, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (2)
+                0x33, // DIV_I32
                 0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
                 0xB5, // RET_VOID
             ]
