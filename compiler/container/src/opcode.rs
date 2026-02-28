@@ -24,5 +24,10 @@ pub const SUB_I32: u8 = 0x31;
 /// Pops two values, pushes their product.
 pub const MUL_I32: u8 = 0x32;
 
+/// Divide two 32-bit integers (truncating toward zero).
+/// Pops two values (b then a), pushes a / b.
+/// Traps on division by zero.
+pub const DIV_I32: u8 = 0x33;
+
 /// Return from the current function (void return).
 pub const RET_VOID: u8 = 0xB5;

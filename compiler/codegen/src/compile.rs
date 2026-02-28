@@ -7,7 +7,7 @@
 //! - PROGRAM declarations with INT variables
 //! - Assignment statements
 //! - Integer literal constants
-//! - Binary Add, Sub, and Mul operators
+//! - Binary Add, Sub, Mul, and Div operators
 //! - Variable references (named symbolic variables)
 
 use std::collections::HashMap;
@@ -232,6 +232,10 @@ fn compile_expr(
                 }
                 Operator::Mul => {
                     emitter.emit_mul_i32();
+                    Ok(())
+                }
+                Operator::Div => {
+                    emitter.emit_div_i32();
                     Ok(())
                 }
                 _ => Err(Diagnostic::todo_with_span(
