@@ -408,6 +408,10 @@ fn execute(
                 }
                 stack.push(Slot::from_i32(a.wrapping_rem(b)))?;
             }
+            opcode::NOT_I32 => {
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(!a))?;
+            }
             opcode::RET_VOID => {
                 return Ok(());
             }

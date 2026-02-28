@@ -76,6 +76,12 @@ impl Emitter {
         self.pop_stack(1);
     }
 
+    /// Emits NOT_I32 (pops one, pushes one).
+    pub fn emit_not_i32(&mut self) {
+        self.bytecode.push(opcode::NOT_I32);
+        // Net effect: pop 1, push 1 = no change
+    }
+
     /// Emits RET_VOID.
     pub fn emit_ret_void(&mut self) {
         self.bytecode.push(opcode::RET_VOID);
@@ -235,6 +241,26 @@ mod tests {
         em.emit_store_var_i32(1); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
+    }
+
+    #[test]
+    fn emitter_when_not_then_correct_bytecode() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0);
+        em.emit_not_i32();
+
+        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x40]);
+    }
+
+    #[test]
+    fn emitter_when_not_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        // y := NOT x
+        em.emit_load_var_i32(0); // stack: 1
+        em.emit_not_i32(); // stack: 1 (pop 1, push 1)
+        em.emit_store_var_i32(1); // stack: 0
+
+        assert_eq!(em.max_stack_depth(), 1);
     }
 
     #[test]

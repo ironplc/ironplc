@@ -8,6 +8,7 @@
 //! - Assignment statements
 //! - Integer literal constants
 //! - Binary Add, Sub, Mul, Div, and Mod operators
+//! - Unary Not operator (Boolean / bitwise NOT)
 //! - Variable references (named symbolic variables)
 
 use std::collections::HashMap;
@@ -274,11 +275,11 @@ fn compile_expr(
                     ))
                 }
             }
-            _ => Err(Diagnostic::todo_with_span(
-                expr_span(&unary.term),
-                file!(),
-                line!(),
-            )),
+            UnaryOp::Not => {
+                compile_expr(emitter, ctx, &unary.term)?;
+                emitter.emit_not_i32();
+                Ok(())
+            }
         },
         ExprKind::LateBound(late_bound) => {
             // LateBound values are unresolved identifiers from the parser.

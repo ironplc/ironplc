@@ -34,5 +34,9 @@ pub const DIV_I32: u8 = 0x33;
 /// Traps on division by zero.
 pub const MOD_I32: u8 = 0x34;
 
+/// Bitwise NOT of a 32-bit integer.
+/// Pops one value, pushes its bitwise complement.
+pub const NOT_I32: u8 = 0x40;
+
 /// Return from the current function (void return).
 pub const RET_VOID: u8 = 0xB5;
