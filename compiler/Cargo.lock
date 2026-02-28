@@ -551,6 +551,7 @@ dependencies = [
  "ironplc-vm",
  "log",
  "predicates",
+ "serde_json",
  "tempfile",
  "time",
 ]
