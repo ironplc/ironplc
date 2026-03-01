@@ -366,6 +366,12 @@ fn execute(
                     .map_err(|_| Trap::InvalidConstantIndex(index))?;
                 stack.push(Slot::from_i32(value))?;
             }
+            opcode::LOAD_TRUE => {
+                stack.push(Slot::from_i32(1))?;
+            }
+            opcode::LOAD_FALSE => {
+                stack.push(Slot::from_i32(0))?;
+            }
             opcode::LOAD_VAR_I32 => {
                 let index = read_u16_le(bytecode, &mut pc);
                 scope.check_access(index)?;
