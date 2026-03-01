@@ -62,6 +62,22 @@ pub const GT_I32: u8 = 0x6C;
 /// Pops two values (b then a), pushes 1 if a >= b, else 0.
 pub const GE_I32: u8 = 0x6D;
 
+/// Logical AND of two values.
+/// Pops two values (b then a), coerces non-zero to 1, pushes 1 if both are non-zero, else 0.
+pub const BOOL_AND: u8 = 0x54;
+
+/// Logical OR of two values.
+/// Pops two values (b then a), coerces non-zero to 1, pushes 1 if either is non-zero, else 0.
+pub const BOOL_OR: u8 = 0x55;
+
+/// Logical XOR of two values.
+/// Pops two values (b then a), coerces non-zero to 1, pushes 1 if exactly one is non-zero, else 0.
+pub const BOOL_XOR: u8 = 0x56;
+
+/// Logical NOT of a value.
+/// Pops one value, pushes 1 if it is zero, else 0.
+pub const BOOL_NOT: u8 = 0x57;
+
 /// Call a built-in standard library function.
 /// Operand: u16 function ID (little-endian).
 /// Stack effect depends on the specific function.
