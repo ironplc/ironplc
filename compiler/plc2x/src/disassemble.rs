@@ -254,6 +254,24 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 3;
             }
+            opcode::LOAD_TRUE => {
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "LOAD_TRUE",
+                    "operands": "",
+                    "comment": "",
+                }));
+                pc += 1;
+            }
+            opcode::LOAD_FALSE => {
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "LOAD_FALSE",
+                    "operands": "",
+                    "comment": "",
+                }));
+                pc += 1;
+            }
             opcode::LOAD_VAR_I32 => {
                 let var_index = read_u16(bytecode, pc + 1);
                 instructions.push(json!({

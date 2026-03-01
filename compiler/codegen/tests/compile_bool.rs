@@ -147,3 +147,55 @@ END_PROGRAM
         ]
     );
 }
+
+#[test]
+fn compile_when_true_literal_then_produces_load_true() {
+    let source = "
+PROGRAM main
+  VAR
+    y : INT;
+  END_VAR
+  y := TRUE;
+END_PROGRAM
+";
+    let library = parse(source);
+    let container = compile(&library).unwrap();
+
+    // y := TRUE: LOAD_TRUE, STORE_VAR_I32 var:0
+    // RET_VOID
+    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    assert_eq!(
+        bytecode,
+        &[
+            0x07, // LOAD_TRUE
+            0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
+            0xB5, // RET_VOID
+        ]
+    );
+}
+
+#[test]
+fn compile_when_false_literal_then_produces_load_false() {
+    let source = "
+PROGRAM main
+  VAR
+    y : INT;
+  END_VAR
+  y := FALSE;
+END_PROGRAM
+";
+    let library = parse(source);
+    let container = compile(&library).unwrap();
+
+    // y := FALSE: LOAD_FALSE, STORE_VAR_I32 var:0
+    // RET_VOID
+    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    assert_eq!(
+        bytecode,
+        &[
+            0x08, // LOAD_FALSE
+            0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
+            0xB5, // RET_VOID
+        ]
+    );
+}

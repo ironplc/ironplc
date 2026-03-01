@@ -147,3 +147,33 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i32(), 5);
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
+
+#[test]
+fn end_to_end_when_true_literal_then_one() {
+    let source = "
+PROGRAM main
+  VAR
+    y : INT;
+  END_VAR
+  y := TRUE;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_false_literal_then_zero() {
+    let source = "
+PROGRAM main
+  VAR
+    y : INT;
+  END_VAR
+  y := FALSE;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 0);
+}

@@ -4,6 +4,12 @@
 /// Operand: u16 constant pool index (little-endian).
 pub const LOAD_CONST_I32: u8 = 0x01;
 
+/// Push I32 value 1 (boolean TRUE).
+pub const LOAD_TRUE: u8 = 0x07;
+
+/// Push I32 value 0 (boolean FALSE).
+pub const LOAD_FALSE: u8 = 0x08;
+
 /// Load a 32-bit integer from the variable table.
 /// Operand: u16 variable index (little-endian).
 pub const LOAD_VAR_I32: u8 = 0x10;
