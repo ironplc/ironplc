@@ -15,6 +15,7 @@
 //! - end_to_end_bool.rs (boolean operators)
 //! - end_to_end_types.rs (multi-width integer type tests)
 //! - end_to_end_float.rs (REAL/LREAL floating-point type tests)
+//! - end_to_end_bitstring.rs (BYTE/WORD/DWORD/LWORD bit string type tests)
 
 mod common;
 
