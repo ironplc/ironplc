@@ -443,6 +443,25 @@ fn execute(
                 let a = stack.pop()?.as_i32();
                 stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
             }
+            opcode::BOOL_AND => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if (a != 0) && (b != 0) { 1 } else { 0 }))?;
+            }
+            opcode::BOOL_OR => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if (a != 0) || (b != 0) { 1 } else { 0 }))?;
+            }
+            opcode::BOOL_XOR => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if (a != 0) != (b != 0) { 1 } else { 0 }))?;
+            }
+            opcode::BOOL_NOT => {
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if a == 0 { 1 } else { 0 }))?;
+            }
             opcode::BUILTIN => {
                 let func_id = read_u16_le(bytecode, &mut pc);
                 builtin::dispatch(func_id, stack)?;

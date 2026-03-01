@@ -382,6 +382,42 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 1;
             }
+            opcode::BOOL_AND => {
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "BOOL_AND",
+                    "operands": "",
+                    "comment": "",
+                }));
+                pc += 1;
+            }
+            opcode::BOOL_OR => {
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "BOOL_OR",
+                    "operands": "",
+                    "comment": "",
+                }));
+                pc += 1;
+            }
+            opcode::BOOL_XOR => {
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "BOOL_XOR",
+                    "operands": "",
+                    "comment": "",
+                }));
+                pc += 1;
+            }
+            opcode::BOOL_NOT => {
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "BOOL_NOT",
+                    "operands": "",
+                    "comment": "",
+                }));
+                pc += 1;
+            }
             opcode::BUILTIN => {
                 let func_id = read_u16(bytecode, pc + 1);
                 let operand = match func_id {

@@ -8,8 +8,9 @@
 //! - Assignment statements
 //! - Integer literal constants
 //! - Binary Add, Sub, Mul, Div, Mod, and Pow operators
-//! - Unary Neg operator
+//! - Unary Neg and Not operators
 //! - Comparison operators (=, <>, <, <=, >, >=)
+//! - Boolean operators (AND, OR, XOR, NOT)
 //! - Variable references (named symbolic variables)
 
 use std::collections::HashMap;
@@ -273,11 +274,11 @@ fn compile_expr(
                     Ok(())
                 }
             }
-            _ => Err(Diagnostic::todo_with_span(
-                expr_span(&unary.term),
-                file!(),
-                line!(),
-            )),
+            UnaryOp::Not => {
+                compile_expr(emitter, ctx, &unary.term)?;
+                emitter.emit_bool_not();
+                Ok(())
+            }
         },
         ExprKind::LateBound(late_bound) => {
             // LateBound values are unresolved identifiers from the parser.
@@ -289,32 +290,22 @@ fn compile_expr(
             Ok(())
         }
         ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner),
-        ExprKind::Compare(compare) => match compare.op {
-            CompareOp::Eq
-            | CompareOp::Ne
-            | CompareOp::Lt
-            | CompareOp::Gt
-            | CompareOp::LtEq
-            | CompareOp::GtEq => {
-                compile_expr(emitter, ctx, &compare.left)?;
-                compile_expr(emitter, ctx, &compare.right)?;
-                match compare.op {
-                    CompareOp::Eq => emitter.emit_eq_i32(),
-                    CompareOp::Ne => emitter.emit_ne_i32(),
-                    CompareOp::Lt => emitter.emit_lt_i32(),
-                    CompareOp::Gt => emitter.emit_gt_i32(),
-                    CompareOp::LtEq => emitter.emit_le_i32(),
-                    CompareOp::GtEq => emitter.emit_ge_i32(),
-                    _ => unreachable!(),
-                }
-                Ok(())
+        ExprKind::Compare(compare) => {
+            compile_expr(emitter, ctx, &compare.left)?;
+            compile_expr(emitter, ctx, &compare.right)?;
+            match compare.op {
+                CompareOp::Eq => emitter.emit_eq_i32(),
+                CompareOp::Ne => emitter.emit_ne_i32(),
+                CompareOp::Lt => emitter.emit_lt_i32(),
+                CompareOp::Gt => emitter.emit_gt_i32(),
+                CompareOp::LtEq => emitter.emit_le_i32(),
+                CompareOp::GtEq => emitter.emit_ge_i32(),
+                CompareOp::And => emitter.emit_bool_and(),
+                CompareOp::Or => emitter.emit_bool_or(),
+                CompareOp::Xor => emitter.emit_bool_xor(),
             }
-            _ => Err(Diagnostic::todo_with_span(
-                expr_span(&compare.left),
-                file!(),
-                line!(),
-            )),
-        },
+            Ok(())
+        }
         ExprKind::EnumeratedValue(enum_val) => Err(Diagnostic::todo_with_span(
             enum_val.span(),
             file!(),
