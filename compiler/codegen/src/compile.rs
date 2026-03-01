@@ -9,6 +9,7 @@
 //! - Integer literal constants
 //! - Binary Add, Sub, Mul, Div, Mod, and Pow operators
 //! - Unary Neg operator
+//! - Comparison operators (=, <>, <, <=, >, >=)
 //! - Variable references (named symbolic variables)
 
 use std::collections::HashMap;
@@ -20,7 +21,7 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    ExprKind, Operator, Statements, StmtKind, SymbolicVariableKind, UnaryOp, Variable,
+    CompareOp, ExprKind, Operator, Statements, StmtKind, SymbolicVariableKind, UnaryOp, Variable,
 };
 use ironplc_problems::Problem;
 
@@ -288,11 +289,32 @@ fn compile_expr(
             Ok(())
         }
         ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner),
-        ExprKind::Compare(compare) => Err(Diagnostic::todo_with_span(
-            expr_span(&compare.left),
-            file!(),
-            line!(),
-        )),
+        ExprKind::Compare(compare) => match compare.op {
+            CompareOp::Eq
+            | CompareOp::Ne
+            | CompareOp::Lt
+            | CompareOp::Gt
+            | CompareOp::LtEq
+            | CompareOp::GtEq => {
+                compile_expr(emitter, ctx, &compare.left)?;
+                compile_expr(emitter, ctx, &compare.right)?;
+                match compare.op {
+                    CompareOp::Eq => emitter.emit_eq_i32(),
+                    CompareOp::Ne => emitter.emit_ne_i32(),
+                    CompareOp::Lt => emitter.emit_lt_i32(),
+                    CompareOp::Gt => emitter.emit_gt_i32(),
+                    CompareOp::LtEq => emitter.emit_le_i32(),
+                    CompareOp::GtEq => emitter.emit_ge_i32(),
+                    _ => unreachable!(),
+                }
+                Ok(())
+            }
+            _ => Err(Diagnostic::todo_with_span(
+                expr_span(&compare.left),
+                file!(),
+                line!(),
+            )),
+        },
         ExprKind::EnumeratedValue(enum_val) => Err(Diagnostic::todo_with_span(
             enum_val.span(),
             file!(),

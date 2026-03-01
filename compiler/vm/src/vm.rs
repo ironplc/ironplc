@@ -413,6 +413,36 @@ fn execute(
                 let a = stack.pop()?.as_i32();
                 stack.push(Slot::from_i32(a.wrapping_neg()))?;
             }
+            opcode::EQ_I32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if a == b { 1 } else { 0 }))?;
+            }
+            opcode::NE_I32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if a != b { 1 } else { 0 }))?;
+            }
+            opcode::LT_I32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if a < b { 1 } else { 0 }))?;
+            }
+            opcode::LE_I32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if a <= b { 1 } else { 0 }))?;
+            }
+            opcode::GT_I32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if a > b { 1 } else { 0 }))?;
+            }
+            opcode::GE_I32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
+            }
             opcode::BUILTIN => {
                 let func_id = read_u16_le(bytecode, &mut pc);
                 builtin::dispatch(func_id, stack)?;

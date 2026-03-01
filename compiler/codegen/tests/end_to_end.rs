@@ -11,6 +11,7 @@
 //! - end_to_end_mod.rs (MOD operator)
 //! - end_to_end_pow.rs (POW/EXPT operator)
 //! - end_to_end_neg.rs (NEG unary operator)
+//! - end_to_end_cmp.rs (comparison operators)
 
 mod common;
 
