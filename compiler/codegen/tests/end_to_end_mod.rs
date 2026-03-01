@@ -9,8 +9,8 @@ fn end_to_end_when_mod_expression_then_variable_has_remainder() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 12;
   y := x MOD 5;
@@ -27,7 +27,7 @@ fn end_to_end_when_chain_of_modulos_then_correct() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := 100 MOD 7 MOD 3;
 END_PROGRAM

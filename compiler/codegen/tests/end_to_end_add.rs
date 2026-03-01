@@ -14,8 +14,8 @@ fn end_to_end_when_add_expression_then_variable_has_sum() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 10;
   y := x + 32;
@@ -32,7 +32,7 @@ fn end_to_end_when_chain_of_additions_then_variable_has_total() {
     let source = "
 PROGRAM main
   VAR
-    result : INT;
+    result : DINT;
   END_VAR
   result := 1 + 2 + 3;
 END_PROGRAM
@@ -47,9 +47,9 @@ fn end_to_end_when_multiple_assignments_then_all_variables_correct() {
     let source = "
 PROGRAM main
   VAR
-    a : INT;
-    b : INT;
-    c : INT;
+    a : DINT;
+    b : DINT;
+    c : DINT;
   END_VAR
   a := 100;
   b := 200;
@@ -68,7 +68,7 @@ fn end_to_end_when_counter_program_then_increments_across_scans() {
     let source = "
 PROGRAM main
   VAR
-    count : INT;
+    count : DINT;
   END_VAR
   count := count + 1;
 END_PROGRAM
@@ -99,7 +99,7 @@ fn end_to_end_when_deeply_nested_expression_then_correct_result() {
     let source = "
 PROGRAM main
   VAR
-    result : INT;
+    result : DINT;
   END_VAR
   result := 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10;
 END_PROGRAM
