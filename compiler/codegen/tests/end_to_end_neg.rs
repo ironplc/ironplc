@@ -9,8 +9,8 @@ fn end_to_end_when_neg_variable_then_negated() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 7;
   y := -x;
@@ -27,8 +27,8 @@ fn end_to_end_when_neg_negative_variable_then_positive() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := -3;
   y := -x;
@@ -45,8 +45,8 @@ fn end_to_end_when_double_neg_then_original() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 42;
   y := -(-x);

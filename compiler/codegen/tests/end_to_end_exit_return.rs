@@ -9,7 +9,7 @@ fn end_to_end_when_exit_in_while_then_breaks_loop() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   WHILE TRUE DO
     x := x + 1;
@@ -28,8 +28,8 @@ fn end_to_end_when_exit_in_for_then_breaks_loop() {
     let source = "
 PROGRAM main
   VAR
-    i : INT;
-    sum : INT;
+    i : DINT;
+    sum : DINT;
   END_VAR
   FOR i := 1 TO 100 DO
     IF i > 3 THEN
@@ -49,7 +49,7 @@ fn end_to_end_when_exit_in_repeat_then_breaks_loop() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   REPEAT
     x := x + 1;
@@ -69,9 +69,9 @@ fn end_to_end_when_exit_in_nested_loops_then_breaks_inner() {
     let source = "
 PROGRAM main
   VAR
-    i : INT;
-    j : INT;
-    count : INT;
+    i : DINT;
+    j : DINT;
+    count : DINT;
   END_VAR
   FOR i := 1 TO 3 DO
     FOR j := 1 TO 100 DO
@@ -94,8 +94,8 @@ fn end_to_end_when_return_then_skips_remaining() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 42;
   RETURN;
@@ -112,8 +112,8 @@ fn end_to_end_when_return_in_if_then_exits_early() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 1;
   IF x = 1 THEN

@@ -9,8 +9,8 @@ fn end_to_end_when_pow_expression_then_variable_has_power() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 3;
   y := x ** 4;
@@ -27,8 +27,8 @@ fn end_to_end_when_pow_with_zero_exponent_then_one() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 7;
   y := x ** 0;

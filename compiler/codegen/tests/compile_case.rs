@@ -10,8 +10,8 @@ fn compile_when_case_single_arm_then_produces_eq_and_jmp() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   CASE x OF
     1: y := 10;
@@ -54,8 +54,8 @@ fn compile_when_case_with_else_then_produces_jmp_to_end() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   CASE x OF
     1: y := 10;

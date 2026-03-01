@@ -10,8 +10,8 @@ fn compile_when_simple_if_then_produces_jmp_if_not() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   IF x > 0 THEN
     y := 1;
@@ -50,8 +50,8 @@ fn compile_when_if_else_then_produces_jmp_and_jmp_if_not() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   IF x > 0 THEN
     y := 1;
@@ -97,8 +97,8 @@ fn compile_when_if_elsif_else_then_produces_chained_jumps() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   IF x > 5 THEN
     y := 1;

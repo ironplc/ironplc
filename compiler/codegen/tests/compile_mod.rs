@@ -10,8 +10,8 @@ fn compile_when_mod_expression_then_produces_mod_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 10;
   y := x MOD 3;
@@ -47,7 +47,7 @@ fn compile_when_chain_of_modulos_then_correct_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := 100 MOD 7 MOD 3;
 END_PROGRAM

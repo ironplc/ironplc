@@ -10,8 +10,8 @@ fn compile_when_neg_variable_then_produces_neg_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 10;
   y := -x;
@@ -45,7 +45,7 @@ fn compile_when_neg_literal_then_constant_folds() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := -5;
 END_PROGRAM

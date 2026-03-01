@@ -9,8 +9,8 @@ fn end_to_end_when_and_both_true_then_one() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 5;
   y := x > 0 AND x < 10;
@@ -27,8 +27,8 @@ fn end_to_end_when_and_one_false_then_zero() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 15;
   y := x > 0 AND x < 10;
@@ -45,8 +45,8 @@ fn end_to_end_when_or_first_true_then_one() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 5;
   y := x > 10 OR x < 10;
@@ -63,8 +63,8 @@ fn end_to_end_when_or_both_false_then_zero() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 5;
   y := x > 10 OR x < 0;
@@ -81,8 +81,8 @@ fn end_to_end_when_xor_one_true_then_one() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 5;
   y := x > 10 XOR x < 10;
@@ -99,8 +99,8 @@ fn end_to_end_when_xor_both_true_then_zero() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 5;
   y := x > 0 XOR x < 10;
@@ -117,8 +117,8 @@ fn end_to_end_when_not_zero_then_one() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 0;
   y := NOT x;
@@ -135,8 +135,8 @@ fn end_to_end_when_not_nonzero_then_zero() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 5;
   y := NOT x;
@@ -153,7 +153,7 @@ fn end_to_end_when_true_literal_then_one() {
     let source = "
 PROGRAM main
   VAR
-    y : INT;
+    y : DINT;
   END_VAR
   y := TRUE;
 END_PROGRAM
@@ -168,7 +168,7 @@ fn end_to_end_when_false_literal_then_zero() {
     let source = "
 PROGRAM main
   VAR
-    y : INT;
+    y : DINT;
   END_VAR
   y := FALSE;
 END_PROGRAM

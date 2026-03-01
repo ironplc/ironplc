@@ -10,8 +10,8 @@ fn compile_when_pow_expression_then_produces_builtin_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 2;
   y := x ** 10;
@@ -47,7 +47,7 @@ fn compile_when_chain_of_pows_then_correct_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := 2 ** 3 ** 2;
 END_PROGRAM

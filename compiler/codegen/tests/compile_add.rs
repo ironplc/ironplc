@@ -10,8 +10,8 @@ fn compile_when_add_expression_then_produces_add_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 10;
   y := x + 32;
@@ -47,7 +47,7 @@ fn compile_when_chain_of_additions_then_correct_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := 1 + 2 + 3;
 END_PROGRAM
@@ -82,7 +82,7 @@ fn compile_when_mixed_add_sub_then_correct_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := 10 + 5 - 3;
 END_PROGRAM
@@ -111,7 +111,7 @@ fn compile_when_mixed_add_mul_then_correct_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := 2 + 3 * 4;
 END_PROGRAM

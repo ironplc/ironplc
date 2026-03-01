@@ -10,8 +10,8 @@ fn compile_when_mul_expression_then_produces_mul_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 7;
   y := x * 6;
@@ -44,7 +44,7 @@ fn compile_when_chain_of_multiplications_then_correct_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := 2 * 3 * 4;
 END_PROGRAM

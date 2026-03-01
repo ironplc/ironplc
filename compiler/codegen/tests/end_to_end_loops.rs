@@ -9,7 +9,7 @@ fn end_to_end_when_while_counts_down_then_correct_result() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := 5;
   WHILE x > 0 DO
@@ -26,8 +26,8 @@ fn end_to_end_when_while_false_then_body_not_executed() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 0;
   WHILE x > 0 DO
@@ -45,7 +45,7 @@ fn end_to_end_when_repeat_counts_up_then_correct_result() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   REPEAT
     x := x + 1;
@@ -64,8 +64,8 @@ fn end_to_end_when_repeat_then_executes_at_least_once() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    count : INT;
+    x : DINT;
+    count : DINT;
   END_VAR
   REPEAT
     count := count + 1;
@@ -82,8 +82,8 @@ fn end_to_end_when_for_1_to_5_then_sums_correctly() {
     let source = "
 PROGRAM main
   VAR
-    i : INT;
-    sum : INT;
+    i : DINT;
+    sum : DINT;
   END_VAR
   FOR i := 1 TO 5 DO
     sum := sum + i;
@@ -99,8 +99,8 @@ fn end_to_end_when_for_5_to_1_by_neg1_then_sums_correctly() {
     let source = "
 PROGRAM main
   VAR
-    i : INT;
-    sum : INT;
+    i : DINT;
+    sum : DINT;
   END_VAR
   FOR i := 5 TO 1 BY -1 DO
     sum := sum + i;
@@ -116,8 +116,8 @@ fn end_to_end_when_for_with_step_2_then_iterates_correctly() {
     let source = "
 PROGRAM main
   VAR
-    i : INT;
-    count : INT;
+    i : DINT;
+    count : DINT;
   END_VAR
   FOR i := 0 TO 10 BY 2 DO
     count := count + 1;
@@ -134,8 +134,8 @@ fn end_to_end_when_for_empty_range_then_body_not_executed() {
     let source = "
 PROGRAM main
   VAR
-    i : INT;
-    y : INT;
+    i : DINT;
+    y : DINT;
   END_VAR
   FOR i := 10 TO 1 DO
     y := 99;

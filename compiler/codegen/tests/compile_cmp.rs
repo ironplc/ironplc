@@ -10,8 +10,8 @@ fn compile_when_eq_expression_then_produces_eq_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 10;
   y := x = 5;
@@ -47,8 +47,8 @@ fn compile_when_ne_expression_then_produces_ne_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 10;
   y := x <> 5;
@@ -77,8 +77,8 @@ fn compile_when_lt_expression_then_produces_lt_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 10;
   y := x < 5;
@@ -107,8 +107,8 @@ fn compile_when_le_expression_then_produces_le_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 10;
   y := x <= 5;
@@ -137,8 +137,8 @@ fn compile_when_gt_expression_then_produces_gt_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 10;
   y := x > 5;
@@ -167,8 +167,8 @@ fn compile_when_ge_expression_then_produces_ge_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 10;
   y := x >= 5;

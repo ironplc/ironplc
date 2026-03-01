@@ -10,7 +10,7 @@ fn compile_when_while_then_produces_loop_with_jmp_if_not() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   WHILE x > 0 DO
     x := x - 1;
@@ -65,7 +65,7 @@ fn compile_when_repeat_until_then_produces_backward_jmp_if_not() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   REPEAT
     x := x + 1;
@@ -114,8 +114,8 @@ fn compile_when_for_default_step_then_produces_loop_with_gt() {
     let source = "
 PROGRAM main
   VAR
-    i : INT;
-    y : INT;
+    i : DINT;
+    y : DINT;
   END_VAR
   FOR i := 1 TO 5 DO
     y := y + i;
@@ -180,8 +180,8 @@ fn compile_when_for_negative_step_then_produces_loop_with_lt() {
     let source = "
 PROGRAM main
   VAR
-    i : INT;
-    y : INT;
+    i : DINT;
+    y : DINT;
   END_VAR
   FOR i := 5 TO 1 BY -1 DO
     y := y + i;

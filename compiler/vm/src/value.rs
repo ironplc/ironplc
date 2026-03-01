@@ -15,6 +15,16 @@ impl Slot {
     pub fn as_i32(self) -> i32 {
         self.0 as i32
     }
+
+    /// Creates a slot from a 64-bit signed integer.
+    pub fn from_i64(v: i64) -> Self {
+        Slot(v as u64)
+    }
+
+    /// Extracts a 64-bit signed integer from this slot.
+    pub fn as_i64(self) -> i64 {
+        self.0 as i64
+    }
 }
 
 #[cfg(test)]
@@ -34,5 +44,18 @@ mod tests {
         let slot = Slot::from_i32(42);
         assert_eq!(slot.as_i32(), 42);
         assert_eq!(slot.0, 42);
+    }
+
+    #[test]
+    fn slot_from_i64_when_negative_then_roundtrips() {
+        let slot = Slot::from_i64(-1);
+        assert_eq!(slot.as_i64(), -1);
+        assert_eq!(slot.0, 0xFFFFFFFFFFFFFFFF);
+    }
+
+    #[test]
+    fn slot_from_i64_when_large_positive_then_roundtrips() {
+        let slot = Slot::from_i64(i64::MAX);
+        assert_eq!(slot.as_i64(), i64::MAX);
     }
 }
