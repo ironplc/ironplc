@@ -10,8 +10,8 @@ fn compile_when_max_function_then_produces_builtin_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 10;
   y := MAX(x, 3);

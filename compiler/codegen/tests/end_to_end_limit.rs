@@ -9,8 +9,8 @@ fn end_to_end_when_limit_in_range_then_unchanged() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 5;
   y := LIMIT(0, x, 10);
@@ -27,8 +27,8 @@ fn end_to_end_when_limit_below_min_then_clamped() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := -5;
   y := LIMIT(0, x, 10);
@@ -45,8 +45,8 @@ fn end_to_end_when_limit_above_max_then_clamped() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 15;
   y := LIMIT(0, x, 10);

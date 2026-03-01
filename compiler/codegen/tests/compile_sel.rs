@@ -10,8 +10,8 @@ fn compile_when_sel_function_then_produces_builtin_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    g : INT;
-    y : INT;
+    g : DINT;
+    y : DINT;
   END_VAR
   g := 1;
   y := SEL(g, 10, 20);

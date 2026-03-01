@@ -9,7 +9,7 @@ fn end_to_end_when_sel_false_then_returns_in0() {
     let source = "
 PROGRAM main
   VAR
-    y : INT;
+    y : DINT;
   END_VAR
   y := SEL(0, 10, 20);
 END_PROGRAM
@@ -24,7 +24,7 @@ fn end_to_end_when_sel_true_then_returns_in1() {
     let source = "
 PROGRAM main
   VAR
-    y : INT;
+    y : DINT;
   END_VAR
   y := SEL(1, 10, 20);
 END_PROGRAM
@@ -39,8 +39,8 @@ fn end_to_end_when_sel_with_variable_then_selects() {
     let source = "
 PROGRAM main
   VAR
-    g : INT;
-    y : INT;
+    g : DINT;
+    y : DINT;
   END_VAR
   g := 1;
   y := SEL(g, 100, 200);

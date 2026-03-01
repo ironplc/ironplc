@@ -9,8 +9,8 @@ fn end_to_end_when_abs_positive_then_unchanged() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 42;
   y := ABS(x);
@@ -27,8 +27,8 @@ fn end_to_end_when_abs_negative_then_positive() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := -7;
   y := ABS(x);

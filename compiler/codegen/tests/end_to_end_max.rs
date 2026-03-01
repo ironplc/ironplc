@@ -9,7 +9,7 @@ fn end_to_end_when_max_then_returns_larger() {
     let source = "
 PROGRAM main
   VAR
-    y : INT;
+    y : DINT;
   END_VAR
   y := MAX(10, 3);
 END_PROGRAM
@@ -24,8 +24,8 @@ fn end_to_end_when_max_with_variable_then_returns_larger() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 5;
   y := MAX(x, 100);
