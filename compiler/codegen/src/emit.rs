@@ -181,6 +181,58 @@ impl Emitter {
         // Net effect: pop 1, push 1 = no change to stack depth
     }
 
+    // --- Bitwise opcodes (32-bit) ---
+
+    /// Emits BIT_AND_32 (pops two, pushes one).
+    pub fn emit_bit_and_32(&mut self) {
+        self.bytecode.push(opcode::BIT_AND_32);
+        self.pop_stack(1);
+    }
+
+    /// Emits BIT_OR_32 (pops two, pushes one).
+    pub fn emit_bit_or_32(&mut self) {
+        self.bytecode.push(opcode::BIT_OR_32);
+        self.pop_stack(1);
+    }
+
+    /// Emits BIT_XOR_32 (pops two, pushes one).
+    pub fn emit_bit_xor_32(&mut self) {
+        self.bytecode.push(opcode::BIT_XOR_32);
+        self.pop_stack(1);
+    }
+
+    /// Emits BIT_NOT_32 (pops one, pushes one).
+    pub fn emit_bit_not_32(&mut self) {
+        self.bytecode.push(opcode::BIT_NOT_32);
+        // Net effect: pop 1, push 1 = no change to stack depth
+    }
+
+    // --- Bitwise opcodes (64-bit) ---
+
+    /// Emits BIT_AND_64 (pops two, pushes one).
+    pub fn emit_bit_and_64(&mut self) {
+        self.bytecode.push(opcode::BIT_AND_64);
+        self.pop_stack(1);
+    }
+
+    /// Emits BIT_OR_64 (pops two, pushes one).
+    pub fn emit_bit_or_64(&mut self) {
+        self.bytecode.push(opcode::BIT_OR_64);
+        self.pop_stack(1);
+    }
+
+    /// Emits BIT_XOR_64 (pops two, pushes one).
+    pub fn emit_bit_xor_64(&mut self) {
+        self.bytecode.push(opcode::BIT_XOR_64);
+        self.pop_stack(1);
+    }
+
+    /// Emits BIT_NOT_64 (pops one, pushes one).
+    pub fn emit_bit_not_64(&mut self) {
+        self.bytecode.push(opcode::BIT_NOT_64);
+        // Net effect: pop 1, push 1 = no change to stack depth
+    }
+
     // --- Truncation opcodes ---
 
     /// Emits TRUNC_I8 (pops one i32, truncates to i8 range, pushes one i32).
