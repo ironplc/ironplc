@@ -1,0 +1,39 @@
+=====
+P4021
+=====
+
+.. problem-summary:: P4021
+
+This error occurs when an EXIT statement appears outside of a loop. EXIT is only valid inside FOR, WHILE, or REPEAT loops, where it terminates the innermost enclosing loop.
+
+Example
+-------
+
+The following code will generate error P4021:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       x : INT;
+   END_VAR
+       x := 1;
+       EXIT;  (* Error: not inside a loop *)
+   END_PROGRAM
+
+The EXIT statement is in the program body but not inside any loop.
+
+To fix this error, move the EXIT statement inside a loop or remove it:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       x : INT;
+   END_VAR
+       FOR x := 1 TO 10 BY 1 DO
+           IF x = 5 THEN
+               EXIT;  (* Valid: inside a FOR loop *)
+           END_IF;
+       END_FOR;
+   END_PROGRAM

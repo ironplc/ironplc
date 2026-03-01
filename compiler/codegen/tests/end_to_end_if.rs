@@ -9,8 +9,8 @@ fn end_to_end_when_if_true_then_executes_body() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 5;
   IF x > 0 THEN
@@ -29,8 +29,8 @@ fn end_to_end_when_if_false_then_skips_body() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := -5;
   IF x > 0 THEN
@@ -49,8 +49,8 @@ fn end_to_end_when_if_else_true_then_executes_then() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 5;
   IF x > 0 THEN
@@ -71,8 +71,8 @@ fn end_to_end_when_if_else_false_then_executes_else() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := -5;
   IF x > 0 THEN
@@ -93,8 +93,8 @@ fn end_to_end_when_if_elsif_else_first_true_then_executes_first() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 10;
   IF x > 5 THEN
@@ -117,8 +117,8 @@ fn end_to_end_when_if_elsif_else_second_true_then_executes_second() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 3;
   IF x > 5 THEN
@@ -141,8 +141,8 @@ fn end_to_end_when_if_elsif_else_none_true_then_executes_else() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := -5;
   IF x > 5 THEN

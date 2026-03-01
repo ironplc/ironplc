@@ -10,7 +10,7 @@ fn compile_when_exit_in_while_then_produces_jmp_to_end() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   WHILE TRUE DO
     EXIT;
@@ -42,7 +42,7 @@ fn compile_when_return_then_produces_ret_void() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := 10;
   RETURN;

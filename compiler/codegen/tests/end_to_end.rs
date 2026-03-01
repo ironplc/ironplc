@@ -13,6 +13,8 @@
 //! - end_to_end_neg.rs (NEG unary operator)
 //! - end_to_end_cmp.rs (comparison operators)
 //! - end_to_end_bool.rs (boolean operators)
+//! - end_to_end_types.rs (multi-width integer type tests)
+//! - end_to_end_float.rs (REAL/LREAL floating-point type tests)
 
 mod common;
 
@@ -28,7 +30,7 @@ fn end_to_end_when_simple_assignment_then_variable_has_value() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := 42;
 END_PROGRAM
@@ -43,7 +45,7 @@ fn end_to_end_when_negative_constant_then_variable_is_negative() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := -5;
 END_PROGRAM
@@ -58,7 +60,7 @@ fn end_to_end_when_zero_then_variable_is_zero() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := 0;
 END_PROGRAM
@@ -73,8 +75,8 @@ fn end_to_end_when_variable_copy_then_both_equal() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 7;
   y := x;
@@ -91,7 +93,7 @@ fn end_to_end_when_multiple_scans_then_idempotent() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := 99;
 END_PROGRAM

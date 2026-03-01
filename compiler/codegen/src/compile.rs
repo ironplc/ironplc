@@ -1,12 +1,16 @@
 //! Compiles an IEC 61131-3 AST into a bytecode container.
 //!
 //! This module walks the AST produced by the parser/analyzer and generates
-//! bytecode that the IronPLC VM can execute. The initial implementation
-//! supports a minimal subset of the language:
+//! bytecode that the IronPLC VM can execute.
 //!
-//! - PROGRAM declarations with INT variables
-//! - Assignment statements
-//! - Integer literal constants
+//! # Supported constructs
+//!
+//! - PROGRAM declarations with all 8 IEC 61131-3 integer types
+//!   (SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT)
+//!   and 2 floating-point types (REAL, LREAL)
+//! - Assignment statements with truncation for narrow types
+//! - Integer literal constants (i32 and i64)
+//! - Real literal constants (f32 and f64)
 //! - Boolean literal constants (TRUE, FALSE)
 //! - Binary Add, Sub, Mul, Div, Mod, and Pow operators
 //! - Unary Neg and Not operators
@@ -17,15 +21,22 @@
 //! - CASE statements (integer and subrange selectors)
 //! - WHILE, FOR, and REPEAT iteration statements
 //! - EXIT (break from innermost loop) and RETURN (early program exit)
+//!
+//! # Integer type strategy: promote-operate-truncate
+//!
+//! Two native operation widths: **i32** (for ≤32-bit types) and **i64**
+//! (for 64-bit types). Variables are loaded/stored at native width.
+//! After arithmetic at native width, narrow types (SINT, INT, USINT, UINT)
+//! are truncated back to their declared range before storing.
 
 use std::collections::HashMap;
 
 use ironplc_container::{opcode, Container, ContainerBuilder};
 use ironplc_dsl::common::{
-    Boolean, ConstantKind, FunctionBlockBodyKind, Library, LibraryElementKind, ProgramDeclaration,
-    SignedInteger, VarDecl,
+    Boolean, ConstantKind, FunctionBlockBodyKind, InitialValueAssignmentKind, Library,
+    LibraryElementKind, ProgramDeclaration, SignedInteger, VarDecl,
 };
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     CaseSelectionKind, CompareOp, ExprKind, Operator, Statements, StmtKind, SymbolicVariableKind,
@@ -34,6 +45,51 @@ use ironplc_dsl::textual::{
 use ironplc_problems::Problem;
 
 use crate::emit::Emitter;
+
+/// The native operation width used for arithmetic and comparisons.
+#[derive(Clone, Copy, PartialEq)]
+enum OpWidth {
+    /// 32-bit integer operations (for SINT, INT, DINT, USINT, UINT, UDINT).
+    W32,
+    /// 64-bit integer operations (for LINT, ULINT).
+    W64,
+    /// 32-bit float operations (for REAL).
+    F32,
+    /// 64-bit float operations (for LREAL).
+    F64,
+}
+
+/// Whether a type uses signed or unsigned semantics for division and comparison.
+#[derive(Clone, Copy, PartialEq)]
+enum Signedness {
+    Signed,
+    Unsigned,
+}
+
+/// Type information for a variable, used to select the correct opcodes.
+#[derive(Clone, Copy)]
+struct VarTypeInfo {
+    /// The native operation width (i32 or i64).
+    op_width: OpWidth,
+    /// Whether signed or unsigned opcodes are used for division/comparison.
+    signedness: Signedness,
+    /// The declared storage width in bits (8, 16, 32, or 64).
+    storage_bits: u8,
+}
+
+/// Shorthand for the operation type tuple used during expression compilation.
+type OpType = (OpWidth, Signedness);
+
+/// The default operation type: 32-bit signed (used for pure-constant expressions).
+const DEFAULT_OP_TYPE: OpType = (OpWidth::W32, Signedness::Signed);
+
+/// A constant in the pool: integer or float, 32-bit or 64-bit.
+enum PoolConstant {
+    I32(i32),
+    I64(i64),
+    F32(f32),
+    F64(f64),
+}
 
 /// Compiles a library into a bytecode container.
 ///
@@ -54,7 +110,13 @@ fn find_program(library: &Library) -> Result<&ProgramDeclaration, Diagnostic> {
             return Ok(program);
         }
     }
-    Err(Diagnostic::todo(file!(), line!()))
+    Err(Diagnostic::problem(
+        Problem::NoProgramDeclaration,
+        Label::file(
+            FileId::default(),
+            "Source does not contain a PROGRAM declaration",
+        ),
+    ))
 }
 
 /// Compiles a single PROGRAM into a container.
@@ -79,7 +141,12 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
 
     // Add constants to the pool.
     for constant in &ctx.constants {
-        builder = builder.add_i32_constant(*constant);
+        match constant {
+            PoolConstant::I32(v) => builder = builder.add_i32_constant(*v),
+            PoolConstant::I64(v) => builder = builder.add_i64_constant(*v),
+            PoolConstant::F32(v) => builder = builder.add_f32_constant(*v),
+            PoolConstant::F64(v) => builder = builder.add_f64_constant(*v),
+        }
     }
 
     builder = builder.add_function(0, bytecode, max_stack_depth, num_locals);
@@ -91,8 +158,10 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
 struct CompileContext {
     /// Maps variable identifiers to their variable table indices.
     variables: HashMap<Id, u16>,
-    /// Ordered list of i32 constants added to the constant pool.
-    constants: Vec<i32>,
+    /// Maps variable identifiers to their type information.
+    var_types: HashMap<Id, VarTypeInfo>,
+    /// Ordered list of constants added to the constant pool.
+    constants: Vec<PoolConstant>,
     /// Stack of loop exit labels for EXIT statement compilation.
     /// Each enclosing loop pushes its end label; EXIT jumps to the top.
     loop_exit_labels: Vec<crate::emit::Label>,
@@ -102,6 +171,7 @@ impl CompileContext {
     fn new() -> Self {
         CompileContext {
             variables: HashMap::new(),
+            var_types: HashMap::new(),
             constants: Vec::new(),
             loop_exit_labels: Vec::new(),
         }
@@ -123,29 +193,184 @@ impl CompileContext {
         })
     }
 
+    /// Looks up type information for a variable by identifier.
+    fn var_type_info(&self, name: &Id) -> Option<VarTypeInfo> {
+        self.var_types.get(name).copied()
+    }
+
+    /// Returns the op_type for a variable by identifier, falling back to defaults.
+    fn var_op_type(&self, name: &Id) -> OpType {
+        self.var_types
+            .get(name)
+            .map(|info| (info.op_width, info.signedness))
+            .unwrap_or(DEFAULT_OP_TYPE)
+    }
+
     /// Adds an i32 constant to the pool and returns its index.
     fn add_i32_constant(&mut self, value: i32) -> u16 {
-        // Check if this constant already exists.
         for (i, existing) in self.constants.iter().enumerate() {
-            if *existing == value {
-                return i as u16;
+            if let PoolConstant::I32(v) = existing {
+                if *v == value {
+                    return i as u16;
+                }
             }
         }
         let index = self.constants.len() as u16;
-        self.constants.push(value);
+        self.constants.push(PoolConstant::I32(value));
+        index
+    }
+
+    /// Adds an f32 constant to the pool and returns its index.
+    fn add_f32_constant(&mut self, value: f32) -> u16 {
+        for (i, existing) in self.constants.iter().enumerate() {
+            if let PoolConstant::F32(v) = existing {
+                if v.to_bits() == value.to_bits() {
+                    return i as u16;
+                }
+            }
+        }
+        let index = self.constants.len() as u16;
+        self.constants.push(PoolConstant::F32(value));
+        index
+    }
+
+    /// Adds an f64 constant to the pool and returns its index.
+    fn add_f64_constant(&mut self, value: f64) -> u16 {
+        for (i, existing) in self.constants.iter().enumerate() {
+            if let PoolConstant::F64(v) = existing {
+                if v.to_bits() == value.to_bits() {
+                    return i as u16;
+                }
+            }
+        }
+        let index = self.constants.len() as u16;
+        self.constants.push(PoolConstant::F64(value));
+        index
+    }
+
+    /// Adds an i64 constant to the pool and returns its index.
+    fn add_i64_constant(&mut self, value: i64) -> u16 {
+        for (i, existing) in self.constants.iter().enumerate() {
+            if let PoolConstant::I64(v) = existing {
+                if *v == value {
+                    return i as u16;
+                }
+            }
+        }
+        let index = self.constants.len() as u16;
+        self.constants.push(PoolConstant::I64(value));
         index
     }
 }
 
-/// Assigns variable table indices for all variable declarations.
+/// Assigns variable table indices and type info for all variable declarations.
 fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Result<(), Diagnostic> {
     for decl in declarations {
         if let Some(id) = decl.identifier.symbolic_id() {
             let index = ctx.variables.len() as u16;
             ctx.variables.insert(id.clone(), index);
+
+            if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
+                if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
+                    ctx.var_types.insert(id.clone(), type_info);
+                }
+            }
         }
     }
     Ok(())
+}
+
+/// Maps an IEC 61131-3 type name to its `VarTypeInfo`.
+///
+/// Returns `None` for unrecognized type names (e.g., user-defined types).
+fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
+    match name.lower_case().as_str() {
+        "sint" => Some(VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Signed,
+            storage_bits: 8,
+        }),
+        "int" => Some(VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Signed,
+            storage_bits: 16,
+        }),
+        "dint" => Some(VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Signed,
+            storage_bits: 32,
+        }),
+        "lint" => Some(VarTypeInfo {
+            op_width: OpWidth::W64,
+            signedness: Signedness::Signed,
+            storage_bits: 64,
+        }),
+        "usint" => Some(VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Unsigned,
+            storage_bits: 8,
+        }),
+        "uint" => Some(VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Unsigned,
+            storage_bits: 16,
+        }),
+        "udint" => Some(VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Unsigned,
+            storage_bits: 32,
+        }),
+        "ulint" => Some(VarTypeInfo {
+            op_width: OpWidth::W64,
+            signedness: Signedness::Unsigned,
+            storage_bits: 64,
+        }),
+        "real" => Some(VarTypeInfo {
+            op_width: OpWidth::F32,
+            signedness: Signedness::Signed,
+            storage_bits: 32,
+        }),
+        "lreal" => Some(VarTypeInfo {
+            op_width: OpWidth::F64,
+            signedness: Signedness::Signed,
+            storage_bits: 64,
+        }),
+        _ => None,
+    }
+}
+
+/// Infers the operation type from an expression by finding the first variable reference.
+///
+/// IEC 61131-3 requires homogeneous operand types, so any variable in the expression
+/// determines the operation type. For expressions without variables (pure constants),
+/// returns the default `(W32, Signed)`.
+fn infer_op_type(ctx: &CompileContext, expr: &ExprKind) -> OpType {
+    match expr {
+        ExprKind::Variable(variable) => {
+            if let Variable::Symbolic(SymbolicVariableKind::Named(named)) = variable {
+                return ctx.var_op_type(&named.name);
+            }
+            DEFAULT_OP_TYPE
+        }
+        ExprKind::LateBound(late_bound) => ctx.var_op_type(&late_bound.value),
+        ExprKind::BinaryOp(binary) => {
+            let left = infer_op_type(ctx, &binary.left);
+            if left != DEFAULT_OP_TYPE {
+                return left;
+            }
+            infer_op_type(ctx, &binary.right)
+        }
+        ExprKind::UnaryOp(unary) => infer_op_type(ctx, &unary.term),
+        ExprKind::Compare(compare) => {
+            let left = infer_op_type(ctx, &compare.left);
+            if left != DEFAULT_OP_TYPE {
+                return left;
+            }
+            infer_op_type(ctx, &compare.right)
+        }
+        ExprKind::Expression(inner) => infer_op_type(ctx, inner),
+        _ => DEFAULT_OP_TYPE,
+    }
 }
 
 /// Compiles a function block body.
@@ -183,12 +408,24 @@ fn compile_statement(
 ) -> Result<(), Diagnostic> {
     match stmt {
         StmtKind::Assignment(assignment) => {
-            // Compile the right-hand side expression (pushes value onto stack).
-            compile_expr(emitter, ctx, &assignment.value)?;
+            // Look up the target variable's type info.
+            let var_index = resolve_variable(ctx, &assignment.target)?;
+            let target_name = resolve_variable_name(&assignment.target);
+            let type_info = target_name.and_then(|name| ctx.var_type_info(name));
+            let op_type = type_info
+                .map(|ti| (ti.op_width, ti.signedness))
+                .unwrap_or(DEFAULT_OP_TYPE);
+
+            // Compile the right-hand side expression at the target's operation width.
+            compile_expr(emitter, ctx, &assignment.value, op_type)?;
+
+            // Truncate if the storage width is narrower than the operation width.
+            if let Some(ti) = type_info {
+                emit_truncation(emitter, ti);
+            }
 
             // Store into the target variable.
-            let var_index = resolve_variable(ctx, &assignment.target)?;
-            emitter.emit_store_var_i32(var_index);
+            emit_store_var(emitter, var_index, op_type);
             Ok(())
         }
         StmtKind::FbCall(fb_call) => {
@@ -203,10 +440,16 @@ fn compile_statement(
             emitter.emit_ret_void();
             Ok(())
         }
-        StmtKind::Exit => {
-            let label = ctx
-                .current_loop_exit()
-                .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+        StmtKind::Exit(span) => {
+            let label = ctx.current_loop_exit().ok_or_else(|| {
+                Diagnostic::problem(
+                    Problem::ExitOutsideLoop,
+                    Label::span(
+                        span.clone(),
+                        "EXIT must be inside a FOR, WHILE, or REPEAT loop",
+                    ),
+                )
+            })?;
             emitter.emit_jmp(label);
             Ok(())
         }
@@ -241,8 +484,9 @@ fn compile_if(
         None
     };
 
-    // Compile the IF condition.
-    compile_expr(emitter, ctx, &if_stmt.expr)?;
+    // Compile the IF condition at its inferred operation type.
+    let op_type = infer_op_type(ctx, &if_stmt.expr);
+    compile_expr(emitter, ctx, &if_stmt.expr, op_type)?;
 
     // Jump past the then-body if condition is false.
     let next_label = emitter.create_label();
@@ -260,7 +504,8 @@ fn compile_if(
 
     // Compile ELSIF clauses.
     for elsif in &if_stmt.else_ifs {
-        compile_expr(emitter, ctx, &elsif.expr)?;
+        let elsif_op_type = infer_op_type(ctx, &elsif.expr);
+        compile_expr(emitter, ctx, &elsif.expr, elsif_op_type)?;
         let elsif_next = emitter.create_label();
         emitter.emit_jmp_if_not(elsif_next);
 
@@ -307,13 +552,14 @@ fn compile_case(
     case_stmt: &ironplc_dsl::textual::Case,
 ) -> Result<(), Diagnostic> {
     let end_label = emitter.create_label();
+    let op_type = infer_op_type(ctx, &case_stmt.selector);
 
     for group in &case_stmt.statement_groups {
         let next_label = emitter.create_label();
 
         // Compile selector comparisons with OR logic.
         for (i, selection) in group.selectors.iter().enumerate() {
-            compile_case_selector(emitter, ctx, &case_stmt.selector, selection)?;
+            compile_case_selector(emitter, ctx, &case_stmt.selector, selection, op_type)?;
             if i > 0 {
                 emitter.emit_bool_or();
             }
@@ -347,29 +593,60 @@ fn compile_case_selector(
     ctx: &mut CompileContext,
     selector_expr: &ExprKind,
     selection: &CaseSelectionKind,
+    op_type: OpType,
 ) -> Result<(), Diagnostic> {
     match selection {
         CaseSelectionKind::SignedInteger(si) => {
-            compile_expr(emitter, ctx, selector_expr)?;
-            let value = signed_integer_to_i32(si)?;
-            let pool_index = ctx.add_i32_constant(value);
-            emitter.emit_load_const_i32(pool_index);
-            emitter.emit_eq_i32();
+            compile_expr(emitter, ctx, selector_expr, op_type)?;
+            match op_type.0 {
+                OpWidth::W32 => {
+                    let value = signed_integer_to_i32(si)?;
+                    let pool_index = ctx.add_i32_constant(value);
+                    emitter.emit_load_const_i32(pool_index);
+                    emitter.emit_eq_i32();
+                }
+                OpWidth::W64 => {
+                    let value = signed_integer_to_i64(si)?;
+                    let pool_index = ctx.add_i64_constant(value);
+                    emitter.emit_load_const_i64(pool_index);
+                    emitter.emit_eq_i64();
+                }
+                // CASE with float types is not meaningful in IEC 61131-3.
+                _ => return Err(Diagnostic::todo(file!(), line!())),
+            }
             Ok(())
         }
         CaseSelectionKind::Subrange(sr) => {
             // (selector >= start) AND (selector <= end)
-            compile_expr(emitter, ctx, selector_expr)?;
-            let start = signed_integer_to_i32(&sr.start)?;
-            let start_index = ctx.add_i32_constant(start);
-            emitter.emit_load_const_i32(start_index);
-            emitter.emit_ge_i32();
+            compile_expr(emitter, ctx, selector_expr, op_type)?;
+            match op_type.0 {
+                OpWidth::W32 => {
+                    let start = signed_integer_to_i32(&sr.start)?;
+                    let start_index = ctx.add_i32_constant(start);
+                    emitter.emit_load_const_i32(start_index);
+                    emit_ge(emitter, op_type);
 
-            compile_expr(emitter, ctx, selector_expr)?;
-            let end = signed_integer_to_i32(&sr.end)?;
-            let end_index = ctx.add_i32_constant(end);
-            emitter.emit_load_const_i32(end_index);
-            emitter.emit_le_i32();
+                    compile_expr(emitter, ctx, selector_expr, op_type)?;
+                    let end = signed_integer_to_i32(&sr.end)?;
+                    let end_index = ctx.add_i32_constant(end);
+                    emitter.emit_load_const_i32(end_index);
+                    emit_le(emitter, op_type);
+                }
+                OpWidth::W64 => {
+                    let start = signed_integer_to_i64(&sr.start)?;
+                    let start_index = ctx.add_i64_constant(start);
+                    emitter.emit_load_const_i64(start_index);
+                    emit_ge(emitter, op_type);
+
+                    compile_expr(emitter, ctx, selector_expr, op_type)?;
+                    let end = signed_integer_to_i64(&sr.end)?;
+                    let end_index = ctx.add_i64_constant(end);
+                    emitter.emit_load_const_i64(end_index);
+                    emit_le(emitter, op_type);
+                }
+                // CASE with float types is not meaningful in IEC 61131-3.
+                _ => return Err(Diagnostic::todo(file!(), line!())),
+            }
 
             emitter.emit_bool_and();
             Ok(())
@@ -422,7 +699,8 @@ fn compile_while(
     let end_label = emitter.create_label();
 
     emitter.bind_label(loop_label);
-    compile_expr(emitter, ctx, &while_stmt.condition)?;
+    let op_type = infer_op_type(ctx, &while_stmt.condition);
+    compile_expr(emitter, ctx, &while_stmt.condition, op_type)?;
     emitter.emit_jmp_if_not(end_label);
     ctx.loop_exit_labels.push(end_label);
     compile_stmts(emitter, ctx, &while_stmt.body)?;
@@ -453,7 +731,8 @@ fn compile_repeat(
     ctx.loop_exit_labels.push(end_label);
     compile_stmts(emitter, ctx, &repeat_stmt.body)?;
     ctx.loop_exit_labels.pop();
-    compile_expr(emitter, ctx, &repeat_stmt.until)?;
+    let op_type = infer_op_type(ctx, &repeat_stmt.until);
+    compile_expr(emitter, ctx, &repeat_stmt.until, op_type)?;
     emitter.emit_jmp_if_not(loop_label);
     emitter.bind_label(end_label);
 
@@ -519,19 +798,32 @@ fn compile_for(
     for_stmt: &ironplc_dsl::textual::For,
 ) -> Result<(), Diagnostic> {
     let var_index = ctx.var_index(&for_stmt.control)?;
+    let op_type = ctx.var_op_type(&for_stmt.control);
+    let type_info = ctx.var_type_info(&for_stmt.control);
 
     // Determine step sign.
     let step_sign = match &for_stmt.step {
         None => StepSign::Positive,
         Some(step_expr) => match try_constant_sign(step_expr) {
             Some(sign) => sign,
-            None => return Err(Diagnostic::todo(file!(), line!())),
+            None => {
+                return Err(Diagnostic::problem(
+                    Problem::NotImplemented,
+                    Label::span(
+                        for_stmt.control.span(),
+                        "FOR loop step must be a constant expression",
+                    ),
+                ))
+            }
         },
     };
 
     // Initialize: compile(from), STORE_VAR control
-    compile_expr(emitter, ctx, &for_stmt.from)?;
-    emitter.emit_store_var_i32(var_index);
+    compile_expr(emitter, ctx, &for_stmt.from, op_type)?;
+    if let Some(ti) = type_info {
+        emit_truncation(emitter, ti);
+    }
+    emit_store_var(emitter, var_index, op_type);
 
     let loop_label = emitter.create_label();
     let body_label = emitter.create_label();
@@ -539,11 +831,11 @@ fn compile_for(
 
     // LOOP: check termination condition
     emitter.bind_label(loop_label);
-    emitter.emit_load_var_i32(var_index);
-    compile_expr(emitter, ctx, &for_stmt.to)?;
+    emit_load_var(emitter, var_index, op_type);
+    compile_expr(emitter, ctx, &for_stmt.to, op_type)?;
     match step_sign {
-        StepSign::Positive => emitter.emit_gt_i32(),
-        StepSign::Negative => emitter.emit_lt_i32(),
+        StepSign::Positive => emit_gt(emitter, op_type),
+        StepSign::Negative => emit_lt(emitter, op_type),
     }
     emitter.emit_jmp_if_not(body_label);
     emitter.emit_jmp(end_label);
@@ -554,17 +846,34 @@ fn compile_for(
     compile_stmts(emitter, ctx, &for_stmt.body)?;
     ctx.loop_exit_labels.pop();
 
-    // Increment: LOAD_VAR control, compile(step), ADD_I32, STORE_VAR control
-    emitter.emit_load_var_i32(var_index);
+    // Increment: LOAD_VAR control, compile(step), ADD, truncate, STORE_VAR control
+    emit_load_var(emitter, var_index, op_type);
     match &for_stmt.step {
-        Some(step_expr) => compile_expr(emitter, ctx, step_expr)?,
-        None => {
-            let one_index = ctx.add_i32_constant(1);
-            emitter.emit_load_const_i32(one_index);
-        }
+        Some(step_expr) => compile_expr(emitter, ctx, step_expr, op_type)?,
+        None => match op_type.0 {
+            OpWidth::W32 => {
+                let one_index = ctx.add_i32_constant(1);
+                emitter.emit_load_const_i32(one_index);
+            }
+            OpWidth::W64 => {
+                let one_index = ctx.add_i64_constant(1);
+                emitter.emit_load_const_i64(one_index);
+            }
+            OpWidth::F32 => {
+                let one_index = ctx.add_f32_constant(1.0);
+                emitter.emit_load_const_f32(one_index);
+            }
+            OpWidth::F64 => {
+                let one_index = ctx.add_f64_constant(1.0);
+                emitter.emit_load_const_f64(one_index);
+            }
+        },
     }
-    emitter.emit_add_i32();
-    emitter.emit_store_var_i32(var_index);
+    emit_add(emitter, op_type);
+    if let Some(ti) = type_info {
+        emit_truncation(emitter, ti);
+    }
+    emit_store_var(emitter, var_index, op_type);
     emitter.emit_jmp(loop_label);
 
     // END:
@@ -574,47 +883,34 @@ fn compile_for(
 }
 
 /// Compiles an expression, leaving the result on the stack.
+///
+/// The `op_type` determines which width (i32/i64) and signedness to use
+/// for arithmetic, comparison, and load/store instructions.
 fn compile_expr(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     expr: &ExprKind,
+    op_type: OpType,
 ) -> Result<(), Diagnostic> {
     match expr {
-        ExprKind::Const(constant) => compile_constant(emitter, ctx, constant),
+        ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
         ExprKind::Variable(variable) => {
             let var_index = resolve_variable(ctx, variable)?;
-            emitter.emit_load_var_i32(var_index);
+            emit_load_var(emitter, var_index, op_type);
             Ok(())
         }
         ExprKind::BinaryOp(binary) => {
-            compile_expr(emitter, ctx, &binary.left)?;
-            compile_expr(emitter, ctx, &binary.right)?;
+            compile_expr(emitter, ctx, &binary.left, op_type)?;
+            compile_expr(emitter, ctx, &binary.right, op_type)?;
             match binary.op {
-                Operator::Add => {
-                    emitter.emit_add_i32();
-                    Ok(())
-                }
-                Operator::Sub => {
-                    emitter.emit_sub_i32();
-                    Ok(())
-                }
-                Operator::Mul => {
-                    emitter.emit_mul_i32();
-                    Ok(())
-                }
-                Operator::Div => {
-                    emitter.emit_div_i32();
-                    Ok(())
-                }
-                Operator::Mod => {
-                    emitter.emit_mod_i32();
-                    Ok(())
-                }
-                Operator::Pow => {
-                    emitter.emit_builtin(opcode::builtin::EXPT_I32);
-                    Ok(())
-                }
+                Operator::Add => emit_add(emitter, op_type),
+                Operator::Sub => emit_sub(emitter, op_type),
+                Operator::Mul => emit_mul(emitter, op_type),
+                Operator::Div => emit_div(emitter, op_type),
+                Operator::Mod => emit_mod(emitter, op_type),
+                Operator::Pow => emit_pow(emitter, op_type),
             }
+            Ok(())
         }
         ExprKind::UnaryOp(unary) => match unary.op {
             UnaryOp::Neg => {
@@ -623,48 +919,69 @@ fn compile_expr(
                 if let ExprKind::Const(ConstantKind::IntegerLiteral(lit)) = &unary.term {
                     let unsigned = lit.value.value.value as i128;
                     let signed = -unsigned;
-                    let value = i32::try_from(signed).map_err(|_| {
-                        Diagnostic::problem(
-                            Problem::ConstantOverflow,
-                            Label::span(lit.value.value.span(), "Integer literal"),
-                        )
-                        .with_context("value", &format!("-{}", unsigned))
-                    })?;
-                    let pool_index = ctx.add_i32_constant(value);
-                    emitter.emit_load_const_i32(pool_index);
+                    match op_type.0 {
+                        OpWidth::W32 => {
+                            let value = i32::try_from(signed).map_err(|_| {
+                                Diagnostic::problem(
+                                    Problem::ConstantOverflow,
+                                    Label::span(lit.value.value.span(), "Integer literal"),
+                                )
+                                .with_context("value", &format!("-{}", unsigned))
+                            })?;
+                            let pool_index = ctx.add_i32_constant(value);
+                            emitter.emit_load_const_i32(pool_index);
+                        }
+                        OpWidth::W64 => {
+                            let value = i64::try_from(signed).map_err(|_| {
+                                Diagnostic::problem(
+                                    Problem::ConstantOverflow,
+                                    Label::span(lit.value.value.span(), "Integer literal"),
+                                )
+                                .with_context("value", &format!("-{}", unsigned))
+                            })?;
+                            let pool_index = ctx.add_i64_constant(value);
+                            emitter.emit_load_const_i64(pool_index);
+                        }
+                        OpWidth::F32 => {
+                            let value = -(unsigned as f32);
+                            let pool_index = ctx.add_f32_constant(value);
+                            emitter.emit_load_const_f32(pool_index);
+                        }
+                        OpWidth::F64 => {
+                            let value = -(unsigned as f64);
+                            let pool_index = ctx.add_f64_constant(value);
+                            emitter.emit_load_const_f64(pool_index);
+                        }
+                    }
                     Ok(())
                 } else {
-                    compile_expr(emitter, ctx, &unary.term)?;
-                    emitter.emit_neg_i32();
+                    compile_expr(emitter, ctx, &unary.term, op_type)?;
+                    emit_neg(emitter, op_type);
                     Ok(())
                 }
             }
             UnaryOp::Not => {
-                compile_expr(emitter, ctx, &unary.term)?;
+                compile_expr(emitter, ctx, &unary.term, op_type)?;
                 emitter.emit_bool_not();
                 Ok(())
             }
         },
         ExprKind::LateBound(late_bound) => {
-            // LateBound values are unresolved identifiers from the parser.
-            // Without the analyzer pass, variable references on the RHS
-            // of assignments appear as LateBound. Treat them as variable
-            // references.
             let var_index = ctx.var_index(&late_bound.value)?;
-            emitter.emit_load_var_i32(var_index);
+            emit_load_var(emitter, var_index, op_type);
             Ok(())
         }
-        ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner),
+        ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner, op_type),
         ExprKind::Compare(compare) => {
-            compile_expr(emitter, ctx, &compare.left)?;
-            compile_expr(emitter, ctx, &compare.right)?;
+            compile_expr(emitter, ctx, &compare.left, op_type)?;
+            compile_expr(emitter, ctx, &compare.right, op_type)?;
             match compare.op {
-                CompareOp::Eq => emitter.emit_eq_i32(),
-                CompareOp::Ne => emitter.emit_ne_i32(),
-                CompareOp::Lt => emitter.emit_lt_i32(),
-                CompareOp::Gt => emitter.emit_gt_i32(),
-                CompareOp::LtEq => emitter.emit_le_i32(),
-                CompareOp::GtEq => emitter.emit_ge_i32(),
+                CompareOp::Eq => emit_eq(emitter, op_type),
+                CompareOp::Ne => emit_ne(emitter, op_type),
+                CompareOp::Lt => emit_lt(emitter, op_type),
+                CompareOp::Gt => emit_gt(emitter, op_type),
+                CompareOp::LtEq => emit_le(emitter, op_type),
+                CompareOp::GtEq => emit_ge(emitter, op_type),
                 CompareOp::And => emitter.emit_bool_and(),
                 CompareOp::Or => emitter.emit_bool_or(),
                 CompareOp::Xor => emitter.emit_bool_xor(),
@@ -689,34 +1006,131 @@ fn compile_constant(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     constant: &ConstantKind,
+    op_type: OpType,
 ) -> Result<(), Diagnostic> {
     match constant {
         ConstantKind::IntegerLiteral(lit) => {
             let span = lit.value.value.span();
-            let value = if lit.value.is_neg {
-                let unsigned = lit.value.value.value as i128;
-                let signed = -unsigned;
-                i32::try_from(signed).map_err(|_| {
-                    Diagnostic::problem(
-                        Problem::ConstantOverflow,
-                        Label::span(span.clone(), "Integer literal"),
-                    )
-                    .with_context("value", &signed.to_string())
-                })?
-            } else {
-                i32::try_from(lit.value.value.value).map_err(|_| {
-                    Diagnostic::problem(
-                        Problem::ConstantOverflow,
-                        Label::span(span.clone(), "Integer literal"),
-                    )
-                    .with_context("value", &lit.value.value.value.to_string())
-                })?
-            };
-            let pool_index = ctx.add_i32_constant(value);
-            emitter.emit_load_const_i32(pool_index);
+            match op_type {
+                (OpWidth::W32, Signedness::Signed) => {
+                    let value = if lit.value.is_neg {
+                        let unsigned = lit.value.value.value as i128;
+                        let signed = -unsigned;
+                        i32::try_from(signed).map_err(|_| {
+                            Diagnostic::problem(
+                                Problem::ConstantOverflow,
+                                Label::span(span.clone(), "Integer literal"),
+                            )
+                            .with_context("value", &signed.to_string())
+                        })?
+                    } else {
+                        i32::try_from(lit.value.value.value).map_err(|_| {
+                            Diagnostic::problem(
+                                Problem::ConstantOverflow,
+                                Label::span(span.clone(), "Integer literal"),
+                            )
+                            .with_context("value", &lit.value.value.value.to_string())
+                        })?
+                    };
+                    let pool_index = ctx.add_i32_constant(value);
+                    emitter.emit_load_const_i32(pool_index);
+                }
+                (OpWidth::W32, Signedness::Unsigned) => {
+                    // Unsigned 32-bit: values up to u32::MAX are valid.
+                    // Store the bit-pattern as i32.
+                    let value = if lit.value.is_neg {
+                        return Err(Diagnostic::problem(
+                            Problem::ConstantOverflow,
+                            Label::span(span.clone(), "Integer literal"),
+                        )
+                        .with_context("value", &format!("-{}", lit.value.value.value)));
+                    } else {
+                        u32::try_from(lit.value.value.value).map_err(|_| {
+                            Diagnostic::problem(
+                                Problem::ConstantOverflow,
+                                Label::span(span.clone(), "Integer literal"),
+                            )
+                            .with_context("value", &lit.value.value.value.to_string())
+                        })? as i32
+                    };
+                    let pool_index = ctx.add_i32_constant(value);
+                    emitter.emit_load_const_i32(pool_index);
+                }
+                (OpWidth::W64, Signedness::Signed) => {
+                    let value = if lit.value.is_neg {
+                        let unsigned = lit.value.value.value as i128;
+                        let signed = -unsigned;
+                        i64::try_from(signed).map_err(|_| {
+                            Diagnostic::problem(
+                                Problem::ConstantOverflow,
+                                Label::span(span.clone(), "Integer literal"),
+                            )
+                            .with_context("value", &signed.to_string())
+                        })?
+                    } else {
+                        i64::try_from(lit.value.value.value).map_err(|_| {
+                            Diagnostic::problem(
+                                Problem::ConstantOverflow,
+                                Label::span(span.clone(), "Integer literal"),
+                            )
+                            .with_context("value", &lit.value.value.value.to_string())
+                        })?
+                    };
+                    let pool_index = ctx.add_i64_constant(value);
+                    emitter.emit_load_const_i64(pool_index);
+                }
+                (OpWidth::W64, Signedness::Unsigned) => {
+                    // Unsigned 64-bit: values up to u64::MAX are valid.
+                    // Store the bit-pattern as i64.
+                    let value = if lit.value.is_neg {
+                        return Err(Diagnostic::problem(
+                            Problem::ConstantOverflow,
+                            Label::span(span.clone(), "Integer literal"),
+                        )
+                        .with_context("value", &format!("-{}", lit.value.value.value)));
+                    } else {
+                        lit.value.value.value as i64
+                    };
+                    let pool_index = ctx.add_i64_constant(value);
+                    emitter.emit_load_const_i64(pool_index);
+                }
+                (OpWidth::F32, _) => {
+                    // Integer literal in float context: convert to f32.
+                    let int_val = if lit.value.is_neg {
+                        -(lit.value.value.value as f32)
+                    } else {
+                        lit.value.value.value as f32
+                    };
+                    let pool_index = ctx.add_f32_constant(int_val);
+                    emitter.emit_load_const_f32(pool_index);
+                }
+                (OpWidth::F64, _) => {
+                    // Integer literal in float context: convert to f64.
+                    let int_val = if lit.value.is_neg {
+                        -(lit.value.value.value as f64)
+                    } else {
+                        lit.value.value.value as f64
+                    };
+                    let pool_index = ctx.add_f64_constant(int_val);
+                    emitter.emit_load_const_f64(pool_index);
+                }
+            }
             Ok(())
         }
-        ConstantKind::RealLiteral(_) => Err(Diagnostic::todo(file!(), line!())),
+        ConstantKind::RealLiteral(lit) => match op_type.0 {
+            OpWidth::F32 => {
+                let value = lit.value as f32;
+                let pool_index = ctx.add_f32_constant(value);
+                emitter.emit_load_const_f32(pool_index);
+                Ok(())
+            }
+            OpWidth::F64 => {
+                let pool_index = ctx.add_f64_constant(lit.value);
+                emitter.emit_load_const_f64(pool_index);
+                Ok(())
+            }
+            _ => Err(Diagnostic::todo(file!(), line!())),
+        },
         ConstantKind::Boolean(lit) => {
             match lit.value {
                 Boolean::True => emitter.emit_load_true(),
@@ -755,6 +1169,205 @@ fn resolve_variable(ctx: &CompileContext, variable: &Variable) -> Result<u16, Di
     }
 }
 
+/// Extracts the variable name `Id` from a variable reference, if it is a named symbolic variable.
+fn resolve_variable_name(variable: &Variable) -> Option<&Id> {
+    match variable {
+        Variable::Symbolic(SymbolicVariableKind::Named(named)) => Some(&named.name),
+        _ => None,
+    }
+}
+
+/// Converts a `SignedInteger` AST node to an `i64` value.
+fn signed_integer_to_i64(si: &SignedInteger) -> Result<i64, Diagnostic> {
+    if si.is_neg {
+        let unsigned = si.value.value as i128;
+        let signed = -unsigned;
+        i64::try_from(signed).map_err(|_| {
+            Diagnostic::problem(
+                Problem::ConstantOverflow,
+                Label::span(si.value.span(), "Integer literal"),
+            )
+            .with_context("value", &signed.to_string())
+        })
+    } else {
+        i64::try_from(si.value.value).map_err(|_| {
+            Diagnostic::problem(
+                Problem::ConstantOverflow,
+                Label::span(si.value.span(), "Integer literal"),
+            )
+            .with_context("value", &si.value.value.to_string())
+        })
+    }
+}
+
+// --- Typed opcode emission helpers ---
+//
+// Each helper selects the correct opcode based on the operation type
+// (width and/or signedness).
+
+fn emit_truncation(emitter: &mut Emitter, type_info: VarTypeInfo) {
+    match (
+        type_info.op_width,
+        type_info.signedness,
+        type_info.storage_bits,
+    ) {
+        (OpWidth::W32, Signedness::Signed, 8) => emitter.emit_trunc_i8(),
+        (OpWidth::W32, Signedness::Signed, 16) => emitter.emit_trunc_i16(),
+        (OpWidth::W32, Signedness::Unsigned, 8) => emitter.emit_trunc_u8(),
+        (OpWidth::W32, Signedness::Unsigned, 16) => emitter.emit_trunc_u16(),
+        // 32-bit and 64-bit types fill their native width; no truncation needed.
+        _ => {}
+    }
+}
+
+fn emit_load_var(emitter: &mut Emitter, var_index: u16, op_type: OpType) {
+    match op_type.0 {
+        OpWidth::W32 => emitter.emit_load_var_i32(var_index),
+        OpWidth::W64 => emitter.emit_load_var_i64(var_index),
+        OpWidth::F32 => emitter.emit_load_var_f32(var_index),
+        OpWidth::F64 => emitter.emit_load_var_f64(var_index),
+    }
+}
+
+fn emit_store_var(emitter: &mut Emitter, var_index: u16, op_type: OpType) {
+    match op_type.0 {
+        OpWidth::W32 => emitter.emit_store_var_i32(var_index),
+        OpWidth::W64 => emitter.emit_store_var_i64(var_index),
+        OpWidth::F32 => emitter.emit_store_var_f32(var_index),
+        OpWidth::F64 => emitter.emit_store_var_f64(var_index),
+    }
+}
+
+fn emit_add(emitter: &mut Emitter, op_type: OpType) {
+    match op_type.0 {
+        OpWidth::W32 => emitter.emit_add_i32(),
+        OpWidth::W64 => emitter.emit_add_i64(),
+        OpWidth::F32 => emitter.emit_add_f32(),
+        OpWidth::F64 => emitter.emit_add_f64(),
+    }
+}
+
+fn emit_sub(emitter: &mut Emitter, op_type: OpType) {
+    match op_type.0 {
+        OpWidth::W32 => emitter.emit_sub_i32(),
+        OpWidth::W64 => emitter.emit_sub_i64(),
+        OpWidth::F32 => emitter.emit_sub_f32(),
+        OpWidth::F64 => emitter.emit_sub_f64(),
+    }
+}
+
+fn emit_mul(emitter: &mut Emitter, op_type: OpType) {
+    match op_type.0 {
+        OpWidth::W32 => emitter.emit_mul_i32(),
+        OpWidth::W64 => emitter.emit_mul_i64(),
+        OpWidth::F32 => emitter.emit_mul_f32(),
+        OpWidth::F64 => emitter.emit_mul_f64(),
+    }
+}
+
+fn emit_div(emitter: &mut Emitter, op_type: OpType) {
+    match op_type {
+        (OpWidth::W32, Signedness::Signed) => emitter.emit_div_i32(),
+        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_div_u32(),
+        (OpWidth::W64, Signedness::Signed) => emitter.emit_div_i64(),
+        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_div_u64(),
+        (OpWidth::F32, _) => emitter.emit_div_f32(),
+        (OpWidth::F64, _) => emitter.emit_div_f64(),
+    }
+}
+
+fn emit_mod(emitter: &mut Emitter, op_type: OpType) {
+    match op_type {
+        (OpWidth::W32, Signedness::Signed) => emitter.emit_mod_i32(),
+        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_mod_u32(),
+        (OpWidth::W64, Signedness::Signed) => emitter.emit_mod_i64(),
+        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_mod_u64(),
+        // Float MOD is not supported (IEC 61131-3 MOD is integer-only).
+        // The analyzer should catch this before codegen.
+        (OpWidth::F32, _) | (OpWidth::F64, _) => {}
+    }
+}
+
+fn emit_neg(emitter: &mut Emitter, op_type: OpType) {
+    match op_type.0 {
+        OpWidth::W32 => emitter.emit_neg_i32(),
+        OpWidth::W64 => emitter.emit_neg_i64(),
+        OpWidth::F32 => emitter.emit_neg_f32(),
+        OpWidth::F64 => emitter.emit_neg_f64(),
+    }
+}
+
+fn emit_pow(emitter: &mut Emitter, op_type: OpType) {
+    match op_type.0 {
+        OpWidth::W32 => emitter.emit_builtin(opcode::builtin::EXPT_I32),
+        OpWidth::W64 => emitter.emit_builtin(opcode::builtin::EXPT_I32),
+        OpWidth::F32 => emitter.emit_builtin(opcode::builtin::EXPT_F32),
+        OpWidth::F64 => emitter.emit_builtin(opcode::builtin::EXPT_F64),
+    }
+}
+
+fn emit_eq(emitter: &mut Emitter, op_type: OpType) {
+    match op_type.0 {
+        OpWidth::W32 => emitter.emit_eq_i32(),
+        OpWidth::W64 => emitter.emit_eq_i64(),
+        OpWidth::F32 => emitter.emit_eq_f32(),
+        OpWidth::F64 => emitter.emit_eq_f64(),
+    }
+}
+
+fn emit_ne(emitter: &mut Emitter, op_type: OpType) {
+    match op_type.0 {
+        OpWidth::W32 => emitter.emit_ne_i32(),
+        OpWidth::W64 => emitter.emit_ne_i64(),
+        OpWidth::F32 => emitter.emit_ne_f32(),
+        OpWidth::F64 => emitter.emit_ne_f64(),
+    }
+}
+
+fn emit_lt(emitter: &mut Emitter, op_type: OpType) {
+    match op_type {
+        (OpWidth::W32, Signedness::Signed) => emitter.emit_lt_i32(),
+        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_lt_u32(),
+        (OpWidth::W64, Signedness::Signed) => emitter.emit_lt_i64(),
+        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_lt_u64(),
+        (OpWidth::F32, _) => emitter.emit_lt_f32(),
+        (OpWidth::F64, _) => emitter.emit_lt_f64(),
+    }
+}
+
+fn emit_le(emitter: &mut Emitter, op_type: OpType) {
+    match op_type {
+        (OpWidth::W32, Signedness::Signed) => emitter.emit_le_i32(),
+        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_le_u32(),
+        (OpWidth::W64, Signedness::Signed) => emitter.emit_le_i64(),
+        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_le_u64(),
+        (OpWidth::F32, _) => emitter.emit_le_f32(),
+        (OpWidth::F64, _) => emitter.emit_le_f64(),
+    }
+}
+
+fn emit_gt(emitter: &mut Emitter, op_type: OpType) {
+    match op_type {
+        (OpWidth::W32, Signedness::Signed) => emitter.emit_gt_i32(),
+        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_gt_u32(),
+        (OpWidth::W64, Signedness::Signed) => emitter.emit_gt_i64(),
+        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_gt_u64(),
+        (OpWidth::F32, _) => emitter.emit_gt_f32(),
+        (OpWidth::F64, _) => emitter.emit_gt_f64(),
+    }
+}
+
+fn emit_ge(emitter: &mut Emitter, op_type: OpType) {
+    match op_type {
+        (OpWidth::W32, Signedness::Signed) => emitter.emit_ge_i32(),
+        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_ge_u32(),
+        (OpWidth::W64, Signedness::Signed) => emitter.emit_ge_i64(),
+        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_ge_u64(),
+        (OpWidth::F32, _) => emitter.emit_ge_f32(),
+        (OpWidth::F64, _) => emitter.emit_ge_f64(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -772,7 +1385,7 @@ mod tests {
         let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := 10;
 END_PROGRAM
@@ -790,7 +1403,7 @@ END_PROGRAM
     }
 
     #[test]
-    fn compile_when_no_program_then_error() {
+    fn compile_when_no_program_then_p4020_error() {
         let source = "
 FUNCTION_BLOCK MyBlock
   VAR
@@ -803,7 +1416,7 @@ END_FUNCTION_BLOCK
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
-        assert_eq!(diagnostic.code, Problem::NotImplemented.code());
+        assert_eq!(diagnostic.code, Problem::NoProgramDeclaration.code());
     }
 
     #[test]
@@ -829,8 +1442,8 @@ END_PROGRAM
         let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 10;
   y := 10;
@@ -848,8 +1461,8 @@ END_PROGRAM
         let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 10;
   y := x;
@@ -882,7 +1495,7 @@ END_PROGRAM
         let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := -5;
 END_PROGRAM
@@ -902,7 +1515,7 @@ END_PROGRAM
         let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   IF x > 0 THEN
     x := 1;
@@ -913,5 +1526,45 @@ END_PROGRAM
         let result = compile(&library);
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn compile_when_exit_outside_loop_then_p4021_error() {
+        let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+  END_VAR
+  x := 1;
+  EXIT;
+END_PROGRAM
+";
+        let library = parse(source);
+        let result = compile(&library);
+
+        assert!(result.is_err());
+        let diagnostic = result.unwrap_err();
+        assert_eq!(diagnostic.code, Problem::ExitOutsideLoop.code());
+    }
+
+    #[test]
+    fn compile_when_for_non_constant_step_then_p9999_error() {
+        let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+    s : DINT;
+  END_VAR
+  FOR x := 1 TO 10 BY s DO
+    x := x;
+  END_FOR;
+END_PROGRAM
+";
+        let library = parse(source);
+        let result = compile(&library);
+
+        assert!(result.is_err());
+        let diagnostic = result.unwrap_err();
+        assert_eq!(diagnostic.code, Problem::NotImplemented.code());
     }
 }

@@ -14,8 +14,8 @@ fn end_to_end_when_mul_expression_then_variable_has_product() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 7;
   y := x * 6;
@@ -32,7 +32,7 @@ fn end_to_end_when_mul_by_zero_then_zero() {
     let source = "
 PROGRAM main
   VAR
-    result : INT;
+    result : DINT;
   END_VAR
   result := 999 * 0;
 END_PROGRAM
@@ -47,7 +47,7 @@ fn end_to_end_when_mul_by_one_then_identity() {
     let source = "
 PROGRAM main
   VAR
-    result : INT;
+    result : DINT;
   END_VAR
   result := 42 * 1;
 END_PROGRAM
@@ -62,7 +62,7 @@ fn end_to_end_when_mul_negative_then_negative_result() {
     let source = "
 PROGRAM main
   VAR
-    result : INT;
+    result : DINT;
   END_VAR
   result := 7 * -6;
 END_PROGRAM
@@ -77,7 +77,7 @@ fn end_to_end_when_mul_two_negatives_then_positive() {
     let source = "
 PROGRAM main
   VAR
-    result : INT;
+    result : DINT;
   END_VAR
   result := -7 * -6;
 END_PROGRAM
@@ -92,7 +92,7 @@ fn end_to_end_when_chain_of_multiplications_then_correct() {
     let source = "
 PROGRAM main
   VAR
-    result : INT;
+    result : DINT;
   END_VAR
   result := 2 * 3 * 4;
 END_PROGRAM
@@ -107,9 +107,9 @@ fn end_to_end_when_mul_with_variables_then_correct() {
     let source = "
 PROGRAM main
   VAR
-    a : INT;
-    b : INT;
-    c : INT;
+    a : DINT;
+    b : DINT;
+    c : DINT;
   END_VAR
   a := 7;
   b := 6;
@@ -128,7 +128,7 @@ fn end_to_end_when_add_and_mul_precedence_then_correct() {
     let source = "
 PROGRAM main
   VAR
-    result : INT;
+    result : DINT;
   END_VAR
   result := 2 + 3 * 4;
 END_PROGRAM
@@ -144,7 +144,7 @@ fn end_to_end_when_mul_doubling_across_scans_then_accumulates() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := x * 2 + 1;
 END_PROGRAM
