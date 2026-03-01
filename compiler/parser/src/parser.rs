@@ -1499,6 +1499,6 @@ parser! {
         body,
       }
     }
-    rule exit_statement() -> StmtKind = tok(TokenType::Exit) { StmtKind::Exit }
+    rule exit_statement() -> StmtKind = t:tok(TokenType::Exit) { StmtKind::Exit(t.span.clone()) }
   }
 }

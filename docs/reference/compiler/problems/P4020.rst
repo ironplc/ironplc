@@ -1,0 +1,41 @@
+=====
+P4020
+=====
+
+.. problem-summary:: P4020
+
+This error occurs when the compiler cannot find a PROGRAM declaration in the source. At least one PROGRAM is required to compile and run.
+
+Example
+-------
+
+The following code will generate error P4020:
+
+.. code-block::
+
+   FUNCTION_BLOCK my_fb
+   VAR
+       x : INT;
+   END_VAR
+       x := 1;
+   END_FUNCTION_BLOCK
+
+The source defines a function block but does not contain a PROGRAM declaration, so the compiler has no entry point.
+
+To fix this error, add a PROGRAM declaration:
+
+.. code-block::
+
+   FUNCTION_BLOCK my_fb
+   VAR
+       x : INT;
+   END_VAR
+       x := 1;
+   END_FUNCTION_BLOCK
+
+   PROGRAM main
+   VAR
+       fb_inst : my_fb;
+   END_VAR
+       fb_inst();
+   END_PROGRAM
