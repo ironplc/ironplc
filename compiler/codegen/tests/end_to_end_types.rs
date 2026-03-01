@@ -273,6 +273,116 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i64(), 1);
 }
 
+#[test]
+fn end_to_end_when_lint_equal_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    result : LINT;
+    a : LINT;
+    b : LINT;
+  END_VAR
+  a := 5000000000;
+  b := 5000000000;
+  IF a = b THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i64(), 1);
+}
+
+#[test]
+fn end_to_end_when_lint_not_equal_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    result : LINT;
+    a : LINT;
+    b : LINT;
+  END_VAR
+  a := 5000000000;
+  b := 3000000000;
+  IF a <> b THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i64(), 1);
+}
+
+#[test]
+fn end_to_end_when_lint_less_than_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    result : LINT;
+    a : LINT;
+    b : LINT;
+  END_VAR
+  a := 3000000000;
+  b := 5000000000;
+  IF a < b THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i64(), 1);
+}
+
+#[test]
+fn end_to_end_when_lint_less_equal_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    result : LINT;
+    a : LINT;
+    b : LINT;
+  END_VAR
+  a := 5000000000;
+  b := 5000000000;
+  IF a <= b THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i64(), 1);
+}
+
+#[test]
+fn end_to_end_when_lint_greater_equal_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    result : LINT;
+    a : LINT;
+    b : LINT;
+  END_VAR
+  a := 5000000000;
+  b := 5000000000;
+  IF a >= b THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i64(), 1);
+}
+
 // --- USINT (8-bit unsigned, 0..255) ---
 
 #[test]
@@ -467,6 +577,51 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i32(), 1);
 }
 
+#[test]
+fn end_to_end_when_udint_less_equal_then_unsigned() {
+    let source = "
+PROGRAM main
+  VAR
+    result : UDINT;
+    a : UDINT;
+    b : UDINT;
+  END_VAR
+  a := 3000000000;
+  b := 3000000000;
+  IF a <= b THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_udint_greater_equal_then_unsigned() {
+    let source = "
+PROGRAM main
+  VAR
+    result : UDINT;
+    a : UDINT;
+    b : UDINT;
+  END_VAR
+  a := 3000000000;
+  b := 2000000000;
+  IF a >= b THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    // 3B >= 2B is true unsigned (3B as i32 is negative, so signed GE would say false)
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+}
+
 // --- ULINT (64-bit unsigned) ---
 
 #[test]
@@ -559,6 +714,72 @@ PROGRAM main
   a := 5000000000;
   b := 3000000000;
   IF a > b THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i64(), 1);
+}
+
+#[test]
+fn end_to_end_when_ulint_less_than_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    result : ULINT;
+    a : ULINT;
+    b : ULINT;
+  END_VAR
+  a := 3000000000;
+  b := 5000000000;
+  IF a < b THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i64(), 1);
+}
+
+#[test]
+fn end_to_end_when_ulint_less_equal_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    result : ULINT;
+    a : ULINT;
+    b : ULINT;
+  END_VAR
+  a := 5000000000;
+  b := 5000000000;
+  IF a <= b THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i64(), 1);
+}
+
+#[test]
+fn end_to_end_when_ulint_greater_equal_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    result : ULINT;
+    a : ULINT;
+    b : ULINT;
+  END_VAR
+  a := 5000000000;
+  b := 5000000000;
+  IF a >= b THEN
     result := 1;
   ELSE
     result := 0;
