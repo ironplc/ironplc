@@ -10,7 +10,7 @@ Comparison operators compare two values and produce a ``BOOL`` result.
    * - **IEC 61131-3**
      - Section 3.3.1
    * - **Support**
-     - Supported for integer types
+     - Supported
 
 Syntax
 ------
@@ -46,7 +46,8 @@ Description
 
 Comparison operators compare two operands of the same type and return a
 ``BOOL`` value. They apply to integer types (``SINT``, ``INT``, ``DINT``,
-``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``).
+``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``) and floating-point types
+(``REAL``, ``LREAL``).
 
 Equality (``=``, ``<>``) has lower precedence than the relational operators
 (``<``, ``>``, ``<=``, ``>=``). Both groups have lower precedence than

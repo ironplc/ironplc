@@ -10,7 +10,7 @@ Arithmetic operators perform mathematical computations on numeric values.
    * - **IEC 61131-3**
      - Section 3.3.1
    * - **Support**
-     - Supported for integer types
+     - Supported
 
 Syntax
 ------
@@ -48,9 +48,10 @@ Description
 -----------
 
 Arithmetic operators apply to integer types (``SINT``, ``INT``, ``DINT``,
-``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``). For integer division,
-the result is truncated toward zero. The ``MOD`` operator returns the
-remainder of integer division.
+``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``) and floating-point types
+(``REAL``, ``LREAL``). For integer division, the result is truncated toward
+zero. The ``MOD`` operator returns the remainder of integer division and is
+defined only for integer types.
 
 The unary negation operator ``-`` has higher precedence than the binary
 arithmetic operators. Exponentiation ``**`` has higher precedence than

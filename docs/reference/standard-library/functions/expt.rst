@@ -10,7 +10,7 @@ Returns the result of raising a base to an exponent.
    * - **IEC 61131-3**
      - Section 2.5.1.5.2
    * - **Support**
-     - Supported (INT)
+     - Supported
 
 Signatures
 ----------
@@ -28,7 +28,7 @@ Signatures
      - ``SINT``
      - ``SINT``
      - ``SINT``
-     - Not yet supported
+     - Supported
    * - 2
      - ``INT``
      - ``INT``
@@ -38,7 +38,7 @@ Signatures
      - ``DINT``
      - ``DINT``
      - ``DINT``
-     - Not yet supported
+     - Supported
    * - 4
      - ``LINT``
      - ``LINT``
@@ -48,12 +48,12 @@ Signatures
      - ``REAL``
      - ``REAL``
      - ``REAL``
-     - Not yet supported
+     - Supported
    * - 6
      - ``LREAL``
      - ``LREAL``
      - ``LREAL``
-     - Not yet supported
+     - Supported
 
 Description
 -----------
