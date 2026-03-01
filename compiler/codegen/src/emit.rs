@@ -27,6 +27,18 @@ impl Emitter {
         self.push_stack(1);
     }
 
+    /// Emits LOAD_TRUE (pushes I32 value 1).
+    pub fn emit_load_true(&mut self) {
+        self.bytecode.push(opcode::LOAD_TRUE);
+        self.push_stack(1);
+    }
+
+    /// Emits LOAD_FALSE (pushes I32 value 0).
+    pub fn emit_load_false(&mut self) {
+        self.bytecode.push(opcode::LOAD_FALSE);
+        self.push_stack(1);
+    }
+
     /// Emits LOAD_VAR_I32 with a variable table index.
     pub fn emit_load_var_i32(&mut self, var_index: u16) {
         self.bytecode.push(opcode::LOAD_VAR_I32);
@@ -610,6 +622,40 @@ mod tests {
         em.emit_load_var_i32(0); // stack: 1
         em.emit_bool_not(); // stack: 1 (pop 1, push 1)
         em.emit_store_var_i32(1); // stack: 0
+
+        assert_eq!(em.max_stack_depth(), 1);
+    }
+
+    #[test]
+    fn emitter_when_load_true_then_correct_bytecode() {
+        let mut em = Emitter::new();
+        em.emit_load_true();
+
+        assert_eq!(em.bytecode(), &[0x07]);
+    }
+
+    #[test]
+    fn emitter_when_load_true_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        em.emit_load_true(); // stack: 1
+        em.emit_store_var_i32(0); // stack: 0
+
+        assert_eq!(em.max_stack_depth(), 1);
+    }
+
+    #[test]
+    fn emitter_when_load_false_then_correct_bytecode() {
+        let mut em = Emitter::new();
+        em.emit_load_false();
+
+        assert_eq!(em.bytecode(), &[0x08]);
+    }
+
+    #[test]
+    fn emitter_when_load_false_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        em.emit_load_false(); // stack: 1
+        em.emit_store_var_i32(0); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 1);
     }
