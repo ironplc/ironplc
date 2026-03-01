@@ -14,6 +14,7 @@
 //! - Boolean operators (AND, OR, XOR, NOT)
 //! - Variable references (named symbolic variables)
 //! - IF/ELSIF/ELSE statements
+//! - WHILE, FOR, and REPEAT iteration statements
 
 use std::collections::HashMap;
 
@@ -187,21 +188,9 @@ fn compile_statement(
             file!(),
             line!(),
         )),
-        StmtKind::For(for_stmt) => Err(Diagnostic::todo_with_span(
-            for_stmt.control.span(),
-            file!(),
-            line!(),
-        )),
-        StmtKind::While(while_stmt) => Err(Diagnostic::todo_with_span(
-            expr_span(&while_stmt.condition),
-            file!(),
-            line!(),
-        )),
-        StmtKind::Repeat(repeat_stmt) => Err(Diagnostic::todo_with_span(
-            expr_span(&repeat_stmt.until),
-            file!(),
-            line!(),
-        )),
+        StmtKind::For(for_stmt) => compile_for(emitter, ctx, for_stmt),
+        StmtKind::While(while_stmt) => compile_while(emitter, ctx, while_stmt),
+        StmtKind::Repeat(repeat_stmt) => compile_repeat(emitter, ctx, repeat_stmt),
         StmtKind::Return => Err(Diagnostic::todo(file!(), line!())),
         StmtKind::Exit => Err(Diagnostic::todo(file!(), line!())),
     }
@@ -274,6 +263,168 @@ fn compile_if(
     if let Some(end) = end_label {
         emitter.bind_label(end);
     }
+
+    Ok(())
+}
+
+/// Compiles a WHILE statement.
+///
+/// ```text
+/// LOOP:
+///   compile(condition)
+///   JMP_IF_NOT → END
+///   compile(body)
+///   JMP → LOOP
+/// END:
+/// ```
+fn compile_while(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    while_stmt: &ironplc_dsl::textual::While,
+) -> Result<(), Diagnostic> {
+    let loop_label = emitter.create_label();
+    let end_label = emitter.create_label();
+
+    emitter.bind_label(loop_label);
+    compile_expr(emitter, ctx, &while_stmt.condition)?;
+    emitter.emit_jmp_if_not(end_label);
+    compile_stmts(emitter, ctx, &while_stmt.body)?;
+    emitter.emit_jmp(loop_label);
+    emitter.bind_label(end_label);
+
+    Ok(())
+}
+
+/// Compiles a REPEAT statement.
+///
+/// ```text
+/// LOOP:
+///   compile(body)
+///   compile(condition)
+///   JMP_IF_NOT → LOOP
+/// ```
+fn compile_repeat(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    repeat_stmt: &ironplc_dsl::textual::Repeat,
+) -> Result<(), Diagnostic> {
+    let loop_label = emitter.create_label();
+
+    emitter.bind_label(loop_label);
+    compile_stmts(emitter, ctx, &repeat_stmt.body)?;
+    compile_expr(emitter, ctx, &repeat_stmt.until)?;
+    emitter.emit_jmp_if_not(loop_label);
+
+    Ok(())
+}
+
+/// Whether a compile-time constant step is positive or negative.
+enum StepSign {
+    Positive,
+    Negative,
+}
+
+/// Inspects an expression and returns its sign if it is a compile-time constant
+/// integer literal (positive or negative). Returns `None` for non-constant
+/// expressions.
+fn try_constant_sign(expr: &ExprKind) -> Option<StepSign> {
+    match expr {
+        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
+            if lit.value.is_neg {
+                Some(StepSign::Negative)
+            } else {
+                Some(StepSign::Positive)
+            }
+        }
+        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => {
+            // -<literal> is negative
+            if matches!(
+                &unary.term,
+                ExprKind::Const(ConstantKind::IntegerLiteral(_))
+            ) {
+                Some(StepSign::Negative)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Compiles a FOR statement.
+///
+/// ```text
+///   compile(from)
+///   STORE_VAR control
+/// LOOP:
+///   LOAD_VAR control
+///   compile(to)
+///   GT_I32 (or LT_I32 for negative step)
+///   JMP_IF_NOT → BODY
+///   JMP → END
+/// BODY:
+///   compile(body)
+///   LOAD_VAR control
+///   compile(step)  // default: LOAD_CONST 1
+///   ADD_I32
+///   STORE_VAR control
+///   JMP → LOOP
+/// END:
+/// ```
+fn compile_for(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    for_stmt: &ironplc_dsl::textual::For,
+) -> Result<(), Diagnostic> {
+    let var_index = ctx.var_index(&for_stmt.control)?;
+
+    // Determine step sign.
+    let step_sign = match &for_stmt.step {
+        None => StepSign::Positive,
+        Some(step_expr) => match try_constant_sign(step_expr) {
+            Some(sign) => sign,
+            None => return Err(Diagnostic::todo(file!(), line!())),
+        },
+    };
+
+    // Initialize: compile(from), STORE_VAR control
+    compile_expr(emitter, ctx, &for_stmt.from)?;
+    emitter.emit_store_var_i32(var_index);
+
+    let loop_label = emitter.create_label();
+    let body_label = emitter.create_label();
+    let end_label = emitter.create_label();
+
+    // LOOP: check termination condition
+    emitter.bind_label(loop_label);
+    emitter.emit_load_var_i32(var_index);
+    compile_expr(emitter, ctx, &for_stmt.to)?;
+    match step_sign {
+        StepSign::Positive => emitter.emit_gt_i32(),
+        StepSign::Negative => emitter.emit_lt_i32(),
+    }
+    emitter.emit_jmp_if_not(body_label);
+    emitter.emit_jmp(end_label);
+
+    // BODY:
+    emitter.bind_label(body_label);
+    compile_stmts(emitter, ctx, &for_stmt.body)?;
+
+    // Increment: LOAD_VAR control, compile(step), ADD_I32, STORE_VAR control
+    emitter.emit_load_var_i32(var_index);
+    match &for_stmt.step {
+        Some(step_expr) => compile_expr(emitter, ctx, step_expr)?,
+        None => {
+            let one_index = ctx.add_i32_constant(1);
+            emitter.emit_load_const_i32(one_index);
+        }
+    }
+    emitter.emit_add_i32();
+    emitter.emit_store_var_i32(var_index);
+    emitter.emit_jmp(loop_label);
+
+    // END:
+    emitter.bind_label(end_label);
 
     Ok(())
 }
