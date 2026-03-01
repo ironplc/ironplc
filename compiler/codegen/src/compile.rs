@@ -8,6 +8,7 @@
 //! - Assignment statements
 //! - Integer literal constants
 //! - Binary Add, Sub, Mul, Div, Mod, and Pow operators
+//! - Unary Neg operator
 //! - Variable references (named symbolic variables)
 
 use std::collections::HashMap;
@@ -266,11 +267,9 @@ fn compile_expr(
                     emitter.emit_load_const_i32(pool_index);
                     Ok(())
                 } else {
-                    Err(Diagnostic::todo_with_span(
-                        expr_span(&unary.term),
-                        file!(),
-                        line!(),
-                    ))
+                    compile_expr(emitter, ctx, &unary.term)?;
+                    emitter.emit_neg_i32();
+                    Ok(())
                 }
             }
             _ => Err(Diagnostic::todo_with_span(

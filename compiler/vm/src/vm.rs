@@ -409,6 +409,10 @@ fn execute(
                 }
                 stack.push(Slot::from_i32(a.wrapping_rem(b)))?;
             }
+            opcode::NEG_I32 => {
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(a.wrapping_neg()))?;
+            }
             opcode::BUILTIN => {
                 let func_id = read_u16_le(bytecode, &mut pc);
                 builtin::dispatch(func_id, stack)?;
