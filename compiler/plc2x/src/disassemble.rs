@@ -462,6 +462,11 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 let func_id = read_u16(bytecode, pc + 1);
                 let operand = match func_id {
                     opcode::builtin::EXPT_I32 => format!("EXPT_I32 (0x{:04X})", func_id),
+                    opcode::builtin::ABS_I32 => format!("ABS_I32 (0x{:04X})", func_id),
+                    opcode::builtin::MIN_I32 => format!("MIN_I32 (0x{:04X})", func_id),
+                    opcode::builtin::MAX_I32 => format!("MAX_I32 (0x{:04X})", func_id),
+                    opcode::builtin::LIMIT_I32 => format!("LIMIT_I32 (0x{:04X})", func_id),
+                    opcode::builtin::SEL_I32 => format!("SEL_I32 (0x{:04X})", func_id),
                     _ => format!("0x{:04X}", func_id),
                 };
                 instructions.push(json!({

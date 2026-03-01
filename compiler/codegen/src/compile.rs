@@ -42,8 +42,8 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    CaseSelectionKind, CompareOp, ExprKind, Operator, Statements, StmtKind, SymbolicVariableKind,
-    UnaryOp, Variable,
+    CaseSelectionKind, CompareOp, ExprKind, Operator, ParamAssignmentKind, Statements, StmtKind,
+    SymbolicVariableKind, UnaryOp, Variable,
 };
 use ironplc_problems::Problem;
 
@@ -932,6 +932,19 @@ fn compile_for(
     Ok(())
 }
 
+/// Returns the builtin opcode for a named standard library function, if known.
+fn lookup_builtin(name: &str) -> Option<u16> {
+    match name.to_uppercase().as_str() {
+        "EXPT" => Some(opcode::builtin::EXPT_I32),
+        "ABS" => Some(opcode::builtin::ABS_I32),
+        "MIN" => Some(opcode::builtin::MIN_I32),
+        "MAX" => Some(opcode::builtin::MAX_I32),
+        "LIMIT" => Some(opcode::builtin::LIMIT_I32),
+        "SEL" => Some(opcode::builtin::SEL_I32),
+        _ => None,
+    }
+}
+
 /// Compiles an expression, leaving the result on the stack.
 ///
 /// The `op_type` determines which width (i32/i64) and signedness to use
@@ -1054,11 +1067,36 @@ fn compile_expr(
             file!(),
             line!(),
         )),
-        ExprKind::Function(func) => Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        )),
+        ExprKind::Function(func) => {
+            let func_id = lookup_builtin(func.name.original())
+                .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
+
+            let expected_args = opcode::builtin::arg_count(func_id) as usize;
+
+            let args: Vec<&ExprKind> = func
+                .param_assignment
+                .iter()
+                .filter_map(|p| match p {
+                    ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+                    _ => None,
+                })
+                .collect();
+
+            if args.len() != expected_args {
+                return Err(Diagnostic::todo_with_span(
+                    func.name.span(),
+                    file!(),
+                    line!(),
+                ));
+            }
+
+            for arg in &args {
+                compile_expr(emitter, ctx, arg, op_type)?;
+            }
+
+            emitter.emit_builtin(func_id);
+            Ok(())
+        }
     }
 }
 

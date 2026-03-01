@@ -37,6 +37,37 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_f64(a.powf(b)))?;
             Ok(())
         }
+        opcode::builtin::ABS_I32 => {
+            let a = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32(a.wrapping_abs()))?;
+            Ok(())
+        }
+        opcode::builtin::MIN_I32 => {
+            let b = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32(a.min(b)))?;
+            Ok(())
+        }
+        opcode::builtin::MAX_I32 => {
+            let b = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32(a.max(b)))?;
+            Ok(())
+        }
+        opcode::builtin::LIMIT_I32 => {
+            let mx = stack.pop()?.as_i32();
+            let in_val = stack.pop()?.as_i32();
+            let mn = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32(in_val.clamp(mn, mx)))?;
+            Ok(())
+        }
+        opcode::builtin::SEL_I32 => {
+            let in1 = stack.pop()?.as_i32();
+            let in0 = stack.pop()?.as_i32();
+            let g = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32(if g == 0 { in0 } else { in1 }))?;
+            Ok(())
+        }
         _ => Err(Trap::InvalidBuiltinFunction(func_id)),
     }
 }

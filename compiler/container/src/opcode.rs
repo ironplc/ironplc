@@ -407,4 +407,35 @@ pub mod builtin {
 
     /// EXPT for 64-bit floats: pops exponent (b) and base (a), pushes a.powf(b).
     pub const EXPT_F64: u16 = 0x0342;
+
+    /// ABS for 32-bit integers: pops one value, pushes its absolute value (wrapping).
+    pub const ABS_I32: u16 = 0x0343;
+
+    /// MIN for 32-bit integers: pops two values (b then a), pushes min(a, b).
+    pub const MIN_I32: u16 = 0x0344;
+
+    /// MAX for 32-bit integers: pops two values (b then a), pushes max(a, b).
+    pub const MAX_I32: u16 = 0x0345;
+
+    /// LIMIT for 32-bit integers: pops mx, in, mn, pushes clamp(in, mn, mx).
+    pub const LIMIT_I32: u16 = 0x0346;
+
+    /// SEL for 32-bit integers: pops in1, in0, g, pushes in0 if g==0 else in1.
+    pub const SEL_I32: u16 = 0x0347;
+
+    /// Returns the number of arguments a built-in function pops from the stack.
+    ///
+    /// This is the single source of truth for argument counts, used by both
+    /// the codegen emitter (for stack depth tracking) and can be validated
+    /// against the VM dispatch implementation.
+    ///
+    /// Panics if `func_id` is not a known built-in function ID.
+    pub fn arg_count(func_id: u16) -> u16 {
+        match func_id {
+            ABS_I32 => 1,
+            EXPT_I32 | EXPT_F32 | EXPT_F64 | MIN_I32 | MAX_I32 => 2,
+            LIMIT_I32 | SEL_I32 => 3,
+            _ => panic!("unknown builtin function ID: 0x{:04X}", func_id),
+        }
+    }
 }
