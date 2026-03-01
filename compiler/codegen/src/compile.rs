@@ -15,6 +15,7 @@
 //! - Variable references (named symbolic variables)
 //! - IF/ELSIF/ELSE statements
 //! - WHILE, FOR, and REPEAT iteration statements
+//! - EXIT (break from innermost loop) and RETURN (early program exit)
 
 use std::collections::HashMap;
 
@@ -90,6 +91,9 @@ struct CompileContext {
     variables: HashMap<Id, u16>,
     /// Ordered list of i32 constants added to the constant pool.
     constants: Vec<i32>,
+    /// Stack of loop exit labels for EXIT statement compilation.
+    /// Each enclosing loop pushes its end label; EXIT jumps to the top.
+    loop_exit_labels: Vec<crate::emit::Label>,
 }
 
 impl CompileContext {
@@ -97,7 +101,13 @@ impl CompileContext {
         CompileContext {
             variables: HashMap::new(),
             constants: Vec::new(),
+            loop_exit_labels: Vec::new(),
         }
+    }
+
+    /// Returns the exit label for the innermost enclosing loop, if any.
+    fn current_loop_exit(&self) -> Option<crate::emit::Label> {
+        self.loop_exit_labels.last().copied()
     }
 
     /// Looks up a variable index by identifier, using the provided span for error reporting.
@@ -191,8 +201,17 @@ fn compile_statement(
         StmtKind::For(for_stmt) => compile_for(emitter, ctx, for_stmt),
         StmtKind::While(while_stmt) => compile_while(emitter, ctx, while_stmt),
         StmtKind::Repeat(repeat_stmt) => compile_repeat(emitter, ctx, repeat_stmt),
-        StmtKind::Return => Err(Diagnostic::todo(file!(), line!())),
-        StmtKind::Exit => Err(Diagnostic::todo(file!(), line!())),
+        StmtKind::Return => {
+            emitter.emit_ret_void();
+            Ok(())
+        }
+        StmtKind::Exit => {
+            let label = ctx
+                .current_loop_exit()
+                .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+            emitter.emit_jmp(label);
+            Ok(())
+        }
     }
 }
 
@@ -288,7 +307,9 @@ fn compile_while(
     emitter.bind_label(loop_label);
     compile_expr(emitter, ctx, &while_stmt.condition)?;
     emitter.emit_jmp_if_not(end_label);
+    ctx.loop_exit_labels.push(end_label);
     compile_stmts(emitter, ctx, &while_stmt.body)?;
+    ctx.loop_exit_labels.pop();
     emitter.emit_jmp(loop_label);
     emitter.bind_label(end_label);
 
@@ -309,11 +330,15 @@ fn compile_repeat(
     repeat_stmt: &ironplc_dsl::textual::Repeat,
 ) -> Result<(), Diagnostic> {
     let loop_label = emitter.create_label();
+    let end_label = emitter.create_label();
 
     emitter.bind_label(loop_label);
+    ctx.loop_exit_labels.push(end_label);
     compile_stmts(emitter, ctx, &repeat_stmt.body)?;
+    ctx.loop_exit_labels.pop();
     compile_expr(emitter, ctx, &repeat_stmt.until)?;
     emitter.emit_jmp_if_not(loop_label);
+    emitter.bind_label(end_label);
 
     Ok(())
 }
@@ -408,7 +433,9 @@ fn compile_for(
 
     // BODY:
     emitter.bind_label(body_label);
+    ctx.loop_exit_labels.push(end_label);
     compile_stmts(emitter, ctx, &for_stmt.body)?;
+    ctx.loop_exit_labels.pop();
 
     // Increment: LOAD_VAR control, compile(step), ADD_I32, STORE_VAR control
     emitter.emit_load_var_i32(var_index);
