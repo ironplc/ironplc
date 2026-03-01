@@ -84,6 +84,42 @@ pub const BOOL_XOR: u8 = 0x56;
 /// Pops one value, pushes 1 if it is zero, else 0.
 pub const BOOL_NOT: u8 = 0x57;
 
+// --- Bitwise opcodes (32-bit) ---
+
+/// Bitwise AND of two 32-bit integers.
+/// Pops two values (b then a), pushes a & b.
+pub const BIT_AND_32: u8 = 0x58;
+
+/// Bitwise OR of two 32-bit integers.
+/// Pops two values (b then a), pushes a | b.
+pub const BIT_OR_32: u8 = 0x59;
+
+/// Bitwise XOR of two 32-bit integers.
+/// Pops two values (b then a), pushes a ^ b.
+pub const BIT_XOR_32: u8 = 0x5A;
+
+/// Bitwise NOT of a 32-bit integer.
+/// Pops one value, pushes !a.
+pub const BIT_NOT_32: u8 = 0x5B;
+
+// --- Bitwise opcodes (64-bit) ---
+
+/// Bitwise AND of two 64-bit integers.
+/// Pops two values (b then a), pushes a & b.
+pub const BIT_AND_64: u8 = 0x60;
+
+/// Bitwise OR of two 64-bit integers.
+/// Pops two values (b then a), pushes a | b.
+pub const BIT_OR_64: u8 = 0x61;
+
+/// Bitwise XOR of two 64-bit integers.
+/// Pops two values (b then a), pushes a ^ b.
+pub const BIT_XOR_64: u8 = 0x62;
+
+/// Bitwise NOT of a 64-bit integer.
+/// Pops one value, pushes !a.
+pub const BIT_NOT_64: u8 = 0x63;
+
 /// Unconditional jump. Operand: i16 offset relative to next instruction.
 pub const JMP: u8 = 0xB0;
 
