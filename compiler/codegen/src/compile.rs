@@ -17,7 +17,8 @@
 //! - Binary Add, Sub, Mul, Div, Mod, and Pow operators
 //! - Unary Neg and Not operators
 //! - Comparison operators (=, <>, <, <=, >, >=)
-//! - Boolean operators (AND, OR, XOR, NOT)
+//! - Boolean operators (AND, OR, XOR, NOT) with logical semantics
+//! - Bitwise operators (AND, OR, XOR, NOT) for bit string types (BYTE, WORD, DWORD, LWORD)
 //! - Variable references (named symbolic variables)
 //! - IF/ELSIF/ELSE statements
 //! - CASE statements (integer and subrange selectors)
@@ -337,11 +338,6 @@ fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
             signedness: Signedness::Signed,
             storage_bits: 64,
         }),
-        "bool" => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
         "byte" => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
@@ -397,6 +393,33 @@ fn infer_op_type(ctx: &CompileContext, expr: &ExprKind) -> OpType {
         }
         ExprKind::Expression(inner) => infer_op_type(ctx, inner),
         _ => DEFAULT_OP_TYPE,
+    }
+}
+
+/// Infers the storage bit width from an expression by finding the first variable reference.
+///
+/// Used after BIT_NOT to emit the correct truncation opcode for narrow types
+/// (BYTE needs TRUNC_U8, WORD needs TRUNC_U16). Returns `None` if no variable
+/// reference is found.
+fn infer_storage_bits(ctx: &CompileContext, expr: &ExprKind) -> Option<u8> {
+    match expr {
+        ExprKind::Variable(variable) => {
+            if let Variable::Symbolic(SymbolicVariableKind::Named(named)) = variable {
+                return ctx.var_type_info(&named.name).map(|ti| ti.storage_bits);
+            }
+            None
+        }
+        ExprKind::LateBound(late_bound) => ctx
+            .var_type_info(&late_bound.value)
+            .map(|ti| ti.storage_bits),
+        ExprKind::BinaryOp(binary) => {
+            infer_storage_bits(ctx, &binary.left).or_else(|| infer_storage_bits(ctx, &binary.right))
+        }
+        ExprKind::UnaryOp(unary) => infer_storage_bits(ctx, &unary.term),
+        ExprKind::Compare(compare) => infer_storage_bits(ctx, &compare.left)
+            .or_else(|| infer_storage_bits(ctx, &compare.right)),
+        ExprKind::Expression(inner) => infer_storage_bits(ctx, inner),
+        _ => None,
     }
 }
 
@@ -989,7 +1012,18 @@ fn compile_expr(
             }
             UnaryOp::Not => {
                 compile_expr(emitter, ctx, &unary.term, op_type)?;
-                emitter.emit_bool_not();
+                match op_type {
+                    (OpWidth::W32, Signedness::Unsigned) => {
+                        emitter.emit_bit_not_32();
+                        match infer_storage_bits(ctx, &unary.term) {
+                            Some(8) => emitter.emit_trunc_u8(),
+                            Some(16) => emitter.emit_trunc_u16(),
+                            _ => {}
+                        }
+                    }
+                    (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_not_64(),
+                    _ => emitter.emit_bool_not(),
+                }
                 Ok(())
             }
         },
@@ -1009,9 +1043,9 @@ fn compile_expr(
                 CompareOp::Gt => emit_gt(emitter, op_type),
                 CompareOp::LtEq => emit_le(emitter, op_type),
                 CompareOp::GtEq => emit_ge(emitter, op_type),
-                CompareOp::And => emitter.emit_bool_and(),
-                CompareOp::Or => emitter.emit_bool_or(),
-                CompareOp::Xor => emitter.emit_bool_xor(),
+                CompareOp::And => emit_and(emitter, op_type),
+                CompareOp::Or => emit_or(emitter, op_type),
+                CompareOp::Xor => emit_xor(emitter, op_type),
             }
             Ok(())
         }
@@ -1367,6 +1401,30 @@ fn emit_pow(emitter: &mut Emitter, op_type: OpType) {
         OpWidth::W64 => emitter.emit_builtin(opcode::builtin::EXPT_I32),
         OpWidth::F32 => emitter.emit_builtin(opcode::builtin::EXPT_F32),
         OpWidth::F64 => emitter.emit_builtin(opcode::builtin::EXPT_F64),
+    }
+}
+
+fn emit_and(emitter: &mut Emitter, op_type: OpType) {
+    match op_type {
+        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_bit_and_32(),
+        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_and_64(),
+        _ => emitter.emit_bool_and(),
+    }
+}
+
+fn emit_or(emitter: &mut Emitter, op_type: OpType) {
+    match op_type {
+        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_bit_or_32(),
+        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_or_64(),
+        _ => emitter.emit_bool_or(),
+    }
+}
+
+fn emit_xor(emitter: &mut Emitter, op_type: OpType) {
+    match op_type {
+        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_bit_xor_32(),
+        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_xor_64(),
+        _ => emitter.emit_bool_xor(),
     }
 }
 
