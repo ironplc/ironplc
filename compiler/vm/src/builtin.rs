@@ -25,6 +25,18 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_i32(a.wrapping_pow(b as u32)))?;
             Ok(())
         }
+        opcode::builtin::EXPT_F32 => {
+            let b = stack.pop()?.as_f32();
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.powf(b)))?;
+            Ok(())
+        }
+        opcode::builtin::EXPT_F64 => {
+            let b = stack.pop()?.as_f64();
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.powf(b)))?;
+            Ok(())
+        }
         _ => Err(Trap::InvalidBuiltinFunction(func_id)),
     }
 }

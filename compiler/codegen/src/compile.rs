@@ -7,8 +7,10 @@
 //!
 //! - PROGRAM declarations with all 8 IEC 61131-3 integer types
 //!   (SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT)
+//!   and 2 floating-point types (REAL, LREAL)
 //! - Assignment statements with truncation for narrow types
 //! - Integer literal constants (i32 and i64)
+//! - Real literal constants (f32 and f64)
 //! - Boolean literal constants (TRUE, FALSE)
 //! - Binary Add, Sub, Mul, Div, Mod, and Pow operators
 //! - Unary Neg and Not operators
@@ -47,10 +49,14 @@ use crate::emit::Emitter;
 /// The native operation width used for arithmetic and comparisons.
 #[derive(Clone, Copy, PartialEq)]
 enum OpWidth {
-    /// 32-bit operations (for SINT, INT, DINT, USINT, UINT, UDINT).
+    /// 32-bit integer operations (for SINT, INT, DINT, USINT, UINT, UDINT).
     W32,
-    /// 64-bit operations (for LINT, ULINT).
+    /// 64-bit integer operations (for LINT, ULINT).
     W64,
+    /// 32-bit float operations (for REAL).
+    F32,
+    /// 64-bit float operations (for LREAL).
+    F64,
 }
 
 /// Whether a type uses signed or unsigned semantics for division and comparison.
@@ -77,10 +83,12 @@ type OpType = (OpWidth, Signedness);
 /// The default operation type: 32-bit signed (used for pure-constant expressions).
 const DEFAULT_OP_TYPE: OpType = (OpWidth::W32, Signedness::Signed);
 
-/// A constant in the pool, either 32-bit or 64-bit.
+/// A constant in the pool: integer or float, 32-bit or 64-bit.
 enum PoolConstant {
     I32(i32),
     I64(i64),
+    F32(f32),
+    F64(f64),
 }
 
 /// Compiles a library into a bytecode container.
@@ -130,6 +138,8 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
         match constant {
             PoolConstant::I32(v) => builder = builder.add_i32_constant(*v),
             PoolConstant::I64(v) => builder = builder.add_i64_constant(*v),
+            PoolConstant::F32(v) => builder = builder.add_f32_constant(*v),
+            PoolConstant::F64(v) => builder = builder.add_f64_constant(*v),
         }
     }
 
@@ -201,6 +211,34 @@ impl CompileContext {
         }
         let index = self.constants.len() as u16;
         self.constants.push(PoolConstant::I32(value));
+        index
+    }
+
+    /// Adds an f32 constant to the pool and returns its index.
+    fn add_f32_constant(&mut self, value: f32) -> u16 {
+        for (i, existing) in self.constants.iter().enumerate() {
+            if let PoolConstant::F32(v) = existing {
+                if v.to_bits() == value.to_bits() {
+                    return i as u16;
+                }
+            }
+        }
+        let index = self.constants.len() as u16;
+        self.constants.push(PoolConstant::F32(value));
+        index
+    }
+
+    /// Adds an f64 constant to the pool and returns its index.
+    fn add_f64_constant(&mut self, value: f64) -> u16 {
+        for (i, existing) in self.constants.iter().enumerate() {
+            if let PoolConstant::F64(v) = existing {
+                if v.to_bits() == value.to_bits() {
+                    return i as u16;
+                }
+            }
+        }
+        let index = self.constants.len() as u16;
+        self.constants.push(PoolConstant::F64(value));
         index
     }
 
@@ -279,6 +317,16 @@ fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
         "ulint" => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Unsigned,
+            storage_bits: 64,
+        }),
+        "real" => Some(VarTypeInfo {
+            op_width: OpWidth::F32,
+            signedness: Signedness::Signed,
+            storage_bits: 32,
+        }),
+        "lreal" => Some(VarTypeInfo {
+            op_width: OpWidth::F64,
+            signedness: Signedness::Signed,
             storage_bits: 64,
         }),
         _ => None,
@@ -371,10 +419,7 @@ fn compile_statement(
             }
 
             // Store into the target variable.
-            match op_type.0 {
-                OpWidth::W32 => emitter.emit_store_var_i32(var_index),
-                OpWidth::W64 => emitter.emit_store_var_i64(var_index),
-            }
+            emit_store_var(emitter, var_index, op_type);
             Ok(())
         }
         StmtKind::FbCall(fb_call) => {
@@ -554,6 +599,8 @@ fn compile_case_selector(
                     emitter.emit_load_const_i64(pool_index);
                     emitter.emit_eq_i64();
                 }
+                // CASE with float types is not meaningful in IEC 61131-3.
+                _ => return Err(Diagnostic::todo(file!(), line!())),
             }
             Ok(())
         }
@@ -585,6 +632,8 @@ fn compile_case_selector(
                     emitter.emit_load_const_i64(end_index);
                     emit_le(emitter, op_type);
                 }
+                // CASE with float types is not meaningful in IEC 61131-3.
+                _ => return Err(Diagnostic::todo(file!(), line!())),
             }
 
             emitter.emit_bool_and();
@@ -790,6 +839,14 @@ fn compile_for(
                 let one_index = ctx.add_i64_constant(1);
                 emitter.emit_load_const_i64(one_index);
             }
+            OpWidth::F32 => {
+                let one_index = ctx.add_f32_constant(1.0);
+                emitter.emit_load_const_f32(one_index);
+            }
+            OpWidth::F64 => {
+                let one_index = ctx.add_f64_constant(1.0);
+                emitter.emit_load_const_f64(one_index);
+            }
         },
     }
     emit_add(emitter, op_type);
@@ -831,9 +888,7 @@ fn compile_expr(
                 Operator::Mul => emit_mul(emitter, op_type),
                 Operator::Div => emit_div(emitter, op_type),
                 Operator::Mod => emit_mod(emitter, op_type),
-                Operator::Pow => {
-                    emitter.emit_builtin(opcode::builtin::EXPT_I32);
-                }
+                Operator::Pow => emit_pow(emitter, op_type),
             }
             Ok(())
         }
@@ -866,6 +921,16 @@ fn compile_expr(
                             })?;
                             let pool_index = ctx.add_i64_constant(value);
                             emitter.emit_load_const_i64(pool_index);
+                        }
+                        OpWidth::F32 => {
+                            let value = -(unsigned as f32);
+                            let pool_index = ctx.add_f32_constant(value);
+                            emitter.emit_load_const_f32(pool_index);
+                        }
+                        OpWidth::F64 => {
+                            let value = -(unsigned as f64);
+                            let pool_index = ctx.add_f64_constant(value);
+                            emitter.emit_load_const_f64(pool_index);
                         }
                     }
                     Ok(())
@@ -1009,10 +1074,43 @@ fn compile_constant(
                     let pool_index = ctx.add_i64_constant(value);
                     emitter.emit_load_const_i64(pool_index);
                 }
+                (OpWidth::F32, _) => {
+                    // Integer literal in float context: convert to f32.
+                    let int_val = if lit.value.is_neg {
+                        -(lit.value.value.value as f32)
+                    } else {
+                        lit.value.value.value as f32
+                    };
+                    let pool_index = ctx.add_f32_constant(int_val);
+                    emitter.emit_load_const_f32(pool_index);
+                }
+                (OpWidth::F64, _) => {
+                    // Integer literal in float context: convert to f64.
+                    let int_val = if lit.value.is_neg {
+                        -(lit.value.value.value as f64)
+                    } else {
+                        lit.value.value.value as f64
+                    };
+                    let pool_index = ctx.add_f64_constant(int_val);
+                    emitter.emit_load_const_f64(pool_index);
+                }
             }
             Ok(())
         }
-        ConstantKind::RealLiteral(_) => Err(Diagnostic::todo(file!(), line!())),
+        ConstantKind::RealLiteral(lit) => match op_type.0 {
+            OpWidth::F32 => {
+                let value = lit.value as f32;
+                let pool_index = ctx.add_f32_constant(value);
+                emitter.emit_load_const_f32(pool_index);
+                Ok(())
+            }
+            OpWidth::F64 => {
+                let pool_index = ctx.add_f64_constant(lit.value);
+                emitter.emit_load_const_f64(pool_index);
+                Ok(())
+            }
+            _ => Err(Diagnostic::todo(file!(), line!())),
+        },
         ConstantKind::Boolean(lit) => {
             match lit.value {
                 Boolean::True => emitter.emit_load_true(),
@@ -1106,6 +1204,8 @@ fn emit_load_var(emitter: &mut Emitter, var_index: u16, op_type: OpType) {
     match op_type.0 {
         OpWidth::W32 => emitter.emit_load_var_i32(var_index),
         OpWidth::W64 => emitter.emit_load_var_i64(var_index),
+        OpWidth::F32 => emitter.emit_load_var_f32(var_index),
+        OpWidth::F64 => emitter.emit_load_var_f64(var_index),
     }
 }
 
@@ -1113,6 +1213,8 @@ fn emit_store_var(emitter: &mut Emitter, var_index: u16, op_type: OpType) {
     match op_type.0 {
         OpWidth::W32 => emitter.emit_store_var_i32(var_index),
         OpWidth::W64 => emitter.emit_store_var_i64(var_index),
+        OpWidth::F32 => emitter.emit_store_var_f32(var_index),
+        OpWidth::F64 => emitter.emit_store_var_f64(var_index),
     }
 }
 
@@ -1120,6 +1222,8 @@ fn emit_add(emitter: &mut Emitter, op_type: OpType) {
     match op_type.0 {
         OpWidth::W32 => emitter.emit_add_i32(),
         OpWidth::W64 => emitter.emit_add_i64(),
+        OpWidth::F32 => emitter.emit_add_f32(),
+        OpWidth::F64 => emitter.emit_add_f64(),
     }
 }
 
@@ -1127,6 +1231,8 @@ fn emit_sub(emitter: &mut Emitter, op_type: OpType) {
     match op_type.0 {
         OpWidth::W32 => emitter.emit_sub_i32(),
         OpWidth::W64 => emitter.emit_sub_i64(),
+        OpWidth::F32 => emitter.emit_sub_f32(),
+        OpWidth::F64 => emitter.emit_sub_f64(),
     }
 }
 
@@ -1134,6 +1240,8 @@ fn emit_mul(emitter: &mut Emitter, op_type: OpType) {
     match op_type.0 {
         OpWidth::W32 => emitter.emit_mul_i32(),
         OpWidth::W64 => emitter.emit_mul_i64(),
+        OpWidth::F32 => emitter.emit_mul_f32(),
+        OpWidth::F64 => emitter.emit_mul_f64(),
     }
 }
 
@@ -1143,6 +1251,8 @@ fn emit_div(emitter: &mut Emitter, op_type: OpType) {
         (OpWidth::W32, Signedness::Unsigned) => emitter.emit_div_u32(),
         (OpWidth::W64, Signedness::Signed) => emitter.emit_div_i64(),
         (OpWidth::W64, Signedness::Unsigned) => emitter.emit_div_u64(),
+        (OpWidth::F32, _) => emitter.emit_div_f32(),
+        (OpWidth::F64, _) => emitter.emit_div_f64(),
     }
 }
 
@@ -1152,6 +1262,9 @@ fn emit_mod(emitter: &mut Emitter, op_type: OpType) {
         (OpWidth::W32, Signedness::Unsigned) => emitter.emit_mod_u32(),
         (OpWidth::W64, Signedness::Signed) => emitter.emit_mod_i64(),
         (OpWidth::W64, Signedness::Unsigned) => emitter.emit_mod_u64(),
+        // Float MOD is not supported (IEC 61131-3 MOD is integer-only).
+        // The analyzer should catch this before codegen.
+        (OpWidth::F32, _) | (OpWidth::F64, _) => {}
     }
 }
 
@@ -1159,6 +1272,17 @@ fn emit_neg(emitter: &mut Emitter, op_type: OpType) {
     match op_type.0 {
         OpWidth::W32 => emitter.emit_neg_i32(),
         OpWidth::W64 => emitter.emit_neg_i64(),
+        OpWidth::F32 => emitter.emit_neg_f32(),
+        OpWidth::F64 => emitter.emit_neg_f64(),
+    }
+}
+
+fn emit_pow(emitter: &mut Emitter, op_type: OpType) {
+    match op_type.0 {
+        OpWidth::W32 => emitter.emit_builtin(opcode::builtin::EXPT_I32),
+        OpWidth::W64 => emitter.emit_builtin(opcode::builtin::EXPT_I32),
+        OpWidth::F32 => emitter.emit_builtin(opcode::builtin::EXPT_F32),
+        OpWidth::F64 => emitter.emit_builtin(opcode::builtin::EXPT_F64),
     }
 }
 
@@ -1166,6 +1290,8 @@ fn emit_eq(emitter: &mut Emitter, op_type: OpType) {
     match op_type.0 {
         OpWidth::W32 => emitter.emit_eq_i32(),
         OpWidth::W64 => emitter.emit_eq_i64(),
+        OpWidth::F32 => emitter.emit_eq_f32(),
+        OpWidth::F64 => emitter.emit_eq_f64(),
     }
 }
 
@@ -1173,6 +1299,8 @@ fn emit_ne(emitter: &mut Emitter, op_type: OpType) {
     match op_type.0 {
         OpWidth::W32 => emitter.emit_ne_i32(),
         OpWidth::W64 => emitter.emit_ne_i64(),
+        OpWidth::F32 => emitter.emit_ne_f32(),
+        OpWidth::F64 => emitter.emit_ne_f64(),
     }
 }
 
@@ -1182,6 +1310,8 @@ fn emit_lt(emitter: &mut Emitter, op_type: OpType) {
         (OpWidth::W32, Signedness::Unsigned) => emitter.emit_lt_u32(),
         (OpWidth::W64, Signedness::Signed) => emitter.emit_lt_i64(),
         (OpWidth::W64, Signedness::Unsigned) => emitter.emit_lt_u64(),
+        (OpWidth::F32, _) => emitter.emit_lt_f32(),
+        (OpWidth::F64, _) => emitter.emit_lt_f64(),
     }
 }
 
@@ -1191,6 +1321,8 @@ fn emit_le(emitter: &mut Emitter, op_type: OpType) {
         (OpWidth::W32, Signedness::Unsigned) => emitter.emit_le_u32(),
         (OpWidth::W64, Signedness::Signed) => emitter.emit_le_i64(),
         (OpWidth::W64, Signedness::Unsigned) => emitter.emit_le_u64(),
+        (OpWidth::F32, _) => emitter.emit_le_f32(),
+        (OpWidth::F64, _) => emitter.emit_le_f64(),
     }
 }
 
@@ -1200,6 +1332,8 @@ fn emit_gt(emitter: &mut Emitter, op_type: OpType) {
         (OpWidth::W32, Signedness::Unsigned) => emitter.emit_gt_u32(),
         (OpWidth::W64, Signedness::Signed) => emitter.emit_gt_i64(),
         (OpWidth::W64, Signedness::Unsigned) => emitter.emit_gt_u64(),
+        (OpWidth::F32, _) => emitter.emit_gt_f32(),
+        (OpWidth::F64, _) => emitter.emit_gt_f64(),
     }
 }
 
@@ -1209,6 +1343,8 @@ fn emit_ge(emitter: &mut Emitter, op_type: OpType) {
         (OpWidth::W32, Signedness::Unsigned) => emitter.emit_ge_u32(),
         (OpWidth::W64, Signedness::Signed) => emitter.emit_ge_i64(),
         (OpWidth::W64, Signedness::Unsigned) => emitter.emit_ge_u64(),
+        (OpWidth::F32, _) => emitter.emit_ge_f32(),
+        (OpWidth::F64, _) => emitter.emit_ge_f64(),
     }
 }
 

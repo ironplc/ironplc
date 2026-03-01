@@ -68,6 +68,44 @@ impl ConstantPool {
         ]))
     }
 
+    /// Gets an f32 value from the constant pool at the given index.
+    pub fn get_f32(&self, index: u16) -> Result<f32, ContainerError> {
+        let entry = self
+            .entries
+            .get(index as usize)
+            .ok_or(ContainerError::InvalidConstantIndex(index))?;
+        if entry.const_type != ConstType::F32 {
+            return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
+        }
+        Ok(f32::from_le_bytes([
+            entry.value[0],
+            entry.value[1],
+            entry.value[2],
+            entry.value[3],
+        ]))
+    }
+
+    /// Gets an f64 value from the constant pool at the given index.
+    pub fn get_f64(&self, index: u16) -> Result<f64, ContainerError> {
+        let entry = self
+            .entries
+            .get(index as usize)
+            .ok_or(ContainerError::InvalidConstantIndex(index))?;
+        if entry.const_type != ConstType::F64 {
+            return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
+        }
+        Ok(f64::from_le_bytes([
+            entry.value[0],
+            entry.value[1],
+            entry.value[2],
+            entry.value[3],
+            entry.value[4],
+            entry.value[5],
+            entry.value[6],
+            entry.value[7],
+        ]))
+    }
+
     /// Gets an i64 value from the constant pool at the given index.
     pub fn get_i64(&self, index: u16) -> Result<i64, ContainerError> {
         let entry = self

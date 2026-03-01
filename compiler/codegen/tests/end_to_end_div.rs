@@ -2,7 +2,8 @@
 
 mod common;
 
-use common::parse_and_run;
+use common::{parse_and_run, parse_and_try_run};
+use ironplc_vm::error::Trap;
 
 #[test]
 fn end_to_end_when_div_expression_then_variable_has_quotient() {
@@ -36,4 +37,22 @@ END_PROGRAM
 
     // (100 / 5) / 2 = 10
     assert_eq!(bufs.vars[0].as_i32(), 10);
+}
+
+#[test]
+fn end_to_end_when_integer_divide_by_zero_then_traps() {
+    let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+    y : DINT;
+  END_VAR
+  x := 10;
+  y := x / 0;
+END_PROGRAM
+";
+    let result = parse_and_try_run(source);
+
+    assert!(result.is_err(), "expected DivideByZero trap");
+    assert_eq!(result.unwrap_err().trap, Trap::DivideByZero);
 }

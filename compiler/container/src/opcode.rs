@@ -122,13 +122,37 @@ pub const TRUNC_U16: u8 = 0x23;
 /// Operand: u16 constant pool index (little-endian).
 pub const LOAD_CONST_I64: u8 = 0x02;
 
+/// Load a 32-bit float constant from the constant pool.
+/// Operand: u16 constant pool index (little-endian).
+pub const LOAD_CONST_F32: u8 = 0x03;
+
+/// Load a 64-bit float constant from the constant pool.
+/// Operand: u16 constant pool index (little-endian).
+pub const LOAD_CONST_F64: u8 = 0x04;
+
 /// Load a 64-bit integer from the variable table.
 /// Operand: u16 variable index (little-endian).
 pub const LOAD_VAR_I64: u8 = 0x11;
 
+/// Load a 32-bit float from the variable table.
+/// Operand: u16 variable index (little-endian).
+pub const LOAD_VAR_F32: u8 = 0x12;
+
+/// Load a 64-bit float from the variable table.
+/// Operand: u16 variable index (little-endian).
+pub const LOAD_VAR_F64: u8 = 0x13;
+
 /// Store a 64-bit integer to the variable table.
 /// Operand: u16 variable index (little-endian).
 pub const STORE_VAR_I64: u8 = 0x19;
+
+/// Store a 32-bit float to the variable table.
+/// Operand: u16 variable index (little-endian).
+pub const STORE_VAR_F32: u8 = 0x1A;
+
+/// Store a 64-bit float to the variable table.
+/// Operand: u16 variable index (little-endian).
+pub const STORE_VAR_F64: u8 = 0x1B;
 
 // --- 64-bit arithmetic opcodes ---
 
@@ -177,6 +201,52 @@ pub const DIV_U64: u8 = 0x42;
 /// Pops two i64 values (b then a), reinterprets as u64, pushes (a%b) as i64.
 /// Traps on division by zero.
 pub const MOD_U64: u8 = 0x43;
+
+// --- 32-bit float arithmetic opcodes ---
+
+/// Add two 32-bit floats.
+/// Pops two values (b then a), pushes a + b.
+pub const ADD_F32: u8 = 0x48;
+
+/// Subtract two 32-bit floats.
+/// Pops two values (b then a), pushes a - b.
+pub const SUB_F32: u8 = 0x49;
+
+/// Multiply two 32-bit floats.
+/// Pops two values (b then a), pushes a * b.
+pub const MUL_F32: u8 = 0x4A;
+
+/// Divide two 32-bit floats.
+/// Pops two values (b then a), pushes a / b.
+/// IEEE 754: produces ±Inf or NaN on division by zero.
+pub const DIV_F32: u8 = 0x4B;
+
+/// Negate a 32-bit float.
+/// Pops one value, pushes its negation.
+pub const NEG_F32: u8 = 0x4C;
+
+// --- 64-bit float arithmetic opcodes ---
+
+/// Add two 64-bit floats.
+/// Pops two values (b then a), pushes a + b.
+pub const ADD_F64: u8 = 0x4E;
+
+/// Subtract two 64-bit floats.
+/// Pops two values (b then a), pushes a - b.
+pub const SUB_F64: u8 = 0x4F;
+
+/// Multiply two 64-bit floats.
+/// Pops two values (b then a), pushes a * b.
+pub const MUL_F64: u8 = 0x50;
+
+/// Divide two 64-bit floats.
+/// Pops two values (b then a), pushes a / b.
+/// IEEE 754: produces ±Inf or NaN on division by zero.
+pub const DIV_F64: u8 = 0x51;
+
+/// Negate a 64-bit float.
+/// Pops one value, pushes its negation.
+pub const NEG_F64: u8 = 0x52;
 
 // --- 64-bit comparison opcodes ---
 
@@ -238,9 +308,67 @@ pub const GT_U64: u8 = 0x7E;
 /// Pops two i64 values (b then a), pushes 1 if (a as u64) >= (b as u64), else 0.
 pub const GE_U64: u8 = 0x7F;
 
+// --- 32-bit float comparison opcodes ---
+
+/// Compare two 32-bit floats for equality.
+/// Pops two values (b then a), pushes 1 if a == b, else 0 (as i32).
+pub const EQ_F32: u8 = 0x80;
+
+/// Compare two 32-bit floats for inequality.
+/// Pops two values (b then a), pushes 1 if a != b, else 0 (as i32).
+pub const NE_F32: u8 = 0x81;
+
+/// Compare two 32-bit floats (less than).
+/// Pops two values (b then a), pushes 1 if a < b, else 0 (as i32).
+pub const LT_F32: u8 = 0x82;
+
+/// Compare two 32-bit floats (less than or equal).
+/// Pops two values (b then a), pushes 1 if a <= b, else 0 (as i32).
+pub const LE_F32: u8 = 0x83;
+
+/// Compare two 32-bit floats (greater than).
+/// Pops two values (b then a), pushes 1 if a > b, else 0 (as i32).
+pub const GT_F32: u8 = 0x84;
+
+/// Compare two 32-bit floats (greater than or equal).
+/// Pops two values (b then a), pushes 1 if a >= b, else 0 (as i32).
+pub const GE_F32: u8 = 0x85;
+
+// --- 64-bit float comparison opcodes ---
+
+/// Compare two 64-bit floats for equality.
+/// Pops two values (b then a), pushes 1 if a == b, else 0 (as i32).
+pub const EQ_F64: u8 = 0x88;
+
+/// Compare two 64-bit floats for inequality.
+/// Pops two values (b then a), pushes 1 if a != b, else 0 (as i32).
+pub const NE_F64: u8 = 0x89;
+
+/// Compare two 64-bit floats (less than).
+/// Pops two values (b then a), pushes 1 if a < b, else 0 (as i32).
+pub const LT_F64: u8 = 0x8A;
+
+/// Compare two 64-bit floats (less than or equal).
+/// Pops two values (b then a), pushes 1 if a <= b, else 0 (as i32).
+pub const LE_F64: u8 = 0x8B;
+
+/// Compare two 64-bit floats (greater than).
+/// Pops two values (b then a), pushes 1 if a > b, else 0 (as i32).
+pub const GT_F64: u8 = 0x8C;
+
+/// Compare two 64-bit floats (greater than or equal).
+/// Pops two values (b then a), pushes 1 if a >= b, else 0 (as i32).
+pub const GE_F64: u8 = 0x8D;
+
 /// Built-in function IDs used with the BUILTIN opcode.
 pub mod builtin {
     /// EXPT for 32-bit integers: pops exponent (b) and base (a), pushes a ** b.
     /// Traps on negative exponent.
     pub const EXPT_I32: u16 = 0x0340;
+
+    /// EXPT for 32-bit floats: pops exponent (b) and base (a), pushes a.powf(b).
+    pub const EXPT_F32: u16 = 0x0341;
+
+    /// EXPT for 64-bit floats: pops exponent (b) and base (a), pushes a.powf(b).
+    pub const EXPT_F64: u16 = 0x0342;
 }

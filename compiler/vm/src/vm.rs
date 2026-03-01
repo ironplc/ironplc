@@ -493,6 +493,157 @@ fn execute(
                 let a = stack.pop()?.as_i64();
                 stack.push(Slot::from_i64(a.wrapping_neg()))?;
             }
+            // --- Float load/store ---
+            opcode::LOAD_CONST_F32 => {
+                let index = read_u16_le(bytecode, &mut pc);
+                let value = container
+                    .constant_pool
+                    .get_f32(index)
+                    .map_err(|_| Trap::InvalidConstantIndex(index))?;
+                stack.push(Slot::from_f32(value))?;
+            }
+            opcode::LOAD_CONST_F64 => {
+                let index = read_u16_le(bytecode, &mut pc);
+                let value = container
+                    .constant_pool
+                    .get_f64(index)
+                    .map_err(|_| Trap::InvalidConstantIndex(index))?;
+                stack.push(Slot::from_f64(value))?;
+            }
+            opcode::LOAD_VAR_F32 => {
+                let index = read_u16_le(bytecode, &mut pc);
+                scope.check_access(index)?;
+                let slot = variables.load(index)?;
+                stack.push(slot)?;
+            }
+            opcode::LOAD_VAR_F64 => {
+                let index = read_u16_le(bytecode, &mut pc);
+                scope.check_access(index)?;
+                let slot = variables.load(index)?;
+                stack.push(slot)?;
+            }
+            opcode::STORE_VAR_F32 => {
+                let index = read_u16_le(bytecode, &mut pc);
+                scope.check_access(index)?;
+                let slot = stack.pop()?;
+                variables.store(index, slot)?;
+            }
+            opcode::STORE_VAR_F64 => {
+                let index = read_u16_le(bytecode, &mut pc);
+                scope.check_access(index)?;
+                let slot = stack.pop()?;
+                variables.store(index, slot)?;
+            }
+            // --- Float arithmetic ---
+            opcode::ADD_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_f32(a + b))?;
+            }
+            opcode::SUB_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_f32(a - b))?;
+            }
+            opcode::MUL_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_f32(a * b))?;
+            }
+            opcode::DIV_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_f32(a / b))?;
+            }
+            opcode::NEG_F32 => {
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_f32(-a))?;
+            }
+            opcode::ADD_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_f64(a + b))?;
+            }
+            opcode::SUB_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_f64(a - b))?;
+            }
+            opcode::MUL_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_f64(a * b))?;
+            }
+            opcode::DIV_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_f64(a / b))?;
+            }
+            opcode::NEG_F64 => {
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_f64(-a))?;
+            }
+            // --- Float comparison ---
+            opcode::EQ_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_i32(if a == b { 1 } else { 0 }))?;
+            }
+            opcode::NE_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_i32(if a != b { 1 } else { 0 }))?;
+            }
+            opcode::LT_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_i32(if a < b { 1 } else { 0 }))?;
+            }
+            opcode::LE_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_i32(if a <= b { 1 } else { 0 }))?;
+            }
+            opcode::GT_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_i32(if a > b { 1 } else { 0 }))?;
+            }
+            opcode::GE_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
+            }
+            opcode::EQ_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_i32(if a == b { 1 } else { 0 }))?;
+            }
+            opcode::NE_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_i32(if a != b { 1 } else { 0 }))?;
+            }
+            opcode::LT_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_i32(if a < b { 1 } else { 0 }))?;
+            }
+            opcode::LE_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_i32(if a <= b { 1 } else { 0 }))?;
+            }
+            opcode::GT_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_i32(if a > b { 1 } else { 0 }))?;
+            }
+            opcode::GE_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
+            }
             // --- Unsigned 32-bit division ---
             opcode::DIV_U32 => {
                 let b = stack.pop()?.as_i32() as u32;

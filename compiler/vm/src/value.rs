@@ -25,6 +25,26 @@ impl Slot {
     pub fn as_i64(self) -> i64 {
         self.0 as i64
     }
+
+    /// Creates a slot from a 32-bit float (stored as bit pattern).
+    pub fn from_f32(v: f32) -> Self {
+        Slot(v.to_bits() as u64)
+    }
+
+    /// Extracts a 32-bit float from this slot.
+    pub fn as_f32(self) -> f32 {
+        f32::from_bits(self.0 as u32)
+    }
+
+    /// Creates a slot from a 64-bit float (stored as bit pattern).
+    pub fn from_f64(v: f64) -> Self {
+        Slot(v.to_bits())
+    }
+
+    /// Extracts a 64-bit float from this slot.
+    pub fn as_f64(self) -> f64 {
+        f64::from_bits(self.0)
+    }
 }
 
 #[cfg(test)]
@@ -57,5 +77,29 @@ mod tests {
     fn slot_from_i64_when_large_positive_then_roundtrips() {
         let slot = Slot::from_i64(i64::MAX);
         assert_eq!(slot.as_i64(), i64::MAX);
+    }
+
+    #[test]
+    fn slot_from_f32_when_positive_then_roundtrips() {
+        let slot = Slot::from_f32(3.14);
+        assert_eq!(slot.as_f32(), 3.14_f32);
+    }
+
+    #[test]
+    fn slot_from_f32_when_negative_then_roundtrips() {
+        let slot = Slot::from_f32(-2.5);
+        assert_eq!(slot.as_f32(), -2.5_f32);
+    }
+
+    #[test]
+    fn slot_from_f64_when_positive_then_roundtrips() {
+        let slot = Slot::from_f64(3.141592653589793);
+        assert_eq!(slot.as_f64(), 3.141592653589793_f64);
+    }
+
+    #[test]
+    fn slot_from_f64_when_negative_then_roundtrips() {
+        let slot = Slot::from_f64(-1.23e10);
+        assert_eq!(slot.as_f64(), -1.23e10_f64);
     }
 }
