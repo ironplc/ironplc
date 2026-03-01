@@ -76,6 +76,12 @@ impl Emitter {
         self.pop_stack(1);
     }
 
+    /// Emits NEG_I32 (pops one, pushes one).
+    pub fn emit_neg_i32(&mut self) {
+        self.bytecode.push(opcode::NEG_I32);
+        // Net effect: pop 1, push 1 = no change to stack depth
+    }
+
     /// Emits BUILTIN with a function ID (pops two, pushes one for 2-arg functions).
     pub fn emit_builtin(&mut self, func_id: u16) {
         self.bytecode.push(opcode::BUILTIN);
@@ -243,6 +249,26 @@ mod tests {
         em.emit_store_var_i32(1); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
+    }
+
+    #[test]
+    fn emitter_when_neg_then_correct_bytecode() {
+        let mut em = Emitter::new();
+        em.emit_load_var_i32(0);
+        em.emit_neg_i32();
+
+        assert_eq!(em.bytecode(), &[0x10, 0x00, 0x00, 0x35]);
+    }
+
+    #[test]
+    fn emitter_when_neg_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        // y := -x
+        em.emit_load_var_i32(0); // stack: 1
+        em.emit_neg_i32(); // stack: 1 (pop 1, push 1)
+        em.emit_store_var_i32(1); // stack: 0
+
+        assert_eq!(em.max_stack_depth(), 1);
     }
 
     #[test]

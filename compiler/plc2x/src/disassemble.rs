@@ -319,6 +319,15 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 1;
             }
+            opcode::NEG_I32 => {
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "NEG_I32",
+                    "operands": "",
+                    "comment": "",
+                }));
+                pc += 1;
+            }
             opcode::BUILTIN => {
                 let func_id = read_u16(bytecode, pc + 1);
                 let operand = match func_id {

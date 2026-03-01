@@ -10,6 +10,7 @@
 //! - end_to_end_div.rs (DIV operator)
 //! - end_to_end_mod.rs (MOD operator)
 //! - end_to_end_pow.rs (POW/EXPT operator)
+//! - end_to_end_neg.rs (NEG unary operator)
 
 mod common;
 
