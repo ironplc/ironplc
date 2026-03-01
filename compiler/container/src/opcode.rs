@@ -38,6 +38,30 @@ pub const MOD_I32: u8 = 0x34;
 /// Pops one value, pushes its negation.
 pub const NEG_I32: u8 = 0x35;
 
+/// Compare two 32-bit integers for equality.
+/// Pops two values (b then a), pushes 1 if a == b, else 0.
+pub const EQ_I32: u8 = 0x68;
+
+/// Compare two 32-bit integers for inequality.
+/// Pops two values (b then a), pushes 1 if a != b, else 0.
+pub const NE_I32: u8 = 0x69;
+
+/// Compare two signed 32-bit integers (less than).
+/// Pops two values (b then a), pushes 1 if a < b, else 0.
+pub const LT_I32: u8 = 0x6A;
+
+/// Compare two signed 32-bit integers (less than or equal).
+/// Pops two values (b then a), pushes 1 if a <= b, else 0.
+pub const LE_I32: u8 = 0x6B;
+
+/// Compare two signed 32-bit integers (greater than).
+/// Pops two values (b then a), pushes 1 if a > b, else 0.
+pub const GT_I32: u8 = 0x6C;
+
+/// Compare two signed 32-bit integers (greater than or equal).
+/// Pops two values (b then a), pushes 1 if a >= b, else 0.
+pub const GE_I32: u8 = 0x6D;
+
 /// Call a built-in standard library function.
 /// Operand: u16 function ID (little-endian).
 /// Stack effect depends on the specific function.
