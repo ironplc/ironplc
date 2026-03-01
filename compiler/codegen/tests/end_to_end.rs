@@ -14,6 +14,7 @@
 //! - end_to_end_cmp.rs (comparison operators)
 //! - end_to_end_bool.rs (boolean operators)
 //! - end_to_end_types.rs (multi-width integer type tests)
+//! - end_to_end_float.rs (REAL/LREAL floating-point type tests)
 
 mod common;
 
