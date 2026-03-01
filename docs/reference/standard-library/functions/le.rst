@@ -85,7 +85,7 @@ otherwise. ``LE(a, b)`` is the functional form of the ``<=`` operator:
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := LE(5, 10);    (* result = TRUE *)
    result := 5 <= 10;      (* result = TRUE, operator form *)

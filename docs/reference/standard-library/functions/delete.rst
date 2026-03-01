@@ -47,7 +47,7 @@ position *P*. Positions are 1-based.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := DELETE('Hello World', 6, 6);   (* result = 'Hello' *)
    result := DELETE('ABCDE', 2, 2);         (* result = 'ADE' *)

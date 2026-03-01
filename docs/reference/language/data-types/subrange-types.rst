@@ -27,7 +27,7 @@ The base type must be an integer type (``SINT``, ``INT``, ``DINT``,
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    TYPE
        Percent : INT (0 .. 100);

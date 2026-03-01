@@ -48,7 +48,7 @@ first character.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := INSERT('Helo', 'l', 3);       (* result = 'Hello' *)
    result := INSERT('World', 'Hello ', 0); (* result = 'Hello World' *)

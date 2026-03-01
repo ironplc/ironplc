@@ -21,7 +21,7 @@ INT
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    INT#42
    INT#-1000

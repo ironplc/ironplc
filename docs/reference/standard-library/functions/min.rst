@@ -84,7 +84,7 @@ the function returns that value.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := MIN(10, 20);    (* result = 10 *)
    result := MIN(-5, 3);     (* result = -5 *)

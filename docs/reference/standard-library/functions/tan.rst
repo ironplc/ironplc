@@ -41,7 +41,7 @@ The result is undefined when *IN* is an odd multiple of pi/2.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := TAN(REAL#0.0);          (* result = 0.0 *)
    value := TAN(LREAL#0.7853982);   (* value ~ 1.0 *)

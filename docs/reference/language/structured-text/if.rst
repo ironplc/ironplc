@@ -40,7 +40,7 @@ is present, its statement list executes.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    PROGRAM main
        VAR

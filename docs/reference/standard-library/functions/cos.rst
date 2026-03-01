@@ -41,7 +41,7 @@ The result is in the range [-1.0, 1.0].
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := COS(REAL#0.0);          (* result = 1.0 *)
    value := COS(LREAL#3.1415927);   (* value ~ -1.0 *)

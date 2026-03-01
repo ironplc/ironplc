@@ -21,7 +21,7 @@ UDINT
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    UDINT#42
    UDINT#1000000

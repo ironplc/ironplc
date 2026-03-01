@@ -21,7 +21,7 @@ Boolean value: ``TRUE`` or ``FALSE``.
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    TRUE
    FALSE

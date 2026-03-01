@@ -23,7 +23,7 @@ LREAL
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    LREAL#3.14159265358979
    LREAL#-1.0

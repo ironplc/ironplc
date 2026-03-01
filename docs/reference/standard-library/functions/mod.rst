@@ -78,7 +78,7 @@ only for integer types. Division by zero causes a runtime fault.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := MOD(7, 3);    (* result = 1 *)
    result := 7 MOD 3;      (* result = 1, operator form *)

@@ -17,7 +17,7 @@ Calendar date value.
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    D#2024-01-15
    DATE#2024-12-31

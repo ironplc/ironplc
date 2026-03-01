@@ -42,7 +42,7 @@ is undefined.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := LOG(REAL#100.0);  (* result = 2.0 *)
    value := LOG(LREAL#1000.0); (* value = 3.0 *)

@@ -21,7 +21,7 @@ Bit string of 64 bits.
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    LWORD#16#FFFFFFFFFFFFFFFF
    LWORD#16#0000000000000001

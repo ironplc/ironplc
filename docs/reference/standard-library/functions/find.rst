@@ -45,7 +45,7 @@ the function returns 0.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := FIND('Hello World', 'World');   (* result = 7 *)
    result := FIND('Hello World', 'xyz');     (* result = 0 *)

@@ -21,7 +21,7 @@ Bit string of 32 bits.
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    DWORD#16#DEADBEEF
    DWORD#16#00FF00FF

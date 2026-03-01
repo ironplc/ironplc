@@ -21,7 +21,7 @@ USINT
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    USINT#42
    USINT#255

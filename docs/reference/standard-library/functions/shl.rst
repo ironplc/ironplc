@@ -55,7 +55,7 @@ position are discarded.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := SHL(BYTE#2#0000_0001, 3);   (* result = 2#0000_1000 *)
    result := SHL(WORD#16#00FF, 8);        (* result = 16#FF00 *)

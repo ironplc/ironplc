@@ -39,14 +39,14 @@ are accessed by qualifying the instance name with the output name.
 **Positional arguments** pass values in the order of the input parameter
 declarations:
 
-.. code-block:: iec61131
+.. code-block::
 
    result := MyFunc(10, 20);
 
 **Named (formal) arguments** explicitly associate values with parameter names
 using the ``:=`` notation:
 
-.. code-block:: iec61131
+.. code-block::
 
    result := MyFunc(x := 10, y := 20);
 
@@ -55,7 +55,7 @@ Positional and named arguments must not be mixed in a single call.
 **Function block calls** use named arguments for inputs. After the call,
 outputs are read from the instance:
 
-.. code-block:: iec61131
+.. code-block::
 
    my_timer(IN := start_signal, PT := T#5s);
    elapsed := my_timer.ET;
@@ -64,7 +64,7 @@ outputs are read from the instance:
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    FUNCTION Add : DINT
        VAR_INPUT

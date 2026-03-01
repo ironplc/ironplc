@@ -44,7 +44,7 @@ or equal to the length of *IN*, the entire string is returned.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := RIGHT('Hello', 3);    (* result = 'llo' *)
    result := RIGHT('Hi', 10);      (* result = 'Hi' *)

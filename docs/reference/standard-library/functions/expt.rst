@@ -65,7 +65,7 @@ The operator form is ``**``.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := EXPT(2, 10);       (* result = 1024 *)
    value := 3 ** 4;             (* value = 81, operator form *)

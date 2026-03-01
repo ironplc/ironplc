@@ -21,7 +21,7 @@ DINT
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    DINT#42
    DINT#-100000

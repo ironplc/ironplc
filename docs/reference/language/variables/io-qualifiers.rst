@@ -1,6 +1,6 @@
-=============
+==============
 I/O Qualifiers
-=============
+==============
 
 Direct representation allows variables to be mapped to specific locations
 in the process image using address prefixes.
@@ -69,7 +69,7 @@ Syntax
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    PROGRAM main
        VAR

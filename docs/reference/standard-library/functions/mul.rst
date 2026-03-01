@@ -86,7 +86,7 @@ For integer types, overflow behavior wraps around (modular arithmetic).
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := MUL(6, 7);   (* result = 42 *)
    result := 6 * 7;       (* result = 42, operator form *)

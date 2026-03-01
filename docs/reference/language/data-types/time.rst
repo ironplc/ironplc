@@ -19,7 +19,7 @@ Duration value representing an interval of time.
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    T#100ms
    T#2s

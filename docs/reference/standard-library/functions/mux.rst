@@ -52,7 +52,7 @@ selected inputs.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := MUX(0, 10, 20, 30);    (* result = 10 *)
    result := MUX(2, 10, 20, 30);    (* result = 30 *)

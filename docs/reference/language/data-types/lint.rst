@@ -21,7 +21,7 @@ LINT
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    LINT#42
    LINT#-100000000

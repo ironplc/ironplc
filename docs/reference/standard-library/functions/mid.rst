@@ -48,7 +48,7 @@ position 1.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := MID('Hello World', 5, 1);   (* result = 'Hello' *)
    result := MID('Hello World', 5, 7);   (* result = 'World' *)

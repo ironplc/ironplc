@@ -21,7 +21,7 @@ UINT
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    UINT#42
    UINT#65535

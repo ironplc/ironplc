@@ -21,7 +21,7 @@ Bit string of 8 bits.
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    BYTE#16#FF
    BYTE#2#11001010

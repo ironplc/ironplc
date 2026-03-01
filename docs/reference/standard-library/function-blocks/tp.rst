@@ -59,7 +59,7 @@ the pulse have no effect; the pulse always runs for the full duration ``PT``.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    VAR
      pulse1 : TP;

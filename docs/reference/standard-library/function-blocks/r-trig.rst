@@ -52,7 +52,7 @@ for one scan cycle. On all subsequent scans where ``CLK`` remains ``TRUE``,
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    VAR
      edge1 : R_TRIG;

@@ -75,7 +75,7 @@ IEC 61131-3 provides a set of elementary data types:
      - Duration (for example, ``T#100ms``)
 
 You can also define your own types: enumerations, arrays, structures, and
-subranges. These are covered in the :doc:`/reference/compiler/index`.
+subranges. These are covered in the :doc:`/reference/language/data-types/index`.
 
 --------------------------------------
 Control Flow

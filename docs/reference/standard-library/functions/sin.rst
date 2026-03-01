@@ -41,7 +41,7 @@ The result is in the range [-1.0, 1.0].
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := SIN(REAL#0.0);          (* result = 0.0 *)
    value := SIN(LREAL#1.5707963);   (* value ~ 1.0 *)

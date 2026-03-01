@@ -56,7 +56,7 @@ The output retains its value between scans.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    VAR
      latch1 : RS;

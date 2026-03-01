@@ -91,7 +91,7 @@ For integer types, underflow behavior wraps around (modular arithmetic).
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := SUB(30, 10);   (* result = 20 *)
    result := 30 - 10;       (* result = 20, operator form *)

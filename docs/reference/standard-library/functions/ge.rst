@@ -85,7 +85,7 @@ otherwise. ``GE(a, b)`` is the functional form of the ``>=`` operator:
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := GE(10, 5);    (* result = TRUE *)
    result := 10 >= 5;      (* result = TRUE, operator form *)

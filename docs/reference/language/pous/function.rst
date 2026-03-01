@@ -28,7 +28,7 @@ The function returns a value by assigning to the function name.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    FUNCTION Square : DINT
        VAR_INPUT
@@ -47,7 +47,7 @@ Calling a Function
 
 Functions can be called using positional or named (formal) arguments:
 
-.. code-block:: iec61131
+.. code-block::
 
    (* Positional *)
    result := Square(42);

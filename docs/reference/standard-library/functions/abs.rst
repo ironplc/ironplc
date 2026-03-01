@@ -58,7 +58,7 @@ the positive value cannot be represented.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := ABS(-42);    (* result = 42 *)
    value := ABS(REAL#-3.14);  (* value = 3.14 *)

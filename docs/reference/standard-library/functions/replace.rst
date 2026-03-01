@@ -53,7 +53,7 @@ the portion being replaced.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := REPLACE('Hello World', 'Earth', 5, 7);  (* result = 'Hello Earth' *)
    result := REPLACE('ABCDE', 'XY', 2, 2);           (* result = 'AXYDE' *)

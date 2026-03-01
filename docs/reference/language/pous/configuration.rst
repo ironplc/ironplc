@@ -26,7 +26,7 @@ Syntax
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    CONFIGURATION DefaultConfig
        RESOURCE DefaultResource ON PLC

@@ -41,7 +41,7 @@ range [-pi/2, pi/2].
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := ATAN(REAL#0.0);   (* result = 0.0 *)
    value := ATAN(LREAL#1.0);   (* value ~ 0.7853982 *)

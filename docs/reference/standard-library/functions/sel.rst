@@ -45,7 +45,7 @@ selected inputs.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := SEL(TRUE, 10, 20);     (* result = 20 *)
    result := SEL(FALSE, 10, 20);    (* result = 10 *)

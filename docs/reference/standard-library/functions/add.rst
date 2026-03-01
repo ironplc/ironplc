@@ -91,7 +91,7 @@ For integer types, overflow behavior wraps around (modular arithmetic).
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := ADD(10, 20);   (* result = 30 *)
    result := 10 + 20;       (* result = 30, operator form *)

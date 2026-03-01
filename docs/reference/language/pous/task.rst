@@ -39,7 +39,7 @@ Parameters
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    RESOURCE DefaultResource ON PLC
        TASK MainTask(INTERVAL := T#20ms, PRIORITY := 1);

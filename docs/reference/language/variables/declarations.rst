@@ -1,6 +1,6 @@
-====================
+=====================
 Variable Declarations
-====================
+=====================
 
 Variables are declared in ``VAR`` / ``END_VAR`` blocks at the beginning of
 a program organization unit.
@@ -30,7 +30,7 @@ separated by commas.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    PROGRAM main
        VAR

@@ -19,7 +19,7 @@ Double-byte (wide) character string with a maximum length.
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    "Hello, world!"
    "Double-byte string"
@@ -27,7 +27,7 @@ Literals
 
 The maximum length can be specified in the declaration:
 
-.. code-block:: iec61131
+.. code-block::
 
    VAR
        name : WSTRING[50];   (* max 50 characters *)

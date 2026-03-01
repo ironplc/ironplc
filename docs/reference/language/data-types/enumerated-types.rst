@@ -24,7 +24,7 @@ Syntax
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    TYPE
        TrafficLight : (Red, Yellow, Green);
@@ -43,7 +43,7 @@ Example
 Enumerated values must be unique within the type. Values can optionally
 include a type qualifier:
 
-.. code-block:: iec61131
+.. code-block::
 
    TYPE
        Color : (Red, Green, Blue) INT;

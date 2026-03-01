@@ -19,7 +19,7 @@ Single-byte character string with a maximum length.
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    'Hello, world!'
    'It''s escaped'
@@ -27,7 +27,7 @@ Literals
 
 The maximum length can be specified in the declaration:
 
-.. code-block:: iec61131
+.. code-block::
 
    VAR
        name : STRING[50];   (* max 50 characters *)

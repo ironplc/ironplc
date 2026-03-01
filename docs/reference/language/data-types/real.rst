@@ -23,7 +23,7 @@ REAL
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    REAL#3.14
    REAL#-1.0

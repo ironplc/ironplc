@@ -45,7 +45,7 @@ Scope Keywords
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    FUNCTION_BLOCK MotorControl
        VAR_INPUT

@@ -58,7 +58,7 @@ both ``ET`` and ``Q`` are reset.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    VAR
      timer1 : TON;

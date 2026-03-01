@@ -24,7 +24,7 @@ Arrays can be declared inline in variable declarations or as named types.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    TYPE
        TenInts : ARRAY [1..10] OF INT;

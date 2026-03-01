@@ -88,7 +88,7 @@ floating-point precision limitations.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := NE(5, 10);    (* result = TRUE *)
    result := 5 <> 10;      (* result = TRUE, operator form *)

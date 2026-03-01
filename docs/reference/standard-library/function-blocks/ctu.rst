@@ -61,7 +61,7 @@ when ``CV`` is greater than or equal to the preset value ``PV``.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    VAR
      counter1 : CTU;

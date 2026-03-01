@@ -21,7 +21,7 @@ ULINT
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    ULINT#42
    ULINT#1000000000

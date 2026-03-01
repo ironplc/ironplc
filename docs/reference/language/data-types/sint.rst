@@ -21,7 +21,7 @@ SINT
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    SINT#42
    SINT#-100

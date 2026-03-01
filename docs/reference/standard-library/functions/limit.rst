@@ -101,7 +101,7 @@ The behavior is undefined if *MN* > *MX*.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := LIMIT(0, 50, 100);    (* result = 50 *)
    result := LIMIT(0, -10, 100);   (* result = 0 *)

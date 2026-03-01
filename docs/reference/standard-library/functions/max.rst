@@ -84,7 +84,7 @@ the function returns that value.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := MAX(10, 20);    (* result = 20 *)
    result := MAX(-5, 3);     (* result = 3 *)

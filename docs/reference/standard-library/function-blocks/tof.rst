@@ -60,7 +60,7 @@ stays ``TRUE``.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    VAR
      timer1 : TOF;

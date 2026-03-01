@@ -31,7 +31,7 @@ execution resumes at the caller.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    FUNCTION Divide : DINT
        VAR_INPUT

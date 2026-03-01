@@ -17,7 +17,7 @@ Time of day value.
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    TOD#14:30:00
    TIME_OF_DAY#08:00:00

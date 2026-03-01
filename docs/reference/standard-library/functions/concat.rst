@@ -43,7 +43,7 @@ Returns a new string formed by appending *IN2* to the end of *IN1*.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := CONCAT('Hello', ' World');    (* result = 'Hello World' *)
    result := CONCAT('A', 'B');             (* result = 'AB' *)

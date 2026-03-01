@@ -26,7 +26,7 @@ Syntax
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    FUNCTION_BLOCK Counter
        VAR_INPUT
@@ -52,7 +52,7 @@ Using a Function Block
 
 Function blocks must be instantiated as variables before use:
 
-.. code-block:: iec61131
+.. code-block::
 
    PROGRAM main
        VAR

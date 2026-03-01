@@ -367,7 +367,7 @@ target type may be truncated or cause a runtime error.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    int_val := REAL_TO_INT(REAL#3.14);     (* int_val = 3 *)
    real_val := INT_TO_REAL(42);            (* real_val = 42.0 *)

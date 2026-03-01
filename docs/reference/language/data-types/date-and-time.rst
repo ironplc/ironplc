@@ -17,7 +17,7 @@ Combined date and time of day value.
 Literals
 --------
 
-.. code-block:: iec61131
+.. code-block::
 
    DT#2024-01-15-14:30:00
    DATE_AND_TIME#2024-12-31-23:59:59

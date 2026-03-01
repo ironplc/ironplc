@@ -87,7 +87,7 @@ causes a runtime fault.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := DIV(42, 6);   (* result = 7 *)
    result := 42 / 6;       (* result = 7, operator form *)

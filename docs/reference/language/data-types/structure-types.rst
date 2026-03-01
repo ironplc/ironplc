@@ -28,7 +28,7 @@ Syntax
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    TYPE
        Point : STRUCT

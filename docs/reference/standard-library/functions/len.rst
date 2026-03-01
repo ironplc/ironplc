@@ -41,7 +41,7 @@ result is 0.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := LEN('Hello');    (* result = 5 *)
    result := LEN('');         (* result = 0 *)

@@ -41,7 +41,7 @@ Returns *e* raised to the power of *IN*, where *e* is Euler's number
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := EXP(REAL#1.0);   (* result ~ 2.718282 *)
    value := EXP(LREAL#0.0);   (* value = 1.0 *)

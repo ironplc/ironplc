@@ -41,7 +41,7 @@ Unlike C-style ``switch`` statements, there is no fall-through between cases.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    PROGRAM main
        VAR

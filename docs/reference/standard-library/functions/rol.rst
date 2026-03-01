@@ -55,7 +55,7 @@ bits are lost.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    result := ROL(BYTE#2#1000_0001, 1);   (* result = 2#0000_0011 *)
    result := ROL(WORD#16#F000, 4);        (* result = 16#000F *)

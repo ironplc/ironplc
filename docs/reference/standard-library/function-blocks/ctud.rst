@@ -73,7 +73,7 @@ less than or equal to zero.
 Example
 -------
 
-.. code-block:: iec61131
+.. code-block::
 
    VAR
      counter1 : CTUD;
