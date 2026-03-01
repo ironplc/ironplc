@@ -1,8 +1,9 @@
 //! End-to-end tests for multi-width integer type support.
 //!
 //! Each test verifies the full pipeline: parse -> compile -> VM execution
-//! for a specific IEC 61131-3 integer type. Tests cover basic assignment
-//! and overflow/wrapping behavior for each type.
+//! for a specific IEC 61131-3 integer type. Tests cover assignment,
+//! overflow/wrapping, sign/zero extension, arithmetic, comparison,
+//! and unsigned semantics for each type.
 
 mod common;
 
@@ -169,6 +170,109 @@ END_PROGRAM
     assert_eq!(bufs.vars[1].as_i64(), 3_000_000_001);
 }
 
+#[test]
+fn end_to_end_when_lint_subtraction_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    x : LINT;
+    y : LINT;
+  END_VAR
+  x := 5000000000;
+  y := x - 1;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[1].as_i64(), 4_999_999_999);
+}
+
+#[test]
+fn end_to_end_when_lint_multiplication_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    x : LINT;
+    y : LINT;
+  END_VAR
+  x := 1000000;
+  y := x * 1000000;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    // 1_000_000 * 1_000_000 = 1_000_000_000_000 (exceeds i32 range)
+    assert_eq!(bufs.vars[1].as_i64(), 1_000_000_000_000);
+}
+
+#[test]
+fn end_to_end_when_lint_division_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    x : LINT;
+    y : LINT;
+  END_VAR
+  x := 10000000000;
+  y := x / 2;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[1].as_i64(), 5_000_000_000);
+}
+
+#[test]
+fn end_to_end_when_lint_modulo_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    x : LINT;
+    y : LINT;
+  END_VAR
+  x := 10000000001;
+  y := x MOD 10000000000;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[1].as_i64(), 1);
+}
+
+#[test]
+fn end_to_end_when_lint_negation_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    x : LINT;
+    y : LINT;
+  END_VAR
+  x := 3000000000;
+  y := -x;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[1].as_i64(), -3_000_000_000);
+}
+
+#[test]
+fn end_to_end_when_lint_comparison_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    result : LINT;
+    a : LINT;
+    b : LINT;
+  END_VAR
+  a := 5000000000;
+  b := 3000000000;
+  IF a > b THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i64(), 1);
+}
+
 // --- USINT (8-bit unsigned, 0..255) ---
 
 #[test]
@@ -306,6 +410,63 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i32(), 1);
 }
 
+#[test]
+fn end_to_end_when_udint_division_then_unsigned() {
+    let source = "
+PROGRAM main
+  VAR
+    x : UDINT;
+    y : UDINT;
+  END_VAR
+  x := 3000000000;
+  y := x / 2;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    // 3B / 2 = 1.5B as unsigned (would be wrong if signed: 3B as i32 is negative)
+    assert_eq!(bufs.vars[1].as_i32() as u32, 1_500_000_000);
+}
+
+#[test]
+fn end_to_end_when_udint_modulo_then_unsigned() {
+    let source = "
+PROGRAM main
+  VAR
+    x : UDINT;
+    y : UDINT;
+  END_VAR
+  x := 3000000001;
+  y := x MOD 3000000000;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    // 3B+1 MOD 3B = 1 as unsigned (would be wrong if signed)
+    assert_eq!(bufs.vars[1].as_i32() as u32, 1);
+}
+
+#[test]
+fn end_to_end_when_udint_less_than_then_unsigned() {
+    let source = "
+PROGRAM main
+  VAR
+    result : UDINT;
+    a : UDINT;
+    b : UDINT;
+  END_VAR
+  a := 2000000000;
+  b := 3000000000;
+  IF a < b THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    // 2B < 3B is true unsigned (3B as i32 is negative, so signed LT would say false)
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+}
+
 // --- ULINT (64-bit unsigned) ---
 
 #[test]
@@ -320,6 +481,92 @@ END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source);
     assert_eq!(bufs.vars[0].as_i64(), 42);
+}
+
+#[test]
+fn end_to_end_when_ulint_subtraction_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    x : ULINT;
+    y : ULINT;
+  END_VAR
+  x := 5000000000;
+  y := x - 1;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[1].as_i64(), 4_999_999_999);
+}
+
+#[test]
+fn end_to_end_when_ulint_multiplication_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    x : ULINT;
+    y : ULINT;
+  END_VAR
+  x := 1000000;
+  y := x * 1000000;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[1].as_i64(), 1_000_000_000_000);
+}
+
+#[test]
+fn end_to_end_when_ulint_division_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    x : ULINT;
+    y : ULINT;
+  END_VAR
+  x := 10000000000;
+  y := x / 2;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[1].as_i64(), 5_000_000_000);
+}
+
+#[test]
+fn end_to_end_when_ulint_modulo_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    x : ULINT;
+    y : ULINT;
+  END_VAR
+  x := 10000000001;
+  y := x MOD 10000000000;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[1].as_i64(), 1);
+}
+
+#[test]
+fn end_to_end_when_ulint_comparison_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    result : ULINT;
+    a : ULINT;
+    b : ULINT;
+  END_VAR
+  a := 5000000000;
+  b := 3000000000;
+  IF a > b THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i64(), 1);
 }
 
 #[test]
