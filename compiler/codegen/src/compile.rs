@@ -14,6 +14,7 @@
 //! - Boolean operators (AND, OR, XOR, NOT)
 //! - Variable references (named symbolic variables)
 //! - IF/ELSIF/ELSE statements
+//! - CASE statements (integer and subrange selectors)
 //! - WHILE, FOR, and REPEAT iteration statements
 //! - EXIT (break from innermost loop) and RETURN (early program exit)
 
@@ -22,12 +23,13 @@ use std::collections::HashMap;
 use ironplc_container::{opcode, Container, ContainerBuilder};
 use ironplc_dsl::common::{
     Boolean, ConstantKind, FunctionBlockBodyKind, Library, LibraryElementKind, ProgramDeclaration,
-    VarDecl,
+    SignedInteger, VarDecl,
 };
-use ironplc_dsl::core::{Id, Located, SourceSpan};
+use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    CompareOp, ExprKind, Operator, Statements, StmtKind, SymbolicVariableKind, UnaryOp, Variable,
+    CaseSelectionKind, CompareOp, ExprKind, Operator, Statements, StmtKind, SymbolicVariableKind,
+    UnaryOp, Variable,
 };
 use ironplc_problems::Problem;
 
@@ -193,11 +195,7 @@ fn compile_statement(
             Err(Diagnostic::todo_with_span(fb_call.span(), file!(), line!()))
         }
         StmtKind::If(if_stmt) => compile_if(emitter, ctx, if_stmt),
-        StmtKind::Case(case_stmt) => Err(Diagnostic::todo_with_span(
-            expr_span(&case_stmt.selector),
-            file!(),
-            line!(),
-        )),
+        StmtKind::Case(case_stmt) => compile_case(emitter, ctx, case_stmt),
         StmtKind::For(for_stmt) => compile_for(emitter, ctx, for_stmt),
         StmtKind::While(while_stmt) => compile_while(emitter, ctx, while_stmt),
         StmtKind::Repeat(repeat_stmt) => compile_repeat(emitter, ctx, repeat_stmt),
@@ -284,6 +282,125 @@ fn compile_if(
     }
 
     Ok(())
+}
+
+/// Compiles a CASE statement.
+///
+/// Each `CaseStatementGroup` is compiled as a chain of comparisons (like
+/// IF/ELSIF/ELSE). Multi-value selectors are OR'd together.
+///
+/// ```text
+///   // For each arm:
+///   compile(selector)
+///   LOAD_CONST case_value
+///   EQ_I32
+///   JMP_IF_NOT → next_arm
+///   compile(body)
+///   JMP → END
+/// next_arm:
+///   // ... next arm / ELSE body ...
+/// END:
+/// ```
+fn compile_case(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    case_stmt: &ironplc_dsl::textual::Case,
+) -> Result<(), Diagnostic> {
+    let end_label = emitter.create_label();
+
+    for group in &case_stmt.statement_groups {
+        let next_label = emitter.create_label();
+
+        // Compile selector comparisons with OR logic.
+        for (i, selection) in group.selectors.iter().enumerate() {
+            compile_case_selector(emitter, ctx, &case_stmt.selector, selection)?;
+            if i > 0 {
+                emitter.emit_bool_or();
+            }
+        }
+
+        emitter.emit_jmp_if_not(next_label);
+
+        // Compile body.
+        compile_stmts(emitter, ctx, &group.statements)?;
+
+        emitter.emit_jmp(end_label);
+
+        emitter.bind_label(next_label);
+    }
+
+    // Compile ELSE body if present.
+    compile_stmts(emitter, ctx, &case_stmt.else_body)?;
+
+    emitter.bind_label(end_label);
+
+    Ok(())
+}
+
+/// Compiles a single case selector, leaving a boolean result on the stack.
+///
+/// - `SignedInteger`: `selector == value`
+/// - `Subrange`: `(selector >= start) AND (selector <= end)`
+/// - `EnumeratedValue`: not yet supported (returns todo diagnostic)
+fn compile_case_selector(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    selector_expr: &ExprKind,
+    selection: &CaseSelectionKind,
+) -> Result<(), Diagnostic> {
+    match selection {
+        CaseSelectionKind::SignedInteger(si) => {
+            compile_expr(emitter, ctx, selector_expr)?;
+            let value = signed_integer_to_i32(si)?;
+            let pool_index = ctx.add_i32_constant(value);
+            emitter.emit_load_const_i32(pool_index);
+            emitter.emit_eq_i32();
+            Ok(())
+        }
+        CaseSelectionKind::Subrange(sr) => {
+            // (selector >= start) AND (selector <= end)
+            compile_expr(emitter, ctx, selector_expr)?;
+            let start = signed_integer_to_i32(&sr.start)?;
+            let start_index = ctx.add_i32_constant(start);
+            emitter.emit_load_const_i32(start_index);
+            emitter.emit_ge_i32();
+
+            compile_expr(emitter, ctx, selector_expr)?;
+            let end = signed_integer_to_i32(&sr.end)?;
+            let end_index = ctx.add_i32_constant(end);
+            emitter.emit_load_const_i32(end_index);
+            emitter.emit_le_i32();
+
+            emitter.emit_bool_and();
+            Ok(())
+        }
+        CaseSelectionKind::EnumeratedValue(ev) => {
+            Err(Diagnostic::todo_with_span(ev.span(), file!(), line!()))
+        }
+    }
+}
+
+/// Converts a `SignedInteger` AST node to an `i32` value.
+fn signed_integer_to_i32(si: &SignedInteger) -> Result<i32, Diagnostic> {
+    if si.is_neg {
+        let unsigned = si.value.value as i128;
+        let signed = -unsigned;
+        i32::try_from(signed).map_err(|_| {
+            Diagnostic::problem(
+                Problem::ConstantOverflow,
+                Label::span(si.value.span(), "Integer literal"),
+            )
+            .with_context("value", &signed.to_string())
+        })
+    } else {
+        i32::try_from(si.value.value).map_err(|_| {
+            Diagnostic::problem(
+                Problem::ConstantOverflow,
+                Label::span(si.value.span(), "Integer literal"),
+            )
+            .with_context("value", &si.value.value.to_string())
+        })
+    }
 }
 
 /// Compiles a WHILE statement.
@@ -635,25 +752,6 @@ fn resolve_variable(ctx: &CompileContext, variable: &Variable) -> Result<u16, Di
             file!(),
             line!(),
         )),
-    }
-}
-
-/// Extracts a source span from an expression for error reporting.
-///
-/// Attempts to find the most specific span available in the expression tree.
-/// Falls back to `SourceSpan::default()` for expressions that lack span info.
-fn expr_span(expr: &ExprKind) -> SourceSpan {
-    match expr {
-        ExprKind::Variable(Variable::Symbolic(sym)) => sym.span(),
-        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => lit.value.value.span(),
-        ExprKind::LateBound(late) => late.value.span(),
-        ExprKind::Function(func) => func.name.span(),
-        ExprKind::EnumeratedValue(e) => e.span(),
-        ExprKind::BinaryOp(binary) => expr_span(&binary.left),
-        ExprKind::UnaryOp(unary) => expr_span(&unary.term),
-        ExprKind::Compare(compare) => expr_span(&compare.left),
-        ExprKind::Expression(inner) => expr_span(inner),
-        _ => SourceSpan::default(),
     }
 }
 
