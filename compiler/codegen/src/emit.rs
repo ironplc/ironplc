@@ -76,6 +76,14 @@ impl Emitter {
         self.pop_stack(1);
     }
 
+    /// Emits BUILTIN with a function ID (pops two, pushes one for 2-arg functions).
+    pub fn emit_builtin(&mut self, func_id: u16) {
+        self.bytecode.push(opcode::BUILTIN);
+        self.bytecode.extend_from_slice(&func_id.to_le_bytes());
+        // Net effect: pop 2, push 1 = pop 1
+        self.pop_stack(1);
+    }
+
     /// Emits RET_VOID.
     pub fn emit_ret_void(&mut self) {
         self.bytecode.push(opcode::RET_VOID);
@@ -268,5 +276,31 @@ mod tests {
 
         // 256 in little-endian u16 is [0x00, 0x01]
         assert_eq!(em.bytecode(), &[0x01, 0x00, 0x01]);
+    }
+
+    #[test]
+    fn emitter_when_builtin_then_correct_bytecode() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0);
+        em.emit_load_const_i32(1);
+        em.emit_builtin(opcode::builtin::EXPT_I32);
+
+        // LOAD_CONST pool:0, LOAD_CONST pool:1, BUILTIN 0x0340
+        assert_eq!(
+            em.bytecode(),
+            &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0xC4, 0x40, 0x03]
+        );
+    }
+
+    #[test]
+    fn emitter_when_builtin_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        // y := x ** 5
+        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_const_i32(0); // stack: 2
+        em.emit_builtin(opcode::builtin::EXPT_I32); // stack: 1
+        em.emit_store_var_i32(1); // stack: 0
+
+        assert_eq!(em.max_stack_depth(), 2);
     }
 }

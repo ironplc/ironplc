@@ -9,6 +9,7 @@
 //! - end_to_end_mul.rs (MUL operator)
 //! - end_to_end_div.rs (DIV operator)
 //! - end_to_end_mod.rs (MOD operator)
+//! - end_to_end_pow.rs (POW/EXPT operator)
 
 mod common;
 

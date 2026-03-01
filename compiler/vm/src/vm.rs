@@ -1,5 +1,6 @@
 use ironplc_container::Container;
 
+use crate::builtin;
 use crate::error::Trap;
 use crate::scheduler::{ProgramInstanceState, TaskScheduler, TaskState};
 use crate::stack::OperandStack;
@@ -407,6 +408,10 @@ fn execute(
                     return Err(Trap::DivideByZero);
                 }
                 stack.push(Slot::from_i32(a.wrapping_rem(b)))?;
+            }
+            opcode::BUILTIN => {
+                let func_id = read_u16_le(bytecode, &mut pc);
+                builtin::dispatch(func_id, stack)?;
             }
             opcode::RET_VOID => {
                 return Ok(());

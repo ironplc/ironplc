@@ -7,12 +7,12 @@
 //! - PROGRAM declarations with INT variables
 //! - Assignment statements
 //! - Integer literal constants
-//! - Binary Add, Sub, Mul, Div, and Mod operators
+//! - Binary Add, Sub, Mul, Div, Mod, and Pow operators
 //! - Variable references (named symbolic variables)
 
 use std::collections::HashMap;
 
-use ironplc_container::{Container, ContainerBuilder};
+use ironplc_container::{opcode, Container, ContainerBuilder};
 use ironplc_dsl::common::{
     ConstantKind, FunctionBlockBodyKind, Library, LibraryElementKind, ProgramDeclaration, VarDecl,
 };
@@ -242,11 +242,10 @@ fn compile_expr(
                     emitter.emit_mod_i32();
                     Ok(())
                 }
-                _ => Err(Diagnostic::todo_with_span(
-                    expr_span(&binary.left),
-                    file!(),
-                    line!(),
-                )),
+                Operator::Pow => {
+                    emitter.emit_builtin(opcode::builtin::EXPT_I32);
+                    Ok(())
+                }
             }
         }
         ExprKind::UnaryOp(unary) => match unary.op {
