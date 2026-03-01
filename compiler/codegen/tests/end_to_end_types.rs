@@ -25,6 +25,24 @@ END_PROGRAM
 }
 
 #[test]
+fn end_to_end_when_sint_sign_extend_then_preserves_negative() {
+    let source = "
+PROGRAM main
+  VAR
+    x : SINT;
+    y : SINT;
+  END_VAR
+  x := -5;
+  y := x + 1;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    // -5 truncated to i8 sign-extends back to -5 in i32; -5 + 1 = -4
+    assert_eq!(bufs.vars[0].as_i32(), -5);
+    assert_eq!(bufs.vars[1].as_i32(), -4);
+}
+
+#[test]
 fn end_to_end_when_sint_overflow_then_wraps() {
     let source = "
 PROGRAM main
@@ -53,6 +71,24 @@ END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source);
     assert_eq!(bufs.vars[0].as_i32(), 1000);
+}
+
+#[test]
+fn end_to_end_when_int_sign_extend_then_preserves_negative() {
+    let source = "
+PROGRAM main
+  VAR
+    x : INT;
+    y : INT;
+  END_VAR
+  x := -100;
+  y := x + 1;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    // -100 truncated to i16 sign-extends back to -100 in i32; -100 + 1 = -99
+    assert_eq!(bufs.vars[0].as_i32(), -100);
+    assert_eq!(bufs.vars[1].as_i32(), -99);
 }
 
 #[test]
@@ -150,6 +186,24 @@ END_PROGRAM
 }
 
 #[test]
+fn end_to_end_when_usint_zero_extend_then_preserves_high_value() {
+    let source = "
+PROGRAM main
+  VAR
+    x : USINT;
+    y : USINT;
+  END_VAR
+  x := 200;
+  y := x + 10;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    // 200 truncated to u8 zero-extends back to 200 in i32; 200 + 10 = 210
+    assert_eq!(bufs.vars[0].as_i32(), 200);
+    assert_eq!(bufs.vars[1].as_i32(), 210);
+}
+
+#[test]
 fn end_to_end_when_usint_overflow_then_wraps() {
     let source = "
 PROGRAM main
@@ -178,6 +232,24 @@ END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source);
     assert_eq!(bufs.vars[0].as_i32(), 50000);
+}
+
+#[test]
+fn end_to_end_when_uint_zero_extend_then_preserves_high_value() {
+    let source = "
+PROGRAM main
+  VAR
+    x : UINT;
+    y : UINT;
+  END_VAR
+  x := 50000;
+  y := x + 1000;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    // 50000 truncated to u16 zero-extends back to 50000 in i32; 50000 + 1000 = 51000
+    assert_eq!(bufs.vars[0].as_i32(), 50000);
+    assert_eq!(bufs.vars[1].as_i32(), 51000);
 }
 
 #[test]
