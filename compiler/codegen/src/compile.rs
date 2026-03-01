@@ -36,7 +36,7 @@ use ironplc_dsl::common::{
     Boolean, ConstantKind, FunctionBlockBodyKind, InitialValueAssignmentKind, Library,
     LibraryElementKind, ProgramDeclaration, SignedInteger, VarDecl,
 };
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     CaseSelectionKind, CompareOp, ExprKind, Operator, Statements, StmtKind, SymbolicVariableKind,
@@ -110,7 +110,13 @@ fn find_program(library: &Library) -> Result<&ProgramDeclaration, Diagnostic> {
             return Ok(program);
         }
     }
-    Err(Diagnostic::todo(file!(), line!()))
+    Err(Diagnostic::problem(
+        Problem::NoProgramDeclaration,
+        Label::file(
+            FileId::default(),
+            "Source does not contain a PROGRAM declaration",
+        ),
+    ))
 }
 
 /// Compiles a single PROGRAM into a container.
@@ -434,10 +440,16 @@ fn compile_statement(
             emitter.emit_ret_void();
             Ok(())
         }
-        StmtKind::Exit => {
-            let label = ctx
-                .current_loop_exit()
-                .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+        StmtKind::Exit(span) => {
+            let label = ctx.current_loop_exit().ok_or_else(|| {
+                Diagnostic::problem(
+                    Problem::ExitOutsideLoop,
+                    Label::span(
+                        span.clone(),
+                        "EXIT must be inside a FOR, WHILE, or REPEAT loop",
+                    ),
+                )
+            })?;
             emitter.emit_jmp(label);
             Ok(())
         }
@@ -794,7 +806,15 @@ fn compile_for(
         None => StepSign::Positive,
         Some(step_expr) => match try_constant_sign(step_expr) {
             Some(sign) => sign,
-            None => return Err(Diagnostic::todo(file!(), line!())),
+            None => {
+                return Err(Diagnostic::problem(
+                    Problem::NotImplemented,
+                    Label::span(
+                        for_stmt.control.span(),
+                        "FOR loop step must be a constant expression",
+                    ),
+                ))
+            }
         },
     };
 
@@ -1383,7 +1403,7 @@ END_PROGRAM
     }
 
     #[test]
-    fn compile_when_no_program_then_error() {
+    fn compile_when_no_program_then_p4020_error() {
         let source = "
 FUNCTION_BLOCK MyBlock
   VAR
@@ -1396,7 +1416,7 @@ END_FUNCTION_BLOCK
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
-        assert_eq!(diagnostic.code, Problem::NotImplemented.code());
+        assert_eq!(diagnostic.code, Problem::NoProgramDeclaration.code());
     }
 
     #[test]
@@ -1506,5 +1526,45 @@ END_PROGRAM
         let result = compile(&library);
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn compile_when_exit_outside_loop_then_p4021_error() {
+        let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+  END_VAR
+  x := 1;
+  EXIT;
+END_PROGRAM
+";
+        let library = parse(source);
+        let result = compile(&library);
+
+        assert!(result.is_err());
+        let diagnostic = result.unwrap_err();
+        assert_eq!(diagnostic.code, Problem::ExitOutsideLoop.code());
+    }
+
+    #[test]
+    fn compile_when_for_non_constant_step_then_p9999_error() {
+        let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+    s : DINT;
+  END_VAR
+  FOR x := 1 TO 10 BY s DO
+    x := x;
+  END_FOR;
+END_PROGRAM
+";
+        let library = parse(source);
+        let result = compile(&library);
+
+        assert!(result.is_err());
+        let diagnostic = result.unwrap_err();
+        assert_eq!(diagnostic.code, Problem::NotImplemented.code());
     }
 }

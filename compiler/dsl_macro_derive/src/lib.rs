@@ -91,9 +91,16 @@ fn expand_enum_recurse_visit(name: &Ident, data_enum: &DataEnum) -> Result<Token
             // An ignored variant does not recurse, but we need to include is so that all have a
             // defined match.
             if is_ignored(&v.attrs).unwrap() {
-                return Ok(quote! {
-                    #name::#variant_name => Ok(V::Value::default())
-                });
+                let has_fields = !v.fields.is_empty();
+                if has_fields {
+                    return Ok(quote! {
+                        #name::#variant_name(..) => Ok(V::Value::default())
+                    });
+                } else {
+                    return Ok(quote! {
+                        #name::#variant_name => Ok(V::Value::default())
+                    });
+                }
             }
 
             let variant_contained_type = extract_type_ident_from_fields(&v.fields)?;
@@ -236,9 +243,16 @@ fn expand_enum_recurse_fold(name: &Ident, data_enum: &DataEnum) -> Result<TokenS
             // An ignored variant does not recurse, but we need to include is so that all have a
             // defined match.
             if is_ignored(&v.attrs).unwrap() {
-                return Ok(quote! {
-                    #name::#variant_name => Ok(#name::#variant_name)
-                });
+                let has_fields = !v.fields.is_empty();
+                if has_fields {
+                    return Ok(quote! {
+                        #name::#variant_name(inner) => Ok(#name::#variant_name(inner))
+                    });
+                } else {
+                    return Ok(quote! {
+                        #name::#variant_name => Ok(#name::#variant_name)
+                    });
+                }
             }
 
             let variant_contained_type = extract_type_ident_from_fields(&v.fields)?;
