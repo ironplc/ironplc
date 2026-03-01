@@ -6,12 +6,14 @@
 //! # Supported constructs
 //!
 //! - PROGRAM declarations with all 8 IEC 61131-3 integer types
-//!   (SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT)
-//!   and 2 floating-point types (REAL, LREAL)
+//!   (SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT),
+//!   2 floating-point types (REAL, LREAL),
+//!   5 bit string types (BOOL, BYTE, WORD, DWORD, LWORD)
 //! - Assignment statements with truncation for narrow types
 //! - Integer literal constants (i32 and i64)
 //! - Real literal constants (f32 and f64)
 //! - Boolean literal constants (TRUE, FALSE)
+//! - Bit string literal constants (BYTE, WORD, DWORD, LWORD prefixed)
 //! - Binary Add, Sub, Mul, Div, Mod, and Pow operators
 //! - Unary Neg and Not operators
 //! - Comparison operators (=, <>, <, <=, >, >=)
@@ -333,6 +335,31 @@ fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
         "lreal" => Some(VarTypeInfo {
             op_width: OpWidth::F64,
             signedness: Signedness::Signed,
+            storage_bits: 64,
+        }),
+        "bool" => Some(VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Unsigned,
+            storage_bits: 32,
+        }),
+        "byte" => Some(VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Unsigned,
+            storage_bits: 8,
+        }),
+        "word" => Some(VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Unsigned,
+            storage_bits: 16,
+        }),
+        "dword" => Some(VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Unsigned,
+            storage_bits: 32,
+        }),
+        "lword" => Some(VarTypeInfo {
+            op_width: OpWidth::W64,
+            signedness: Signedness::Unsigned,
             storage_bits: 64,
         }),
         _ => None,
@@ -1143,7 +1170,44 @@ fn compile_constant(
         ConstantKind::TimeOfDay(_) => Err(Diagnostic::todo(file!(), line!())),
         ConstantKind::Date(_) => Err(Diagnostic::todo(file!(), line!())),
         ConstantKind::DateAndTime(_) => Err(Diagnostic::todo(file!(), line!())),
-        ConstantKind::BitStringLiteral(_) => Err(Diagnostic::todo(file!(), line!())),
+        ConstantKind::BitStringLiteral(lit) => {
+            let span = lit.value.span();
+            match op_type {
+                (OpWidth::W32, _) => {
+                    let value = u32::try_from(lit.value.value).map_err(|_| {
+                        Diagnostic::problem(
+                            Problem::ConstantOverflow,
+                            Label::span(span.clone(), "Bit string literal"),
+                        )
+                        .with_context("value", &lit.value.value.to_string())
+                    })? as i32;
+                    let pool_index = ctx.add_i32_constant(value);
+                    emitter.emit_load_const_i32(pool_index);
+                }
+                (OpWidth::W64, _) => {
+                    let value = u64::try_from(lit.value.value).map_err(|_| {
+                        Diagnostic::problem(
+                            Problem::ConstantOverflow,
+                            Label::span(span.clone(), "Bit string literal"),
+                        )
+                        .with_context("value", &lit.value.value.to_string())
+                    })? as i64;
+                    let pool_index = ctx.add_i64_constant(value);
+                    emitter.emit_load_const_i64(pool_index);
+                }
+                (OpWidth::F32, _) => {
+                    let value = lit.value.value as f32;
+                    let pool_index = ctx.add_f32_constant(value);
+                    emitter.emit_load_const_f32(pool_index);
+                }
+                (OpWidth::F64, _) => {
+                    let value = lit.value.value as f64;
+                    let pool_index = ctx.add_f64_constant(value);
+                    emitter.emit_load_const_f64(pool_index);
+                }
+            }
+            Ok(())
+        }
     }
 }
 
@@ -1566,5 +1630,39 @@ END_PROGRAM
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
         assert_eq!(diagnostic.code, Problem::NotImplemented.code());
+    }
+
+    #[test]
+    fn compile_when_byte_variable_then_produces_container() {
+        let source = "
+PROGRAM main
+  VAR
+    x : BYTE;
+  END_VAR
+  x := 42;
+END_PROGRAM
+";
+        let library = parse(source);
+        let container = compile(&library).unwrap();
+
+        assert_eq!(container.header.num_variables, 1);
+        assert_eq!(container.constant_pool.get_i32(0).unwrap(), 42);
+    }
+
+    #[test]
+    fn compile_when_dword_bit_string_literal_then_loads_constant() {
+        let source = "
+PROGRAM main
+  VAR
+    x : DWORD;
+  END_VAR
+  x := DWORD#16#FF;
+END_PROGRAM
+";
+        let library = parse(source);
+        let container = compile(&library).unwrap();
+
+        assert_eq!(container.header.num_variables, 1);
+        assert_eq!(container.constant_pool.get_i32(0).unwrap(), 255);
     }
 }
