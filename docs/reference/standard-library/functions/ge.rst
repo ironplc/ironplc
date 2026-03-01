@@ -10,7 +10,7 @@ Returns TRUE if the first input is greater than or equal to the second.
    * - **IEC 61131-3**
      - Section 2.5.1.5.4
    * - **Support**
-     - Supported (INT)
+     - Supported
 
 Signatures
 ----------
@@ -28,7 +28,7 @@ Signatures
      - ``SINT``
      - ``SINT``
      - ``BOOL``
-     - Not yet supported
+     - Supported
    * - 2
      - ``INT``
      - ``INT``
@@ -38,42 +38,42 @@ Signatures
      - ``DINT``
      - ``DINT``
      - ``BOOL``
-     - Not yet supported
+     - Supported
    * - 4
      - ``LINT``
      - ``LINT``
      - ``BOOL``
-     - Not yet supported
+     - Supported
    * - 5
      - ``USINT``
      - ``USINT``
      - ``BOOL``
-     - Not yet supported
+     - Supported
    * - 6
      - ``UINT``
      - ``UINT``
      - ``BOOL``
-     - Not yet supported
+     - Supported
    * - 7
      - ``UDINT``
      - ``UDINT``
      - ``BOOL``
-     - Not yet supported
+     - Supported
    * - 8
      - ``ULINT``
      - ``ULINT``
      - ``BOOL``
-     - Not yet supported
+     - Supported
    * - 9
      - ``REAL``
      - ``REAL``
      - ``BOOL``
-     - Not yet supported
+     - Supported
    * - 10
      - ``LREAL``
      - ``LREAL``
      - ``BOOL``
-     - Not yet supported
+     - Supported
 
 Description
 -----------

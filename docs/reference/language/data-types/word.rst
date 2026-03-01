@@ -16,7 +16,7 @@ Bit string of 16 bits.
    * - **IEC 61131-3**
      - Section 2.3.1
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Literals
 --------
