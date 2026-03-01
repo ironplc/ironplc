@@ -436,6 +436,28 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 1;
             }
+            opcode::JMP => {
+                let jump_offset = read_i16(bytecode, pc + 1);
+                let target = (pc as isize + 3 + jump_offset as isize) as usize;
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "JMP",
+                    "operands": format!("offset: {:+}", jump_offset),
+                    "comment": format!("-> {}", target),
+                }));
+                pc += 3;
+            }
+            opcode::JMP_IF_NOT => {
+                let jump_offset = read_i16(bytecode, pc + 1);
+                let target = (pc as isize + 3 + jump_offset as isize) as usize;
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "JMP_IF_NOT",
+                    "operands": format!("offset: {:+}", jump_offset),
+                    "comment": format!("-> {}", target),
+                }));
+                pc += 3;
+            }
             opcode::BUILTIN => {
                 let func_id = read_u16(bytecode, pc + 1);
                 let operand = match func_id {
@@ -477,6 +499,11 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
 /// Reads a little-endian u16 from the bytecode at the given position.
 fn read_u16(bytecode: &[u8], pos: usize) -> u16 {
     u16::from_le_bytes([bytecode[pos], bytecode[pos + 1]])
+}
+
+/// Reads a little-endian i16 from the bytecode at the given position.
+fn read_i16(bytecode: &[u8], pos: usize) -> i16 {
+    i16::from_le_bytes([bytecode[pos], bytecode[pos + 1]])
 }
 
 /// Looks up a constant pool entry by index and returns a display comment.

@@ -13,6 +13,7 @@
 //! - Comparison operators (=, <>, <, <=, >, >=)
 //! - Boolean operators (AND, OR, XOR, NOT)
 //! - Variable references (named symbolic variables)
+//! - IF/ELSIF/ELSE statements
 
 use std::collections::HashMap;
 
@@ -67,8 +68,8 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
     // Build the container.
     let num_variables = ctx.variables.len() as u16;
     let num_locals = num_variables;
-    let bytecode = emitter.bytecode();
     let max_stack_depth = emitter.max_stack_depth();
+    let bytecode = emitter.bytecode();
 
     let mut builder = ContainerBuilder::new().num_variables(num_variables);
 
@@ -180,11 +181,7 @@ fn compile_statement(
         StmtKind::FbCall(fb_call) => {
             Err(Diagnostic::todo_with_span(fb_call.span(), file!(), line!()))
         }
-        StmtKind::If(if_stmt) => Err(Diagnostic::todo_with_span(
-            expr_span(&if_stmt.expr),
-            file!(),
-            line!(),
-        )),
+        StmtKind::If(if_stmt) => compile_if(emitter, ctx, if_stmt),
         StmtKind::Case(case_stmt) => Err(Diagnostic::todo_with_span(
             expr_span(&case_stmt.selector),
             file!(),
@@ -208,6 +205,77 @@ fn compile_statement(
         StmtKind::Return => Err(Diagnostic::todo(file!(), line!())),
         StmtKind::Exit => Err(Diagnostic::todo(file!(), line!())),
     }
+}
+
+/// Compiles a slice of statements.
+fn compile_stmts(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    stmts: &[StmtKind],
+) -> Result<(), Diagnostic> {
+    for stmt in stmts {
+        compile_statement(emitter, ctx, stmt)?;
+    }
+    Ok(())
+}
+
+/// Compiles an IF/ELSIF/ELSE statement.
+fn compile_if(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    if_stmt: &ironplc_dsl::textual::If,
+) -> Result<(), Diagnostic> {
+    let has_else_ifs = !if_stmt.else_ifs.is_empty();
+    let has_else = !if_stmt.else_body.is_empty();
+    let needs_end_label = has_else_ifs || has_else;
+
+    let end_label = if needs_end_label {
+        Some(emitter.create_label())
+    } else {
+        None
+    };
+
+    // Compile the IF condition.
+    compile_expr(emitter, ctx, &if_stmt.expr)?;
+
+    // Jump past the then-body if condition is false.
+    let next_label = emitter.create_label();
+    emitter.emit_jmp_if_not(next_label);
+
+    // Compile the then-body.
+    compile_stmts(emitter, ctx, &if_stmt.body)?;
+
+    // If there are more branches, jump to end.
+    if needs_end_label {
+        emitter.emit_jmp(end_label.unwrap());
+    }
+
+    emitter.bind_label(next_label);
+
+    // Compile ELSIF clauses.
+    for elsif in &if_stmt.else_ifs {
+        compile_expr(emitter, ctx, &elsif.expr)?;
+        let elsif_next = emitter.create_label();
+        emitter.emit_jmp_if_not(elsif_next);
+
+        compile_stmts(emitter, ctx, &elsif.body)?;
+
+        emitter.emit_jmp(end_label.unwrap());
+
+        emitter.bind_label(elsif_next);
+    }
+
+    // Compile ELSE body (if present).
+    if has_else {
+        compile_stmts(emitter, ctx, &if_stmt.else_body)?;
+    }
+
+    // Bind the end label.
+    if let Some(end) = end_label {
+        emitter.bind_label(end);
+    }
+
+    Ok(())
 }
 
 /// Compiles an expression, leaving the result on the stack.
@@ -554,7 +622,7 @@ END_PROGRAM
     }
 
     #[test]
-    fn compile_when_unsupported_statement_then_diagnostic_with_problem_code() {
+    fn compile_when_simple_if_then_succeeds() {
         let source = "
 PROGRAM main
   VAR
@@ -568,8 +636,6 @@ END_PROGRAM
         let library = parse(source);
         let result = compile(&library);
 
-        assert!(result.is_err());
-        let diagnostic = result.unwrap_err();
-        assert_eq!(diagnostic.code, Problem::NotImplemented.code());
+        assert!(result.is_ok());
     }
 }
