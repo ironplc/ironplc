@@ -7,6 +7,7 @@
 //! - PROGRAM declarations with INT variables
 //! - Assignment statements
 //! - Integer literal constants
+//! - Boolean literal constants (TRUE, FALSE)
 //! - Binary Add, Sub, Mul, Div, Mod, and Pow operators
 //! - Unary Neg and Not operators
 //! - Comparison operators (=, <>, <, <=, >, >=)
@@ -17,7 +18,8 @@ use std::collections::HashMap;
 
 use ironplc_container::{opcode, Container, ContainerBuilder};
 use ironplc_dsl::common::{
-    ConstantKind, FunctionBlockBodyKind, Library, LibraryElementKind, ProgramDeclaration, VarDecl,
+    Boolean, ConstantKind, FunctionBlockBodyKind, Library, LibraryElementKind, ProgramDeclaration,
+    VarDecl,
 };
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -352,7 +354,13 @@ fn compile_constant(
             Ok(())
         }
         ConstantKind::RealLiteral(_) => Err(Diagnostic::todo(file!(), line!())),
-        ConstantKind::Boolean(_) => Err(Diagnostic::todo(file!(), line!())),
+        ConstantKind::Boolean(lit) => {
+            match lit.value {
+                Boolean::True => emitter.emit_load_true(),
+                Boolean::False => emitter.emit_load_false(),
+            }
+            Ok(())
+        }
         ConstantKind::CharacterString(_) => Err(Diagnostic::todo(file!(), line!())),
         ConstantKind::Duration(_) => Err(Diagnostic::todo(file!(), line!())),
         ConstantKind::TimeOfDay(_) => Err(Diagnostic::todo(file!(), line!())),
