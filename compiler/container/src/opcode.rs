@@ -84,6 +84,12 @@ pub const BOOL_XOR: u8 = 0x56;
 /// Pops one value, pushes 1 if it is zero, else 0.
 pub const BOOL_NOT: u8 = 0x57;
 
+/// Unconditional jump. Operand: i16 offset relative to next instruction.
+pub const JMP: u8 = 0xB0;
+
+/// Jump if top of stack is zero (FALSE). Operand: i16 offset. Pops condition.
+pub const JMP_IF_NOT: u8 = 0xB2;
+
 /// Call a built-in standard library function.
 /// Operand: u16 function ID (little-endian).
 /// Stack effect depends on the specific function.

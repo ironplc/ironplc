@@ -468,6 +468,17 @@ fn execute(
                 let a = stack.pop()?.as_i32();
                 stack.push(Slot::from_i32(if a == 0 { 1 } else { 0 }))?;
             }
+            opcode::JMP => {
+                let offset = read_i16_le(bytecode, &mut pc);
+                pc = (pc as isize + offset as isize) as usize;
+            }
+            opcode::JMP_IF_NOT => {
+                let offset = read_i16_le(bytecode, &mut pc);
+                let cond = stack.pop()?.as_i32();
+                if cond == 0 {
+                    pc = (pc as isize + offset as isize) as usize;
+                }
+            }
             opcode::BUILTIN => {
                 let func_id = read_u16_le(bytecode, &mut pc);
                 builtin::dispatch(func_id, stack)?;
@@ -487,6 +498,13 @@ fn execute(
 /// Reads a little-endian u16 from bytecode at pc, advancing pc by 2.
 fn read_u16_le(bytecode: &[u8], pc: &mut usize) -> u16 {
     let value = u16::from_le_bytes([bytecode[*pc], bytecode[*pc + 1]]);
+    *pc += 2;
+    value
+}
+
+/// Reads a little-endian i16 from bytecode at pc, advancing pc by 2.
+fn read_i16_le(bytecode: &[u8], pc: &mut usize) -> i16 {
+    let value = i16::from_le_bytes([bytecode[*pc], bytecode[*pc + 1]]);
     *pc += 2;
     value
 }

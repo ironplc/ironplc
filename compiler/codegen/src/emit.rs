@@ -4,11 +4,27 @@
 
 use ironplc_container::opcode;
 
+/// An opaque forward reference to a bytecode position, used for jump targets.
+#[derive(Clone, Copy)]
+pub struct Label(usize);
+
+/// A pending jump that needs to be patched once the target label is bound.
+struct PendingPatch {
+    /// Position of the i16 operand in the bytecode buffer.
+    patch_offset: usize,
+    /// The label this jump targets.
+    label: Label,
+}
+
 /// Accumulates bytecode instructions.
 pub struct Emitter {
     bytecode: Vec<u8>,
     max_stack_depth: u16,
     current_stack_depth: u16,
+    /// Bound positions for each label (None if not yet bound).
+    labels: Vec<Option<usize>>,
+    /// Jump operands that need backpatching.
+    patches: Vec<PendingPatch>,
 }
 
 impl Emitter {
@@ -17,6 +33,8 @@ impl Emitter {
             bytecode: Vec::new(),
             max_stack_depth: 0,
             current_stack_depth: 0,
+            labels: Vec::new(),
+            patches: Vec::new(),
         }
     }
 
@@ -171,19 +189,70 @@ impl Emitter {
         self.pop_stack(1);
     }
 
+    /// Creates a new unbound label for use as a jump target.
+    pub fn create_label(&mut self) -> Label {
+        let index = self.labels.len();
+        self.labels.push(None);
+        Label(index)
+    }
+
+    /// Binds a label to the current bytecode position.
+    pub fn bind_label(&mut self, label: Label) {
+        self.labels[label.0] = Some(self.bytecode.len());
+    }
+
+    /// Emits JMP with a placeholder offset targeting the given label.
+    pub fn emit_jmp(&mut self, label: Label) {
+        self.bytecode.push(opcode::JMP);
+        let patch_offset = self.bytecode.len();
+        self.bytecode.extend_from_slice(&0i16.to_le_bytes());
+        self.patches.push(PendingPatch {
+            patch_offset,
+            label,
+        });
+    }
+
+    /// Emits JMP_IF_NOT with a placeholder offset targeting the given label.
+    /// Pops the condition value from the stack.
+    pub fn emit_jmp_if_not(&mut self, label: Label) {
+        self.bytecode.push(opcode::JMP_IF_NOT);
+        let patch_offset = self.bytecode.len();
+        self.bytecode.extend_from_slice(&0i16.to_le_bytes());
+        self.patches.push(PendingPatch {
+            patch_offset,
+            label,
+        });
+        self.pop_stack(1);
+    }
+
     /// Emits RET_VOID.
     pub fn emit_ret_void(&mut self) {
         self.bytecode.push(opcode::RET_VOID);
     }
 
-    /// Returns the accumulated bytecode.
-    pub fn bytecode(&self) -> &[u8] {
+    /// Returns the accumulated bytecode, resolving all pending jump patches.
+    pub fn bytecode(&mut self) -> &[u8] {
+        self.patch_jumps();
         &self.bytecode
     }
 
     /// Returns the maximum stack depth reached during emission.
     pub fn max_stack_depth(&self) -> u16 {
         self.max_stack_depth
+    }
+
+    /// Resolves all pending jump patches by computing relative offsets.
+    fn patch_jumps(&mut self) {
+        for patch in self.patches.drain(..) {
+            let label_pos =
+                self.labels[patch.label.0].expect("label must be bound before patching");
+            // Offset is relative to the byte after the i16 operand
+            let next_pc = patch.patch_offset + 2;
+            let offset = (label_pos as isize - next_pc as isize) as i16;
+            let bytes = offset.to_le_bytes();
+            self.bytecode[patch.patch_offset] = bytes[0];
+            self.bytecode[patch.patch_offset + 1] = bytes[1];
+        }
     }
 
     fn push_stack(&mut self, count: u16) {
@@ -658,5 +727,65 @@ mod tests {
         em.emit_store_var_i32(0); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 1);
+    }
+
+    #[test]
+    fn emitter_when_jmp_then_correct_bytecode() {
+        let mut em = Emitter::new();
+        let label = em.create_label();
+        em.emit_jmp(label);
+        em.bind_label(label);
+
+        // JMP with offset 0 (target is immediately after the instruction)
+        assert_eq!(em.bytecode(), &[0xB0, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn emitter_when_jmp_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0); // stack: 1
+        let label = em.create_label();
+        em.emit_jmp(label);
+        em.bind_label(label);
+        em.emit_store_var_i32(0); // stack: 0
+
+        // JMP does not change stack depth
+        assert_eq!(em.max_stack_depth(), 1);
+    }
+
+    #[test]
+    fn emitter_when_jmp_if_not_then_correct_bytecode() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0); // push condition
+        let label = em.create_label();
+        em.emit_jmp_if_not(label);
+        em.bind_label(label);
+
+        // LOAD_CONST_I32 pool:0, JMP_IF_NOT offset:0
+        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0xB2, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn emitter_when_jmp_if_not_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0); // stack: 1
+        let label = em.create_label();
+        em.emit_jmp_if_not(label); // stack: 0 (pops condition)
+        em.bind_label(label);
+
+        assert_eq!(em.max_stack_depth(), 1);
+    }
+
+    #[test]
+    fn emitter_when_forward_jump_then_patches_correctly() {
+        let mut em = Emitter::new();
+        let label = em.create_label();
+        em.emit_jmp(label);
+        // Emit 4 bytes of filler (a LOAD_CONST_I32)
+        em.emit_load_const_i32(0);
+        em.bind_label(label);
+
+        // JMP offset should be 3 (skip over the LOAD_CONST_I32 which is 3 bytes)
+        assert_eq!(em.bytecode(), &[0xB0, 0x03, 0x00, 0x01, 0x00, 0x00]);
     }
 }
