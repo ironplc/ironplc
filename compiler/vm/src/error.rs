@@ -11,6 +11,8 @@ pub enum Trap {
     InvalidVariableIndex(u16),
     InvalidFunctionId(u16),
     WatchdogTimeout(u16),
+    NegativeExponent,
+    InvalidBuiltinFunction(u16),
 }
 
 impl fmt::Display for Trap {
@@ -24,6 +26,10 @@ impl fmt::Display for Trap {
             Trap::InvalidVariableIndex(i) => write!(f, "invalid variable index: {i}"),
             Trap::InvalidFunctionId(id) => write!(f, "invalid function ID: {id}"),
             Trap::WatchdogTimeout(id) => write!(f, "watchdog timeout on task {id}"),
+            Trap::NegativeExponent => write!(f, "negative exponent"),
+            Trap::InvalidBuiltinFunction(id) => {
+                write!(f, "invalid built-in function: 0x{id:04X}")
+            }
         }
     }
 }

@@ -1,3 +1,4 @@
+pub(crate) mod builtin;
 pub mod error;
 pub(crate) mod scheduler;
 pub(crate) mod stack;

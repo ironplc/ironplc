@@ -9,19 +9,9 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
+use ironplc_container::opcode;
 use ironplc_container::{ConstType, Container};
 use serde_json::{json, Value};
-
-/// Opcode constants matching `compiler/vm/src/opcode.rs`.
-const LOAD_CONST_I32: u8 = 0x01;
-const LOAD_VAR_I32: u8 = 0x10;
-const STORE_VAR_I32: u8 = 0x18;
-const ADD_I32: u8 = 0x30;
-const SUB_I32: u8 = 0x31;
-const MUL_I32: u8 = 0x32;
-const DIV_I32: u8 = 0x33;
-const MOD_I32: u8 = 0x34;
-const RET_VOID: u8 = 0xB5;
 
 /// Disassembles a bytecode container into a structured JSON value.
 ///
@@ -253,7 +243,7 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
         let offset = pc;
 
         match opcode_byte {
-            LOAD_CONST_I32 => {
+            opcode::LOAD_CONST_I32 => {
                 let pool_index = read_u16(bytecode, pc + 1);
                 let comment = lookup_const_comment(container, pool_index);
                 instructions.push(json!({
@@ -264,7 +254,7 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 3;
             }
-            LOAD_VAR_I32 => {
+            opcode::LOAD_VAR_I32 => {
                 let var_index = read_u16(bytecode, pc + 1);
                 instructions.push(json!({
                     "offset": offset,
@@ -274,7 +264,7 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 3;
             }
-            STORE_VAR_I32 => {
+            opcode::STORE_VAR_I32 => {
                 let var_index = read_u16(bytecode, pc + 1);
                 instructions.push(json!({
                     "offset": offset,
@@ -284,7 +274,7 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 3;
             }
-            ADD_I32 => {
+            opcode::ADD_I32 => {
                 instructions.push(json!({
                     "offset": offset,
                     "opcode": "ADD_I32",
@@ -293,7 +283,7 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 1;
             }
-            SUB_I32 => {
+            opcode::SUB_I32 => {
                 instructions.push(json!({
                     "offset": offset,
                     "opcode": "SUB_I32",
@@ -302,7 +292,7 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 1;
             }
-            MUL_I32 => {
+            opcode::MUL_I32 => {
                 instructions.push(json!({
                     "offset": offset,
                     "opcode": "MUL_I32",
@@ -311,7 +301,7 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 1;
             }
-            DIV_I32 => {
+            opcode::DIV_I32 => {
                 instructions.push(json!({
                     "offset": offset,
                     "opcode": "DIV_I32",
@@ -320,7 +310,7 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 1;
             }
-            MOD_I32 => {
+            opcode::MOD_I32 => {
                 instructions.push(json!({
                     "offset": offset,
                     "opcode": "MOD_I32",
@@ -329,7 +319,21 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 1;
             }
-            RET_VOID => {
+            opcode::BUILTIN => {
+                let func_id = read_u16(bytecode, pc + 1);
+                let operand = match func_id {
+                    opcode::builtin::EXPT_I32 => format!("EXPT_I32 (0x{:04X})", func_id),
+                    _ => format!("0x{:04X}", func_id),
+                };
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "BUILTIN",
+                    "operands": operand,
+                    "comment": "",
+                }));
+                pc += 3;
+            }
+            opcode::RET_VOID => {
                 instructions.push(json!({
                     "offset": offset,
                     "opcode": "RET_VOID",
