@@ -555,12 +555,17 @@ impl Emitter {
         self.pop_stack(1);
     }
 
-    /// Emits BUILTIN with a function ID (pops two, pushes one for 2-arg functions).
+    /// Emits BUILTIN with a function ID.
+    /// All builtins pop `arg_count` values and push one result.
+    /// The arg count is looked up from `opcode::builtin::arg_count()`.
     pub fn emit_builtin(&mut self, func_id: u16) {
         self.bytecode.push(opcode::BUILTIN);
         self.bytecode.extend_from_slice(&func_id.to_le_bytes());
-        // Net effect: pop 2, push 1 = pop 1
-        self.pop_stack(1);
+        // Net effect: pop arg_count, push 1 = pop (arg_count - 1)
+        let arg_count = opcode::builtin::arg_count(func_id);
+        if arg_count > 1 {
+            self.pop_stack(arg_count - 1);
+        }
     }
 
     /// Creates a new unbound label for use as a jump target.
@@ -852,6 +857,30 @@ mod tests {
         em.emit_store_var_i32(1); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
+    }
+
+    #[test]
+    fn emitter_when_builtin_1_arg_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        // y := ABS(x)
+        em.emit_load_var_i32(0); // stack: 1
+        em.emit_builtin(opcode::builtin::ABS_I32); // stack: 1 (pop 1, push 1)
+        em.emit_store_var_i32(1); // stack: 0
+
+        assert_eq!(em.max_stack_depth(), 1);
+    }
+
+    #[test]
+    fn emitter_when_builtin_3_arg_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        // y := LIMIT(mn, x, mx)
+        em.emit_load_const_i32(0); // stack: 1
+        em.emit_load_var_i32(0); // stack: 2
+        em.emit_load_const_i32(1); // stack: 3
+        em.emit_builtin(opcode::builtin::LIMIT_I32); // stack: 1 (pop 3, push 1)
+        em.emit_store_var_i32(1); // stack: 0
+
+        assert_eq!(em.max_stack_depth(), 3);
     }
 
     #[test]
