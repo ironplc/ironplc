@@ -567,3 +567,266 @@ END_PROGRAM
     let y = bufs.vars[1].as_f64();
     assert!((y - 1024.0).abs() < 1e-6, "expected 1024.0, got {y}");
 }
+
+// --- IEEE 754 edge cases: Inf, NaN ---
+
+#[test]
+fn end_to_end_when_real_divide_by_zero_then_inf() {
+    let source = "
+PROGRAM main
+  VAR
+    x : REAL;
+    y : REAL;
+  END_VAR
+  x := 1.0;
+  y := x / 0.0;
+END_PROGRAM
+";
+    // Float divide-by-zero does NOT trap — produces Inf per IEEE 754
+    let (_c, bufs) = parse_and_run(source);
+
+    let y = bufs.vars[1].as_f32();
+    assert!(y.is_infinite() && y > 0.0, "expected +Inf, got {y}");
+}
+
+#[test]
+fn end_to_end_when_real_negative_divide_by_zero_then_neg_inf() {
+    let source = "
+PROGRAM main
+  VAR
+    x : REAL;
+    y : REAL;
+  END_VAR
+  x := -1.0;
+  y := x / 0.0;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    let y = bufs.vars[1].as_f32();
+    assert!(y.is_infinite() && y < 0.0, "expected -Inf, got {y}");
+}
+
+#[test]
+fn end_to_end_when_real_zero_divide_by_zero_then_nan() {
+    let source = "
+PROGRAM main
+  VAR
+    x : REAL;
+    y : REAL;
+  END_VAR
+  x := 0.0;
+  y := x / 0.0;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    let y = bufs.vars[1].as_f32();
+    assert!(y.is_nan(), "expected NaN, got {y}");
+}
+
+#[test]
+fn end_to_end_when_real_nan_comparison_then_all_false() {
+    // IEEE 754: NaN is not equal to anything, including itself
+    let source = "
+PROGRAM main
+  VAR
+    x : REAL;
+    nan : REAL;
+    eq_result : DINT;
+    lt_result : DINT;
+    gt_result : DINT;
+  END_VAR
+  x := 0.0;
+  nan := x / 0.0;
+  IF nan = nan THEN
+    eq_result := 1;
+  ELSE
+    eq_result := 0;
+  END_IF;
+  IF nan < 1.0 THEN
+    lt_result := 1;
+  ELSE
+    lt_result := 0;
+  END_IF;
+  IF nan > 1.0 THEN
+    gt_result := 1;
+  ELSE
+    gt_result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // NaN == NaN is false
+    assert_eq!(bufs.vars[2].as_i32(), 0, "NaN == NaN should be false");
+    // NaN < 1.0 is false
+    assert_eq!(bufs.vars[3].as_i32(), 0, "NaN < 1.0 should be false");
+    // NaN > 1.0 is false
+    assert_eq!(bufs.vars[4].as_i32(), 0, "NaN > 1.0 should be false");
+}
+
+#[test]
+fn end_to_end_when_real_nan_ne_then_true() {
+    // IEEE 754: NaN <> NaN is true
+    let source = "
+PROGRAM main
+  VAR
+    x : REAL;
+    nan : REAL;
+    result : DINT;
+  END_VAR
+  x := 0.0;
+  nan := x / 0.0;
+  IF nan <> nan THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[2].as_i32(), 1, "NaN <> NaN should be true");
+}
+
+#[test]
+fn end_to_end_when_real_inf_arithmetic_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    x : REAL;
+    inf : REAL;
+    sum : REAL;
+    product : REAL;
+  END_VAR
+  x := 1.0;
+  inf := x / 0.0;
+  sum := inf + 1.0;
+  product := inf * 2.0;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    let sum = bufs.vars[2].as_f32();
+    let product = bufs.vars[3].as_f32();
+    assert!(sum.is_infinite() && sum > 0.0, "Inf + 1.0 should be +Inf");
+    assert!(
+        product.is_infinite() && product > 0.0,
+        "Inf * 2.0 should be +Inf"
+    );
+}
+
+#[test]
+fn end_to_end_when_lreal_divide_by_zero_then_inf() {
+    let source = "
+PROGRAM main
+  VAR
+    x : LREAL;
+    y : LREAL;
+  END_VAR
+  x := 1.0;
+  y := x / 0.0;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    let y = bufs.vars[1].as_f64();
+    assert!(y.is_infinite() && y > 0.0, "expected +Inf, got {y}");
+}
+
+#[test]
+fn end_to_end_when_lreal_negative_divide_by_zero_then_neg_inf() {
+    let source = "
+PROGRAM main
+  VAR
+    x : LREAL;
+    y : LREAL;
+  END_VAR
+  x := -1.0;
+  y := x / 0.0;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    let y = bufs.vars[1].as_f64();
+    assert!(y.is_infinite() && y < 0.0, "expected -Inf, got {y}");
+}
+
+#[test]
+fn end_to_end_when_lreal_zero_divide_by_zero_then_nan() {
+    let source = "
+PROGRAM main
+  VAR
+    x : LREAL;
+    y : LREAL;
+  END_VAR
+  x := 0.0;
+  y := x / 0.0;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    let y = bufs.vars[1].as_f64();
+    assert!(y.is_nan(), "expected NaN, got {y}");
+}
+
+#[test]
+fn end_to_end_when_lreal_nan_comparison_then_all_false() {
+    let source = "
+PROGRAM main
+  VAR
+    x : LREAL;
+    nan : LREAL;
+    eq_result : DINT;
+    lt_result : DINT;
+    gt_result : DINT;
+  END_VAR
+  x := 0.0;
+  nan := x / 0.0;
+  IF nan = nan THEN
+    eq_result := 1;
+  ELSE
+    eq_result := 0;
+  END_IF;
+  IF nan < 1.0 THEN
+    lt_result := 1;
+  ELSE
+    lt_result := 0;
+  END_IF;
+  IF nan > 1.0 THEN
+    gt_result := 1;
+  ELSE
+    gt_result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[2].as_i32(), 0, "NaN == NaN should be false");
+    assert_eq!(bufs.vars[3].as_i32(), 0, "NaN < 1.0 should be false");
+    assert_eq!(bufs.vars[4].as_i32(), 0, "NaN > 1.0 should be false");
+}
+
+#[test]
+fn end_to_end_when_lreal_nan_ne_then_true() {
+    let source = "
+PROGRAM main
+  VAR
+    x : LREAL;
+    nan : LREAL;
+    result : DINT;
+  END_VAR
+  x := 0.0;
+  nan := x / 0.0;
+  IF nan <> nan THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[2].as_i32(), 1, "NaN <> NaN should be true");
+}
