@@ -68,6 +68,27 @@ impl ConstantPool {
         ]))
     }
 
+    /// Gets an i64 value from the constant pool at the given index.
+    pub fn get_i64(&self, index: u16) -> Result<i64, ContainerError> {
+        let entry = self
+            .entries
+            .get(index as usize)
+            .ok_or(ContainerError::InvalidConstantIndex(index))?;
+        if entry.const_type != ConstType::I64 {
+            return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
+        }
+        Ok(i64::from_le_bytes([
+            entry.value[0],
+            entry.value[1],
+            entry.value[2],
+            entry.value[3],
+            entry.value[4],
+            entry.value[5],
+            entry.value[6],
+            entry.value[7],
+        ]))
+    }
+
     /// Writes the constant pool to the given writer.
     pub fn write_to(&self, w: &mut impl Write) -> Result<(), ContainerError> {
         w.write_all(&(self.entries.len() as u16).to_le_bytes())?;

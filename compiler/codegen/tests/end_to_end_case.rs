@@ -9,8 +9,8 @@ fn end_to_end_when_case_matches_first_arm_then_executes_body() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 1;
   CASE x OF
@@ -30,8 +30,8 @@ fn end_to_end_when_case_matches_second_arm_then_executes_body() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 2;
   CASE x OF
@@ -51,8 +51,8 @@ fn end_to_end_when_case_no_match_and_no_else_then_skips() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 99;
   CASE x OF
@@ -72,8 +72,8 @@ fn end_to_end_when_case_no_match_with_else_then_executes_else() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 99;
   CASE x OF
@@ -95,8 +95,8 @@ fn end_to_end_when_case_multi_selector_then_matches_any() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 3;
   CASE x OF
@@ -116,8 +116,8 @@ fn end_to_end_when_case_subrange_then_matches_in_range() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 3;
   CASE x OF

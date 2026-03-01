@@ -50,6 +50,15 @@ impl ContainerBuilder {
         self
     }
 
+    /// Adds an i64 constant to the constant pool.
+    pub fn add_i64_constant(mut self, value: i64) -> Self {
+        self.constant_pool.push(ConstEntry {
+            const_type: ConstType::I64,
+            value: value.to_le_bytes().to_vec(),
+        });
+        self
+    }
+
     /// Adds a function with the given bytecode.
     pub fn add_function(
         mut self,

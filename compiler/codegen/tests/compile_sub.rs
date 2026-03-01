@@ -10,8 +10,8 @@ fn compile_when_sub_expression_then_produces_sub_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    x : DINT;
+    y : DINT;
   END_VAR
   x := 10;
   y := x - 3;
@@ -47,7 +47,7 @@ fn compile_when_chain_of_subtractions_then_correct_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : INT;
+    x : DINT;
   END_VAR
   x := 10 - 3 - 2;
 END_PROGRAM
