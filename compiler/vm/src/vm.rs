@@ -799,6 +799,46 @@ fn execute(
                 let a = stack.pop()?.as_i32();
                 stack.push(Slot::from_i32(if a == 0 { 1 } else { 0 }))?;
             }
+            // --- Bitwise opcodes (32-bit) ---
+            opcode::BIT_AND_32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(a & b))?;
+            }
+            opcode::BIT_OR_32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(a | b))?;
+            }
+            opcode::BIT_XOR_32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(a ^ b))?;
+            }
+            opcode::BIT_NOT_32 => {
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(!a))?;
+            }
+            // --- Bitwise opcodes (64-bit) ---
+            opcode::BIT_AND_64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i64(a & b))?;
+            }
+            opcode::BIT_OR_64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i64(a | b))?;
+            }
+            opcode::BIT_XOR_64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i64(a ^ b))?;
+            }
+            opcode::BIT_NOT_64 => {
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i64(!a))?;
+            }
             opcode::JMP => {
                 let offset = read_i16_le(bytecode, &mut pc);
                 pc = (pc as isize + offset as isize) as usize;
