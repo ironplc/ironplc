@@ -124,6 +124,33 @@ impl Emitter {
         self.pop_stack(1);
     }
 
+    /// Emits BOOL_AND (pops two, pushes one).
+    pub fn emit_bool_and(&mut self) {
+        self.bytecode.push(opcode::BOOL_AND);
+        // Net effect: pop 2, push 1 = pop 1
+        self.pop_stack(1);
+    }
+
+    /// Emits BOOL_OR (pops two, pushes one).
+    pub fn emit_bool_or(&mut self) {
+        self.bytecode.push(opcode::BOOL_OR);
+        // Net effect: pop 2, push 1 = pop 1
+        self.pop_stack(1);
+    }
+
+    /// Emits BOOL_XOR (pops two, pushes one).
+    pub fn emit_bool_xor(&mut self) {
+        self.bytecode.push(opcode::BOOL_XOR);
+        // Net effect: pop 2, push 1 = pop 1
+        self.pop_stack(1);
+    }
+
+    /// Emits BOOL_NOT (pops one, pushes one).
+    pub fn emit_bool_not(&mut self) {
+        self.bytecode.push(opcode::BOOL_NOT);
+        // Net effect: pop 1, push 1 = no change to stack depth
+    }
+
     /// Emits BUILTIN with a function ID (pops two, pushes one for 2-arg functions).
     pub fn emit_builtin(&mut self, func_id: u16) {
         self.bytecode.push(opcode::BUILTIN);
@@ -502,5 +529,88 @@ mod tests {
         em.emit_store_var_i32(1); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
+    }
+
+    #[test]
+    fn emitter_when_bool_and_then_correct_bytecode() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0);
+        em.emit_load_const_i32(1);
+        em.emit_bool_and();
+
+        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x54]);
+    }
+
+    #[test]
+    fn emitter_when_bool_and_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(1); // stack: 2
+        em.emit_bool_and(); // stack: 1
+        em.emit_store_var_i32(2); // stack: 0
+
+        assert_eq!(em.max_stack_depth(), 2);
+    }
+
+    #[test]
+    fn emitter_when_bool_or_then_correct_bytecode() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0);
+        em.emit_load_const_i32(1);
+        em.emit_bool_or();
+
+        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x55]);
+    }
+
+    #[test]
+    fn emitter_when_bool_or_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(1); // stack: 2
+        em.emit_bool_or(); // stack: 1
+        em.emit_store_var_i32(2); // stack: 0
+
+        assert_eq!(em.max_stack_depth(), 2);
+    }
+
+    #[test]
+    fn emitter_when_bool_xor_then_correct_bytecode() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0);
+        em.emit_load_const_i32(1);
+        em.emit_bool_xor();
+
+        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x56]);
+    }
+
+    #[test]
+    fn emitter_when_bool_xor_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(1); // stack: 2
+        em.emit_bool_xor(); // stack: 1
+        em.emit_store_var_i32(2); // stack: 0
+
+        assert_eq!(em.max_stack_depth(), 2);
+    }
+
+    #[test]
+    fn emitter_when_bool_not_then_correct_bytecode() {
+        let mut em = Emitter::new();
+        em.emit_load_var_i32(0);
+        em.emit_bool_not();
+
+        assert_eq!(em.bytecode(), &[0x10, 0x00, 0x00, 0x57]);
+    }
+
+    #[test]
+    fn emitter_when_bool_not_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        // y := NOT x
+        em.emit_load_var_i32(0); // stack: 1
+        em.emit_bool_not(); // stack: 1 (pop 1, push 1)
+        em.emit_store_var_i32(1); // stack: 0
+
+        assert_eq!(em.max_stack_depth(), 1);
     }
 }
