@@ -159,9 +159,9 @@ pub fn benchmark(path: &Path, cycles: u64, warmup: u64) -> Result<(), String> {
     durations_us.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let count = durations_us.len() as f64;
     let mean = durations_us.iter().sum::<f64>() / count;
-    let min = durations_us.first().copied().unwrap_or(0.0);
+    let variance = durations_us.iter().map(|d| (d - mean).powi(2)).sum::<f64>() / count;
+    let stddev = variance.sqrt();
     let max = durations_us.last().copied().unwrap_or(0.0);
-    let p50 = percentile(&durations_us, 50.0);
     let p99 = percentile(&durations_us, 99.0);
 
     let program_name = path
@@ -169,18 +169,41 @@ pub fn benchmark(path: &Path, cycles: u64, warmup: u64) -> Result<(), String> {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
 
+    // Build per-task metadata from task_states (borrow released by stop()).
+    let tasks_json: Vec<serde_json::Value> = task_states
+        .iter()
+        .map(|ts| {
+            let mut task = json!({
+                "task_id": ts.task_id,
+                "task_type": ts.task_type.as_str(),
+                "interval_us": ts.interval_us,
+                "scan_count": ts.scan_count,
+                "overruns": ts.overrun_count,
+            });
+            if ts.task_type == ironplc_container::TaskType::Cyclic && ts.interval_us > 0 {
+                let interval = ts.interval_us as f64;
+                task["budget_pct"] = json!({
+                    "mean": round3(mean / interval * 100.0),
+                    "p99": round3(p99 / interval * 100.0),
+                    "max": round3(max / interval * 100.0),
+                });
+            }
+            task
+        })
+        .collect();
+
     let result = json!({
         "program": program_name,
         "opt_level": BUILD_OPT_LEVEL,
         "cycles": cycles,
         "warmup": warmup,
-        "durations_us": {
+        "scan_us": {
             "mean": round3(mean),
-            "p50": round3(p50),
+            "stddev": round3(stddev),
             "p99": round3(p99),
-            "min": round3(min),
             "max": round3(max),
-        }
+        },
+        "tasks": tasks_json,
     });
 
     println!(
