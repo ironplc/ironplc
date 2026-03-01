@@ -203,6 +203,184 @@ impl Emitter {
         self.bytecode.push(opcode::TRUNC_U16);
     }
 
+    // --- Float load/store opcodes ---
+
+    /// Emits LOAD_CONST_F32 with a constant pool index.
+    pub fn emit_load_const_f32(&mut self, pool_index: u16) {
+        self.bytecode.push(opcode::LOAD_CONST_F32);
+        self.bytecode.extend_from_slice(&pool_index.to_le_bytes());
+        self.push_stack(1);
+    }
+
+    /// Emits LOAD_CONST_F64 with a constant pool index.
+    pub fn emit_load_const_f64(&mut self, pool_index: u16) {
+        self.bytecode.push(opcode::LOAD_CONST_F64);
+        self.bytecode.extend_from_slice(&pool_index.to_le_bytes());
+        self.push_stack(1);
+    }
+
+    /// Emits LOAD_VAR_F32 with a variable table index.
+    pub fn emit_load_var_f32(&mut self, var_index: u16) {
+        self.bytecode.push(opcode::LOAD_VAR_F32);
+        self.bytecode.extend_from_slice(&var_index.to_le_bytes());
+        self.push_stack(1);
+    }
+
+    /// Emits LOAD_VAR_F64 with a variable table index.
+    pub fn emit_load_var_f64(&mut self, var_index: u16) {
+        self.bytecode.push(opcode::LOAD_VAR_F64);
+        self.bytecode.extend_from_slice(&var_index.to_le_bytes());
+        self.push_stack(1);
+    }
+
+    /// Emits STORE_VAR_F32 with a variable table index.
+    pub fn emit_store_var_f32(&mut self, var_index: u16) {
+        self.bytecode.push(opcode::STORE_VAR_F32);
+        self.bytecode.extend_from_slice(&var_index.to_le_bytes());
+        self.pop_stack(1);
+    }
+
+    /// Emits STORE_VAR_F64 with a variable table index.
+    pub fn emit_store_var_f64(&mut self, var_index: u16) {
+        self.bytecode.push(opcode::STORE_VAR_F64);
+        self.bytecode.extend_from_slice(&var_index.to_le_bytes());
+        self.pop_stack(1);
+    }
+
+    // --- Float arithmetic opcodes ---
+
+    /// Emits ADD_F32 (pops two, pushes one).
+    pub fn emit_add_f32(&mut self) {
+        self.bytecode.push(opcode::ADD_F32);
+        self.pop_stack(1);
+    }
+
+    /// Emits SUB_F32 (pops two, pushes one).
+    pub fn emit_sub_f32(&mut self) {
+        self.bytecode.push(opcode::SUB_F32);
+        self.pop_stack(1);
+    }
+
+    /// Emits MUL_F32 (pops two, pushes one).
+    pub fn emit_mul_f32(&mut self) {
+        self.bytecode.push(opcode::MUL_F32);
+        self.pop_stack(1);
+    }
+
+    /// Emits DIV_F32 (pops two, pushes one).
+    pub fn emit_div_f32(&mut self) {
+        self.bytecode.push(opcode::DIV_F32);
+        self.pop_stack(1);
+    }
+
+    /// Emits NEG_F32 (pops one, pushes one).
+    pub fn emit_neg_f32(&mut self) {
+        self.bytecode.push(opcode::NEG_F32);
+    }
+
+    /// Emits ADD_F64 (pops two, pushes one).
+    pub fn emit_add_f64(&mut self) {
+        self.bytecode.push(opcode::ADD_F64);
+        self.pop_stack(1);
+    }
+
+    /// Emits SUB_F64 (pops two, pushes one).
+    pub fn emit_sub_f64(&mut self) {
+        self.bytecode.push(opcode::SUB_F64);
+        self.pop_stack(1);
+    }
+
+    /// Emits MUL_F64 (pops two, pushes one).
+    pub fn emit_mul_f64(&mut self) {
+        self.bytecode.push(opcode::MUL_F64);
+        self.pop_stack(1);
+    }
+
+    /// Emits DIV_F64 (pops two, pushes one).
+    pub fn emit_div_f64(&mut self) {
+        self.bytecode.push(opcode::DIV_F64);
+        self.pop_stack(1);
+    }
+
+    /// Emits NEG_F64 (pops one, pushes one).
+    pub fn emit_neg_f64(&mut self) {
+        self.bytecode.push(opcode::NEG_F64);
+    }
+
+    // --- Float comparison opcodes ---
+
+    /// Emits EQ_F32 (pops two, pushes one).
+    pub fn emit_eq_f32(&mut self) {
+        self.bytecode.push(opcode::EQ_F32);
+        self.pop_stack(1);
+    }
+
+    /// Emits NE_F32 (pops two, pushes one).
+    pub fn emit_ne_f32(&mut self) {
+        self.bytecode.push(opcode::NE_F32);
+        self.pop_stack(1);
+    }
+
+    /// Emits LT_F32 (pops two, pushes one).
+    pub fn emit_lt_f32(&mut self) {
+        self.bytecode.push(opcode::LT_F32);
+        self.pop_stack(1);
+    }
+
+    /// Emits LE_F32 (pops two, pushes one).
+    pub fn emit_le_f32(&mut self) {
+        self.bytecode.push(opcode::LE_F32);
+        self.pop_stack(1);
+    }
+
+    /// Emits GT_F32 (pops two, pushes one).
+    pub fn emit_gt_f32(&mut self) {
+        self.bytecode.push(opcode::GT_F32);
+        self.pop_stack(1);
+    }
+
+    /// Emits GE_F32 (pops two, pushes one).
+    pub fn emit_ge_f32(&mut self) {
+        self.bytecode.push(opcode::GE_F32);
+        self.pop_stack(1);
+    }
+
+    /// Emits EQ_F64 (pops two, pushes one).
+    pub fn emit_eq_f64(&mut self) {
+        self.bytecode.push(opcode::EQ_F64);
+        self.pop_stack(1);
+    }
+
+    /// Emits NE_F64 (pops two, pushes one).
+    pub fn emit_ne_f64(&mut self) {
+        self.bytecode.push(opcode::NE_F64);
+        self.pop_stack(1);
+    }
+
+    /// Emits LT_F64 (pops two, pushes one).
+    pub fn emit_lt_f64(&mut self) {
+        self.bytecode.push(opcode::LT_F64);
+        self.pop_stack(1);
+    }
+
+    /// Emits LE_F64 (pops two, pushes one).
+    pub fn emit_le_f64(&mut self) {
+        self.bytecode.push(opcode::LE_F64);
+        self.pop_stack(1);
+    }
+
+    /// Emits GT_F64 (pops two, pushes one).
+    pub fn emit_gt_f64(&mut self) {
+        self.bytecode.push(opcode::GT_F64);
+        self.pop_stack(1);
+    }
+
+    /// Emits GE_F64 (pops two, pushes one).
+    pub fn emit_ge_f64(&mut self) {
+        self.bytecode.push(opcode::GE_F64);
+        self.pop_stack(1);
+    }
+
     // --- 64-bit load/store opcodes ---
 
     /// Emits LOAD_CONST_I64 with a constant pool index.
