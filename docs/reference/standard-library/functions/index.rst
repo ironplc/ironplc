@@ -33,7 +33,7 @@ Numeric Functions
      - Not yet supported
    * - :doc:`EXPT <expt>`
      - Exponentiation
-     - Supported (INT)
+     - Supported
 
 Trigonometric Functions
 -----------------------
@@ -76,19 +76,19 @@ Arithmetic Functions
      - Status
    * - :doc:`ADD <add>`
      - Addition
-     - Supported (INT)
+     - Supported
    * - :doc:`SUB <sub>`
      - Subtraction
-     - Supported (INT)
+     - Supported
    * - :doc:`MUL <mul>`
      - Multiplication
-     - Supported (INT)
+     - Supported
    * - :doc:`DIV <div>`
      - Division
-     - Supported (INT)
+     - Supported
    * - :doc:`MOD <mod>`
      - Modulo
-     - Supported (INT)
+     - Supported
 
 Comparison Functions
 --------------------
@@ -102,22 +102,22 @@ Comparison Functions
      - Status
    * - :doc:`GT <gt>`
      - Greater than
-     - Supported (INT)
+     - Supported
    * - :doc:`GE <ge>`
      - Greater than or equal
-     - Supported (INT)
+     - Supported
    * - :doc:`EQ <eq>`
      - Equal
-     - Supported (INT)
+     - Supported
    * - :doc:`LE <le>`
      - Less than or equal
-     - Supported (INT)
+     - Supported
    * - :doc:`LT <lt>`
      - Less than
-     - Supported (INT)
+     - Supported
    * - :doc:`NE <ne>`
      - Not equal
-     - Supported (INT)
+     - Supported
 
 Selection Functions
 -------------------

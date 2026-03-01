@@ -10,7 +10,7 @@ Returns the remainder after integer division.
    * - **IEC 61131-3**
      - Section 2.5.1.5.3
    * - **Support**
-     - Supported (INT)
+     - Supported
 
 Signatures
 ----------
@@ -28,7 +28,7 @@ Signatures
      - ``SINT``
      - ``SINT``
      - ``SINT``
-     - Not yet supported
+     - Supported
    * - 2
      - ``INT``
      - ``INT``
@@ -38,32 +38,32 @@ Signatures
      - ``DINT``
      - ``DINT``
      - ``DINT``
-     - Not yet supported
+     - Supported
    * - 4
      - ``LINT``
      - ``LINT``
      - ``LINT``
-     - Not yet supported
+     - Supported
    * - 5
      - ``USINT``
      - ``USINT``
      - ``USINT``
-     - Not yet supported
+     - Supported
    * - 6
      - ``UINT``
      - ``UINT``
      - ``UINT``
-     - Not yet supported
+     - Supported
    * - 7
      - ``UDINT``
      - ``UDINT``
      - ``UDINT``
-     - Not yet supported
+     - Supported
    * - 8
      - ``ULINT``
      - ``ULINT``
      - ``ULINT``
-     - Not yet supported
+     - Supported
 
 Description
 -----------
