@@ -1,0 +1,32 @@
+=====
+E0003
+=====
+
+.. problem-summary:: E0003
+
+The IronPLC compiler failed to disassemble an :file:`.iplc` bytecode file.
+
+When you open an :file:`.iplc` file, the VS Code extension asks the compiler to disassemble
+the binary contents so they can be displayed in a human-readable form. This error means the
+compiler was found and running, but the disassembly request failed.
+
+Common causes include:
+
+- The file is corrupted or truncated
+- The file was created by an incompatible compiler version
+- The file is not a valid IPLC bytecode file despite having the :file:`.iplc` extension
+
+**Solutions**:
+
+1. **Check the file**: Ensure the file is a valid IPLC bytecode file produced by
+   the IronPLC compiler.
+
+2. **Recompile**: If the file was produced by an older compiler version, recompile
+   the source to produce an updated bytecode file.
+
+3. **Check for corruption**: If the file was transferred over a network or extracted
+   from an archive, verify it was not corrupted during transfer.
+
+4. **Report the issue**: If the file should be valid, open an issue on
+   `GitHub <https://github.com/ironplc/ironplc/issues>`_ with the error details
+   shown in the message.

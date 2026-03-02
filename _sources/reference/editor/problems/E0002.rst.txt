@@ -1,0 +1,27 @@
+=====
+E0002
+=====
+
+.. problem-summary:: E0002
+
+The IPLC Bytecode Viewer could not find the IronPLC compiler when opening an :file:`.iplc` file.
+
+When you open an :file:`.iplc` bytecode file, the VS Code extension uses the IronPLC compiler
+to disassemble the binary contents. If the compiler has not started within a few seconds of
+opening the file, the viewer displays this error.
+
+This is similar to :doc:`E0001`, but occurs specifically in the bytecode viewer rather than
+during general extension activation.
+
+**Solutions**:
+
+1. **Verify installation**: Open a terminal and run :program:`ironplcc --version`. If this
+   fails, the compiler is not installed or not in your PATH.
+
+2. **Install the compiler**: See the :doc:`/quickstart/installation` guide.
+
+3. **Configure the path manually**: If the compiler is installed in a non-standard
+   location, set the ``ironplc.path`` setting to the full path of the executable.
+
+4. **Reload the window**: If the compiler was recently installed, run
+   "Developer: Reload Window" from the Command Palette to restart the extension.
