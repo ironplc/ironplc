@@ -215,6 +215,40 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
 }
 
 // =============================================================================
+// Bit shift and rotate functions
+// =============================================================================
+
+/// Returns standard bit shift and rotate function definitions.
+///
+/// IEC 61131-3 defines SHL, SHR, ROL, ROR as standard functions operating
+/// on ANY_BIT types with an ANY_INT shift count. The return type matches
+/// the input type.
+fn get_bitshift_functions() -> Vec<FunctionSignature> {
+    vec![
+        FunctionSignature::stdlib(
+            "SHL",
+            TypeName::from("ANY_BIT"),
+            vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
+        ),
+        FunctionSignature::stdlib(
+            "SHR",
+            TypeName::from("ANY_BIT"),
+            vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
+        ),
+        FunctionSignature::stdlib(
+            "ROL",
+            TypeName::from("ANY_BIT"),
+            vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
+        ),
+        FunctionSignature::stdlib(
+            "ROR",
+            TypeName::from("ANY_BIT"),
+            vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
+        ),
+    ]
+}
+
+// =============================================================================
 // Public API
 // =============================================================================
 
@@ -234,6 +268,9 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     // Numeric functions
     functions.extend(get_numeric_functions());
 
+    // Bit shift and rotate functions
+    functions.extend(get_bitshift_functions());
+
     functions
 }
 
@@ -250,8 +287,9 @@ mod tests {
         // Real-to-int: 2 reals × 4 signed + 2 reals × 4 unsigned = 8 + 8 = 16
         // Real-to-real: 2 × 1 = 2
         // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT, SEL = 6
-        // Total: 56 + 16 + 16 + 2 + 6 = 96
-        assert_eq!(functions.len(), 96);
+        // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
+        // Total: 56 + 16 + 16 + 2 + 6 + 4 = 100
+        assert_eq!(functions.len(), 100);
     }
 
     #[test]

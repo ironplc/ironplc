@@ -423,6 +423,42 @@ pub mod builtin {
     /// SEL for 32-bit integers: pops in1, in0, g, pushes in0 if g==0 else in1.
     pub const SEL_I32: u16 = 0x0347;
 
+    /// SHL for 32-bit: pops shift count (n) and value (a), pushes a << n.
+    pub const SHL_I32: u16 = 0x0348;
+
+    /// SHL for 64-bit: pops shift count (n) and value (a), pushes a << n.
+    pub const SHL_I64: u16 = 0x0349;
+
+    /// SHR for 32-bit: pops shift count (n) and value (a), pushes a >> n (logical).
+    pub const SHR_I32: u16 = 0x034A;
+
+    /// SHR for 64-bit: pops shift count (n) and value (a), pushes a >> n (logical).
+    pub const SHR_I64: u16 = 0x034B;
+
+    /// ROL for 32-bit: pops shift count (n) and value (a), pushes a.rotate_left(n).
+    pub const ROL_I32: u16 = 0x034C;
+
+    /// ROL for 64-bit: pops shift count (n) and value (a), pushes a.rotate_left(n).
+    pub const ROL_I64: u16 = 0x034D;
+
+    /// ROR for 32-bit: pops shift count (n) and value (a), pushes a.rotate_right(n).
+    pub const ROR_I32: u16 = 0x034E;
+
+    /// ROR for 64-bit: pops shift count (n) and value (a), pushes a.rotate_right(n).
+    pub const ROR_I64: u16 = 0x034F;
+
+    /// ROL for 8-bit (BYTE): narrow rotate within 8 bits.
+    pub const ROL_U8: u16 = 0x0350;
+
+    /// ROL for 16-bit (WORD): narrow rotate within 16 bits.
+    pub const ROL_U16: u16 = 0x0351;
+
+    /// ROR for 8-bit (BYTE): narrow rotate within 8 bits.
+    pub const ROR_U8: u16 = 0x0352;
+
+    /// ROR for 16-bit (WORD): narrow rotate within 16 bits.
+    pub const ROR_U16: u16 = 0x0353;
+
     /// Returns the number of arguments a built-in function pops from the stack.
     ///
     /// This is the single source of truth for argument counts, used by both
@@ -435,6 +471,8 @@ pub mod builtin {
             ABS_I32 => 1,
             EXPT_I32 | EXPT_F32 | EXPT_F64 | MIN_I32 | MAX_I32 => 2,
             LIMIT_I32 | SEL_I32 => 3,
+            SHL_I32 | SHL_I64 | SHR_I32 | SHR_I64 | ROL_I32 | ROL_I64 | ROR_I32 | ROR_I64
+            | ROL_U8 | ROL_U16 | ROR_U8 | ROR_U16 => 2,
             _ => panic!("unknown builtin function ID: 0x{:04X}", func_id),
         }
     }
