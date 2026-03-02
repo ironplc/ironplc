@@ -85,35 +85,103 @@ Gaps 1–3 must be addressed in the debug section format before ST debugging can
 
 ### Revised Debug Section Format
 
-The debug section format extends the container format spec's definition. The additions are backward-compatible: a reader that only understands the original format can skip the new sub-tables by reading past them using the counts. The sub-tables appear in a fixed order after the original three sub-tables.
+The debug section uses a **tagged sub-table** layout. A directory at the start lists every sub-table by type tag and byte size. A reader skips unknown tags by size, so future sub-tables (LD rung maps, FBD network maps, source file tables) can be added without breaking existing readers.
+
+#### Section Layout
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ Source text (original)                                        │
-│   source_text_length: u32                                    │
-│   source_text: [u8; N]          UTF-8 source (optional)      │
+│ Debug Section Header                                          │
+│   sub_table_count: u16                                       │
+│   directory: [SubTableEntry; sub_table_count]                │
 ├──────────────────────────────────────────────────────────────┤
-│ Line maps (original)                                          │
-│   line_map_count: u16                                        │
-│   line_maps: [LineMapEntry; count]   8 bytes each            │
-├──────────────────────────────────────────────────────────────┤
-│ Variable names (revised — extended fields)                    │
-│   var_name_count: u16                                        │
-│   var_names: [VarNameEntry; count]   variable size           │
-├──────────────────────────────────────────────────────────────┤
-│ Function names (new)                                          │
-│   func_name_count: u16                                       │
-│   func_names: [FuncNameEntry; count]   variable size         │
-├──────────────────────────────────────────────────────────────┤
-│ FB type names (new, reserved for Phase 5)                    │
-│   type_name_count: u16                                       │
-│   type_names: [TypeNameEntry; count]   variable size         │
-├──────────────────────────────────────────────────────────────┤
-│ FB field names (new, reserved for Phase 5)                    │
-│   field_name_count: u16                                      │
-│   field_names: [FieldNameEntry; count]   variable size       │
+│ Sub-table payloads (concatenated, in directory order)         │
+│   payload[0]: [u8; directory[0].size]                        │
+│   payload[1]: [u8; directory[1].size]                        │
+│   ...                                                         │
+│   payload[N-1]: [u8; directory[N-1].size]                    │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+Each SubTableEntry (8 bytes):
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | tag | u16 | Sub-table type identifier (see tag registry below) |
+| 2 | _reserved | u16 | Must be zero |
+| 4 | size | u32 | Size of this sub-table's payload in bytes |
+
+To find the data for sub-table at directory index `i`, compute:
+
+```
+payload_offset = 2 + (8 × sub_table_count) + sum(directory[0..i].size)
+```
+
+#### Tag Registry
+
+| Tag | Name | Status | Description |
+|-----|------|--------|-------------|
+| 0 | SOURCE_TEXT | v1 | Embedded source text (UTF-8) |
+| 1 | LINE_MAP | v1 | Bytecode offset → source line/column mappings |
+| 2 | VAR_NAME | v1 | Variable names with scope and type metadata |
+| 3 | FUNC_NAME | v1 | Function/POU name mappings |
+| 4 | FB_TYPE_NAME | Phase 5 | FB type ID → type name mappings |
+| 5 | FB_FIELD_NAME | Phase 5 | FB field index → field name mappings |
+| 6 | SOURCE_FILE | reserved | Source file table for multi-file projects |
+| 7 | LD_RUNG_MAP | reserved | Ladder Diagram rung ID → bytecode mappings |
+| 8 | FBD_NETWORK_MAP | reserved | Function Block Diagram network/element mappings |
+| 9–65535 | — | reserved | Future use |
+
+**Rules:**
+- Each tag may appear **at most once** in the directory. A reader that encounters a duplicate tag discards the debug section.
+- Tags may appear in **any order**. Readers must not assume a specific ordering.
+- A reader that encounters an unknown tag **skips it** using the `size` field. This is the core extensibility mechanism.
+- A required tag that is missing is treated as an empty table (count = 0).
+
+#### Why a directory instead of sequential parsing?
+
+The original container format spec defined sub-tables as a flat sequence: source text, then line maps, then variable names. This requires parsing every byte of every preceding table to find the one you want. Worse, adding a new table type (like an LD rung map) forces every existing reader to either understand the new format or fail — there's no way to skip variable-size tables without knowing their internal structure.
+
+The directory solves both problems. The `size` field on each entry lets a reader jump past any sub-table it doesn't understand. The `tag` field lets it find the sub-tables it cares about regardless of order. This means:
+
+- An ST debugger ignores tag 7 (LD_RUNG_MAP) — it doesn't even need to know what's inside.
+- An LD debugger ignores tag 1 (LINE_MAP) if it uses rung maps instead.
+- A minimal reader that only needs variable names scans the directory for tag 2 and jumps directly to it.
+
+#### Sub-table Payload Formats
+
+Each sub-table payload starts with its own item count, followed by the items. This is self-contained — the payload is parseable without the directory (the directory provides the size for skip-ability, but the count provides the item count for parsing).
+
+**Tag 0 — SOURCE_TEXT:**
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | text | [u8; size] | UTF-8 source text (the entire payload is the text; size comes from the directory) |
+
+**Tag 1 — LINE_MAP:**
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | count | u16 | Number of entries |
+| 2 | entries | [LineMapEntry; count] | 8 bytes each |
+
+**Tag 2 — VAR_NAME:**
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | count | u16 | Number of entries |
+| 2 | entries | [VarNameEntry; count] | Variable size each |
+
+**Tag 3 — FUNC_NAME:**
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | count | u16 | Number of entries |
+| 2 | entries | [FuncNameEntry; count] | Variable size each |
+
+**Tags 4, 5 — FB_TYPE_NAME, FB_FIELD_NAME:**
+
+Same pattern (count + entries). Payloads are 0 bytes (count = 0) in v1.
 
 #### LineMapEntry (8 bytes, changed from 6)
 
@@ -187,7 +255,7 @@ For v1, `field_name_count` is 0. When populated, this table allows the Variables
 
 ### How DAP Uses the Debug Info
 
-The following table traces each DAP request to the debug info sub-table it reads:
+The DAP server scans the debug section directory for the tags it needs and ignores the rest. The following table traces each DAP request to the sub-table tag it reads:
 
 | DAP Request | Sub-table Used | What It Provides |
 |-------------|---------------|-------------------|
@@ -316,9 +384,9 @@ pub struct FieldNameEntry {
 
 #### Read Path
 
-`Container::read_from()` checks `flags` bit 1. If set, it reads and parses the debug section. Debug info is stored in `Container.debug_info: Option<DebugInfo>`. If the debug section is malformed, it is silently discarded (non-fatal, per the container format spec).
+`Container::read_from()` checks `flags` bit 1. If set, it reads the debug section directory, then parses sub-tables for known tags and skips unknown tags by size. Debug info is stored in `Container.debug_info: Option<DebugInfo>`. If the directory is malformed (e.g., a sub-table's size extends past the section boundary, or a duplicate tag appears), the entire debug section is silently discarded (non-fatal, per the container format spec).
 
-A reader that encounters fewer sub-tables than expected (e.g., a container produced before the function name table was added) treats the missing tables as empty. This provides forward compatibility: older containers work with newer debuggers, just with less information.
+A reader that does not find a particular tag treats that sub-table as empty (count = 0). This provides forward compatibility: older containers (with fewer tags) work with newer debuggers, and newer containers (with extra tags) work with older debuggers.
 
 ### Source Text Embedding
 
@@ -919,17 +987,24 @@ These enhancements build on the core debugger but are not required for initial f
 
 ## Container Format Compatibility
 
-This spec **extends** the debug section format defined in the container format spec. The extensions are:
+This spec **replaces** the debug section format defined in the container format spec with a tagged sub-table layout. The changes are:
 
-1. **LineMapEntry grows from 6 to 8 bytes** — adds `source_column: u16`
-2. **VarNameEntry gains scope and type fields** — adds `function_id`, `var_section`, `type_name`
-3. **Three new sub-tables** — function names, FB type names, FB field names
+1. **New directory header** — `sub_table_count: u16` + array of `(tag: u16, _reserved: u16, size: u32)` entries
+2. **Tagged sub-tables** — each sub-table has a type tag; readers skip unknown tags by size
+3. **LineMapEntry grows from 6 to 8 bytes** — adds `source_column: u16`
+4. **VarNameEntry gains scope and type fields** — adds `function_id`, `var_section`, `type_name`
+5. **Three new sub-table types** — function names (tag 3), FB type names (tag 4), FB field names (tag 5)
+6. **Reserved tags** — source file table (tag 6), LD rung map (tag 7), FBD network map (tag 8)
 
 These changes affect only the debug section, which is independently hashed and signed (via `debug_hash` and the debug signature section). Adding or modifying debug info does not affect the content signature or the content hash, so existing containers remain valid.
 
 The container format spec's debug section definition should be updated to match the format specified in this document. Since the debug section has not yet been implemented in the container crate, this is a spec revision, not a breaking change.
 
-**Forward compatibility.** The new sub-tables are appended after the existing sub-tables. A reader that encounters a debug section shorter than expected (because it was produced by an older compiler) treats missing sub-tables as having count 0. A reader that encounters extra data after the last expected sub-table ignores it. This allows gradual rollout: an older debugger can read the line maps and variable names from a new-format container, just without the function name or FB type/field name tables.
+**Forward compatibility.** The tagged directory is the extensibility mechanism. A reader that encounters an unknown tag skips it using the `size` field — no knowledge of the sub-table's internal structure is required. This means:
+
+- Future sub-tables (LD rung maps, source file tables, etc.) can be added by allocating a new tag. Existing readers continue to work — they simply skip the unknown tag.
+- A compiler that emits a new sub-table type does not break older debuggers.
+- The debug section does not need its own version number. The tag registry serves the same purpose: readers understand the tags they know and skip the rest.
 
 The VM handles the debug section in its loading sequence (step 13 in the container format spec): if present and valid, load it; if invalid, discard it silently.
 
@@ -950,6 +1025,6 @@ This means bytecode debugging works even when the debug section is stripped — 
 
 1. **Remote debugging** — DAP over TCP to debug programs on remote targets (embedded PLCs). The initial implementation uses stdin/stdout only.
 2. **Multi-file debugging** — debugging programs that span multiple source files. The initial implementation assumes a single source file per container. The debug section format reserves space for a source file table (via a future sub-table) but does not define it in v1.
-3. **Ladder Diagram / FBD debugging** — graphical IEC 61131-3 languages (LD, FBD) have fundamentally different debugging UIs (highlighting rungs, showing power flow, animating contacts/coils). The debug section format could support LD by adding a rung-map sub-table (mapping bytecode offsets to rung IDs and element positions within a rung), but the compilation pipeline, DAP server, and VS Code extension would all need LD-specific support. This is deferred until graphical language compilation is implemented.
+3. **Ladder Diagram / FBD debugging** — graphical IEC 61131-3 languages (LD, FBD) have fundamentally different debugging UIs (highlighting rungs, showing power flow, animating contacts/coils). The debug section format reserves tags 7 (LD_RUNG_MAP) and 8 (FBD_NETWORK_MAP) for this purpose — future compilers can emit these sub-tables and existing ST debuggers will skip them harmlessly. However, the compilation pipeline, DAP server, and VS Code extension would all need LD/FBD-specific support. This is deferred until graphical language compilation is implemented.
 4. **Memory breakpoints** — breaking when a specific variable's value changes (hardware watchpoints). These require polling or page-fault tricks that are not practical in the VM.
 5. **Time-travel debugging** — recording and replaying execution. Would require snapshotting VM state at each scan cycle, which is a significant memory and performance cost.
