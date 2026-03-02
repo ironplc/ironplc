@@ -55,27 +55,27 @@ Elementary Types
    * - :doc:`REAL <real>`
      - 32 bits
      - Single-precision floating point
-     - Not yet supported
+     - Supported
    * - :doc:`LREAL <lreal>`
      - 64 bits
      - Double-precision floating point
-     - Not yet supported
+     - Supported
    * - :doc:`BYTE <byte>`
      - 8 bits
      - Bit string of 8 bits
-     - Not yet supported
+     - Supported
    * - :doc:`WORD <word>`
      - 16 bits
      - Bit string of 16 bits
-     - Not yet supported
+     - Supported
    * - :doc:`DWORD <dword>`
      - 32 bits
      - Bit string of 32 bits
-     - Not yet supported
+     - Supported
    * - :doc:`LWORD <lword>`
      - 64 bits
      - Bit string of 64 bits
-     - Not yet supported
+     - Supported
    * - :doc:`STRING <string>`
      - Variable
      - Single-byte character string

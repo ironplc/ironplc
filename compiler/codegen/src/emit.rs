@@ -181,6 +181,58 @@ impl Emitter {
         // Net effect: pop 1, push 1 = no change to stack depth
     }
 
+    // --- Bitwise opcodes (32-bit) ---
+
+    /// Emits BIT_AND_32 (pops two, pushes one).
+    pub fn emit_bit_and_32(&mut self) {
+        self.bytecode.push(opcode::BIT_AND_32);
+        self.pop_stack(1);
+    }
+
+    /// Emits BIT_OR_32 (pops two, pushes one).
+    pub fn emit_bit_or_32(&mut self) {
+        self.bytecode.push(opcode::BIT_OR_32);
+        self.pop_stack(1);
+    }
+
+    /// Emits BIT_XOR_32 (pops two, pushes one).
+    pub fn emit_bit_xor_32(&mut self) {
+        self.bytecode.push(opcode::BIT_XOR_32);
+        self.pop_stack(1);
+    }
+
+    /// Emits BIT_NOT_32 (pops one, pushes one).
+    pub fn emit_bit_not_32(&mut self) {
+        self.bytecode.push(opcode::BIT_NOT_32);
+        // Net effect: pop 1, push 1 = no change to stack depth
+    }
+
+    // --- Bitwise opcodes (64-bit) ---
+
+    /// Emits BIT_AND_64 (pops two, pushes one).
+    pub fn emit_bit_and_64(&mut self) {
+        self.bytecode.push(opcode::BIT_AND_64);
+        self.pop_stack(1);
+    }
+
+    /// Emits BIT_OR_64 (pops two, pushes one).
+    pub fn emit_bit_or_64(&mut self) {
+        self.bytecode.push(opcode::BIT_OR_64);
+        self.pop_stack(1);
+    }
+
+    /// Emits BIT_XOR_64 (pops two, pushes one).
+    pub fn emit_bit_xor_64(&mut self) {
+        self.bytecode.push(opcode::BIT_XOR_64);
+        self.pop_stack(1);
+    }
+
+    /// Emits BIT_NOT_64 (pops one, pushes one).
+    pub fn emit_bit_not_64(&mut self) {
+        self.bytecode.push(opcode::BIT_NOT_64);
+        // Net effect: pop 1, push 1 = no change to stack depth
+    }
+
     // --- Truncation opcodes ---
 
     /// Emits TRUNC_I8 (pops one i32, truncates to i8 range, pushes one i32).
@@ -555,12 +607,17 @@ impl Emitter {
         self.pop_stack(1);
     }
 
-    /// Emits BUILTIN with a function ID (pops two, pushes one for 2-arg functions).
+    /// Emits BUILTIN with a function ID.
+    /// All builtins pop `arg_count` values and push one result.
+    /// The arg count is looked up from `opcode::builtin::arg_count()`.
     pub fn emit_builtin(&mut self, func_id: u16) {
         self.bytecode.push(opcode::BUILTIN);
         self.bytecode.extend_from_slice(&func_id.to_le_bytes());
-        // Net effect: pop 2, push 1 = pop 1
-        self.pop_stack(1);
+        // Net effect: pop arg_count, push 1 = pop (arg_count - 1)
+        let arg_count = opcode::builtin::arg_count(func_id);
+        if arg_count > 1 {
+            self.pop_stack(arg_count - 1);
+        }
     }
 
     /// Creates a new unbound label for use as a jump target.
@@ -852,6 +909,30 @@ mod tests {
         em.emit_store_var_i32(1); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
+    }
+
+    #[test]
+    fn emitter_when_builtin_1_arg_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        // y := ABS(x)
+        em.emit_load_var_i32(0); // stack: 1
+        em.emit_builtin(opcode::builtin::ABS_I32); // stack: 1 (pop 1, push 1)
+        em.emit_store_var_i32(1); // stack: 0
+
+        assert_eq!(em.max_stack_depth(), 1);
+    }
+
+    #[test]
+    fn emitter_when_builtin_3_arg_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        // y := LIMIT(mn, x, mx)
+        em.emit_load_const_i32(0); // stack: 1
+        em.emit_load_var_i32(0); // stack: 2
+        em.emit_load_const_i32(1); // stack: 3
+        em.emit_builtin(opcode::builtin::LIMIT_I32); // stack: 1 (pop 3, push 1)
+        em.emit_store_var_i32(1); // stack: 0
+
+        assert_eq!(em.max_stack_depth(), 3);
     }
 
     #[test]

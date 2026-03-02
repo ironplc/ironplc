@@ -17,7 +17,9 @@
 //! - Binary Add, Sub, Mul, Div, Mod, and Pow operators
 //! - Unary Neg and Not operators
 //! - Comparison operators (=, <>, <, <=, >, >=)
-//! - Boolean operators (AND, OR, XOR, NOT)
+//! - Boolean operators (AND, OR, XOR, NOT) with logical semantics
+//! - Bitwise operators (AND, OR, XOR, NOT) for bit string types (BYTE, WORD, DWORD, LWORD)
+//! - Bit shift/rotate functions (SHL, SHR, ROL, ROR) for bit string types
 //! - Variable references (named symbolic variables)
 //! - IF/ELSIF/ELSE statements
 //! - CASE statements (integer and subrange selectors)
@@ -41,8 +43,8 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    CaseSelectionKind, CompareOp, ExprKind, Operator, Statements, StmtKind, SymbolicVariableKind,
-    UnaryOp, Variable,
+    CaseSelectionKind, CompareOp, ExprKind, Function, Operator, ParamAssignmentKind, Statements,
+    StmtKind, SymbolicVariableKind, UnaryOp, Variable,
 };
 use ironplc_problems::Problem;
 
@@ -337,11 +339,6 @@ fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
             signedness: Signedness::Signed,
             storage_bits: 64,
         }),
-        "bool" => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
         "byte" => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
@@ -396,7 +393,53 @@ fn infer_op_type(ctx: &CompileContext, expr: &ExprKind) -> OpType {
             infer_op_type(ctx, &compare.right)
         }
         ExprKind::Expression(inner) => infer_op_type(ctx, inner),
+        ExprKind::Function(func) => func
+            .param_assignment
+            .iter()
+            .find_map(|p| match p {
+                ParamAssignmentKind::PositionalInput(pos) => {
+                    let t = infer_op_type(ctx, &pos.expr);
+                    if t != DEFAULT_OP_TYPE {
+                        Some(t)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .unwrap_or(DEFAULT_OP_TYPE),
         _ => DEFAULT_OP_TYPE,
+    }
+}
+
+/// Infers the storage bit width from an expression by finding the first variable reference.
+///
+/// Used after BIT_NOT to emit the correct truncation opcode for narrow types
+/// (BYTE needs TRUNC_U8, WORD needs TRUNC_U16). Returns `None` if no variable
+/// reference is found.
+fn infer_storage_bits(ctx: &CompileContext, expr: &ExprKind) -> Option<u8> {
+    match expr {
+        ExprKind::Variable(variable) => {
+            if let Variable::Symbolic(SymbolicVariableKind::Named(named)) = variable {
+                return ctx.var_type_info(&named.name).map(|ti| ti.storage_bits);
+            }
+            None
+        }
+        ExprKind::LateBound(late_bound) => ctx
+            .var_type_info(&late_bound.value)
+            .map(|ti| ti.storage_bits),
+        ExprKind::BinaryOp(binary) => {
+            infer_storage_bits(ctx, &binary.left).or_else(|| infer_storage_bits(ctx, &binary.right))
+        }
+        ExprKind::UnaryOp(unary) => infer_storage_bits(ctx, &unary.term),
+        ExprKind::Compare(compare) => infer_storage_bits(ctx, &compare.left)
+            .or_else(|| infer_storage_bits(ctx, &compare.right)),
+        ExprKind::Expression(inner) => infer_storage_bits(ctx, inner),
+        ExprKind::Function(func) => func.param_assignment.iter().find_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => infer_storage_bits(ctx, &pos.expr),
+            _ => None,
+        }),
+        _ => None,
     }
 }
 
@@ -909,6 +952,50 @@ fn compile_for(
     Ok(())
 }
 
+/// Returns the builtin opcode for a named standard library function, if known.
+///
+/// The `op_width` selects the correct variant (i32/f32/f64) for the function.
+fn lookup_builtin(name: &str, op_width: OpWidth) -> Option<u16> {
+    match name.to_uppercase().as_str() {
+        "EXPT" => Some(match op_width {
+            OpWidth::W32 | OpWidth::W64 => opcode::builtin::EXPT_I32,
+            OpWidth::F32 => opcode::builtin::EXPT_F32,
+            OpWidth::F64 => opcode::builtin::EXPT_F64,
+        }),
+        "ABS" => Some(match op_width {
+            OpWidth::W32 | OpWidth::W64 => opcode::builtin::ABS_I32,
+            OpWidth::F32 => opcode::builtin::ABS_F32,
+            OpWidth::F64 => opcode::builtin::ABS_F64,
+        }),
+        "MIN" => Some(match op_width {
+            OpWidth::W32 | OpWidth::W64 => opcode::builtin::MIN_I32,
+            OpWidth::F32 => opcode::builtin::MIN_F32,
+            OpWidth::F64 => opcode::builtin::MIN_F64,
+        }),
+        "MAX" => Some(match op_width {
+            OpWidth::W32 | OpWidth::W64 => opcode::builtin::MAX_I32,
+            OpWidth::F32 => opcode::builtin::MAX_F32,
+            OpWidth::F64 => opcode::builtin::MAX_F64,
+        }),
+        "LIMIT" => Some(match op_width {
+            OpWidth::W32 | OpWidth::W64 => opcode::builtin::LIMIT_I32,
+            OpWidth::F32 => opcode::builtin::LIMIT_F32,
+            OpWidth::F64 => opcode::builtin::LIMIT_F64,
+        }),
+        "SEL" => Some(match op_width {
+            OpWidth::W32 | OpWidth::W64 => opcode::builtin::SEL_I32,
+            OpWidth::F32 => opcode::builtin::SEL_F32,
+            OpWidth::F64 => opcode::builtin::SEL_F64,
+        }),
+        "SQRT" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::SQRT_F32),
+            OpWidth::F64 => Some(opcode::builtin::SQRT_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        _ => None,
+    }
+}
+
 /// Compiles an expression, leaving the result on the stack.
 ///
 /// The `op_type` determines which width (i32/i64) and signedness to use
@@ -989,7 +1076,18 @@ fn compile_expr(
             }
             UnaryOp::Not => {
                 compile_expr(emitter, ctx, &unary.term, op_type)?;
-                emitter.emit_bool_not();
+                match op_type {
+                    (OpWidth::W32, Signedness::Unsigned) => {
+                        emitter.emit_bit_not_32();
+                        match infer_storage_bits(ctx, &unary.term) {
+                            Some(8) => emitter.emit_trunc_u8(),
+                            Some(16) => emitter.emit_trunc_u16(),
+                            _ => {}
+                        }
+                    }
+                    (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_not_64(),
+                    _ => emitter.emit_bool_not(),
+                }
                 Ok(())
             }
         },
@@ -1009,9 +1107,9 @@ fn compile_expr(
                 CompareOp::Gt => emit_gt(emitter, op_type),
                 CompareOp::LtEq => emit_le(emitter, op_type),
                 CompareOp::GtEq => emit_ge(emitter, op_type),
-                CompareOp::And => emitter.emit_bool_and(),
-                CompareOp::Or => emitter.emit_bool_or(),
-                CompareOp::Xor => emitter.emit_bool_xor(),
+                CompareOp::And => emit_and(emitter, op_type),
+                CompareOp::Or => emit_or(emitter, op_type),
+                CompareOp::Xor => emit_xor(emitter, op_type),
             }
             Ok(())
         }
@@ -1020,12 +1118,148 @@ fn compile_expr(
             file!(),
             line!(),
         )),
-        ExprKind::Function(func) => Err(Diagnostic::todo_with_span(
+        ExprKind::Function(func) => compile_function_call(emitter, ctx, func, op_type),
+    }
+}
+
+/// Compiles a standard library function call.
+///
+/// Dispatches shift/rotate functions to a width-aware handler, and other
+/// known builtins to the generic lookup path.
+fn compile_function_call(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let name = func.name.lower_case();
+    match name.as_str() {
+        "shl" | "shr" | "rol" | "ror" => {
+            compile_shift_rotate(emitter, ctx, func, op_type, name.as_str())
+        }
+        _ => compile_generic_builtin(emitter, ctx, func, op_type),
+    }
+}
+
+/// Compiles a generic builtin function call via `lookup_builtin`.
+///
+/// All arguments are compiled with the same `op_type` and the function ID
+/// is looked up by name.
+fn compile_generic_builtin(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let func_name = func.name.original().to_uppercase();
+    let func_id = lookup_builtin(&func_name, op_type.0)
+        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
+
+    let expected_args = opcode::builtin::arg_count(func_id) as usize;
+
+    let args: Vec<&ExprKind> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != expected_args {
+        return Err(Diagnostic::todo_with_span(
             func.name.span(),
             file!(),
             line!(),
-        )),
+        ));
     }
+
+    let is_sel = func_name == "SEL";
+    for (i, arg) in args.iter().enumerate() {
+        // SEL's first argument (G) is always a BOOL/integer selector,
+        // even when the remaining arguments are float.
+        let arg_op_type = if is_sel && i == 0 {
+            DEFAULT_OP_TYPE
+        } else {
+            op_type
+        };
+        compile_expr(emitter, ctx, arg, arg_op_type)?;
+    }
+
+    emitter.emit_builtin(func_id);
+    Ok(())
+}
+
+/// Compiles a bit shift or rotate function call (SHL, SHR, ROL, ROR).
+///
+/// Expects two positional arguments: IN (value) and N (shift count).
+/// Emits the appropriate BUILTIN opcode based on function name and operand width.
+/// For ROL/ROR on narrow types (BYTE, WORD), emits width-specific builtins
+/// to ensure bits wrap correctly within the narrow type.
+fn compile_shift_rotate(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+    name: &str,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&ExprKind> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    // Compile IN (value) with the inferred op_type
+    compile_expr(emitter, ctx, args[0], op_type)?;
+    // Compile N (shift count) — always as i32 for W32, i64 for W64
+    let n_op_type = match op_type.0 {
+        OpWidth::W64 => (OpWidth::W64, Signedness::Signed),
+        _ => DEFAULT_OP_TYPE,
+    };
+    compile_expr(emitter, ctx, args[1], n_op_type)?;
+
+    // Determine storage bits for narrow-type ROL/ROR selection
+    let storage_bits = infer_storage_bits(ctx, args[0]);
+
+    let func_id = match (name, op_type.0) {
+        ("shl", OpWidth::W64) => opcode::builtin::SHL_I64,
+        ("shl", _) => opcode::builtin::SHL_I32,
+        ("shr", OpWidth::W64) => opcode::builtin::SHR_I64,
+        ("shr", _) => opcode::builtin::SHR_I32,
+        ("rol", OpWidth::W64) => opcode::builtin::ROL_I64,
+        ("rol", _) => match storage_bits {
+            Some(8) => opcode::builtin::ROL_U8,
+            Some(16) => opcode::builtin::ROL_U16,
+            _ => opcode::builtin::ROL_I32,
+        },
+        ("ror", OpWidth::W64) => opcode::builtin::ROR_I64,
+        ("ror", _) => match storage_bits {
+            Some(8) => opcode::builtin::ROR_U8,
+            Some(16) => opcode::builtin::ROR_U16,
+            _ => opcode::builtin::ROR_I32,
+        },
+        _ => {
+            return Err(Diagnostic::todo_with_span(
+                func.name.span(),
+                file!(),
+                line!(),
+            ))
+        }
+    };
+
+    emitter.emit_builtin(func_id);
+    Ok(())
 }
 
 /// Compiles a constant literal, pushing it onto the stack.
@@ -1367,6 +1601,30 @@ fn emit_pow(emitter: &mut Emitter, op_type: OpType) {
         OpWidth::W64 => emitter.emit_builtin(opcode::builtin::EXPT_I32),
         OpWidth::F32 => emitter.emit_builtin(opcode::builtin::EXPT_F32),
         OpWidth::F64 => emitter.emit_builtin(opcode::builtin::EXPT_F64),
+    }
+}
+
+fn emit_and(emitter: &mut Emitter, op_type: OpType) {
+    match op_type {
+        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_bit_and_32(),
+        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_and_64(),
+        _ => emitter.emit_bool_and(),
+    }
+}
+
+fn emit_or(emitter: &mut Emitter, op_type: OpType) {
+    match op_type {
+        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_bit_or_32(),
+        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_or_64(),
+        _ => emitter.emit_bool_or(),
+    }
+}
+
+fn emit_xor(emitter: &mut Emitter, op_type: OpType) {
+    match op_type {
+        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_bit_xor_32(),
+        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_xor_64(),
+        _ => emitter.emit_bool_xor(),
     }
 }
 

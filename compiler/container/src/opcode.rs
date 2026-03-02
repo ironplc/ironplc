@@ -84,6 +84,42 @@ pub const BOOL_XOR: u8 = 0x56;
 /// Pops one value, pushes 1 if it is zero, else 0.
 pub const BOOL_NOT: u8 = 0x57;
 
+// --- Bitwise opcodes (32-bit) ---
+
+/// Bitwise AND of two 32-bit integers.
+/// Pops two values (b then a), pushes a & b.
+pub const BIT_AND_32: u8 = 0x58;
+
+/// Bitwise OR of two 32-bit integers.
+/// Pops two values (b then a), pushes a | b.
+pub const BIT_OR_32: u8 = 0x59;
+
+/// Bitwise XOR of two 32-bit integers.
+/// Pops two values (b then a), pushes a ^ b.
+pub const BIT_XOR_32: u8 = 0x5A;
+
+/// Bitwise NOT of a 32-bit integer.
+/// Pops one value, pushes !a.
+pub const BIT_NOT_32: u8 = 0x5B;
+
+// --- Bitwise opcodes (64-bit) ---
+
+/// Bitwise AND of two 64-bit integers.
+/// Pops two values (b then a), pushes a & b.
+pub const BIT_AND_64: u8 = 0x60;
+
+/// Bitwise OR of two 64-bit integers.
+/// Pops two values (b then a), pushes a | b.
+pub const BIT_OR_64: u8 = 0x61;
+
+/// Bitwise XOR of two 64-bit integers.
+/// Pops two values (b then a), pushes a ^ b.
+pub const BIT_XOR_64: u8 = 0x62;
+
+/// Bitwise NOT of a 64-bit integer.
+/// Pops one value, pushes !a.
+pub const BIT_NOT_64: u8 = 0x63;
+
 /// Unconditional jump. Operand: i16 offset relative to next instruction.
 pub const JMP: u8 = 0xB0;
 
@@ -371,4 +407,109 @@ pub mod builtin {
 
     /// EXPT for 64-bit floats: pops exponent (b) and base (a), pushes a.powf(b).
     pub const EXPT_F64: u16 = 0x0342;
+
+    /// ABS for 32-bit integers: pops one value, pushes its absolute value (wrapping).
+    pub const ABS_I32: u16 = 0x0343;
+
+    /// MIN for 32-bit integers: pops two values (b then a), pushes min(a, b).
+    pub const MIN_I32: u16 = 0x0344;
+
+    /// MAX for 32-bit integers: pops two values (b then a), pushes max(a, b).
+    pub const MAX_I32: u16 = 0x0345;
+
+    /// LIMIT for 32-bit integers: pops mx, in, mn, pushes clamp(in, mn, mx).
+    pub const LIMIT_I32: u16 = 0x0346;
+
+    /// SEL for 32-bit integers: pops in1, in0, g, pushes in0 if g==0 else in1.
+    pub const SEL_I32: u16 = 0x0347;
+
+    /// SHL for 32-bit: pops shift count (n) and value (a), pushes a << n.
+    pub const SHL_I32: u16 = 0x0348;
+
+    /// SHL for 64-bit: pops shift count (n) and value (a), pushes a << n.
+    pub const SHL_I64: u16 = 0x0349;
+
+    /// SHR for 32-bit: pops shift count (n) and value (a), pushes a >> n (logical).
+    pub const SHR_I32: u16 = 0x034A;
+
+    /// SHR for 64-bit: pops shift count (n) and value (a), pushes a >> n (logical).
+    pub const SHR_I64: u16 = 0x034B;
+
+    /// ROL for 32-bit: pops shift count (n) and value (a), pushes a.rotate_left(n).
+    pub const ROL_I32: u16 = 0x034C;
+
+    /// ROL for 64-bit: pops shift count (n) and value (a), pushes a.rotate_left(n).
+    pub const ROL_I64: u16 = 0x034D;
+
+    /// ROR for 32-bit: pops shift count (n) and value (a), pushes a.rotate_right(n).
+    pub const ROR_I32: u16 = 0x034E;
+
+    /// ROR for 64-bit: pops shift count (n) and value (a), pushes a.rotate_right(n).
+    pub const ROR_I64: u16 = 0x034F;
+
+    /// ROL for 8-bit (BYTE): narrow rotate within 8 bits.
+    pub const ROL_U8: u16 = 0x0350;
+
+    /// ROL for 16-bit (WORD): narrow rotate within 16 bits.
+    pub const ROL_U16: u16 = 0x0351;
+
+    /// ROR for 8-bit (BYTE): narrow rotate within 8 bits.
+    pub const ROR_U8: u16 = 0x0352;
+
+    /// ROR for 16-bit (WORD): narrow rotate within 16 bits.
+    pub const ROR_U16: u16 = 0x0353;
+
+    /// ABS for 32-bit floats: pops one value, pushes its absolute value.
+    pub const ABS_F32: u16 = 0x0354;
+
+    /// ABS for 64-bit floats: pops one value, pushes its absolute value.
+    pub const ABS_F64: u16 = 0x0355;
+
+    /// MIN for 32-bit floats: pops two values (b then a), pushes min(a, b).
+    pub const MIN_F32: u16 = 0x0356;
+
+    /// MIN for 64-bit floats: pops two values (b then a), pushes min(a, b).
+    pub const MIN_F64: u16 = 0x0357;
+
+    /// MAX for 32-bit floats: pops two values (b then a), pushes max(a, b).
+    pub const MAX_F32: u16 = 0x0358;
+
+    /// MAX for 64-bit floats: pops two values (b then a), pushes max(a, b).
+    pub const MAX_F64: u16 = 0x0359;
+
+    /// LIMIT for 32-bit floats: pops mx, in, mn, pushes clamp(in, mn, mx).
+    pub const LIMIT_F32: u16 = 0x035A;
+
+    /// LIMIT for 64-bit floats: pops mx, in, mn, pushes clamp(in, mn, mx).
+    pub const LIMIT_F64: u16 = 0x035B;
+
+    /// SEL for 32-bit floats: pops in1, in0 (f32), g (i32), pushes in0 if g==0 else in1.
+    pub const SEL_F32: u16 = 0x035C;
+
+    /// SEL for 64-bit floats: pops in1, in0 (f64), g (i32), pushes in0 if g==0 else in1.
+    pub const SEL_F64: u16 = 0x035D;
+
+    /// SQRT for 32-bit floats: pops one value, pushes its square root.
+    pub const SQRT_F32: u16 = 0x035E;
+
+    /// SQRT for 64-bit floats: pops one value, pushes its square root.
+    pub const SQRT_F64: u16 = 0x035F;
+
+    /// Returns the number of arguments a built-in function pops from the stack.
+    ///
+    /// This is the single source of truth for argument counts, used by both
+    /// the codegen emitter (for stack depth tracking) and can be validated
+    /// against the VM dispatch implementation.
+    ///
+    /// Panics if `func_id` is not a known built-in function ID.
+    pub fn arg_count(func_id: u16) -> u16 {
+        match func_id {
+            ABS_I32 | ABS_F32 | ABS_F64 | SQRT_F32 | SQRT_F64 => 1,
+            EXPT_I32 | EXPT_F32 | EXPT_F64 | MIN_I32 | MIN_F32 | MIN_F64 | MAX_I32 | MAX_F32
+            | MAX_F64 | SHL_I32 | SHL_I64 | SHR_I32 | SHR_I64 | ROL_I32 | ROL_I64 | ROR_I32
+            | ROR_I64 | ROL_U8 | ROL_U16 | ROR_U8 | ROR_U16 => 2,
+            LIMIT_I32 | LIMIT_F32 | LIMIT_F64 | SEL_I32 | SEL_F32 | SEL_F64 => 3,
+            _ => panic!("unknown builtin function ID: 0x{:04X}", func_id),
+        }
+    }
 }

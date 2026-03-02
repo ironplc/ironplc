@@ -37,6 +37,182 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_f64(a.powf(b)))?;
             Ok(())
         }
+        opcode::builtin::ABS_I32 => {
+            let a = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32(a.wrapping_abs()))?;
+            Ok(())
+        }
+        opcode::builtin::MIN_I32 => {
+            let b = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32(a.min(b)))?;
+            Ok(())
+        }
+        opcode::builtin::MAX_I32 => {
+            let b = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32(a.max(b)))?;
+            Ok(())
+        }
+        opcode::builtin::LIMIT_I32 => {
+            let mx = stack.pop()?.as_i32();
+            let in_val = stack.pop()?.as_i32();
+            let mn = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32(in_val.clamp(mn, mx)))?;
+            Ok(())
+        }
+        opcode::builtin::SEL_I32 => {
+            let in1 = stack.pop()?.as_i32();
+            let in0 = stack.pop()?.as_i32();
+            let g = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32(if g == 0 { in0 } else { in1 }))?;
+            Ok(())
+        }
+        opcode::builtin::SHL_I32 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32(a.wrapping_shl(n as u32)))?;
+            Ok(())
+        }
+        opcode::builtin::SHL_I64 => {
+            let n = stack.pop()?.as_i64();
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64(a.wrapping_shl(n as u32)))?;
+            Ok(())
+        }
+        opcode::builtin::SHR_I32 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32();
+            // Logical shift right: treat as unsigned to fill with zeros.
+            stack.push(Slot::from_i32(((a as u32).wrapping_shr(n as u32)) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::SHR_I64 => {
+            let n = stack.pop()?.as_i64();
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64(((a as u64).wrapping_shr(n as u32)) as i64))?;
+            Ok(())
+        }
+        opcode::builtin::ROL_I32 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32((a as u32).rotate_left(n as u32) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::ROL_I64 => {
+            let n = stack.pop()?.as_i64();
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64((a as u64).rotate_left(n as u32) as i64))?;
+            Ok(())
+        }
+        opcode::builtin::ROR_I32 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32((a as u32).rotate_right(n as u32) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::ROR_I64 => {
+            let n = stack.pop()?.as_i64();
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64((a as u64).rotate_right(n as u32) as i64))?;
+            Ok(())
+        }
+        opcode::builtin::ROL_U8 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32() as u8;
+            stack.push(Slot::from_i32(a.rotate_left(n as u32) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::ROL_U16 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32() as u16;
+            stack.push(Slot::from_i32(a.rotate_left(n as u32) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::ROR_U8 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32() as u8;
+            stack.push(Slot::from_i32(a.rotate_right(n as u32) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::ROR_U16 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32() as u16;
+            stack.push(Slot::from_i32(a.rotate_right(n as u32) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::ABS_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.abs()))?;
+            Ok(())
+        }
+        opcode::builtin::ABS_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.abs()))?;
+            Ok(())
+        }
+        opcode::builtin::MIN_F32 => {
+            let b = stack.pop()?.as_f32();
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.min(b)))?;
+            Ok(())
+        }
+        opcode::builtin::MIN_F64 => {
+            let b = stack.pop()?.as_f64();
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.min(b)))?;
+            Ok(())
+        }
+        opcode::builtin::MAX_F32 => {
+            let b = stack.pop()?.as_f32();
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.max(b)))?;
+            Ok(())
+        }
+        opcode::builtin::MAX_F64 => {
+            let b = stack.pop()?.as_f64();
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.max(b)))?;
+            Ok(())
+        }
+        opcode::builtin::LIMIT_F32 => {
+            let mx = stack.pop()?.as_f32();
+            let in_val = stack.pop()?.as_f32();
+            let mn = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(in_val.clamp(mn, mx)))?;
+            Ok(())
+        }
+        opcode::builtin::LIMIT_F64 => {
+            let mx = stack.pop()?.as_f64();
+            let in_val = stack.pop()?.as_f64();
+            let mn = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(in_val.clamp(mn, mx)))?;
+            Ok(())
+        }
+        opcode::builtin::SEL_F32 => {
+            let in1 = stack.pop()?.as_f32();
+            let in0 = stack.pop()?.as_f32();
+            let g = stack.pop()?.as_i32();
+            stack.push(Slot::from_f32(if g == 0 { in0 } else { in1 }))?;
+            Ok(())
+        }
+        opcode::builtin::SEL_F64 => {
+            let in1 = stack.pop()?.as_f64();
+            let in0 = stack.pop()?.as_f64();
+            let g = stack.pop()?.as_i32();
+            stack.push(Slot::from_f64(if g == 0 { in0 } else { in1 }))?;
+            Ok(())
+        }
+        opcode::builtin::SQRT_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.sqrt()))?;
+            Ok(())
+        }
+        opcode::builtin::SQRT_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.sqrt()))?;
+            Ok(())
+        }
         _ => Err(Trap::InvalidBuiltinFunction(func_id)),
     }
 }
