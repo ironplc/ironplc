@@ -1,0 +1,96 @@
+//! Integration tests for the BUILTIN MAX_F64 opcode.
+
+mod common;
+
+use common::{single_function_container_f64, VmBuffers};
+use ironplc_vm::Vm;
+
+#[test]
+fn execute_when_max_f64_then_returns_larger() {
+    // MAX(10.5, 3.0) = 10.5
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x04, 0x00, 0x00,  // LOAD_CONST_F64 pool[0] (10.5)
+        0x04, 0x01, 0x00,  // LOAD_CONST_F64 pool[1] (3.0)
+        0xC4, 0x59, 0x03,  // BUILTIN MAX_F64
+        0x1B, 0x00, 0x00,  // STORE_VAR_F64 var[0]
+        0xB5,              // RET_VOID
+    ];
+    let c = single_function_container_f64(&bytecode, 1, &[10.5, 3.0]);
+    let mut b = VmBuffers::from_container(&c);
+    {
+        let mut vm = Vm::new()
+            .load(
+                &c,
+                &mut b.stack,
+                &mut b.vars,
+                &mut b.tasks,
+                &mut b.programs,
+                &mut b.ready,
+            )
+            .start();
+        vm.run_round(0).unwrap();
+    }
+    let result = b.vars[0].as_f64();
+    assert!((result - 10.5).abs() < 1e-12, "expected 10.5, got {result}");
+}
+
+#[test]
+fn execute_when_max_f64_equal_then_returns_value() {
+    // MAX(5.0, 5.0) = 5.0
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x04, 0x00, 0x00,  // LOAD_CONST_F64 pool[0] (5.0)
+        0x04, 0x00, 0x00,  // LOAD_CONST_F64 pool[0] (5.0)
+        0xC4, 0x59, 0x03,  // BUILTIN MAX_F64
+        0x1B, 0x00, 0x00,  // STORE_VAR_F64 var[0]
+        0xB5,              // RET_VOID
+    ];
+    let c = single_function_container_f64(&bytecode, 1, &[5.0]);
+    let mut b = VmBuffers::from_container(&c);
+    {
+        let mut vm = Vm::new()
+            .load(
+                &c,
+                &mut b.stack,
+                &mut b.vars,
+                &mut b.tasks,
+                &mut b.programs,
+                &mut b.ready,
+            )
+            .start();
+        vm.run_round(0).unwrap();
+    }
+    let result = b.vars[0].as_f64();
+    assert!((result - 5.0).abs() < 1e-12, "expected 5.0, got {result}");
+}
+
+#[test]
+fn execute_when_max_f64_negative_vs_positive_then_returns_positive() {
+    // MAX(-3.0, 7.0) = 7.0
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x04, 0x00, 0x00,  // LOAD_CONST_F64 pool[0] (-3.0)
+        0x04, 0x01, 0x00,  // LOAD_CONST_F64 pool[1] (7.0)
+        0xC4, 0x59, 0x03,  // BUILTIN MAX_F64
+        0x1B, 0x00, 0x00,  // STORE_VAR_F64 var[0]
+        0xB5,              // RET_VOID
+    ];
+    let c = single_function_container_f64(&bytecode, 1, &[-3.0, 7.0]);
+    let mut b = VmBuffers::from_container(&c);
+    {
+        let mut vm = Vm::new()
+            .load(
+                &c,
+                &mut b.stack,
+                &mut b.vars,
+                &mut b.tasks,
+                &mut b.programs,
+                &mut b.ready,
+            )
+            .start();
+        vm.run_round(0).unwrap();
+    }
+    let result = b.vars[0].as_f64();
+    assert!((result - 7.0).abs() < 1e-12, "expected 7.0, got {result}");
+}
