@@ -467,6 +467,18 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                     opcode::builtin::MAX_I32 => format!("MAX_I32 (0x{:04X})", func_id),
                     opcode::builtin::LIMIT_I32 => format!("LIMIT_I32 (0x{:04X})", func_id),
                     opcode::builtin::SEL_I32 => format!("SEL_I32 (0x{:04X})", func_id),
+                    opcode::builtin::SHL_I32 => format!("SHL_I32 (0x{:04X})", func_id),
+                    opcode::builtin::SHL_I64 => format!("SHL_I64 (0x{:04X})", func_id),
+                    opcode::builtin::SHR_I32 => format!("SHR_I32 (0x{:04X})", func_id),
+                    opcode::builtin::SHR_I64 => format!("SHR_I64 (0x{:04X})", func_id),
+                    opcode::builtin::ROL_I32 => format!("ROL_I32 (0x{:04X})", func_id),
+                    opcode::builtin::ROL_I64 => format!("ROL_I64 (0x{:04X})", func_id),
+                    opcode::builtin::ROR_I32 => format!("ROR_I32 (0x{:04X})", func_id),
+                    opcode::builtin::ROR_I64 => format!("ROR_I64 (0x{:04X})", func_id),
+                    opcode::builtin::ROL_U8 => format!("ROL_U8 (0x{:04X})", func_id),
+                    opcode::builtin::ROL_U16 => format!("ROL_U16 (0x{:04X})", func_id),
+                    opcode::builtin::ROR_U8 => format!("ROR_U8 (0x{:04X})", func_id),
+                    opcode::builtin::ROR_U16 => format!("ROR_U16 (0x{:04X})", func_id),
                     _ => format!("0x{:04X}", func_id),
                 };
                 instructions.push(json!({

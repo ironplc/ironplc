@@ -68,6 +68,79 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_i32(if g == 0 { in0 } else { in1 }))?;
             Ok(())
         }
+        opcode::builtin::SHL_I32 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32(a.wrapping_shl(n as u32)))?;
+            Ok(())
+        }
+        opcode::builtin::SHL_I64 => {
+            let n = stack.pop()?.as_i64();
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64(a.wrapping_shl(n as u32)))?;
+            Ok(())
+        }
+        opcode::builtin::SHR_I32 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32();
+            // Logical shift right: treat as unsigned to fill with zeros.
+            stack.push(Slot::from_i32(((a as u32).wrapping_shr(n as u32)) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::SHR_I64 => {
+            let n = stack.pop()?.as_i64();
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64(((a as u64).wrapping_shr(n as u32)) as i64))?;
+            Ok(())
+        }
+        opcode::builtin::ROL_I32 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32((a as u32).rotate_left(n as u32) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::ROL_I64 => {
+            let n = stack.pop()?.as_i64();
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64((a as u64).rotate_left(n as u32) as i64))?;
+            Ok(())
+        }
+        opcode::builtin::ROR_I32 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32((a as u32).rotate_right(n as u32) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::ROR_I64 => {
+            let n = stack.pop()?.as_i64();
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64((a as u64).rotate_right(n as u32) as i64))?;
+            Ok(())
+        }
+        opcode::builtin::ROL_U8 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32() as u8;
+            stack.push(Slot::from_i32(a.rotate_left(n as u32) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::ROL_U16 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32() as u16;
+            stack.push(Slot::from_i32(a.rotate_left(n as u32) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::ROR_U8 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32() as u8;
+            stack.push(Slot::from_i32(a.rotate_right(n as u32) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::ROR_U16 => {
+            let n = stack.pop()?.as_i32();
+            let a = stack.pop()?.as_i32() as u16;
+            stack.push(Slot::from_i32(a.rotate_right(n as u32) as i32))?;
+            Ok(())
+        }
         _ => Err(Trap::InvalidBuiltinFunction(func_id)),
     }
 }
