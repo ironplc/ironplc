@@ -65,70 +65,205 @@ The debugger is four layers:
 
 The DAP server is a subcommand of `ironplcvm` (`ironplcvm debug`) rather than a separate binary. This avoids duplicating the VM embedding code and keeps the build matrix simple. The VS Code extension launches `ironplcvm debug --dap <file.iplc>`, which speaks DAP on stdin/stdout.
 
-## Layer 1: Debug Info Emission
+## Layer 1: Debug Info
+
+### Gap Analysis
+
+The container format spec defines a debug section with three sub-tables: source text, line maps, and variable names. That format is insufficient for Structured Text debugging. This section identifies each gap and specifies the additions required.
+
+| # | Gap | Impact | Required for v1? |
+|---|-----|--------|-------------------|
+| 1 | No function name table | DAP `stackTrace` can only show "function 0" — useless for multi-POU programs | Yes |
+| 2 | No variable scope info | DAP `scopes`/`variables` can't separate Locals from Globals or group by IEC section (VAR_INPUT, VAR_OUTPUT, etc.) | Yes |
+| 3 | No variable type names | Variables pane shows raw slot values with no type context; can't render BOOL as TRUE/FALSE, REAL as float, or FB instances by type name | Yes |
+| 4 | No source column | Breakpoint highlight covers entire line; can't pinpoint within a line containing multiple statements | No — line-level is sufficient for ST (one statement per line is idiomatic) |
+| 5 | No FB type name table | Expanding an FB instance variable shows "fb_type_3" instead of "TON" | No — FB debugging deferred to Phase 5 |
+| 6 | No FB field name table | FB instance fields show as "field[0]" instead of "IN", "PT", "Q", "ET" | No — FB debugging deferred to Phase 5 |
+| 7 | No source file table | Line maps can't reference files in multi-file projects | No — v1 assumes single file per container |
+
+Gaps 1–3 must be addressed in the debug section format before ST debugging can work. Gaps 4–7 are deferred.
+
+### Revised Debug Section Format
+
+The debug section format extends the container format spec's definition. The additions are backward-compatible: a reader that only understands the original format can skip the new sub-tables by reading past them using the counts. The sub-tables appear in a fixed order after the original three sub-tables.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Source text (original)                                        │
+│   source_text_length: u32                                    │
+│   source_text: [u8; N]          UTF-8 source (optional)      │
+├──────────────────────────────────────────────────────────────┤
+│ Line maps (original)                                          │
+│   line_map_count: u16                                        │
+│   line_maps: [LineMapEntry; count]   8 bytes each            │
+├──────────────────────────────────────────────────────────────┤
+│ Variable names (revised — extended fields)                    │
+│   var_name_count: u16                                        │
+│   var_names: [VarNameEntry; count]   variable size           │
+├──────────────────────────────────────────────────────────────┤
+│ Function names (new)                                          │
+│   func_name_count: u16                                       │
+│   func_names: [FuncNameEntry; count]   variable size         │
+├──────────────────────────────────────────────────────────────┤
+│ FB type names (new, reserved for Phase 5)                    │
+│   type_name_count: u16                                       │
+│   type_names: [TypeNameEntry; count]   variable size         │
+├──────────────────────────────────────────────────────────────┤
+│ FB field names (new, reserved for Phase 5)                    │
+│   field_name_count: u16                                      │
+│   field_names: [FieldNameEntry; count]   variable size       │
+└──────────────────────────────────────────────────────────────┘
+```
+
+#### LineMapEntry (8 bytes, changed from 6)
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | function_id | u16 | Function containing this mapping |
+| 2 | bytecode_offset | u16 | Offset within the function's bytecode |
+| 4 | source_line | u16 | Source line number (1-based) |
+| 6 | source_column | u16 | Source column number (1-based, 0 = unknown) |
+
+The column field is populated when available but may be zero. Stepping and breakpoint resolution use the line number; the column is for editor highlight precision.
+
+#### VarNameEntry (variable size, extended)
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | var_index | u16 | Variable table index |
+| 2 | function_id | u16 | Owning function ID (0xFFFF = global scope) |
+| 4 | var_section | u8 | IEC 61131-3 variable section (see encoding below) |
+| 5 | name_length | u8 | Length of variable name in bytes |
+| 6 | name | [u8; name_length] | UTF-8 variable name |
+| 6+N | type_name_length | u8 | Length of type name in bytes |
+| 7+N | type_name | [u8; type_name_length] | UTF-8 type name (e.g., "DINT", "REAL", "TON") |
+
+**var_section encoding:**
+
+| Value | IEC 61131-3 Section | DAP Scope Mapping |
+|-------|--------------------|--------------------|
+| 0 | VAR | Locals |
+| 1 | VAR_TEMP | Locals |
+| 2 | VAR_INPUT | Inputs |
+| 3 | VAR_OUTPUT | Outputs |
+| 4 | VAR_IN_OUT | In/Out |
+| 5 | VAR_EXTERNAL | Globals |
+| 6 | VAR_GLOBAL | Globals |
+
+**Why function_id on variables?** The variable table is flat (all functions share one table with compiler-assigned partitions). Without `function_id`, the debugger can't determine which variables are visible in the current stack frame. The `function_id` lets the DAP server filter variables to show only those belonging to the current function plus globals (function_id = 0xFFFF).
+
+**Why type_name as a string?** The type section encodes types as u8 enum codes (0=I32, 1=U32, ..., 8=FB_INSTANCE). This is sufficient for the verifier but not for human display. For elementary types, the DAP server could maintain a hardcoded mapping (0 → "DINT"), but this breaks for user-defined types (FB instances, enumerations, structures) where the u8 just says "FB_INSTANCE" with a type_id. Embedding the source-level type name in the debug section keeps the mapping simple and handles all cases uniformly.
+
+#### FuncNameEntry (variable size, new)
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | function_id | u16 | Function ID from the code section |
+| 2 | name_length | u8 | Length of function name in bytes |
+| 3 | name | [u8; name_length] | UTF-8 POU name (e.g., "MAIN", "MotorControl") |
+
+The DAP `stackTrace` response requires a function name for each frame. Without this table, stack frames can only display numeric function IDs.
+
+#### TypeNameEntry (variable size, reserved for Phase 5)
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | type_id | u16 | FB type ID from the type section |
+| 2 | name_length | u8 | Length of type name in bytes |
+| 3 | name | [u8; name_length] | UTF-8 type name (e.g., "TON", "CTU", "MotorController") |
+
+For v1, `type_name_count` is 0. This table is populated when FB support is added to the codegen.
+
+#### FieldNameEntry (variable size, reserved for Phase 5)
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | type_id | u16 | FB type ID |
+| 2 | field_index | u8 | Field index within the FB type descriptor |
+| 3 | name_length | u8 | Length of field name in bytes |
+| 4 | name | [u8; name_length] | UTF-8 field name (e.g., "IN", "PT", "Q", "ET") |
+
+For v1, `field_name_count` is 0. When populated, this table allows the Variables pane to show `myTimer.IN = TRUE` instead of `myTimer.field[0] = 1`.
+
+### How DAP Uses the Debug Info
+
+The following table traces each DAP request to the debug info sub-table it reads:
+
+| DAP Request | Sub-table Used | What It Provides |
+|-------------|---------------|-------------------|
+| `setBreakpoints` | Line maps | Resolve source line → (function_id, bytecode_offset); snap to nearest valid line |
+| `stackTrace` | Function names + line maps | Frame name (FuncNameEntry.name) + source location (LineMapEntry.source_line) |
+| `scopes` | Variable names | Group variables by var_section: Locals (VAR, VAR_TEMP), Inputs (VAR_INPUT), Outputs (VAR_OUTPUT), In/Out (VAR_IN_OUT), Globals (VAR_EXTERNAL, VAR_GLOBAL) |
+| `variables` | Variable names + type section | Name (VarNameEntry.name), type (VarNameEntry.type_name), value (read from VariableTable, formatted according to type) |
+| `evaluate` | Variable names | Look up variable by name, return formatted value |
 
 ### Codegen Changes
 
-The compiler must emit a debug section containing line maps and variable names. The existing `Emitter` in `codegen/src/emit.rs` tracks bytecode offsets; it must also record which source line each statement begins at.
+The compiler must emit the full debug section. The existing `Emitter` in `codegen/src/emit.rs` tracks bytecode offsets; it must also record source positions alongside each statement's bytecode.
 
-#### Line Map Generation
+#### Source Position Tracking
 
-For each statement in the AST, the compiler records a `LineMapEntry` mapping the bytecode offset of the statement's first instruction to the source line number:
+The AST carries `SourceSpan` (byte offsets into the source text). The codegen must convert byte offsets to line/column numbers. This requires a **line offset table** — an array of byte offsets where each line starts. The `compile()` function must accept the source text (or a precomputed line offset table) alongside the `Library` AST.
 
 ```rust
-struct LineMapEntry {
-    function_id: u16,
-    bytecode_offset: u16,
-    source_line: u16,
+/// Precomputed table for converting byte offsets to line:column pairs.
+struct LineOffsetTable {
+    /// Byte offset of the start of each line (0-indexed).
+    /// line_starts[0] = 0, line_starts[1] = offset of first '\n' + 1, etc.
+    line_starts: Vec<usize>,
+}
+
+impl LineOffsetTable {
+    fn from_source(source: &str) -> Self { ... }
+
+    /// Converts a byte offset to (line, column), both 1-based.
+    fn line_column(&self, byte_offset: usize) -> (u16, u16) { ... }
 }
 ```
 
-**When to emit entries.** One entry per statement start (assignment, IF, WHILE, FOR, CASE, RETURN, EXIT, function/FB call). Not per expression — stepping operates at the statement level.
-
-**Line number computation.** The AST carries `SourceSpan` (byte offsets). The codegen must convert byte offsets to line numbers using the source text. The `compile()` function already receives the `Library` AST; it must also receive the source text (or a precomputed line-offset table) so it can map `SourceSpan.start` to a 1-based line number.
-
-**Emitter API additions:**
+#### Emitter API Additions
 
 ```rust
 impl Emitter {
-    /// Records that the next emitted instruction corresponds to the given source line.
+    /// Records that the next emitted instruction corresponds to the given source position.
     /// Call this before emitting the first instruction of each statement.
-    pub fn mark_source_line(&mut self, function_id: u16, source_line: u16) { ... }
+    pub fn mark_source_position(
+        &mut self,
+        function_id: u16,
+        source_line: u16,
+        source_column: u16,
+    ) { ... }
 
     /// Returns the accumulated line map entries.
     pub fn line_map(&self) -> &[LineMapEntry] { ... }
 }
 ```
 
-#### Variable Name Emission
+**When to emit entries.** One entry per statement start (assignment, IF, WHILE, FOR, CASE, RETURN, EXIT, function/FB call). Not per expression — stepping operates at the statement level.
 
-For each variable in the variable table, the compiler emits a `VarNameEntry`:
+#### Variable Debug Info Collection
+
+The `CompileContext` currently maps `Id → u16` (name → index) in a `HashMap`. It must also collect the reverse mapping plus scope metadata:
 
 ```rust
-struct VarNameEntry {
+struct VarDebugInfo {
     var_index: u16,
-    name: String,  // serialized as length-prefixed UTF-8
+    name: String,
+    function_id: u16,       // 0xFFFF for globals
+    var_section: u8,        // from VariableType enum
+    type_name: String,      // from the type_name in the AST
 }
 ```
 
-The compiler already assigns variable indices in `compile.rs`; it must also record the mapping from index to source name.
+The compiler already has access to `VarDecl.var_type` (the IEC section: Var, Input, Output, etc.) and `VarDecl.initializer` (which contains the type name). The `assign_variables()` function must record this metadata alongside the index assignment.
+
+#### Function Name Collection
+
+The compiler emits one `FuncNameEntry` per compiled function. For v1 (single PROGRAM), this is one entry mapping function_id 0 to the program's name (e.g., "MAIN"). When FUNCTION and FUNCTION_BLOCK compilation is added, each compiled body produces an entry.
 
 ### Container Changes
 
-The `container` crate must serialize and deserialize the debug section.
-
-#### Debug Section Structure
-
-The debug section follows the format defined in the container format spec:
-
-```
-source_text_length: u32
-source_text: [u8; N]         (optional UTF-8 source)
-line_map_count: u16
-line_maps: [LineMapEntry]     (6 bytes each: function_id u16, bytecode_offset u16, source_line u16)
-var_name_count: u16
-var_names: [VarNameEntry]     (var_index u16, name_length u8, name bytes)
-```
+The `container` crate must serialize and deserialize the revised debug section.
 
 #### New Types
 
@@ -138,16 +273,39 @@ pub struct DebugInfo {
     pub source_text: Option<String>,
     pub line_maps: Vec<LineMapEntry>,
     pub var_names: Vec<VarNameEntry>,
+    pub func_names: Vec<FuncNameEntry>,
+    pub type_names: Vec<TypeNameEntry>,
+    pub field_names: Vec<FieldNameEntry>,
 }
 
 pub struct LineMapEntry {
     pub function_id: u16,
     pub bytecode_offset: u16,
     pub source_line: u16,
+    pub source_column: u16,
 }
 
 pub struct VarNameEntry {
     pub var_index: u16,
+    pub function_id: u16,
+    pub var_section: u8,
+    pub name: String,
+    pub type_name: String,
+}
+
+pub struct FuncNameEntry {
+    pub function_id: u16,
+    pub name: String,
+}
+
+pub struct TypeNameEntry {
+    pub type_id: u16,
+    pub name: String,
+}
+
+pub struct FieldNameEntry {
+    pub type_id: u16,
+    pub field_index: u8,
     pub name: String,
 }
 ```
@@ -159,6 +317,8 @@ pub struct VarNameEntry {
 #### Read Path
 
 `Container::read_from()` checks `flags` bit 1. If set, it reads and parses the debug section. Debug info is stored in `Container.debug_info: Option<DebugInfo>`. If the debug section is malformed, it is silently discarded (non-fatal, per the container format spec).
+
+A reader that encounters fewer sub-tables than expected (e.g., a container produced before the function name table was added) treats the missing tables as empty. This provides forward compatibility: older containers work with newer debuggers, just with less information.
 
 ### Source Text Embedding
 
@@ -190,10 +350,17 @@ pub struct DebugState {
     /// Source line at the point where stepping began (for step-over).
     step_origin_line: u16,
 
-    /// Debug info from the container (line maps, var names).
+    /// Debug info from the container (line maps, var names, func names, etc.).
     debug_info: DebugInfo,
 }
 ```
+
+The `DebugInfo` struct contains all six sub-tables parsed from the debug section. The `DebugState` uses them as follows:
+
+- **line_maps** — breakpoint resolution, step tracking (current line lookup), source location for `stackTrace`
+- **var_names** — variable inspection with scope filtering, type-aware formatting, name-based `evaluate`
+- **func_names** — stack frame names for `stackTrace`
+- **type_names / field_names** — reserved for Phase 5 FB instance expansion
 
 ### Breakpoint Table
 
@@ -389,29 +556,65 @@ impl VmRunning {
 
 ### Variable Inspection
 
-When paused, the debugger can inspect variables by name using the debug info:
+When paused, the debugger can inspect variables using the debug info's scope and type metadata:
 
 ```rust
 impl DebugState {
-    /// Returns all variables with their names and current values.
-    pub fn inspect_variables(&self, variables: &VariableTable) -> Vec<NamedVariable> {
+    /// Returns variables visible in the given scope, with names, types, and values.
+    pub fn inspect_variables(
+        &self,
+        variables: &VariableTable,
+        function_id: u16,
+        scope_filter: ScopeFilter,
+    ) -> Vec<NamedVariable> {
         self.debug_info
             .var_names
             .iter()
+            .filter(|entry| {
+                // Show variables owned by this function OR globals
+                let owned = entry.function_id == function_id
+                    || entry.function_id == 0xFFFF;
+                owned && scope_filter.matches(entry.var_section)
+            })
             .filter_map(|entry| {
-                let value = variables.load(entry.var_index).ok()?;
+                let slot = variables.load(entry.var_index).ok()?;
                 Some(NamedVariable {
                     name: entry.name.clone(),
+                    type_name: entry.type_name.clone(),
+                    var_section: entry.var_section,
                     index: entry.var_index,
-                    value: value.as_i32(), // TODO: type-aware formatting
+                    value: format_value(slot, &entry.type_name),
                 })
             })
             .collect()
     }
+
+    /// Resolves a function_id to its source name for stack frames.
+    pub fn function_name(&self, function_id: u16) -> Option<&str> {
+        self.debug_info
+            .func_names
+            .iter()
+            .find(|f| f.function_id == function_id)
+            .map(|f| f.name.as_str())
+    }
 }
 ```
 
-**Type-aware formatting.** The debug section currently stores only variable names, not types. The type section in the container has `VarEntry.var_type` (u8 type code) and `VarEntry.flags`. The variable inspector should use this to display values correctly (e.g., `REAL` as float, `BOOL` as TRUE/FALSE, signed vs unsigned integers). This requires passing the type section to the inspector.
+**Type-aware formatting.** The `VarNameEntry.type_name` field provides the source-level type name (e.g., "DINT", "REAL", "BOOL"). The `format_value()` function uses this to render slot values correctly:
+
+| type_name | Formatting |
+|-----------|-----------|
+| BOOL | `TRUE` / `FALSE` |
+| SINT, INT, DINT | Signed decimal |
+| USINT, UINT, UDINT | Unsigned decimal |
+| LINT | Signed 64-bit decimal |
+| ULINT | Unsigned 64-bit decimal |
+| REAL | Float with ~7 significant digits |
+| LREAL | Float with ~15 significant digits |
+| BYTE, WORD, DWORD, LWORD | Hexadecimal with `16#` prefix |
+| TIME, LTIME | `T#` duration format |
+| STRING | Quoted string content |
+| (FB type) | `{type_name}` (expand via field names in Phase 5) |
 
 ### Variable Forcing (Write)
 
@@ -459,9 +662,9 @@ The `--dap` flag switches to DAP mode (stdin/stdout JSON messages instead of the
 | `setBreakpoints` | Resolve source lines to bytecode offsets via line map; update BreakpointTable |
 | `configurationDone` | Start VM (READY → RUNNING), run until first breakpoint or pause |
 | `threads` | Return single thread (PLC programs are single-threaded within the scan cycle) |
-| `stackTrace` | Return current function + source line from debug info; future: full call stack |
-| `scopes` | Return "Locals" and "Globals" scopes |
-| `variables` | Read variable values from VariableTable, format with type info |
+| `stackTrace` | Return current function name (FuncNameEntry) + source line/column (LineMapEntry) |
+| `scopes` | Return IEC-specific scopes: Locals (VAR, VAR_TEMP), Inputs (VAR_INPUT), Outputs (VAR_OUTPUT), In/Out (VAR_IN_OUT), Globals (VAR_EXTERNAL, VAR_GLOBAL) — filtered by VarNameEntry.var_section |
+| `variables` | Read variable values from VariableTable; display name (VarNameEntry.name), type (VarNameEntry.type_name), formatted value |
 | `continue` | Resume execution (clear step mode, run until next breakpoint) |
 | `next` | Set StepMode::StepOver, resume execution |
 | `stepIn` | Set StepMode::StepIn, resume execution |
@@ -620,25 +823,27 @@ These are optional enhancements that can be added after the core debugger works.
 
 ### Phase 1: Debug Info Foundation
 
-**Goal:** Compile programs with debug info (line maps + variable names) and verify via the disassembler.
+**Goal:** Compile programs with full debug info (line maps, variable names with scope/type, function names) and verify via the disassembler.
 
 **Changes:**
 
 | Crate | Files | Changes |
 |-------|-------|---------|
-| `container` | `container.rs`, new `debug_info.rs` | Add `DebugInfo`, `LineMapEntry`, `VarNameEntry` types; serialize/deserialize debug section; add `debug_info` field to `Container` |
+| `container` | `container.rs`, new `debug_info.rs` | Add `DebugInfo`, `LineMapEntry`, `VarNameEntry`, `FuncNameEntry`, `TypeNameEntry`, `FieldNameEntry` types; serialize/deserialize the full debug section; add `debug_info` field to `Container` |
 | `container` | `builder.rs` | Add `debug_info()` method to `ContainerBuilder` |
 | `container` | `header.rs` | Write `debug_section_offset` and `debug_section_size` when debug section present; set flags bit 1 |
-| `codegen` | `emit.rs` | Add `mark_source_line()`, `line_map()` methods to `Emitter`; track line map entries alongside bytecode |
-| `codegen` | `compile.rs` | Call `mark_source_line()` before each statement's bytecode; collect var name mappings; pass `DebugInfo` to `ContainerBuilder` |
-| `codegen` | `compile.rs` | Accept source text for line number computation (byte offset → line) |
-| `plc2x` | `disassemble.rs` | Display debug section in disassembly output (line maps, variable names) |
+| `codegen` | `emit.rs` | Add `mark_source_position()`, `line_map()` methods to `Emitter`; track line map entries alongside bytecode |
+| `codegen` | `compile.rs` | Accept source text for `LineOffsetTable` construction; call `mark_source_position()` before each statement; collect `VarDebugInfo` (name, function_id, var_section, type_name) during `assign_variables()`; emit `FuncNameEntry` for each compiled POU; build and pass `DebugInfo` to `ContainerBuilder` |
+| `plc2x` | `disassemble.rs` | Display debug section in disassembly output: line maps with function names, variable names with scope/type annotations |
 
 **Tests:**
-- Codegen: compile a program, verify line map entries map to expected source lines
-- Container: roundtrip test — write debug section, read it back, verify contents
+- Codegen: compile a program, verify line map entries map to expected source lines and columns
+- Codegen: verify `VarNameEntry` includes correct `function_id`, `var_section`, and `type_name` for each variable
+- Codegen: verify `FuncNameEntry` maps function_id 0 to the program's name
+- Container: roundtrip test — write full debug section (all 6 sub-tables), read it back, verify contents
 - Container: read container without debug section — `debug_info` is `None`
 - Container: read container with malformed debug section — silently discarded
+- Container: read container with partial debug section (missing new sub-tables) — missing tables treated as empty
 
 ### Phase 2: VM Debug Engine
 
@@ -714,14 +919,37 @@ These enhancements build on the core debugger but are not required for initial f
 
 ## Container Format Compatibility
 
-This spec uses the debug section format already defined in the container format spec. No changes to the container format are required. The debug section is independently hashed and signed (via `debug_hash` and the debug signature section), so adding or removing debug info does not affect the content signature.
+This spec **extends** the debug section format defined in the container format spec. The extensions are:
 
-The VM already handles the debug section in its loading sequence (step 13 in the container format spec): if present and valid, load it; if invalid, discard it silently.
+1. **LineMapEntry grows from 6 to 8 bytes** — adds `source_column: u16`
+2. **VarNameEntry gains scope and type fields** — adds `function_id`, `var_section`, `type_name`
+3. **Three new sub-tables** — function names, FB type names, FB field names
+
+These changes affect only the debug section, which is independently hashed and signed (via `debug_hash` and the debug signature section). Adding or modifying debug info does not affect the content signature or the content hash, so existing containers remain valid.
+
+The container format spec's debug section definition should be updated to match the format specified in this document. Since the debug section has not yet been implemented in the container crate, this is a spec revision, not a breaking change.
+
+**Forward compatibility.** The new sub-tables are appended after the existing sub-tables. A reader that encounters a debug section shorter than expected (because it was produced by an older compiler) treats missing sub-tables as having count 0. A reader that encounters extra data after the last expected sub-table ignores it. This allows gradual rollout: an older debugger can read the line maps and variable names from a new-format container, just without the function name or FB type/field name tables.
+
+The VM handles the debug section in its loading sequence (step 13 in the container format spec): if present and valid, load it; if invalid, discard it silently.
+
+## Bytecode-Level Debugging
+
+The debug section is designed for source-level debugging but also supports bytecode-level debugging with no additional format changes. The bytecode instruction set is self-describing — each opcode encodes its own operand sizes — so a disassembler can decode any bytecode stream without debug info.
+
+For bytecode-level debugging in the DAP:
+
+- The DAP `stackTrace` response includes `instructionPointerReference` (the bytecode offset as a hex string), which is always available regardless of debug info.
+- The DAP `disassemble` request returns decoded instructions. The VM can disassemble any function's bytecode on-the-fly using the instruction set definition. No debug section data is needed.
+- When debug info is present, the DAP server annotates disassembled instructions with source line numbers from the line map, enabling mixed source+bytecode views.
+- Breakpoints can be set by bytecode offset (DAP `setInstructionBreakpoints`) independently of source breakpoints.
+
+This means bytecode debugging works even when the debug section is stripped — the user just loses source correlation.
 
 ## Out of Scope
 
 1. **Remote debugging** — DAP over TCP to debug programs on remote targets (embedded PLCs). The initial implementation uses stdin/stdout only.
-2. **Multi-file debugging** — debugging programs that span multiple source files. The initial implementation assumes a single source file per container.
-3. **Disassembly view** — showing bytecode in the debug UI when source is not available. The existing `ironplc/disassemble` LSP command is separate.
+2. **Multi-file debugging** — debugging programs that span multiple source files. The initial implementation assumes a single source file per container. The debug section format reserves space for a source file table (via a future sub-table) but does not define it in v1.
+3. **Ladder Diagram / FBD debugging** — graphical IEC 61131-3 languages (LD, FBD) have fundamentally different debugging UIs (highlighting rungs, showing power flow, animating contacts/coils). The debug section format could support LD by adding a rung-map sub-table (mapping bytecode offsets to rung IDs and element positions within a rung), but the compilation pipeline, DAP server, and VS Code extension would all need LD-specific support. This is deferred until graphical language compilation is implemented.
 4. **Memory breakpoints** — breaking when a specific variable's value changes (hardware watchpoints). These require polling or page-fault tricks that are not practical in the VM.
 5. **Time-travel debugging** — recording and replaying execution. Would require snapshotting VM state at each scan cycle, which is a significant memory and performance cost.
