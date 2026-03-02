@@ -19,6 +19,7 @@
 //! - Comparison operators (=, <>, <, <=, >, >=)
 //! - Boolean operators (AND, OR, XOR, NOT) with logical semantics
 //! - Bitwise operators (AND, OR, XOR, NOT) for bit string types (BYTE, WORD, DWORD, LWORD)
+//! - Bit shift/rotate functions (SHL, SHR, ROL, ROR) for bit string types
 //! - Variable references (named symbolic variables)
 //! - IF/ELSIF/ELSE statements
 //! - CASE statements (integer and subrange selectors)
@@ -42,8 +43,8 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    CaseSelectionKind, CompareOp, ExprKind, Operator, ParamAssignmentKind, Statements, StmtKind,
-    SymbolicVariableKind, UnaryOp, Variable,
+    CaseSelectionKind, CompareOp, ExprKind, Function, Operator, ParamAssignmentKind, Statements,
+    StmtKind, SymbolicVariableKind, UnaryOp, Variable,
 };
 use ironplc_problems::Problem;
 
@@ -392,6 +393,21 @@ fn infer_op_type(ctx: &CompileContext, expr: &ExprKind) -> OpType {
             infer_op_type(ctx, &compare.right)
         }
         ExprKind::Expression(inner) => infer_op_type(ctx, inner),
+        ExprKind::Function(func) => func
+            .param_assignment
+            .iter()
+            .find_map(|p| match p {
+                ParamAssignmentKind::PositionalInput(pos) => {
+                    let t = infer_op_type(ctx, &pos.expr);
+                    if t != DEFAULT_OP_TYPE {
+                        Some(t)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .unwrap_or(DEFAULT_OP_TYPE),
         _ => DEFAULT_OP_TYPE,
     }
 }
@@ -419,6 +435,10 @@ fn infer_storage_bits(ctx: &CompileContext, expr: &ExprKind) -> Option<u8> {
         ExprKind::Compare(compare) => infer_storage_bits(ctx, &compare.left)
             .or_else(|| infer_storage_bits(ctx, &compare.right)),
         ExprKind::Expression(inner) => infer_storage_bits(ctx, inner),
+        ExprKind::Function(func) => func.param_assignment.iter().find_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => infer_storage_bits(ctx, &pos.expr),
+            _ => None,
+        }),
         _ => None,
     }
 }
@@ -1067,37 +1087,139 @@ fn compile_expr(
             file!(),
             line!(),
         )),
-        ExprKind::Function(func) => {
-            let func_id = lookup_builtin(func.name.original())
-                .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
-
-            let expected_args = opcode::builtin::arg_count(func_id) as usize;
-
-            let args: Vec<&ExprKind> = func
-                .param_assignment
-                .iter()
-                .filter_map(|p| match p {
-                    ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-                    _ => None,
-                })
-                .collect();
-
-            if args.len() != expected_args {
-                return Err(Diagnostic::todo_with_span(
-                    func.name.span(),
-                    file!(),
-                    line!(),
-                ));
-            }
-
-            for arg in &args {
-                compile_expr(emitter, ctx, arg, op_type)?;
-            }
-
-            emitter.emit_builtin(func_id);
-            Ok(())
-        }
+        ExprKind::Function(func) => compile_function_call(emitter, ctx, func, op_type),
     }
+}
+
+/// Compiles a standard library function call.
+///
+/// Dispatches shift/rotate functions to a width-aware handler, and other
+/// known builtins to the generic lookup path.
+fn compile_function_call(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let name = func.name.lower_case();
+    match name.as_str() {
+        "shl" | "shr" | "rol" | "ror" => {
+            compile_shift_rotate(emitter, ctx, func, op_type, name.as_str())
+        }
+        _ => compile_generic_builtin(emitter, ctx, func, op_type),
+    }
+}
+
+/// Compiles a generic builtin function call via `lookup_builtin`.
+///
+/// All arguments are compiled with the same `op_type` and the function ID
+/// is looked up by name.
+fn compile_generic_builtin(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let func_id = lookup_builtin(func.name.original())
+        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
+
+    let expected_args = opcode::builtin::arg_count(func_id) as usize;
+
+    let args: Vec<&ExprKind> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != expected_args {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    for arg in &args {
+        compile_expr(emitter, ctx, arg, op_type)?;
+    }
+
+    emitter.emit_builtin(func_id);
+    Ok(())
+}
+
+/// Compiles a bit shift or rotate function call (SHL, SHR, ROL, ROR).
+///
+/// Expects two positional arguments: IN (value) and N (shift count).
+/// Emits the appropriate BUILTIN opcode based on function name and operand width.
+/// For ROL/ROR on narrow types (BYTE, WORD), emits width-specific builtins
+/// to ensure bits wrap correctly within the narrow type.
+fn compile_shift_rotate(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+    name: &str,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&ExprKind> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    // Compile IN (value) with the inferred op_type
+    compile_expr(emitter, ctx, args[0], op_type)?;
+    // Compile N (shift count) — always as i32 for W32, i64 for W64
+    let n_op_type = match op_type.0 {
+        OpWidth::W64 => (OpWidth::W64, Signedness::Signed),
+        _ => DEFAULT_OP_TYPE,
+    };
+    compile_expr(emitter, ctx, args[1], n_op_type)?;
+
+    // Determine storage bits for narrow-type ROL/ROR selection
+    let storage_bits = infer_storage_bits(ctx, args[0]);
+
+    let func_id = match (name, op_type.0) {
+        ("shl", OpWidth::W64) => opcode::builtin::SHL_I64,
+        ("shl", _) => opcode::builtin::SHL_I32,
+        ("shr", OpWidth::W64) => opcode::builtin::SHR_I64,
+        ("shr", _) => opcode::builtin::SHR_I32,
+        ("rol", OpWidth::W64) => opcode::builtin::ROL_I64,
+        ("rol", _) => match storage_bits {
+            Some(8) => opcode::builtin::ROL_U8,
+            Some(16) => opcode::builtin::ROL_U16,
+            _ => opcode::builtin::ROL_I32,
+        },
+        ("ror", OpWidth::W64) => opcode::builtin::ROR_I64,
+        ("ror", _) => match storage_bits {
+            Some(8) => opcode::builtin::ROR_U8,
+            Some(16) => opcode::builtin::ROR_U16,
+            _ => opcode::builtin::ROR_I32,
+        },
+        _ => {
+            return Err(Diagnostic::todo_with_span(
+                func.name.span(),
+                file!(),
+                line!(),
+            ))
+        }
+    };
+
+    emitter.emit_builtin(func_id);
+    Ok(())
 }
 
 /// Compiles a constant literal, pushing it onto the stack.

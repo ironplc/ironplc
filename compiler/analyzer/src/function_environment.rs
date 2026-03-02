@@ -316,8 +316,8 @@ mod tests {
         let env = FunctionEnvironmentBuilder::new()
             .with_stdlib_functions()
             .build();
-        // Should have 90 conversion + 6 numeric = 96 stdlib functions
-        assert_eq!(env.len(), 96);
+        // Should have 90 conversion + 6 numeric + 4 bitshift = 100 stdlib functions
+        assert_eq!(env.len(), 100);
         // Should be able to find conversion functions
         assert!(env.contains(&Id::from("INT_TO_REAL")));
         assert!(env.contains(&Id::from("REAL_TO_INT")));
