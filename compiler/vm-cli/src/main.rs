@@ -38,6 +38,19 @@ enum Action {
         #[arg(long)]
         scans: Option<u64>,
     },
+    /// Benchmarks a bytecode container by running it many times and reporting timing statistics.
+    Benchmark {
+        /// Path to the bytecode container file (.iplc).
+        file: PathBuf,
+
+        /// Number of measured scan cycles (default: 10000).
+        #[arg(long, default_value_t = 10000)]
+        cycles: u64,
+
+        /// Number of warmup scan cycles before measurement (default: 1000).
+        #[arg(long, default_value_t = 1000)]
+        warmup: u64,
+    },
     /// Prints the version number of the virtual machine.
     Version,
 }
@@ -53,6 +66,11 @@ pub fn main() -> Result<(), String> {
             dump_vars,
             scans,
         } => cli::run(&file, dump_vars.as_deref(), scans),
+        Action::Benchmark {
+            file,
+            cycles,
+            warmup,
+        } => cli::benchmark(&file, cycles, warmup),
         Action::Version => {
             println!("ironplcvm version {VERSION}");
             Ok(())

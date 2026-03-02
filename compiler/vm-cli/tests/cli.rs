@@ -135,6 +135,42 @@ fn run_when_golden_container_file_then_ok() -> Result<(), Box<dyn std::error::Er
 }
 
 #[test]
+fn benchmark_when_valid_container_then_outputs_json_with_scan_us(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("test.iplc");
+    write_steel_thread_container(&container_path);
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("benchmark")
+        .arg(&container_path)
+        .arg("--cycles")
+        .arg("100")
+        .arg("--warmup")
+        .arg("10");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("scan_us"))
+        .stdout(predicate::str::contains("mean"))
+        .stdout(predicate::str::contains("stddev"))
+        .stdout(predicate::str::contains("p99"))
+        .stdout(predicate::str::contains("tasks"));
+
+    Ok(())
+}
+
+#[test]
+fn benchmark_when_file_not_found_then_err() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("benchmark").arg("nonexistent.iplc");
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Unable"));
+
+    Ok(())
+}
+
+#[test]
 fn version_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
     cmd.arg("version");

@@ -1,5 +1,6 @@
 use ironplc_container::Container;
 
+use crate::builtin;
 use crate::error::Trap;
 use crate::scheduler::{ProgramInstanceState, TaskScheduler, TaskState};
 use crate::stack::OperandStack;
@@ -365,6 +366,12 @@ fn execute(
                     .map_err(|_| Trap::InvalidConstantIndex(index))?;
                 stack.push(Slot::from_i32(value))?;
             }
+            opcode::LOAD_TRUE => {
+                stack.push(Slot::from_i32(1))?;
+            }
+            opcode::LOAD_FALSE => {
+                stack.push(Slot::from_i32(0))?;
+            }
             opcode::LOAD_VAR_I32 => {
                 let index = read_u16_le(bytecode, &mut pc);
                 scope.check_access(index)?;
@@ -392,6 +399,461 @@ fn execute(
                 let a = stack.pop()?.as_i32();
                 stack.push(Slot::from_i32(a.wrapping_mul(b)))?;
             }
+            opcode::DIV_I32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                if b == 0 {
+                    return Err(Trap::DivideByZero);
+                }
+                stack.push(Slot::from_i32(a.wrapping_div(b)))?;
+            }
+            opcode::MOD_I32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                if b == 0 {
+                    return Err(Trap::DivideByZero);
+                }
+                stack.push(Slot::from_i32(a.wrapping_rem(b)))?;
+            }
+            opcode::NEG_I32 => {
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(a.wrapping_neg()))?;
+            }
+            // --- Truncation opcodes ---
+            opcode::TRUNC_I8 => {
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32((a as i8) as i32))?;
+            }
+            opcode::TRUNC_U8 => {
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32((a as u8) as i32))?;
+            }
+            opcode::TRUNC_I16 => {
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32((a as i16) as i32))?;
+            }
+            opcode::TRUNC_U16 => {
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32((a as u16) as i32))?;
+            }
+            // --- 64-bit load/store ---
+            opcode::LOAD_CONST_I64 => {
+                let index = read_u16_le(bytecode, &mut pc);
+                let value = container
+                    .constant_pool
+                    .get_i64(index)
+                    .map_err(|_| Trap::InvalidConstantIndex(index))?;
+                stack.push(Slot::from_i64(value))?;
+            }
+            opcode::LOAD_VAR_I64 => {
+                let index = read_u16_le(bytecode, &mut pc);
+                scope.check_access(index)?;
+                let slot = variables.load(index)?;
+                stack.push(slot)?;
+            }
+            opcode::STORE_VAR_I64 => {
+                let index = read_u16_le(bytecode, &mut pc);
+                scope.check_access(index)?;
+                let slot = stack.pop()?;
+                variables.store(index, slot)?;
+            }
+            // --- 64-bit arithmetic ---
+            opcode::ADD_I64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i64(a.wrapping_add(b)))?;
+            }
+            opcode::SUB_I64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i64(a.wrapping_sub(b)))?;
+            }
+            opcode::MUL_I64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i64(a.wrapping_mul(b)))?;
+            }
+            opcode::DIV_I64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                if b == 0 {
+                    return Err(Trap::DivideByZero);
+                }
+                stack.push(Slot::from_i64(a.wrapping_div(b)))?;
+            }
+            opcode::MOD_I64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                if b == 0 {
+                    return Err(Trap::DivideByZero);
+                }
+                stack.push(Slot::from_i64(a.wrapping_rem(b)))?;
+            }
+            opcode::NEG_I64 => {
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i64(a.wrapping_neg()))?;
+            }
+            // --- Float load/store ---
+            opcode::LOAD_CONST_F32 => {
+                let index = read_u16_le(bytecode, &mut pc);
+                let value = container
+                    .constant_pool
+                    .get_f32(index)
+                    .map_err(|_| Trap::InvalidConstantIndex(index))?;
+                stack.push(Slot::from_f32(value))?;
+            }
+            opcode::LOAD_CONST_F64 => {
+                let index = read_u16_le(bytecode, &mut pc);
+                let value = container
+                    .constant_pool
+                    .get_f64(index)
+                    .map_err(|_| Trap::InvalidConstantIndex(index))?;
+                stack.push(Slot::from_f64(value))?;
+            }
+            opcode::LOAD_VAR_F32 => {
+                let index = read_u16_le(bytecode, &mut pc);
+                scope.check_access(index)?;
+                let slot = variables.load(index)?;
+                stack.push(slot)?;
+            }
+            opcode::LOAD_VAR_F64 => {
+                let index = read_u16_le(bytecode, &mut pc);
+                scope.check_access(index)?;
+                let slot = variables.load(index)?;
+                stack.push(slot)?;
+            }
+            opcode::STORE_VAR_F32 => {
+                let index = read_u16_le(bytecode, &mut pc);
+                scope.check_access(index)?;
+                let slot = stack.pop()?;
+                variables.store(index, slot)?;
+            }
+            opcode::STORE_VAR_F64 => {
+                let index = read_u16_le(bytecode, &mut pc);
+                scope.check_access(index)?;
+                let slot = stack.pop()?;
+                variables.store(index, slot)?;
+            }
+            // --- Float arithmetic ---
+            opcode::ADD_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_f32(a + b))?;
+            }
+            opcode::SUB_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_f32(a - b))?;
+            }
+            opcode::MUL_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_f32(a * b))?;
+            }
+            opcode::DIV_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_f32(a / b))?;
+            }
+            opcode::NEG_F32 => {
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_f32(-a))?;
+            }
+            opcode::ADD_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_f64(a + b))?;
+            }
+            opcode::SUB_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_f64(a - b))?;
+            }
+            opcode::MUL_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_f64(a * b))?;
+            }
+            opcode::DIV_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_f64(a / b))?;
+            }
+            opcode::NEG_F64 => {
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_f64(-a))?;
+            }
+            // --- Float comparison ---
+            opcode::EQ_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_i32(if a == b { 1 } else { 0 }))?;
+            }
+            opcode::NE_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_i32(if a != b { 1 } else { 0 }))?;
+            }
+            opcode::LT_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_i32(if a < b { 1 } else { 0 }))?;
+            }
+            opcode::LE_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_i32(if a <= b { 1 } else { 0 }))?;
+            }
+            opcode::GT_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_i32(if a > b { 1 } else { 0 }))?;
+            }
+            opcode::GE_F32 => {
+                let b = stack.pop()?.as_f32();
+                let a = stack.pop()?.as_f32();
+                stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
+            }
+            opcode::EQ_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_i32(if a == b { 1 } else { 0 }))?;
+            }
+            opcode::NE_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_i32(if a != b { 1 } else { 0 }))?;
+            }
+            opcode::LT_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_i32(if a < b { 1 } else { 0 }))?;
+            }
+            opcode::LE_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_i32(if a <= b { 1 } else { 0 }))?;
+            }
+            opcode::GT_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_i32(if a > b { 1 } else { 0 }))?;
+            }
+            opcode::GE_F64 => {
+                let b = stack.pop()?.as_f64();
+                let a = stack.pop()?.as_f64();
+                stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
+            }
+            // --- Unsigned 32-bit division ---
+            opcode::DIV_U32 => {
+                let b = stack.pop()?.as_i32() as u32;
+                let a = stack.pop()?.as_i32() as u32;
+                if b == 0 {
+                    return Err(Trap::DivideByZero);
+                }
+                stack.push(Slot::from_i32((a / b) as i32))?;
+            }
+            opcode::MOD_U32 => {
+                let b = stack.pop()?.as_i32() as u32;
+                let a = stack.pop()?.as_i32() as u32;
+                if b == 0 {
+                    return Err(Trap::DivideByZero);
+                }
+                stack.push(Slot::from_i32((a % b) as i32))?;
+            }
+            opcode::DIV_U64 => {
+                let b = stack.pop()?.as_i64() as u64;
+                let a = stack.pop()?.as_i64() as u64;
+                if b == 0 {
+                    return Err(Trap::DivideByZero);
+                }
+                stack.push(Slot::from_i64((a / b) as i64))?;
+            }
+            opcode::MOD_U64 => {
+                let b = stack.pop()?.as_i64() as u64;
+                let a = stack.pop()?.as_i64() as u64;
+                if b == 0 {
+                    return Err(Trap::DivideByZero);
+                }
+                stack.push(Slot::from_i64((a % b) as i64))?;
+            }
+            opcode::EQ_I32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if a == b { 1 } else { 0 }))?;
+            }
+            opcode::NE_I32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if a != b { 1 } else { 0 }))?;
+            }
+            opcode::LT_I32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if a < b { 1 } else { 0 }))?;
+            }
+            opcode::LE_I32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if a <= b { 1 } else { 0 }))?;
+            }
+            opcode::GT_I32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if a > b { 1 } else { 0 }))?;
+            }
+            opcode::GE_I32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
+            }
+            // --- 64-bit comparison opcodes ---
+            opcode::EQ_I64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i32(if a == b { 1 } else { 0 }))?;
+            }
+            opcode::NE_I64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i32(if a != b { 1 } else { 0 }))?;
+            }
+            opcode::LT_I64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i32(if a < b { 1 } else { 0 }))?;
+            }
+            opcode::LE_I64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i32(if a <= b { 1 } else { 0 }))?;
+            }
+            opcode::GT_I64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i32(if a > b { 1 } else { 0 }))?;
+            }
+            opcode::GE_I64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
+            }
+            // --- Unsigned 32-bit comparison opcodes ---
+            opcode::LT_U32 => {
+                let b = stack.pop()?.as_i32() as u32;
+                let a = stack.pop()?.as_i32() as u32;
+                stack.push(Slot::from_i32(if a < b { 1 } else { 0 }))?;
+            }
+            opcode::LE_U32 => {
+                let b = stack.pop()?.as_i32() as u32;
+                let a = stack.pop()?.as_i32() as u32;
+                stack.push(Slot::from_i32(if a <= b { 1 } else { 0 }))?;
+            }
+            opcode::GT_U32 => {
+                let b = stack.pop()?.as_i32() as u32;
+                let a = stack.pop()?.as_i32() as u32;
+                stack.push(Slot::from_i32(if a > b { 1 } else { 0 }))?;
+            }
+            opcode::GE_U32 => {
+                let b = stack.pop()?.as_i32() as u32;
+                let a = stack.pop()?.as_i32() as u32;
+                stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
+            }
+            // --- Unsigned 64-bit comparison opcodes ---
+            opcode::LT_U64 => {
+                let b = stack.pop()?.as_i64() as u64;
+                let a = stack.pop()?.as_i64() as u64;
+                stack.push(Slot::from_i32(if a < b { 1 } else { 0 }))?;
+            }
+            opcode::LE_U64 => {
+                let b = stack.pop()?.as_i64() as u64;
+                let a = stack.pop()?.as_i64() as u64;
+                stack.push(Slot::from_i32(if a <= b { 1 } else { 0 }))?;
+            }
+            opcode::GT_U64 => {
+                let b = stack.pop()?.as_i64() as u64;
+                let a = stack.pop()?.as_i64() as u64;
+                stack.push(Slot::from_i32(if a > b { 1 } else { 0 }))?;
+            }
+            opcode::GE_U64 => {
+                let b = stack.pop()?.as_i64() as u64;
+                let a = stack.pop()?.as_i64() as u64;
+                stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
+            }
+            opcode::BOOL_AND => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if (a != 0) && (b != 0) { 1 } else { 0 }))?;
+            }
+            opcode::BOOL_OR => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if (a != 0) || (b != 0) { 1 } else { 0 }))?;
+            }
+            opcode::BOOL_XOR => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if (a != 0) != (b != 0) { 1 } else { 0 }))?;
+            }
+            opcode::BOOL_NOT => {
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(if a == 0 { 1 } else { 0 }))?;
+            }
+            // --- Bitwise opcodes (32-bit) ---
+            opcode::BIT_AND_32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(a & b))?;
+            }
+            opcode::BIT_OR_32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(a | b))?;
+            }
+            opcode::BIT_XOR_32 => {
+                let b = stack.pop()?.as_i32();
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(a ^ b))?;
+            }
+            opcode::BIT_NOT_32 => {
+                let a = stack.pop()?.as_i32();
+                stack.push(Slot::from_i32(!a))?;
+            }
+            // --- Bitwise opcodes (64-bit) ---
+            opcode::BIT_AND_64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i64(a & b))?;
+            }
+            opcode::BIT_OR_64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i64(a | b))?;
+            }
+            opcode::BIT_XOR_64 => {
+                let b = stack.pop()?.as_i64();
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i64(a ^ b))?;
+            }
+            opcode::BIT_NOT_64 => {
+                let a = stack.pop()?.as_i64();
+                stack.push(Slot::from_i64(!a))?;
+            }
+            opcode::JMP => {
+                let offset = read_i16_le(bytecode, &mut pc);
+                pc = (pc as isize + offset as isize) as usize;
+            }
+            opcode::JMP_IF_NOT => {
+                let offset = read_i16_le(bytecode, &mut pc);
+                let cond = stack.pop()?.as_i32();
+                if cond == 0 {
+                    pc = (pc as isize + offset as isize) as usize;
+                }
+            }
+            opcode::BUILTIN => {
+                let func_id = read_u16_le(bytecode, &mut pc);
+                builtin::dispatch(func_id, stack)?;
+            }
             opcode::RET_VOID => {
                 return Ok(());
             }
@@ -407,6 +869,13 @@ fn execute(
 /// Reads a little-endian u16 from bytecode at pc, advancing pc by 2.
 fn read_u16_le(bytecode: &[u8], pc: &mut usize) -> u16 {
     let value = u16::from_le_bytes([bytecode[*pc], bytecode[*pc + 1]]);
+    *pc += 2;
+    value
+}
+
+/// Reads a little-endian i16 from bytecode at pc, advancing pc by 2.
+fn read_i16_le(bytecode: &[u8], pc: &mut usize) -> i16 {
+    let value = i16::from_le_bytes([bytecode[*pc], bytecode[*pc + 1]]);
     *pc += 2;
     value
 }
@@ -742,716 +1211,5 @@ mod tests {
             .start();
 
         assert!(vm.run_round(0).is_ok());
-    }
-
-    #[test]
-    fn execute_when_add_i32_wraps_at_max_then_correct() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MAX)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (1)
-            0x30,              // ADD_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[i32::MAX, 1]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), i32::MIN);
-    }
-
-    #[test]
-    fn execute_when_sub_i32_basic_then_correct() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (10)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (3)
-            0x31,              // SUB_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[10, 3]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), 7);
-    }
-
-    #[test]
-    fn execute_when_sub_i32_result_negative_then_correct() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (3)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (10)
-            0x31,              // SUB_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[3, 10]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), -7);
-    }
-
-    #[test]
-    fn execute_when_sub_i32_both_zero_then_zero() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (0)
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (0)
-            0x31,              // SUB_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[0]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), 0);
-    }
-
-    #[test]
-    fn execute_when_sub_i32_same_value_then_zero() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (42)
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (42)
-            0x31,              // SUB_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[42]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), 0);
-    }
-
-    // Overflow: i32::MIN - 1 wraps to i32::MAX
-    #[test]
-    fn execute_when_sub_i32_wraps_at_min_then_correct() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MIN)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (1)
-            0x31,              // SUB_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[i32::MIN, 1]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), i32::MAX);
-    }
-
-    // Overflow: i32::MAX - (-1) wraps to i32::MIN
-    #[test]
-    fn execute_when_sub_i32_wraps_at_max_then_correct() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MAX)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (-1)
-            0x31,              // SUB_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[i32::MAX, -1]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), i32::MIN);
-    }
-
-    // Overflow: i32::MIN - i32::MAX wraps to 1
-    #[test]
-    fn execute_when_sub_i32_min_minus_max_then_wraps_to_one() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MIN)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (i32::MAX)
-            0x31,              // SUB_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[i32::MIN, i32::MAX]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        // i32::MIN - i32::MAX = -2147483648 - 2147483647 = wraps to 1
-        assert_eq!(vm.read_variable(0).unwrap(), 1);
-    }
-
-    // Overflow: i32::MAX - i32::MIN wraps to -1
-    #[test]
-    fn execute_when_sub_i32_max_minus_min_then_wraps_to_neg_one() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MAX)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (i32::MIN)
-            0x31,              // SUB_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[i32::MAX, i32::MIN]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        // i32::MAX - i32::MIN = 2147483647 - (-2147483648) = wraps to -1
-        assert_eq!(vm.read_variable(0).unwrap(), -1);
-    }
-
-    // Edge: 0 - i32::MIN wraps to i32::MIN (since -i32::MIN overflows)
-    #[test]
-    fn execute_when_sub_i32_zero_minus_min_then_wraps() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (0)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (i32::MIN)
-            0x31,              // SUB_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[0, i32::MIN]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        // 0 - i32::MIN = 0 - (-2147483648) = wraps to i32::MIN
-        assert_eq!(vm.read_variable(0).unwrap(), i32::MIN);
-    }
-
-    // Subtraction with negative operands
-    #[test]
-    fn execute_when_sub_i32_negative_operands_then_correct() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (-10)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (-3)
-            0x31,              // SUB_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[-10, -3]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        // -10 - (-3) = -7
-        assert_eq!(vm.read_variable(0).unwrap(), -7);
-    }
-
-    #[test]
-    fn execute_when_sub_i32_stack_underflow_then_trap() {
-        // SUB_I32 tries to pop 2 values from an empty stack
-        let c = single_function_container(&[0x31], 0, &[]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-
-        assert_trap(&mut vm, Trap::StackUnderflow);
-    }
-
-    #[test]
-    fn execute_when_mul_i32_basic_then_correct() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (7)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (6)
-            0x32,              // MUL_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[7, 6]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), 42);
-    }
-
-    #[test]
-    fn execute_when_mul_i32_by_zero_then_zero() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (12345)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (0)
-            0x32,              // MUL_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[12345, 0]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), 0);
-    }
-
-    #[test]
-    fn execute_when_mul_i32_by_one_then_identity() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (42)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (1)
-            0x32,              // MUL_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[42, 1]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), 42);
-    }
-
-    #[test]
-    fn execute_when_mul_i32_by_neg_one_then_negation() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (42)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (-1)
-            0x32,              // MUL_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[42, -1]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), -42);
-    }
-
-    #[test]
-    fn execute_when_mul_i32_negative_times_negative_then_positive() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (-7)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (-6)
-            0x32,              // MUL_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[-7, -6]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), 42);
-    }
-
-    #[test]
-    fn execute_when_mul_i32_positive_times_negative_then_negative() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (7)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (-6)
-            0x32,              // MUL_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[7, -6]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), -42);
-    }
-
-    // Overflow: i32::MAX * 2 wraps to -2
-    #[test]
-    fn execute_when_mul_i32_max_times_two_then_wraps() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MAX)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (2)
-            0x32,              // MUL_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[i32::MAX, 2]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), -2);
-    }
-
-    // Overflow: i32::MIN * 2 wraps to 0
-    #[test]
-    fn execute_when_mul_i32_min_times_two_then_wraps_to_zero() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MIN)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (2)
-            0x32,              // MUL_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[i32::MIN, 2]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), 0);
-    }
-
-    // Overflow: i32::MIN * -1 wraps to i32::MIN (negation of MIN overflows)
-    #[test]
-    fn execute_when_mul_i32_min_times_neg_one_then_wraps() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MIN)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (-1)
-            0x32,              // MUL_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[i32::MIN, -1]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), i32::MIN);
-    }
-
-    // Overflow: i32::MAX * i32::MAX wraps
-    #[test]
-    fn execute_when_mul_i32_max_times_max_then_wraps() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MAX)
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MAX)
-            0x32,              // MUL_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[i32::MAX]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(
-            vm.read_variable(0).unwrap(),
-            i32::MAX.wrapping_mul(i32::MAX)
-        );
-    }
-
-    // Overflow: i32::MIN * i32::MIN wraps to 0
-    #[test]
-    fn execute_when_mul_i32_min_times_min_then_wraps() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MIN)
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MIN)
-            0x32,              // MUL_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[i32::MIN]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(
-            vm.read_variable(0).unwrap(),
-            i32::MIN.wrapping_mul(i32::MIN)
-        );
-    }
-
-    // Overflow: i32::MAX * i32::MIN wraps
-    #[test]
-    fn execute_when_mul_i32_max_times_min_then_wraps() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MAX)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (i32::MIN)
-            0x32,              // MUL_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[i32::MAX, i32::MIN]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(
-            vm.read_variable(0).unwrap(),
-            i32::MAX.wrapping_mul(i32::MIN)
-        );
-    }
-
-    #[test]
-    fn execute_when_mul_i32_stack_underflow_then_trap() {
-        // MUL_I32 tries to pop 2 values from an empty stack
-        let c = single_function_container(&[0x32], 0, &[]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-
-        assert_trap(&mut vm, Trap::StackUnderflow);
-    }
-
-    #[test]
-    fn execute_when_add_i32_wraps_at_min_then_correct() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MIN)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (-1)
-            0x30,              // ADD_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
-        ];
-        let c = single_function_container(&bytecode, 1, &[i32::MIN, -1]);
-        let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start();
-        vm.run_round(0).unwrap();
-
-        assert_eq!(vm.read_variable(0).unwrap(), i32::MAX);
     }
 }

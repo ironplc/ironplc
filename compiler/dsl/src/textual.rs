@@ -483,7 +483,7 @@ pub enum StmtKind {
     Return,
     // Exit statement.
     #[recurse(ignore)]
-    Exit,
+    Exit(SourceSpan),
 }
 
 impl StmtKind {

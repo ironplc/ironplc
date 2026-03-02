@@ -201,6 +201,50 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
                 input_param("MX", "ANY_NUM"),
             ],
         ),
+        // SEL: binary selection (BOOL, ANY_NUM, ANY_NUM -> ANY_NUM)
+        FunctionSignature::stdlib(
+            "SEL",
+            TypeName::from("ANY_NUM"),
+            vec![
+                input_param("G", "BOOL"),
+                input_param("IN0", "ANY_NUM"),
+                input_param("IN1", "ANY_NUM"),
+            ],
+        ),
+    ]
+}
+
+// =============================================================================
+// Bit shift and rotate functions
+// =============================================================================
+
+/// Returns standard bit shift and rotate function definitions.
+///
+/// IEC 61131-3 defines SHL, SHR, ROL, ROR as standard functions operating
+/// on ANY_BIT types with an ANY_INT shift count. The return type matches
+/// the input type.
+fn get_bitshift_functions() -> Vec<FunctionSignature> {
+    vec![
+        FunctionSignature::stdlib(
+            "SHL",
+            TypeName::from("ANY_BIT"),
+            vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
+        ),
+        FunctionSignature::stdlib(
+            "SHR",
+            TypeName::from("ANY_BIT"),
+            vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
+        ),
+        FunctionSignature::stdlib(
+            "ROL",
+            TypeName::from("ANY_BIT"),
+            vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
+        ),
+        FunctionSignature::stdlib(
+            "ROR",
+            TypeName::from("ANY_BIT"),
+            vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
+        ),
     ]
 }
 
@@ -224,6 +268,9 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     // Numeric functions
     functions.extend(get_numeric_functions());
 
+    // Bit shift and rotate functions
+    functions.extend(get_bitshift_functions());
+
     functions
 }
 
@@ -239,9 +286,10 @@ mod tests {
         // Int-to-real: 4 signed × 2 reals + 4 unsigned × 2 reals = 8 + 8 = 16
         // Real-to-int: 2 reals × 4 signed + 2 reals × 4 unsigned = 8 + 8 = 16
         // Real-to-real: 2 × 1 = 2
-        // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT = 5
-        // Total: 56 + 16 + 16 + 2 + 5 = 95
-        assert_eq!(functions.len(), 95);
+        // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT, SEL = 6
+        // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
+        // Total: 56 + 16 + 16 + 2 + 6 + 4 = 100
+        assert_eq!(functions.len(), 100);
     }
 
     #[test]
@@ -331,13 +379,14 @@ mod tests {
     fn get_numeric_functions_when_called_then_contains_all_functions() {
         let functions = get_numeric_functions();
 
-        assert_eq!(functions.len(), 5);
+        assert_eq!(functions.len(), 6);
 
         assert!(functions.iter().any(|f| f.name.original() == "ABS"));
         assert!(functions.iter().any(|f| f.name.original() == "SQRT"));
         assert!(functions.iter().any(|f| f.name.original() == "MIN"));
         assert!(functions.iter().any(|f| f.name.original() == "MAX"));
         assert!(functions.iter().any(|f| f.name.original() == "LIMIT"));
+        assert!(functions.iter().any(|f| f.name.original() == "SEL"));
     }
 
     #[test]
@@ -407,6 +456,21 @@ mod tests {
         assert_eq!(limit.parameters[1].name.original(), "IN");
         assert_eq!(limit.parameters[2].name.original(), "MX");
         assert!(limit.is_stdlib());
+    }
+
+    #[test]
+    fn get_numeric_functions_when_sel_then_has_three_inputs() {
+        let functions = get_numeric_functions();
+        let sel = functions
+            .iter()
+            .find(|f| f.name.original() == "SEL")
+            .unwrap();
+
+        assert_eq!(sel.input_parameter_count(), 3);
+        assert_eq!(sel.parameters[0].name.original(), "G");
+        assert_eq!(sel.parameters[1].name.original(), "IN0");
+        assert_eq!(sel.parameters[2].name.original(), "IN1");
+        assert!(sel.is_stdlib());
     }
 
     #[test]
