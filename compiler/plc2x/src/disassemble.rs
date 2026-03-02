@@ -462,10 +462,20 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 let func_id = read_u16(bytecode, pc + 1);
                 let operand = match func_id {
                     opcode::builtin::EXPT_I32 => format!("EXPT_I32 (0x{:04X})", func_id),
+                    opcode::builtin::EXPT_F32 => format!("EXPT_F32 (0x{:04X})", func_id),
+                    opcode::builtin::EXPT_F64 => format!("EXPT_F64 (0x{:04X})", func_id),
                     opcode::builtin::ABS_I32 => format!("ABS_I32 (0x{:04X})", func_id),
+                    opcode::builtin::ABS_F32 => format!("ABS_F32 (0x{:04X})", func_id),
+                    opcode::builtin::ABS_F64 => format!("ABS_F64 (0x{:04X})", func_id),
                     opcode::builtin::MIN_I32 => format!("MIN_I32 (0x{:04X})", func_id),
+                    opcode::builtin::MIN_F32 => format!("MIN_F32 (0x{:04X})", func_id),
+                    opcode::builtin::MIN_F64 => format!("MIN_F64 (0x{:04X})", func_id),
                     opcode::builtin::MAX_I32 => format!("MAX_I32 (0x{:04X})", func_id),
+                    opcode::builtin::MAX_F32 => format!("MAX_F32 (0x{:04X})", func_id),
+                    opcode::builtin::MAX_F64 => format!("MAX_F64 (0x{:04X})", func_id),
                     opcode::builtin::LIMIT_I32 => format!("LIMIT_I32 (0x{:04X})", func_id),
+                    opcode::builtin::LIMIT_F32 => format!("LIMIT_F32 (0x{:04X})", func_id),
+                    opcode::builtin::LIMIT_F64 => format!("LIMIT_F64 (0x{:04X})", func_id),
                     opcode::builtin::SEL_I32 => format!("SEL_I32 (0x{:04X})", func_id),
                     opcode::builtin::SHL_I32 => format!("SHL_I32 (0x{:04X})", func_id),
                     opcode::builtin::SHL_I64 => format!("SHL_I64 (0x{:04X})", func_id),
@@ -479,6 +489,10 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                     opcode::builtin::ROL_U16 => format!("ROL_U16 (0x{:04X})", func_id),
                     opcode::builtin::ROR_U8 => format!("ROR_U8 (0x{:04X})", func_id),
                     opcode::builtin::ROR_U16 => format!("ROR_U16 (0x{:04X})", func_id),
+                    opcode::builtin::SEL_F32 => format!("SEL_F32 (0x{:04X})", func_id),
+                    opcode::builtin::SEL_F64 => format!("SEL_F64 (0x{:04X})", func_id),
+                    opcode::builtin::SQRT_F32 => format!("SQRT_F32 (0x{:04X})", func_id),
+                    opcode::builtin::SQRT_F64 => format!("SQRT_F64 (0x{:04X})", func_id),
                     _ => format!("0x{:04X}", func_id),
                 };
                 instructions.push(json!({

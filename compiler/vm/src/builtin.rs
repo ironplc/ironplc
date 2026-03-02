@@ -141,6 +141,78 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_i32(a.rotate_right(n as u32) as i32))?;
             Ok(())
         }
+        opcode::builtin::ABS_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.abs()))?;
+            Ok(())
+        }
+        opcode::builtin::ABS_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.abs()))?;
+            Ok(())
+        }
+        opcode::builtin::MIN_F32 => {
+            let b = stack.pop()?.as_f32();
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.min(b)))?;
+            Ok(())
+        }
+        opcode::builtin::MIN_F64 => {
+            let b = stack.pop()?.as_f64();
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.min(b)))?;
+            Ok(())
+        }
+        opcode::builtin::MAX_F32 => {
+            let b = stack.pop()?.as_f32();
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.max(b)))?;
+            Ok(())
+        }
+        opcode::builtin::MAX_F64 => {
+            let b = stack.pop()?.as_f64();
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.max(b)))?;
+            Ok(())
+        }
+        opcode::builtin::LIMIT_F32 => {
+            let mx = stack.pop()?.as_f32();
+            let in_val = stack.pop()?.as_f32();
+            let mn = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(in_val.clamp(mn, mx)))?;
+            Ok(())
+        }
+        opcode::builtin::LIMIT_F64 => {
+            let mx = stack.pop()?.as_f64();
+            let in_val = stack.pop()?.as_f64();
+            let mn = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(in_val.clamp(mn, mx)))?;
+            Ok(())
+        }
+        opcode::builtin::SEL_F32 => {
+            let in1 = stack.pop()?.as_f32();
+            let in0 = stack.pop()?.as_f32();
+            let g = stack.pop()?.as_i32();
+            stack.push(Slot::from_f32(if g == 0 { in0 } else { in1 }))?;
+            Ok(())
+        }
+        opcode::builtin::SEL_F64 => {
+            let in1 = stack.pop()?.as_f64();
+            let in0 = stack.pop()?.as_f64();
+            let g = stack.pop()?.as_i32();
+            stack.push(Slot::from_f64(if g == 0 { in0 } else { in1 }))?;
+            Ok(())
+        }
+        opcode::builtin::SQRT_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.sqrt()))?;
+            Ok(())
+        }
+        opcode::builtin::SQRT_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.sqrt()))?;
+            Ok(())
+        }
         _ => Err(Trap::InvalidBuiltinFunction(func_id)),
     }
 }
