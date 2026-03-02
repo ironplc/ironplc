@@ -10,7 +10,7 @@ Clamps a value to a specified range.
    * - **IEC 61131-3**
      - Section 2.5.1.5.5
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Signatures
 ----------
@@ -42,7 +42,7 @@ Signatures
      - ``DINT``
      - ``DINT``
      - ``DINT``
-     - Not yet supported
+     - Supported
    * - 4
      - ``LINT``
      - ``LINT``
@@ -78,13 +78,13 @@ Signatures
      - ``REAL``
      - ``REAL``
      - ``REAL``
-     - Not yet supported
+     - Supported
    * - 10
      - ``LREAL``
      - ``LREAL``
      - ``LREAL``
      - ``LREAL``
-     - Not yet supported
+     - Supported
 
 Description
 -----------

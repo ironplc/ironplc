@@ -953,14 +953,45 @@ fn compile_for(
 }
 
 /// Returns the builtin opcode for a named standard library function, if known.
-fn lookup_builtin(name: &str) -> Option<u16> {
+///
+/// The `op_width` selects the correct variant (i32/f32/f64) for the function.
+fn lookup_builtin(name: &str, op_width: OpWidth) -> Option<u16> {
     match name.to_uppercase().as_str() {
-        "EXPT" => Some(opcode::builtin::EXPT_I32),
-        "ABS" => Some(opcode::builtin::ABS_I32),
-        "MIN" => Some(opcode::builtin::MIN_I32),
-        "MAX" => Some(opcode::builtin::MAX_I32),
-        "LIMIT" => Some(opcode::builtin::LIMIT_I32),
-        "SEL" => Some(opcode::builtin::SEL_I32),
+        "EXPT" => Some(match op_width {
+            OpWidth::W32 | OpWidth::W64 => opcode::builtin::EXPT_I32,
+            OpWidth::F32 => opcode::builtin::EXPT_F32,
+            OpWidth::F64 => opcode::builtin::EXPT_F64,
+        }),
+        "ABS" => Some(match op_width {
+            OpWidth::W32 | OpWidth::W64 => opcode::builtin::ABS_I32,
+            OpWidth::F32 => opcode::builtin::ABS_F32,
+            OpWidth::F64 => opcode::builtin::ABS_F64,
+        }),
+        "MIN" => Some(match op_width {
+            OpWidth::W32 | OpWidth::W64 => opcode::builtin::MIN_I32,
+            OpWidth::F32 => opcode::builtin::MIN_F32,
+            OpWidth::F64 => opcode::builtin::MIN_F64,
+        }),
+        "MAX" => Some(match op_width {
+            OpWidth::W32 | OpWidth::W64 => opcode::builtin::MAX_I32,
+            OpWidth::F32 => opcode::builtin::MAX_F32,
+            OpWidth::F64 => opcode::builtin::MAX_F64,
+        }),
+        "LIMIT" => Some(match op_width {
+            OpWidth::W32 | OpWidth::W64 => opcode::builtin::LIMIT_I32,
+            OpWidth::F32 => opcode::builtin::LIMIT_F32,
+            OpWidth::F64 => opcode::builtin::LIMIT_F64,
+        }),
+        "SEL" => Some(match op_width {
+            OpWidth::W32 | OpWidth::W64 => opcode::builtin::SEL_I32,
+            OpWidth::F32 => opcode::builtin::SEL_F32,
+            OpWidth::F64 => opcode::builtin::SEL_F64,
+        }),
+        "SQRT" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::SQRT_F32),
+            OpWidth::F64 => Some(opcode::builtin::SQRT_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
         _ => None,
     }
 }
@@ -1120,7 +1151,8 @@ fn compile_generic_builtin(
     func: &Function,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let func_id = lookup_builtin(func.name.original())
+    let func_name = func.name.original().to_uppercase();
+    let func_id = lookup_builtin(&func_name, op_type.0)
         .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
 
     let expected_args = opcode::builtin::arg_count(func_id) as usize;
@@ -1142,8 +1174,16 @@ fn compile_generic_builtin(
         ));
     }
 
-    for arg in &args {
-        compile_expr(emitter, ctx, arg, op_type)?;
+    let is_sel = func_name == "SEL";
+    for (i, arg) in args.iter().enumerate() {
+        // SEL's first argument (G) is always a BOOL/integer selector,
+        // even when the remaining arguments are float.
+        let arg_op_type = if is_sel && i == 0 {
+            DEFAULT_OP_TYPE
+        } else {
+            op_type
+        };
+        compile_expr(emitter, ctx, arg, arg_op_type)?;
     }
 
     emitter.emit_builtin(func_id);
