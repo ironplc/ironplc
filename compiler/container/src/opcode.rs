@@ -459,6 +459,42 @@ pub mod builtin {
     /// ROR for 16-bit (WORD): narrow rotate within 16 bits.
     pub const ROR_U16: u16 = 0x0353;
 
+    /// ABS for 32-bit floats: pops one value, pushes its absolute value.
+    pub const ABS_F32: u16 = 0x0354;
+
+    /// ABS for 64-bit floats: pops one value, pushes its absolute value.
+    pub const ABS_F64: u16 = 0x0355;
+
+    /// MIN for 32-bit floats: pops two values (b then a), pushes min(a, b).
+    pub const MIN_F32: u16 = 0x0356;
+
+    /// MIN for 64-bit floats: pops two values (b then a), pushes min(a, b).
+    pub const MIN_F64: u16 = 0x0357;
+
+    /// MAX for 32-bit floats: pops two values (b then a), pushes max(a, b).
+    pub const MAX_F32: u16 = 0x0358;
+
+    /// MAX for 64-bit floats: pops two values (b then a), pushes max(a, b).
+    pub const MAX_F64: u16 = 0x0359;
+
+    /// LIMIT for 32-bit floats: pops mx, in, mn, pushes clamp(in, mn, mx).
+    pub const LIMIT_F32: u16 = 0x035A;
+
+    /// LIMIT for 64-bit floats: pops mx, in, mn, pushes clamp(in, mn, mx).
+    pub const LIMIT_F64: u16 = 0x035B;
+
+    /// SEL for 32-bit floats: pops in1, in0 (f32), g (i32), pushes in0 if g==0 else in1.
+    pub const SEL_F32: u16 = 0x035C;
+
+    /// SEL for 64-bit floats: pops in1, in0 (f64), g (i32), pushes in0 if g==0 else in1.
+    pub const SEL_F64: u16 = 0x035D;
+
+    /// SQRT for 32-bit floats: pops one value, pushes its square root.
+    pub const SQRT_F32: u16 = 0x035E;
+
+    /// SQRT for 64-bit floats: pops one value, pushes its square root.
+    pub const SQRT_F64: u16 = 0x035F;
+
     /// Returns the number of arguments a built-in function pops from the stack.
     ///
     /// This is the single source of truth for argument counts, used by both
@@ -468,11 +504,11 @@ pub mod builtin {
     /// Panics if `func_id` is not a known built-in function ID.
     pub fn arg_count(func_id: u16) -> u16 {
         match func_id {
-            ABS_I32 => 1,
-            EXPT_I32 | EXPT_F32 | EXPT_F64 | MIN_I32 | MAX_I32 => 2,
-            LIMIT_I32 | SEL_I32 => 3,
-            SHL_I32 | SHL_I64 | SHR_I32 | SHR_I64 | ROL_I32 | ROL_I64 | ROR_I32 | ROR_I64
-            | ROL_U8 | ROL_U16 | ROR_U8 | ROR_U16 => 2,
+            ABS_I32 | ABS_F32 | ABS_F64 | SQRT_F32 | SQRT_F64 => 1,
+            EXPT_I32 | EXPT_F32 | EXPT_F64 | MIN_I32 | MIN_F32 | MIN_F64 | MAX_I32 | MAX_F32
+            | MAX_F64 | SHL_I32 | SHL_I64 | SHR_I32 | SHR_I64 | ROL_I32 | ROL_I64 | ROR_I32
+            | ROR_I64 | ROL_U8 | ROL_U16 | ROR_U8 | ROR_U16 => 2,
+            LIMIT_I32 | LIMIT_F32 | LIMIT_F64 | SEL_I32 | SEL_F32 | SEL_F64 => 3,
             _ => panic!("unknown builtin function ID: 0x{:04X}", func_id),
         }
     }

@@ -10,7 +10,7 @@ Returns the absolute value of a numeric input.
    * - **IEC 61131-3**
      - Section 2.5.1.5.2
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Signatures
 ----------
@@ -34,7 +34,7 @@ Signatures
    * - 3
      - ``DINT``
      - ``DINT``
-     - Not yet supported
+     - Supported
    * - 4
      - ``LINT``
      - ``LINT``
@@ -42,11 +42,11 @@ Signatures
    * - 5
      - ``REAL``
      - ``REAL``
-     - Not yet supported
+     - Supported
    * - 6
      - ``LREAL``
      - ``LREAL``
-     - Not yet supported
+     - Supported
 
 Description
 -----------

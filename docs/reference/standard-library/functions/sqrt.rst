@@ -10,7 +10,7 @@ Returns the square root of a numeric input.
    * - **IEC 61131-3**
      - Section 2.5.1.5.2
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Signatures
 ----------
@@ -26,11 +26,11 @@ Signatures
    * - 1
      - ``REAL``
      - ``REAL``
-     - Not yet supported
+     - Supported
    * - 2
      - ``LREAL``
      - ``LREAL``
-     - Not yet supported
+     - Supported
 
 Description
 -----------

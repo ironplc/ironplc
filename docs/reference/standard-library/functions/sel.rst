@@ -10,7 +10,7 @@ Binary selection — selects one of two inputs based on a Boolean selector.
    * - **IEC 61131-3**
      - Section 2.5.1.5.5
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Signatures
 ----------
@@ -30,7 +30,7 @@ Signatures
      - *ANY*
      - *ANY*
      - *ANY*
-     - Not yet supported
+     - Supported
 
 Description
 -----------
