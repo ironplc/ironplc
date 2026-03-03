@@ -23,7 +23,7 @@ use ironplc_dsl::{
         Action as SfcAction, ActionAssociation, ActionQualifier, ElementKind, Network, Sfc, Step,
         Transition,
     },
-    textual::{ExprKind, Statements, StmtKind},
+    textual::{Expr, ExprKind, Statements, StmtKind},
     time::DurationLiteral,
 };
 use ironplc_parser::options::ParseOptions;
@@ -959,18 +959,20 @@ fn transform_sfc_transition(
     // Parse the condition
     let condition = if let Some(ref st_body) = transition.condition_st {
         // Parse inline ST condition as an expression
-        parse_st_condition(
+        Expr::new(parse_st_condition(
             &st_body.text,
             file_id,
             st_body.line_offset,
             st_body.col_offset,
-        )?
+        )?)
     } else if let Some(ref ref_name) = transition.condition_reference {
         // Reference to a named transition - use the name as a variable reference
-        ExprKind::named_variable(ref_name)
+        Expr::new(ExprKind::named_variable(ref_name))
     } else {
         // Default to TRUE if no condition specified
-        ExprKind::Const(ConstantKind::Boolean(BooleanLiteral::new(Boolean::True)))
+        Expr::new(ExprKind::Const(ConstantKind::Boolean(BooleanLiteral::new(
+            Boolean::True,
+        ))))
     };
 
     Ok(Transition {

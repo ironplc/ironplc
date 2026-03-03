@@ -33,6 +33,7 @@ pub struct Network {
 ///
 /// See section 2.6.2.
 #[derive(Debug, PartialEq, Clone, Recurse)]
+#[allow(clippy::large_enum_variant)]
 pub enum ElementKind {
     Step(Step),
     Transition(Transition),
@@ -53,7 +54,7 @@ impl ElementKind {
             priority: None,
             from: vec![Id::from(from)],
             to: vec![Id::from(to)],
-            condition,
+            condition: Expr::new(condition),
         })
     }
 
@@ -84,7 +85,7 @@ pub struct Transition {
     pub priority: Option<u32>,
     pub from: Vec<Id>,
     pub to: Vec<Id>,
-    pub condition: ExprKind,
+    pub condition: Expr,
 }
 
 /// Action item for a SFC.

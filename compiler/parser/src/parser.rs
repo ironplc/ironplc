@@ -107,7 +107,7 @@ fn flatten_statements(mut items: Vec<StatementsOrEmpty>) -> Vec<StmtKind> {
 
 enum Element {
     StructSelector(Id),
-    ArraySelector(Vec<ExprKind>),
+    ArraySelector(Vec<Expr>),
 }
 
 enum InstanceInitKind {
@@ -749,8 +749,8 @@ parser! {
     //    }
     //  }
     rule subscripted_variable() -> SymbolicVariableKind = symbolic_variable()
-    rule subscript_list() -> Vec<ExprKind> = tok(TokenType::LeftBracket) _ list:subscript()++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightBracket) { list }
-    rule subscript() -> ExprKind = expression()
+    rule subscript_list() -> Vec<Expr> = tok(TokenType::LeftBracket) _ list:subscript()++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightBracket) { list }
+    rule subscript() -> Expr = e:expression() { Expr::new(e) }
     rule structured_variable() -> (SymbolicVariableKind, Id) = r:record_variable() tok(TokenType::Period) f:field_selector() { (r, f) }
     rule record_variable() -> SymbolicVariableKind = symbolic_variable()
     rule field_selector() -> Id = identifier()
@@ -1154,7 +1154,7 @@ parser! {
       vec![n1, n2]
     }
     // TODO add simple_instruction_list , fbd_network, rung
-    rule transition_condition() -> ExprKind =  tok(TokenType::Assignment) _ expr:expression() _ tok(TokenType::Semicolon) { expr }
+    rule transition_condition() -> Expr =  tok(TokenType::Assignment) _ expr:expression() _ tok(TokenType::Semicolon) { Expr::new(expr) }
     rule action() -> ElementKind = tok(TokenType::Action) _ name:action_name() _ tok(TokenType::Colon) _ body:function_block_body() _ tok(TokenType::EndAction) {
       ElementKind::Action(Action {
         name,
@@ -1375,7 +1375,7 @@ parser! {
       c:constant() { ExprKind::Const(c) }
       //ev:enumerated_value()
       v:variable() { ExprKind::Variable(v) }
-      tok(TokenType::LeftParen) _ e:expression() _ tok(TokenType::RightParen) { ExprKind::Expression(Box::new(e)) }
+      tok(TokenType::LeftParen) _ e:expression() _ tok(TokenType::RightParen) { ExprKind::Expression(Box::new(Expr::new(e))) }
       f:function_expression() { f }
     }
     rule unary_expression() -> ExprKind = unary:unary_operator()? _ expr:primary_expression() {
@@ -1440,7 +1440,7 @@ parser! {
     } / name:(n:variable_name() _ tok(TokenType::Assignment) { n })? _ expr:expression() {
       match name {
         Some(n) => {
-          ParamAssignmentKind::NamedInput(NamedInput {name: n, expr} )
+          ParamAssignmentKind::NamedInput(NamedInput {name: n, expr: Expr::new(expr)} )
         },
         None => {
           ParamAssignmentKind::positional(expr)
@@ -1450,9 +1450,9 @@ parser! {
 
     // B.3.2.3 Selection statements
     rule selection_statement() -> StmtKind = if_statement() / case_statement()
-    rule if_statement() -> StmtKind = tok(TokenType::If) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list()? _ else_ifs:(tok(TokenType::Elsif) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list() {ElseIf{expr, body}}) ** _ _ else_body:(tok(TokenType::Else) _ e:statement_list() { e })? _ tok(TokenType::EndIf) {
+    rule if_statement() -> StmtKind = tok(TokenType::If) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list()? _ else_ifs:(tok(TokenType::Elsif) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list() {ElseIf{expr: Expr::new(expr), body}}) ** _ _ else_body:(tok(TokenType::Else) _ e:statement_list() { e })? _ tok(TokenType::EndIf) {
       StmtKind::If(If {
-        expr,
+        expr: Expr::new(expr),
         body: body.unwrap_or_default(),
         else_ifs,
         else_body: else_body.unwrap_or_default()
@@ -1460,7 +1460,7 @@ parser! {
     }
     rule case_statement() -> StmtKind = tok(TokenType::Case) _ selector:expression() _ tok(TokenType::Of) _ cases:case_element() ** _ _ else_body:(tok(TokenType::Else) _ e:statement_list() { e })? _ tok(TokenType::EndCase) {
       StmtKind::Case(Case {
-        selector,
+        selector: Expr::new(selector),
         statement_groups: cases,
         else_body: else_body.unwrap_or_default(),
       })
@@ -1486,16 +1486,16 @@ parser! {
       }
     }
     rule control_variable() -> Id = identifier()
-    rule for_list() -> (ExprKind, ExprKind, Option<ExprKind>) = from:expression() _ tok(TokenType::To) _ to:expression() _ step:(tok(TokenType::By) _ s:expression() {s})? { (from, to, step) }
+    rule for_list() -> (Expr, Expr, Option<Expr>) = from:expression() _ tok(TokenType::To) _ to:expression() _ step:(tok(TokenType::By) _ s:expression() {Expr::new(s)})? { (Expr::new(from), Expr::new(to), step) }
     rule while_statement() -> While = tok(TokenType::While) _ condition:expression() _ tok(TokenType::Do) _ body:statement_list() _ tok(TokenType::EndWhile) {
       While {
-        condition,
+        condition: Expr::new(condition),
         body,
       }
     }
     rule repeat_statement() -> Repeat = tok(TokenType::Repeat) _ body:statement_list() _ tok(TokenType::Until) _ until:expression() _ tok(TokenType::EndRepeat) {
       Repeat {
-        until,
+        until: Expr::new(until),
         body,
       }
     }
