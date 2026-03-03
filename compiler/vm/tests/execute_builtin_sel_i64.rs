@@ -17,12 +17,7 @@ fn execute_when_sel_i64_false_then_returns_in0() {
         0x19, 0x00, 0x00,  // STORE_VAR_I64 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container_i32_i64(
-        &bytecode,
-        1,
-        &[0],
-        &[5_000_000_000, 10_000_000_000],
-    );
+    let c = single_function_container_i32_i64(&bytecode, 1, &[0], &[5_000_000_000, 10_000_000_000]);
     let mut b = VmBuffers::from_container(&c);
     {
         let mut vm = Vm::new()
@@ -52,12 +47,7 @@ fn execute_when_sel_i64_true_then_returns_in1() {
         0x19, 0x00, 0x00,  // STORE_VAR_I64 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container_i32_i64(
-        &bytecode,
-        1,
-        &[1],
-        &[5_000_000_000, 10_000_000_000],
-    );
+    let c = single_function_container_i32_i64(&bytecode, 1, &[1], &[5_000_000_000, 10_000_000_000]);
     let mut b = VmBuffers::from_container(&c);
     {
         let mut vm = Vm::new()

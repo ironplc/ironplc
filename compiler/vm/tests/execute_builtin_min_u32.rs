@@ -18,11 +18,7 @@ fn execute_when_min_u32_large_values_then_unsigned_comparison() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(
-        &bytecode,
-        1,
-        &[3_000_000_000_u32 as i32, 1_000_000_000],
-    );
+    let c = single_function_container(&bytecode, 1, &[3_000_000_000_u32 as i32, 1_000_000_000]);
     let mut b = VmBuffers::from_container(&c);
     let mut vm = Vm::new()
         .load(

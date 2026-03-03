@@ -542,14 +542,12 @@ pub mod builtin {
     pub fn arg_count(func_id: u16) -> u16 {
         match func_id {
             ABS_I32 | ABS_F32 | ABS_F64 | ABS_I64 | SQRT_F32 | SQRT_F64 => 1,
-            EXPT_I32 | EXPT_F32 | EXPT_F64 | EXPT_I64
-            | MIN_I32 | MIN_F32 | MIN_F64 | MIN_I64 | MIN_U32 | MIN_U64
-            | MAX_I32 | MAX_F32 | MAX_F64 | MAX_I64 | MAX_U32 | MAX_U64
-            | SHL_I32 | SHL_I64 | SHR_I32 | SHR_I64
-            | ROL_I32 | ROL_I64 | ROR_I32 | ROR_I64
+            EXPT_I32 | EXPT_F32 | EXPT_F64 | EXPT_I64 | MIN_I32 | MIN_F32 | MIN_F64 | MIN_I64
+            | MIN_U32 | MIN_U64 | MAX_I32 | MAX_F32 | MAX_F64 | MAX_I64 | MAX_U32 | MAX_U64
+            | SHL_I32 | SHL_I64 | SHR_I32 | SHR_I64 | ROL_I32 | ROL_I64 | ROR_I32 | ROR_I64
             | ROL_U8 | ROL_U16 | ROR_U8 | ROR_U16 => 2,
-            LIMIT_I32 | LIMIT_F32 | LIMIT_F64 | LIMIT_I64 | LIMIT_U32 | LIMIT_U64
-            | SEL_I32 | SEL_F32 | SEL_F64 | SEL_I64 => 3,
+            LIMIT_I32 | LIMIT_F32 | LIMIT_F64 | LIMIT_I64 | LIMIT_U32 | LIMIT_U64 | SEL_I32
+            | SEL_F32 | SEL_F64 | SEL_I64 => 3,
             _ => panic!("unknown builtin function ID: 0x{:04X}", func_id),
         }
     }

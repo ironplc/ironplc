@@ -20,7 +20,11 @@ fn execute_when_limit_u64_in_range_then_unchanged() {
     let c = single_function_container_i64(
         &bytecode,
         1,
-        &[1_000_000_000, 5_000_000_000, 10_000_000_000_000_000_000_u64 as i64],
+        &[
+            1_000_000_000,
+            5_000_000_000,
+            10_000_000_000_000_000_000_u64 as i64,
+        ],
     );
     let mut b = VmBuffers::from_container(&c);
     {
