@@ -447,13 +447,18 @@ fn map_diagnostic(
     let description = diagnostic.description();
     let range = map_label(&diagnostic.primary, project);
 
-    let code_description = match Uri::from_str(
-        format!(
-            "https://www.ironplc.com/reference/compiler/problems/{}.html",
-            diagnostic.code
-        )
-        .as_str(),
-    ) {
+    let mut url_string = format!(
+        "https://www.ironplc.com/reference/compiler/problems/{}.html?version={}",
+        diagnostic.code,
+        env!("CARGO_PKG_VERSION")
+    );
+    if let Some(ref file) = diagnostic.source_file {
+        url_string.push_str(&format!("&file={}", file));
+    }
+    if let Some(line) = diagnostic.source_line {
+        url_string.push_str(&format!("&line={}", line));
+    }
+    let code_description = match Uri::from_str(&url_string) {
         Ok(url) => Some(CodeDescription { href: url }),
         Err(_) => None,
     };
@@ -813,6 +818,69 @@ INVALID_SYNTAX"
         let lsp_diag = super::map_diagnostic(diag, proj.wrapped.as_ref());
 
         assert!(lsp_diag.related_information.is_none());
+    }
+
+    #[test]
+    fn map_diagnostic_when_problem_then_url_has_version_only() {
+        use ironplc_dsl::core::FileId;
+        use ironplc_dsl::diagnostic::{
+            Diagnostic as DslDiagnostic, Label as DslLabel, Location as DslLocation,
+        };
+
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content = "PROGRAM Main\nEND_PROGRAM";
+        proj.change_text_document(&url, content.to_owned());
+
+        let file_id = FileId::from_path(&std::path::PathBuf::from(url.path().as_str()));
+
+        let diag = DslDiagnostic::problem(
+            ironplc_problems::Problem::SyntaxError,
+            DslLabel {
+                location: DslLocation { start: 0, end: 7 },
+                file_id,
+                message: "some error".to_string(),
+            },
+        );
+
+        let lsp_diag = super::map_diagnostic(diag, proj.wrapped.as_ref());
+
+        let href = lsp_diag.code_description.unwrap().href.to_string();
+        assert!(href.contains("?version="));
+        assert!(!href.contains("&file="));
+        assert!(!href.contains("&line="));
+    }
+
+    #[test]
+    fn map_diagnostic_when_todo_then_url_has_version_file_and_line() {
+        use ironplc_dsl::core::FileId;
+        use ironplc_dsl::diagnostic::{
+            Diagnostic as DslDiagnostic, Label as DslLabel, Location as DslLocation,
+        };
+
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content = "PROGRAM Main\nEND_PROGRAM";
+        proj.change_text_document(&url, content.to_owned());
+
+        let file_id = FileId::from_path(&std::path::PathBuf::from(url.path().as_str()));
+
+        let diag = DslDiagnostic::problem(
+            ironplc_problems::Problem::SyntaxError,
+            DslLabel {
+                location: DslLocation { start: 0, end: 7 },
+                file_id,
+                message: "some error".to_string(),
+            },
+        )
+        .with_source("compiler/analyzer/src/rule_example.rs", 42);
+
+        let lsp_diag = super::map_diagnostic(diag, proj.wrapped.as_ref());
+
+        let href = lsp_diag.code_description.unwrap().href.to_string();
+        assert!(href.contains("?version="));
+        assert!(href.contains("&file=compiler/analyzer/src/rule_example.rs"));
+        assert!(href.contains("&line=42"));
     }
 
     #[test]
