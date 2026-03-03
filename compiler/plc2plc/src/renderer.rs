@@ -900,7 +900,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         self.indent();
         self.write_ws(":=");
-        self.visit_expr_kind(&node.condition)?;
+        self.visit_expr(&node.condition)?;
         self.write_ws(";");
         self.newline();
         self.outdent();
@@ -1168,7 +1168,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_variable(&node.target)?;
         self.write_ws(":=");
-        self.visit_expr_kind(&node.value)?;
+        self.visit_expr(&node.value)?;
 
         self.write_ws(";");
         self.newline();
@@ -1180,7 +1180,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &dsl::textual::CompareExpr,
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("(");
-        self.visit_expr_kind(&node.left)?;
+        self.visit_expr(&node.left)?;
 
         let op = match node.op {
             dsl::textual::CompareOp::Or => "OR",
@@ -1195,7 +1195,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         };
         self.write_ws(op);
 
-        self.visit_expr_kind(&node.right)?;
+        self.visit_expr(&node.right)?;
         self.write_ws(")");
         Ok(())
     }
@@ -1205,7 +1205,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &dsl::textual::BinaryExpr,
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("(");
-        self.visit_expr_kind(&node.left)?;
+        self.visit_expr(&node.left)?;
 
         let op = match node.op {
             dsl::textual::Operator::Add => "+",
@@ -1217,7 +1217,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         };
         self.write_ws(op);
 
-        self.visit_expr_kind(&node.right)?;
+        self.visit_expr(&node.right)?;
         self.write_ws(")");
 
         Ok(())
@@ -1233,7 +1233,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         };
         self.write_ws(op);
 
-        self.visit_expr_kind(&node.term)
+        self.visit_expr(&node.term)
     }
 
     fn visit_function(&mut self, node: &dsl::textual::Function) -> Result<Self::Value, Diagnostic> {
@@ -1257,7 +1257,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.outdent();
 
         self.write_ws("UNTIL");
-        self.visit_expr_kind(&node.until)?;
+        self.visit_expr(&node.until)?;
         self.newline();
 
         self.write_ws("END_REPEAT");
@@ -1270,7 +1270,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
     fn visit_if(&mut self, node: &dsl::textual::If) -> Result<Self::Value, Diagnostic> {
         self.write_ws("IF");
-        self.visit_expr_kind(&node.expr)?;
+        self.visit_expr(&node.expr)?;
         self.write_ws("THEN");
         self.newline();
 
@@ -1304,7 +1304,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
     fn visit_else_if(&mut self, node: &dsl::textual::ElseIf) -> Result<Self::Value, Diagnostic> {
         self.write_ws("ELSIF");
-        self.visit_expr_kind(&node.expr)?;
+        self.visit_expr(&node.expr)?;
         self.write_ws("THEN");
         self.newline();
 
@@ -1319,7 +1319,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
     fn visit_case(&mut self, node: &dsl::textual::Case) -> Result<Self::Value, Diagnostic> {
         self.write_ws("CASE");
-        self.visit_expr_kind(&node.selector)?;
+        self.visit_expr(&node.selector)?;
         self.write_ws("OF");
         self.newline();
 
@@ -1379,13 +1379,13 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("FOR");
         self.visit_id(&node.control)?;
         self.write_ws(":=");
-        self.visit_expr_kind(&node.from)?;
+        self.visit_expr(&node.from)?;
         self.write_ws("TO");
-        self.visit_expr_kind(&node.to)?;
+        self.visit_expr(&node.to)?;
 
         if let Some(by) = &node.step {
             self.write_ws("BY");
-            self.visit_expr_kind(by)?;
+            self.visit_expr(by)?;
         }
 
         self.write_ws("DO");
@@ -1406,7 +1406,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
     fn visit_while(&mut self, node: &dsl::textual::While) -> Result<Self::Value, Diagnostic> {
         self.write_ws("WHILE");
-        self.visit_expr_kind(&node.condition)?;
+        self.visit_expr(&node.condition)?;
         self.write_ws("DO");
         self.newline();
 
@@ -1430,7 +1430,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_symbolic_variable_kind(&node.subscripted_variable)?;
 
         self.write_ws("[");
-        visit_comma_separated!(self, node.subscripts.iter(), ExprKind);
+        visit_comma_separated!(self, node.subscripts.iter(), Expr);
         self.write_ws("]");
 
         Ok(())
