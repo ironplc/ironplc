@@ -595,10 +595,10 @@ pub mod builtin {
     /// Panics if `func_id` is not a known built-in function ID.
     pub fn arg_count(func_id: u16) -> u16 {
         match func_id {
-            ABS_I32 | ABS_F32 | ABS_F64 | ABS_I64 | SQRT_F32 | SQRT_F64
-            | LN_F32 | LN_F64 | LOG_F32 | LOG_F64 | EXP_F32 | EXP_F64
-            | SIN_F32 | SIN_F64 | COS_F32 | COS_F64 | TAN_F32 | TAN_F64
-            | ASIN_F32 | ASIN_F64 | ACOS_F32 | ACOS_F64 | ATAN_F32 | ATAN_F64 => 1,
+            ABS_I32 | ABS_F32 | ABS_F64 | ABS_I64 | SQRT_F32 | SQRT_F64 | LN_F32 | LN_F64
+            | LOG_F32 | LOG_F64 | EXP_F32 | EXP_F64 | SIN_F32 | SIN_F64 | COS_F32 | COS_F64
+            | TAN_F32 | TAN_F64 | ASIN_F32 | ASIN_F64 | ACOS_F32 | ACOS_F64 | ATAN_F32
+            | ATAN_F64 => 1,
             EXPT_I32 | EXPT_F32 | EXPT_F64 | EXPT_I64 | MIN_I32 | MIN_F32 | MIN_F64 | MIN_I64
             | MIN_U32 | MIN_U64 | MAX_I32 | MAX_F32 | MAX_F64 | MAX_I64 | MAX_U32 | MAX_U64
             | SHL_I32 | SHL_I64 | SHR_I32 | SHR_I64 | ROL_I32 | ROL_I64 | ROR_I32 | ROR_I64
