@@ -26,11 +26,11 @@ Signatures
    * - 1
      - ``SINT``
      - ``SINT``
-     - Not yet supported
+     - Supported
    * - 2
      - ``INT``
      - ``INT``
-     - Not yet supported
+     - Supported
    * - 3
      - ``DINT``
      - ``DINT``
@@ -38,7 +38,7 @@ Signatures
    * - 4
      - ``LINT``
      - ``LINT``
-     - Not yet supported
+     - Supported
    * - 5
      - ``REAL``
      - ``REAL``

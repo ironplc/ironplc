@@ -1,5 +1,7 @@
 //! Shared test helpers for codegen integration tests.
 
+#![allow(dead_code)]
+
 use ironplc_codegen::compile;
 use ironplc_container::Container;
 use ironplc_dsl::common::Library;
@@ -10,7 +12,6 @@ use ironplc_vm::{FaultContext, ProgramInstanceState, Slot, TaskState, Vm};
 
 /// Helper struct that allocates Vec-backed buffers for VM usage.
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct VmBuffers {
     pub stack: Vec<Slot>,
     pub vars: Vec<Slot>,
@@ -20,7 +21,6 @@ pub struct VmBuffers {
 }
 
 impl VmBuffers {
-    #[allow(dead_code)]
     pub fn from_container(c: &Container) -> Self {
         let h = &c.header;
         let task_count = c.task_table.tasks.len();
@@ -36,14 +36,12 @@ impl VmBuffers {
 }
 
 /// Parses an IEC 61131-3 source string into a Library.
-#[allow(dead_code)]
 pub fn parse(source: &str) -> Library {
     parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap()
 }
 
 /// Parses an IEC 61131-3 program, compiles it, and runs one scan cycle.
 /// Returns the container and buffers so callers can inspect variable values.
-#[allow(dead_code)]
 pub fn parse_and_run(source: &str) -> (Container, VmBuffers) {
     let (container, bufs) = parse_and_try_run(source).expect("VM execution trapped unexpectedly");
     (container, bufs)
@@ -51,7 +49,6 @@ pub fn parse_and_run(source: &str) -> (Container, VmBuffers) {
 
 /// Parses, compiles, and runs one scan cycle, returning `Err` on VM trap.
 /// Use this to test that certain programs produce runtime traps.
-#[allow(dead_code)]
 pub fn parse_and_try_run(source: &str) -> Result<(Container, VmBuffers), FaultContext> {
     let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
     let container = compile(&library).unwrap();

@@ -18,10 +18,10 @@ Numeric Functions
      - Status
    * - :doc:`ABS <abs>`
      - Absolute value
-     - Not yet supported
+     - Supported
    * - :doc:`SQRT <sqrt>`
      - Square root
-     - Not yet supported
+     - Supported
    * - :doc:`LN <ln>`
      - Natural logarithm
      - Not yet supported
@@ -131,16 +131,16 @@ Selection Functions
      - Status
    * - :doc:`SEL <sel>`
      - Binary selection
-     - Not yet supported
+     - Supported
    * - :doc:`MAX <max>`
      - Maximum
-     - Not yet supported
+     - Supported
    * - :doc:`MIN <min>`
      - Minimum
-     - Not yet supported
+     - Supported
    * - :doc:`LIMIT <limit>`
      - Clamp to range
-     - Not yet supported
+     - Supported
    * - :doc:`MUX <mux>`
      - Multiplexer
      - Not yet supported

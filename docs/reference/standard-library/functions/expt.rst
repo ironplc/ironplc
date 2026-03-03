@@ -43,7 +43,7 @@ Signatures
      - ``LINT``
      - ``LINT``
      - ``LINT``
-     - Not yet supported
+     - Supported
    * - 5
      - ``REAL``
      - ``REAL``
