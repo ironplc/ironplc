@@ -10,7 +10,7 @@ Shifts a bit string right by a specified number of positions.
    * - **IEC 61131-3**
      - Section 2.5.1.5.6
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Signatures
 ----------
@@ -28,22 +28,22 @@ Signatures
      - ``BYTE``
      - ``INT``
      - ``BYTE``
-     - Not yet supported
+     - Supported
    * - 2
      - ``WORD``
      - ``INT``
      - ``WORD``
-     - Not yet supported
+     - Supported
    * - 3
      - ``DWORD``
      - ``INT``
      - ``DWORD``
-     - Not yet supported
+     - Supported
    * - 4
      - ``LWORD``
      - ``INT``
      - ``LWORD``
-     - Not yet supported
+     - Supported
 
 Description
 -----------
