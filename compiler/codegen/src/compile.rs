@@ -1005,6 +1005,51 @@ fn lookup_builtin(name: &str, op_width: OpWidth, signedness: Signedness) -> Opti
             OpWidth::F64 => Some(opcode::builtin::SQRT_F64),
             OpWidth::W32 | OpWidth::W64 => None,
         },
+        "LN" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::LN_F32),
+            OpWidth::F64 => Some(opcode::builtin::LN_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "LOG" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::LOG_F32),
+            OpWidth::F64 => Some(opcode::builtin::LOG_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "EXP" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::EXP_F32),
+            OpWidth::F64 => Some(opcode::builtin::EXP_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "SIN" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::SIN_F32),
+            OpWidth::F64 => Some(opcode::builtin::SIN_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "COS" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::COS_F32),
+            OpWidth::F64 => Some(opcode::builtin::COS_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "TAN" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::TAN_F32),
+            OpWidth::F64 => Some(opcode::builtin::TAN_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "ASIN" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::ASIN_F32),
+            OpWidth::F64 => Some(opcode::builtin::ASIN_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "ACOS" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::ACOS_F32),
+            OpWidth::F64 => Some(opcode::builtin::ACOS_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "ATAN" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::ATAN_F32),
+            OpWidth::F64 => Some(opcode::builtin::ATAN_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
         _ => None,
     }
 }
