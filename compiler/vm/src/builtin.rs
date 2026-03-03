@@ -253,6 +253,44 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_i64(if g == 0 { in0 } else { in1 }))?;
             Ok(())
         }
+        opcode::builtin::MIN_U32 => {
+            let b = stack.pop()?.as_i32() as u32;
+            let a = stack.pop()?.as_i32() as u32;
+            stack.push(Slot::from_i32(a.min(b) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::MAX_U32 => {
+            let b = stack.pop()?.as_i32() as u32;
+            let a = stack.pop()?.as_i32() as u32;
+            stack.push(Slot::from_i32(a.max(b) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::LIMIT_U32 => {
+            let mx = stack.pop()?.as_i32() as u32;
+            let in_val = stack.pop()?.as_i32() as u32;
+            let mn = stack.pop()?.as_i32() as u32;
+            stack.push(Slot::from_i32(in_val.clamp(mn, mx) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::MIN_U64 => {
+            let b = stack.pop()?.as_i64() as u64;
+            let a = stack.pop()?.as_i64() as u64;
+            stack.push(Slot::from_i64(a.min(b) as i64))?;
+            Ok(())
+        }
+        opcode::builtin::MAX_U64 => {
+            let b = stack.pop()?.as_i64() as u64;
+            let a = stack.pop()?.as_i64() as u64;
+            stack.push(Slot::from_i64(a.max(b) as i64))?;
+            Ok(())
+        }
+        opcode::builtin::LIMIT_U64 => {
+            let mx = stack.pop()?.as_i64() as u64;
+            let in_val = stack.pop()?.as_i64() as u64;
+            let mn = stack.pop()?.as_i64() as u64;
+            stack.push(Slot::from_i64(in_val.clamp(mn, mx) as i64))?;
+            Ok(())
+        }
         _ => Err(Trap::InvalidBuiltinFunction(func_id)),
     }
 }
