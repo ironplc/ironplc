@@ -469,44 +469,6 @@ impl IntermediateType {
 
         Ok(())
     }
-
-    /// Returns the canonical elementary type name string for this intermediate type.
-    ///
-    /// Maps primitive types to their standard IEC 61131-3 names. Returns `None`
-    /// for complex types (enumerations, structures, arrays, function blocks, functions)
-    /// that don't have a single elementary type name.
-    pub fn elementary_type_name(&self) -> Option<&'static str> {
-        match self {
-            IntermediateType::Bool => Some("BOOL"),
-            IntermediateType::Int { size } => Some(match size {
-                ByteSized::B8 => "SINT",
-                ByteSized::B16 => "INT",
-                ByteSized::B32 => "DINT",
-                ByteSized::B64 => "LINT",
-            }),
-            IntermediateType::UInt { size } => Some(match size {
-                ByteSized::B8 => "USINT",
-                ByteSized::B16 => "UINT",
-                ByteSized::B32 => "UDINT",
-                ByteSized::B64 => "ULINT",
-            }),
-            IntermediateType::Real { size } => match size {
-                ByteSized::B32 => Some("REAL"),
-                ByteSized::B64 => Some("LREAL"),
-                _ => None,
-            },
-            IntermediateType::Bytes { size } => Some(match size {
-                ByteSized::B8 => "BYTE",
-                ByteSized::B16 => "WORD",
-                ByteSized::B32 => "DWORD",
-                ByteSized::B64 => "LWORD",
-            }),
-            IntermediateType::Time => Some("TIME"),
-            IntermediateType::Date => Some("DATE"),
-            IntermediateType::String { .. } => Some("STRING"),
-            _ => None,
-        }
-    }
 }
 
 /// Represents the variable type for function block fields.

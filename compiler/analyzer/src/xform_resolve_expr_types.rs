@@ -262,7 +262,7 @@ END_FUNCTION_BLOCK";
         let result = run_pass(program);
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
-        assert_eq!(types[0].as_ref().unwrap().name.original(), "INT");
+        assert_type_eq(&types[0], "INT");
     }
 
     #[test]
@@ -283,7 +283,7 @@ END_FUNCTION_BLOCK";
         let result = run_pass(program);
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
-        assert_eq!(types[0].as_ref().unwrap().name.original(), "BYTE");
+        assert_type_eq(&types[0], "BYTE");
     }
 
     #[test]
@@ -299,7 +299,7 @@ END_FUNCTION_BLOCK";
         let result = run_pass(program);
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
-        assert_eq!(types[0].as_ref().unwrap().name.original(), "BOOL");
+        assert_type_eq(&types[0], "BOOL");
     }
 
     #[test]
@@ -315,7 +315,7 @@ END_FUNCTION_BLOCK";
         let result = run_pass(program);
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
-        assert_eq!(types[0].as_ref().unwrap().name.original(), "INT");
+        assert_type_eq(&types[0], "INT");
     }
 
     #[test]
@@ -332,7 +332,7 @@ END_FUNCTION_BLOCK";
         let result = run_pass(program);
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
-        assert_eq!(types[0].as_ref().unwrap().name.original(), "BOOL");
+        assert_type_eq(&types[0], "BOOL");
     }
 
     #[test]
@@ -349,7 +349,7 @@ END_FUNCTION_BLOCK";
         let result = run_pass(program);
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
-        assert_eq!(types[0].as_ref().unwrap().name.original(), "INT");
+        assert_type_eq(&types[0], "INT");
     }
 
     #[test]
@@ -366,7 +366,7 @@ END_FUNCTION_BLOCK";
         let result = run_pass(program);
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
-        assert_eq!(types[0].as_ref().unwrap().name.original(), "INT");
+        assert_type_eq(&types[0], "INT");
     }
 
     #[test]
@@ -385,5 +385,312 @@ END_FUNCTION_BLOCK";
         assert_eq!(types.len(), 1);
         // ABS returns the same type as input; the stdlib registers it with a return type
         assert!(types[0].is_some());
+    }
+
+    /// Collects resolved_type from every Expr node in the tree.
+    struct AllExprTypeCollector {
+        types: Vec<Option<ironplc_dsl::common::TypeName>>,
+    }
+
+    impl AllExprTypeCollector {
+        fn new() -> Self {
+            Self { types: vec![] }
+        }
+    }
+
+    impl Fold<()> for AllExprTypeCollector {
+        fn fold_expr(&mut self, node: Expr) -> Result<Expr, ()> {
+            self.types.push(node.resolved_type.clone());
+            node.recurse_fold(self)
+        }
+    }
+
+    fn collect_all_expr_types(library: &Library) -> Vec<Option<ironplc_dsl::common::TypeName>> {
+        let mut collector = AllExprTypeCollector::new();
+        let _ = collector.fold_library(library.clone());
+        collector.types
+    }
+
+    /// Returns the resolved type name as an uppercase &str for comparison.
+    /// TypeEnvironment stores elementary types in lowercase, but IEC 61131-3
+    /// type names are case-insensitive, so we normalize to uppercase for assertions.
+    fn type_name_upper(tn: &Option<ironplc_dsl::common::TypeName>) -> Option<String> {
+        tn.as_ref().map(|t| t.name.original().to_uppercase())
+    }
+
+    fn assert_type_eq(tn: &Option<ironplc_dsl::common::TypeName>, expected: &str) {
+        assert_eq!(
+            type_name_upper(tn),
+            Some(expected.to_string()),
+            "Expected type {expected}"
+        );
+    }
+
+    #[test]
+    fn apply_when_nested_arithmetic_then_all_subexprs_resolve() {
+        // (x + y) * z — the inner (x + y) and outer multiply should all resolve to INT
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    y : INT;
+    z : INT;
+    result : INT;
+END_VAR
+    result := (x + y) * z;
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_all_expr_types(&result);
+        // Every expression node in (x + y) * z should resolve to INT:
+        // nodes: result:=(expr), (x+y)*z, (x+y), x, y, z — all INT
+        for (i, t) in types.iter().enumerate() {
+            assert!(
+                t.is_some(),
+                "Expression node {i} should have a resolved type, got None"
+            );
+            assert_eq!(
+                type_name_upper(t),
+                Some("INT".to_string()),
+                "Expression node {i} should be INT"
+            );
+        }
+    }
+
+    #[test]
+    fn apply_when_nested_comparison_with_arithmetic_then_resolves_correctly() {
+        // (x + y) > z — inner (x + y) is INT, the comparison is BOOL
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    y : INT;
+    z : INT;
+    flag : BOOL;
+END_VAR
+    flag := (x + y) > z;
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let top_types = collect_assignment_types(&result);
+        assert_eq!(top_types.len(), 1);
+        assert_type_eq(&top_types[0], "BOOL");
+
+        // Also verify inner nodes
+        let all_types = collect_all_expr_types(&result);
+        // The top-level expr is BOOL (comparison), but inner operands should be INT
+        let has_bool = all_types
+            .iter()
+            .any(|t| type_name_upper(t) == Some("BOOL".to_string()));
+        let has_int = all_types
+            .iter()
+            .any(|t| type_name_upper(t) == Some("INT".to_string()));
+        assert!(has_bool, "Should have BOOL from comparison");
+        assert!(has_int, "Should have INT from arithmetic operands");
+    }
+
+    #[test]
+    fn apply_when_negated_nested_expr_then_resolves_type() {
+        // -(x + y) — unary negation of a parenthesized binary op
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    y : INT;
+    result : INT;
+END_VAR
+    result := -(x + y);
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let top_types = collect_assignment_types(&result);
+        assert_eq!(top_types.len(), 1);
+        assert_type_eq(&top_types[0], "INT");
+
+        let all_types = collect_all_expr_types(&result);
+        // All nodes (unary, parenthesized, binary, x, y) should be INT
+        for (i, t) in all_types.iter().enumerate() {
+            assert!(
+                t.is_some(),
+                "Expression node {i} should have a resolved type"
+            );
+            assert_eq!(
+                type_name_upper(t),
+                Some("INT".to_string()),
+                "Expression node {i} should be INT"
+            );
+        }
+    }
+
+    #[test]
+    fn apply_when_deeply_nested_parens_then_resolves_type() {
+        // ((x)) — multiple levels of parenthesization
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+    y := ((x));
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let top_types = collect_assignment_types(&result);
+        assert_eq!(top_types.len(), 1);
+        assert_type_eq(&top_types[0], "INT");
+
+        let all_types = collect_all_expr_types(&result);
+        for (i, t) in all_types.iter().enumerate() {
+            assert_eq!(
+                type_name_upper(t),
+                Some("INT".to_string()),
+                "Expression node {i} should be INT"
+            );
+        }
+    }
+
+    #[test]
+    fn apply_when_bool_assigned_to_int_var_then_rhs_resolves_bool() {
+        // The RHS expression type reflects the expression itself, not the target.
+        // Here TRUE is BOOL even though the target y is INT.
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    y : INT;
+END_VAR
+    y := TRUE;
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        // The expression TRUE resolves to BOOL regardless of the target variable type
+        assert_type_eq(&types[0], "BOOL");
+    }
+
+    #[test]
+    fn apply_when_int_assigned_to_bool_var_then_rhs_resolves_int() {
+        // The expression type is determined by the expression, not the target.
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    y : BOOL;
+END_VAR
+    y := x;
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "INT");
+    }
+
+    #[test]
+    fn apply_when_mixed_type_binary_op_then_inherits_left_operand_type() {
+        // In x + y where x is DINT and y is INT, the result inherits the left operand type.
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : DINT;
+    y : INT;
+    result : DINT;
+END_VAR
+    result := x + y;
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "DINT");
+    }
+
+    #[test]
+    fn apply_when_real_literal_without_type_then_defaults_to_real() {
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    y : REAL;
+END_VAR
+    y := 3.14;
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "REAL");
+    }
+
+    #[test]
+    fn apply_when_subrange_var_then_resolves_base_type() {
+        // A subrange variable like INT(-100..100) should resolve to INT.
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR_IN_OUT
+    x : INT(-100..100);
+END_VAR
+VAR
+    y : INT;
+END_VAR
+    y := x;
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "INT");
+    }
+
+    #[test]
+    fn apply_when_multiple_assignments_then_each_resolves_independently() {
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    y : BOOL;
+    a : INT;
+    b : BOOL;
+END_VAR
+    a := x;
+    b := y;
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 2);
+        assert_type_eq(&types[0], "INT");
+        assert_type_eq(&types[1], "BOOL");
+    }
+
+    #[test]
+    fn apply_when_string_literal_then_resolves_string() {
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    s : STRING;
+END_VAR
+    s := 'hello';
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "STRING");
+    }
+
+    #[test]
+    fn apply_when_time_literal_then_resolves_time() {
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    t : TIME;
+END_VAR
+    t := T#5s;
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "TIME");
     }
 }
