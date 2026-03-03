@@ -205,7 +205,15 @@ impl TypeEnvironment {
             .unwrap_or(false)
     }
 
-    // Note: removed is_structure(name) to avoid duplicate API with representation helpers
+    /// Resolves a type name to its canonical elementary type name.
+    ///
+    /// For aliases like `MyByte → BYTE`, returns `Some(TypeName::from("BYTE"))`.
+    /// For complex types (enumerations, structures), returns `None`.
+    pub fn resolve_elementary_type_name(&self, type_name: &TypeName) -> Option<TypeName> {
+        self.get(type_name)
+            .and_then(|attrs| attrs.representation.elementary_type_name())
+            .map(TypeName::from)
+    }
 
     /// An iterator for all types in the environment
     pub fn iter(
