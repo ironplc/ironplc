@@ -157,16 +157,16 @@ Bit String Functions
      - Status
    * - :doc:`SHL <shl>`
      - Shift left
-     - Not yet supported
+     - Supported
    * - :doc:`SHR <shr>`
      - Shift right
-     - Not yet supported
+     - Supported
    * - :doc:`ROL <rol>`
      - Rotate left
-     - Not yet supported
+     - Supported
    * - :doc:`ROR <ror>`
      - Rotate right
-     - Not yet supported
+     - Supported
 
 String Functions
 ----------------
