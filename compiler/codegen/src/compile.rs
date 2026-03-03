@@ -954,36 +954,49 @@ fn compile_for(
 
 /// Returns the builtin opcode for a named standard library function, if known.
 ///
-/// The `op_width` selects the correct variant (i32/f32/f64) for the function.
-fn lookup_builtin(name: &str, op_width: OpWidth) -> Option<u16> {
+/// The `op_width` selects the correct width variant and `signedness` selects
+/// the signed/unsigned variant for functions that distinguish them.
+fn lookup_builtin(name: &str, op_width: OpWidth, signedness: Signedness) -> Option<u16> {
     match name.to_uppercase().as_str() {
         "EXPT" => Some(match op_width {
-            OpWidth::W32 | OpWidth::W64 => opcode::builtin::EXPT_I32,
+            OpWidth::W32 => opcode::builtin::EXPT_I32,
+            OpWidth::W64 => opcode::builtin::EXPT_I64,
             OpWidth::F32 => opcode::builtin::EXPT_F32,
             OpWidth::F64 => opcode::builtin::EXPT_F64,
         }),
         "ABS" => Some(match op_width {
-            OpWidth::W32 | OpWidth::W64 => opcode::builtin::ABS_I32,
+            OpWidth::W32 => opcode::builtin::ABS_I32,
+            OpWidth::W64 => opcode::builtin::ABS_I64,
             OpWidth::F32 => opcode::builtin::ABS_F32,
             OpWidth::F64 => opcode::builtin::ABS_F64,
         }),
-        "MIN" => Some(match op_width {
-            OpWidth::W32 | OpWidth::W64 => opcode::builtin::MIN_I32,
-            OpWidth::F32 => opcode::builtin::MIN_F32,
-            OpWidth::F64 => opcode::builtin::MIN_F64,
+        "MIN" => Some(match (op_width, signedness) {
+            (OpWidth::W32, Signedness::Signed) => opcode::builtin::MIN_I32,
+            (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::MIN_U32,
+            (OpWidth::W64, Signedness::Signed) => opcode::builtin::MIN_I64,
+            (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::MIN_U64,
+            (OpWidth::F32, _) => opcode::builtin::MIN_F32,
+            (OpWidth::F64, _) => opcode::builtin::MIN_F64,
         }),
-        "MAX" => Some(match op_width {
-            OpWidth::W32 | OpWidth::W64 => opcode::builtin::MAX_I32,
-            OpWidth::F32 => opcode::builtin::MAX_F32,
-            OpWidth::F64 => opcode::builtin::MAX_F64,
+        "MAX" => Some(match (op_width, signedness) {
+            (OpWidth::W32, Signedness::Signed) => opcode::builtin::MAX_I32,
+            (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::MAX_U32,
+            (OpWidth::W64, Signedness::Signed) => opcode::builtin::MAX_I64,
+            (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::MAX_U64,
+            (OpWidth::F32, _) => opcode::builtin::MAX_F32,
+            (OpWidth::F64, _) => opcode::builtin::MAX_F64,
         }),
-        "LIMIT" => Some(match op_width {
-            OpWidth::W32 | OpWidth::W64 => opcode::builtin::LIMIT_I32,
-            OpWidth::F32 => opcode::builtin::LIMIT_F32,
-            OpWidth::F64 => opcode::builtin::LIMIT_F64,
+        "LIMIT" => Some(match (op_width, signedness) {
+            (OpWidth::W32, Signedness::Signed) => opcode::builtin::LIMIT_I32,
+            (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::LIMIT_U32,
+            (OpWidth::W64, Signedness::Signed) => opcode::builtin::LIMIT_I64,
+            (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::LIMIT_U64,
+            (OpWidth::F32, _) => opcode::builtin::LIMIT_F32,
+            (OpWidth::F64, _) => opcode::builtin::LIMIT_F64,
         }),
         "SEL" => Some(match op_width {
-            OpWidth::W32 | OpWidth::W64 => opcode::builtin::SEL_I32,
+            OpWidth::W32 => opcode::builtin::SEL_I32,
+            OpWidth::W64 => opcode::builtin::SEL_I64,
             OpWidth::F32 => opcode::builtin::SEL_F32,
             OpWidth::F64 => opcode::builtin::SEL_F64,
         }),
@@ -1152,7 +1165,7 @@ fn compile_generic_builtin(
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
     let func_name = func.name.original().to_uppercase();
-    let func_id = lookup_builtin(&func_name, op_type.0)
+    let func_id = lookup_builtin(&func_name, op_type.0, op_type.1)
         .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
 
     let expected_args = opcode::builtin::arg_count(func_id) as usize;
@@ -1598,7 +1611,7 @@ fn emit_neg(emitter: &mut Emitter, op_type: OpType) {
 fn emit_pow(emitter: &mut Emitter, op_type: OpType) {
     match op_type.0 {
         OpWidth::W32 => emitter.emit_builtin(opcode::builtin::EXPT_I32),
-        OpWidth::W64 => emitter.emit_builtin(opcode::builtin::EXPT_I32),
+        OpWidth::W64 => emitter.emit_builtin(opcode::builtin::EXPT_I64),
         OpWidth::F32 => emitter.emit_builtin(opcode::builtin::EXPT_F32),
         OpWidth::F64 => emitter.emit_builtin(opcode::builtin::EXPT_F64),
     }
