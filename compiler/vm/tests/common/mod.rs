@@ -71,6 +71,40 @@ pub fn single_function_container_f64(
 }
 
 /// Builds a container with one function from the given bytecode,
+/// with `num_vars` variables and the given i64 constants.
+#[allow(dead_code)]
+pub fn single_function_container_i64(
+    bytecode: &[u8],
+    num_vars: u16,
+    constants: &[i64],
+) -> Container {
+    let mut builder = ContainerBuilder::new().num_variables(num_vars);
+    for &c in constants {
+        builder = builder.add_i64_constant(c);
+    }
+    builder.add_function(0, bytecode, 16, num_vars).build()
+}
+
+/// Builds a container with one function from the given bytecode,
+/// with `num_vars` variables and a mix of i32 then i64 constants.
+#[allow(dead_code)]
+pub fn single_function_container_i32_i64(
+    bytecode: &[u8],
+    num_vars: u16,
+    i32_constants: &[i32],
+    i64_constants: &[i64],
+) -> Container {
+    let mut builder = ContainerBuilder::new().num_variables(num_vars);
+    for &c in i32_constants {
+        builder = builder.add_i32_constant(c);
+    }
+    for &c in i64_constants {
+        builder = builder.add_i64_constant(c);
+    }
+    builder.add_function(0, bytecode, 16, num_vars).build()
+}
+
+/// Builds a container with one function from the given bytecode,
 /// with `num_vars` variables and a mix of i32 then f32 constants.
 #[allow(dead_code)]
 pub fn single_function_container_i32_f32(

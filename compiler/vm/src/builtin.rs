@@ -213,6 +213,46 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_f64(a.sqrt()))?;
             Ok(())
         }
+        opcode::builtin::EXPT_I64 => {
+            let b = stack.pop()?.as_i64();
+            let a = stack.pop()?.as_i64();
+            if b < 0 {
+                return Err(Trap::NegativeExponent);
+            }
+            stack.push(Slot::from_i64(a.wrapping_pow(b as u32)))?;
+            Ok(())
+        }
+        opcode::builtin::ABS_I64 => {
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64(a.wrapping_abs()))?;
+            Ok(())
+        }
+        opcode::builtin::MIN_I64 => {
+            let b = stack.pop()?.as_i64();
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64(a.min(b)))?;
+            Ok(())
+        }
+        opcode::builtin::MAX_I64 => {
+            let b = stack.pop()?.as_i64();
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64(a.max(b)))?;
+            Ok(())
+        }
+        opcode::builtin::LIMIT_I64 => {
+            let mx = stack.pop()?.as_i64();
+            let in_val = stack.pop()?.as_i64();
+            let mn = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64(in_val.clamp(mn, mx)))?;
+            Ok(())
+        }
+        opcode::builtin::SEL_I64 => {
+            let in1 = stack.pop()?.as_i64();
+            let in0 = stack.pop()?.as_i64();
+            let g = stack.pop()?.as_i32();
+            stack.push(Slot::from_i64(if g == 0 { in0 } else { in1 }))?;
+            Ok(())
+        }
         _ => Err(Trap::InvalidBuiltinFunction(func_id)),
     }
 }
