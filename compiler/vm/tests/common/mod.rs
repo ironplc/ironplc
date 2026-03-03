@@ -1,5 +1,7 @@
 //! Shared test helpers for VM integration tests.
 
+#![allow(dead_code)]
+
 use ironplc_container::{Container, ContainerBuilder};
 use ironplc_vm::error::Trap;
 use ironplc_vm::{ProgramInstanceState, Slot, TaskState, VmRunning};
@@ -31,7 +33,6 @@ impl VmBuffers {
 /// Builds a container with one function from the given bytecode,
 /// with `num_vars` variables and the given constants.
 /// Uses a generous max_stack_depth (16) suitable for most tests.
-#[allow(dead_code)]
 pub fn single_function_container(bytecode: &[u8], num_vars: u16, constants: &[i32]) -> Container {
     let mut builder = ContainerBuilder::new().num_variables(num_vars);
     for &c in constants {
@@ -42,7 +43,6 @@ pub fn single_function_container(bytecode: &[u8], num_vars: u16, constants: &[i3
 
 /// Builds a container with one function from the given bytecode,
 /// with `num_vars` variables and the given f32 constants.
-#[allow(dead_code)]
 pub fn single_function_container_f32(
     bytecode: &[u8],
     num_vars: u16,
@@ -57,7 +57,6 @@ pub fn single_function_container_f32(
 
 /// Builds a container with one function from the given bytecode,
 /// with `num_vars` variables and the given f64 constants.
-#[allow(dead_code)]
 pub fn single_function_container_f64(
     bytecode: &[u8],
     num_vars: u16,
@@ -72,7 +71,6 @@ pub fn single_function_container_f64(
 
 /// Builds a container with one function from the given bytecode,
 /// with `num_vars` variables and the given i64 constants.
-#[allow(dead_code)]
 pub fn single_function_container_i64(
     bytecode: &[u8],
     num_vars: u16,
@@ -87,7 +85,6 @@ pub fn single_function_container_i64(
 
 /// Builds a container with one function from the given bytecode,
 /// with `num_vars` variables and a mix of i32 then i64 constants.
-#[allow(dead_code)]
 pub fn single_function_container_i32_i64(
     bytecode: &[u8],
     num_vars: u16,
@@ -106,7 +103,6 @@ pub fn single_function_container_i32_i64(
 
 /// Builds a container with one function from the given bytecode,
 /// with `num_vars` variables and a mix of i32 then f32 constants.
-#[allow(dead_code)]
 pub fn single_function_container_i32_f32(
     bytecode: &[u8],
     num_vars: u16,
@@ -125,7 +121,6 @@ pub fn single_function_container_i32_f32(
 
 /// Builds a container with one function from the given bytecode,
 /// with `num_vars` variables and a mix of i32 then f64 constants.
-#[allow(dead_code)]
 pub fn single_function_container_i32_f64(
     bytecode: &[u8],
     num_vars: u16,
@@ -143,7 +138,6 @@ pub fn single_function_container_i32_f64(
 }
 
 /// Asserts that a run_round produces a specific trap.
-#[allow(dead_code)]
 pub fn assert_trap(vm: &mut VmRunning, expected: Trap) {
     let result = vm.run_round(0);
     assert!(
