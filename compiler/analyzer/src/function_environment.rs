@@ -34,6 +34,9 @@ pub struct FunctionSignature {
     pub parameters: Vec<IntermediateFunctionParameter>,
     /// Source location (builtin for stdlib functions)
     pub span: SourceSpan,
+    /// Whether this function accepts additional positional arguments beyond
+    /// the declared parameters (e.g., MUX which takes a variable number of inputs).
+    pub is_extensible: bool,
 }
 
 impl FunctionSignature {
@@ -49,6 +52,7 @@ impl FunctionSignature {
             return_type,
             parameters,
             span,
+            is_extensible: false,
         }
     }
 
@@ -63,6 +67,26 @@ impl FunctionSignature {
             return_type: Some(return_type),
             parameters,
             span: SourceSpan::builtin(),
+            is_extensible: false,
+        }
+    }
+
+    /// Creates an extensible stdlib function signature with a builtin span.
+    ///
+    /// Extensible functions accept additional positional arguments beyond the
+    /// declared parameters. The declared parameters define the minimum required
+    /// arguments (e.g., MUX requires at least K + 2 IN values).
+    pub fn stdlib_extensible(
+        name: &str,
+        return_type: TypeName,
+        parameters: Vec<IntermediateFunctionParameter>,
+    ) -> Self {
+        Self {
+            name: Id::from(name),
+            return_type: Some(return_type),
+            parameters,
+            span: SourceSpan::builtin(),
+            is_extensible: true,
         }
     }
 
@@ -316,8 +340,8 @@ mod tests {
         let env = FunctionEnvironmentBuilder::new()
             .with_stdlib_functions()
             .build();
-        // Should have 90 conversion + 15 numeric + 4 bitshift = 109 stdlib functions
-        assert_eq!(env.len(), 109);
+        // Should have 90 conversion + 15 numeric + 1 selection + 4 bitshift = 110 stdlib functions
+        assert_eq!(env.len(), 110);
         // Should be able to find conversion functions
         assert!(env.contains(&Id::from("INT_TO_REAL")));
         assert!(env.contains(&Id::from("REAL_TO_INT")));

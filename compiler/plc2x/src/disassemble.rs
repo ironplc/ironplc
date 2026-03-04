@@ -493,6 +493,19 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                     opcode::builtin::SEL_F64 => format!("SEL_F64 (0x{:04X})", func_id),
                     opcode::builtin::SQRT_F32 => format!("SQRT_F32 (0x{:04X})", func_id),
                     opcode::builtin::SQRT_F64 => format!("SQRT_F64 (0x{:04X})", func_id),
+                    id if opcode::builtin::is_mux(id) => {
+                        let n = opcode::builtin::mux_info(id).unwrap();
+                        let width = if id >= opcode::builtin::MUX_F64_BASE {
+                            "F64"
+                        } else if id >= opcode::builtin::MUX_F32_BASE {
+                            "F32"
+                        } else if id >= opcode::builtin::MUX_I64_BASE {
+                            "I64"
+                        } else {
+                            "I32"
+                        };
+                        format!("MUX_{width}({n}) (0x{id:04X})")
+                    }
                     _ => format!("0x{:04X}", func_id),
                 };
                 instructions.push(json!({
