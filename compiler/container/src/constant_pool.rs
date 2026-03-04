@@ -220,7 +220,7 @@ mod tests {
         });
         pool.push(ConstEntry {
             const_type: ConstType::F64,
-            value: 3.14f64.to_le_bytes().to_vec(),
+            value: 2.72f64.to_le_bytes().to_vec(),
         });
 
         let entries: Vec<_> = pool.iter().collect();

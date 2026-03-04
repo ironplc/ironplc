@@ -17,7 +17,7 @@ fn execute_when_ln_f32_e_then_one() {
         0x1A, 0x00, 0x00,  // STORE_VAR_F32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container_f32(&bytecode, 1, &[2.718282]);
+    let c = single_function_container_f32(&bytecode, 1, &[std::f32::consts::E]);
     let mut b = VmBuffers::from_container(&c);
     {
         let mut vm = Vm::new()
@@ -183,7 +183,7 @@ fn execute_when_exp_f32_one_then_e() {
     }
     let result = b.vars[0].as_f32();
     assert!(
-        (result - 2.718282).abs() < 1e-4,
-        "expected ~2.718282, got {result}"
+        (result - std::f32::consts::E).abs() < 1e-4,
+        "expected ~e, got {result}"
     );
 }

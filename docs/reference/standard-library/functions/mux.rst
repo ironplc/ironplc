@@ -10,7 +10,7 @@ Multiplexer — selects one of several inputs by index.
    * - **IEC 61131-3**
      - Section 2.5.1.5.5
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Signatures
 ----------
@@ -30,7 +30,7 @@ Signatures
      - *ANY*
      - *ANY*
      - *ANY*
-     - Not yet supported
+     - Supported
 
 Description
 -----------
@@ -43,8 +43,9 @@ the same type.
 - If *K* = 1, returns *IN1*
 - And so on
 
-The behavior is undefined if *K* is negative or greater than or equal
-to the number of inputs.
+If *K* is out of range, the value is clamped: negative *K* selects
+*IN0*, and *K* greater than or equal to the number of inputs selects
+the last input. Supports 2 to 16 input values.
 
 This function is polymorphic: it works with any data type for the
 selected inputs.
