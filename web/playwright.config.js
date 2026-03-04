@@ -10,7 +10,7 @@ module.exports = defineConfig({
     headless: true,
   },
   webServer: {
-    command: "python3 -m http.server 8080",
+    command: "cd _build && python3 -m http.server 8080",
     port: 8080,
     reuseExistingServer: !process.env.CI,
   },

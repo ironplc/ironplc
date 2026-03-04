@@ -21,7 +21,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ironplc-web-app
-          path: ./web
+          path: ./web/_build
 
       # Configure the execution environment
       - uses: actions/setup-node@v4

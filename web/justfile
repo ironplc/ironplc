@@ -4,17 +4,19 @@
 setup:
   cargo install wasm-pack
 
-# Build the wasm package into web/pkg/
+# Build the wasm package and assemble the deployable site into _build/
 compile:
-  wasm-pack build ../compiler/web-app --target web --out-dir ../../web/pkg --no-typescript
+  mkdir -p _build/pkg
+  wasm-pack build ../compiler/web-app --target web --out-dir ../../web/_build/pkg --no-typescript
+  cp index.html app.js style.css _build/
 
 # Build everything (CI entry point)
 ci: setup compile
 
 # Serve locally for development
 serve: compile
-  python3 -m http.server 8080
+  cd _build && python3 -m http.server 8080
 
 # Clean build artifacts
 clean:
-  rm -rf pkg/
+  rm -rf _build/
