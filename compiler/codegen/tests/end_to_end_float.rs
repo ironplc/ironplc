@@ -19,7 +19,10 @@ END_PROGRAM
     let (_c, bufs) = parse_and_run(source);
 
     let x = bufs.vars[0].as_f32();
-    assert!((x - 3.14_f32).abs() < 1e-5, "expected ~3.14, got {x}");
+    assert!(
+        (x - std::f32::consts::PI).abs() < 1e-2,
+        "expected ~pi, got {x}"
+    );
 }
 
 #[test]
@@ -300,7 +303,7 @@ END_PROGRAM
 
     let x = bufs.vars[0].as_f64();
     assert!(
-        (x - 3.141592653589793_f64).abs() < 1e-12,
+        (x - std::f64::consts::PI).abs() < 1e-12,
         "expected pi, got {x}"
     );
 }

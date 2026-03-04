@@ -269,6 +269,35 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
 }
 
 // =============================================================================
+// Selection Function Definitions (IEC 61131-3 Section 2.5.1.5.4)
+// =============================================================================
+
+/// Returns standard selection function definitions.
+///
+/// MUX is an extensible multiplexer that selects one of N inputs based on
+/// an integer selector K. Unlike SEL (which uses a BOOL selector and exactly
+/// 2 inputs), MUX uses an ANY_INT selector and supports 2..16 inputs.
+///
+/// The declared parameters define the minimum (K + 2 IN values = 3 args).
+/// Additional IN arguments are accepted because the signature is extensible.
+fn get_selection_functions() -> Vec<FunctionSignature> {
+    vec![
+        // MUX: multiplexer (ANY_INT, ANY_NUM, ANY_NUM, ... -> ANY_NUM)
+        // MUX supports K + 2..16 IN values = 3..17 total input arguments
+        FunctionSignature::stdlib_extensible(
+            "MUX",
+            TypeName::from("ANY_NUM"),
+            vec![
+                input_param("K", "ANY_INT"),
+                input_param("IN0", "ANY_NUM"),
+                input_param("IN1", "ANY_NUM"),
+            ],
+            17,
+        ),
+    ]
+}
+
+// =============================================================================
 // Bit shift and rotate functions
 // =============================================================================
 
@@ -322,6 +351,9 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     // Numeric functions
     functions.extend(get_numeric_functions());
 
+    // Selection functions
+    functions.extend(get_selection_functions());
+
     // Bit shift and rotate functions
     functions.extend(get_bitshift_functions());
 
@@ -341,9 +373,10 @@ mod tests {
         // Real-to-int: 2 reals × 4 signed + 2 reals × 4 unsigned = 8 + 8 = 16
         // Real-to-real: 2 × 1 = 2
         // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT, SEL, LN, LOG, EXP, SIN, COS, TAN, ASIN, ACOS, ATAN = 15
+        // Selection functions: MUX = 1
         // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
-        // Total: 56 + 16 + 16 + 2 + 15 + 4 = 109
-        assert_eq!(functions.len(), 109);
+        // Total: 56 + 16 + 16 + 2 + 15 + 1 + 4 = 110
+        assert_eq!(functions.len(), 110);
     }
 
     #[test]
@@ -534,6 +567,30 @@ mod tests {
         assert_eq!(sel.parameters[1].name.original(), "IN0");
         assert_eq!(sel.parameters[2].name.original(), "IN1");
         assert!(sel.is_stdlib());
+    }
+
+    #[test]
+    fn get_selection_functions_when_called_then_contains_mux() {
+        let functions = get_selection_functions();
+
+        assert_eq!(functions.len(), 1);
+        assert!(functions.iter().any(|f| f.name.original() == "MUX"));
+    }
+
+    #[test]
+    fn get_selection_functions_when_mux_then_has_three_minimum_inputs() {
+        let functions = get_selection_functions();
+        let mux = functions
+            .iter()
+            .find(|f| f.name.original() == "MUX")
+            .unwrap();
+
+        assert_eq!(mux.input_parameter_count(), 3);
+        assert_eq!(mux.parameters[0].name.original(), "K");
+        assert_eq!(mux.parameters[1].name.original(), "IN0");
+        assert_eq!(mux.parameters[2].name.original(), "IN1");
+        assert!(mux.is_stdlib());
+        assert!(mux.is_extensible);
     }
 
     #[test]

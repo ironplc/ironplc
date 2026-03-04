@@ -20,6 +20,7 @@
 //! - Boolean operators (AND, OR, XOR, NOT) with logical semantics
 //! - Bitwise operators (AND, OR, XOR, NOT) for bit string types (BYTE, WORD, DWORD, LWORD)
 //! - Bit shift/rotate functions (SHL, SHR, ROL, ROR) for bit string types
+//! - MUX (multiplexer) function with variable arity (2..16 inputs)
 //! - Variable references (named symbolic variables)
 //! - IF/ELSIF/ELSE statements
 //! - CASE statements (integer and subrange selectors)
@@ -1195,6 +1196,7 @@ fn compile_function_call(
         "shl" | "shr" | "rol" | "ror" => {
             compile_shift_rotate(emitter, ctx, func, op_type, name.as_str())
         }
+        "mux" => compile_mux(emitter, ctx, func, op_type),
         _ => compile_generic_builtin(emitter, ctx, func, op_type),
     }
 }
@@ -1242,6 +1244,67 @@ fn compile_generic_builtin(
             op_type
         };
         compile_expr(emitter, ctx, arg, arg_op_type)?;
+    }
+
+    emitter.emit_builtin(func_id);
+    Ok(())
+}
+
+/// Compiles a MUX (multiplexer) function call.
+///
+/// MUX(K, IN0, IN1, ..., INn) selects one of the IN values based on the
+/// integer selector K. The first argument K is always compiled as I32
+/// (integer selector), while the remaining IN arguments use the caller's op_type.
+///
+/// The opcode encodes the number of IN arguments: `MUX_<WIDTH>_BASE + num_inputs`.
+fn compile_mux(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    // Must have at least 3 args (K + 2 IN values)
+    if args.len() < 3 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let num_inputs = (args.len() - 1) as u16; // subtract K
+
+    if num_inputs > opcode::builtin::MUX_MAX_INPUTS {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let base = match op_type.0 {
+        OpWidth::W32 => opcode::builtin::MUX_I32_BASE,
+        OpWidth::W64 => opcode::builtin::MUX_I64_BASE,
+        OpWidth::F32 => opcode::builtin::MUX_F32_BASE,
+        OpWidth::F64 => opcode::builtin::MUX_F64_BASE,
+    };
+    let func_id = base + num_inputs;
+
+    // Compile K (first arg) as integer
+    compile_expr(emitter, ctx, args[0], DEFAULT_OP_TYPE)?;
+
+    // Compile IN0..INn with the caller's op_type
+    for arg in &args[1..] {
+        compile_expr(emitter, ctx, arg, op_type)?;
     }
 
     emitter.emit_builtin(func_id);

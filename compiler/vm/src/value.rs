@@ -81,8 +81,8 @@ mod tests {
 
     #[test]
     fn slot_from_f32_when_positive_then_roundtrips() {
-        let slot = Slot::from_f32(3.14);
-        assert_eq!(slot.as_f32(), 3.14_f32);
+        let slot = Slot::from_f32(std::f32::consts::PI);
+        assert_eq!(slot.as_f32(), std::f32::consts::PI);
     }
 
     #[test]
@@ -93,8 +93,8 @@ mod tests {
 
     #[test]
     fn slot_from_f64_when_positive_then_roundtrips() {
-        let slot = Slot::from_f64(3.141592653589793);
-        assert_eq!(slot.as_f64(), 3.141592653589793_f64);
+        let slot = Slot::from_f64(std::f64::consts::PI);
+        assert_eq!(slot.as_f64(), std::f64::consts::PI);
     }
 
     #[test]

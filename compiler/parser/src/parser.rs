@@ -162,7 +162,7 @@ parser! {
         #[cfg(any(feature = "debug", feature = "trace"))]
         println!("[PARSER INFO_START]\nNumber of parsed tokens: {}\n[PARSER INFO_STOP]\n", input.len());
         #[cfg(any(feature = "debug", feature = "trace"))]
-        println!("[PEG_INPUT_START]\n{}\n[PEG_TRACE_START]", input.iter().fold(String::new(), |s1, s2| s1 + "\n" + s2.to_string().as_str()).trim_start().to_string());
+        println!("[PEG_INPUT_START]\n{}\n[PEG_TRACE_START]", input.iter().fold(String::new(), |s1, s2| s1 + "\n" + s2.to_string().as_str()).trim_start());
     })
     e:e()? {?
         #[cfg(feature = "trace")]

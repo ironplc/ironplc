@@ -586,6 +586,49 @@ pub mod builtin {
     /// ATAN for 64-bit floats: pops one value, pushes its arc tangent (radians).
     pub const ATAN_F64: u16 = 0x037D;
 
+    // =========================================================================
+    // MUX (multiplexer) range-based opcodes
+    //
+    // MUX is extensible: the number of IN arguments varies per call site.
+    // The func_id encodes the arity: BASE + n, where n is the number of
+    // IN arguments (2..16). Total stack args = n + 1 (n IN values + K selector).
+    // =========================================================================
+
+    /// Base opcode for MUX with 32-bit signed integer values.
+    /// MUX_I32_BASE + n = MUX with n IN arguments (n = 2..16).
+    pub const MUX_I32_BASE: u16 = 0x0400;
+
+    /// Base opcode for MUX with 64-bit signed integer values.
+    pub const MUX_I64_BASE: u16 = 0x0420;
+
+    /// Base opcode for MUX with 32-bit float values.
+    pub const MUX_F32_BASE: u16 = 0x0440;
+
+    /// Base opcode for MUX with 64-bit float values.
+    pub const MUX_F64_BASE: u16 = 0x0460;
+
+    /// Maximum number of IN arguments for MUX.
+    pub const MUX_MAX_INPUTS: u16 = 16;
+
+    /// Returns true if the given func_id is a MUX opcode.
+    pub fn is_mux(func_id: u16) -> bool {
+        mux_info(func_id).is_some()
+    }
+
+    /// Returns the number of IN arguments for a MUX opcode, or None if not a MUX opcode.
+    pub fn mux_info(func_id: u16) -> Option<u16> {
+        let bases = [MUX_I32_BASE, MUX_I64_BASE, MUX_F32_BASE, MUX_F64_BASE];
+        for base in bases {
+            if func_id >= base && func_id < base + MUX_MAX_INPUTS + 1 {
+                let n = func_id - base;
+                if n >= 2 {
+                    return Some(n);
+                }
+            }
+        }
+        None
+    }
+
     /// Returns the number of arguments a built-in function pops from the stack.
     ///
     /// This is the single source of truth for argument counts, used by both
@@ -605,6 +648,10 @@ pub mod builtin {
             | ROL_U8 | ROL_U16 | ROR_U8 | ROR_U16 => 2,
             LIMIT_I32 | LIMIT_F32 | LIMIT_F64 | LIMIT_I64 | LIMIT_U32 | LIMIT_U64 | SEL_I32
             | SEL_F32 | SEL_F64 | SEL_I64 => 3,
+            id if is_mux(id) => {
+                // MUX pops n IN values + 1 K selector
+                mux_info(id).unwrap() + 1
+            }
             _ => panic!("unknown builtin function ID: 0x{:04X}", func_id),
         }
     }
