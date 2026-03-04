@@ -179,14 +179,14 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             let mx = stack.pop()?.as_f32();
             let in_val = stack.pop()?.as_f32();
             let mn = stack.pop()?.as_f32();
-            stack.push(Slot::from_f32(in_val.clamp(mn, mx)))?;
+            stack.push(Slot::from_f32(float_clamp_f32(in_val, mn, mx)))?;
             Ok(())
         }
         opcode::builtin::LIMIT_F64 => {
             let mx = stack.pop()?.as_f64();
             let in_val = stack.pop()?.as_f64();
             let mn = stack.pop()?.as_f64();
-            stack.push(Slot::from_f64(in_val.clamp(mn, mx)))?;
+            stack.push(Slot::from_f64(float_clamp_f64(in_val, mn, mx)))?;
             Ok(())
         }
         opcode::builtin::SEL_F32 => {
@@ -382,5 +382,37 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             Ok(())
         }
         _ => Err(Trap::InvalidBuiltinFunction(func_id)),
+    }
+}
+
+/// IEEE 754-safe clamp for f32. Unlike `f32::clamp`, this does not panic
+/// when `mn`, `mx`, or `val` is NaN. NaN propagates: if any input is NaN
+/// the result is NaN.
+#[inline]
+fn float_clamp_f32(val: f32, mn: f32, mx: f32) -> f32 {
+    if val.is_nan() || mn.is_nan() || mx.is_nan() {
+        return f32::NAN;
+    }
+    if val < mn {
+        mn
+    } else if val > mx {
+        mx
+    } else {
+        val
+    }
+}
+
+/// IEEE 754-safe clamp for f64. See [`float_clamp_f32`] for semantics.
+#[inline]
+fn float_clamp_f64(val: f64, mn: f64, mx: f64) -> f64 {
+    if val.is_nan() || mn.is_nan() || mx.is_nan() {
+        return f64::NAN;
+    }
+    if val < mn {
+        mn
+    } else if val > mx {
+        mx
+    } else {
+        val
     }
 }
