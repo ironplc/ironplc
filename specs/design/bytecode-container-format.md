@@ -9,6 +9,7 @@ The format builds on:
 - **[ADR-0006](../adrs/0006-bytecode-verification-requirement.md)**: Bytecode verification as a requirement — the VM must verify or signature-validate bytecode before execution
 - **[ADR-0007](../adrs/0007-dual-signature-integrity-model.md)**: Dual-signature integrity model — content and debug sections have independent signatures
 - **[Bytecode Instruction Set](bytecode-instruction-set.md)**: The instruction set this container packages
+- **[Debugger Support](debugger-support.md)**: Debugger architecture that consumes the debug section defined here
 
 ## Design Goals
 
@@ -255,30 +256,167 @@ The per-function `max_stack_depth` allows the verifier to check stack bounds per
 
 Present when `flags` bit 1 is set. Can be stripped without invalidating the content signature. Has its own signature (debug signature section) when present.
 
+The debug section uses a **tagged sub-table** layout. A directory at the start lists every sub-table by type tag and byte size. A reader skips unknown tags by size, so future sub-tables (e.g., LD rung maps, FBD network maps) can be added without breaking existing readers.
+
+### Section Layout
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Debug Section Header                                          │
+│   sub_table_count: u16                                       │
+│   directory: [SubTableEntry; sub_table_count]                │
+├──────────────────────────────────────────────────────────────┤
+│ Sub-table payloads (concatenated, in directory order)         │
+│   payload[0]: [u8; directory[0].size]                        │
+│   payload[1]: [u8; directory[1].size]                        │
+│   ...                                                         │
+│   payload[N-1]: [u8; directory[N-1].size]                    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Each SubTableEntry (8 bytes):
+
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
-| 0 | source_text_length | u32 | Length of embedded source text (0 if not included) |
-| 4 | source_text | [u8; N] | UTF-8 source text (optional) |
-| 4+N | line_map_count | u16 | Number of line mapping entries |
-| 6+N | line_maps | [LineMapEntry; count] | Source line mappings |
-| varies | var_name_count | u16 | Number of variable name entries |
-| varies | var_names | [VarNameEntry; count] | Variable name mappings |
+| 0 | tag | u16 | Sub-table type identifier (see tag registry below) |
+| 2 | _reserved | u16 | Must be zero |
+| 4 | size | u32 | Size of this sub-table's payload in bytes |
 
-Each LineMapEntry:
+To find the data for sub-table at directory index `i`, compute:
+
+```
+payload_offset = 2 + (8 × sub_table_count) + sum(directory[0..i].size)
+```
+
+### Tag Registry
+
+| Tag | Name | Status | Description |
+|-----|------|--------|-------------|
+| 0 | SOURCE_TEXT | v1 | Embedded source text (UTF-8) |
+| 1 | LINE_MAP | v1 | Bytecode offset → source line/column mappings |
+| 2 | VAR_NAME | v1 | Variable names with scope and type metadata |
+| 3 | FUNC_NAME | v1 | Function/POU name mappings |
+| 4 | FB_TYPE_NAME | reserved | FB type ID → type name mappings |
+| 5 | FB_FIELD_NAME | reserved | FB field index → field name mappings |
+| 6 | SOURCE_FILE | reserved | Source file table for multi-file projects |
+| 7 | LD_RUNG_MAP | reserved | Ladder Diagram rung ID → bytecode mappings |
+| 8 | FBD_NETWORK_MAP | reserved | Function Block Diagram network/element mappings |
+| 9–65535 | — | reserved | Future use |
+
+**Rules:**
+- Each tag may appear **at most once** in the directory. A reader that encounters a duplicate tag discards the debug section.
+- Tags may appear in **any order**. Readers must not assume a specific ordering.
+- A reader that encounters an unknown tag **skips it** using the `size` field. This is the core extensibility mechanism.
+- A required tag that is missing is treated as an empty table (count = 0).
+
+### Sub-table Payload Formats
+
+Each sub-table payload starts with its own item count, followed by the items. This is self-contained — the payload is parseable without the directory (the directory provides the size for skip-ability, but the count provides the item count for parsing).
+
+**Tag 0 — SOURCE_TEXT:**
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | text | [u8; size] | UTF-8 source text (the entire payload is the text; size comes from the directory) |
+
+**Tag 1 — LINE_MAP:**
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | count | u16 | Number of entries |
+| 2 | entries | [LineMapEntry; count] | 8 bytes each |
+
+Each LineMapEntry (8 bytes):
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | function_id | u16 | Function containing this mapping |
 | 2 | bytecode_offset | u16 | Offset within the function's bytecode |
 | 4 | source_line | u16 | Source line number (1-based) |
+| 6 | source_column | u16 | Source column number (1-based, 0 = unknown) |
 
-Each VarNameEntry:
+**Tag 2 — VAR_NAME:**
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | count | u16 | Number of entries |
+| 2 | entries | [VarNameEntry; count] | Variable size each |
+
+Each VarNameEntry (variable size):
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | var_index | u16 | Variable table index |
-| 2 | name_length | u8 | Length of variable name |
-| 3 | name | [u8; name_length] | UTF-8 variable name |
+| 2 | function_id | u16 | Owning function ID (0xFFFF = global scope) |
+| 4 | var_section | u8 | IEC 61131-3 variable section (see encoding below) |
+| 5 | name_length | u8 | Length of variable name in bytes |
+| 6 | name | [u8; name_length] | UTF-8 variable name |
+| 6+N | type_name_length | u8 | Length of type name in bytes |
+| 7+N | type_name | [u8; type_name_length] | UTF-8 type name (e.g., "DINT", "REAL", "TON") |
+
+var_section encoding:
+
+| Value | IEC 61131-3 Section |
+|-------|---------------------|
+| 0 | VAR |
+| 1 | VAR_TEMP |
+| 2 | VAR_INPUT |
+| 3 | VAR_OUTPUT |
+| 4 | VAR_IN_OUT |
+| 5 | VAR_EXTERNAL |
+| 6 | VAR_GLOBAL |
+
+**Tag 3 — FUNC_NAME:**
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | count | u16 | Number of entries |
+| 2 | entries | [FuncNameEntry; count] | Variable size each |
+
+Each FuncNameEntry (variable size):
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | function_id | u16 | Function ID from the code section |
+| 2 | name_length | u8 | Length of function name in bytes |
+| 3 | name | [u8; name_length] | UTF-8 POU name (e.g., "MAIN", "MotorControl") |
+
+**Tag 4 — FB_TYPE_NAME:**
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | count | u16 | Number of entries |
+| 2 | entries | [TypeNameEntry; count] | Variable size each |
+
+Each TypeNameEntry (variable size):
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | type_id | u16 | FB type ID from the type section |
+| 2 | name_length | u8 | Length of type name in bytes |
+| 3 | name | [u8; name_length] | UTF-8 type name (e.g., "TON", "CTU", "MotorController") |
+
+**Tag 5 — FB_FIELD_NAME:**
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | count | u16 | Number of entries |
+| 2 | entries | [FieldNameEntry; count] | Variable size each |
+
+Each FieldNameEntry (variable size):
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | type_id | u16 | FB type ID |
+| 2 | field_index | u8 | Field index within the FB type descriptor |
+| 3 | name_length | u8 | Length of field name in bytes |
+| 4 | name | [u8; name_length] | UTF-8 field name (e.g., "IN", "PT", "Q", "ET") |
+
+### Malformed Debug Section Handling
+
+If the directory is malformed (e.g., a sub-table's size extends past the section boundary, or a duplicate tag appears), the entire debug section is silently discarded (non-fatal). A reader that does not find a particular tag treats that sub-table as empty (count = 0). This provides forward compatibility: older containers (with fewer tags) work with newer debuggers, and newer containers (with extra tags) work with older debuggers.
+
+See [Debugger Support](debugger-support.md) for the full debugger architecture including the VM debug engine, DAP server, and VS Code integration.
 
 ## Loading Sequence
 
