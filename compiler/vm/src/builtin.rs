@@ -213,6 +213,96 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_f64(a.sqrt()))?;
             Ok(())
         }
+        opcode::builtin::LN_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.ln()))?;
+            Ok(())
+        }
+        opcode::builtin::LN_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.ln()))?;
+            Ok(())
+        }
+        opcode::builtin::LOG_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.log10()))?;
+            Ok(())
+        }
+        opcode::builtin::LOG_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.log10()))?;
+            Ok(())
+        }
+        opcode::builtin::EXP_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.exp()))?;
+            Ok(())
+        }
+        opcode::builtin::EXP_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.exp()))?;
+            Ok(())
+        }
+        opcode::builtin::SIN_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.sin()))?;
+            Ok(())
+        }
+        opcode::builtin::SIN_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.sin()))?;
+            Ok(())
+        }
+        opcode::builtin::COS_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.cos()))?;
+            Ok(())
+        }
+        opcode::builtin::COS_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.cos()))?;
+            Ok(())
+        }
+        opcode::builtin::TAN_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.tan()))?;
+            Ok(())
+        }
+        opcode::builtin::TAN_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.tan()))?;
+            Ok(())
+        }
+        opcode::builtin::ASIN_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.asin()))?;
+            Ok(())
+        }
+        opcode::builtin::ASIN_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.asin()))?;
+            Ok(())
+        }
+        opcode::builtin::ACOS_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.acos()))?;
+            Ok(())
+        }
+        opcode::builtin::ACOS_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.acos()))?;
+            Ok(())
+        }
+        opcode::builtin::ATAN_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.atan()))?;
+            Ok(())
+        }
+        opcode::builtin::ATAN_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.atan()))?;
+            Ok(())
+        }
         opcode::builtin::EXPT_I64 => {
             let b = stack.pop()?.as_i64();
             let a = stack.pop()?.as_i64();
