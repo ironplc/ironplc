@@ -153,3 +153,90 @@ fn execute_when_mux_i32_4_inputs_then_works() {
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 40);
 }
+
+#[test]
+fn execute_when_mux_i32_k_int_max_then_clamps_to_last() {
+    // MUX(K:=i32::MAX, IN0:=10, IN1:=20) = 20 (clamped to last)
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (i32::MAX)  K
+        0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (10)        IN0
+        0x01, 0x02, 0x00,  // LOAD_CONST_I32 pool[2] (20)        IN1
+        0xC4, 0x02, 0x04,  // BUILTIN MUX_I32(2) = 0x0402
+        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0xB5,              // RET_VOID
+    ];
+    let c = single_function_container(&bytecode, 1, &[i32::MAX, 10, 20]);
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = Vm::new()
+        .load(
+            &c,
+            &mut b.stack,
+            &mut b.vars,
+            &mut b.tasks,
+            &mut b.programs,
+            &mut b.ready,
+        )
+        .start();
+
+    vm.run_round(0).unwrap();
+    assert_eq!(vm.read_variable(0).unwrap(), 20);
+}
+
+#[test]
+fn execute_when_mux_i32_k_int_min_then_clamps_to_first() {
+    // MUX(K:=i32::MIN, IN0:=10, IN1:=20) = 10 (clamped to first)
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (i32::MIN)  K
+        0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (10)        IN0
+        0x01, 0x02, 0x00,  // LOAD_CONST_I32 pool[2] (20)        IN1
+        0xC4, 0x02, 0x04,  // BUILTIN MUX_I32(2) = 0x0402
+        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0xB5,              // RET_VOID
+    ];
+    let c = single_function_container(&bytecode, 1, &[i32::MIN, 10, 20]);
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = Vm::new()
+        .load(
+            &c,
+            &mut b.stack,
+            &mut b.vars,
+            &mut b.tasks,
+            &mut b.programs,
+            &mut b.ready,
+        )
+        .start();
+
+    vm.run_round(0).unwrap();
+    assert_eq!(vm.read_variable(0).unwrap(), 10);
+}
+
+#[test]
+fn execute_when_mux_i32_k_negative_then_clamps_to_first() {
+    // MUX(K:=-1, IN0:=10, IN1:=20) = 10 (clamped to first)
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (-1)  K
+        0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (10)  IN0
+        0x01, 0x02, 0x00,  // LOAD_CONST_I32 pool[2] (20)  IN1
+        0xC4, 0x02, 0x04,  // BUILTIN MUX_I32(2) = 0x0402
+        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0xB5,              // RET_VOID
+    ];
+    let c = single_function_container(&bytecode, 1, &[-1, 10, 20]);
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = Vm::new()
+        .load(
+            &c,
+            &mut b.stack,
+            &mut b.vars,
+            &mut b.tasks,
+            &mut b.programs,
+            &mut b.ready,
+        )
+        .start();
+
+    vm.run_round(0).unwrap();
+    assert_eq!(vm.read_variable(0).unwrap(), 10);
+}

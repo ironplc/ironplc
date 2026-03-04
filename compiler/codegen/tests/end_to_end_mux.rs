@@ -130,3 +130,64 @@ END_PROGRAM
 
     assert_eq!(bufs.vars[0].as_i32(), 40);
 }
+
+#[test]
+fn end_to_end_when_mux_16_inputs_then_selects_last() {
+    let source = "
+PROGRAM main
+  VAR
+    y : DINT;
+  END_VAR
+  y := MUX(15, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 16);
+}
+
+#[test]
+fn end_to_end_when_mux_16_inputs_k0_then_selects_first() {
+    let source = "
+PROGRAM main
+  VAR
+    y : DINT;
+  END_VAR
+  y := MUX(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_mux_16_inputs_k7_then_selects_middle() {
+    let source = "
+PROGRAM main
+  VAR
+    y : DINT;
+  END_VAR
+  y := MUX(7, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 8);
+}
+
+#[test]
+fn end_to_end_when_mux_k_equals_input_count_then_clamps_to_last() {
+    // K=3 with 3 inputs (indices 0..2), should clamp to IN2
+    let source = "
+PROGRAM main
+  VAR
+    y : DINT;
+  END_VAR
+  y := MUX(3, 10, 20, 30);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 30);
+}
