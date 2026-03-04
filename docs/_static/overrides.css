@@ -1,3 +1,18 @@
 .menuselection {
     font-weight: 500;
 }
+
+.ironplc-version-notice {
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--color-brand-primary);
+    border-left-width: 4px;
+    border-radius: 4px;
+    background: var(--color-background-secondary, #f8f8f8);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.ironplc-version-notice a {
+    color: var(--color-brand-content);
+}

@@ -96,6 +96,12 @@ pub struct Diagnostic {
 
     /// Additional information about the diagnostic.
     pub secondary: Vec<Label>,
+
+    /// Rust source file that produced this diagnostic (from `file!()` macro).
+    pub source_file: Option<String>,
+
+    /// Rust source line that produced this diagnostic (from `line!()` macro).
+    pub source_line: Option<u32>,
 }
 
 impl Diagnostic {
@@ -110,6 +116,8 @@ impl Diagnostic {
             primary,
             described: vec![],
             secondary: vec![],
+            source_file: None,
+            source_line: None,
         }
     }
 
@@ -126,6 +134,7 @@ impl Diagnostic {
                 format!("Not implemented at {file}#L{line}"),
             ),
         )
+        .with_source(file, line)
     }
 
     /// Creates a "todo" diagnostic associated with a file and line in the Rust
@@ -139,6 +148,7 @@ impl Diagnostic {
             Problem::NotImplemented,
             Label::span(id.span(), format!("Not implemented at {file}#L{line}")),
         )
+        .with_source(file, line)
     }
 
     /// Creates a "todo" diagnostic associated with a file and line in the Rust
@@ -152,6 +162,7 @@ impl Diagnostic {
             Problem::NotImplemented,
             Label::span(ty.span(), format!("Not implemented at {file}#L{line}")),
         )
+        .with_source(file, line)
     }
 
     /// Creates a "todo" diagnostic associated with a file and line in the Rust
@@ -165,6 +176,7 @@ impl Diagnostic {
             Problem::NotImplemented,
             Label::span(span, format!("Not implemented at {file}#L{line}")),
         )
+        .with_source(file, line)
     }
 
     /// Creates an "internal error" diagnostic associated with a file and line in the Rust
@@ -180,6 +192,7 @@ impl Diagnostic {
                 format!("Internal error at {file}#L{line} indicates a bug in the compiler"),
             ),
         )
+        .with_source(file, line)
     }
 
     /// Adds to the problem description (primary text) additional context
@@ -220,6 +233,16 @@ impl Diagnostic {
     /// ```
     pub fn with_secondary(mut self, label: Label) -> Self {
         self.secondary.push(label);
+        self
+    }
+
+    /// Sets the Rust source file and line that produced this diagnostic.
+    ///
+    /// This is typically called with `file!()` and `line!()` to record
+    /// where in the compiler the diagnostic was generated.
+    pub fn with_source(mut self, file: &str, line: u32) -> Self {
+        self.source_file = Some(file.to_string());
+        self.source_line = Some(line);
         self
     }
 
