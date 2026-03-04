@@ -35,8 +35,6 @@ jobs:
       # Configure the execution environment
       - uses: taiki-e/install-action@just
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install wasm-pack
-        run: cargo install wasm-pack
 
       # Execute build recipes
       - name: Build wasm and web app

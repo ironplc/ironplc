@@ -9,7 +9,7 @@ compile:
   wasm-pack build ../compiler/web-app --target web --out-dir ../../web/pkg --no-typescript
 
 # Build everything (CI entry point)
-ci: compile
+ci: setup compile
 
 # Serve locally for development
 serve: compile
