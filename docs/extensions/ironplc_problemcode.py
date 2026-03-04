@@ -130,7 +130,7 @@ REDIRECT_TEMPLATE = """\
   <title>Redirecting\u2026</title>
   <link rel="canonical" href="/{new_path}">
   <meta http-equiv="refresh" content="0; url=/{new_path}">
-  <script>window.location.replace('/{new_path}');</script>
+  <script>window.location.replace('/{new_path}' + window.location.search);</script>
 </head>
 <body>
   <p>This page has moved to <a href="/{new_path}">/{new_path}</a>.</p>
