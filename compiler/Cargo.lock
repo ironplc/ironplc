@@ -626,7 +626,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ironplc-wasm"
+name = "ironplc-web-app"
 version = "0.161.0"
 dependencies = [
  "base64",

@@ -1,4 +1,4 @@
-//! WebAssembly bindings for the IronPLC compiler and VM.
+//! Browser-based compiler and runtime for IronPLC.
 //!
 //! Exposes three functions to JavaScript:
 //! - [`compile`] - Parse IEC 61131-3 source and produce bytecode

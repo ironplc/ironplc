@@ -1,6 +1,6 @@
 [package]
-name = "ironplc-wasm"
-description = "WebAssembly bindings for the IronPLC compiler and VM"
+name = "ironplc-web-app"
+description = "Browser-based compiler and runtime for IronPLC"
 version = "0.161.0"
 edition.workspace = true
 authors.workspace = true

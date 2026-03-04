@@ -1,4 +1,4 @@
-import init, { compile, run, run_source } from "./pkg/ironplc_wasm.js";
+import init, { compile, run, run_source } from "./pkg/ironplc_web_app.js";
 
 const editor = document.getElementById("editor");
 const runBtn = document.getElementById("run-btn");
