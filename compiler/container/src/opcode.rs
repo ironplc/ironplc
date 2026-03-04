@@ -532,6 +532,60 @@ pub mod builtin {
     /// LIMIT for 64-bit unsigned integers: pops mx, in, mn, pushes unsigned clamp.
     pub const LIMIT_U64: u16 = 0x036B;
 
+    /// LN for 32-bit floats: pops one value, pushes its natural logarithm.
+    pub const LN_F32: u16 = 0x036C;
+
+    /// LN for 64-bit floats: pops one value, pushes its natural logarithm.
+    pub const LN_F64: u16 = 0x036D;
+
+    /// LOG for 32-bit floats: pops one value, pushes its base-10 logarithm.
+    pub const LOG_F32: u16 = 0x036E;
+
+    /// LOG for 64-bit floats: pops one value, pushes its base-10 logarithm.
+    pub const LOG_F64: u16 = 0x036F;
+
+    /// EXP for 32-bit floats: pops one value, pushes e raised to that power.
+    pub const EXP_F32: u16 = 0x0370;
+
+    /// EXP for 64-bit floats: pops one value, pushes e raised to that power.
+    pub const EXP_F64: u16 = 0x0371;
+
+    /// SIN for 32-bit floats: pops one value (radians), pushes its sine.
+    pub const SIN_F32: u16 = 0x0372;
+
+    /// SIN for 64-bit floats: pops one value (radians), pushes its sine.
+    pub const SIN_F64: u16 = 0x0373;
+
+    /// COS for 32-bit floats: pops one value (radians), pushes its cosine.
+    pub const COS_F32: u16 = 0x0374;
+
+    /// COS for 64-bit floats: pops one value (radians), pushes its cosine.
+    pub const COS_F64: u16 = 0x0375;
+
+    /// TAN for 32-bit floats: pops one value (radians), pushes its tangent.
+    pub const TAN_F32: u16 = 0x0376;
+
+    /// TAN for 64-bit floats: pops one value (radians), pushes its tangent.
+    pub const TAN_F64: u16 = 0x0377;
+
+    /// ASIN for 32-bit floats: pops one value, pushes its arc sine (radians).
+    pub const ASIN_F32: u16 = 0x0378;
+
+    /// ASIN for 64-bit floats: pops one value, pushes its arc sine (radians).
+    pub const ASIN_F64: u16 = 0x0379;
+
+    /// ACOS for 32-bit floats: pops one value, pushes its arc cosine (radians).
+    pub const ACOS_F32: u16 = 0x037A;
+
+    /// ACOS for 64-bit floats: pops one value, pushes its arc cosine (radians).
+    pub const ACOS_F64: u16 = 0x037B;
+
+    /// ATAN for 32-bit floats: pops one value, pushes its arc tangent (radians).
+    pub const ATAN_F32: u16 = 0x037C;
+
+    /// ATAN for 64-bit floats: pops one value, pushes its arc tangent (radians).
+    pub const ATAN_F64: u16 = 0x037D;
+
     /// Returns the number of arguments a built-in function pops from the stack.
     ///
     /// This is the single source of truth for argument counts, used by both
@@ -541,7 +595,10 @@ pub mod builtin {
     /// Panics if `func_id` is not a known built-in function ID.
     pub fn arg_count(func_id: u16) -> u16 {
         match func_id {
-            ABS_I32 | ABS_F32 | ABS_F64 | ABS_I64 | SQRT_F32 | SQRT_F64 => 1,
+            ABS_I32 | ABS_F32 | ABS_F64 | ABS_I64 | SQRT_F32 | SQRT_F64 | LN_F32 | LN_F64
+            | LOG_F32 | LOG_F64 | EXP_F32 | EXP_F64 | SIN_F32 | SIN_F64 | COS_F32 | COS_F64
+            | TAN_F32 | TAN_F64 | ASIN_F32 | ASIN_F64 | ACOS_F32 | ACOS_F64 | ATAN_F32
+            | ATAN_F64 => 1,
             EXPT_I32 | EXPT_F32 | EXPT_F64 | EXPT_I64 | MIN_I32 | MIN_F32 | MIN_F64 | MIN_I64
             | MIN_U32 | MIN_U64 | MAX_I32 | MAX_F32 | MAX_F64 | MAX_I64 | MAX_U32 | MAX_U64
             | SHL_I32 | SHL_I64 | SHR_I32 | SHR_I64 | ROL_I32 | ROL_I64 | ROR_I32 | ROR_I64

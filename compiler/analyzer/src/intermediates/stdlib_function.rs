@@ -211,6 +211,60 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
                 input_param("IN1", "ANY_NUM"),
             ],
         ),
+        // LN: natural logarithm (ANY_REAL -> ANY_REAL)
+        FunctionSignature::stdlib(
+            "LN",
+            TypeName::from("ANY_REAL"),
+            vec![input_param("IN", "ANY_REAL")],
+        ),
+        // LOG: base-10 logarithm (ANY_REAL -> ANY_REAL)
+        FunctionSignature::stdlib(
+            "LOG",
+            TypeName::from("ANY_REAL"),
+            vec![input_param("IN", "ANY_REAL")],
+        ),
+        // EXP: natural exponential (ANY_REAL -> ANY_REAL)
+        FunctionSignature::stdlib(
+            "EXP",
+            TypeName::from("ANY_REAL"),
+            vec![input_param("IN", "ANY_REAL")],
+        ),
+        // SIN: sine (ANY_REAL -> ANY_REAL)
+        FunctionSignature::stdlib(
+            "SIN",
+            TypeName::from("ANY_REAL"),
+            vec![input_param("IN", "ANY_REAL")],
+        ),
+        // COS: cosine (ANY_REAL -> ANY_REAL)
+        FunctionSignature::stdlib(
+            "COS",
+            TypeName::from("ANY_REAL"),
+            vec![input_param("IN", "ANY_REAL")],
+        ),
+        // TAN: tangent (ANY_REAL -> ANY_REAL)
+        FunctionSignature::stdlib(
+            "TAN",
+            TypeName::from("ANY_REAL"),
+            vec![input_param("IN", "ANY_REAL")],
+        ),
+        // ASIN: arc sine (ANY_REAL -> ANY_REAL)
+        FunctionSignature::stdlib(
+            "ASIN",
+            TypeName::from("ANY_REAL"),
+            vec![input_param("IN", "ANY_REAL")],
+        ),
+        // ACOS: arc cosine (ANY_REAL -> ANY_REAL)
+        FunctionSignature::stdlib(
+            "ACOS",
+            TypeName::from("ANY_REAL"),
+            vec![input_param("IN", "ANY_REAL")],
+        ),
+        // ATAN: arc tangent (ANY_REAL -> ANY_REAL)
+        FunctionSignature::stdlib(
+            "ATAN",
+            TypeName::from("ANY_REAL"),
+            vec![input_param("IN", "ANY_REAL")],
+        ),
     ]
 }
 
@@ -286,10 +340,10 @@ mod tests {
         // Int-to-real: 4 signed × 2 reals + 4 unsigned × 2 reals = 8 + 8 = 16
         // Real-to-int: 2 reals × 4 signed + 2 reals × 4 unsigned = 8 + 8 = 16
         // Real-to-real: 2 × 1 = 2
-        // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT, SEL = 6
+        // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT, SEL, LN, LOG, EXP, SIN, COS, TAN, ASIN, ACOS, ATAN = 15
         // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
-        // Total: 56 + 16 + 16 + 2 + 6 + 4 = 100
-        assert_eq!(functions.len(), 100);
+        // Total: 56 + 16 + 16 + 2 + 15 + 4 = 109
+        assert_eq!(functions.len(), 109);
     }
 
     #[test]
@@ -379,7 +433,7 @@ mod tests {
     fn get_numeric_functions_when_called_then_contains_all_functions() {
         let functions = get_numeric_functions();
 
-        assert_eq!(functions.len(), 6);
+        assert_eq!(functions.len(), 15);
 
         assert!(functions.iter().any(|f| f.name.original() == "ABS"));
         assert!(functions.iter().any(|f| f.name.original() == "SQRT"));
@@ -387,6 +441,15 @@ mod tests {
         assert!(functions.iter().any(|f| f.name.original() == "MAX"));
         assert!(functions.iter().any(|f| f.name.original() == "LIMIT"));
         assert!(functions.iter().any(|f| f.name.original() == "SEL"));
+        assert!(functions.iter().any(|f| f.name.original() == "LN"));
+        assert!(functions.iter().any(|f| f.name.original() == "LOG"));
+        assert!(functions.iter().any(|f| f.name.original() == "EXP"));
+        assert!(functions.iter().any(|f| f.name.original() == "SIN"));
+        assert!(functions.iter().any(|f| f.name.original() == "COS"));
+        assert!(functions.iter().any(|f| f.name.original() == "TAN"));
+        assert!(functions.iter().any(|f| f.name.original() == "ASIN"));
+        assert!(functions.iter().any(|f| f.name.original() == "ACOS"));
+        assert!(functions.iter().any(|f| f.name.original() == "ATAN"));
     }
 
     #[test]

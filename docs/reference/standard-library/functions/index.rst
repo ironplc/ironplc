@@ -24,13 +24,13 @@ Numeric Functions
      - Supported
    * - :doc:`LN <ln>`
      - Natural logarithm
-     - Not yet supported
+     - Supported
    * - :doc:`LOG <log>`
      - Base-10 logarithm
-     - Not yet supported
+     - Supported
    * - :doc:`EXP <exp>`
      - Natural exponential
-     - Not yet supported
+     - Supported
    * - :doc:`EXPT <expt>`
      - Exponentiation
      - Supported
@@ -47,22 +47,22 @@ Trigonometric Functions
      - Status
    * - :doc:`SIN <sin>`
      - Sine
-     - Not yet supported
+     - Supported
    * - :doc:`COS <cos>`
      - Cosine
-     - Not yet supported
+     - Supported
    * - :doc:`TAN <tan>`
      - Tangent
-     - Not yet supported
+     - Supported
    * - :doc:`ASIN <asin>`
      - Arc sine
-     - Not yet supported
+     - Supported
    * - :doc:`ACOS <acos>`
      - Arc cosine
-     - Not yet supported
+     - Supported
    * - :doc:`ATAN <atan>`
      - Arc tangent
-     - Not yet supported
+     - Supported
 
 Arithmetic Functions
 --------------------
