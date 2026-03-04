@@ -146,7 +146,7 @@ jobs:
           prerelease: false
 
   publish-web-app:
-    name: Publish Web App to studio.ironplc.com
+    name: Publish Web App to cloudstudio.ironplc.com
     needs: [release, publish-release]
     runs-on: ubuntu-latest
     steps:
@@ -157,14 +157,14 @@ jobs:
           path: ./web-app-dist
 
       - name: Add CNAME for custom domain
-        run: echo "studio.ironplc.com" > ./web-app-dist/CNAME
+        run: echo "cloudstudio.ironplc.com" > ./web-app-dist/CNAME
 
-      - name: Publish to ironplc/app repository
+      - name: Publish to ironplc/ironplc-cloudstudio repository
         if: ${{ !inputs.dryrun }}
         uses: peaceiris/actions-gh-pages@v3
         with:
           publish_branch: main
-          external_repository: ironplc/app
+          external_repository: ironplc/ironplc-cloudstudio
           personal_token: ${{ secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN }}
           publish_dir: ./web-app-dist
           force_orphan: false
