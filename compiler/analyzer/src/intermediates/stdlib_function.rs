@@ -283,6 +283,7 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
 fn get_selection_functions() -> Vec<FunctionSignature> {
     vec![
         // MUX: multiplexer (ANY_INT, ANY_NUM, ANY_NUM, ... -> ANY_NUM)
+        // MUX supports K + 2..16 IN values = 3..17 total input arguments
         FunctionSignature::stdlib_extensible(
             "MUX",
             TypeName::from("ANY_NUM"),
@@ -291,6 +292,7 @@ fn get_selection_functions() -> Vec<FunctionSignature> {
                 input_param("IN0", "ANY_NUM"),
                 input_param("IN1", "ANY_NUM"),
             ],
+            17,
         ),
     ]
 }

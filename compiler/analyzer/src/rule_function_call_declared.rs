@@ -97,7 +97,11 @@ impl Visitor<Diagnostic> for RuleFunctionCallDeclared<'_> {
                 let expected_inputs = signature.input_parameter_count();
 
                 let args_valid = if signature.is_extensible {
-                    total_inputs >= expected_inputs
+                    let above_min = total_inputs >= expected_inputs;
+                    let below_max = signature
+                        .max_inputs
+                        .map_or(true, |max| total_inputs <= max);
+                    above_min && below_max
                 } else {
                     total_inputs == expected_inputs
                 };
@@ -369,6 +373,77 @@ VAR
     a : INT;
 END_VAR
     result := MUX(0, a);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_err());
+        let diagnostics = result.unwrap_err();
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            Problem::FunctionCallWrongArgCount.code()
+        );
+    }
+
+    #[test]
+    fn apply_when_mux_called_with_17_args_then_ok() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+    a : INT;
+    b : INT;
+    c : INT;
+    d : INT;
+    e : INT;
+    f : INT;
+    g : INT;
+    h : INT;
+    i : INT;
+    j : INT;
+    k : INT;
+    l : INT;
+    m : INT;
+    n : INT;
+    o : INT;
+    p : INT;
+END_VAR
+    result := MUX(0, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_mux_called_with_18_args_then_error() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+    a : INT;
+    b : INT;
+    c : INT;
+    d : INT;
+    e : INT;
+    f : INT;
+    g : INT;
+    h : INT;
+    i : INT;
+    j : INT;
+    k : INT;
+    l : INT;
+    m : INT;
+    n : INT;
+    o : INT;
+    p : INT;
+    q : INT;
+END_VAR
+    result := MUX(0, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q);
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
