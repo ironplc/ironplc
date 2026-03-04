@@ -98,9 +98,7 @@ impl Visitor<Diagnostic> for RuleFunctionCallDeclared<'_> {
 
                 let args_valid = if signature.is_extensible {
                     let above_min = total_inputs >= expected_inputs;
-                    let below_max = signature
-                        .max_inputs
-                        .map_or(true, |max| total_inputs <= max);
+                    let below_max = signature.max_inputs.is_none_or(|max| total_inputs <= max);
                     above_min && below_max
                 } else {
                     total_inputs == expected_inputs

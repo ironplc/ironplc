@@ -106,7 +106,7 @@ fn execute_when_cos_f32_pi_then_neg_one() {
         0x1A, 0x00, 0x00,  // STORE_VAR_F32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container_f32(&bytecode, 1, &[3.1415927]);
+    let c = single_function_container_f32(&bytecode, 1, &[std::f32::consts::PI]);
     let mut b = VmBuffers::from_container(&c);
     {
         let mut vm = Vm::new()
@@ -169,7 +169,7 @@ fn execute_when_tan_f32_pi_over_4_then_one() {
         0x1A, 0x00, 0x00,  // STORE_VAR_F32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container_f32(&bytecode, 1, &[0.7853982]);
+    let c = single_function_container_f32(&bytecode, 1, &[std::f32::consts::FRAC_PI_4]);
     let mut b = VmBuffers::from_container(&c);
     {
         let mut vm = Vm::new()
@@ -372,7 +372,7 @@ fn execute_when_atan_f32_one_then_pi_over_4() {
     }
     let result = b.vars[0].as_f32();
     assert!(
-        (result - 0.7853982).abs() < 1e-4,
-        "expected ~0.7853982, got {result}"
+        (result - std::f32::consts::FRAC_PI_4).abs() < 1e-4,
+        "expected ~pi/4, got {result}"
     );
 }
