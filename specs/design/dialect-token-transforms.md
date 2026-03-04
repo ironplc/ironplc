@@ -264,13 +264,13 @@ fn apply_dialect_transforms(tokens: Vec<Token>, options: &ParseOptions) -> Vec<T
     match options.dialect {
         Dialect::Standard => tokens,
         Dialect::SiemensSCL => {
-            let tokens = promote_scl_keywords(tokens);
+            let tokens = promote_keywords(tokens, Dialect::SiemensSCL);
             let tokens = rewrite_double_quoted_to_identifier(tokens);
             let tokens = collapse_pragmas(tokens);
             filter_scl_tokens(tokens)
         }
         Dialect::BeckhoffTwinCAT => {
-            let tokens = promote_twincat_keywords(tokens);
+            let tokens = promote_keywords(tokens, Dialect::BeckhoffTwinCAT);
             let tokens = collapse_pragmas(tokens);
             tokens // no filtering needed for TwinCAT
         }
@@ -278,17 +278,18 @@ fn apply_dialect_transforms(tokens: Vec<Token>, options: &ParseOptions) -> Vec<T
 }
 ```
 
+Keyword promotion uses a single `promote_keywords` function driven by the shared `DIALECT_KEYWORDS` table (see the [Extension Origin Model](beckhoff-twincat-dialect.md#extension-origin-model) in the Beckhoff design). Each entry in the table has an `origins` field; the function promotes identifiers whose entry origins intersect the active dialect's origin set. This avoids duplicating promotion logic per dialect.
+
 ### Module organization
 
 New file: `compiler/parser/src/xform_dialect.rs`
 
 Contains:
 - `apply_dialect_transforms` (top-level dispatcher)
-- `promote_scl_keywords`
-- `promote_twincat_keywords`
-- `rewrite_double_quoted_to_identifier`
-- `collapse_pragmas`
-- `filter_scl_tokens`
+- `promote_keywords` (shared, driven by `DIALECT_KEYWORDS` table)
+- `rewrite_double_quoted_to_identifier` (SCL only)
+- `collapse_pragmas` (shared)
+- `filter_scl_tokens` (SCL only)
 
 Each function takes `Vec<Token>` and returns `Vec<Token>`. Each is independently testable.
 

@@ -213,6 +213,174 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_f64(a.sqrt()))?;
             Ok(())
         }
+        opcode::builtin::LN_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.ln()))?;
+            Ok(())
+        }
+        opcode::builtin::LN_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.ln()))?;
+            Ok(())
+        }
+        opcode::builtin::LOG_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.log10()))?;
+            Ok(())
+        }
+        opcode::builtin::LOG_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.log10()))?;
+            Ok(())
+        }
+        opcode::builtin::EXP_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.exp()))?;
+            Ok(())
+        }
+        opcode::builtin::EXP_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.exp()))?;
+            Ok(())
+        }
+        opcode::builtin::SIN_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.sin()))?;
+            Ok(())
+        }
+        opcode::builtin::SIN_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.sin()))?;
+            Ok(())
+        }
+        opcode::builtin::COS_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.cos()))?;
+            Ok(())
+        }
+        opcode::builtin::COS_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.cos()))?;
+            Ok(())
+        }
+        opcode::builtin::TAN_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.tan()))?;
+            Ok(())
+        }
+        opcode::builtin::TAN_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.tan()))?;
+            Ok(())
+        }
+        opcode::builtin::ASIN_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.asin()))?;
+            Ok(())
+        }
+        opcode::builtin::ASIN_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.asin()))?;
+            Ok(())
+        }
+        opcode::builtin::ACOS_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.acos()))?;
+            Ok(())
+        }
+        opcode::builtin::ACOS_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.acos()))?;
+            Ok(())
+        }
+        opcode::builtin::ATAN_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.atan()))?;
+            Ok(())
+        }
+        opcode::builtin::ATAN_F64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.atan()))?;
+            Ok(())
+        }
+        opcode::builtin::EXPT_I64 => {
+            let b = stack.pop()?.as_i64();
+            let a = stack.pop()?.as_i64();
+            if b < 0 {
+                return Err(Trap::NegativeExponent);
+            }
+            stack.push(Slot::from_i64(a.wrapping_pow(b as u32)))?;
+            Ok(())
+        }
+        opcode::builtin::ABS_I64 => {
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64(a.wrapping_abs()))?;
+            Ok(())
+        }
+        opcode::builtin::MIN_I64 => {
+            let b = stack.pop()?.as_i64();
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64(a.min(b)))?;
+            Ok(())
+        }
+        opcode::builtin::MAX_I64 => {
+            let b = stack.pop()?.as_i64();
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64(a.max(b)))?;
+            Ok(())
+        }
+        opcode::builtin::LIMIT_I64 => {
+            let mx = stack.pop()?.as_i64();
+            let in_val = stack.pop()?.as_i64();
+            let mn = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64(in_val.clamp(mn, mx)))?;
+            Ok(())
+        }
+        opcode::builtin::SEL_I64 => {
+            let in1 = stack.pop()?.as_i64();
+            let in0 = stack.pop()?.as_i64();
+            let g = stack.pop()?.as_i32();
+            stack.push(Slot::from_i64(if g == 0 { in0 } else { in1 }))?;
+            Ok(())
+        }
+        opcode::builtin::MIN_U32 => {
+            let b = stack.pop()?.as_i32() as u32;
+            let a = stack.pop()?.as_i32() as u32;
+            stack.push(Slot::from_i32(a.min(b) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::MAX_U32 => {
+            let b = stack.pop()?.as_i32() as u32;
+            let a = stack.pop()?.as_i32() as u32;
+            stack.push(Slot::from_i32(a.max(b) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::LIMIT_U32 => {
+            let mx = stack.pop()?.as_i32() as u32;
+            let in_val = stack.pop()?.as_i32() as u32;
+            let mn = stack.pop()?.as_i32() as u32;
+            stack.push(Slot::from_i32(in_val.clamp(mn, mx) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::MIN_U64 => {
+            let b = stack.pop()?.as_i64() as u64;
+            let a = stack.pop()?.as_i64() as u64;
+            stack.push(Slot::from_i64(a.min(b) as i64))?;
+            Ok(())
+        }
+        opcode::builtin::MAX_U64 => {
+            let b = stack.pop()?.as_i64() as u64;
+            let a = stack.pop()?.as_i64() as u64;
+            stack.push(Slot::from_i64(a.max(b) as i64))?;
+            Ok(())
+        }
+        opcode::builtin::LIMIT_U64 => {
+            let mx = stack.pop()?.as_i64() as u64;
+            let in_val = stack.pop()?.as_i64() as u64;
+            let mn = stack.pop()?.as_i64() as u64;
+            stack.push(Slot::from_i64(in_val.clamp(mn, mx) as i64))?;
+            Ok(())
+        }
         _ => Err(Trap::InvalidBuiltinFunction(func_id)),
     }
 }

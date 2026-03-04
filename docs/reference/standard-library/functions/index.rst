@@ -18,19 +18,19 @@ Numeric Functions
      - Status
    * - :doc:`ABS <abs>`
      - Absolute value
-     - Not yet supported
+     - Supported
    * - :doc:`SQRT <sqrt>`
      - Square root
-     - Not yet supported
+     - Supported
    * - :doc:`LN <ln>`
      - Natural logarithm
-     - Not yet supported
+     - Supported
    * - :doc:`LOG <log>`
      - Base-10 logarithm
-     - Not yet supported
+     - Supported
    * - :doc:`EXP <exp>`
      - Natural exponential
-     - Not yet supported
+     - Supported
    * - :doc:`EXPT <expt>`
      - Exponentiation
      - Supported
@@ -47,22 +47,22 @@ Trigonometric Functions
      - Status
    * - :doc:`SIN <sin>`
      - Sine
-     - Not yet supported
+     - Supported
    * - :doc:`COS <cos>`
      - Cosine
-     - Not yet supported
+     - Supported
    * - :doc:`TAN <tan>`
      - Tangent
-     - Not yet supported
+     - Supported
    * - :doc:`ASIN <asin>`
      - Arc sine
-     - Not yet supported
+     - Supported
    * - :doc:`ACOS <acos>`
      - Arc cosine
-     - Not yet supported
+     - Supported
    * - :doc:`ATAN <atan>`
      - Arc tangent
-     - Not yet supported
+     - Supported
 
 Arithmetic Functions
 --------------------
@@ -131,16 +131,16 @@ Selection Functions
      - Status
    * - :doc:`SEL <sel>`
      - Binary selection
-     - Not yet supported
+     - Supported
    * - :doc:`MAX <max>`
      - Maximum
-     - Not yet supported
+     - Supported
    * - :doc:`MIN <min>`
      - Minimum
-     - Not yet supported
+     - Supported
    * - :doc:`LIMIT <limit>`
      - Clamp to range
-     - Not yet supported
+     - Supported
    * - :doc:`MUX <mux>`
      - Multiplexer
      - Not yet supported
@@ -157,16 +157,16 @@ Bit String Functions
      - Status
    * - :doc:`SHL <shl>`
      - Shift left
-     - Not yet supported
+     - Supported
    * - :doc:`SHR <shr>`
      - Shift right
-     - Not yet supported
+     - Supported
    * - :doc:`ROL <rol>`
      - Rotate left
-     - Not yet supported
+     - Supported
    * - :doc:`ROR <ror>`
      - Rotate right
-     - Not yet supported
+     - Supported
 
 String Functions
 ----------------

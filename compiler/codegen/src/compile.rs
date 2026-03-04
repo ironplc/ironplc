@@ -43,8 +43,8 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    CaseSelectionKind, CompareOp, ExprKind, Function, Operator, ParamAssignmentKind, Statements,
-    StmtKind, SymbolicVariableKind, UnaryOp, Variable,
+    CaseSelectionKind, CompareOp, Expr, ExprKind, Function, Operator, ParamAssignmentKind,
+    Statements, StmtKind, SymbolicVariableKind, UnaryOp, Variable,
 };
 use ironplc_problems::Problem;
 
@@ -368,8 +368,8 @@ fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
 /// IEC 61131-3 requires homogeneous operand types, so any variable in the expression
 /// determines the operation type. For expressions without variables (pure constants),
 /// returns the default `(W32, Signed)`.
-fn infer_op_type(ctx: &CompileContext, expr: &ExprKind) -> OpType {
-    match expr {
+fn infer_op_type(ctx: &CompileContext, expr: &Expr) -> OpType {
+    match &expr.kind {
         ExprKind::Variable(variable) => {
             if let Variable::Symbolic(SymbolicVariableKind::Named(named)) = variable {
                 return ctx.var_op_type(&named.name);
@@ -417,8 +417,8 @@ fn infer_op_type(ctx: &CompileContext, expr: &ExprKind) -> OpType {
 /// Used after BIT_NOT to emit the correct truncation opcode for narrow types
 /// (BYTE needs TRUNC_U8, WORD needs TRUNC_U16). Returns `None` if no variable
 /// reference is found.
-fn infer_storage_bits(ctx: &CompileContext, expr: &ExprKind) -> Option<u8> {
-    match expr {
+fn infer_storage_bits(ctx: &CompileContext, expr: &Expr) -> Option<u8> {
+    match &expr.kind {
         ExprKind::Variable(variable) => {
             if let Variable::Symbolic(SymbolicVariableKind::Named(named)) = variable {
                 return ctx.var_type_info(&named.name).map(|ti| ti.storage_bits);
@@ -661,7 +661,7 @@ fn compile_case(
 fn compile_case_selector(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    selector_expr: &ExprKind,
+    selector_expr: &Expr,
     selection: &CaseSelectionKind,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
@@ -818,8 +818,8 @@ enum StepSign {
 /// Inspects an expression and returns its sign if it is a compile-time constant
 /// integer literal (positive or negative). Returns `None` for non-constant
 /// expressions.
-fn try_constant_sign(expr: &ExprKind) -> Option<StepSign> {
-    match expr {
+fn try_constant_sign(expr: &Expr) -> Option<StepSign> {
+    match &expr.kind {
         ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
             if lit.value.is_neg {
                 Some(StepSign::Negative)
@@ -830,7 +830,7 @@ fn try_constant_sign(expr: &ExprKind) -> Option<StepSign> {
         ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => {
             // -<literal> is negative
             if matches!(
-                &unary.term,
+                &unary.term.kind,
                 ExprKind::Const(ConstantKind::IntegerLiteral(_))
             ) {
                 Some(StepSign::Negative)
@@ -954,42 +954,100 @@ fn compile_for(
 
 /// Returns the builtin opcode for a named standard library function, if known.
 ///
-/// The `op_width` selects the correct variant (i32/f32/f64) for the function.
-fn lookup_builtin(name: &str, op_width: OpWidth) -> Option<u16> {
+/// The `op_width` selects the correct width variant and `signedness` selects
+/// the signed/unsigned variant for functions that distinguish them.
+fn lookup_builtin(name: &str, op_width: OpWidth, signedness: Signedness) -> Option<u16> {
     match name.to_uppercase().as_str() {
         "EXPT" => Some(match op_width {
-            OpWidth::W32 | OpWidth::W64 => opcode::builtin::EXPT_I32,
+            OpWidth::W32 => opcode::builtin::EXPT_I32,
+            OpWidth::W64 => opcode::builtin::EXPT_I64,
             OpWidth::F32 => opcode::builtin::EXPT_F32,
             OpWidth::F64 => opcode::builtin::EXPT_F64,
         }),
         "ABS" => Some(match op_width {
-            OpWidth::W32 | OpWidth::W64 => opcode::builtin::ABS_I32,
+            OpWidth::W32 => opcode::builtin::ABS_I32,
+            OpWidth::W64 => opcode::builtin::ABS_I64,
             OpWidth::F32 => opcode::builtin::ABS_F32,
             OpWidth::F64 => opcode::builtin::ABS_F64,
         }),
-        "MIN" => Some(match op_width {
-            OpWidth::W32 | OpWidth::W64 => opcode::builtin::MIN_I32,
-            OpWidth::F32 => opcode::builtin::MIN_F32,
-            OpWidth::F64 => opcode::builtin::MIN_F64,
+        "MIN" => Some(match (op_width, signedness) {
+            (OpWidth::W32, Signedness::Signed) => opcode::builtin::MIN_I32,
+            (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::MIN_U32,
+            (OpWidth::W64, Signedness::Signed) => opcode::builtin::MIN_I64,
+            (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::MIN_U64,
+            (OpWidth::F32, _) => opcode::builtin::MIN_F32,
+            (OpWidth::F64, _) => opcode::builtin::MIN_F64,
         }),
-        "MAX" => Some(match op_width {
-            OpWidth::W32 | OpWidth::W64 => opcode::builtin::MAX_I32,
-            OpWidth::F32 => opcode::builtin::MAX_F32,
-            OpWidth::F64 => opcode::builtin::MAX_F64,
+        "MAX" => Some(match (op_width, signedness) {
+            (OpWidth::W32, Signedness::Signed) => opcode::builtin::MAX_I32,
+            (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::MAX_U32,
+            (OpWidth::W64, Signedness::Signed) => opcode::builtin::MAX_I64,
+            (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::MAX_U64,
+            (OpWidth::F32, _) => opcode::builtin::MAX_F32,
+            (OpWidth::F64, _) => opcode::builtin::MAX_F64,
         }),
-        "LIMIT" => Some(match op_width {
-            OpWidth::W32 | OpWidth::W64 => opcode::builtin::LIMIT_I32,
-            OpWidth::F32 => opcode::builtin::LIMIT_F32,
-            OpWidth::F64 => opcode::builtin::LIMIT_F64,
+        "LIMIT" => Some(match (op_width, signedness) {
+            (OpWidth::W32, Signedness::Signed) => opcode::builtin::LIMIT_I32,
+            (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::LIMIT_U32,
+            (OpWidth::W64, Signedness::Signed) => opcode::builtin::LIMIT_I64,
+            (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::LIMIT_U64,
+            (OpWidth::F32, _) => opcode::builtin::LIMIT_F32,
+            (OpWidth::F64, _) => opcode::builtin::LIMIT_F64,
         }),
         "SEL" => Some(match op_width {
-            OpWidth::W32 | OpWidth::W64 => opcode::builtin::SEL_I32,
+            OpWidth::W32 => opcode::builtin::SEL_I32,
+            OpWidth::W64 => opcode::builtin::SEL_I64,
             OpWidth::F32 => opcode::builtin::SEL_F32,
             OpWidth::F64 => opcode::builtin::SEL_F64,
         }),
         "SQRT" => match op_width {
             OpWidth::F32 => Some(opcode::builtin::SQRT_F32),
             OpWidth::F64 => Some(opcode::builtin::SQRT_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "LN" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::LN_F32),
+            OpWidth::F64 => Some(opcode::builtin::LN_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "LOG" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::LOG_F32),
+            OpWidth::F64 => Some(opcode::builtin::LOG_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "EXP" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::EXP_F32),
+            OpWidth::F64 => Some(opcode::builtin::EXP_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "SIN" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::SIN_F32),
+            OpWidth::F64 => Some(opcode::builtin::SIN_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "COS" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::COS_F32),
+            OpWidth::F64 => Some(opcode::builtin::COS_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "TAN" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::TAN_F32),
+            OpWidth::F64 => Some(opcode::builtin::TAN_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "ASIN" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::ASIN_F32),
+            OpWidth::F64 => Some(opcode::builtin::ASIN_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "ACOS" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::ACOS_F32),
+            OpWidth::F64 => Some(opcode::builtin::ACOS_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
+        "ATAN" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::ATAN_F32),
+            OpWidth::F64 => Some(opcode::builtin::ATAN_F64),
             OpWidth::W32 | OpWidth::W64 => None,
         },
         _ => None,
@@ -1003,10 +1061,10 @@ fn lookup_builtin(name: &str, op_width: OpWidth) -> Option<u16> {
 fn compile_expr(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    expr: &ExprKind,
+    expr: &Expr,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    match expr {
+    match &expr.kind {
         ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
         ExprKind::Variable(variable) => {
             let var_index = resolve_variable(ctx, variable)?;
@@ -1030,7 +1088,7 @@ fn compile_expr(
             UnaryOp::Neg => {
                 // Constant folding: if the operand is an integer literal,
                 // emit the negated constant directly.
-                if let ExprKind::Const(ConstantKind::IntegerLiteral(lit)) = &unary.term {
+                if let ExprKind::Const(ConstantKind::IntegerLiteral(lit)) = &unary.term.kind {
                     let unsigned = lit.value.value.value as i128;
                     let signed = -unsigned;
                     match op_type.0 {
@@ -1152,12 +1210,12 @@ fn compile_generic_builtin(
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
     let func_name = func.name.original().to_uppercase();
-    let func_id = lookup_builtin(&func_name, op_type.0)
+    let func_id = lookup_builtin(&func_name, op_type.0, op_type.1)
         .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
 
     let expected_args = opcode::builtin::arg_count(func_id) as usize;
 
-    let args: Vec<&ExprKind> = func
+    let args: Vec<&Expr> = func
         .param_assignment
         .iter()
         .filter_map(|p| match p {
@@ -1203,7 +1261,7 @@ fn compile_shift_rotate(
     op_type: OpType,
     name: &str,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&ExprKind> = func
+    let args: Vec<&Expr> = func
         .param_assignment
         .iter()
         .filter_map(|p| match p {
@@ -1598,7 +1656,7 @@ fn emit_neg(emitter: &mut Emitter, op_type: OpType) {
 fn emit_pow(emitter: &mut Emitter, op_type: OpType) {
     match op_type.0 {
         OpWidth::W32 => emitter.emit_builtin(opcode::builtin::EXPT_I32),
-        OpWidth::W64 => emitter.emit_builtin(opcode::builtin::EXPT_I32),
+        OpWidth::W64 => emitter.emit_builtin(opcode::builtin::EXPT_I64),
         OpWidth::F32 => emitter.emit_builtin(opcode::builtin::EXPT_F32),
         OpWidth::F64 => emitter.emit_builtin(opcode::builtin::EXPT_F64),
     }
