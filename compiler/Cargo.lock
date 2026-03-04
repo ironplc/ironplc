@@ -281,7 +281,7 @@ dependencies = [
 
 [[package]]
 name = "dsl_macro_derive"
-version = "0.160.0"
+version = "0.161.0"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -442,7 +442,7 @@ dependencies = [
 
 [[package]]
 name = "ironplc-analyzer"
-version = "0.160.0"
+version = "0.161.0"
 dependencies = [
  "fixedbitset",
  "ironplc-dsl",
@@ -456,7 +456,7 @@ dependencies = [
 
 [[package]]
 name = "ironplc-codegen"
-version = "0.160.0"
+version = "0.161.0"
 dependencies = [
  "ironplc-container",
  "ironplc-dsl",
@@ -467,11 +467,11 @@ dependencies = [
 
 [[package]]
 name = "ironplc-container"
-version = "0.160.0"
+version = "0.161.0"
 
 [[package]]
 name = "ironplc-dsl"
-version = "0.160.0"
+version = "0.161.0"
 dependencies = [
  "dsl_macro_derive",
  "ironplc-problems",
@@ -484,7 +484,7 @@ dependencies = [
 
 [[package]]
 name = "ironplc-parser"
-version = "0.160.0"
+version = "0.161.0"
 dependencies = [
  "ironplc-dsl",
  "ironplc-problems",
@@ -497,7 +497,7 @@ dependencies = [
 
 [[package]]
 name = "ironplc-plc2plc"
-version = "0.160.0"
+version = "0.161.0"
 dependencies = [
  "dsl_macro_derive",
  "ironplc-dsl",
@@ -508,14 +508,14 @@ dependencies = [
 
 [[package]]
 name = "ironplc-problems"
-version = "0.160.0"
+version = "0.161.0"
 dependencies = [
  "csv",
 ]
 
 [[package]]
 name = "ironplc-sources"
-version = "0.160.0"
+version = "0.161.0"
 dependencies = [
  "encoding_rs",
  "ironplc-dsl",
@@ -530,18 +530,18 @@ dependencies = [
 
 [[package]]
 name = "ironplc-test"
-version = "0.160.0"
+version = "0.161.0"
 
 [[package]]
 name = "ironplc-vm"
-version = "0.160.0"
+version = "0.161.0"
 dependencies = [
  "ironplc-container",
 ]
 
 [[package]]
 name = "ironplc-vm-cli"
-version = "0.160.0"
+version = "0.161.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -558,7 +558,7 @@ dependencies = [
 
 [[package]]
 name = "ironplcc"
-version = "0.160.0"
+version = "0.161.0"
 dependencies = [
  "assert_cmd",
  "clap",
