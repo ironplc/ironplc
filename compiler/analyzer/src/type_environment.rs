@@ -205,7 +205,18 @@ impl TypeEnvironment {
             .unwrap_or(false)
     }
 
-    // Note: removed is_structure(name) to avoid duplicate API with representation helpers
+    /// Resolves a type name to its canonical elementary type name.
+    ///
+    /// Looks up the type, then scans the 23 elementary types to find one with
+    /// a matching `IntermediateType`. For aliases like `MyByte → BYTE`, returns
+    /// `Some(TypeName::from("BYTE"))`. For complex types, returns `None`.
+    pub fn resolve_elementary_type_name(&self, type_name: &TypeName) -> Option<TypeName> {
+        let repr = &self.get(type_name)?.representation;
+        ELEMENTARY_TYPES_LOWER_CASE
+            .iter()
+            .find(|(_, elem_type)| elem_type == repr)
+            .map(|(name, _)| TypeName::from(name))
+    }
 
     /// An iterator for all types in the environment
     pub fn iter(
