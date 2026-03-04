@@ -1,0 +1,20 @@
+# Build the IronPLC web app (wasm + static files)
+
+# Install build tools
+setup:
+  cargo install wasm-pack
+
+# Build the wasm package into web/pkg/
+compile:
+  wasm-pack build ../compiler/wasm --target web --out-dir ../../web/pkg --no-typescript
+
+# Build everything (CI entry point)
+ci: compile
+
+# Serve locally for development
+serve: compile
+  python3 -m http.server 8080
+
+# Clean build artifacts
+clean:
+  rm -rf pkg/
