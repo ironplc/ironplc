@@ -146,7 +146,7 @@ jobs:
           prerelease: false
 
   publish-web-app:
-    name: Publish Web App to app.ironplc.com
+    name: Publish Web App to studio.ironplc.com
     needs: [release, publish-release]
     runs-on: ubuntu-latest
     steps:
@@ -157,7 +157,7 @@ jobs:
           path: ./web-app-dist
 
       - name: Add CNAME for custom domain
-        run: echo "app.ironplc.com" > ./web-app-dist/CNAME
+        run: echo "studio.ironplc.com" > ./web-app-dist/CNAME
 
       - name: Publish to ironplc/app repository
         if: ${{ !inputs.dryrun }}
