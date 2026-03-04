@@ -381,8 +381,74 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_i64(in_val.clamp(mn, mx) as i64))?;
             Ok(())
         }
+        // MUX (multiplexer) for all type widths
+        id if opcode::builtin::is_mux(id) => {
+            let n = opcode::builtin::mux_info(id).unwrap() as usize;
+            if id >= opcode::builtin::MUX_F64_BASE {
+                dispatch_mux_f64(n, stack)
+            } else if id >= opcode::builtin::MUX_F32_BASE {
+                dispatch_mux_f32(n, stack)
+            } else if id >= opcode::builtin::MUX_I64_BASE {
+                dispatch_mux_i64(n, stack)
+            } else {
+                dispatch_mux_i32(n, stack)
+            }
+        }
         _ => Err(Trap::InvalidBuiltinFunction(func_id)),
     }
+}
+
+/// Dispatches MUX for 32-bit integer values.
+///
+/// Stack layout (top to bottom): IN(n-1), ..., IN1, IN0, K
+/// Pops all n IN values and K, pushes IN[K] (clamped to 0..n-1).
+fn dispatch_mux_i32(n: usize, stack: &mut OperandStack) -> Result<(), Trap> {
+    // Pop IN values in reverse order (last pushed = first popped)
+    let mut inputs = vec![0i32; n];
+    for i in (0..n).rev() {
+        inputs[i] = stack.pop()?.as_i32();
+    }
+    let k = stack.pop()?.as_i32();
+    // Clamp K to valid range
+    let idx = (k.max(0) as usize).min(n - 1);
+    stack.push(Slot::from_i32(inputs[idx]))?;
+    Ok(())
+}
+
+/// Dispatches MUX for 64-bit integer values.
+fn dispatch_mux_i64(n: usize, stack: &mut OperandStack) -> Result<(), Trap> {
+    let mut inputs = vec![0i64; n];
+    for i in (0..n).rev() {
+        inputs[i] = stack.pop()?.as_i64();
+    }
+    let k = stack.pop()?.as_i32(); // K is always i32
+    let idx = (k.max(0) as usize).min(n - 1);
+    stack.push(Slot::from_i64(inputs[idx]))?;
+    Ok(())
+}
+
+/// Dispatches MUX for 32-bit float values.
+fn dispatch_mux_f32(n: usize, stack: &mut OperandStack) -> Result<(), Trap> {
+    let mut inputs = vec![0.0f32; n];
+    for i in (0..n).rev() {
+        inputs[i] = stack.pop()?.as_f32();
+    }
+    let k = stack.pop()?.as_i32(); // K is always i32
+    let idx = (k.max(0) as usize).min(n - 1);
+    stack.push(Slot::from_f32(inputs[idx]))?;
+    Ok(())
+}
+
+/// Dispatches MUX for 64-bit float values.
+fn dispatch_mux_f64(n: usize, stack: &mut OperandStack) -> Result<(), Trap> {
+    let mut inputs = vec![0.0f64; n];
+    for i in (0..n).rev() {
+        inputs[i] = stack.pop()?.as_f64();
+    }
+    let k = stack.pop()?.as_i32(); // K is always i32
+    let idx = (k.max(0) as usize).min(n - 1);
+    stack.push(Slot::from_f64(inputs[idx]))?;
+    Ok(())
 }
 
 /// IEEE 754-safe clamp for f32. Unlike `f32::clamp`, this does not panic
