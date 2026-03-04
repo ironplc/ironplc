@@ -33,7 +33,10 @@ fn execute_when_conv_i32_to_f32_positive_then_correct() {
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
-    assert!((result - 42.0).abs() < 1e-5, "expected 42.0, got {result}");
+    assert!(
+        (result - 42.0).abs() < 1e-5,
+        "expected 42.0, got {result}"
+    );
 }
 
 #[test]
@@ -130,7 +133,10 @@ fn execute_when_conv_i64_to_f32_then_correct() {
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
-    assert!((result - 5.0e9).abs() < 1e4, "expected ~5e9, got {result}");
+    assert!(
+        (result - 5.0e9).abs() < 1e4,
+        "expected ~5e9, got {result}"
+    );
 }
 
 // --- CONV_I64_TO_F64 ---
@@ -161,7 +167,10 @@ fn execute_when_conv_i64_to_f64_then_correct() {
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
-    assert!((result - 5.0e9).abs() < 1e-5, "expected 5e9, got {result}");
+    assert!(
+        (result - 5.0e9).abs() < 1e-5,
+        "expected 5e9, got {result}"
+    );
 }
 
 // --- CONV_U32_TO_F32 ---

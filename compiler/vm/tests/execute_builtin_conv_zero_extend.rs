@@ -63,5 +63,8 @@ fn execute_when_conv_u32_to_i64_large_unsigned_then_correct() {
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_i64();
-    assert_eq!(result, 4_294_967_295, "expected 4294967295, got {result}");
+    assert_eq!(
+        result, 4_294_967_295,
+        "expected 4294967295, got {result}"
+    );
 }
