@@ -64,9 +64,7 @@ pub fn analyze(sources: &[&Library]) -> Result<SemanticContext, Vec<Diagnostic>>
     Ok(context)
 }
 
-pub(crate) fn resolve_types(
-    sources: &[&Library],
-) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
+pub fn resolve_types(sources: &[&Library]) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
     let mut diagnostics: Vec<Diagnostic> = vec![];
 
     // We want to analyze this as a complete set, so we need to join the items together
