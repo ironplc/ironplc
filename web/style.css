@@ -1,0 +1,239 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #1e1e2e;
+  --surface: #282840;
+  --border: #3e3e5e;
+  --text: #e0e0e0;
+  --text-muted: #888;
+  --accent: #6c8cff;
+  --accent-hover: #8aa4ff;
+  --error: #ff6b6b;
+  --success: #6bff9b;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+header h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.editor-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar button,
+.toolbar .file-upload {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 0.4rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.toolbar button:hover:not(:disabled),
+.toolbar .file-upload:hover {
+  background: var(--accent-hover);
+}
+
+.toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toolbar label {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.toolbar input[type="number"] {
+  width: 5rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.875rem;
+}
+
+#editor {
+  flex: 1;
+  background: var(--surface);
+  color: var(--text);
+  border: none;
+  padding: 1rem;
+  font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  tab-size: 2;
+}
+
+.output-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.output-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  border-bottom: 2px solid transparent;
+}
+
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.panel {
+  display: none;
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+  font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
+  font-size: 0.875rem;
+}
+
+.panel.active {
+  display: block;
+}
+
+.placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+table.var-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table.var-table th,
+table.var-table td {
+  text-align: left;
+  padding: 0.3rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+table.var-table th {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.diagnostic-item {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.diagnostic-code {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.diagnostic-message {
+  margin-left: 0.5rem;
+}
+
+.diagnostic-location {
+  color: var(--text-muted);
+  margin-left: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.error-message {
+  color: var(--error);
+  padding: 0.5rem 0;
+}
+
+.success-message {
+  color: var(--success);
+}
+
+.drop-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+}
+
+.drop-overlay.visible {
+  display: flex;
+}
+
+.drop-message {
+  font-size: 1.5rem;
+  color: var(--accent);
+  border: 3px dashed var(--accent);
+  padding: 3rem 4rem;
+  border-radius: 12px;
+}
+
+footer {
+  padding: 0.4rem 1.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
