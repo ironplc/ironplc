@@ -12,7 +12,8 @@ members = [
     "sources",
     "test",
     "vm",
-    "vm-cli"
+    "vm-cli",
+    "web-app"
 ]
 resolver = "2"
 

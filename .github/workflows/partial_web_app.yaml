@@ -1,0 +1,50 @@
+name: Web App
+
+on:
+  # Allow triggering directly
+  workflow_dispatch:
+    inputs:
+      commit-ref:
+        required: false
+        type: string
+        description: 'If not empty, then run for the specified branch name or tag'
+
+  # Allow using this workflow from another workflow
+  workflow_call:
+    inputs:
+      commit-ref:
+        required: false
+        type: string
+        description: 'If not empty, then run for the specified branch name or tag'
+
+jobs:
+  build-web-app:
+    name: Build Web App
+    runs-on: ubuntu-latest
+    steps:
+      # Fetch input artifacts and code
+      - name: Checkout branch or tag ${{ inputs.commit-ref }}
+        uses: actions/checkout@v4
+        if: ${{ inputs.commit-ref }}
+        with:
+          ref: ${{ inputs.commit-ref }}
+      - name: Checkout HEAD
+        uses: actions/checkout@v4
+        if: ${{ !inputs.commit-ref }}
+
+      # Configure the execution environment
+      - uses: taiki-e/install-action@just
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Execute build recipes
+      - name: Build wasm and web app
+        working-directory: ./web
+        run: just ci
+
+      # Save artifacts
+      - name: Upload web app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ironplc-web-app
+          path: web/_build
+          retention-days: 5

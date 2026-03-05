@@ -1,0 +1,12 @@
+{
+  "name": "ironplc-web",
+  "private": true,
+  "version": "0.161.0",
+  "description": "IronPLC browser-based IDE and runtime",
+  "scripts": {
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0"
+  }
+}
