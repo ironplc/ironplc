@@ -92,8 +92,8 @@ pub fn tokenize(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> 
 
 /// Compiles source files into a bytecode container (.iplc) file.
 ///
-/// Parses the source files and generates bytecode without running semantic
-/// analysis. Currently supports only the steel-thread subset of the language.
+/// Parses the source files, runs type resolution to populate expression types,
+/// and generates bytecode.
 pub fn compile(paths: &[PathBuf], output: &Path, suppress_output: bool) -> Result<(), String> {
     let mut project = create_project(paths, suppress_output)?;
 
@@ -111,8 +111,15 @@ pub fn compile(paths: &[PathBuf], output: &Path, suppress_output: bool) -> Resul
         }
     }
 
+    // Run type resolution to populate Expr.resolved_type
+    let (analyzed, _context) =
+        ironplc_analyzer::stages::resolve_types(&[&combined]).map_err(|errs| {
+            handle_diagnostics(&errs, Some(&project), suppress_output);
+            String::from("Error during type resolution")
+        })?;
+
     // Generate bytecode
-    let container = ironplc_codegen::compile(&combined).map_err(|err| {
+    let container = ironplc_codegen::compile(&analyzed).map_err(|err| {
         handle_diagnostics(&[err], Some(&project), suppress_output);
         String::from("Error during code generation")
     })?;
