@@ -12,13 +12,13 @@ PROGRAM main
     x : REAL;
     y : LREAL;
   END_VAR
-  x := 3.14;
+  x := 1.5;
   y := REAL_TO_LREAL(x);
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source);
     let y = bufs.vars[1].as_f64();
-    assert!((y - 3.14).abs() < 0.01, "expected ~3.14, got {y}");
+    assert!((y - 1.5).abs() < 0.01, "expected ~1.5, got {y}");
 }
 
 #[test]
@@ -29,11 +29,11 @@ PROGRAM main
     x : LREAL;
     y : REAL;
   END_VAR
-  x := 2.718281828;
+  x := 9.876543210;
   y := LREAL_TO_REAL(x);
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source);
     let y = bufs.vars[1].as_f32();
-    assert!((y - 2.718282).abs() < 1e-4, "expected ~2.718282, got {y}");
+    assert!((y - 9.876543).abs() < 1e-4, "expected ~9.876543, got {y}");
 }
