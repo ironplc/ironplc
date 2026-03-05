@@ -381,6 +381,102 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_i64(in_val.clamp(mn, mx) as i64))?;
             Ok(())
         }
+        // --- Type conversion opcodes ---
+        opcode::builtin::CONV_I32_TO_F32 => {
+            let a = stack.pop()?.as_i32();
+            stack.push(Slot::from_f32(a as f32))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_I32_TO_F64 => {
+            let a = stack.pop()?.as_i32();
+            stack.push(Slot::from_f64(a as f64))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_I64_TO_F32 => {
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_f32(a as f32))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_I64_TO_F64 => {
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_f64(a as f64))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_U32_TO_F32 => {
+            let a = stack.pop()?.as_i32() as u32;
+            stack.push(Slot::from_f32(a as f32))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_U32_TO_F64 => {
+            let a = stack.pop()?.as_i32() as u32;
+            stack.push(Slot::from_f64(a as f64))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_U64_TO_F32 => {
+            let a = stack.pop()?.as_i64() as u64;
+            stack.push(Slot::from_f32(a as f32))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_U64_TO_F64 => {
+            let a = stack.pop()?.as_i64() as u64;
+            stack.push(Slot::from_f64(a as f64))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_F32_TO_I32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_i32(a as i32))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_F32_TO_I64 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_i64(a as i64))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_F64_TO_I32 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_i32(a as i32))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_F64_TO_I64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_i64(a as i64))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_F32_TO_U32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_i32(a as u32 as i32))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_F32_TO_U64 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_i64(a as u64 as i64))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_F64_TO_U32 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_i32(a as u32 as i32))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_F64_TO_U64 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_i64(a as u64 as i64))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_F32_TO_F64 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f64(a as f64))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_F64_TO_F32 => {
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f32(a as f32))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_U32_TO_I64 => {
+            let a = stack.pop()?.as_i32() as u32;
+            stack.push(Slot::from_i64(a as u64 as i64))?;
+            Ok(())
+        }
         // MUX (multiplexer) for all type widths
         id if opcode::builtin::is_mux(id) => {
             let n = opcode::builtin::mux_info(id).unwrap() as usize;
