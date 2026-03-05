@@ -154,34 +154,34 @@ Function Blocks
      - Status
    * - :doc:`TON <function-blocks/ton>`
      - On-delay timer
-     - Supported
+     - Not yet supported
    * - :doc:`TOF <function-blocks/tof>`
      - Off-delay timer
-     - Supported
+     - Not yet supported
    * - :doc:`TP <function-blocks/tp>`
      - Pulse timer
-     - Supported
+     - Not yet supported
    * - :doc:`CTU <function-blocks/ctu>`
      - Count up
-     - Supported
+     - Not yet supported
    * - :doc:`CTD <function-blocks/ctd>`
      - Count down
-     - Supported
+     - Not yet supported
    * - :doc:`CTUD <function-blocks/ctud>`
      - Count up/down
-     - Supported
+     - Not yet supported
    * - :doc:`R_TRIG <function-blocks/r-trig>`
      - Rising edge detection
-     - Supported
+     - Not yet supported
    * - :doc:`F_TRIG <function-blocks/f-trig>`
      - Falling edge detection
-     - Supported
+     - Not yet supported
    * - :doc:`SR <function-blocks/sr>`
      - Set/reset flip-flop
-     - Supported
+     - Not yet supported
    * - :doc:`RS <function-blocks/rs>`
      - Reset/set flip-flop
-     - Supported
+     - Not yet supported
 
 .. toctree::
    :maxdepth: 1
