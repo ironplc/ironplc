@@ -96,7 +96,15 @@ impl Visitor<Diagnostic> for RuleFunctionCallDeclared<'_> {
                 // Expected input parameter count
                 let expected_inputs = signature.input_parameter_count();
 
-                if total_inputs != expected_inputs {
+                let args_valid = if signature.is_extensible {
+                    let above_min = total_inputs >= expected_inputs;
+                    let below_max = signature.max_inputs.is_none_or(|max| total_inputs <= max);
+                    above_min && below_max
+                } else {
+                    total_inputs == expected_inputs
+                };
+
+                if !args_valid {
                     self.diagnostics.push(
                         Diagnostic::problem(
                             Problem::FunctionCallWrongArgCount,
@@ -302,6 +310,138 @@ VAR
     b : INT;
 END_VAR
     result := LIMIT(a, b);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_err());
+        let diagnostics = result.unwrap_err();
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            Problem::FunctionCallWrongArgCount.code()
+        );
+    }
+
+    #[test]
+    fn apply_when_mux_called_with_3_args_then_ok() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+    a : INT;
+    b : INT;
+END_VAR
+    result := MUX(0, a, b);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_mux_called_with_5_args_then_ok() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+    a : INT;
+    b : INT;
+    c : INT;
+    d : INT;
+END_VAR
+    result := MUX(2, a, b, c, d);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_mux_called_with_too_few_args_then_error() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+    a : INT;
+END_VAR
+    result := MUX(0, a);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_err());
+        let diagnostics = result.unwrap_err();
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            Problem::FunctionCallWrongArgCount.code()
+        );
+    }
+
+    #[test]
+    fn apply_when_mux_called_with_17_args_then_ok() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+    a : INT;
+    b : INT;
+    c : INT;
+    d : INT;
+    e : INT;
+    f : INT;
+    g : INT;
+    h : INT;
+    i : INT;
+    j : INT;
+    k : INT;
+    l : INT;
+    m : INT;
+    n : INT;
+    o : INT;
+    p : INT;
+END_VAR
+    result := MUX(0, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_mux_called_with_18_args_then_error() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+    a : INT;
+    b : INT;
+    c : INT;
+    d : INT;
+    e : INT;
+    f : INT;
+    g : INT;
+    h : INT;
+    i : INT;
+    j : INT;
+    k : INT;
+    l : INT;
+    m : INT;
+    n : INT;
+    o : INT;
+    p : INT;
+    q : INT;
+END_VAR
+    result := MUX(0, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q);
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);

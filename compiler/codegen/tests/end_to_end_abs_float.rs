@@ -56,7 +56,7 @@ END_PROGRAM
 
     let y = bufs.vars[1].as_f64();
     assert!(
-        (y - 3.141592653589793).abs() < 1e-12,
+        (y - std::f64::consts::PI).abs() < 1e-12,
         "expected pi, got {y}"
     );
 }
