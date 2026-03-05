@@ -369,6 +369,20 @@ fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
     }
 }
 
+/// Checks if a function name is a type conversion (e.g., "int_to_real").
+/// Returns `Some((source_type_info, target_type_info))` if both parts are
+/// recognized type names, `None` otherwise.
+fn parse_type_conversion(name: &str) -> Option<(VarTypeInfo, VarTypeInfo)> {
+    let upper = name.to_uppercase();
+    let parts: Vec<&str> = upper.splitn(2, "_TO_").collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let source = resolve_type_name(&Id::from(parts[0]))?;
+    let target = resolve_type_name(&Id::from(parts[1]))?;
+    Some((source, target))
+}
+
 /// Returns the operation type from an expression's resolved type annotation.
 ///
 /// The analyzer must have populated `expr.resolved_type`. A missing or
@@ -1170,7 +1184,13 @@ fn compile_function_call(
             compile_shift_rotate(emitter, ctx, func, op_type, name.as_str())
         }
         "mux" => compile_mux(emitter, ctx, func, op_type),
-        _ => compile_generic_builtin(emitter, ctx, func, op_type),
+        _ => {
+            if let Some((source, target)) = parse_type_conversion(name) {
+                compile_type_conversion(emitter, ctx, func, source, target)
+            } else {
+                compile_generic_builtin(emitter, ctx, func, op_type)
+            }
+        }
     }
 }
 
@@ -1282,6 +1302,101 @@ fn compile_mux(
 
     emitter.emit_builtin(func_id);
     Ok(())
+}
+
+/// Compiles a type conversion function call (e.g., INT_TO_REAL).
+///
+/// Unlike generic builtins, conversion functions have different source and
+/// target types. The argument is compiled with the source type's OpType,
+/// then a conversion opcode (if needed) transforms the value to the target
+/// representation.
+fn compile_type_conversion(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    source: VarTypeInfo,
+    target: VarTypeInfo,
+) -> Result<(), Diagnostic> {
+    let source_op_type: OpType = (source.op_width, source.signedness);
+
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    compile_expr(emitter, ctx, args[0], source_op_type)?;
+    emit_conversion_opcode(emitter, &source, &target);
+    emit_truncation(emitter, target);
+
+    Ok(())
+}
+
+/// Emits the appropriate conversion BUILTIN opcode for the source->target
+/// type transition. Does nothing for same-domain integer conversions that
+/// are handled by the Slot's sign-extension and truncation.
+fn emit_conversion_opcode(emitter: &mut Emitter, source: &VarTypeInfo, target: &VarTypeInfo) {
+    use OpWidth::*;
+    use Signedness::*;
+
+    match (
+        source.op_width,
+        source.signedness,
+        target.op_width,
+        target.signedness,
+    ) {
+        // Same OpWidth: no conversion needed (truncation handles sub-width)
+        (W32, _, W32, _) | (W64, _, W64, _) => {}
+
+        // W32 signed -> W64: sign extension already in Slot, no-op
+        (W32, Signed, W64, _) => {}
+
+        // W32 unsigned -> W64: need zero-extension
+        (W32, Unsigned, W64, _) => {
+            emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
+        }
+
+        // W64 -> W32: as_i32() truncation at store time, no-op
+        (W64, _, W32, _) => {}
+
+        // Integer -> Float
+        (W32, Signed, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F32),
+        (W32, Signed, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F64),
+        (W64, Signed, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F32),
+        (W64, Signed, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F64),
+        (W32, Unsigned, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_U32_TO_F32),
+        (W32, Unsigned, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_U32_TO_F64),
+        (W64, Unsigned, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_U64_TO_F32),
+        (W64, Unsigned, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_U64_TO_F64),
+
+        // Float -> Integer
+        (F32, _, W32, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_I32),
+        (F32, _, W64, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_I64),
+        (F64, _, W32, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I32),
+        (F64, _, W64, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I64),
+        (F32, _, W32, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_U32),
+        (F32, _, W64, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_U64),
+        (F64, _, W32, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_U32),
+        (F64, _, W64, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_U64),
+
+        // Float -> Float
+        (F32, _, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_F64),
+        (F64, _, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_F32),
+
+        // Same float width (shouldn't happen, but handle gracefully)
+        (F32, _, F32, _) | (F64, _, F64, _) => {}
+    }
 }
 
 /// Compiles a bit shift or rotate function call (SHL, SHR, ROL, ROR).

@@ -13,16 +13,13 @@ PROGRAM main
   VAR
     x : REAL;
   END_VAR
-  x := 3.14;
+  x := 1.5;
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source);
 
     let x = bufs.vars[0].as_f32();
-    assert!(
-        (x - std::f32::consts::PI).abs() < 1e-2,
-        "expected ~pi, got {x}"
-    );
+    assert!((x - 1.5_f32).abs() < 1e-5, "expected 1.5, got {x}");
 }
 
 #[test]

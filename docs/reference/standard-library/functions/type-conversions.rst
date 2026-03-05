@@ -12,7 +12,7 @@ values between data types. Each function follows the naming pattern
    * - **IEC 61131-3**
      - Section 2.5.1.5.1
    * - **Support**
-     - Not yet supported
+     - Supported (numeric conversions)
 
 Conversion Categories
 ---------------------
@@ -32,40 +32,40 @@ These conversions are always safe — no data is lost.
      - Support
    * - ``SINT_TO_INT``
      - 8-bit to 16-bit signed
-     - Not yet supported
+     - Supported
    * - ``SINT_TO_DINT``
      - 8-bit to 32-bit signed
-     - Not yet supported
+     - Supported
    * - ``SINT_TO_LINT``
      - 8-bit to 64-bit signed
-     - Not yet supported
+     - Supported
    * - ``INT_TO_DINT``
      - 16-bit to 32-bit signed
-     - Not yet supported
+     - Supported
    * - ``INT_TO_LINT``
      - 16-bit to 64-bit signed
-     - Not yet supported
+     - Supported
    * - ``DINT_TO_LINT``
      - 32-bit to 64-bit signed
-     - Not yet supported
+     - Supported
    * - ``USINT_TO_UINT``
      - 8-bit to 16-bit unsigned
-     - Not yet supported
+     - Supported
    * - ``USINT_TO_UDINT``
      - 8-bit to 32-bit unsigned
-     - Not yet supported
+     - Supported
    * - ``USINT_TO_ULINT``
      - 8-bit to 64-bit unsigned
-     - Not yet supported
+     - Supported
    * - ``UINT_TO_UDINT``
      - 16-bit to 32-bit unsigned
-     - Not yet supported
+     - Supported
    * - ``UINT_TO_ULINT``
      - 16-bit to 64-bit unsigned
-     - Not yet supported
+     - Supported
    * - ``UDINT_TO_ULINT``
      - 32-bit to 64-bit unsigned
-     - Not yet supported
+     - Supported
 
 Integer Narrowing
 ^^^^^^^^^^^^^^^^^
@@ -83,40 +83,40 @@ the target type.
      - Support
    * - ``INT_TO_SINT``
      - 16-bit to 8-bit signed
-     - Not yet supported
+     - Supported
    * - ``DINT_TO_SINT``
      - 32-bit to 8-bit signed
-     - Not yet supported
+     - Supported
    * - ``DINT_TO_INT``
      - 32-bit to 16-bit signed
-     - Not yet supported
+     - Supported
    * - ``LINT_TO_SINT``
      - 64-bit to 8-bit signed
-     - Not yet supported
+     - Supported
    * - ``LINT_TO_INT``
      - 64-bit to 16-bit signed
-     - Not yet supported
+     - Supported
    * - ``LINT_TO_DINT``
      - 64-bit to 32-bit signed
-     - Not yet supported
+     - Supported
    * - ``UINT_TO_USINT``
      - 16-bit to 8-bit unsigned
-     - Not yet supported
+     - Supported
    * - ``UDINT_TO_USINT``
      - 32-bit to 8-bit unsigned
-     - Not yet supported
+     - Supported
    * - ``UDINT_TO_UINT``
      - 32-bit to 16-bit unsigned
-     - Not yet supported
+     - Supported
    * - ``ULINT_TO_USINT``
      - 64-bit to 8-bit unsigned
-     - Not yet supported
+     - Supported
    * - ``ULINT_TO_UINT``
      - 64-bit to 16-bit unsigned
-     - Not yet supported
+     - Supported
    * - ``ULINT_TO_UDINT``
      - 64-bit to 32-bit unsigned
-     - Not yet supported
+     - Supported
 
 Signed/Unsigned Conversions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -133,28 +133,28 @@ or different sizes.
      - Support
    * - ``SINT_TO_USINT``
      - Signed to unsigned 8-bit
-     - Not yet supported
+     - Supported
    * - ``INT_TO_UINT``
      - Signed to unsigned 16-bit
-     - Not yet supported
+     - Supported
    * - ``DINT_TO_UDINT``
      - Signed to unsigned 32-bit
-     - Not yet supported
+     - Supported
    * - ``LINT_TO_ULINT``
      - Signed to unsigned 64-bit
-     - Not yet supported
+     - Supported
    * - ``USINT_TO_SINT``
      - Unsigned to signed 8-bit
-     - Not yet supported
+     - Supported
    * - ``UINT_TO_INT``
      - Unsigned to signed 16-bit
-     - Not yet supported
+     - Supported
    * - ``UDINT_TO_DINT``
      - Unsigned to signed 32-bit
-     - Not yet supported
+     - Supported
    * - ``ULINT_TO_LINT``
      - Unsigned to signed 64-bit
-     - Not yet supported
+     - Supported
 
 Integer to Real
 ^^^^^^^^^^^^^^^
@@ -171,28 +171,28 @@ values may lose precision when converted to ``REAL``.
      - Support
    * - ``SINT_TO_REAL``
      - 8-bit signed to single-precision
-     - Not yet supported
+     - Supported
    * - ``INT_TO_REAL``
      - 16-bit signed to single-precision
-     - Not yet supported
+     - Supported
    * - ``DINT_TO_REAL``
      - 32-bit signed to single-precision
-     - Not yet supported
+     - Supported
    * - ``LINT_TO_REAL``
      - 64-bit signed to single-precision
-     - Not yet supported
+     - Supported
    * - ``SINT_TO_LREAL``
      - 8-bit signed to double-precision
-     - Not yet supported
+     - Supported
    * - ``INT_TO_LREAL``
      - 16-bit signed to double-precision
-     - Not yet supported
+     - Supported
    * - ``DINT_TO_LREAL``
      - 32-bit signed to double-precision
-     - Not yet supported
+     - Supported
    * - ``LINT_TO_LREAL``
      - 64-bit signed to double-precision
-     - Not yet supported
+     - Supported
 
 Real to Integer
 ^^^^^^^^^^^^^^^
@@ -209,28 +209,28 @@ part is truncated.
      - Support
    * - ``REAL_TO_SINT``
      - Single-precision to 8-bit signed
-     - Not yet supported
+     - Supported
    * - ``REAL_TO_INT``
      - Single-precision to 16-bit signed
-     - Not yet supported
+     - Supported
    * - ``REAL_TO_DINT``
      - Single-precision to 32-bit signed
-     - Not yet supported
+     - Supported
    * - ``REAL_TO_LINT``
      - Single-precision to 64-bit signed
-     - Not yet supported
+     - Supported
    * - ``LREAL_TO_SINT``
      - Double-precision to 8-bit signed
-     - Not yet supported
+     - Supported
    * - ``LREAL_TO_INT``
      - Double-precision to 16-bit signed
-     - Not yet supported
+     - Supported
    * - ``LREAL_TO_DINT``
      - Double-precision to 32-bit signed
-     - Not yet supported
+     - Supported
    * - ``LREAL_TO_LINT``
      - Double-precision to 64-bit signed
-     - Not yet supported
+     - Supported
 
 Real to Real
 ^^^^^^^^^^^^^
@@ -246,10 +246,10 @@ Conversions between floating-point types.
      - Support
    * - ``REAL_TO_LREAL``
      - Single-precision to double-precision
-     - Not yet supported
+     - Supported
    * - ``LREAL_TO_REAL``
      - Double-precision to single-precision
-     - Not yet supported
+     - Supported
 
 Boolean Conversions
 ^^^^^^^^^^^^^^^^^^^
