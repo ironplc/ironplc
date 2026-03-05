@@ -178,6 +178,24 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         expr.resolved_type = self.resolve_type(&expr.kind);
         Ok(expr)
     }
+
+    fn fold_initial_value_assignment_kind(
+        &mut self,
+        node: InitialValueAssignmentKind,
+    ) -> Result<InitialValueAssignmentKind, Diagnostic> {
+        if let InitialValueAssignmentKind::Simple(simple) = &node {
+            if let Some(resolved) = self
+                .type_environment
+                .resolve_elementary_type_name(&simple.type_name)
+            {
+                return Ok(InitialValueAssignmentKind::Simple(SimpleInitializer {
+                    type_name: resolved,
+                    initial_value: simple.initial_value.clone(),
+                }));
+            }
+        }
+        node.recurse_fold(self)
+    }
 }
 
 #[cfg(test)]

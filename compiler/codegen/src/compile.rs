@@ -20,6 +20,7 @@
 //! - Boolean operators (AND, OR, XOR, NOT) with logical semantics
 //! - Bitwise operators (AND, OR, XOR, NOT) for bit string types (BYTE, WORD, DWORD, LWORD)
 //! - Bit shift/rotate functions (SHL, SHR, ROL, ROR) for bit string types
+//! - MUX (multiplexer) function with variable arity (2..16 inputs)
 //! - Variable references (named symbolic variables)
 //! - IF/ELSIF/ELSE statements
 //! - CASE statements (integer and subrange selectors)
@@ -339,6 +340,11 @@ fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
             signedness: Signedness::Signed,
             storage_bits: 64,
         }),
+        "bool" => Some(VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Signed,
+            storage_bits: 1,
+        }),
         "byte" => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
@@ -363,83 +369,51 @@ fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
     }
 }
 
-/// Infers the operation type from an expression by finding the first variable reference.
+/// Returns the operation type from an expression's resolved type annotation.
 ///
-/// IEC 61131-3 requires homogeneous operand types, so any variable in the expression
-/// determines the operation type. For expressions without variables (pure constants),
-/// returns the default `(W32, Signed)`.
-fn infer_op_type(ctx: &CompileContext, expr: &Expr) -> OpType {
-    match &expr.kind {
-        ExprKind::Variable(variable) => {
-            if let Variable::Symbolic(SymbolicVariableKind::Named(named)) = variable {
-                return ctx.var_op_type(&named.name);
-            }
-            DEFAULT_OP_TYPE
-        }
-        ExprKind::LateBound(late_bound) => ctx.var_op_type(&late_bound.value),
-        ExprKind::BinaryOp(binary) => {
-            let left = infer_op_type(ctx, &binary.left);
-            if left != DEFAULT_OP_TYPE {
-                return left;
-            }
-            infer_op_type(ctx, &binary.right)
-        }
-        ExprKind::UnaryOp(unary) => infer_op_type(ctx, &unary.term),
-        ExprKind::Compare(compare) => {
-            let left = infer_op_type(ctx, &compare.left);
-            if left != DEFAULT_OP_TYPE {
-                return left;
-            }
-            infer_op_type(ctx, &compare.right)
-        }
-        ExprKind::Expression(inner) => infer_op_type(ctx, inner),
-        ExprKind::Function(func) => func
-            .param_assignment
-            .iter()
-            .find_map(|p| match p {
-                ParamAssignmentKind::PositionalInput(pos) => {
-                    let t = infer_op_type(ctx, &pos.expr);
-                    if t != DEFAULT_OP_TYPE {
-                        Some(t)
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            })
-            .unwrap_or(DEFAULT_OP_TYPE),
-        _ => DEFAULT_OP_TYPE,
-    }
+/// The analyzer must have populated `expr.resolved_type`. A missing or
+/// unrecognized resolved type is a compiler bug.
+fn op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
+    let resolved = expr
+        .resolved_type
+        .as_ref()
+        .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+    let info =
+        resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+    Ok((info.op_width, info.signedness))
 }
 
-/// Infers the storage bit width from an expression by finding the first variable reference.
+/// Returns the storage bit width from an expression's resolved type annotation.
 ///
-/// Used after BIT_NOT to emit the correct truncation opcode for narrow types
-/// (BYTE needs TRUNC_U8, WORD needs TRUNC_U16). Returns `None` if no variable
-/// reference is found.
-fn infer_storage_bits(ctx: &CompileContext, expr: &Expr) -> Option<u8> {
+/// The analyzer must have populated `expr.resolved_type`. A missing or
+/// unrecognized resolved type is a compiler bug.
+fn storage_bits(expr: &Expr) -> Result<u8, Diagnostic> {
+    let resolved = expr
+        .resolved_type
+        .as_ref()
+        .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+    let info =
+        resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+    Ok(info.storage_bits)
+}
+
+/// Returns the operation type for compiling a condition expression.
+///
+/// For comparison operators (`>`, `<`, `=`, etc.), returns the type of the
+/// left operand since the comparison's own resolved type is BOOL but we need
+/// the operand type for correct signedness. For boolean combinations (AND,
+/// OR, XOR), recurses into the first operand. For other expressions (bare
+/// boolean variables, parenthesized expressions), returns the expression's
+/// own resolved type.
+fn condition_op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
     match &expr.kind {
-        ExprKind::Variable(variable) => {
-            if let Variable::Symbolic(SymbolicVariableKind::Named(named)) = variable {
-                return ctx.var_type_info(&named.name).map(|ti| ti.storage_bits);
-            }
-            None
-        }
-        ExprKind::LateBound(late_bound) => ctx
-            .var_type_info(&late_bound.value)
-            .map(|ti| ti.storage_bits),
-        ExprKind::BinaryOp(binary) => {
-            infer_storage_bits(ctx, &binary.left).or_else(|| infer_storage_bits(ctx, &binary.right))
-        }
-        ExprKind::UnaryOp(unary) => infer_storage_bits(ctx, &unary.term),
-        ExprKind::Compare(compare) => infer_storage_bits(ctx, &compare.left)
-            .or_else(|| infer_storage_bits(ctx, &compare.right)),
-        ExprKind::Expression(inner) => infer_storage_bits(ctx, inner),
-        ExprKind::Function(func) => func.param_assignment.iter().find_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => infer_storage_bits(ctx, &pos.expr),
-            _ => None,
-        }),
-        _ => None,
+        ExprKind::Compare(compare) => match compare.op {
+            CompareOp::And | CompareOp::Or | CompareOp::Xor => condition_op_type(&compare.left),
+            _ => op_type(&compare.left),
+        },
+        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Not => condition_op_type(&unary.term),
+        ExprKind::Expression(inner) => condition_op_type(inner),
+        _ => op_type(expr),
     }
 }
 
@@ -555,8 +529,8 @@ fn compile_if(
     };
 
     // Compile the IF condition at its inferred operation type.
-    let op_type = infer_op_type(ctx, &if_stmt.expr);
-    compile_expr(emitter, ctx, &if_stmt.expr, op_type)?;
+    let cond_type = condition_op_type(&if_stmt.expr)?;
+    compile_expr(emitter, ctx, &if_stmt.expr, cond_type)?;
 
     // Jump past the then-body if condition is false.
     let next_label = emitter.create_label();
@@ -574,7 +548,7 @@ fn compile_if(
 
     // Compile ELSIF clauses.
     for elsif in &if_stmt.else_ifs {
-        let elsif_op_type = infer_op_type(ctx, &elsif.expr);
+        let elsif_op_type = condition_op_type(&elsif.expr)?;
         compile_expr(emitter, ctx, &elsif.expr, elsif_op_type)?;
         let elsif_next = emitter.create_label();
         emitter.emit_jmp_if_not(elsif_next);
@@ -622,7 +596,7 @@ fn compile_case(
     case_stmt: &ironplc_dsl::textual::Case,
 ) -> Result<(), Diagnostic> {
     let end_label = emitter.create_label();
-    let op_type = infer_op_type(ctx, &case_stmt.selector);
+    let op_type = op_type(&case_stmt.selector)?;
 
     for group in &case_stmt.statement_groups {
         let next_label = emitter.create_label();
@@ -769,8 +743,8 @@ fn compile_while(
     let end_label = emitter.create_label();
 
     emitter.bind_label(loop_label);
-    let op_type = infer_op_type(ctx, &while_stmt.condition);
-    compile_expr(emitter, ctx, &while_stmt.condition, op_type)?;
+    let cond_type = condition_op_type(&while_stmt.condition)?;
+    compile_expr(emitter, ctx, &while_stmt.condition, cond_type)?;
     emitter.emit_jmp_if_not(end_label);
     ctx.loop_exit_labels.push(end_label);
     compile_stmts(emitter, ctx, &while_stmt.body)?;
@@ -801,8 +775,8 @@ fn compile_repeat(
     ctx.loop_exit_labels.push(end_label);
     compile_stmts(emitter, ctx, &repeat_stmt.body)?;
     ctx.loop_exit_labels.pop();
-    let op_type = infer_op_type(ctx, &repeat_stmt.until);
-    compile_expr(emitter, ctx, &repeat_stmt.until, op_type)?;
+    let cond_type = condition_op_type(&repeat_stmt.until)?;
+    compile_expr(emitter, ctx, &repeat_stmt.until, cond_type)?;
     emitter.emit_jmp_if_not(loop_label);
     emitter.bind_label(end_label);
 
@@ -1137,9 +1111,9 @@ fn compile_expr(
                 match op_type {
                     (OpWidth::W32, Signedness::Unsigned) => {
                         emitter.emit_bit_not_32();
-                        match infer_storage_bits(ctx, &unary.term) {
-                            Some(8) => emitter.emit_trunc_u8(),
-                            Some(16) => emitter.emit_trunc_u16(),
+                        match storage_bits(&unary.term)? {
+                            8 => emitter.emit_trunc_u8(),
+                            16 => emitter.emit_trunc_u16(),
                             _ => {}
                         }
                     }
@@ -1195,6 +1169,7 @@ fn compile_function_call(
         "shl" | "shr" | "rol" | "ror" => {
             compile_shift_rotate(emitter, ctx, func, op_type, name.as_str())
         }
+        "mux" => compile_mux(emitter, ctx, func, op_type),
         _ => compile_generic_builtin(emitter, ctx, func, op_type),
     }
 }
@@ -1248,6 +1223,67 @@ fn compile_generic_builtin(
     Ok(())
 }
 
+/// Compiles a MUX (multiplexer) function call.
+///
+/// MUX(K, IN0, IN1, ..., INn) selects one of the IN values based on the
+/// integer selector K. The first argument K is always compiled as I32
+/// (integer selector), while the remaining IN arguments use the caller's op_type.
+///
+/// The opcode encodes the number of IN arguments: `MUX_<WIDTH>_BASE + num_inputs`.
+fn compile_mux(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    // Must have at least 3 args (K + 2 IN values)
+    if args.len() < 3 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let num_inputs = (args.len() - 1) as u16; // subtract K
+
+    if num_inputs > opcode::builtin::MUX_MAX_INPUTS {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let base = match op_type.0 {
+        OpWidth::W32 => opcode::builtin::MUX_I32_BASE,
+        OpWidth::W64 => opcode::builtin::MUX_I64_BASE,
+        OpWidth::F32 => opcode::builtin::MUX_F32_BASE,
+        OpWidth::F64 => opcode::builtin::MUX_F64_BASE,
+    };
+    let func_id = base + num_inputs;
+
+    // Compile K (first arg) as integer
+    compile_expr(emitter, ctx, args[0], DEFAULT_OP_TYPE)?;
+
+    // Compile IN0..INn with the caller's op_type
+    for arg in &args[1..] {
+        compile_expr(emitter, ctx, arg, op_type)?;
+    }
+
+    emitter.emit_builtin(func_id);
+    Ok(())
+}
+
 /// Compiles a bit shift or rotate function call (SHL, SHR, ROL, ROR).
 ///
 /// Expects two positional arguments: IN (value) and N (shift count).
@@ -1288,7 +1324,7 @@ fn compile_shift_rotate(
     compile_expr(emitter, ctx, args[1], n_op_type)?;
 
     // Determine storage bits for narrow-type ROL/ROR selection
-    let storage_bits = infer_storage_bits(ctx, args[0]);
+    let bits = storage_bits(args[0])?;
 
     let func_id = match (name, op_type.0) {
         ("shl", OpWidth::W64) => opcode::builtin::SHL_I64,
@@ -1296,15 +1332,15 @@ fn compile_shift_rotate(
         ("shr", OpWidth::W64) => opcode::builtin::SHR_I64,
         ("shr", _) => opcode::builtin::SHR_I32,
         ("rol", OpWidth::W64) => opcode::builtin::ROL_I64,
-        ("rol", _) => match storage_bits {
-            Some(8) => opcode::builtin::ROL_U8,
-            Some(16) => opcode::builtin::ROL_U16,
+        ("rol", _) => match bits {
+            8 => opcode::builtin::ROL_U8,
+            16 => opcode::builtin::ROL_U16,
             _ => opcode::builtin::ROL_I32,
         },
         ("ror", OpWidth::W64) => opcode::builtin::ROR_I64,
-        ("ror", _) => match storage_bits {
-            Some(8) => opcode::builtin::ROR_U8,
-            Some(16) => opcode::builtin::ROR_U16,
+        ("ror", _) => match bits {
+            8 => opcode::builtin::ROR_U8,
+            16 => opcode::builtin::ROR_U16,
             _ => opcode::builtin::ROR_I32,
         },
         _ => {
@@ -1755,9 +1791,14 @@ mod tests {
     use ironplc_parser::options::ParseOptions;
     use ironplc_parser::parse_program;
 
-    /// Helper to parse an IEC 61131-3 program string into a Library.
+    /// Helper to parse and analyze an IEC 61131-3 program string into a Library.
+    ///
+    /// Runs the analyzer's type resolution pass so that `Expr.resolved_type` is
+    /// populated, which codegen requires for control flow and bitwise operations.
     fn parse(source: &str) -> Library {
-        parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap()
+        let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
+        let (analyzed, _ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
+        analyzed
     }
 
     #[test]
