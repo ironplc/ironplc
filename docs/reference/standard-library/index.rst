@@ -17,100 +17,100 @@ Functions
      - Status
    * - :doc:`ABS <functions/abs>`
      - Absolute value
-     - Not yet supported
+     - Supported
    * - :doc:`SQRT <functions/sqrt>`
      - Square root
-     - Not yet supported
+     - Supported (REAL, LREAL)
    * - :doc:`LN <functions/ln>`
      - Natural logarithm
-     - Not yet supported
+     - Supported (REAL, LREAL)
    * - :doc:`LOG <functions/log>`
      - Base-10 logarithm
-     - Not yet supported
+     - Supported (REAL, LREAL)
    * - :doc:`EXP <functions/exp>`
      - Natural exponential
-     - Not yet supported
+     - Supported (REAL, LREAL)
    * - :doc:`EXPT <functions/expt>`
      - Exponentiation
-     - Supported (INT)
+     - Supported
    * - :doc:`SIN <functions/sin>`
      - Sine
-     - Not yet supported
+     - Supported (REAL, LREAL)
    * - :doc:`COS <functions/cos>`
      - Cosine
-     - Not yet supported
+     - Supported (REAL, LREAL)
    * - :doc:`TAN <functions/tan>`
      - Tangent
-     - Not yet supported
+     - Supported (REAL, LREAL)
    * - :doc:`ASIN <functions/asin>`
      - Arc sine
-     - Not yet supported
+     - Supported (REAL, LREAL)
    * - :doc:`ACOS <functions/acos>`
      - Arc cosine
-     - Not yet supported
+     - Supported (REAL, LREAL)
    * - :doc:`ATAN <functions/atan>`
      - Arc tangent
-     - Not yet supported
+     - Supported (REAL, LREAL)
    * - :doc:`ADD <functions/add>`
      - Addition
-     - Supported (INT)
+     - Supported
    * - :doc:`SUB <functions/sub>`
      - Subtraction
-     - Supported (INT)
+     - Supported
    * - :doc:`MUL <functions/mul>`
      - Multiplication
-     - Supported (INT)
+     - Supported
    * - :doc:`DIV <functions/div>`
      - Division
-     - Supported (INT)
+     - Supported
    * - :doc:`MOD <functions/mod>`
      - Modulo
-     - Supported (INT)
+     - Supported
    * - :doc:`GT <functions/gt>`
      - Greater than
-     - Supported (INT)
+     - Supported
    * - :doc:`GE <functions/ge>`
      - Greater than or equal
-     - Supported (INT)
+     - Supported
    * - :doc:`EQ <functions/eq>`
      - Equal
-     - Supported (INT)
+     - Supported
    * - :doc:`LE <functions/le>`
      - Less than or equal
-     - Supported (INT)
+     - Supported
    * - :doc:`LT <functions/lt>`
      - Less than
-     - Supported (INT)
+     - Supported
    * - :doc:`NE <functions/ne>`
      - Not equal
-     - Supported (INT)
+     - Supported
    * - :doc:`SEL <functions/sel>`
      - Binary selection
-     - Not yet supported
+     - Supported
    * - :doc:`MAX <functions/max>`
      - Maximum
-     - Not yet supported
+     - Supported
    * - :doc:`MIN <functions/min>`
      - Minimum
-     - Not yet supported
+     - Supported
    * - :doc:`LIMIT <functions/limit>`
      - Clamp to range
-     - Not yet supported
+     - Supported
    * - :doc:`MUX <functions/mux>`
      - Multiplexer
-     - Not yet supported
+     - Supported
    * - :doc:`SHL <functions/shl>`
      - Shift left
-     - Not yet supported
+     - Supported
    * - :doc:`SHR <functions/shr>`
      - Shift right
-     - Not yet supported
+     - Supported
    * - :doc:`ROL <functions/rol>`
      - Rotate left
-     - Not yet supported
+     - Supported
    * - :doc:`ROR <functions/ror>`
      - Rotate right
-     - Not yet supported
+     - Supported
    * - :doc:`LEN <functions/len>`
      - String length
      - Not yet supported
@@ -140,7 +140,7 @@ Functions
      - Not yet supported
    * - :doc:`Type conversions <functions/type-conversions>`
      - Type conversion functions
-     - Not yet supported
+     - Supported
 
 Function Blocks
 ---------------
@@ -154,34 +154,34 @@ Function Blocks
      - Status
    * - :doc:`TON <function-blocks/ton>`
      - On-delay timer
-     - Not yet supported
+     - Supported
    * - :doc:`TOF <function-blocks/tof>`
      - Off-delay timer
-     - Not yet supported
+     - Supported
    * - :doc:`TP <function-blocks/tp>`
      - Pulse timer
-     - Not yet supported
+     - Supported
    * - :doc:`CTU <function-blocks/ctu>`
      - Count up
-     - Not yet supported
+     - Supported
    * - :doc:`CTD <function-blocks/ctd>`
      - Count down
-     - Not yet supported
+     - Supported
    * - :doc:`CTUD <function-blocks/ctud>`
      - Count up/down
-     - Not yet supported
+     - Supported
    * - :doc:`R_TRIG <function-blocks/r-trig>`
      - Rising edge detection
-     - Not yet supported
+     - Supported
    * - :doc:`F_TRIG <function-blocks/f-trig>`
      - Falling edge detection
-     - Not yet supported
+     - Supported
    * - :doc:`SR <function-blocks/sr>`
      - Set/reset flip-flop
-     - Not yet supported
+     - Supported
    * - :doc:`RS <function-blocks/rs>`
      - Reset/set flip-flop
-     - Not yet supported
+     - Supported
 
 .. toctree::
    :maxdepth: 1
