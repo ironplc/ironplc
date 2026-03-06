@@ -29,7 +29,8 @@ fn execute_when_conv_i32_to_f32_positive_then_correct() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -58,7 +59,8 @@ fn execute_when_conv_i32_to_f32_negative_then_correct() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -92,7 +94,8 @@ fn execute_when_conv_i32_to_f64_then_correct() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -126,7 +129,8 @@ fn execute_when_conv_i64_to_f32_then_correct() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -157,7 +161,8 @@ fn execute_when_conv_i64_to_f64_then_correct() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -188,7 +193,8 @@ fn execute_when_conv_u32_to_f32_then_correct() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -223,7 +229,8 @@ fn execute_when_conv_u32_to_f64_large_unsigned_then_correct() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();

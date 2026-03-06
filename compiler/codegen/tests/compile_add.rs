@@ -27,7 +27,7 @@ END_PROGRAM
     // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
     // y := x + 32: LOAD_VAR_I32 var:0, LOAD_CONST_I32 pool:1, ADD_I32, STORE_VAR_I32 var:1
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -62,7 +62,7 @@ END_PROGRAM
     assert_eq!(container.constant_pool.get_i32(2).unwrap(), 3);
 
     // (1 + 2) + 3: left-associative evaluation
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -91,7 +91,7 @@ END_PROGRAM
     let container = compile(&library).unwrap();
 
     // (10 + 5) - 3
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -120,7 +120,7 @@ END_PROGRAM
     let container = compile(&library).unwrap();
 
     // Parser should respect operator precedence: 2 + (3 * 4)
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[

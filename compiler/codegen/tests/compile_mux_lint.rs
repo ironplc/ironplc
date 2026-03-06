@@ -20,7 +20,7 @@ END_PROGRAM
     let library = parse(source);
     let container = compile(&library).unwrap();
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     // BUILTIN MUX_I64_BASE+3 = 0x0423
     let builtin_pos = bytecode
         .windows(3)

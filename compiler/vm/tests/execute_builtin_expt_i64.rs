@@ -29,7 +29,8 @@ fn execute_when_expt_i64_then_correct() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64(), 1_099_511_627_776);
@@ -55,7 +56,8 @@ fn execute_when_expt_i64_negative_exponent_then_traps() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     assert_trap(&mut vm, Trap::NegativeExponent);
 }

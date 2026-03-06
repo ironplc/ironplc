@@ -87,6 +87,83 @@ END_PROGRAM
 }
 
 #[test]
+fn end_to_end_when_int_initial_value_then_used_in_expression() {
+    let source = "
+PROGRAM main
+  VAR
+    x : INT := 10;
+    y : INT := 32;
+  END_VAR
+  y := y + x;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 10);
+    assert_eq!(bufs.vars[1].as_i32(), 42);
+}
+
+#[test]
+fn end_to_end_when_dint_initial_value_then_variable_initialized() {
+    let source = "
+PROGRAM main
+  VAR
+    x : DINT := 100;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 100);
+}
+
+#[test]
+fn end_to_end_when_mixed_initialized_and_uninitialized_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    a : DINT := 5;
+    b : DINT;
+    c : DINT := 15;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 5);
+    assert_eq!(bufs.vars[1].as_i32(), 0);
+    assert_eq!(bufs.vars[2].as_i32(), 15);
+}
+
+#[test]
+fn end_to_end_when_lint_initial_value_then_variable_initialized() {
+    let source = "
+PROGRAM main
+  VAR
+    x : LINT := 1000000;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i64(), 1000000);
+}
+
+#[test]
+fn end_to_end_when_sint_initial_value_then_truncated() {
+    let source = "
+PROGRAM main
+  VAR
+    x : SINT := 42;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 42);
+}
+
+#[test]
 fn end_to_end_when_multiple_scans_then_idempotent() {
     let source = "
 PROGRAM main
@@ -108,7 +185,8 @@ END_PROGRAM
             &mut bufs.programs,
             &mut bufs.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     // Run multiple scans - result should be the same each time
     vm.run_round(0).unwrap();
@@ -117,4 +195,44 @@ END_PROGRAM
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 99);
     assert_eq!(vm.scan_count(), 2);
+}
+
+#[test]
+fn end_to_end_when_init_with_accumulator_then_init_runs_once() {
+    // x starts at 10, each scan adds 1. If init re-ran every scan,
+    // x would be 11 after every scan. With separate init, x accumulates.
+    let source = "
+PROGRAM main
+  VAR
+    x : DINT := 10;
+  END_VAR
+  x := x + 1;
+END_PROGRAM
+";
+    let library = parse(source);
+    let container = compile(&library).unwrap();
+    let mut bufs = VmBuffers::from_container(&container);
+    let mut vm = Vm::new()
+        .load(
+            &container,
+            &mut bufs.stack,
+            &mut bufs.vars,
+            &mut bufs.tasks,
+            &mut bufs.programs,
+            &mut bufs.ready,
+        )
+        .start()
+        .unwrap();
+
+    // After scan 1: x = 10 + 1 = 11
+    vm.run_round(0).unwrap();
+    assert_eq!(vm.read_variable(0).unwrap(), 11);
+
+    // After scan 2: x = 11 + 1 = 12 (NOT 11, which would mean re-init)
+    vm.run_round(0).unwrap();
+    assert_eq!(vm.read_variable(0).unwrap(), 12);
+
+    // After scan 3: x = 12 + 1 = 13
+    vm.run_round(0).unwrap();
+    assert_eq!(vm.read_variable(0).unwrap(), 13);
 }

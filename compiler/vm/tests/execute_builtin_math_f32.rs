@@ -29,7 +29,8 @@ fn execute_when_ln_f32_e_then_one() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -58,7 +59,8 @@ fn execute_when_ln_f32_one_then_zero() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -89,7 +91,8 @@ fn execute_when_log_f32_hundred_then_two() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -118,7 +121,8 @@ fn execute_when_log_f32_one_then_zero() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -149,7 +153,8 @@ fn execute_when_exp_f32_zero_then_one() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -178,7 +183,8 @@ fn execute_when_exp_f32_one_then_e() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();

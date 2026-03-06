@@ -26,7 +26,7 @@ END_PROGRAM
     // x := -5: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
     // y := ABS(x): LOAD_VAR_I32 var:0, BUILTIN ABS_I32, STORE_VAR_I32 var:1
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[

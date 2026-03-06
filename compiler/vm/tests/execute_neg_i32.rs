@@ -26,7 +26,8 @@ fn execute_when_neg_i32_then_correct_result() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), -5);
@@ -53,7 +54,8 @@ fn execute_when_neg_i32_negative_then_positive() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 3);
@@ -80,7 +82,8 @@ fn execute_when_neg_i32_zero_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -107,7 +110,8 @@ fn execute_when_neg_i32_min_then_wraps() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     // wrapping_neg: i32::MIN wraps to i32::MIN

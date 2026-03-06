@@ -29,7 +29,8 @@ fn execute_when_jmp_then_skips_instruction() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0); // untouched
@@ -59,7 +60,8 @@ fn execute_when_jmp_if_not_true_then_no_jump() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 42);
@@ -88,7 +90,8 @@ fn execute_when_jmp_if_not_false_then_jumps() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -124,7 +127,8 @@ fn execute_when_if_else_true_then_takes_then_branch() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 10);
@@ -160,7 +164,8 @@ fn execute_when_if_else_false_then_takes_else_branch() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 20);

@@ -37,7 +37,8 @@ fn execute_when_limit_u64_in_range_then_unchanged() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64() as u64, 5_000_000_000);

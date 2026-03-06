@@ -70,6 +70,7 @@ impl Vm {
                     entry_function_id: p.entry_function_id,
                     var_table_offset: p.var_table_offset,
                     var_table_count: p.var_table_count,
+                    init_function_id: p.init_function_id,
                 };
             }
         }
@@ -108,10 +109,53 @@ pub struct VmReady<'a> {
 
 impl<'a> VmReady<'a> {
     /// Starts the VM for scan execution.
-    /// Consumes the ready VM and returns a running VM.
-    pub fn start(self) -> VmRunning<'a> {
+    ///
+    /// Executes the init function for each program instance to apply
+    /// variable initial values. Returns `Err(FaultContext)` if an init
+    /// function traps. On success, returns a running VM ready for scan
+    /// cycles.
+    pub fn start(mut self) -> Result<VmRunning<'a>, FaultContext> {
         let shared_globals_size = self.container.task_table.shared_globals_size;
-        VmRunning {
+
+        // Execute init functions once before entering scan mode.
+        for pi in 0..self.program_instances.len() {
+            let init_fn = self.program_instances[pi].init_function_id;
+            let instance_id = self.program_instances[pi].instance_id;
+            let task_id = self.program_instances[pi].task_id;
+            let var_table_offset = self.program_instances[pi].var_table_offset;
+            let var_table_count = self.program_instances[pi].var_table_count;
+
+            let bytecode =
+                self.container
+                    .code
+                    .get_function_bytecode(init_fn)
+                    .ok_or(FaultContext {
+                        trap: Trap::InvalidFunctionId(init_fn),
+                        task_id,
+                        instance_id,
+                    })?;
+
+            let scope = VariableScope {
+                shared_globals_size,
+                instance_offset: var_table_offset,
+                instance_count: var_table_count,
+            };
+
+            execute(
+                bytecode,
+                self.container,
+                &mut self.stack,
+                &mut self.variables,
+                &scope,
+            )
+            .map_err(|trap| FaultContext {
+                trap,
+                task_id,
+                instance_id,
+            })?;
+        }
+
+        Ok(VmRunning {
             container: self.container,
             stack: self.stack,
             variables: self.variables,
@@ -121,7 +165,7 @@ impl<'a> VmReady<'a> {
             shared_globals_size,
             scan_count: 0,
             stop_requested: false,
-        }
+        })
     }
 
     /// Reads a variable value as an i32.
@@ -917,7 +961,12 @@ mod tests {
         for &c in constants {
             builder = builder.add_i32_constant(c);
         }
-        builder.add_function(0, bytecode, 16, num_vars).build()
+        builder
+            .add_function(0, &[0xB5], 0, num_vars) // init: RET_VOID
+            .add_function(1, bytecode, 16, num_vars) // scan: test bytecode
+            .init_function_id(0)
+            .entry_function_id(1)
+            .build()
     }
 
     /// Asserts that a run_round produces a specific trap.
@@ -946,7 +995,10 @@ mod tests {
             .num_variables(2)
             .add_i32_constant(10)
             .add_i32_constant(32)
-            .add_function(0, &bytecode, 2, 2)
+            .add_function(0, &[0xB5], 0, 2) // init: RET_VOID
+            .add_function(1, &bytecode, 2, 2) // scan: program body
+            .init_function_id(0)
+            .entry_function_id(1)
             .build()
     }
 
@@ -981,7 +1033,8 @@ mod tests {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
 
         vm.run_round(0).unwrap();
 
@@ -1002,7 +1055,8 @@ mod tests {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
 
         assert_trap(&mut vm, Trap::InvalidInstruction(0xFF));
     }
@@ -1020,7 +1074,8 @@ mod tests {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
 
         assert!(!vm.stop_requested());
         vm.request_stop();
@@ -1040,7 +1095,8 @@ mod tests {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         let stopped = vm.stop();
         assert_eq!(stopped.read_variable(0).unwrap(), 0); // not yet executed
     }
@@ -1058,7 +1114,8 @@ mod tests {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         let ctx = FaultContext {
             trap: Trap::WatchdogTimeout(3),
             task_id: 3,
@@ -1087,7 +1144,10 @@ mod tests {
             .num_variables(0)
             .add_i32_constant(1)
             .add_i32_constant(2)
-            .add_function(0, &bytecode, 1, 0)
+            .add_function(0, &[0xB5], 0, 0) // init: RET_VOID
+            .add_function(1, &bytecode, 1, 0) // scan: triggers overflow
+            .init_function_id(0)
+            .entry_function_id(1)
             .build();
 
         let mut b = VmBuffers::from_container(&c);
@@ -1100,7 +1160,8 @@ mod tests {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         assert_trap(&mut vm, Trap::StackOverflow);
     }
 
@@ -1118,7 +1179,8 @@ mod tests {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
 
         assert_trap(&mut vm, Trap::StackUnderflow);
     }
@@ -1141,7 +1203,8 @@ mod tests {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
 
         assert_trap(&mut vm, Trap::InvalidConstantIndex(0));
     }
@@ -1165,7 +1228,8 @@ mod tests {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
 
         assert_trap(&mut vm, Trap::InvalidVariableIndex(5));
     }
@@ -1188,7 +1252,8 @@ mod tests {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
 
         assert_trap(&mut vm, Trap::InvalidVariableIndex(5));
     }
@@ -1208,7 +1273,8 @@ mod tests {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
 
         assert!(vm.run_round(0).is_ok());
     }

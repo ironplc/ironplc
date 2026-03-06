@@ -161,7 +161,8 @@ END_PROGRAM
             &mut bufs.programs,
             &mut bufs.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     // Scan 1: x = 0*2+1 = 1
     // Scan 2: x = 1*2+1 = 3

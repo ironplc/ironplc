@@ -27,7 +27,8 @@ fn execute_when_sub_i32_basic_then_correct() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 7);
@@ -54,7 +55,8 @@ fn execute_when_sub_i32_result_negative_then_correct() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), -7);
@@ -81,7 +83,8 @@ fn execute_when_sub_i32_both_zero_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -108,7 +111,8 @@ fn execute_when_sub_i32_same_value_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -136,7 +140,8 @@ fn execute_when_sub_i32_wraps_at_min_then_correct() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), i32::MAX);
@@ -164,7 +169,8 @@ fn execute_when_sub_i32_wraps_at_max_then_correct() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), i32::MIN);
@@ -192,7 +198,8 @@ fn execute_when_sub_i32_min_minus_max_then_wraps_to_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     // i32::MIN - i32::MAX = -2147483648 - 2147483647 = wraps to 1
@@ -221,7 +228,8 @@ fn execute_when_sub_i32_max_minus_min_then_wraps_to_neg_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     // i32::MAX - i32::MIN = 2147483647 - (-2147483648) = wraps to -1
@@ -250,7 +258,8 @@ fn execute_when_sub_i32_zero_minus_min_then_wraps() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     // 0 - i32::MIN = 0 - (-2147483648) = wraps to i32::MIN
@@ -279,7 +288,8 @@ fn execute_when_sub_i32_negative_operands_then_correct() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     // -10 - (-3) = -7
@@ -300,7 +310,8 @@ fn execute_when_sub_i32_stack_underflow_then_trap() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     assert_trap(&mut vm, Trap::StackUnderflow);
 }

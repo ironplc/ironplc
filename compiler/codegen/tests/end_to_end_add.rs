@@ -85,7 +85,8 @@ END_PROGRAM
             &mut bufs.programs,
             &mut bufs.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     for _ in 0..5 {
         vm.run_round(0).unwrap();

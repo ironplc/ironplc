@@ -125,22 +125,31 @@ fn find_program(library: &Library) -> Result<&ProgramDeclaration, Diagnostic> {
 }
 
 /// Compiles a single PROGRAM into a container.
+///
+/// Always emits two functions:
+/// - Function 0: init (load constants + store variables, called once by VM)
+/// - Function 1: scan (program body, called every scan cycle)
+///
+/// When no initial values exist, the init function is a single RET_VOID.
 fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic> {
     let mut ctx = CompileContext::new();
 
     // Assign variable indices for all declared variables.
     assign_variables(&mut ctx, &program.variables)?;
 
-    // Compile the program body.
-    let mut emitter = Emitter::new();
-    compile_body(&mut emitter, &mut ctx, &program.body)?;
-    emitter.emit_ret_void();
+    // Emit bytecode for variable initial values into the init emitter.
+    let mut init_emitter = Emitter::new();
+    emit_initial_values(&mut init_emitter, &mut ctx, &program.variables)?;
+    init_emitter.emit_ret_void();
+
+    // Compile the program body into the scan emitter.
+    let mut scan_emitter = Emitter::new();
+    compile_body(&mut scan_emitter, &mut ctx, &program.body)?;
+    scan_emitter.emit_ret_void();
 
     // Build the container.
     let num_variables = ctx.variables.len() as u16;
     let num_locals = num_variables;
-    let max_stack_depth = emitter.max_stack_depth();
-    let bytecode = emitter.bytecode();
 
     let mut builder = ContainerBuilder::new().num_variables(num_variables);
 
@@ -154,7 +163,16 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
         }
     }
 
-    builder = builder.add_function(0, bytecode, max_stack_depth, num_locals);
+    // Function 0: init, Function 1: scan
+    let init_stack = init_emitter.max_stack_depth();
+    let init_bytecode = init_emitter.bytecode();
+    builder = builder.add_function(0, init_bytecode, init_stack, num_locals);
+
+    let scan_stack = scan_emitter.max_stack_depth();
+    let scan_bytecode = scan_emitter.bytecode();
+    builder = builder.add_function(1, scan_bytecode, scan_stack, num_locals);
+
+    builder = builder.init_function_id(0).entry_function_id(1);
 
     Ok(builder.build())
 }
@@ -278,6 +296,39 @@ fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Resul
             if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
                 if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
                     ctx.var_types.insert(id.clone(), type_info);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Emits bytecode to initialize variables that have declared initial values.
+///
+/// For each variable with a `SimpleInitializer` containing an integer literal,
+/// emits load-constant + truncate (if narrow) + store-variable instructions.
+fn emit_initial_values(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    declarations: &[VarDecl],
+) -> Result<(), Diagnostic> {
+    for decl in declarations {
+        if let Some(id) = decl.identifier.symbolic_id() {
+            if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
+                if let Some(constant) = &simple.initial_value {
+                    let var_index = ctx.var_index(id)?;
+                    let type_info = ctx.var_type_info(id);
+                    let op_type = type_info
+                        .map(|ti| (ti.op_width, ti.signedness))
+                        .unwrap_or(DEFAULT_OP_TYPE);
+
+                    compile_constant(emitter, ctx, constant, op_type)?;
+
+                    if let Some(ti) = type_info {
+                        emit_truncation(emitter, ti);
+                    }
+
+                    emit_store_var(emitter, var_index, op_type);
                 }
             }
         }
@@ -1930,12 +1981,16 @@ END_PROGRAM
         let container = compile(&library).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
-        assert_eq!(container.header.num_functions, 1);
+        assert_eq!(container.header.num_functions, 2);
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), 10);
 
-        // LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0, RET_VOID
-        let bytecode = container.code.get_function_bytecode(0).unwrap();
-        assert_eq!(bytecode, &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00, 0xB5]);
+        // Function 0: init (RET_VOID only, no initial values)
+        let init_bytecode = container.code.get_function_bytecode(0).unwrap();
+        assert_eq!(init_bytecode, &[0xB5]);
+
+        // Function 1: scan — LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0, RET_VOID
+        let scan_bytecode = container.code.get_function_bytecode(1).unwrap();
+        assert_eq!(scan_bytecode, &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00, 0xB5]);
     }
 
     #[test]
@@ -1967,10 +2022,12 @@ END_PROGRAM
         let library = parse(source);
         let container = compile(&library).unwrap();
 
-        // Should have one function with just RET_VOID
-        assert_eq!(container.header.num_functions, 1);
-        let bytecode = container.code.get_function_bytecode(0).unwrap();
-        assert_eq!(bytecode, &[0xB5]); // RET_VOID only
+        // Should have two functions (init + scan), both just RET_VOID
+        assert_eq!(container.header.num_functions, 2);
+        let init_bytecode = container.code.get_function_bytecode(0).unwrap();
+        assert_eq!(init_bytecode, &[0xB5]); // RET_VOID only
+        let scan_bytecode = container.code.get_function_bytecode(1).unwrap();
+        assert_eq!(scan_bytecode, &[0xB5]); // RET_VOID only
     }
 
     #[test]
@@ -2008,12 +2065,13 @@ END_PROGRAM
         let container = compile(&library).unwrap();
 
         assert_eq!(container.header.num_variables, 2);
-        assert_eq!(container.header.num_functions, 1);
+        assert_eq!(container.header.num_functions, 2);
 
+        // Function 1 (scan):
         // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
         // y := x:  LOAD_VAR_I32 var:0, STORE_VAR_I32 var:1
         // RET_VOID
-        let bytecode = container.code.get_function_bytecode(0).unwrap();
+        let bytecode = container.code.get_function_bytecode(1).unwrap();
         assert_eq!(
             bytecode,
             &[
@@ -2041,8 +2099,8 @@ END_PROGRAM
 
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), -5);
 
-        // LOAD_CONST_I32 pool:0 (-5), STORE_VAR_I32 var:0, RET_VOID
-        let bytecode = container.code.get_function_bytecode(0).unwrap();
+        // Function 1 (scan): LOAD_CONST_I32 pool:0 (-5), STORE_VAR_I32 var:0, RET_VOID
+        let bytecode = container.code.get_function_bytecode(1).unwrap();
         assert_eq!(bytecode, &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00, 0xB5]);
     }
 

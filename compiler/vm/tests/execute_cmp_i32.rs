@@ -31,7 +31,8 @@ fn execute_when_eq_i32_equal_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -59,7 +60,8 @@ fn execute_when_eq_i32_not_equal_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -87,7 +89,8 @@ fn execute_when_eq_i32_negative_equal_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -119,7 +122,8 @@ fn execute_when_ne_i32_not_equal_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -147,7 +151,8 @@ fn execute_when_ne_i32_equal_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -179,7 +184,8 @@ fn execute_when_lt_i32_less_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -207,7 +213,8 @@ fn execute_when_lt_i32_equal_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -235,7 +242,8 @@ fn execute_when_lt_i32_greater_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -267,7 +275,8 @@ fn execute_when_le_i32_less_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -295,7 +304,8 @@ fn execute_when_le_i32_equal_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -323,7 +333,8 @@ fn execute_when_le_i32_greater_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -355,7 +366,8 @@ fn execute_when_gt_i32_greater_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -383,7 +395,8 @@ fn execute_when_gt_i32_equal_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -411,7 +424,8 @@ fn execute_when_gt_i32_less_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -443,7 +457,8 @@ fn execute_when_ge_i32_greater_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -471,7 +486,8 @@ fn execute_when_ge_i32_equal_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -499,7 +515,8 @@ fn execute_when_ge_i32_less_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);

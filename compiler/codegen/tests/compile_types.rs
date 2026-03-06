@@ -22,7 +22,7 @@ END_PROGRAM
     let container = compile(&library).unwrap();
 
     // LOAD_CONST_I32 pool:0, TRUNC_I8, STORE_VAR_I32 var:0, RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -48,7 +48,7 @@ END_PROGRAM
     let container = compile(&library).unwrap();
 
     // LOAD_CONST_I32 pool:0, TRUNC_U16, STORE_VAR_I32 var:0, RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -78,7 +78,7 @@ END_PROGRAM
     // x := 10: LOAD_CONST_I64 pool:0 (10), STORE_VAR_I64 var:0
     // y := x + 1: LOAD_VAR_I64 var:0, LOAD_CONST_I64 pool:1 (1), ADD_I64, STORE_VAR_I64 var:1
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -109,7 +109,7 @@ END_PROGRAM
     let library = parse(source);
     let container = compile(&library).unwrap();
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     // The comparison should use GT_U32 (0x7A) instead of GT_I32 (0x6C)
     assert!(
         bytecode.contains(&0x7A),

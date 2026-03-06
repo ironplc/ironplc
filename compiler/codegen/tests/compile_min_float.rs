@@ -19,7 +19,7 @@ END_PROGRAM
     let library = parse(source);
     let container = compile(&library).unwrap();
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     // y := MIN(x, 10.0): LOAD_VAR_F32 var:0, LOAD_CONST_F32 pool:0, BUILTIN MIN_F32, STORE_VAR_F32 var:1
     assert_eq!(
         bytecode,
@@ -47,7 +47,7 @@ END_PROGRAM
     let library = parse(source);
     let container = compile(&library).unwrap();
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[

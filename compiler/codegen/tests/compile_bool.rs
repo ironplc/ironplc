@@ -29,7 +29,7 @@ END_PROGRAM
     //   BOOL_AND
     //   STORE_VAR_I32 var:1
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -63,7 +63,7 @@ END_PROGRAM
     let library = parse(source);
     let container = compile(&library).unwrap();
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -97,7 +97,7 @@ END_PROGRAM
     let library = parse(source);
     let container = compile(&library).unwrap();
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -134,7 +134,7 @@ END_PROGRAM
     // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
     // y := NOT x: LOAD_VAR_I32 var:0, BOOL_NOT, STORE_VAR_I32 var:1
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -163,7 +163,7 @@ END_PROGRAM
 
     // y := TRUE: LOAD_TRUE, STORE_VAR_I32 var:0
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -189,7 +189,7 @@ END_PROGRAM
 
     // y := FALSE: LOAD_FALSE, STORE_VAR_I32 var:0
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[

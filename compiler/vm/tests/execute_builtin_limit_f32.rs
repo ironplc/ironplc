@@ -29,7 +29,8 @@ fn execute_when_limit_f32_in_range_then_unchanged() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -60,7 +61,8 @@ fn execute_when_limit_f32_below_min_then_clamped() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -91,7 +93,8 @@ fn execute_when_limit_f32_above_max_then_clamped() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -122,7 +125,8 @@ fn execute_when_limit_f32_nan_input_then_nan() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -153,7 +157,8 @@ fn execute_when_limit_f32_nan_bound_then_nan() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();

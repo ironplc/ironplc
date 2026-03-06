@@ -31,7 +31,8 @@ fn execute_when_bool_and_both_true_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -59,7 +60,8 @@ fn execute_when_bool_and_one_false_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -87,7 +89,8 @@ fn execute_when_bool_and_both_false_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -115,7 +118,8 @@ fn execute_when_bool_and_nonzero_coercion_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -147,7 +151,8 @@ fn execute_when_bool_or_both_false_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -175,7 +180,8 @@ fn execute_when_bool_or_first_true_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -203,7 +209,8 @@ fn execute_when_bool_or_second_true_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -231,7 +238,8 @@ fn execute_when_bool_or_nonzero_coercion_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -263,7 +271,8 @@ fn execute_when_bool_xor_both_false_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -291,7 +300,8 @@ fn execute_when_bool_xor_one_true_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -319,7 +329,8 @@ fn execute_when_bool_xor_other_true_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -347,7 +358,8 @@ fn execute_when_bool_xor_both_true_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -375,7 +387,8 @@ fn execute_when_bool_xor_nonzero_coercion_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -406,7 +419,8 @@ fn execute_when_bool_not_true_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -433,7 +447,8 @@ fn execute_when_bool_not_false_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -460,7 +475,8 @@ fn execute_when_bool_not_nonzero_coercion_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);

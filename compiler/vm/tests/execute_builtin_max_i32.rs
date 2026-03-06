@@ -27,7 +27,8 @@ fn execute_when_max_i32_then_returns_larger() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 10);
@@ -55,7 +56,8 @@ fn execute_when_max_i32_equal_then_returns_value() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 5);
@@ -83,7 +85,8 @@ fn execute_when_max_i32_negative_vs_positive_then_returns_positive() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 7);

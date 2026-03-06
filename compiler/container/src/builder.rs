@@ -19,6 +19,8 @@ pub struct ContainerBuilder {
     tasks: Vec<TaskEntry>,
     programs: Vec<ProgramInstanceEntry>,
     shared_globals_size: u16,
+    init_function_id: u16,
+    entry_function_id: u16,
 }
 
 impl ContainerBuilder {
@@ -32,6 +34,8 @@ impl ContainerBuilder {
             tasks: Vec::new(),
             programs: Vec::new(),
             shared_globals_size: 0,
+            init_function_id: 0,
+            entry_function_id: 0,
         }
     }
 
@@ -119,6 +123,18 @@ impl ContainerBuilder {
         self
     }
 
+    /// Sets the init function ID for the default synthesized program instance.
+    pub fn init_function_id(mut self, id: u16) -> Self {
+        self.init_function_id = id;
+        self
+    }
+
+    /// Sets the entry (scan) function ID for the default synthesized program instance.
+    pub fn entry_function_id(mut self, id: u16) -> Self {
+        self.entry_function_id = id;
+        self
+    }
+
     /// Builds the container, computing header fields from the added data.
     ///
     /// If no tasks have been added, synthesizes a default freewheeling task
@@ -147,12 +163,12 @@ impl ContainerBuilder {
             let default_program = ProgramInstanceEntry {
                 instance_id: 0,
                 task_id: 0,
-                entry_function_id: 0,
+                entry_function_id: self.entry_function_id,
                 var_table_offset: 0,
                 var_table_count: self.num_variables,
                 fb_instance_offset: 0,
                 fb_instance_count: 0,
-                reserved: 0,
+                init_function_id: self.init_function_id,
             };
             TaskTable {
                 shared_globals_size: 0,

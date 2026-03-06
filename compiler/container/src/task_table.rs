@@ -35,7 +35,7 @@ pub struct ProgramInstanceEntry {
     pub var_table_count: u16,
     pub fb_instance_offset: u16,
     pub fb_instance_count: u16,
-    pub reserved: u16,
+    pub init_function_id: u16,
 }
 
 /// The task table section of a bytecode container.
@@ -88,7 +88,7 @@ impl TaskTable {
             w.write_all(&prog.var_table_count.to_le_bytes())?;
             w.write_all(&prog.fb_instance_offset.to_le_bytes())?;
             w.write_all(&prog.fb_instance_count.to_le_bytes())?;
-            w.write_all(&prog.reserved.to_le_bytes())?;
+            w.write_all(&prog.init_function_id.to_le_bytes())?;
         }
 
         Ok(())
@@ -140,7 +140,7 @@ impl TaskTable {
                 var_table_count: u16::from_le_bytes([buf[8], buf[9]]),
                 fb_instance_offset: u16::from_le_bytes([buf[10], buf[11]]),
                 fb_instance_count: u16::from_le_bytes([buf[12], buf[13]]),
-                reserved: u16::from_le_bytes([buf[14], buf[15]]),
+                init_function_id: u16::from_le_bytes([buf[14], buf[15]]),
             });
         }
 
@@ -189,7 +189,7 @@ mod tests {
                 var_table_count: 0,
                 fb_instance_offset: 0,
                 fb_instance_count: 0,
-                reserved: 0,
+                init_function_id: 0,
             }],
         };
         // 6 (header) + 32 (1 task) + 16 (1 program) = 54
@@ -220,7 +220,7 @@ mod tests {
                 var_table_count: 5,
                 fb_instance_offset: 0,
                 fb_instance_count: 0,
-                reserved: 0,
+                init_function_id: 0,
             }],
         };
 
@@ -252,7 +252,7 @@ mod tests {
         assert_eq!(decoded.programs[0].var_table_count, 5);
         assert_eq!(decoded.programs[0].fb_instance_offset, 0);
         assert_eq!(decoded.programs[0].fb_instance_count, 0);
-        assert_eq!(decoded.programs[0].reserved, 0);
+        assert_eq!(decoded.programs[0].init_function_id, 0);
     }
 
     #[test]

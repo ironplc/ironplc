@@ -19,7 +19,7 @@ END_PROGRAM
     let library = parse(source);
     let container = compile(&library).unwrap();
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -46,7 +46,7 @@ END_PROGRAM
     let library = parse(source);
     let container = compile(&library).unwrap();
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[

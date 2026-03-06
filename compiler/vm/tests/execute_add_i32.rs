@@ -26,7 +26,8 @@ fn execute_when_add_i32_wraps_at_max_then_correct() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), i32::MIN);
@@ -53,7 +54,8 @@ fn execute_when_add_i32_wraps_at_min_then_correct() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), i32::MAX);

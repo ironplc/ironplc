@@ -28,7 +28,8 @@ fn execute_when_min_f32_then_returns_smaller() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -58,7 +59,8 @@ fn execute_when_min_f32_equal_then_returns_value() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -88,7 +90,8 @@ fn execute_when_min_f32_negative_vs_positive_then_returns_negative() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();

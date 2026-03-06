@@ -26,7 +26,7 @@ END_PROGRAM
     // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
     // y := -x: LOAD_VAR_I32 var:0, NEG_I32, STORE_VAR_I32 var:1
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -57,6 +57,6 @@ END_PROGRAM
     assert_eq!(container.constant_pool.get_i32(0).unwrap(), -5);
 
     // LOAD_CONST_I32 pool:0 (-5), STORE_VAR_I32 var:0, RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(bytecode, &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00, 0xB5]);
 }

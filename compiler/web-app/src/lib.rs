@@ -192,7 +192,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
     let mut program_instances = vec![ProgramInstanceState::default(); program_count];
     let mut ready_buf = vec![0usize; task_count.max(1)];
 
-    let mut running = Vm::new()
+    let mut running = match Vm::new()
         .load(
             &container,
             &mut stack_buf,
@@ -201,7 +201,21 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
             &mut program_instances,
             &mut ready_buf,
         )
-        .start();
+        .start()
+    {
+        Ok(vm) => vm,
+        Err(ctx) => {
+            return RunResult {
+                ok: false,
+                variables: vec![],
+                scans_completed: 0,
+                error: Some(format!(
+                    "VM trap during init: {} (task {}, instance {})",
+                    ctx.trap, ctx.task_id, ctx.instance_id
+                )),
+            };
+        }
+    };
 
     for round in 0..scans {
         let current_us = (round as u64) * 1000;

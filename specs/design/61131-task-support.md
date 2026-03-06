@@ -335,7 +335,7 @@ Each **ProgramInstanceEntry** (16 bytes):
 | 8 | var_table_count | u16 | Number of variable slots for this instance |
 | 10 | fb_instance_offset | u16 | Starting index in the FB instance table for this instance |
 | 12 | fb_instance_count | u16 | Number of FB instance slots for this instance |
-| 14 | reserved | u16 | Reserved; must be zero |
+| 14 | init_function_id | u16 | Function ID of this program's initialization entry point. The VM calls this function once during `start()` before entering scan mode. |
 
 #### Header Restructure
 

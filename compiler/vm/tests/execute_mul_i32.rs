@@ -27,7 +27,8 @@ fn execute_when_mul_i32_basic_then_correct() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 42);
@@ -54,7 +55,8 @@ fn execute_when_mul_i32_by_zero_then_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -81,7 +83,8 @@ fn execute_when_mul_i32_by_one_then_identity() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 42);
@@ -108,7 +111,8 @@ fn execute_when_mul_i32_by_neg_one_then_negation() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), -42);
@@ -135,7 +139,8 @@ fn execute_when_mul_i32_negative_times_negative_then_positive() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 42);
@@ -162,7 +167,8 @@ fn execute_when_mul_i32_positive_times_negative_then_negative() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), -42);
@@ -190,7 +196,8 @@ fn execute_when_mul_i32_max_times_two_then_wraps() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), -2);
@@ -218,7 +225,8 @@ fn execute_when_mul_i32_min_times_two_then_wraps_to_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -246,7 +254,8 @@ fn execute_when_mul_i32_min_times_neg_one_then_wraps() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), i32::MIN);
@@ -274,7 +283,8 @@ fn execute_when_mul_i32_max_times_max_then_wraps() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(
@@ -305,7 +315,8 @@ fn execute_when_mul_i32_min_times_min_then_wraps() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(
@@ -336,7 +347,8 @@ fn execute_when_mul_i32_max_times_min_then_wraps() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(
@@ -359,7 +371,8 @@ fn execute_when_mul_i32_stack_underflow_then_trap() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     assert_trap(&mut vm, Trap::StackUnderflow);
 }

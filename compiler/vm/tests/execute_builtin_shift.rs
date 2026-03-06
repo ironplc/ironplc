@@ -31,7 +31,8 @@ fn execute_when_shl_i32_then_shifts_left() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0xF0);
@@ -66,7 +67,8 @@ fn execute_when_shl_i64_then_shifts_left() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     vm.stop();
@@ -97,7 +99,8 @@ fn execute_when_shr_i32_then_shifts_right_logical() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0x0F);
@@ -125,7 +128,8 @@ fn execute_when_shr_i32_high_bit_set_then_logical_shift() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0x40000000);
@@ -160,7 +164,8 @@ fn execute_when_shr_i64_then_shifts_right() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     vm.stop();
@@ -191,7 +196,8 @@ fn execute_when_rol_i32_then_rotates_left() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0x00000003);
@@ -226,7 +232,8 @@ fn execute_when_rol_i64_then_rotates_left() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     vm.stop();
@@ -257,7 +264,8 @@ fn execute_when_ror_i32_then_rotates_right() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0xC0000000_u32 as i32);
@@ -292,7 +300,8 @@ fn execute_when_ror_i64_then_rotates_right() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     vm.stop();
@@ -323,7 +332,8 @@ fn execute_when_rol_u8_then_rotates_within_8_bits() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0x03);
@@ -353,7 +363,8 @@ fn execute_when_rol_u16_then_rotates_within_16_bits() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0x0003);
@@ -383,7 +394,8 @@ fn execute_when_ror_u8_then_rotates_within_8_bits() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0xC0);
@@ -413,7 +425,8 @@ fn execute_when_ror_u16_then_rotates_within_16_bits() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0xC000);

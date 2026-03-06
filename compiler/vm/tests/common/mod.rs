@@ -30,19 +30,24 @@ impl VmBuffers {
     }
 }
 
-/// Builds a container with one function from the given bytecode,
-/// with `num_vars` variables and the given constants.
+/// Builds a container with an init function (RET_VOID) and a scan function
+/// from the given bytecode, with `num_vars` variables and the given constants.
 /// Uses a generous max_stack_depth (16) suitable for most tests.
 pub fn single_function_container(bytecode: &[u8], num_vars: u16, constants: &[i32]) -> Container {
     let mut builder = ContainerBuilder::new().num_variables(num_vars);
     for &c in constants {
         builder = builder.add_i32_constant(c);
     }
-    builder.add_function(0, bytecode, 16, num_vars).build()
+    builder
+        .add_function(0, &[0xB5], 0, num_vars) // init: RET_VOID
+        .add_function(1, bytecode, 16, num_vars) // scan: test bytecode
+        .init_function_id(0)
+        .entry_function_id(1)
+        .build()
 }
 
-/// Builds a container with one function from the given bytecode,
-/// with `num_vars` variables and the given f32 constants.
+/// Builds a container with an init function (RET_VOID) and a scan function
+/// from the given bytecode, with `num_vars` variables and the given f32 constants.
 pub fn single_function_container_f32(
     bytecode: &[u8],
     num_vars: u16,
@@ -52,11 +57,16 @@ pub fn single_function_container_f32(
     for &c in constants {
         builder = builder.add_f32_constant(c);
     }
-    builder.add_function(0, bytecode, 16, num_vars).build()
+    builder
+        .add_function(0, &[0xB5], 0, num_vars)
+        .add_function(1, bytecode, 16, num_vars)
+        .init_function_id(0)
+        .entry_function_id(1)
+        .build()
 }
 
-/// Builds a container with one function from the given bytecode,
-/// with `num_vars` variables and the given f64 constants.
+/// Builds a container with an init function (RET_VOID) and a scan function
+/// from the given bytecode, with `num_vars` variables and the given f64 constants.
 pub fn single_function_container_f64(
     bytecode: &[u8],
     num_vars: u16,
@@ -66,11 +76,16 @@ pub fn single_function_container_f64(
     for &c in constants {
         builder = builder.add_f64_constant(c);
     }
-    builder.add_function(0, bytecode, 16, num_vars).build()
+    builder
+        .add_function(0, &[0xB5], 0, num_vars)
+        .add_function(1, bytecode, 16, num_vars)
+        .init_function_id(0)
+        .entry_function_id(1)
+        .build()
 }
 
-/// Builds a container with one function from the given bytecode,
-/// with `num_vars` variables and the given i64 constants.
+/// Builds a container with an init function (RET_VOID) and a scan function
+/// from the given bytecode, with `num_vars` variables and the given i64 constants.
 pub fn single_function_container_i64(
     bytecode: &[u8],
     num_vars: u16,
@@ -80,11 +95,16 @@ pub fn single_function_container_i64(
     for &c in constants {
         builder = builder.add_i64_constant(c);
     }
-    builder.add_function(0, bytecode, 16, num_vars).build()
+    builder
+        .add_function(0, &[0xB5], 0, num_vars)
+        .add_function(1, bytecode, 16, num_vars)
+        .init_function_id(0)
+        .entry_function_id(1)
+        .build()
 }
 
-/// Builds a container with one function from the given bytecode,
-/// with `num_vars` variables and a mix of i32 then i64 constants.
+/// Builds a container with an init function (RET_VOID) and a scan function
+/// from the given bytecode, with `num_vars` variables and a mix of i32 then i64 constants.
 pub fn single_function_container_i32_i64(
     bytecode: &[u8],
     num_vars: u16,
@@ -98,11 +118,16 @@ pub fn single_function_container_i32_i64(
     for &c in i64_constants {
         builder = builder.add_i64_constant(c);
     }
-    builder.add_function(0, bytecode, 16, num_vars).build()
+    builder
+        .add_function(0, &[0xB5], 0, num_vars)
+        .add_function(1, bytecode, 16, num_vars)
+        .init_function_id(0)
+        .entry_function_id(1)
+        .build()
 }
 
-/// Builds a container with one function from the given bytecode,
-/// with `num_vars` variables and a mix of i32 then f32 constants.
+/// Builds a container with an init function (RET_VOID) and a scan function
+/// from the given bytecode, with `num_vars` variables and a mix of i32 then f32 constants.
 pub fn single_function_container_i32_f32(
     bytecode: &[u8],
     num_vars: u16,
@@ -116,11 +141,16 @@ pub fn single_function_container_i32_f32(
     for &c in f32_constants {
         builder = builder.add_f32_constant(c);
     }
-    builder.add_function(0, bytecode, 16, num_vars).build()
+    builder
+        .add_function(0, &[0xB5], 0, num_vars)
+        .add_function(1, bytecode, 16, num_vars)
+        .init_function_id(0)
+        .entry_function_id(1)
+        .build()
 }
 
-/// Builds a container with one function from the given bytecode,
-/// with `num_vars` variables and a mix of i32 then f64 constants.
+/// Builds a container with an init function (RET_VOID) and a scan function
+/// from the given bytecode, with `num_vars` variables and a mix of i32 then f64 constants.
 pub fn single_function_container_i32_f64(
     bytecode: &[u8],
     num_vars: u16,
@@ -134,7 +164,12 @@ pub fn single_function_container_i32_f64(
     for &c in f64_constants {
         builder = builder.add_f64_constant(c);
     }
-    builder.add_function(0, bytecode, 16, num_vars).build()
+    builder
+        .add_function(0, &[0xB5], 0, num_vars)
+        .add_function(1, bytecode, 16, num_vars)
+        .init_function_id(0)
+        .entry_function_id(1)
+        .build()
 }
 
 /// Asserts that a run_round produces a specific trap.

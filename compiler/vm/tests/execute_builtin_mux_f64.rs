@@ -29,7 +29,8 @@ fn execute_when_mux_f64_k0_2_inputs_then_returns_in0() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -60,7 +61,8 @@ fn execute_when_mux_f64_k1_2_inputs_then_returns_in1() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -92,7 +94,8 @@ fn execute_when_mux_f64_k2_3_inputs_then_returns_in2() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -124,7 +127,8 @@ fn execute_when_mux_f64_k_out_of_range_then_clamps_to_last() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -155,7 +159,8 @@ fn execute_when_mux_f64_k_negative_then_clamps_to_first() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();

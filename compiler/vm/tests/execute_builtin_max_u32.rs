@@ -29,7 +29,8 @@ fn execute_when_max_u32_large_values_then_unsigned_comparison() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap() as u32, 3_000_000_000);

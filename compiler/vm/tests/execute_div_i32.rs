@@ -28,7 +28,8 @@ fn execute_when_div_i32_then_correct_result() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 3);
@@ -56,7 +57,8 @@ fn execute_when_div_i32_negative_then_truncates_toward_zero() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), -3);
@@ -82,7 +84,8 @@ fn execute_when_div_i32_by_zero_then_trap() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     assert_trap(&mut vm, Trap::DivideByZero);
 }
@@ -109,7 +112,8 @@ fn execute_when_div_i32_min_by_neg_one_then_wraps() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     // wrapping_div: i32::MIN / -1 wraps to i32::MIN

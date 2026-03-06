@@ -68,7 +68,7 @@ pub fn parse_and_try_run(source: &str) -> Result<(Container, VmBuffers), FaultCo
                 &mut bufs.programs,
                 &mut bufs.ready,
             )
-            .start();
+            .start()?;
         vm.run_round(0)?;
     }
     Ok((container, bufs))

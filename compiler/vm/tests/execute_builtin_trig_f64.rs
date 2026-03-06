@@ -29,7 +29,8 @@ fn execute_when_sin_f64_zero_then_zero() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -58,7 +59,8 @@ fn execute_when_sin_f64_pi_over_2_then_one() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -89,7 +91,8 @@ fn execute_when_cos_f64_zero_then_one() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -118,7 +121,8 @@ fn execute_when_cos_f64_pi_then_neg_one() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -152,7 +156,8 @@ fn execute_when_tan_f64_zero_then_zero() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -181,7 +186,8 @@ fn execute_when_tan_f64_pi_over_4_then_one() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -212,7 +218,8 @@ fn execute_when_asin_f64_zero_then_zero() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -241,7 +248,8 @@ fn execute_when_asin_f64_one_then_pi_over_2() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -275,7 +283,8 @@ fn execute_when_acos_f64_one_then_zero() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -304,7 +313,8 @@ fn execute_when_acos_f64_zero_then_pi_over_2() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -338,7 +348,8 @@ fn execute_when_atan_f64_zero_then_zero() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -367,7 +378,8 @@ fn execute_when_atan_f64_one_then_pi_over_4() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();

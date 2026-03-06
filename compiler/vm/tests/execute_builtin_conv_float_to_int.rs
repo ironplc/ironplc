@@ -29,7 +29,8 @@ fn execute_when_conv_f32_to_i32_truncation_then_correct() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_i32();
@@ -58,7 +59,8 @@ fn execute_when_conv_f32_to_i32_negative_then_correct() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_i32();
@@ -89,7 +91,8 @@ fn execute_when_conv_f64_to_i32_then_correct() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_i32();
@@ -120,7 +123,8 @@ fn execute_when_conv_f64_to_i64_then_correct() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_i64();
@@ -151,7 +155,8 @@ fn execute_when_conv_f32_to_u32_then_correct() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_i32() as u32;
