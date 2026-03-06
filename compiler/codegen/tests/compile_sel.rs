@@ -29,7 +29,7 @@ END_PROGRAM
     // y := SEL(g, 10, 20): LOAD_VAR_I32 var:0, LOAD_CONST_I32 pool:1,
     //   LOAD_CONST_I32 pool:2, BUILTIN SEL_I32, STORE_VAR_I32 var:1
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[

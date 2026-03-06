@@ -33,7 +33,8 @@ fn execute_when_limit_u32_below_min_then_clamped() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap() as u32, 1_000_000_000);
@@ -66,7 +67,8 @@ fn execute_when_limit_u32_in_range_then_unchanged() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap() as u32, 2_000_000_000);

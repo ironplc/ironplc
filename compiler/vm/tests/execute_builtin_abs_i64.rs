@@ -27,7 +27,8 @@ fn execute_when_abs_i64_positive_then_unchanged() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64(), 7_000_000_000);
@@ -55,7 +56,8 @@ fn execute_when_abs_i64_negative_then_positive() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64(), 7_000_000_000);
@@ -83,7 +85,8 @@ fn execute_when_abs_i64_min_then_wraps() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64(), i64::MIN);

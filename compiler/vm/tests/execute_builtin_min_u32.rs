@@ -29,7 +29,8 @@ fn execute_when_min_u32_large_values_then_unsigned_comparison() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap() as u32, 1_000_000_000);
@@ -61,7 +62,8 @@ fn execute_when_min_u32_both_large_then_smaller_unsigned() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap() as u32, 3_000_000_000);

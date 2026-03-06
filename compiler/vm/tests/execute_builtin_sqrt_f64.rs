@@ -27,7 +27,8 @@ fn execute_when_sqrt_f64_perfect_square_then_exact() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -56,7 +57,8 @@ fn execute_when_sqrt_f64_zero_then_zero() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();
@@ -85,7 +87,8 @@ fn execute_when_sqrt_f64_negative_then_nan() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f64();

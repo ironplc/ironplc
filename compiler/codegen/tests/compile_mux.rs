@@ -32,7 +32,7 @@ END_PROGRAM
     //   BUILTIN MUX_I32_BASE+3 (0x0403)
     //   STORE_VAR_I32 var:0
     //   RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -60,7 +60,7 @@ END_PROGRAM
     let library = parse(source);
     let container = compile(&library).unwrap();
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     // BUILTIN MUX_I32_BASE+2 = 0x0402
     assert_eq!(
         bytecode,

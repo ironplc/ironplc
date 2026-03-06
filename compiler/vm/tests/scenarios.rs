@@ -53,7 +53,10 @@ fn counter_container() -> Container {
     ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(1)
-        .add_function(0, &bytecode, 2, 1)
+        .add_function(0, &[0xB5], 0, 1) // init: RET_VOID
+        .add_function(1, &bytecode, 2, 1) // scan: counter
+        .init_function_id(0)
+        .entry_function_id(1)
         .build()
 }
 
@@ -70,7 +73,8 @@ fn scenario_when_counter_increments_each_scan_then_accumulates() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     for _ in 0..10 {
         vm.run_round(0).unwrap();
@@ -92,7 +96,8 @@ fn scenario_when_stop_then_scan_count_reflects_completed_rounds() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     for _ in 0..5 {
         vm.run_round(0).unwrap();
@@ -133,11 +138,12 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
     let c = ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(1)
-        .add_function(0, &counter_bytecode, 2, 1)
-        .add_function(1, &fault_bytecode, 1, 0)
+        .add_function(0, &[0xB5], 0, 1) // init: RET_VOID
+        .add_function(1, &counter_bytecode, 2, 1) // scan: counter
+        .add_function(2, &fault_bytecode, 1, 0) // scan: fault
         .add_task(freewheeling_task(0, 0, 0))
-        .add_program_instance(program_instance(0, 0, 0, 0, 1))
-        .add_program_instance(program_instance(1, 0, 1, 0, 1))
+        .add_program_instance(program_instance(0, 0, 1, 0, 1))
+        .add_program_instance(program_instance(1, 0, 2, 0, 1))
         .build();
 
     let mut b = VmBuffers::from_container(&c);
@@ -150,7 +156,8 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     let result = vm.run_round(0);
 
     // The counter ran successfully before the fault program trapped
@@ -177,7 +184,10 @@ fn scenario_when_variables_read_after_fault_then_accessible() {
     let c = ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(42)
-        .add_function(0, &bytecode, 1, 1)
+        .add_function(0, &[0xB5], 0, 1) // init: RET_VOID
+        .add_function(1, &bytecode, 1, 1) // scan: stores then faults
+        .init_function_id(0)
+        .entry_function_id(1)
         .build();
 
     let mut b = VmBuffers::from_container(&c);
@@ -190,7 +200,8 @@ fn scenario_when_variables_read_after_fault_then_accessible() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     let result = vm.run_round(0);
 
     assert!(result.is_err());
@@ -236,7 +247,7 @@ fn program_instance(
         var_table_count: var_count,
         fb_instance_offset: 0,
         fb_instance_count: 0,
-        reserved: 0,
+        init_function_id: 0,
     }
 }
 
@@ -266,12 +277,13 @@ fn scenario_when_two_freewheeling_tasks_then_both_execute() {
         .num_variables(4)
         .add_i32_constant(10)
         .add_i32_constant(20)
-        .add_function(0, &fn0_bytecode, 1, 2)
-        .add_function(1, &fn1_bytecode, 1, 2)
+        .add_function(0, &[0xB5], 0, 0) // init: RET_VOID
+        .add_function(1, &fn0_bytecode, 1, 2) // scan: task 0
+        .add_function(2, &fn1_bytecode, 1, 2) // scan: task 1
         .add_task(freewheeling_task(0, 0, 0))
         .add_task(freewheeling_task(1, 1, 0))
-        .add_program_instance(program_instance(0, 0, 0, 0, 2))
-        .add_program_instance(program_instance(1, 1, 1, 2, 2))
+        .add_program_instance(program_instance(0, 0, 1, 0, 2))
+        .add_program_instance(program_instance(1, 1, 2, 2, 2))
         .build();
 
     let mut b = VmBuffers::from_container(&c);
@@ -284,7 +296,8 @@ fn scenario_when_two_freewheeling_tasks_then_both_execute() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 10); // set by task 0
@@ -320,12 +333,13 @@ fn scenario_when_tasks_share_global_then_communication_works() {
         .num_variables(4)
         .shared_globals_size(1)
         .add_i32_constant(99)
-        .add_function(0, &fn0_bytecode, 1, 1)
-        .add_function(1, &fn1_bytecode, 1, 2)
+        .add_function(0, &[0xB5], 0, 0) // init: RET_VOID
+        .add_function(1, &fn0_bytecode, 1, 1) // scan: task 0
+        .add_function(2, &fn1_bytecode, 1, 2) // scan: task 1
         .add_task(freewheeling_task(0, 0, 0))
         .add_task(freewheeling_task(1, 1, 0))
-        .add_program_instance(program_instance(0, 0, 0, 1, 1)) // task 0: private [1,2)
-        .add_program_instance(program_instance(1, 1, 1, 2, 2)) // task 1: private [2,4)
+        .add_program_instance(program_instance(0, 0, 1, 1, 1)) // task 0: private [1,2)
+        .add_program_instance(program_instance(1, 1, 2, 2, 2)) // task 1: private [2,4)
         .build();
 
     let mut b = VmBuffers::from_container(&c);
@@ -338,7 +352,8 @@ fn scenario_when_tasks_share_global_then_communication_works() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 99); // global, written by task 0
@@ -360,9 +375,10 @@ fn scenario_when_scope_violation_then_trap() {
 
     let c = ContainerBuilder::new()
         .num_variables(4)
-        .add_function(0, &bytecode, 1, 2)
+        .add_function(0, &[0xB5], 0, 0) // init: RET_VOID
+        .add_function(1, &bytecode, 1, 2) // scan: scope violation
         .add_task(freewheeling_task(0, 0, 0))
-        .add_program_instance(program_instance(0, 0, 0, 2, 2)) // scope [2, 4)
+        .add_program_instance(program_instance(0, 0, 1, 2, 2)) // scope [2, 4)
         .build();
 
     let mut b = VmBuffers::from_container(&c);
@@ -375,7 +391,8 @@ fn scenario_when_scope_violation_then_trap() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
     let result = vm.run_round(0);
 
     assert!(result.is_err());

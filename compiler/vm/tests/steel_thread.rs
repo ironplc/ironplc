@@ -28,7 +28,10 @@ fn steel_thread_when_full_round_trip_then_x_is_10_y_is_42() {
         .num_variables(2)
         .add_i32_constant(10)
         .add_i32_constant(32)
-        .add_function(0, &bytecode, 2, 2)
+        .add_function(0, &[0xB5], 0, 2) // init: RET_VOID
+        .add_function(1, &bytecode, 2, 2) // scan: program body
+        .init_function_id(0)
+        .entry_function_id(1)
         .build();
 
     // 2. Serialize to bytes.
@@ -56,7 +59,8 @@ fn steel_thread_when_full_round_trip_then_x_is_10_y_is_42() {
             &mut programs,
             &mut ready,
         )
-        .start();
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
 
     // 6. Verify results.

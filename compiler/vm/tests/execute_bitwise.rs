@@ -32,7 +32,8 @@ fn execute_when_bit_and_32_then_bitwise_and() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0x0F);
@@ -64,7 +65,8 @@ fn execute_when_bit_or_32_then_bitwise_or() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0xFF);
@@ -96,7 +98,8 @@ fn execute_when_bit_xor_32_then_bitwise_xor() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0xF0);
@@ -127,7 +130,8 @@ fn execute_when_bit_not_32_then_bitwise_not() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), !0x0F_i32);
@@ -167,7 +171,8 @@ fn execute_when_bit_and_64_then_bitwise_and() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     // read_variable returns i32 (lower 32 bits); 0x0F fits in i32.
@@ -207,7 +212,8 @@ fn execute_when_bit_or_64_then_bitwise_or() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     let stopped = vm.stop();
@@ -246,7 +252,8 @@ fn execute_when_bit_xor_64_then_bitwise_xor() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     let stopped = vm.stop();
@@ -283,7 +290,8 @@ fn execute_when_bit_not_64_then_bitwise_not() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     // !0x0F_i64 = -16, as i32 (lower 32 bits) = -16

@@ -27,7 +27,8 @@ fn execute_when_min_i32_then_returns_smaller() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 3);
@@ -55,7 +56,8 @@ fn execute_when_min_i32_equal_then_returns_value() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 5);
@@ -83,7 +85,8 @@ fn execute_when_min_i32_negative_vs_positive_then_returns_negative() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), -3);

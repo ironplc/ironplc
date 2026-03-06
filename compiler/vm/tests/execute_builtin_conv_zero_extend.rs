@@ -29,7 +29,8 @@ fn execute_when_conv_u32_to_i64_small_then_correct() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_i64();
@@ -59,7 +60,8 @@ fn execute_when_conv_u32_to_i64_large_unsigned_then_correct() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_i64();

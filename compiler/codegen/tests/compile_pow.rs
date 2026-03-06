@@ -27,7 +27,7 @@ END_PROGRAM
     // x := 2: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
     // y := x ** 10: LOAD_VAR_I32 var:0, LOAD_CONST_I32 pool:1, BUILTIN EXPT_I32, STORE_VAR_I32 var:1
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -61,7 +61,7 @@ END_PROGRAM
     assert_eq!(container.constant_pool.get_i32(1).unwrap(), 3);
 
     // (2 ** 3) ** 2: left-associative evaluation
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[

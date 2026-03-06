@@ -32,7 +32,7 @@ END_PROGRAM
     //  17: STORE_VAR_I32 var:0         (x := ...)
     //  20: JMP offset:-23 -> 0         (back to LOOP)
     //  23: RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
 
     // Verify JMP_IF_NOT at offset 7 with forward offset +13
     assert_eq!(bytecode[7], 0xB2); // JMP_IF_NOT
@@ -87,7 +87,7 @@ END_PROGRAM
     //  16: GT_I32                       (x > 5)
     //  17: JMP_IF_NOT offset:-20 -> 0  (back to LOOP if false)
     //  20: RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
 
     // Verify JMP_IF_NOT at offset 17 with backward offset -20
     assert_eq!(bytecode[17], 0xB2); // JMP_IF_NOT
@@ -145,7 +145,7 @@ END_PROGRAM
     //  36: STORE_VAR_I32 var:0         (i := ...)
     //  39: JMP offset:-36 -> 6         (back to LOOP)
     //  42: RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
 
     // Verify GT_I32 for positive step
     assert_eq!(bytecode[12], 0x6C); // GT_I32
@@ -191,7 +191,7 @@ END_PROGRAM
     let library = parse(source);
     let container = compile(&library).unwrap();
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
 
     // Verify LT_I32 for negative step (instead of GT_I32)
     assert_eq!(bytecode[12], 0x6A); // LT_I32

@@ -33,7 +33,8 @@ fn execute_when_limit_i64_in_range_then_unchanged() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64(), 5_000_000_000);
@@ -63,7 +64,8 @@ fn execute_when_limit_i64_below_min_then_clamped() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64(), 0);

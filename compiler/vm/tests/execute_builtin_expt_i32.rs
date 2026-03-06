@@ -28,7 +28,8 @@ fn execute_when_expt_i32_then_correct_result() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1024);
@@ -56,7 +57,8 @@ fn execute_when_expt_i32_zero_exponent_then_one() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 1);
@@ -82,7 +84,8 @@ fn execute_when_expt_i32_negative_exponent_then_trap() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     assert_trap(&mut vm, Trap::NegativeExponent);
 }
@@ -109,7 +112,8 @@ fn execute_when_expt_i32_overflow_then_wraps() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), i32::MIN);
@@ -135,7 +139,8 @@ fn execute_when_invalid_builtin_func_id_then_trap() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     assert_trap(&mut vm, Trap::InvalidBuiltinFunction(0xFFFF));
 }

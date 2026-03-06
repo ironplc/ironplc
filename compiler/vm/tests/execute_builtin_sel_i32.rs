@@ -28,7 +28,8 @@ fn execute_when_sel_i32_g_zero_then_returns_in0() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 10);
@@ -57,7 +58,8 @@ fn execute_when_sel_i32_g_one_then_returns_in1() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 20);
@@ -86,7 +88,8 @@ fn execute_when_sel_i32_g_nonzero_then_returns_in1() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 20);
