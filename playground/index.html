@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IronPLC Studio</title>
+  <title>IronPLC Playground</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header>
-    <h1>IronPLC Studio</h1>
+    <h1>IronPLC Playground</h1>
     <span class="subtitle">IEC 61131-3 in the browser</span>
   </header>
 
@@ -16,6 +16,8 @@
     <section class="editor-section">
       <div class="toolbar">
         <button id="run-btn" disabled>Compile &amp; Run</button>
+        <button id="step-btn" disabled data-testid="step-btn">Step</button>
+        <button id="reset-btn" disabled data-testid="reset-btn">Reset</button>
         <label>
           Scans:
           <input id="scans-input" type="number" value="1" min="0" max="10000">

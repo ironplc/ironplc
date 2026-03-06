@@ -1,8 +1,8 @@
 {
-  "name": "ironplc-web",
+  "name": "ironplc-playground",
   "private": true,
   "version": "0.161.0",
-  "description": "IronPLC browser-based IDE and runtime",
+  "description": "IronPLC browser-based playground",
   "scripts": {
     "test:e2e": "playwright test"
   },

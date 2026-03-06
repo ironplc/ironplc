@@ -1,4 +1,4 @@
-name: Web App
+name: Playground
 
 on:
   # Allow triggering directly
@@ -18,8 +18,8 @@ on:
         description: 'If not empty, then run for the specified branch name or tag'
 
 jobs:
-  build-web-app:
-    name: Build Web App
+  build-playground:
+    name: Build Playground
     runs-on: ubuntu-latest
     steps:
       # Fetch input artifacts and code
@@ -37,14 +37,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       # Execute build recipes
-      - name: Build wasm and web app
-        working-directory: ./web
+      - name: Build wasm and playground
+        working-directory: ./playground
         run: just ci
 
       # Save artifacts
-      - name: Upload web app artifact
+      - name: Upload playground artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ironplc-web-app
-          path: web/_build
+          name: ironplc-playground
+          path: playground/_build
           retention-days: 5
