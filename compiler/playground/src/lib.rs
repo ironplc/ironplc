@@ -494,7 +494,7 @@ fn run_vm_step(
     let mut program_instances = vec![ProgramInstanceState::default(); program_count];
     let mut ready_buf = vec![0usize; task_count.max(1)];
 
-    let mut running = Vm::new()
+    let mut running = match Vm::new()
         .load(
             container,
             &mut stack_buf,
@@ -503,7 +503,14 @@ fn run_vm_step(
             &mut program_instances,
             &mut ready_buf,
         )
-        .start();
+        .start()
+    {
+        Ok(r) => r,
+        Err(ctx) => {
+            let error = format!("VM init trap: {}", ctx.trap);
+            return (vec![], 0, Some(error));
+        }
+    };
 
     for round in 0..scans {
         let current_us = (base_scans + round as u64) * 1000;
