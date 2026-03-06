@@ -1,10 +1,14 @@
-//! Browser-based compiler and runtime for IronPLC.
+//! Browser-based playground for IronPLC.
 //!
-//! Exposes three functions to JavaScript:
+//! Exposes functions to JavaScript:
 //! - [`compile`] - Parse IEC 61131-3 source and produce bytecode
 //! - [`run`] - Execute pre-compiled bytecode (.iplc)
 //! - [`run_source`] - Compile and execute in one step
+//! - [`load_program`] - Compile source and create a stepping session
+//! - [`step`] - Execute N scans within a stepping session
+//! - [`reset_session`] - Clear the stepping session
 
+use std::cell::RefCell;
 use std::io::Cursor;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -17,6 +21,30 @@ use ironplc_parser::parse_program;
 use ironplc_vm::{ProgramInstanceState, Slot, TaskState, Vm};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
+
+/// Persistent state for step-through execution.
+///
+/// Stores compiled bytecode and variable buffer so variables persist
+/// across calls to [`step`]. The VM is re-created each step because
+/// `VmRunning` borrows all buffers and cannot be stored across WASM calls.
+struct VmSession {
+    container_bytes: Vec<u8>,
+    var_buf: Vec<Slot>,
+    total_scans: u64,
+    faulted: bool,
+}
+
+thread_local! {
+    static SESSION: RefCell<Option<VmSession>> = const { RefCell::new(None) };
+}
+
+/// Install a panic hook that logs to `console.error` with a full stack trace.
+///
+/// Called once from JavaScript before using any other exports.
+#[wasm_bindgen]
+pub fn init_panic_hook() {
+    console_error_panic_hook::set_once();
+}
 
 /// Result of a compilation attempt.
 #[derive(Serialize, Deserialize)]
@@ -64,6 +92,19 @@ struct RunSourceResult {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     variables: Vec<VariableInfo>,
     scans_completed: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+/// Result of a step-through operation (load or step).
+#[derive(Serialize, Deserialize)]
+struct StepResult {
+    ok: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    diagnostics: Vec<DiagnosticInfo>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    variables: Vec<VariableInfo>,
+    total_scans: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
@@ -306,6 +347,203 @@ fn read_all_variables_faulted(vm: &ironplc_vm::VmFaulted) -> Vec<VariableInfo> {
         .collect()
 }
 
+/// Compile IEC 61131-3 source and create a stepping session.
+///
+/// The session stores compiled bytecode and a variable buffer that persists
+/// across calls to [`step`]. Returns a JSON `StepResult` with `total_scans: 0`.
+#[wasm_bindgen]
+pub fn load_program(source: &str) -> String {
+    let result = load_program_inner(source);
+    serde_json::to_string(&result).unwrap_or_else(|e| {
+        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":"Serialization error: {e}"}}"#)
+    })
+}
+
+fn load_program_inner(source: &str) -> StepResult {
+    let compile_result = compile_inner(source);
+    if !compile_result.ok {
+        return StepResult {
+            ok: false,
+            diagnostics: compile_result.diagnostics,
+            variables: vec![],
+            total_scans: 0,
+            error: None,
+        };
+    }
+
+    let bytecode_b64 = compile_result.bytecode.unwrap();
+    let container_bytes = BASE64.decode(&bytecode_b64).unwrap();
+
+    let container = match Container::read_from(&mut Cursor::new(&container_bytes)) {
+        Ok(c) => c,
+        Err(e) => {
+            return StepResult {
+                ok: false,
+                diagnostics: vec![],
+                variables: vec![],
+                total_scans: 0,
+                error: Some(format!("Failed to load bytecode: {e}")),
+            };
+        }
+    };
+
+    let num_vars = container.header.num_variables as usize;
+
+    SESSION.with(|cell| {
+        *cell.borrow_mut() = Some(VmSession {
+            container_bytes,
+            var_buf: vec![Slot::default(); num_vars],
+            total_scans: 0,
+            faulted: false,
+        });
+    });
+
+    StepResult {
+        ok: true,
+        diagnostics: vec![],
+        variables: vec![],
+        total_scans: 0,
+        error: None,
+    }
+}
+
+/// Execute N scan cycles within the current stepping session.
+///
+/// Variable values persist between calls. Returns a JSON `StepResult`
+/// with accumulated `total_scans`.
+#[wasm_bindgen]
+pub fn step(scans: u32) -> String {
+    let result = step_inner(scans);
+    serde_json::to_string(&result).unwrap_or_else(|e| {
+        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":"Serialization error: {e}"}}"#)
+    })
+}
+
+fn step_inner(scans: u32) -> StepResult {
+    SESSION.with(|cell| {
+        let mut borrow = cell.borrow_mut();
+        let session = match borrow.as_mut() {
+            Some(s) => s,
+            None => {
+                return StepResult {
+                    ok: false,
+                    diagnostics: vec![],
+                    variables: vec![],
+                    total_scans: 0,
+                    error: Some("No program loaded. Call load_program first.".to_string()),
+                };
+            }
+        };
+
+        if session.faulted {
+            return StepResult {
+                ok: false,
+                diagnostics: vec![],
+                variables: vec![],
+                total_scans: session.total_scans,
+                error: Some("Session is faulted. Call reset_session to start over.".to_string()),
+            };
+        }
+
+        let container = match Container::read_from(&mut Cursor::new(&session.container_bytes)) {
+            Ok(c) => c,
+            Err(e) => {
+                return StepResult {
+                    ok: false,
+                    diagnostics: vec![],
+                    variables: vec![],
+                    total_scans: session.total_scans,
+                    error: Some(format!("Failed to load bytecode: {e}")),
+                };
+            }
+        };
+
+        let base_scans = session.total_scans;
+        let (variables, scans_done, error) =
+            run_vm_step(&container, &mut session.var_buf, base_scans, scans);
+
+        session.total_scans += scans_done as u64;
+        if error.is_some() {
+            session.faulted = true;
+        }
+
+        StepResult {
+            ok: error.is_none(),
+            diagnostics: vec![],
+            variables,
+            total_scans: session.total_scans,
+            error,
+        }
+    })
+}
+
+/// Run an ephemeral VM for N scans using the given container and variable buffer.
+///
+/// Returns `(variables, scans_completed, error)`.
+fn run_vm_step(
+    container: &Container,
+    var_buf: &mut [Slot],
+    base_scans: u64,
+    scans: u32,
+) -> (Vec<VariableInfo>, u32, Option<String>) {
+    let h = &container.header;
+    let mut stack_buf = vec![Slot::default(); h.max_stack_depth as usize];
+    let task_count = container.task_table.tasks.len();
+    let program_count = container.task_table.programs.len();
+    let mut task_states = vec![TaskState::default(); task_count];
+    let mut program_instances = vec![ProgramInstanceState::default(); program_count];
+    let mut ready_buf = vec![0usize; task_count.max(1)];
+
+    let mut running = match Vm::new()
+        .load(
+            container,
+            &mut stack_buf,
+            var_buf,
+            &mut task_states,
+            &mut program_instances,
+            &mut ready_buf,
+        )
+        .start()
+    {
+        Ok(r) => r,
+        Err(ctx) => {
+            let error = format!("VM init trap: {}", ctx.trap);
+            return (vec![], 0, Some(error));
+        }
+    };
+
+    for round in 0..scans {
+        let current_us = (base_scans + round as u64) * 1000;
+        if let Err(ctx) = running.run_round(current_us) {
+            let faulted = running.fault(ctx);
+            let variables = read_all_variables_faulted(&faulted);
+            let error = format!(
+                "VM trap: {} (task {}, instance {})",
+                faulted.trap(),
+                faulted.task_id(),
+                faulted.instance_id()
+            );
+            return (variables, round, Some(error));
+        }
+    }
+
+    let num_vars = running.num_variables();
+    let variables = read_all_variables_running(&running, num_vars);
+    running.stop();
+    (variables, scans, None)
+}
+
+/// Clear the stepping session.
+///
+/// Returns `{"ok":true}`.
+#[wasm_bindgen]
+pub fn reset_session() -> String {
+    SESSION.with(|cell| {
+        *cell.borrow_mut() = None;
+    });
+    r#"{"ok":true}"#.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -450,5 +688,179 @@ END_PROGRAM
         let result: RunResult = serde_json::from_str(&run(&bytecode, 0)).unwrap();
         assert!(result.ok);
         assert_eq!(result.scans_completed, 0);
+    }
+
+    // --- Stepping tests ---
+
+    #[test]
+    fn load_program_when_valid_source_then_creates_session() {
+        reset_session();
+        let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+  END_VAR
+  x := 42;
+END_PROGRAM
+";
+        let result: StepResult = serde_json::from_str(&load_program(source)).unwrap();
+        assert!(result.ok);
+        assert_eq!(result.total_scans, 0);
+        assert!(result.diagnostics.is_empty());
+        assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn load_program_when_syntax_error_then_returns_diagnostics() {
+        reset_session();
+        let source = "PROGRAM main INVALID END_PROGRAM";
+        let result: StepResult = serde_json::from_str(&load_program(source)).unwrap();
+        assert!(!result.ok);
+        assert!(!result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn step_when_no_session_then_returns_error() {
+        reset_session();
+        let result: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert!(!result.ok);
+        assert!(result.error.unwrap().contains("No program loaded"));
+    }
+
+    #[test]
+    fn step_when_session_loaded_then_returns_variables() {
+        reset_session();
+        let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+  END_VAR
+  x := 42;
+END_PROGRAM
+";
+        load_program(source);
+        let result: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert!(result.ok);
+        assert_eq!(result.total_scans, 1);
+        assert!(!result.variables.is_empty());
+        assert_eq!(result.variables[0].value, 42);
+    }
+
+    #[test]
+    fn step_when_called_twice_then_variables_persist() {
+        reset_session();
+        let source = "
+PROGRAM main
+  VAR
+    count : DINT;
+  END_VAR
+  count := count + 1;
+END_PROGRAM
+";
+        load_program(source);
+
+        let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert!(r1.ok);
+        assert_eq!(r1.variables[0].value, 1);
+
+        let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert!(r2.ok);
+        assert_eq!(r2.variables[0].value, 2);
+    }
+
+    #[test]
+    fn step_when_called_twice_then_total_scans_accumulate() {
+        reset_session();
+        let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+  END_VAR
+  x := 1;
+END_PROGRAM
+";
+        load_program(source);
+
+        let r1: StepResult = serde_json::from_str(&step(3)).unwrap();
+        assert_eq!(r1.total_scans, 3);
+
+        let r2: StepResult = serde_json::from_str(&step(2)).unwrap();
+        assert_eq!(r2.total_scans, 5);
+    }
+
+    #[test]
+    fn step_when_session_faulted_then_returns_error() {
+        reset_session();
+        let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+    y : DINT;
+  END_VAR
+  y := 0;
+  x := 1 / y;
+END_PROGRAM
+";
+        load_program(source);
+
+        // First step should fault (divide by zero)
+        let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert!(!r1.ok);
+        assert!(r1.error.as_ref().unwrap().contains("VM trap"));
+
+        // Subsequent step should report faulted session
+        let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert!(!r2.ok);
+        assert!(r2.error.unwrap().contains("faulted"));
+    }
+
+    #[test]
+    fn reset_session_when_session_exists_then_clears_it() {
+        let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+  END_VAR
+  x := 1;
+END_PROGRAM
+";
+        load_program(source);
+        step(1);
+
+        reset_session();
+
+        // After reset, step should fail with no session
+        let result: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert!(!result.ok);
+        assert!(result.error.unwrap().contains("No program loaded"));
+    }
+
+    #[test]
+    fn load_program_when_called_twice_then_replaces_session() {
+        reset_session();
+        let source_a = "
+PROGRAM main
+  VAR
+    x : DINT;
+  END_VAR
+  x := 10;
+END_PROGRAM
+";
+        load_program(source_a);
+        let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert_eq!(r1.variables[0].value, 10);
+
+        let source_b = "
+PROGRAM main
+  VAR
+    x : DINT;
+  END_VAR
+  x := 20;
+END_PROGRAM
+";
+        load_program(source_b);
+        let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert_eq!(r2.variables[0].value, 20);
+        assert_eq!(r2.total_scans, 1);
     }
 }

@@ -55,17 +55,17 @@ jobs:
       gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
       version: ${{ needs.release.outputs.version }}
 
-  build-web-app:
-    name: Build Web App (WASM)
+  build-playground:
+    name: Build Playground (WASM)
     needs: [release]
-    uses: ./.github/workflows/partial_web_app.yaml
+    uses: ./.github/workflows/partial_playground.yaml
     with:
       commit-ref: ${{ needs.release.outputs.commit-tag }}
 
   publish-prerelease:
     name: Label GitHub Release as Prerelease
     # In order to do a smoke test, we need a public accessible release
-    needs: [release, build-platform-package, build-vscode-extension, build-web-app]
+    needs: [release, build-platform-package, build-vscode-extension, build-playground]
     uses: ./.github/workflows/partial_publish_prerelease.yaml
     with:
       dryrun: ${{ !!inputs.dryrun }}
@@ -86,17 +86,17 @@ jobs:
       ironplc-vscode-extension-filename: "ironplc-vscode-extension.vsix"
       ironplc-vscode-extension-name: "garretfick.ironplc"
 
-  web-app-e2e-test:
-    name: Web App E2E Test
-    # Run browser-based E2E tests against the built web app before publishing
+  playground-e2e-test:
+    name: Playground E2E Test
+    # Run browser-based E2E tests against the built playground before publishing
     needs: [publish-prerelease]
-    uses: ./.github/workflows/partial_web_app_e2e.yaml
+    uses: ./.github/workflows/partial_playground_e2e.yaml
 
   publish-website:
     name: Build and Publish Website
     # The website doesn't depend on these but we don't publish
     # if those are failing so we depend on those.
-    needs: [release, smoke-test, web-app-e2e-test]
+    needs: [release, smoke-test, playground-e2e-test]
     uses: ./.github/workflows/partial_website.yaml
     with:
       publish: ${{ !inputs.dryrun }}
@@ -145,28 +145,28 @@ jobs:
           id: ${{ needs.release.outputs.gh-release-id }}
           prerelease: false
 
-  publish-web-app:
-    name: Publish Web App to cloudstudio.ironplc.com
+  publish-playground:
+    name: Publish Playground to playground.ironplc.com
     needs: [release, publish-release]
     runs-on: ubuntu-latest
     steps:
-      - name: Download web app artifact
+      - name: Download playground artifact
         uses: actions/download-artifact@v4
         with:
-          name: ironplc-web-app
-          path: ./web-app-dist
+          name: ironplc-playground
+          path: ./playground-dist
 
       - name: Add CNAME for custom domain
-        run: echo "cloudstudio.ironplc.com" > ./web-app-dist/CNAME
+        run: echo "playground.ironplc.com" > ./playground-dist/CNAME
 
-      - name: Publish to ironplc/ironplc-cloudstudio repository
+      - name: Publish to ironplc/ironplc-playground repository
         if: ${{ !inputs.dryrun }}
         uses: peaceiris/actions-gh-pages@v3
         with:
           publish_branch: main
-          external_repository: ironplc/ironplc-cloudstudio
+          external_repository: ironplc/ironplc-playground
           personal_token: ${{ secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN }}
-          publish_dir: ./web-app-dist
+          publish_dir: ./playground-dist
           force_orphan: false
           allow_empty_commit: false
 
@@ -208,7 +208,7 @@ jobs:
 
   cleanup:
     name: Cleanup Old Artifacts
-    needs: [publish-homebrew, publish-web-app]
+    needs: [publish-homebrew, publish-playground]
     runs-on: ubuntu-latest
     steps:
       # Execute build recipes

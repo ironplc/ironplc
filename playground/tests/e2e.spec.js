@@ -3,7 +3,7 @@ const { test, expect } = require("@playwright/test");
 const path = require("path");
 const fs = require("fs");
 
-test.describe("IronPLC Web App", () => {
+test.describe("IronPLC Playground", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
     // Wait for WASM to load
@@ -92,5 +92,100 @@ END_PROGRAM
     const content = await editor.inputValue();
     expect(content).toContain("PROGRAM main");
     expect(content).toContain("x := 10");
+  });
+
+  test("step_when_program_loaded_then_shows_variables_and_scan_count", async ({ page }) => {
+    const editor = page.locator('[data-testid="editor"]');
+    await editor.fill(`PROGRAM main
+  VAR
+    x : INT;
+    y : INT;
+  END_VAR
+  x := 10;
+  y := x + 32;
+END_PROGRAM
+`);
+
+    await page.click('[data-testid="step-btn"]');
+
+    const variablesPanel = page.locator('[data-testid="variables-panel"]');
+    await expect(variablesPanel).toContainText("10", { timeout: 10000 });
+    await expect(variablesPanel).toContainText("42");
+    await expect(page.locator('[data-testid="status"]')).toContainText("Total scans: 1");
+  });
+
+  test("step_when_clicked_twice_then_scan_count_accumulates", async ({ page }) => {
+    const editor = page.locator('[data-testid="editor"]');
+    await editor.fill(`PROGRAM main
+  VAR
+    count : DINT;
+  END_VAR
+  count := count + 1;
+END_PROGRAM
+`);
+
+    await page.click('[data-testid="step-btn"]');
+    await expect(page.locator('[data-testid="status"]')).toContainText("Total scans: 1", {
+      timeout: 10000,
+    });
+
+    await page.click('[data-testid="step-btn"]');
+    await expect(page.locator('[data-testid="status"]')).toContainText("Total scans: 2", {
+      timeout: 10000,
+    });
+  });
+
+  test("reset_when_clicked_then_clears_output_and_shows_ready", async ({ page }) => {
+    const editor = page.locator('[data-testid="editor"]');
+    await editor.fill(`PROGRAM main
+  VAR
+    x : DINT;
+  END_VAR
+  x := 1;
+END_PROGRAM
+`);
+
+    // Step first to populate output
+    await page.click('[data-testid="step-btn"]');
+    await expect(page.locator('[data-testid="status"]')).toContainText("Total scans: 1", {
+      timeout: 10000,
+    });
+
+    // Reset
+    await page.click('[data-testid="reset-btn"]');
+    await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
+      timeout: 10000,
+    });
+    await expect(page.locator('[data-testid="variables-panel"]')).toContainText(
+      "Run a program"
+    );
+  });
+
+  test("step_when_source_changed_then_recompiles_automatically", async ({ page }) => {
+    const editor = page.locator('[data-testid="editor"]');
+    await editor.fill(`PROGRAM main
+  VAR
+    x : DINT;
+  END_VAR
+  x := 10;
+END_PROGRAM
+`);
+
+    await page.click('[data-testid="step-btn"]');
+    const variablesPanel = page.locator('[data-testid="variables-panel"]');
+    await expect(variablesPanel).toContainText("10", { timeout: 10000 });
+
+    // Change source — should auto-recompile on next step
+    await editor.fill(`PROGRAM main
+  VAR
+    x : DINT;
+  END_VAR
+  x := 99;
+END_PROGRAM
+`);
+
+    await page.click('[data-testid="step-btn"]');
+    await expect(variablesPanel).toContainText("99", { timeout: 10000 });
+    await expect(page.locator('[data-testid="status"]')).toContainText("Total scans: 1");
   });
 });

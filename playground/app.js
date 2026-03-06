@@ -1,7 +1,7 @@
-import init, { compile, run, run_source } from "./pkg/ironplc_web_app.js";
-
 const editor = document.getElementById("editor");
 const runBtn = document.getElementById("run-btn");
+const stepBtn = document.getElementById("step-btn");
+const resetBtn = document.getElementById("reset-btn");
 const scansInput = document.getElementById("scans-input");
 const fileInput = document.getElementById("file-input");
 const status = document.getElementById("status");
@@ -9,7 +9,47 @@ const variablesPanel = document.getElementById("variables-panel");
 const diagnosticsPanel = document.getElementById("diagnostics-panel");
 const dropOverlay = document.getElementById("drop-overlay");
 
-// Tab switching
+let sourceChanged = true;
+
+// --- Web Worker communication ---
+
+const worker = new Worker("worker.js", { type: "module" });
+let nextId = 1;
+const pending = new Map();
+
+worker.onmessage = (e) => {
+  const msg = e.data;
+
+  if (msg.type === "ready") {
+    runBtn.disabled = false;
+    stepBtn.disabled = false;
+    resetBtn.disabled = false;
+    status.textContent = "Ready";
+    return;
+  }
+
+  if (msg.type === "error" && !msg.id) {
+    status.textContent = msg.error;
+    return;
+  }
+
+  const resolve = pending.get(msg.id);
+  if (resolve) {
+    pending.delete(msg.id);
+    resolve(msg);
+  }
+};
+
+function postCommand(command, params) {
+  return new Promise((resolve) => {
+    const id = nextId++;
+    pending.set(id, resolve);
+    worker.postMessage({ id, command, ...params });
+  });
+}
+
+// --- Tab switching ---
+
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
@@ -20,51 +60,119 @@ document.querySelectorAll(".tab").forEach((tab) => {
   });
 });
 
-// Initialize WASM
-init().then(() => {
-  runBtn.disabled = false;
-  status.textContent = "Ready";
-});
+// --- Compile & Run from editor ---
 
-// Compile & Run from editor
-runBtn.addEventListener("click", () => {
+runBtn.addEventListener("click", async () => {
   const source = editor.value;
   const scans = parseInt(scansInput.value, 10) || 1;
 
-  status.textContent = "Compiling and running…";
-  // Use setTimeout to allow the UI to update before blocking on wasm
-  setTimeout(() => {
-    const json = run_source(source, scans);
-    const result = JSON.parse(json);
-    displayResult(result);
-  }, 10);
+  status.textContent = "Compiling and running\u2026";
+  runBtn.disabled = true;
+
+  const msg = await postCommand("run_source", { source, scans });
+  runBtn.disabled = false;
+
+  if (msg.type === "error") {
+    status.textContent = msg.error;
+    return;
+  }
+
+  const result = JSON.parse(msg.json);
+  displayResult(result);
 });
 
-// Load .iplc file
+// --- Source change tracking ---
+
+editor.addEventListener("input", () => {
+  sourceChanged = true;
+});
+
+// --- Step through execution ---
+
+stepBtn.addEventListener("click", async () => {
+  const scans = parseInt(scansInput.value, 10) || 1;
+  stepBtn.disabled = true;
+  resetBtn.disabled = true;
+
+  if (sourceChanged) {
+    status.textContent = "Compiling\u2026";
+    const loadMsg = await postCommand("load_program", { source: editor.value });
+    if (loadMsg.type === "error") {
+      status.textContent = loadMsg.error;
+      stepBtn.disabled = false;
+      resetBtn.disabled = false;
+      return;
+    }
+    const loadResult = JSON.parse(loadMsg.json);
+    if (!loadResult.ok) {
+      displayStepResult(loadResult);
+      stepBtn.disabled = false;
+      resetBtn.disabled = false;
+      return;
+    }
+    sourceChanged = false;
+  }
+
+  status.textContent = "Stepping\u2026";
+  const msg = await postCommand("step", { scans });
+  stepBtn.disabled = false;
+  resetBtn.disabled = false;
+
+  if (msg.type === "error") {
+    status.textContent = msg.error;
+    return;
+  }
+
+  const result = JSON.parse(msg.json);
+  displayStepResult(result);
+});
+
+// --- Reset session ---
+
+resetBtn.addEventListener("click", async () => {
+  resetBtn.disabled = true;
+  stepBtn.disabled = true;
+
+  await postCommand("reset");
+
+  sourceChanged = true;
+  variablesPanel.innerHTML = '<p class="placeholder">Run a program to see variable values.</p>';
+  diagnosticsPanel.innerHTML = '<p class="placeholder">No diagnostics.</p>';
+  status.textContent = "Ready";
+  stepBtn.disabled = false;
+  resetBtn.disabled = false;
+});
+
+// --- Load .iplc file ---
+
 fileInput.addEventListener("change", (e) => {
   const file = e.target.files[0];
   if (!file) return;
   loadIplcFile(file);
 });
 
-function loadIplcFile(file) {
-  const reader = new FileReader();
-  reader.onload = () => {
-    const bytes = new Uint8Array(reader.result);
-    const base64 = uint8ArrayToBase64(bytes);
-    const scans = parseInt(scansInput.value, 10) || 1;
+async function loadIplcFile(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const base64 = uint8ArrayToBase64(bytes);
+  const scans = parseInt(scansInput.value, 10) || 1;
 
-    status.textContent = `Running ${file.name}…`;
-    setTimeout(() => {
-      const json = run(base64, scans);
-      const result = JSON.parse(json);
-      displayRunResult(result, file.name);
-    }, 10);
-  };
-  reader.readAsArrayBuffer(file);
+  status.textContent = `Running ${file.name}\u2026`;
+  runBtn.disabled = true;
+
+  const msg = await postCommand("run", { bytecodeBase64: base64, scans });
+  runBtn.disabled = false;
+
+  if (msg.type === "error") {
+    status.textContent = `${file.name}: ${msg.error}`;
+    return;
+  }
+
+  const result = JSON.parse(msg.json);
+  displayRunResult(result, file.name);
 }
 
-// Drag and drop
+// --- Drag and drop ---
+
 let dragCounter = 0;
 document.addEventListener("dragenter", (e) => {
   e.preventDefault();
@@ -97,6 +205,8 @@ document.addEventListener("drop", (e) => {
     status.textContent = `Unsupported file type: ${file.name}. Expected .iplc`;
   }
 });
+
+// --- Display helpers ---
 
 function displayResult(result) {
   if (result.ok) {
@@ -131,6 +241,25 @@ function displayRunResult(result, filename) {
   }
 }
 
+function displayStepResult(result) {
+  if (result.ok) {
+    renderVariables(result.variables, result.total_scans);
+    diagnosticsPanel.innerHTML = '<p class="placeholder">No diagnostics.</p>';
+    status.textContent = `Total scans: ${result.total_scans}`;
+    activateTab("variables");
+  } else if (result.diagnostics && result.diagnostics.length > 0) {
+    renderDiagnostics(result.diagnostics);
+    variablesPanel.innerHTML = '<p class="placeholder">Compilation failed.</p>';
+    status.textContent = `${result.diagnostics.length} error(s)`;
+    activateTab("diagnostics");
+  } else if (result.error) {
+    renderVariables(result.variables || [], result.total_scans);
+    diagnosticsPanel.innerHTML = `<p class="error-message">${escapeHtml(result.error)}</p>`;
+    status.textContent = "Runtime error";
+    activateTab("diagnostics");
+  }
+}
+
 function renderVariables(variables, scansCompleted) {
   if (!variables || variables.length === 0) {
     variablesPanel.innerHTML = '<p class="placeholder">No variables.</p>';
@@ -153,7 +282,7 @@ function renderDiagnostics(diagnostics) {
     html += `<span class="diagnostic-code">${escapeHtml(d.code)}</span>`;
     html += `<span class="diagnostic-message">${escapeHtml(d.message)}</span>`;
     if (d.start > 0 || d.end > 0) {
-      html += `<span class="diagnostic-location">offset ${d.start}–${d.end}</span>`;
+      html += `<span class="diagnostic-location">offset ${d.start}\u2013${d.end}</span>`;
     }
     html += "</div>";
   }
