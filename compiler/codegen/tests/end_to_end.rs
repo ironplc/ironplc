@@ -164,6 +164,62 @@ END_PROGRAM
 }
 
 #[test]
+fn end_to_end_when_usint_initial_value_then_truncated() {
+    let source = "
+PROGRAM main
+  VAR
+    x : USINT := 200;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 200);
+}
+
+#[test]
+fn end_to_end_when_uint_initial_value_then_variable_initialized() {
+    let source = "
+PROGRAM main
+  VAR
+    x : UINT := 50000;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 50000);
+}
+
+#[test]
+fn end_to_end_when_udint_initial_value_then_variable_initialized() {
+    let source = "
+PROGRAM main
+  VAR
+    x : UDINT := 100000;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 100000);
+}
+
+#[test]
+fn end_to_end_when_ulint_initial_value_then_variable_initialized() {
+    let source = "
+PROGRAM main
+  VAR
+    x : ULINT := 5000000;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i64(), 5000000);
+}
+
+#[test]
 fn end_to_end_when_multiple_scans_then_idempotent() {
     let source = "
 PROGRAM main

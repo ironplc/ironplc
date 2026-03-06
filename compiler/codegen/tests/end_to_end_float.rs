@@ -284,6 +284,21 @@ END_PROGRAM
     assert!((y - 9.0).abs() < 1e-3, "expected 9.0, got {y}");
 }
 
+#[test]
+fn end_to_end_when_real_initial_value_then_variable_initialized() {
+    let source = "
+PROGRAM main
+  VAR
+    x : REAL := 3.14;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    let x = bufs.vars[0].as_f32();
+    assert!((x - 3.14_f32).abs() < 1e-5, "expected 3.14, got {x}");
+}
+
 // --- LREAL (f64) tests ---
 
 #[test]
@@ -566,6 +581,24 @@ END_PROGRAM
 
     let y = bufs.vars[1].as_f64();
     assert!((y - 1024.0).abs() < 1e-6, "expected 1024.0, got {y}");
+}
+
+#[test]
+fn end_to_end_when_lreal_initial_value_then_variable_initialized() {
+    let source = "
+PROGRAM main
+  VAR
+    x : LREAL := 2.718281828459045;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    let x = bufs.vars[0].as_f64();
+    assert!(
+        (x - std::f64::consts::E).abs() < 1e-12,
+        "expected e, got {x}"
+    );
 }
 
 // --- IEEE 754 edge cases: Inf, NaN ---
