@@ -1,0 +1,18 @@
+Code,Name,Message
+V4001,DivideByZero,Divide by zero during program execution
+V4002,NegativeExponent,Negative exponent in arithmetic operation
+V4003,WatchdogTimeout,Task exceeded its watchdog time limit
+V6001,FileOpenFailed,Unable to open the specified file
+V6002,ContainerReadFailed,Unable to read bytecode container
+V6003,SignalHandlerFailed,Failed to install signal handler
+V6004,DumpCreateFailed,Unable to create variable dump file
+V6005,VariableReadFailed,Unable to read variable value
+V6006,DumpWriteFailed,Unable to write to variable dump file
+V6007,LogConfigFailed,Unable to configure the logger
+V9001,StackOverflow,VM operand stack overflow
+V9002,StackUnderflow,VM operand stack underflow
+V9003,InvalidInstruction,Unknown bytecode instruction
+V9004,InvalidConstantIndex,Constant pool index out of bounds
+V9005,InvalidVariableIndex,Variable table index out of bounds
+V9006,InvalidFunctionId,Function ID not found in container
+V9007,InvalidBuiltinFunction,Built-in function ID not recognized

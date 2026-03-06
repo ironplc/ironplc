@@ -1,8 +1,10 @@
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 use clap::Parser;
 
 mod cli;
+mod error;
 mod logger;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -55,12 +57,10 @@ enum Action {
     Version,
 }
 
-pub fn main() -> Result<(), String> {
+pub fn main() -> ExitCode {
     let args = Args::parse();
 
-    logger::configure(args.verbose, args.log_file)?;
-
-    match args.action {
+    let result = logger::configure(args.verbose, args.log_file).and_then(|()| match args.action {
         Action::Run {
             file,
             dump_vars,
@@ -74,6 +74,14 @@ pub fn main() -> Result<(), String> {
         Action::Version => {
             println!("ironplcvm version {VERSION}");
             Ok(())
+        }
+    });
+
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            ExitCode::from(e.exit_code())
         }
     }
 }
