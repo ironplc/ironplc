@@ -53,12 +53,7 @@ pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<
             &mut ready_buf,
         )
         .start()
-        .map_err(|ctx| {
-            format!(
-                "VM trap during init: {} (task {}, instance {})",
-                ctx.trap, ctx.task_id, ctx.instance_id
-            )
-        })?;
+        .map_err(|ctx| VmError::from_trap(&ctx.trap, ctx.task_id, ctx.instance_id))?;
 
     // Install signal handler for clean shutdown
     let stop_flag = Arc::new(AtomicBool::new(false));
@@ -141,12 +136,7 @@ pub fn benchmark(path: &Path, cycles: u64, warmup: u64) -> Result<(), VmError> {
             &mut ready_buf,
         )
         .start()
-        .map_err(|ctx| {
-            format!(
-                "VM trap during init: {} (task {}, instance {})",
-                ctx.trap, ctx.task_id, ctx.instance_id
-            )
-        })?;
+        .map_err(|ctx| VmError::from_trap(&ctx.trap, ctx.task_id, ctx.instance_id))?;
 
     let clock = Instant::now();
 
