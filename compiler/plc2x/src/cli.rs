@@ -388,6 +388,6 @@ mod tests {
         let mut file = std::fs::File::open(output.path()).unwrap();
         let container = ironplc_container::Container::read_from(&mut file).unwrap();
         assert_eq!(container.header.num_variables, 2);
-        assert_eq!(container.header.num_functions, 1);
+        assert_eq!(container.header.num_functions, 2);
     }
 }

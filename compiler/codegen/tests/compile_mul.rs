@@ -24,7 +24,7 @@ END_PROGRAM
     assert_eq!(container.constant_pool.get_i32(0).unwrap(), 7);
     assert_eq!(container.constant_pool.get_i32(1).unwrap(), 6);
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -55,7 +55,7 @@ END_PROGRAM
     assert_eq!(container.constant_pool.len(), 3);
 
     // (2 * 3) * 4: left-associative evaluation
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[

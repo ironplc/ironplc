@@ -34,7 +34,8 @@ fn execute_when_min_u64_large_values_then_unsigned_comparison() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64() as u64, 5_000_000_000);

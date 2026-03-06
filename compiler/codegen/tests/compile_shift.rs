@@ -25,7 +25,7 @@ END_PROGRAM
     // x := BYTE#16#0F: LOAD_CONST_I32 pool:0, TRUNC_U8, STORE_VAR_I32 var:0
     // y := SHL(x, 4):  LOAD_VAR_I32 var:0, LOAD_CONST_I32 pool:1, BUILTIN SHL_I32, TRUNC_U8, STORE_VAR_I32 var:1
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -57,7 +57,7 @@ END_PROGRAM
     let library = parse(source);
     let container = compile(&library).unwrap();
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     // Verify the ROL on BYTE emits ROL_U8 (0x0350), not ROL_I32
     assert_eq!(
         bytecode,
@@ -90,7 +90,7 @@ END_PROGRAM
     let library = parse(source);
     let container = compile(&library).unwrap();
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     // Verify the ROR on WORD emits ROR_U16 (0x0353)
     assert_eq!(
         bytecode,
@@ -123,7 +123,7 @@ END_PROGRAM
     let library = parse(source);
     let container = compile(&library).unwrap();
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     // DWORD is 32-bit so no TRUNC needed
     assert_eq!(
         bytecode,

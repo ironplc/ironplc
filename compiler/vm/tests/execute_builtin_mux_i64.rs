@@ -29,7 +29,8 @@ fn execute_when_mux_i64_k0_2_inputs_then_returns_in0() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64(), 5_000_000_000);
@@ -59,7 +60,8 @@ fn execute_when_mux_i64_k1_2_inputs_then_returns_in1() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64(), 10_000_000_000);
@@ -90,7 +92,8 @@ fn execute_when_mux_i64_k2_3_inputs_then_returns_in2() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64(), 300);
@@ -121,7 +124,8 @@ fn execute_when_mux_i64_k_out_of_range_then_clamps_to_last() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64(), 300);
@@ -151,7 +155,8 @@ fn execute_when_mux_i64_k_negative_then_clamps_to_first() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64(), 100);

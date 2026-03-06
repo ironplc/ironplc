@@ -28,7 +28,8 @@ fn execute_when_max_i64_first_larger_then_returns_first() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64(), 10_000_000_000);

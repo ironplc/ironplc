@@ -28,7 +28,8 @@ fn execute_when_limit_i32_in_range_then_unchanged() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 5);
@@ -57,7 +58,8 @@ fn execute_when_limit_i32_below_min_then_clamped() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -86,7 +88,8 @@ fn execute_when_limit_i32_above_max_then_clamped() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 10);
@@ -115,7 +118,8 @@ fn execute_when_limit_i32_at_boundary_then_unchanged() {
             &mut b.programs,
             &mut b.ready,
         )
-        .start();
+        .start()
+        .unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0);

@@ -24,6 +24,7 @@ pub struct ProgramInstanceState {
     pub entry_function_id: u16,
     pub var_table_offset: u16,
     pub var_table_count: u16,
+    pub init_function_id: u16,
 }
 
 /// Cooperative task scheduler that determines which tasks to execute each round.
@@ -151,7 +152,7 @@ mod tests {
                 var_table_count: 2,
                 fb_instance_offset: 0,
                 fb_instance_count: 0,
-                reserved: 0,
+                init_function_id: 0,
             }],
         }
     }
@@ -194,7 +195,7 @@ mod tests {
                     var_table_count: 3,
                     fb_instance_offset: 0,
                     fb_instance_count: 0,
-                    reserved: 0,
+                    init_function_id: 0,
                 },
                 ProgramInstanceEntry {
                     instance_id: 1,
@@ -204,7 +205,7 @@ mod tests {
                     var_table_count: 3,
                     fb_instance_offset: 0,
                     fb_instance_count: 0,
-                    reserved: 0,
+                    init_function_id: 0,
                 },
             ],
         }

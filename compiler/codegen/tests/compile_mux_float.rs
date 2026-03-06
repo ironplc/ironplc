@@ -18,7 +18,7 @@ END_PROGRAM
     let library = parse(source);
     let container = compile(&library).unwrap();
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     // K=0 is an integer constant (i32), IN values are f32
     // BUILTIN MUX_F32_BASE+3 = 0x0443
     // Look for the BUILTIN opcode byte (0xC4) followed by the func_id
@@ -42,7 +42,7 @@ END_PROGRAM
     let library = parse(source);
     let container = compile(&library).unwrap();
 
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
     // BUILTIN MUX_F64_BASE+2 = 0x0462
     let builtin_pos = bytecode
         .windows(3)

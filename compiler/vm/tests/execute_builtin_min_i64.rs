@@ -28,7 +28,8 @@ fn execute_when_min_i64_first_smaller_then_returns_first() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64(), -5_000_000_000);
@@ -57,7 +58,8 @@ fn execute_when_min_i64_second_smaller_then_returns_second() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64(), 5_000_000_000);

@@ -29,7 +29,8 @@ fn execute_when_sel_f32_g_zero_then_returns_in0() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -60,7 +61,8 @@ fn execute_when_sel_f32_g_one_then_returns_in1() {
                 &mut b.programs,
                 &mut b.ready,
             )
-            .start();
+            .start()
+            .unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
