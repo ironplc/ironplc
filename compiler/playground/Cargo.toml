@@ -17,6 +17,7 @@ ironplc-codegen = { path = "../codegen", version = "0.162.0" }
 ironplc-container = { path = "../container", version = "0.162.0" }
 ironplc-vm = { path = "../vm", version = "0.162.0" }
 wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 base64 = "0.22"
