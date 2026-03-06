@@ -156,6 +156,60 @@ END_PROGRAM
     assert_eq!(bufs.vars[1].as_i64(), 1);
 }
 
+// --- Initial values ---
+
+#[test]
+fn end_to_end_when_byte_initial_value_then_variable_initialized() {
+    let source = "
+PROGRAM main
+  VAR
+    x : BYTE := 200;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), 200);
+}
+
+#[test]
+fn end_to_end_when_word_initial_value_then_variable_initialized() {
+    let source = "
+PROGRAM main
+  VAR
+    x : WORD := 50000;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), 50000);
+}
+
+#[test]
+fn end_to_end_when_dword_initial_value_then_variable_initialized() {
+    let source = "
+PROGRAM main
+  VAR
+    x : DWORD := 100000;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), 100000);
+}
+
+#[test]
+fn end_to_end_when_lword_initial_value_then_variable_initialized() {
+    let source = "
+PROGRAM main
+  VAR
+    x : LWORD := 5000000;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i64(), 5000000);
+}
+
 // --- Bit string literals with base prefixes ---
 
 #[test]

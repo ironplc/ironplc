@@ -5,6 +5,34 @@ mod common;
 use common::parse_and_run;
 
 #[test]
+fn end_to_end_when_bool_initial_value_true_then_variable_initialized() {
+    let source = "
+PROGRAM main
+  VAR
+    x : BOOL := TRUE;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_bool_initial_value_false_then_variable_initialized() {
+    let source = "
+PROGRAM main
+  VAR
+    x : BOOL := FALSE;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 0);
+}
+
+#[test]
 fn end_to_end_when_and_both_true_then_one() {
     let source = "
 PROGRAM main
