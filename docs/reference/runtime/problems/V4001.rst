@@ -5,7 +5,7 @@ V4001
 .. problem-summary:: V4001
 
 The program attempted to divide by zero at runtime. Integer division and modulo
-operations (``DIV``, ``MOD``) trap when the divisor is zero.
+operations (``DIV``, ``MOD``) fail when the divisor is zero.
 
 Example
 -------

@@ -15,43 +15,8 @@ pub enum Trap {
     InvalidBuiltinFunction(u16),
 }
 
-impl Trap {
-    /// Returns the V-code string for this trap (e.g., "V4001").
-    ///
-    /// V4xxx codes are runtime execution errors caused by the user's program.
-    /// V9xxx codes are internal VM errors indicating a compiler or VM bug.
-    pub fn v_code(&self) -> &'static str {
-        match self {
-            Trap::DivideByZero => "V4001",
-            Trap::NegativeExponent => "V4002",
-            Trap::WatchdogTimeout(_) => "V4003",
-            Trap::StackOverflow => "V9001",
-            Trap::StackUnderflow => "V9002",
-            Trap::InvalidInstruction(_) => "V9003",
-            Trap::InvalidConstantIndex(_) => "V9004",
-            Trap::InvalidVariableIndex(_) => "V9005",
-            Trap::InvalidFunctionId(_) => "V9006",
-            Trap::InvalidBuiltinFunction(_) => "V9007",
-        }
-    }
-
-    /// Returns the process exit code for this trap's category.
-    ///
-    /// - 1: Runtime execution error (user's program faulted)
-    /// - 3: Internal VM error (compiler or VM bug)
-    pub fn exit_code(&self) -> u8 {
-        match self {
-            Trap::DivideByZero | Trap::NegativeExponent | Trap::WatchdogTimeout(_) => 1,
-            Trap::StackOverflow
-            | Trap::StackUnderflow
-            | Trap::InvalidInstruction(_)
-            | Trap::InvalidConstantIndex(_)
-            | Trap::InvalidVariableIndex(_)
-            | Trap::InvalidFunctionId(_)
-            | Trap::InvalidBuiltinFunction(_) => 3,
-        }
-    }
-}
+// v_code() and exit_code() are generated from resources/problem-codes.csv
+include!(concat!(env!("OUT_DIR"), "/trap_codes.rs"));
 
 impl fmt::Display for Trap {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

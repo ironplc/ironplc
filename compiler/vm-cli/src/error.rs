@@ -4,14 +4,8 @@ use std::fmt;
 
 use ironplc_vm::error::Trap;
 
-/// V6xxx code constants for file system / IO errors.
-pub const FILE_OPEN: &str = "V6001";
-pub const CONTAINER_READ: &str = "V6002";
-pub const SIGNAL_HANDLER: &str = "V6003";
-pub const DUMP_CREATE: &str = "V6004";
-pub const VAR_READ: &str = "V6005";
-pub const DUMP_WRITE: &str = "V6006";
-pub const LOG_CONFIG: &str = "V6007";
+// V6xxx code constants are generated from resources/problem-codes.csv
+include!(concat!(env!("OUT_DIR"), "/io_codes.rs"));
 
 /// Exit code for file system / IO errors.
 const IO_EXIT_CODE: u8 = 2;
@@ -29,7 +23,7 @@ impl VmError {
         VmError {
             v_code: trap.v_code(),
             exit_code: trap.exit_code(),
-            message: format!("VM trap: {trap} (task {task_id}, instance {instance_id})"),
+            message: format!("runtime error: {trap} (task {task_id}, instance {instance_id})"),
         }
     }
 
@@ -77,7 +71,7 @@ mod tests {
         let err = VmError::from_trap(&Trap::DivideByZero, 2, 5);
         assert_eq!(
             err.to_string(),
-            "V4001 - VM trap: divide by zero (task 2, instance 5)"
+            "V4001 - runtime error: divide by zero (task 2, instance 5)"
         );
     }
 }

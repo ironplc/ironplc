@@ -179,8 +179,8 @@ Runtime errors use the `V####` format and are tracked separately from compiler a
 #### Adding New VM Error Codes
 
 1. **Choose code in the correct range**: V4xxx for execution, V6xxx for IO, V9xxx for internal
-2. **Add to CSV**: Update `compiler/vm-cli/resources/problem-codes.csv`
-3. **Update Rust code**: For trap errors, add the V-code to `Trap::v_code()` and `Trap::exit_code()` in `compiler/vm/src/error.rs`. For IO errors, add a constant in `compiler/vm-cli/src/error.rs`
+2. **Add to CSV**: For trap errors (V4xxx/V9xxx), update `compiler/vm/resources/problem-codes.csv`. For IO errors (V6xxx), update `compiler/vm-cli/resources/problem-codes.csv`
+3. **Update Rust code**: For trap errors, add the variant to the `Trap` enum in `compiler/vm/src/error.rs` (the `v_code()` and `exit_code()` methods are generated automatically from the CSV by `build.rs`). For IO errors, the constant is generated automatically from the CSV
 4. **Create documentation**: Add `docs/reference/runtime/problems/V####.rst`
 5. **Add tests**: Verify the error code appears in stderr output with the correct exit code
 
@@ -189,12 +189,12 @@ Runtime errors use the `V####` format and are tracked separately from compiler a
 Error messages follow the format: `V#### - {message}`
 
 ```
-Error: V4001 - VM trap: divide by zero (task 0, instance 0)
+Error: V4001 - runtime error: divide by zero (task 0, instance 0)
 Error: V6001 - Unable to open /path/to/file.iplc: No such file or directory
-Error: V9001 - VM trap: stack overflow (task 0, instance 0)
+Error: V9001 - runtime error: stack overflow (task 0, instance 0)
 ```
 
-**Do not** hardcode V-code strings in `cli.rs` — use the constants from `error.rs` (for IO codes) or `Trap::v_code()` (for trap codes).
+**Do not** hardcode V-code strings — they are generated from CSV files by `build.rs`. Use `Trap::v_code()` for trap codes and the generated constants from `vm-cli/src/error.rs` for IO codes.
 
 #### VM Error Documentation Template
 
@@ -368,8 +368,8 @@ Before adding a new extension error code:
 Before adding a new VM error code:
 
 - [ ] Code follows V#### format in the correct range (V4xxx, V6xxx, or V9xxx)
-- [ ] Added to `compiler/vm-cli/resources/problem-codes.csv`
-- [ ] Rust code updated: `Trap::v_code()` / `Trap::exit_code()` for trap codes, or constant added in `compiler/vm-cli/src/error.rs` for IO codes
+- [ ] Added to the correct CSV: `compiler/vm/resources/problem-codes.csv` for trap codes (V4xxx/V9xxx), `compiler/vm-cli/resources/problem-codes.csv` for IO codes (V6xxx)
+- [ ] Rust code updated: for trap codes, add the variant to the `Trap` enum in `compiler/vm/src/error.rs` (v_code/exit_code are auto-generated). For IO codes, the constant is auto-generated from CSV
 - [ ] Documentation file created in `docs/reference/runtime/problems/V####.rst`
 - [ ] Integration test verifies the V-code appears in stderr and the exit code is correct
 - [ ] Build passes (`cd compiler && just`)
