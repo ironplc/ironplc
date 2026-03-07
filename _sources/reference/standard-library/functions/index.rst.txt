@@ -218,7 +218,7 @@ Type Conversion Functions
      - Status
    * - :doc:`Type conversions <type-conversions>`
      - Type conversion functions (``*_TO_*``)
-     - Not yet supported
+     - Supported (numeric)
 
 .. toctree::
    :maxdepth: 1
