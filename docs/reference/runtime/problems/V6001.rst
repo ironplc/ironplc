@@ -1,0 +1,23 @@
+=====
+V6001
+=====
+
+.. problem-summary:: V6001
+
+The VM could not open the specified bytecode container file (``.iplc``).
+
+Solutions
+---------
+
+1. Verify the file exists at the specified path
+2. Check that the file name and path are spelled correctly
+3. Ensure you have read permissions for the file
+4. If using a relative path, confirm the current working directory is correct
+
+.. code-block:: bash
+
+   # Verify the file exists
+   ls -l program.iplc
+
+   # Check permissions
+   chmod +r program.iplc

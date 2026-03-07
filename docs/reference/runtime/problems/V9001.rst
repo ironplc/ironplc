@@ -1,0 +1,15 @@
+=====
+V9001
+=====
+
+.. problem-summary:: V9001
+
+The VM operand stack exceeded the maximum depth declared in the bytecode
+container. This is an internal error indicating a mismatch between the
+compiler's stack depth analysis and the actual execution.
+
+This error should not occur during normal operation. It indicates a bug in the
+IronPLC compiler or VM.
+
+Report this as a bug at https://github.com/ironplc/ironplc/issues with the
+``.iplc`` file and the source program that produced it.

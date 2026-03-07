@@ -633,6 +633,7 @@ version = "0.163.0"
 name = "ironplc-vm"
 version = "0.163.0"
 dependencies = [
+ "csv",
  "ironplc-container",
 ]
 
@@ -642,6 +643,7 @@ version = "0.163.0"
 dependencies = [
  "assert_cmd",
  "clap",
+ "csv",
  "ctrlc",
  "env_logger",
  "ironplc-container",

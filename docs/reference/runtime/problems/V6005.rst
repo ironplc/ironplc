@@ -1,0 +1,15 @@
+=====
+V6005
+=====
+
+.. problem-summary:: V6005
+
+The VM encountered an error reading a variable value during a variable dump. This
+may indicate an internal state inconsistency.
+
+Solutions
+---------
+
+1. Recompile the source program and try again
+2. Verify the bytecode container is not corrupted
+3. If the problem persists, report it as a bug at https://github.com/ironplc/ironplc/issues

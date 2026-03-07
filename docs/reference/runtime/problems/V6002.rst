@@ -1,0 +1,16 @@
+=====
+V6002
+=====
+
+.. problem-summary:: V6002
+
+The VM opened the file but could not parse it as a valid bytecode container. The
+file may be corrupted, truncated, or not an ``.iplc`` file.
+
+Solutions
+---------
+
+1. Verify the file is an ``.iplc`` bytecode container produced by the IronPLC compiler
+2. Recompile the source program to produce a fresh ``.iplc`` file
+3. Check that the file was not corrupted during transfer (e.g., binary mode for FTP)
+4. Ensure the file was not truncated by a partial write or interrupted build

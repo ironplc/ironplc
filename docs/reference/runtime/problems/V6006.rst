@@ -1,0 +1,24 @@
+=====
+V6006
+=====
+
+.. problem-summary:: V6006
+
+The VM could not write to the variable dump file. The disk may be full or the
+file system may be read-only.
+
+Solutions
+---------
+
+1. Check that the disk has sufficient free space
+2. Verify the file system is not mounted as read-only
+3. Ensure the file has not been locked by another process
+4. Check write permissions on the dump file and its parent directory
+
+.. code-block:: bash
+
+   # Check available disk space
+   df -h /path/to/dump/
+
+   # Check file permissions
+   ls -l /path/to/dump/output.txt

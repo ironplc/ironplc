@@ -11,3 +11,4 @@ container (``.iplc``) files produced by the :doc:`compiler </reference/compiler/
 
    Overview <overview>
    Command Reference <ironplcvm>
+   Error Codes <problems/index>

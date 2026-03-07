@@ -1,0 +1,16 @@
+=====
+V6003
+=====
+
+.. problem-summary:: V6003
+
+The VM could not install a signal handler for clean shutdown (Ctrl+C). This is
+typically an operating system or platform limitation.
+
+Solutions
+---------
+
+1. Check that your operating system supports signal handling
+2. Verify that another process or library has not already claimed the signal handler
+3. Try running the VM with elevated privileges if permitted by your environment
+4. If running inside a container or sandbox, check that signal delivery is allowed

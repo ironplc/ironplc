@@ -1,0 +1,14 @@
+=====
+V9005
+=====
+
+.. problem-summary:: V9005
+
+The VM tried to access a variable table slot that does not exist. This is an
+internal error indicating the compiler allocated insufficient variable slots.
+
+This error should not occur during normal operation. It indicates a bug in the
+IronPLC compiler or VM.
+
+Report this as a bug at https://github.com/ironplc/ironplc/issues with the
+``.iplc`` file and the source program that produced it.

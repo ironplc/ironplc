@@ -1,0 +1,8 @@
+Code,Name,Message
+V6001,FileOpen,Unable to open the specified file
+V6002,ContainerRead,Unable to read bytecode container
+V6003,SignalHandler,Failed to install signal handler
+V6004,DumpCreate,Unable to create variable dump file
+V6005,VarRead,Unable to read variable value
+V6006,DumpWrite,Unable to write to variable dump file
+V6007,LogConfig,Unable to configure the logger

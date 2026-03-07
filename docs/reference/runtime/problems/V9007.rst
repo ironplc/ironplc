@@ -1,0 +1,14 @@
+=====
+V9007
+=====
+
+.. problem-summary:: V9007
+
+The VM tried to call a built-in function with an unrecognized ID. This may
+indicate an incompatible compiler/VM version combination.
+
+This error should not occur during normal operation. It indicates a bug in the
+IronPLC compiler or VM, or a version mismatch between the compiler and the VM.
+
+Report this as a bug at https://github.com/ironplc/ironplc/issues with the
+``.iplc`` file and the source program that produced it.
