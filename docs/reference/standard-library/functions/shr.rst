@@ -55,9 +55,9 @@ position are discarded.
 Example
 -------
 
-.. code-block::
+.. playground::
+   :vars: result : WORD;
 
-   result := SHR(BYTE#2#1000_0000, 3);   (* result = 2#0001_0000 *)
    result := SHR(WORD#16#FF00, 8);        (* result = 16#00FF *)
 
 See Also

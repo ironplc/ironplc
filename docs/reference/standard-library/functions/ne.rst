@@ -88,7 +88,8 @@ floating-point precision limitations.
 Example
 -------
 
-.. code-block::
+.. playground::
+   :vars: result : BOOL;
 
    result := NE(5, 10);    (* result = TRUE *)
    result := 5 <> 10;      (* result = TRUE, operator form *)

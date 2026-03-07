@@ -42,7 +42,8 @@ is undefined.
 Example
 -------
 
-.. code-block::
+.. playground::
+   :vars: result : REAL; value : LREAL;
 
    result := LN(REAL#2.718282);  (* result ~ 1.0 *)
    value := LN(LREAL#1.0);      (* value = 0.0 *)

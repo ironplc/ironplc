@@ -85,7 +85,8 @@ otherwise. ``LT(a, b)`` is the functional form of the ``<`` operator:
 Example
 -------
 
-.. code-block::
+.. playground::
+   :vars: result : BOOL;
 
    result := LT(5, 10);    (* result = TRUE *)
    result := 5 < 10;       (* result = TRUE, operator form *)

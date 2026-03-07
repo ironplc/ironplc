@@ -26,7 +26,7 @@ Syntax
 Example
 -------
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR

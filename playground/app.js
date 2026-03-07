@@ -11,6 +11,48 @@ const dropOverlay = document.getElementById("drop-overlay");
 
 let sourceChanged = true;
 
+// --- URL parameter handling ---
+
+const params = new URLSearchParams(window.location.search);
+const isEmbed = params.get("embed") === "true";
+
+if (isEmbed) {
+  document.body.classList.add("embed");
+}
+
+// Pre-load code from URL parameters
+if (params.has("code")) {
+  try {
+    const decoded = atob(params.get("code"));
+    let code = decoded;
+
+    // Scaffold mode: wrap snippet in PROGRAM block
+    if (params.get("scaffold") === "true") {
+      const trimmed = decoded.trimStart();
+      const startsWithPOU =
+        /^(PROGRAM|FUNCTION_BLOCK|FUNCTION)\s/i.test(trimmed);
+      if (!startsWithPOU) {
+        let varBlock = "";
+        if (params.has("vars")) {
+          const vars = atob(params.get("vars"));
+          varBlock = vars
+            .split(";")
+            .filter((v) => v.trim())
+            .map((v) => `    ${v.trim()};`)
+            .join("\n");
+        }
+        const varSection =
+          varBlock ? `  VAR\n${varBlock}\n  END_VAR\n` : "";
+        code = `PROGRAM main\n${varSection}  ${trimmed.replace(/\n/g, "\n  ")}\nEND_PROGRAM\n`;
+      }
+    }
+
+    editor.value = code;
+  } catch (e) {
+    // Ignore invalid base64
+  }
+}
+
 // --- Web Worker communication ---
 
 const worker = new Worker("worker.js", { type: "module" });

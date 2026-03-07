@@ -16,3 +16,7 @@
 .ironplc-version-notice a {
     color: var(--color-brand-content);
 }
+
+.ironplc-playground {
+    margin: 1rem 0;
+}

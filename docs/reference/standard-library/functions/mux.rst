@@ -53,7 +53,8 @@ selected inputs.
 Example
 -------
 
-.. code-block::
+.. playground::
+   :vars: result : DINT;
 
    result := MUX(0, 10, 20, 30);    (* result = 10 *)
    result := MUX(2, 10, 20, 30);    (* result = 30 *)

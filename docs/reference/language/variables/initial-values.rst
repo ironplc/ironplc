@@ -26,14 +26,13 @@ variable's type.
 Example
 -------
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR
            counter : INT := 0;
-           name : STRING := 'default';
            active : BOOL := TRUE;
-           delay : TIME := T#100ms;
+           scale : REAL := 1.5;
        END_VAR
 
        counter := counter + 1;
