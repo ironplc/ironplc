@@ -26,6 +26,7 @@ class ProblemCode:
 definitions = [
     join('..', 'compiler', 'problems', 'resources', 'problem-codes.csv'),
     join('..', 'integrations', 'vscode', 'resources', 'problem-codes.csv'),
+    join('..', 'compiler', 'vm', 'resources', 'problem-codes.csv'),
     join('..', 'compiler', 'vm-cli', 'resources', 'problem-codes.csv'),
 ]
 
