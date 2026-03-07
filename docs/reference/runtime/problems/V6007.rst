@@ -1,0 +1,16 @@
+=====
+V6007
+=====
+
+.. problem-summary:: V6007
+
+The VM could not configure the logger. Either the verbosity level is out of range
+(0-4) or the log file could not be created.
+
+Solutions
+---------
+
+1. Verify the verbosity level is between 0 and 4
+2. If specifying a log file, ensure the output directory exists
+3. Check write permissions for the log file location
+4. Ensure the disk has sufficient free space for log output

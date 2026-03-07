@@ -1,0 +1,14 @@
+=====
+V9002
+=====
+
+.. problem-summary:: V9002
+
+The VM attempted to pop from an empty operand stack. This is an internal error
+indicating the compiler emitted unbalanced push/pop sequences.
+
+This error should not occur during normal operation. It indicates a bug in the
+IronPLC compiler or VM.
+
+Report this as a bug at https://github.com/ironplc/ironplc/issues with the
+``.iplc`` file and the source program that produced it.

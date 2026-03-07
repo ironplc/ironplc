@@ -9,3 +9,6 @@ repository.workspace = true
 
 [dependencies]
 ironplc-container = { path = "../container", version = "0.163.0" }
+
+[build-dependencies]
+csv = "1"

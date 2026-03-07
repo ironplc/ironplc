@@ -88,18 +88,18 @@ fn run_when_valid_container_file_and_dump_vars_then_writes_variables(
 }
 
 #[test]
-fn run_when_file_not_found_then_err() -> Result<(), Box<dyn std::error::Error>> {
+fn run_when_file_not_found_then_exit_2_and_v6001() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
     cmd.arg("run").arg("test/file/doesnt/exist.iplc");
     cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("error").or(predicate::str::contains("Unable")));
+        .code(2)
+        .stderr(predicate::str::contains("V6001"));
 
     Ok(())
 }
 
 #[test]
-fn run_when_invalid_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
+fn run_when_invalid_file_then_exit_2_and_v6002() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let bad_path = dir.path().join("bad.iplc");
     std::fs::write(&bad_path, "this is not a container file")?;
@@ -107,8 +107,8 @@ fn run_when_invalid_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
     cmd.arg("run").arg(&bad_path);
     cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("Unable").or(predicate::str::contains("error")));
+        .code(2)
+        .stderr(predicate::str::contains("V6002"));
 
     Ok(())
 }
@@ -160,12 +160,50 @@ fn benchmark_when_valid_container_then_outputs_json_with_scan_us(
 }
 
 #[test]
-fn benchmark_when_file_not_found_then_err() -> Result<(), Box<dyn std::error::Error>> {
+fn benchmark_when_file_not_found_then_exit_2_and_v6001() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
     cmd.arg("benchmark").arg("nonexistent.iplc");
     cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("Unable"));
+        .code(2)
+        .stderr(predicate::str::contains("V6001"));
+
+    Ok(())
+}
+
+/// Builds a container whose program divides by zero: 10 / 0.
+fn write_divide_by_zero_container(path: &Path) {
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+        0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (0)
+        0x33,                   // DIV_I32                  (10 / 0 → trap)
+        0xB5,                   // RET_VOID
+    ];
+
+    let container = ContainerBuilder::new()
+        .num_variables(0)
+        .add_i32_constant(10)
+        .add_i32_constant(0)
+        .add_function(0, &bytecode, 2, 0)
+        .build();
+
+    let mut buf = Vec::new();
+    container.write_to(&mut buf).unwrap();
+    std::fs::write(path, &buf).unwrap();
+}
+
+#[test]
+fn run_when_divide_by_zero_then_exit_1_and_v4001() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("div_zero.iplc");
+    write_divide_by_zero_container(&container_path);
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run").arg(&container_path).arg("--scans").arg("1");
+    cmd.assert()
+        .code(1)
+        .stderr(predicate::str::contains("V4001"))
+        .stderr(predicate::str::contains("divide by zero"));
 
     Ok(())
 }
