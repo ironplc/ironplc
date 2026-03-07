@@ -267,16 +267,28 @@ to ``FALSE`` and any non-zero value converts to ``TRUE``.
      - Support
    * - ``BOOL_TO_SINT``
      - Boolean to 8-bit signed
-     - Not yet supported
+     - Supported
    * - ``BOOL_TO_INT``
      - Boolean to 16-bit signed
-     - Not yet supported
+     - Supported
    * - ``BOOL_TO_DINT``
      - Boolean to 32-bit signed
-     - Not yet supported
+     - Supported
    * - ``BOOL_TO_LINT``
      - Boolean to 64-bit signed
-     - Not yet supported
+     - Supported
+   * - ``BOOL_TO_USINT``
+     - Boolean to 8-bit unsigned
+     - Supported
+   * - ``BOOL_TO_UINT``
+     - Boolean to 16-bit unsigned
+     - Supported
+   * - ``BOOL_TO_UDINT``
+     - Boolean to 32-bit unsigned
+     - Supported
+   * - ``BOOL_TO_ULINT``
+     - Boolean to 64-bit unsigned
+     - Supported
    * - ``SINT_TO_BOOL``
      - 8-bit signed to Boolean
      - Not yet supported
