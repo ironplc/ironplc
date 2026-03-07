@@ -51,6 +51,11 @@ const UNSIGNED_INT_TYPES: &[&str] = &["USINT", "UINT", "UDINT", "ULINT"];
 /// Real (floating-point) type names for conversion functions.
 const REAL_TYPES: &[&str] = &["REAL", "LREAL"];
 
+/// All integer type names (signed + unsigned) for BOOL conversion targets.
+const ALL_INT_TYPES: &[&str] = &[
+    "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT",
+];
+
 /// Generates all integer-to-integer conversion functions.
 ///
 /// Creates functions like INT_TO_DINT, DINT_TO_INT, SINT_TO_LINT, etc.
@@ -153,6 +158,17 @@ fn get_real_to_real_conversions() -> Vec<FunctionSignature> {
     }
 
     functions
+}
+
+/// Generates BOOL-to-integer conversion functions.
+///
+/// Creates functions like BOOL_TO_SINT, BOOL_TO_INT, BOOL_TO_DINT, etc.
+/// FALSE converts to 0, TRUE converts to 1.
+fn get_bool_to_int_conversions() -> Vec<FunctionSignature> {
+    ALL_INT_TYPES
+        .iter()
+        .map(|target| build_conversion_function("BOOL", target))
+        .collect()
 }
 
 // =============================================================================
@@ -347,6 +363,7 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     functions.extend(get_int_to_real_conversions());
     functions.extend(get_real_to_int_conversions());
     functions.extend(get_real_to_real_conversions());
+    functions.extend(get_bool_to_int_conversions());
 
     // Numeric functions
     functions.extend(get_numeric_functions());
@@ -372,11 +389,12 @@ mod tests {
         // Int-to-real: 4 signed × 2 reals + 4 unsigned × 2 reals = 8 + 8 = 16
         // Real-to-int: 2 reals × 4 signed + 2 reals × 4 unsigned = 8 + 8 = 16
         // Real-to-real: 2 × 1 = 2
+        // Bool-to-int: 8 (BOOL to SINT/INT/DINT/LINT/USINT/UINT/UDINT/ULINT)
         // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT, SEL, LN, LOG, EXP, SIN, COS, TAN, ASIN, ACOS, ATAN = 15
         // Selection functions: MUX = 1
         // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
-        // Total: 56 + 16 + 16 + 2 + 15 + 1 + 4 = 110
-        assert_eq!(functions.len(), 110);
+        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 1 + 4 = 118
+        assert_eq!(functions.len(), 118);
     }
 
     #[test]
@@ -591,6 +609,50 @@ mod tests {
         assert_eq!(mux.parameters[2].name.original(), "IN1");
         assert!(mux.is_stdlib());
         assert!(mux.is_extensible);
+    }
+
+    #[test]
+    fn get_bool_to_int_conversions_when_called_then_contains_all_targets() {
+        let functions = get_bool_to_int_conversions();
+
+        assert_eq!(functions.len(), 8);
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "BOOL_TO_SINT"));
+        assert!(functions.iter().any(|f| f.name.original() == "BOOL_TO_INT"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "BOOL_TO_DINT"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "BOOL_TO_LINT"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "BOOL_TO_USINT"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "BOOL_TO_UINT"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "BOOL_TO_UDINT"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "BOOL_TO_ULINT"));
+    }
+
+    #[test]
+    fn get_bool_to_int_conversions_when_called_then_has_correct_signature() {
+        let functions = get_bool_to_int_conversions();
+        let bool_to_int = functions
+            .iter()
+            .find(|f| f.name.original() == "BOOL_TO_INT")
+            .unwrap();
+
+        assert_eq!(bool_to_int.input_parameter_count(), 1);
+        assert_eq!(bool_to_int.parameters[0].name.original(), "IN");
+        assert_eq!(bool_to_int.parameters[0].param_type, TypeName::from("BOOL"));
+        assert_eq!(bool_to_int.return_type, Some(TypeName::from("INT")));
+        assert!(bool_to_int.is_stdlib());
     }
 
     #[test]
