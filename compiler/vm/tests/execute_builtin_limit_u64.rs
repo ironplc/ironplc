@@ -33,6 +33,8 @@ fn execute_when_limit_u64_in_range_then_unchanged() {
                 &c,
                 &mut b.stack,
                 &mut b.vars,
+                &mut b.data_region,
+                &mut b.temp_buf,
                 &mut b.tasks,
                 &mut b.programs,
                 &mut b.ready,

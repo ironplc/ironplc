@@ -36,7 +36,7 @@
 
 use std::collections::HashMap;
 
-use ironplc_container::{opcode, Container, ContainerBuilder};
+use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES};
 use ironplc_dsl::common::{
     Boolean, ConstantKind, FunctionBlockBodyKind, InitialValueAssignmentKind, Library,
     LibraryElementKind, ProgramDeclaration, SignedInteger, VarDecl,
@@ -88,12 +88,24 @@ type OpType = (OpWidth, Signedness);
 /// The default operation type: 32-bit signed (used for pure-constant expressions).
 const DEFAULT_OP_TYPE: OpType = (OpWidth::W32, Signedness::Signed);
 
-/// A constant in the pool: integer or float, 32-bit or 64-bit.
+/// A constant in the pool: integer, float, or string.
 enum PoolConstant {
     I32(i32),
     I64(i64),
     F32(f32),
     F64(f64),
+    Str(Vec<u8>),
+}
+
+/// The IEC 61131-3 default maximum length for STRING (254 characters).
+const DEFAULT_STRING_MAX_LENGTH: u16 = 254;
+
+/// Metadata for a STRING variable allocated in the data region.
+struct StringVarInfo {
+    /// Byte offset into the data region where this string starts.
+    data_offset: u16,
+    /// Maximum number of characters this string can hold.
+    max_length: u16,
 }
 
 /// Compiles a library into a bytecode container.
@@ -153,6 +165,16 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
 
     let mut builder = ContainerBuilder::new().num_variables(num_variables);
 
+    // Configure data region for STRING variables.
+    if ctx.data_region_offset > 0 {
+        builder = builder.data_region_bytes(ctx.data_region_offset as u32);
+        if ctx.num_temp_bufs > 0 {
+            builder = builder
+                .num_temp_bufs(ctx.num_temp_bufs)
+                .max_temp_buf_bytes((STRING_HEADER_BYTES as u16 + ctx.max_string_capacity) as u32);
+        }
+    }
+
     // Add constants to the pool.
     for constant in &ctx.constants {
         match constant {
@@ -160,6 +182,7 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
             PoolConstant::I64(v) => builder = builder.add_i64_constant(*v),
             PoolConstant::F32(v) => builder = builder.add_f32_constant(*v),
             PoolConstant::F64(v) => builder = builder.add_f64_constant(*v),
+            PoolConstant::Str(v) => builder = builder.add_str_constant(v),
         }
     }
 
@@ -188,6 +211,14 @@ struct CompileContext {
     /// Stack of loop exit labels for EXIT statement compilation.
     /// Each enclosing loop pushes its end label; EXIT jumps to the top.
     loop_exit_labels: Vec<crate::emit::Label>,
+    /// Maps STRING variable identifiers to their data region metadata.
+    string_vars: HashMap<Id, StringVarInfo>,
+    /// Next available byte offset in the data region.
+    data_region_offset: u16,
+    /// Maximum string capacity across all STRING variables (for temp buffer sizing).
+    max_string_capacity: u16,
+    /// Number of temp buffers needed (one per string load in the init function).
+    num_temp_bufs: u16,
 }
 
 impl CompileContext {
@@ -197,6 +228,10 @@ impl CompileContext {
             var_types: HashMap::new(),
             constants: Vec::new(),
             loop_exit_labels: Vec::new(),
+            string_vars: HashMap::new(),
+            data_region_offset: 0,
+            max_string_capacity: 0,
+            num_temp_bufs: 0,
         }
     }
 
@@ -284,6 +319,20 @@ impl CompileContext {
         self.constants.push(PoolConstant::I64(value));
         index
     }
+
+    /// Adds a string constant (raw bytes) to the pool and returns its index.
+    fn add_str_constant(&mut self, value: Vec<u8>) -> u16 {
+        for (i, existing) in self.constants.iter().enumerate() {
+            if let PoolConstant::Str(v) = existing {
+                if *v == value {
+                    return i as u16;
+                }
+            }
+        }
+        let index = self.constants.len() as u16;
+        self.constants.push(PoolConstant::Str(value));
+        index
+    }
 }
 
 /// Assigns variable table indices and type info for all variable declarations.
@@ -293,10 +342,47 @@ fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Resul
             let index = ctx.variables.len() as u16;
             ctx.variables.insert(id.clone(), index);
 
-            if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-                if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
-                    ctx.var_types.insert(id.clone(), type_info);
+            match &decl.initializer {
+                InitialValueAssignmentKind::Simple(simple) => {
+                    if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
+                        ctx.var_types.insert(id.clone(), type_info);
+                    }
                 }
+                InitialValueAssignmentKind::String(string_init) => {
+                    let max_length = string_init
+                        .length
+                        .as_ref()
+                        .map(|len| len.value as u16)
+                        .unwrap_or(DEFAULT_STRING_MAX_LENGTH);
+
+                    // Allocate space in the data region: [max_length: u16][cur_length: u16][data]
+                    let data_offset = ctx.data_region_offset;
+                    let total_bytes = STRING_HEADER_BYTES as u16 + max_length;
+                    ctx.data_region_offset = ctx
+                        .data_region_offset
+                        .checked_add(total_bytes)
+                        .ok_or_else(|| {
+                            Diagnostic::problem(
+                                Problem::NotImplemented,
+                                Label::span(string_init.span(), "Data region overflow"),
+                            )
+                        })?;
+
+                    if max_length > ctx.max_string_capacity {
+                        ctx.max_string_capacity = max_length;
+                    }
+
+                    ctx.string_vars.insert(
+                        id.clone(),
+                        StringVarInfo {
+                            data_offset,
+                            max_length,
+                        },
+                    );
+                }
+                // Other initializer kinds (EnumeratedType, FunctionBlock, Array, etc.)
+                // do not yet have type info tracked in codegen.
+                _ => {}
             }
         }
     }
@@ -305,8 +391,11 @@ fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Resul
 
 /// Emits bytecode to initialize variables that have declared initial values.
 ///
-/// For each variable with a `SimpleInitializer` containing an integer literal,
-/// emits load-constant + truncate (if narrow) + store-variable instructions.
+/// For scalar variables with a `SimpleInitializer`, emits load-constant +
+/// truncate (if narrow) + store-variable instructions.
+///
+/// For STRING variables, emits STR_INIT to set up the data region header,
+/// then optionally LOAD_CONST_STR + STR_STORE_VAR for the initial value.
 fn emit_initial_values(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -314,22 +403,46 @@ fn emit_initial_values(
 ) -> Result<(), Diagnostic> {
     for decl in declarations {
         if let Some(id) = decl.identifier.symbolic_id() {
-            if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-                if let Some(constant) = &simple.initial_value {
-                    let var_index = ctx.var_index(id)?;
-                    let type_info = ctx.var_type_info(id);
-                    let op_type = type_info
-                        .map(|ti| (ti.op_width, ti.signedness))
-                        .unwrap_or(DEFAULT_OP_TYPE);
+            match &decl.initializer {
+                InitialValueAssignmentKind::Simple(simple) => {
+                    if let Some(constant) = &simple.initial_value {
+                        let var_index = ctx.var_index(id)?;
+                        let type_info = ctx.var_type_info(id);
+                        let op_type = type_info
+                            .map(|ti| (ti.op_width, ti.signedness))
+                            .unwrap_or(DEFAULT_OP_TYPE);
 
-                    compile_constant(emitter, ctx, constant, op_type)?;
+                        compile_constant(emitter, ctx, constant, op_type)?;
 
-                    if let Some(ti) = type_info {
-                        emit_truncation(emitter, ti);
+                        if let Some(ti) = type_info {
+                            emit_truncation(emitter, ti);
+                        }
+
+                        emit_store_var(emitter, var_index, op_type);
                     }
-
-                    emit_store_var(emitter, var_index, op_type);
                 }
+                InitialValueAssignmentKind::String(string_init) => {
+                    if let Some(info) = ctx.string_vars.get(id) {
+                        let data_offset = info.data_offset;
+                        let max_length = info.max_length;
+
+                        // Initialize the string header in the data region.
+                        emitter.emit_str_init(data_offset, max_length);
+
+                        // If there's an initial value, load and store it.
+                        if let Some(chars) = &string_init.initial_value {
+                            // Convert chars to Latin-1 bytes (STRING encoding per ADR-0016).
+                            let bytes: Vec<u8> = chars.iter().map(|&ch| ch as u8).collect();
+                            let pool_index = ctx.add_str_constant(bytes);
+                            ctx.num_temp_bufs += 1;
+                            emitter.emit_load_const_str(pool_index);
+                            emitter.emit_str_store_var(data_offset);
+                        }
+                    }
+                }
+                // Other initializer kinds (EnumeratedType, FunctionBlock, Array, etc.)
+                // do not yet support initial values in codegen.
+                _ => {}
             }
         }
     }

@@ -24,6 +24,8 @@ fn execute_when_max_i64_first_larger_then_returns_first() {
                 &c,
                 &mut b.stack,
                 &mut b.vars,
+                &mut b.data_region,
+                &mut b.temp_buf,
                 &mut b.tasks,
                 &mut b.programs,
                 &mut b.ready,
