@@ -68,7 +68,12 @@ fn is_compatible(constant: &ConstantKind, target: &IntermediateType) -> bool {
                 ConstantKind::IntegerLiteral(_) | ConstantKind::BitStringLiteral(_)
             )
         }
-        IntermediateType::Real { .. } => matches!(constant, ConstantKind::RealLiteral(_)),
+        IntermediateType::Real { .. } => {
+            matches!(
+                constant,
+                ConstantKind::RealLiteral(_) | ConstantKind::IntegerLiteral(_)
+            )
+        }
         IntermediateType::Bytes { .. } => {
             matches!(
                 constant,
@@ -141,6 +146,20 @@ END_PROGRAM";
 PROGRAM main
 VAR
     x : REAL := 10.0;
+END_VAR
+END_PROGRAM";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_real_var_with_integer_literal_then_ok() {
+        let program = "
+PROGRAM main
+VAR
+    x : REAL := 10;
 END_VAR
 END_PROGRAM";
 
