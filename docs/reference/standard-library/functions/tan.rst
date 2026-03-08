@@ -41,7 +41,7 @@ The result is undefined when *IN* is an odd multiple of pi/2.
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : REAL; value : LREAL;
 
    result := TAN(REAL#0.0);          (* result = 0.0 *)

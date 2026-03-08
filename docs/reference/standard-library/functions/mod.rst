@@ -78,7 +78,7 @@ only for integer types. Division by zero causes a runtime fault.
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : DINT;
 
    result := MOD(7, 3);    (* result = 1 *)

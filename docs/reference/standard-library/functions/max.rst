@@ -84,7 +84,7 @@ the function returns that value.
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : DINT;
 
    result := MAX(10, 20);    (* result = 20 *)

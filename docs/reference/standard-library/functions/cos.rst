@@ -41,7 +41,7 @@ The result is in the range [-1.0, 1.0].
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : REAL; value : LREAL;
 
    result := COS(REAL#0.0);          (* result = 1.0 *)

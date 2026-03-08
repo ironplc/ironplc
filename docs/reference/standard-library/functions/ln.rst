@@ -42,7 +42,7 @@ is undefined.
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : REAL; value : LREAL;
 
    result := LN(REAL#2.718282);  (* result ~ 1.0 *)

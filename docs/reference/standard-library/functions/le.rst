@@ -85,7 +85,7 @@ otherwise. ``LE(a, b)`` is the functional form of the ``<=`` operator:
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : BOOL;
 
    result := LE(5, 10);    (* result = TRUE *)

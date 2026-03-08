@@ -41,7 +41,7 @@ range [-pi/2, pi/2].
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : REAL; value : LREAL;
 
    result := ATAN(REAL#0.0);   (* result = 0.0 *)

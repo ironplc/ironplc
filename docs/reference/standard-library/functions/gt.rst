@@ -85,7 +85,7 @@ otherwise. ``GT(a, b)`` is the functional form of the ``>`` operator:
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : BOOL;
 
    result := GT(10, 5);    (* result = TRUE *)

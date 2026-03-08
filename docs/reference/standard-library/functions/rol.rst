@@ -55,7 +55,7 @@ bits are lost.
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : WORD;
 
    result := ROL(WORD#16#F000, 4);        (* result = 16#000F *)

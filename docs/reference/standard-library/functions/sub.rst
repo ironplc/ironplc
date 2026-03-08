@@ -91,7 +91,7 @@ For integer types, underflow behavior wraps around (modular arithmetic).
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : DINT;
 
    result := SUB(30, 10);   (* result = 20 *)

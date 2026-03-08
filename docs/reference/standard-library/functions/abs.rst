@@ -58,7 +58,7 @@ the positive value cannot be represented.
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : DINT; value : REAL;
 
    result := ABS(-42);    (* result = 42 *)

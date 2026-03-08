@@ -53,7 +53,7 @@ selected inputs.
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : DINT;
 
    result := MUX(0, 10, 20, 30);    (* result = 10 *)

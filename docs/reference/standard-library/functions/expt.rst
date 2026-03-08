@@ -65,7 +65,7 @@ The operator form is ``**``.
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : DINT; value : DINT;
 
    result := EXPT(2, 10);       (* result = 1024 *)

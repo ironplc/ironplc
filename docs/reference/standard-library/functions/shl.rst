@@ -55,7 +55,7 @@ position are discarded.
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : WORD;
 
    result := SHL(WORD#16#00FF, 8);        (* result = 16#FF00 *)

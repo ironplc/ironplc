@@ -367,7 +367,7 @@ target type may be truncated or cause a runtime error.
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: int_val : INT; real_val : REAL; big_val : DINT;
 
    int_val := REAL_TO_INT(REAL#3.14);     (* int_val = 3 *)

@@ -91,7 +91,7 @@ For integer types, overflow behavior wraps around (modular arithmetic).
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : DINT;
 
    result := ADD(10, 20);   (* result = 30 *)

@@ -86,7 +86,7 @@ For integer types, overflow behavior wraps around (modular arithmetic).
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : DINT;
 
    result := MUL(6, 7);   (* result = 42 *)

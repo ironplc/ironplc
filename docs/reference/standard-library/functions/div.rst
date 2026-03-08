@@ -87,7 +87,7 @@ causes a runtime fault.
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : DINT;
 
    result := DIV(42, 6);   (* result = 7 *)

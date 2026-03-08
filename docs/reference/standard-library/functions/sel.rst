@@ -45,7 +45,7 @@ selected inputs.
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : DINT;
 
    result := SEL(TRUE, 10, 20);     (* result = 20 *)

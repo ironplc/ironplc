@@ -41,7 +41,7 @@ range [-1.0, 1.0]. The result is in the range [0, pi].
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : REAL; value : LREAL;
 
    result := ACOS(REAL#1.0);   (* result = 0.0 *)

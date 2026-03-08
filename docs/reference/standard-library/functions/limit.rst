@@ -101,7 +101,7 @@ The behavior is undefined if *MN* > *MX*.
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : DINT;
 
    result := LIMIT(0, 50, 100);    (* result = 50 *)

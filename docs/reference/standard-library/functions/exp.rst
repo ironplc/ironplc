@@ -41,7 +41,7 @@ Returns *e* raised to the power of *IN*, where *e* is Euler's number
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : REAL; value : LREAL;
 
    result := EXP(REAL#1.0);   (* result ~ 2.718282 *)

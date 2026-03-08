@@ -41,7 +41,7 @@ range [-1.0, 1.0]. The result is in the range [-pi/2, pi/2].
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : REAL; value : LREAL;
 
    result := ASIN(REAL#0.0);   (* result = 0.0 *)

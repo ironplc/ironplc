@@ -88,7 +88,7 @@ floating-point precision limitations.
 Example
 -------
 
-.. playground::
+.. playground-with-program::
    :vars: result : BOOL;
 
    result := NE(5, 10);    (* result = TRUE *)
