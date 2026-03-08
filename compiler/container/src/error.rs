@@ -18,6 +18,9 @@ pub enum ContainerError {
     SectionSizeMismatch,
     /// A task entry has an unrecognized task type tag.
     InvalidTaskType(u8),
+    /// The debug section contains invalid data.
+    #[cfg(feature = "std")]
+    InvalidDebugSection,
 }
 
 impl fmt::Display for ContainerError {
@@ -37,6 +40,8 @@ impl fmt::Display for ContainerError {
             ContainerError::InvalidTaskType(t) => {
                 write!(f, "invalid task type tag: {t}")
             }
+            #[cfg(feature = "std")]
+            ContainerError::InvalidDebugSection => write!(f, "invalid debug section"),
         }
     }
 }

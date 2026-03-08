@@ -9,11 +9,13 @@
 //! - [`reset_session`] - Clear the stepping session
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::Cursor;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use ironplc_codegen::compile as codegen_compile;
+use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
 use ironplc_sources::{parse_source, FileType};
@@ -81,7 +83,64 @@ struct RunResult {
 #[derive(Serialize, Deserialize)]
 struct VariableInfo {
     index: u16,
-    value: i32,
+    value: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    type_name: String,
+}
+
+/// Debug metadata for a variable, extracted from the container's debug section.
+struct VarDebugInfo {
+    name: String,
+    type_name: String,
+    iec_type_tag: u8,
+}
+
+/// Builds a lookup map from var_index to debug info from the container's debug section.
+fn build_var_debug_map(container: &Container) -> HashMap<u16, VarDebugInfo> {
+    let mut map = HashMap::new();
+    if let Some(debug) = &container.debug_section {
+        for entry in &debug.var_names {
+            map.insert(
+                entry.var_index,
+                VarDebugInfo {
+                    name: entry.name.clone(),
+                    type_name: entry.type_name.clone(),
+                    iec_type_tag: entry.iec_type_tag,
+                },
+            );
+        }
+    }
+    map
+}
+
+/// Formats a raw 64-bit slot value according to the IEC type tag.
+fn format_variable_value(raw: u64, tag: u8) -> String {
+    match tag {
+        iec_type_tag::BOOL => {
+            if (raw as i32) != 0 {
+                "TRUE".into()
+            } else {
+                "FALSE".into()
+            }
+        }
+        iec_type_tag::SINT => format!("{}", raw as i32 as i8),
+        iec_type_tag::INT => format!("{}", raw as i32 as i16),
+        iec_type_tag::DINT => format!("{}", raw as i32),
+        iec_type_tag::LINT => format!("{}", raw as i64),
+        iec_type_tag::USINT => format!("{}", raw as u8),
+        iec_type_tag::UINT => format!("{}", raw as u16),
+        iec_type_tag::UDINT => format!("{}", raw as u32),
+        iec_type_tag::ULINT => format!("{}", raw),
+        iec_type_tag::REAL => format!("{}", f32::from_bits(raw as u32)),
+        iec_type_tag::LREAL => format!("{}", f64::from_bits(raw)),
+        iec_type_tag::BYTE => format!("16#{:02X}", raw as u8),
+        iec_type_tag::WORD => format!("16#{:04X}", raw as u16),
+        iec_type_tag::DWORD => format!("16#{:08X}", raw as u32),
+        iec_type_tag::LWORD => format!("16#{:016X}", raw),
+        _ => format!("{}", raw as i32), // fallback
+    }
 }
 
 /// Result of compile-and-run (combines both).
@@ -268,11 +327,13 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
         }
     };
 
+    let debug_map = build_var_debug_map(&container);
+
     for round in 0..scans {
         let current_us = (round as u64) * 1000;
         if let Err(ctx) = running.run_round(current_us) {
             let faulted = running.fault(ctx);
-            let variables = read_all_variables_faulted(&faulted);
+            let variables = read_all_variables_faulted(&faulted, &debug_map);
             return RunResult {
                 ok: false,
                 variables,
@@ -288,7 +349,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
     }
 
     let num_vars = running.num_variables();
-    let variables = read_all_variables_running(&running, num_vars);
+    let variables = read_all_variables_running(&running, num_vars, &debug_map);
     let scans_completed = running.scan_count();
     running.stop();
 
@@ -336,23 +397,58 @@ fn run_source_inner(source: &str, scans: u32) -> RunSourceResult {
     }
 }
 
-fn read_all_variables_running(vm: &ironplc_vm::VmRunning, num_vars: u16) -> Vec<VariableInfo> {
+fn read_all_variables_running(
+    vm: &ironplc_vm::VmRunning,
+    num_vars: u16,
+    debug_map: &HashMap<u16, VarDebugInfo>,
+) -> Vec<VariableInfo> {
     (0..num_vars)
         .filter_map(|i| {
-            vm.read_variable(i)
-                .ok()
-                .map(|value| VariableInfo { index: i, value })
+            vm.read_variable_raw(i).ok().map(|raw| {
+                let (name, type_name, value) = if let Some(info) = debug_map.get(&i) {
+                    (
+                        info.name.clone(),
+                        info.type_name.clone(),
+                        format_variable_value(raw, info.iec_type_tag),
+                    )
+                } else {
+                    (String::new(), String::new(), format!("{}", raw as i32))
+                };
+                VariableInfo {
+                    index: i,
+                    value,
+                    name,
+                    type_name,
+                }
+            })
         })
         .collect()
 }
 
-fn read_all_variables_faulted(vm: &ironplc_vm::VmFaulted) -> Vec<VariableInfo> {
+fn read_all_variables_faulted(
+    vm: &ironplc_vm::VmFaulted,
+    debug_map: &HashMap<u16, VarDebugInfo>,
+) -> Vec<VariableInfo> {
     let num_vars = vm.num_variables();
     (0..num_vars)
         .filter_map(|i| {
-            vm.read_variable(i)
-                .ok()
-                .map(|value| VariableInfo { index: i, value })
+            vm.read_variable_raw(i).ok().map(|raw| {
+                let (name, type_name, value) = if let Some(info) = debug_map.get(&i) {
+                    (
+                        info.name.clone(),
+                        info.type_name.clone(),
+                        format_variable_value(raw, info.iec_type_tag),
+                    )
+                } else {
+                    (String::new(), String::new(), format!("{}", raw as i32))
+                };
+                VariableInfo {
+                    index: i,
+                    value,
+                    name,
+                    type_name,
+                }
+            })
         })
         .collect()
 }
@@ -531,7 +627,8 @@ fn run_vm_step(
         let current_us = (base_scans + round as u64) * 1000;
         if let Err(ctx) = running.run_round(current_us) {
             let faulted = running.fault(ctx);
-            let variables = read_all_variables_faulted(&faulted);
+            let debug_map = build_var_debug_map(container);
+            let variables = read_all_variables_faulted(&faulted, &debug_map);
             let error = format!(
                 "VM trap: {} (task {}, instance {})",
                 faulted.trap(),
@@ -542,8 +639,9 @@ fn run_vm_step(
         }
     }
 
+    let debug_map = build_var_debug_map(container);
     let num_vars = running.num_variables();
-    let variables = read_all_variables_running(&running, num_vars);
+    let variables = read_all_variables_running(&running, num_vars, &debug_map);
     running.stop();
     (variables, scans, None)
 }
@@ -606,7 +704,7 @@ END_PROGRAM
         assert!(result.ok);
         assert_eq!(result.scans_completed, 1);
         assert!(!result.variables.is_empty());
-        assert_eq!(result.variables[0].value, 42);
+        assert_eq!(result.variables[0].value, "42");
     }
 
     #[test]
@@ -642,8 +740,8 @@ END_PROGRAM
         assert!(result.error.is_none());
         assert_eq!(result.scans_completed, 1);
         assert!(result.variables.len() >= 2);
-        assert_eq!(result.variables[0].value, 10);
-        assert_eq!(result.variables[1].value, 42);
+        assert_eq!(result.variables[0].value, "10");
+        assert_eq!(result.variables[1].value, "42");
     }
 
     #[test]
@@ -668,7 +766,7 @@ END_PROGRAM
         let result: RunSourceResult = serde_json::from_str(&run_source(source, 5)).unwrap();
         assert!(result.ok);
         assert_eq!(result.scans_completed, 5);
-        assert_eq!(result.variables[0].value, 99);
+        assert_eq!(result.variables[0].value, "99");
     }
 
     #[test]
@@ -759,7 +857,7 @@ END_PROGRAM
         assert!(result.ok);
         assert_eq!(result.total_scans, 1);
         assert!(!result.variables.is_empty());
-        assert_eq!(result.variables[0].value, 42);
+        assert_eq!(result.variables[0].value, "42");
     }
 
     #[test]
@@ -777,11 +875,11 @@ END_PROGRAM
 
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r1.ok);
-        assert_eq!(r1.variables[0].value, 1);
+        assert_eq!(r1.variables[0].value, "1");
 
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r2.ok);
-        assert_eq!(r2.variables[0].value, 2);
+        assert_eq!(r2.variables[0].value, "2");
     }
 
     #[test]
@@ -938,7 +1036,7 @@ END_PROGRAM
 ";
         load_program(source_a);
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
-        assert_eq!(r1.variables[0].value, 10);
+        assert_eq!(r1.variables[0].value, "10");
 
         let source_b = "
 PROGRAM main
@@ -950,7 +1048,7 @@ END_PROGRAM
 ";
         load_program(source_b);
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
-        assert_eq!(r2.variables[0].value, 20);
+        assert_eq!(r2.variables[0].value, "20");
         assert_eq!(r2.total_scans, 1);
     }
 }

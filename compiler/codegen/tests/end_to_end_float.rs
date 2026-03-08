@@ -296,7 +296,9 @@ END_PROGRAM
     let (_c, bufs) = parse_and_run(source);
 
     let x = bufs.vars[0].as_f32();
-    assert!((x - 3.14_f32).abs() < 1e-5, "expected 3.14, got {x}");
+    #[allow(clippy::approx_constant)] // 3.14 is the IEC literal, not an approximation of PI
+    let expected = 3.14_f32;
+    assert!((x - expected).abs() < 1e-5, "expected 3.14, got {x}");
 }
 
 // --- LREAL (f64) tests ---

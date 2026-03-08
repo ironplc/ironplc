@@ -3,17 +3,20 @@ use std::vec::Vec;
 
 use crate::code_section::CodeSection;
 use crate::constant_pool::ConstantPool;
+use crate::debug_section::DebugSection;
 use crate::header::{FileHeader, HEADER_SIZE};
 use crate::task_table::TaskTable;
 use crate::ContainerError;
 
-/// A complete bytecode container: header + task table + constant pool + code section.
+/// A complete bytecode container: header + task table + constant pool + code section
+/// + optional debug section.
 #[derive(Clone, Debug)]
 pub struct Container {
     pub header: FileHeader,
     pub task_table: TaskTable,
     pub constant_pool: ConstantPool,
     pub code: CodeSection,
+    pub debug_section: Option<DebugSection>,
 }
 
 impl Container {
@@ -38,10 +41,23 @@ impl Container {
         header.code_section_size = code_section_size;
         header.num_functions = self.code.functions.len() as u16;
 
+        if let Some(debug) = &self.debug_section {
+            let debug_section_offset = code_section_offset + code_section_size;
+            let debug_section_size = debug.section_size();
+            header.debug_section_offset = debug_section_offset;
+            header.debug_section_size = debug_section_size;
+            header.flags |= 0x02; // bit 1: debug section present
+        }
+
         header.write_to(w)?;
         self.task_table.write_to(w)?;
         self.constant_pool.write_to(w)?;
         self.code.write_to(w)?;
+
+        if let Some(debug) = &self.debug_section {
+            debug.write_to(w)?;
+        }
+
         Ok(())
     }
 
@@ -73,11 +89,25 @@ impl Container {
             header.code_section_size,
         )?;
 
+        // Parse debug section if present (non-fatal on error).
+        let debug_section = if header.debug_section_size > 0 {
+            let debug_start = (header.debug_section_offset - base) as usize;
+            let debug_end = debug_start + header.debug_section_size as usize;
+            if debug_end <= rest.len() {
+                DebugSection::read_from(&mut Cursor::new(&rest[debug_start..debug_end])).ok()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         Ok(Container {
             header,
             task_table,
             constant_pool,
             code,
+            debug_section,
         })
     }
 }
@@ -88,6 +118,9 @@ mod tests {
     use std::vec;
     use std::vec::Vec;
 
+    use crate::debug_section::{
+        function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry,
+    };
     use crate::ContainerBuilder;
 
     #[test]
@@ -136,5 +169,52 @@ mod tests {
 
         let code = decoded.code.get_function_bytecode(0).unwrap();
         assert_eq!(code, bytecode.as_slice());
+
+        // No debug section in this container.
+        assert!(decoded.debug_section.is_none());
+    }
+
+    #[test]
+    fn container_write_read_when_debug_section_then_roundtrips() {
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]
+            0x18, 0x00, 0x00,       // STORE_VAR_I32  var[0]
+            0xB5,                   // RET_VOID
+        ];
+
+        let container = ContainerBuilder::new()
+            .num_variables(1)
+            .add_i32_constant(42)
+            .add_function(0, &bytecode, 1, 1)
+            .add_var_name(VarNameEntry {
+                var_index: 0,
+                function_id: function_id::GLOBAL_SCOPE,
+                var_section: var_section::VAR,
+                iec_type_tag: iec_type_tag::DINT,
+                name: "x".into(),
+                type_name: "DINT".into(),
+            })
+            .add_func_name(FuncNameEntry {
+                function_id: 0,
+                name: "MAIN".into(),
+            })
+            .build();
+
+        let mut buf = Vec::new();
+        container.write_to(&mut buf).unwrap();
+
+        let decoded = Container::read_from(&mut Cursor::new(&buf)).unwrap();
+
+        // Verify debug section flag is set.
+        assert_eq!(decoded.header.flags & 0x02, 0x02);
+
+        let debug = decoded.debug_section.unwrap();
+        assert_eq!(debug.var_names.len(), 1);
+        assert_eq!(debug.var_names[0].name, "x");
+        assert_eq!(debug.var_names[0].type_name, "DINT");
+        assert_eq!(debug.var_names[0].iec_type_tag, iec_type_tag::DINT);
+        assert_eq!(debug.func_names.len(), 1);
+        assert_eq!(debug.func_names[0].name, "MAIN");
     }
 }

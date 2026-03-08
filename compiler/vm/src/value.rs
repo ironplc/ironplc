@@ -45,6 +45,11 @@ impl Slot {
     pub fn as_f64(self) -> f64 {
         f64::from_bits(self.0)
     }
+
+    /// Returns the raw 64-bit representation of this slot.
+    pub fn as_u64(self) -> u64 {
+        self.0
+    }
 }
 
 #[cfg(test)]

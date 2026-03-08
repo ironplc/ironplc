@@ -10,6 +10,9 @@ const TASK_ENTRY_SIZE: usize = 32;
 /// Size of a single program instance entry in bytes.
 const PROGRAM_INSTANCE_ENTRY_SIZE: usize = 16;
 
+/// Sentinel value for `single_var_index` indicating no SINGLE trigger variable.
+pub const NO_SINGLE_VAR: u16 = 0xFFFF;
+
 /// A single task entry in the task table (32 bytes fixed).
 #[derive(Clone, Debug)]
 pub struct TaskEntry {
@@ -206,7 +209,7 @@ mod tests {
                 task_type: TaskType::Cyclic,
                 flags: 0x01,
                 interval_us: 10_000,
-                single_var_index: 0xFFFF,
+                single_var_index: NO_SINGLE_VAR,
                 watchdog_us: 50_000,
                 input_image_offset: 0,
                 output_image_offset: 64,
@@ -238,7 +241,7 @@ mod tests {
         assert_eq!(decoded.tasks[0].task_type, TaskType::Cyclic);
         assert_eq!(decoded.tasks[0].flags, 0x01);
         assert_eq!(decoded.tasks[0].interval_us, 10_000);
-        assert_eq!(decoded.tasks[0].single_var_index, 0xFFFF);
+        assert_eq!(decoded.tasks[0].single_var_index, NO_SINGLE_VAR);
         assert_eq!(decoded.tasks[0].watchdog_us, 50_000);
         assert_eq!(decoded.tasks[0].input_image_offset, 0);
         assert_eq!(decoded.tasks[0].output_image_offset, 64);

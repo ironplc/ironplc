@@ -190,6 +190,12 @@ impl<'a> VmReady<'a> {
         let slot = self.variables.load(index)?;
         Ok(slot.as_i32())
     }
+
+    /// Reads a variable's raw 64-bit slot value.
+    pub fn read_variable_raw(&self, index: u16) -> Result<u64, Trap> {
+        let slot = self.variables.load(index)?;
+        Ok(slot.as_u64())
+    }
 }
 
 /// A VM that is actively executing scan cycles.
@@ -307,6 +313,12 @@ impl<'a> VmRunning<'a> {
         Ok(slot.as_i32())
     }
 
+    /// Reads a variable's raw 64-bit slot value.
+    pub fn read_variable_raw(&self, index: u16) -> Result<u64, Trap> {
+        let slot = self.variables.load(index)?;
+        Ok(slot.as_u64())
+    }
+
     /// Returns the number of variable slots in the loaded container.
     pub fn num_variables(&self) -> u16 {
         self.variables.len()
@@ -359,6 +371,12 @@ impl<'a> VmStopped<'a> {
         Ok(slot.as_i32())
     }
 
+    /// Reads a variable's raw 64-bit slot value.
+    pub fn read_variable_raw(&self, index: u16) -> Result<u64, Trap> {
+        let slot = self.variables.load(index)?;
+        Ok(slot.as_u64())
+    }
+
     /// Returns the number of variable slots.
     pub fn num_variables(&self) -> u16 {
         self.variables.len()
@@ -398,6 +416,12 @@ impl<'a> VmFaulted<'a> {
     pub fn read_variable(&self, index: u16) -> Result<i32, Trap> {
         let slot = self.variables.load(index)?;
         Ok(slot.as_i32())
+    }
+
+    /// Reads a variable's raw 64-bit slot value.
+    pub fn read_variable_raw(&self, index: u16) -> Result<u64, Trap> {
+        let slot = self.variables.load(index)?;
+        Ok(slot.as_u64())
     }
 
     /// Returns the number of variable slots.

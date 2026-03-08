@@ -127,6 +127,7 @@ impl<'a> TaskScheduler<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ironplc_container::task_table::NO_SINGLE_VAR;
     use ironplc_container::{ProgramInstanceEntry, TaskEntry, TaskTable};
 
     fn freewheeling_task_table() -> TaskTable {
@@ -138,7 +139,7 @@ mod tests {
                 task_type: TaskType::Freewheeling,
                 flags: 0x01,
                 interval_us: 0,
-                single_var_index: 0xFFFF,
+                single_var_index: NO_SINGLE_VAR,
                 watchdog_us: 0,
                 input_image_offset: 0,
                 output_image_offset: 0,
@@ -167,7 +168,7 @@ mod tests {
                     task_type: TaskType::Cyclic,
                     flags: 0x01,
                     interval_us: 100_000,
-                    single_var_index: 0xFFFF,
+                    single_var_index: NO_SINGLE_VAR,
                     watchdog_us: 0,
                     input_image_offset: 0,
                     output_image_offset: 0,
@@ -179,7 +180,7 @@ mod tests {
                     task_type: TaskType::Cyclic,
                     flags: 0x01,
                     interval_us: 10_000,
-                    single_var_index: 0xFFFF,
+                    single_var_index: NO_SINGLE_VAR,
                     watchdog_us: 0,
                     input_image_offset: 0,
                     output_image_offset: 0,
