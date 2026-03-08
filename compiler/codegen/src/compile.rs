@@ -1380,12 +1380,21 @@ fn compile_function_call(
         "not" => compile_not_function(emitter, ctx, func, op_type),
         // Assignment function (equivalent to := operator)
         "move" => compile_move(emitter, ctx, func, op_type),
+        // Truncation function
+        "trunc" => compile_trunc(emitter, ctx, func, op_type),
+        // BCD conversion functions
+        "bcd_to_int" => compile_bcd_to_int(emitter, ctx, func, op_type),
+        "int_to_bcd" => compile_int_to_bcd(emitter, ctx, func, op_type),
         // String functions
         "len" => compile_len(emitter, ctx, func),
         "find" => compile_find(emitter, ctx, func),
         "replace" => compile_replace(emitter, ctx, func),
         "insert" => compile_insert(emitter, ctx, func),
         "delete" => compile_delete(emitter, ctx, func),
+        "left" => compile_left(emitter, ctx, func),
+        "right" => compile_right(emitter, ctx, func),
+        "mid" => compile_mid(emitter, ctx, func),
+        "concat" => compile_concat(emitter, ctx, func),
         _ => {
             if let Some((source, target)) = parse_type_conversion(name) {
                 compile_type_conversion(emitter, ctx, func, source, target)
@@ -1540,6 +1549,167 @@ fn compile_move(
 
     compile_expr(emitter, ctx, args[0], op_type)?;
     // No additional opcode needed - the value is already on the stack
+
+    Ok(())
+}
+
+/// Compiles TRUNC(IN) — truncates a real value toward zero.
+///
+/// The argument is compiled using its own (float) op_type derived from the
+/// argument's resolved type. The result is converted to the target integer
+/// type using the existing conversion opcodes.
+fn compile_trunc(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    target_op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    // Determine the argument's float type from its resolved type.
+    let arg_op_type = op_type(args[0])?;
+    compile_expr(emitter, ctx, args[0], arg_op_type)?;
+
+    // Build VarTypeInfo for source (float) and target (integer) to reuse
+    // the existing conversion opcode emission.
+    let source = VarTypeInfo {
+        op_width: arg_op_type.0,
+        signedness: arg_op_type.1,
+        storage_bits: match arg_op_type.0 {
+            OpWidth::F32 => 32,
+            OpWidth::F64 => 64,
+            _ => 32,
+        },
+    };
+    let target = VarTypeInfo {
+        op_width: target_op_type.0,
+        signedness: target_op_type.1,
+        storage_bits: match target_op_type.0 {
+            OpWidth::W32 => 32,
+            OpWidth::W64 => 64,
+            _ => 32,
+        },
+    };
+    emit_conversion_opcode(emitter, &source, &target);
+
+    Ok(())
+}
+
+/// Compiles BCD_TO_INT(IN) — converts a BCD-encoded bit string to an integer.
+///
+/// The argument is compiled using its own (bit-string) op_type. The BCD
+/// decoding opcode is selected based on the argument's storage bit width.
+fn compile_bcd_to_int(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    _target_op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let arg_op_type = op_type(args[0])?;
+    let bits = storage_bits(args[0])?;
+    compile_expr(emitter, ctx, args[0], arg_op_type)?;
+
+    let func_id = match bits {
+        8 => opcode::builtin::BCD_TO_INT_8,
+        16 => opcode::builtin::BCD_TO_INT_16,
+        32 => opcode::builtin::BCD_TO_INT_32,
+        64 => opcode::builtin::BCD_TO_INT_64,
+        _ => {
+            return Err(Diagnostic::todo_with_span(
+                func.name.span(),
+                file!(),
+                line!(),
+            ))
+        }
+    };
+    emitter.emit_builtin(func_id);
+    Ok(())
+}
+
+/// Compiles INT_TO_BCD(IN) — converts an integer to a BCD-encoded bit string.
+///
+/// The argument is compiled using its own (integer) op_type. The BCD
+/// encoding opcode is selected based on the target's operation width.
+fn compile_int_to_bcd(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    target_op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let arg_op_type = op_type(args[0])?;
+    let bits = storage_bits(args[0])?;
+    compile_expr(emitter, ctx, args[0], arg_op_type)?;
+
+    let func_id = match (arg_op_type.0, bits) {
+        (OpWidth::W32, 8) => opcode::builtin::INT_TO_BCD_8,
+        (OpWidth::W32, 16) => opcode::builtin::INT_TO_BCD_16,
+        (OpWidth::W32, 32) => opcode::builtin::INT_TO_BCD_32,
+        (OpWidth::W64, 64) => opcode::builtin::INT_TO_BCD_64,
+        _ => {
+            // For wider target than source, select based on target width
+            match target_op_type.0 {
+                OpWidth::W32 => opcode::builtin::INT_TO_BCD_32,
+                OpWidth::W64 => opcode::builtin::INT_TO_BCD_64,
+                _ => {
+                    return Err(Diagnostic::todo_with_span(
+                        func.name.span(),
+                        file!(),
+                        line!(),
+                    ))
+                }
+            }
+        }
+    };
+    emitter.emit_builtin(func_id);
     Ok(())
 }
 
@@ -1808,6 +1978,133 @@ fn compile_delete(
     ctx.num_temp_bufs += 1;
 
     emitter.emit_delete_str(in1_offset);
+    Ok(())
+}
+
+/// Compiles the LEFT standard function call.
+///
+/// LEFT(IN, L) returns the leftmost L characters of IN. IN must be a
+/// STRING variable; L is an integer expression compiled onto the stack.
+fn compile_left(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+
+    // Compile L integer expression onto the stack.
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[1], op_type)?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_left_str(in_offset);
+    Ok(())
+}
+
+/// Compiles the RIGHT standard function call.
+///
+/// RIGHT(IN, L) returns the rightmost L characters of IN. IN must be a
+/// STRING variable; L is an integer expression compiled onto the stack.
+fn compile_right(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+
+    // Compile L integer expression onto the stack.
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[1], op_type)?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_right_str(in_offset);
+    Ok(())
+}
+
+/// Compiles the MID standard function call.
+///
+/// MID(IN, L, P) returns L characters from IN starting at position P
+/// (1-based). IN must be a STRING variable; L and P are integer
+/// expressions compiled onto the stack.
+fn compile_mid(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 3 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+
+    // Compile L and P integer expressions onto the stack.
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[1], op_type)?;
+    compile_expr(emitter, ctx, args[2], op_type)?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_mid_str(in_offset);
+    Ok(())
+}
+
+/// Compiles the CONCAT standard function call.
+///
+/// CONCAT(IN1, IN2) concatenates IN1 and IN2. Both arguments must be
+/// STRING variables.
+fn compile_concat(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in1_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+    let in2_offset = resolve_string_arg(ctx, args[1], &func.name.span())?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_concat_str(in1_offset, in2_offset);
     Ok(())
 }
 

@@ -451,6 +451,45 @@ fn get_assignment_functions() -> Vec<FunctionSignature> {
 }
 
 // =============================================================================
+// Truncation Function (IEC 61131-3 Section 2.5.1.5.2)
+// =============================================================================
+
+/// Returns the TRUNC function definition.
+///
+/// TRUNC truncates a real value toward zero, removing the fractional part.
+/// It takes ANY_REAL and returns ANY_INT.
+fn get_trunc_function() -> Vec<FunctionSignature> {
+    vec![FunctionSignature::stdlib(
+        "TRUNC",
+        TypeName::from("ANY_INT"),
+        vec![input_param("IN", "ANY_REAL")],
+    )]
+}
+
+// =============================================================================
+// BCD Conversion Functions (IEC 61131-3 Section 2.5.1.5)
+// =============================================================================
+
+/// Returns BCD conversion function definitions.
+///
+/// BCD_TO_INT converts a BCD-encoded bit string to an integer.
+/// INT_TO_BCD converts an integer to a BCD-encoded bit string.
+fn get_bcd_functions() -> Vec<FunctionSignature> {
+    vec![
+        FunctionSignature::stdlib(
+            "BCD_TO_INT",
+            TypeName::from("ANY_INT"),
+            vec![input_param("IN", "ANY_BIT")],
+        ),
+        FunctionSignature::stdlib(
+            "INT_TO_BCD",
+            TypeName::from("ANY_BIT"),
+            vec![input_param("IN", "ANY_INT")],
+        ),
+    ]
+}
+
+// =============================================================================
 // Bit shift and rotate functions
 // =============================================================================
 
@@ -538,6 +577,41 @@ fn get_string_functions() -> Vec<FunctionSignature> {
                 input_param("P", "ANY_INT"),
             ],
         ),
+        // LEFT: return leftmost L characters of IN
+        // (ANY_STRING, ANY_INT -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "LEFT",
+            TypeName::from("ANY_STRING"),
+            vec![input_param("IN", "ANY_STRING"), input_param("L", "ANY_INT")],
+        ),
+        // RIGHT: return rightmost L characters of IN
+        // (ANY_STRING, ANY_INT -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "RIGHT",
+            TypeName::from("ANY_STRING"),
+            vec![input_param("IN", "ANY_STRING"), input_param("L", "ANY_INT")],
+        ),
+        // MID: return L characters from IN starting at position P
+        // (ANY_STRING, ANY_INT, ANY_INT -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "MID",
+            TypeName::from("ANY_STRING"),
+            vec![
+                input_param("IN", "ANY_STRING"),
+                input_param("L", "ANY_INT"),
+                input_param("P", "ANY_INT"),
+            ],
+        ),
+        // CONCAT: concatenate IN1 and IN2
+        // (ANY_STRING, ANY_STRING -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "CONCAT",
+            TypeName::from("ANY_STRING"),
+            vec![
+                input_param("IN1", "ANY_STRING"),
+                input_param("IN2", "ANY_STRING"),
+            ],
+        ),
     ]
 }
 
@@ -571,6 +645,12 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     // Boolean functions (functional forms of AND, OR, XOR, NOT)
     functions.extend(get_boolean_functions());
 
+    // Truncation function
+    functions.extend(get_trunc_function());
+
+    // BCD conversion functions
+    functions.extend(get_bcd_functions());
+
     // Selection functions
     functions.extend(get_selection_functions());
 
@@ -600,15 +680,17 @@ mod tests {
         // Real-to-real: 2 × 1 = 2
         // Bool-to-int: 8 (BOOL to SINT/INT/DINT/LINT/USINT/UINT/UDINT/ULINT)
         // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT, SEL, LN, LOG, EXP, SIN, COS, TAN, ASIN, ACOS, ATAN = 15
+        // Truncation function: TRUNC = 1
+        // BCD conversion functions: BCD_TO_INT, INT_TO_BCD = 2
         // Arithmetic functions: ADD, SUB, MUL, DIV, MOD = 5
         // Comparison functions: GT, GE, EQ, LE, LT, NE = 6
         // Boolean functions: AND, OR, XOR, NOT = 4
         // Selection functions: MUX = 1
         // Assignment function: MOVE = 1
         // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
-        // String functions: LEN, FIND, REPLACE, INSERT, DELETE = 5
-        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 5 + 6 + 4 + 1 + 1 + 4 + 5 = 139
-        assert_eq!(functions.len(), 139);
+        // String functions: LEN, FIND, REPLACE, INSERT, DELETE, LEFT, RIGHT, MID, CONCAT = 9
+        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 1 + 2 + 5 + 6 + 4 + 1 + 1 + 4 + 9 = 146
+        assert_eq!(functions.len(), 146);
     }
 
     #[test]

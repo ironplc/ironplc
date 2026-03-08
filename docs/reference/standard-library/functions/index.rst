@@ -34,6 +34,9 @@ Numeric Functions
    * - :doc:`EXPT <expt>`
      - Exponentiation
      - Supported
+   * - :doc:`TRUNC <trunc>`
+     - Truncate real to integer
+     - Supported
 
 Trigonometric Functions
 -----------------------
@@ -233,6 +236,9 @@ Type Conversion Functions
    * - :doc:`Type conversions <type-conversions>`
      - Type conversion functions (``*_TO_*``)
      - Supported (numeric)
+   * - :doc:`BCD_TO_INT / INT_TO_BCD <bcd>`
+     - BCD conversion functions
+     - Supported
 
 .. toctree::
    :maxdepth: 1
@@ -281,3 +287,5 @@ Type Conversion Functions
    replace
    find
    type-conversions
+   trunc
+   bcd
