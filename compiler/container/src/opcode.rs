@@ -179,6 +179,26 @@ pub const INSERT_STR: u8 = 0xE6;
 /// Pops P (i32) then L (i32) from stack. Pushes buf_idx (i32).
 pub const DELETE_STR: u8 = 0xE7;
 
+/// Return the leftmost L characters of IN.
+/// Operand: in_data_offset: u16.
+/// Pops L (i32) from stack. Pushes buf_idx (i32).
+pub const LEFT_STR: u8 = 0xE8;
+
+/// Return the rightmost L characters of IN.
+/// Operand: in_data_offset: u16.
+/// Pops L (i32) from stack. Pushes buf_idx (i32).
+pub const RIGHT_STR: u8 = 0xE9;
+
+/// Return L characters from IN starting at position P.
+/// Operand: in_data_offset: u16.
+/// Pops P (i32) then L (i32) from stack. Pushes buf_idx (i32).
+pub const MID_STR: u8 = 0xEA;
+
+/// Concatenate IN1 and IN2.
+/// Operands: in1_data_offset: u16, in2_data_offset: u16.
+/// Pushes buf_idx (i32).
+pub const CONCAT_STR: u8 = 0xEB;
+
 // --- Truncation opcodes ---
 
 /// Truncate i32 to i8 range, then sign-extend back to i32.
