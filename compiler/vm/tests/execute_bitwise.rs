@@ -4,7 +4,6 @@
 mod common;
 
 use common::{single_function_container, VmBuffers};
-use ironplc_vm::Vm;
 
 // ---------------------------------------------------------------
 // BIT_AND_32
@@ -23,19 +22,7 @@ fn execute_when_bit_and_32_then_bitwise_and() {
     ];
     let c = single_function_container(&bytecode, 1, &[0xFF, 0x0F]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0x0F);
@@ -58,19 +45,7 @@ fn execute_when_bit_or_32_then_bitwise_or() {
     ];
     let c = single_function_container(&bytecode, 1, &[0xF0, 0x0F]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0xFF);
@@ -93,19 +68,7 @@ fn execute_when_bit_xor_32_then_bitwise_xor() {
     ];
     let c = single_function_container(&bytecode, 1, &[0xFF, 0x0F]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0xF0);
@@ -127,19 +90,7 @@ fn execute_when_bit_not_32_then_bitwise_not() {
     ];
     let c = single_function_container(&bytecode, 1, &[0x0F]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), !0x0F_i32);
@@ -170,19 +121,7 @@ fn execute_when_bit_and_64_then_bitwise_and() {
         .add_function(0, &bytecode, 16, 1)
         .build();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     // read_variable returns i32 (lower 32 bits); 0x0F fits in i32.
@@ -213,19 +152,7 @@ fn execute_when_bit_or_64_then_bitwise_or() {
         .add_function(0, &bytecode, 16, 1)
         .build();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     let stopped = vm.stop();
@@ -255,19 +182,7 @@ fn execute_when_bit_xor_64_then_bitwise_xor() {
         .add_function(0, &bytecode, 16, 1)
         .build();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     let stopped = vm.stop();
@@ -295,19 +210,7 @@ fn execute_when_bit_not_64_then_bitwise_not() {
         .add_function(0, &bytecode, 16, 1)
         .build();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     // !0x0F_i64 = -16, as i32 (lower 32 bits) = -16
