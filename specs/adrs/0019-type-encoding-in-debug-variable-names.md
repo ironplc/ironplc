@@ -21,6 +21,7 @@ How should the debug section encode the IEC 61131-3 type for each variable?
 ## Decision Drivers
 
 * **Display correctness** — BOOL must show TRUE/FALSE, BYTE must show hex, SINT must show -128..127 range
+* **Separation from execution path** — the Type Section is in the IPLC file on the hot path (read by verifier and VM); display-only semantics must not pollute execution cache lines. All display-level type information belongs in the debug section, which can be stripped without affecting execution.
 * **Space efficiency** — the debug section should not bloat the container size; variables are numerous
 * **Matching performance** — the runtime (playground, debugger) must quickly determine the display format
 * **User-defined types** — ENUM, subrange, and struct types have user-assigned names ("TrafficLight", "SmallInt") that should be visible
@@ -106,6 +107,18 @@ For user-defined types (ENUM, subrange), the `iec_type_tag` is set to the **unde
 * Bad, because the VarNameEntry format grows by 1 byte compared to Option A
 
 ## More Information
+
+### Why Not Extend the Type Section?
+
+An alternative considered was extending the Type Section's `var_type` encoding from storage-level (I32, U32, ...) to IEC-level (BOOL, SINT, INT, DINT, ...). This would provide a single source of truth for type information.
+
+This was rejected because the Type Section is part of the IPLC file's **execution path**. The verifier reads it at load time, and the VM may reference it during execution. Adding 10+ display-only type distinctions (BOOL vs SINT vs INT vs DINT — all I32 from the verifier's perspective) would:
+
+1. **Pollute cache lines** — the Type Section sits in memory alongside task tables, constant pools, and code. Expanding `var_type` from 10 to 21+ values increases per-entry complexity for no execution benefit.
+2. **Complicate the verifier** — the verifier would need to map 21+ IEC types back to storage widths for opcode validation, adding a translation layer that doesn't exist today.
+3. **Violate separation of concerns** — the Type Section serves the verifier and VM (what operations are valid), while the debug section serves the debugger and playground (how to display values to humans).
+
+The debug section is explicitly designed to be strippable without affecting execution (spec: "Can be stripped without invalidating the content signature"). Display-only type information belongs there.
 
 ### Relationship to Type Section
 
