@@ -27,6 +27,16 @@ Literals
    UDINT#1000000
    UDINT#16#FFFFFFFF
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: total_units : UDINT; batch : UDINT; running_total : UDINT;
+
+   total_units := UDINT#50000;
+   batch := UDINT#1200;
+   running_total := total_units + batch;  (* running_total = 51200 *)
+
 See Also
 --------
 

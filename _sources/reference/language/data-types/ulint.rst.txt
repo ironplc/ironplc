@@ -27,6 +27,16 @@ Literals
    ULINT#1000000000
    ULINT#16#FFFFFFFFFFFFFFFF
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: total_bytes : ULINT; block_size : ULINT; new_total : ULINT;
+
+   total_bytes := ULINT#1000000000;
+   block_size := ULINT#4096;
+   new_total := total_bytes + block_size;  (* new_total = 1000004096 *)
+
 See Also
 --------
 
