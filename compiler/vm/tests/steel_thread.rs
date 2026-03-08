@@ -48,6 +48,9 @@ fn steel_thread_when_full_round_trip_then_x_is_10_y_is_42() {
     let mut tasks = vec![TaskState::default(); loaded.task_table.tasks.len()];
     let mut programs = vec![ProgramInstanceState::default(); loaded.task_table.programs.len()];
     let mut ready = vec![0usize; loaded.task_table.tasks.len()];
+    let mut data_region = vec![0u8; h.data_region_bytes as usize];
+    let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
+    let mut temp_buf = vec![0u8; temp_buf_total];
 
     // 5. Load into VM, start, and run one scheduling round.
     let mut vm = Vm::new()
@@ -55,6 +58,8 @@ fn steel_thread_when_full_round_trip_then_x_is_10_y_is_42() {
             &loaded,
             &mut stack,
             &mut vars,
+            &mut data_region,
+            &mut temp_buf,
             &mut tasks,
             &mut programs,
             &mut ready,

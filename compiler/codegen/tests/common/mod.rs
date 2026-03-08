@@ -15,6 +15,8 @@ use ironplc_vm::{FaultContext, ProgramInstanceState, Slot, TaskState, Vm};
 pub struct VmBuffers {
     pub stack: Vec<Slot>,
     pub vars: Vec<Slot>,
+    pub data_region: Vec<u8>,
+    pub temp_buf: Vec<u8>,
     pub tasks: Vec<TaskState>,
     pub programs: Vec<ProgramInstanceState>,
     pub ready: Vec<usize>,
@@ -25,9 +27,12 @@ impl VmBuffers {
         let h = &c.header;
         let task_count = c.task_table.tasks.len();
         let program_count = c.task_table.programs.len();
+        let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
         VmBuffers {
             stack: vec![Slot::default(); h.max_stack_depth as usize],
             vars: vec![Slot::default(); h.num_variables as usize],
+            data_region: vec![0u8; h.data_region_bytes as usize],
+            temp_buf: vec![0u8; temp_buf_total],
             tasks: vec![TaskState::default(); task_count],
             programs: vec![ProgramInstanceState::default(); program_count],
             ready: vec![0usize; task_count.max(1)],
@@ -64,6 +69,8 @@ pub fn parse_and_try_run(source: &str) -> Result<(Container, VmBuffers), FaultCo
                 &container,
                 &mut bufs.stack,
                 &mut bufs.vars,
+                &mut bufs.data_region,
+                &mut bufs.temp_buf,
                 &mut bufs.tasks,
                 &mut bufs.programs,
                 &mut bufs.ready,

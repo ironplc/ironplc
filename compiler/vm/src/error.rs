@@ -13,6 +13,8 @@ pub enum Trap {
     WatchdogTimeout(u16),
     NegativeExponent,
     InvalidBuiltinFunction(u16),
+    DataRegionOutOfBounds(u16),
+    TempBufferExhausted,
 }
 
 // v_code() and exit_code() are generated from resources/problem-codes.csv
@@ -33,6 +35,10 @@ impl fmt::Display for Trap {
             Trap::InvalidBuiltinFunction(id) => {
                 write!(f, "invalid built-in function: 0x{id:04X}")
             }
+            Trap::DataRegionOutOfBounds(offset) => {
+                write!(f, "data region access out of bounds at offset {offset}")
+            }
+            Trap::TempBufferExhausted => write!(f, "temporary buffer pool exhausted"),
         }
     }
 }

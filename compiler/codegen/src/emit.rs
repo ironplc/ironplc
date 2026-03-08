@@ -656,6 +656,40 @@ impl Emitter {
         self.pop_stack(1);
     }
 
+    /// Emits STR_INIT with data_offset and max_length operands.
+    /// Initializes a STRING variable's header in the data region.
+    pub fn emit_str_init(&mut self, data_offset: u16, max_length: u16) {
+        self.bytecode.push(opcode::STR_INIT);
+        self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
+        self.bytecode.extend_from_slice(&max_length.to_le_bytes());
+        // No stack effect.
+    }
+
+    /// Emits LOAD_CONST_STR with a constant pool index.
+    /// Loads a string literal from the constant pool into a temp buffer and pushes buf_idx.
+    pub fn emit_load_const_str(&mut self, pool_index: u16) {
+        self.bytecode.push(opcode::LOAD_CONST_STR);
+        self.bytecode.extend_from_slice(&pool_index.to_le_bytes());
+        self.push_stack(1);
+    }
+
+    /// Emits STR_STORE_VAR with a data_offset operand.
+    /// Pops buf_idx from the stack and copies the temp buffer contents to the data region.
+    pub fn emit_str_store_var(&mut self, data_offset: u16) {
+        self.bytecode.push(opcode::STR_STORE_VAR);
+        self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
+        self.pop_stack(1);
+    }
+
+    /// Emits STR_LOAD_VAR with a data_offset operand.
+    /// Copies a string from the data region into a temp buffer and pushes buf_idx.
+    #[allow(dead_code)]
+    pub fn emit_str_load_var(&mut self, data_offset: u16) {
+        self.bytecode.push(opcode::STR_LOAD_VAR);
+        self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
+        self.push_stack(1);
+    }
+
     /// Emits RET_VOID.
     pub fn emit_ret_void(&mut self) {
         self.bytecode.push(opcode::RET_VOID);

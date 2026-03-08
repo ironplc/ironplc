@@ -592,19 +592,19 @@ String operations are dispatched through the BUILTIN opcode (0xC4) with function
 
 #### STRING Variable Access
 
-String variable access uses dedicated opcodes because string assignment has different semantics from integer assignment — STR_STORE_VAR performs a buffer-to-buffer content copy (value semantics), not an index copy.
+String variable access uses dedicated opcodes because string assignment has different semantics from integer assignment — STR_STORE_VAR performs a content copy into the data region (value semantics), not an index copy. The operand is a `data_offset` — a byte offset into the unified data region ([ADR-0017](../adrs/0017-unified-data-region.md)) where the string variable's `[max_length][cur_length][data]` layout begins.
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0xE0 | STR_LOAD_VAR | index: u16 | [] → [buf_idx] | Push buffer index for a STRING variable |
-| 0xE1 | STR_STORE_VAR | index: u16 | [buf_idx] → [] | Copy buffer contents into STRING variable's buffer (value-copy assignment) |
+| 0xE0 | STR_LOAD_VAR | data_offset: u16 | [] → [buf_idx] | Copy STRING from data region into a temp buffer; push temp buf_idx |
+| 0xE1 | STR_STORE_VAR | data_offset: u16 | [buf_idx] → [] | Copy temp buffer contents into STRING variable at data_offset (value-copy assignment) |
 
 #### WSTRING Variable Access
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0xE2 | WSTR_LOAD_VAR | index: u16 | [] → [buf_idx] | Push buffer index for a WSTRING variable |
-| 0xE3 | WSTR_STORE_VAR | index: u16 | [buf_idx] → [] | Copy buffer contents into WSTRING variable's buffer (value-copy assignment) |
+| 0xE2 | WSTR_LOAD_VAR | data_offset: u16 | [] → [buf_idx] | Copy WSTRING from data region into a temp buffer; push temp buf_idx |
+| 0xE3 | WSTR_STORE_VAR | data_offset: u16 | [buf_idx] → [] | Copy temp buffer contents into WSTRING variable at data_offset (value-copy assignment) |
 
 #### String Functions
 

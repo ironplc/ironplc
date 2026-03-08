@@ -81,6 +81,8 @@ END_PROGRAM
             &container,
             &mut bufs.stack,
             &mut bufs.vars,
+            &mut bufs.data_region,
+            &mut bufs.temp_buf,
             &mut bufs.tasks,
             &mut bufs.programs,
             &mut bufs.ready,

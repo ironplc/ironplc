@@ -134,6 +134,26 @@ pub const BUILTIN: u8 = 0xC4;
 /// Return from the current function (void return).
 pub const RET_VOID: u8 = 0xB5;
 
+// --- String opcodes ---
+
+/// Load a STRING literal from the constant pool into a temporary buffer.
+/// Operand: u16 constant pool index (little-endian).
+/// Pushes the temp buf_idx onto the stack.
+pub const LOAD_CONST_STR: u8 = 0x09;
+
+/// Initialize a STRING variable in the data region.
+/// Operands: data_offset: u16, max_length: u16.
+/// Sets max_length and cur_length=0 at the given data_offset.
+pub const STR_INIT: u8 = 0xE4;
+
+/// Copy STRING from data region into a temp buffer; push temp buf_idx.
+/// Operand: data_offset: u16.
+pub const STR_LOAD_VAR: u8 = 0xE0;
+
+/// Copy temp buffer contents into STRING variable at data_offset.
+/// Operand: data_offset: u16. Pops buf_idx from stack.
+pub const STR_STORE_VAR: u8 = 0xE1;
+
 // --- Truncation opcodes ---
 
 /// Truncate i32 to i8 range, then sign-extend back to i32.

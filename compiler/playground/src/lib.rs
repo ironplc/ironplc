@@ -232,6 +232,9 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
     let h = &container.header;
     let mut stack_buf = vec![Slot::default(); h.max_stack_depth as usize];
     let mut var_buf = vec![Slot::default(); h.num_variables as usize];
+    let mut data_region_buf = vec![0u8; h.data_region_bytes as usize];
+    let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
+    let mut temp_buf = vec![0u8; temp_buf_total];
     let task_count = container.task_table.tasks.len();
     let program_count = container.task_table.programs.len();
     let mut task_states = vec![TaskState::default(); task_count];
@@ -243,6 +246,8 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
             &container,
             &mut stack_buf,
             &mut var_buf,
+            &mut data_region_buf,
+            &mut temp_buf,
             &mut task_states,
             &mut program_instances,
             &mut ready_buf,
@@ -493,6 +498,9 @@ fn run_vm_step(
 ) -> (Vec<VariableInfo>, u32, Option<String>) {
     let h = &container.header;
     let mut stack_buf = vec![Slot::default(); h.max_stack_depth as usize];
+    let mut data_region_buf = vec![0u8; h.data_region_bytes as usize];
+    let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
+    let mut temp_buf = vec![0u8; temp_buf_total];
     let task_count = container.task_table.tasks.len();
     let program_count = container.task_table.programs.len();
     let mut task_states = vec![TaskState::default(); task_count];
@@ -504,6 +512,8 @@ fn run_vm_step(
             container,
             &mut stack_buf,
             var_buf,
+            &mut data_region_buf,
+            &mut temp_buf,
             &mut task_states,
             &mut program_instances,
             &mut ready_buf,

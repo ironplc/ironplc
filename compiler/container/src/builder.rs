@@ -13,6 +13,9 @@ use crate::task_type::TaskType;
 pub struct ContainerBuilder {
     num_variables: u16,
     max_stack_depth: u16,
+    data_region_bytes: u32,
+    num_temp_bufs: u16,
+    max_temp_buf_bytes: u32,
     constant_pool: ConstantPool,
     functions: Vec<FuncEntry>,
     bytecode: Vec<u8>,
@@ -28,6 +31,9 @@ impl ContainerBuilder {
         ContainerBuilder {
             num_variables: 0,
             max_stack_depth: 0,
+            data_region_bytes: 0,
+            num_temp_bufs: 0,
+            max_temp_buf_bytes: 0,
             constant_pool: ConstantPool::default(),
             functions: Vec::new(),
             bytecode: Vec::new(),
@@ -42,6 +48,24 @@ impl ContainerBuilder {
     /// Sets the total number of variable table entries.
     pub fn num_variables(mut self, n: u16) -> Self {
         self.num_variables = n;
+        self
+    }
+
+    /// Sets the total size of the unified data region in bytes.
+    pub fn data_region_bytes(mut self, n: u32) -> Self {
+        self.data_region_bytes = n;
+        self
+    }
+
+    /// Sets the number of temporary buffers for string operations.
+    pub fn num_temp_bufs(mut self, n: u16) -> Self {
+        self.num_temp_bufs = n;
+        self
+    }
+
+    /// Sets the size of the largest temporary buffer in bytes.
+    pub fn max_temp_buf_bytes(mut self, n: u32) -> Self {
+        self.max_temp_buf_bytes = n;
         self
     }
 
@@ -68,6 +92,15 @@ impl ContainerBuilder {
         self.constant_pool.push(ConstEntry {
             const_type: ConstType::F64,
             value: value.to_le_bytes().to_vec(),
+        });
+        self
+    }
+
+    /// Adds a string constant (Latin-1 bytes) to the constant pool.
+    pub fn add_str_constant(mut self, value: &[u8]) -> Self {
+        self.constant_pool.push(ConstEntry {
+            const_type: ConstType::Str,
+            value: value.to_vec(),
         });
         self
     }
@@ -186,6 +219,9 @@ impl ContainerBuilder {
         let header = FileHeader {
             num_variables: self.num_variables,
             max_stack_depth: self.max_stack_depth,
+            data_region_bytes: self.data_region_bytes,
+            num_temp_bufs: self.num_temp_bufs,
+            max_temp_buf_bytes: self.max_temp_buf_bytes,
             num_functions: code.functions.len() as u16,
             ..FileHeader::default()
         };
