@@ -4,7 +4,6 @@ mod common;
 
 use common::{assert_trap, single_function_container_i64, VmBuffers};
 use ironplc_vm::error::Trap;
-use ironplc_vm::Vm;
 
 #[test]
 fn execute_when_expt_i64_then_correct() {
@@ -20,19 +19,7 @@ fn execute_when_expt_i64_then_correct() {
     let c = single_function_container_i64(&bytecode, 1, &[2, 40]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i64(), 1_099_511_627_776);
@@ -49,19 +36,7 @@ fn execute_when_expt_i64_negative_exponent_then_traps() {
     ];
     let c = single_function_container_i64(&bytecode, 0, &[2, -1]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     assert_trap(&mut vm, Trap::NegativeExponent);
 }

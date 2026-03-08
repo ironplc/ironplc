@@ -245,6 +245,18 @@ table.var-table tr.changed td {
   background: rgba(107, 255, 155, 0.15);
 }
 
+.raw-bytes-note {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-style: italic;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: rgba(255, 200, 50, 0.08);
+  border: 1px solid rgba(255, 200, 50, 0.2);
+  border-radius: 4px;
+}
+
 .drop-overlay {
   display: none;
   position: fixed;
@@ -296,11 +308,11 @@ body.embed main {
 body.embed .editor-section {
   border-right: none;
   border-bottom: 1px solid var(--border);
-  flex: 1 1 55%;
+  flex: 1 1 70%;
 }
 
 body.embed .output-section {
-  flex: 1 1 45%;
+  flex: 1 1 30%;
 }
 
 body.embed .toolbar {

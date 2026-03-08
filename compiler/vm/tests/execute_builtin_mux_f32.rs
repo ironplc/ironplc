@@ -3,7 +3,6 @@
 mod common;
 
 use common::{single_function_container_i32_f32, VmBuffers};
-use ironplc_vm::Vm;
 
 #[test]
 fn execute_when_mux_f32_k0_2_inputs_then_returns_in0() {
@@ -20,19 +19,7 @@ fn execute_when_mux_f32_k0_2_inputs_then_returns_in0() {
     let c = single_function_container_i32_f32(&bytecode, 1, &[0], &[10.5, 20.5]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -54,19 +41,7 @@ fn execute_when_mux_f32_k1_2_inputs_then_returns_in1() {
     let c = single_function_container_i32_f32(&bytecode, 1, &[1], &[10.5, 20.5]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -89,19 +64,7 @@ fn execute_when_mux_f32_k2_3_inputs_then_returns_in2() {
     let c = single_function_container_i32_f32(&bytecode, 1, &[2], &[1.0, 2.0, 3.0]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -124,19 +87,7 @@ fn execute_when_mux_f32_k_out_of_range_then_clamps_to_last() {
     let c = single_function_container_i32_f32(&bytecode, 1, &[10], &[1.0, 2.0, 3.0]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -158,19 +109,7 @@ fn execute_when_mux_f32_k_negative_then_clamps_to_first() {
     let c = single_function_container_i32_f32(&bytecode, 1, &[-1], &[10.5, 20.5]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();

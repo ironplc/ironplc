@@ -1366,6 +1366,8 @@ fn compile_function_call(
         "or" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_or),
         "xor" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_xor),
         "not" => compile_not_function(emitter, ctx, func, op_type),
+        // String functions
+        "len" => compile_len(emitter, ctx, func),
         _ => {
             if let Some((source, target)) = parse_type_conversion(name) {
                 compile_type_conversion(emitter, ctx, func, source, target)
@@ -1549,6 +1551,52 @@ fn compile_mux(
     }
 
     emitter.emit_builtin(func_id);
+    Ok(())
+}
+
+/// Compiles the LEN standard function call.
+///
+/// LEN takes a single STRING variable argument and returns its current length
+/// as an i32. Instead of going through the BUILTIN dispatch, LEN uses the
+/// dedicated `LEN_STR` opcode which reads `cur_length` directly from the
+/// string's data region header.
+fn compile_len(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    // The argument must be a string variable so we can look up its data_offset.
+    let var_name = match &args[0].kind {
+        ExprKind::Variable(variable) => resolve_variable_name(variable),
+        _ => None,
+    };
+
+    let name =
+        var_name.ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
+
+    let info = ctx
+        .string_vars
+        .get(name)
+        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
+
+    emitter.emit_len_str(info.data_offset);
     Ok(())
 }
 

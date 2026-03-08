@@ -4,7 +4,6 @@ mod common;
 
 use common::{assert_trap, single_function_container, VmBuffers};
 use ironplc_vm::error::Trap;
-use ironplc_vm::Vm;
 
 #[test]
 fn execute_when_div_i32_then_correct_result() {
@@ -19,19 +18,7 @@ fn execute_when_div_i32_then_correct_result() {
     ];
     let c = single_function_container(&bytecode, 1, &[10, 3]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 3);
@@ -50,19 +37,7 @@ fn execute_when_div_i32_negative_then_truncates_toward_zero() {
     ];
     let c = single_function_container(&bytecode, 1, &[-7, 2]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), -3);
@@ -79,19 +54,7 @@ fn execute_when_div_i32_by_zero_then_trap() {
     ];
     let c = single_function_container(&bytecode, 0, &[10, 0]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     assert_trap(&mut vm, Trap::DivideByZero);
 }
@@ -109,19 +72,7 @@ fn execute_when_div_i32_min_by_neg_one_then_wraps() {
     ];
     let c = single_function_container(&bytecode, 1, &[i32::MIN, -1]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     // wrapping_div: i32::MIN / -1 wraps to i32::MIN
