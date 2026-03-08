@@ -348,8 +348,18 @@ function renderDiagnostics(diagnostics) {
   let html = "";
   for (const d of diagnostics) {
     html += '<div class="diagnostic-item">';
-    html += `<span class="diagnostic-code">${escapeHtml(d.code)}</span>`;
-    html += `<span class="diagnostic-message">${escapeHtml(d.message)}</span>`;
+    const code = escapeHtml(d.code);
+    if (/^P\d{4}$/.test(d.code)) {
+      const url = `https://www.ironplc.com/reference/compiler/problems/${d.code}.html`;
+      html += `<a class="diagnostic-code" href="${url}" target="_blank" rel="noopener">${code}</a>`;
+    } else {
+      html += `<span class="diagnostic-code">${code}</span>`;
+    }
+    let message = escapeHtml(d.message);
+    if (d.label) {
+      message += `: ${escapeHtml(d.label)}`;
+    }
+    html += `<span class="diagnostic-message">${message}</span>`;
     if (d.start > 0 || d.end > 0) {
       html += `<span class="diagnostic-location">offset ${d.start}\u2013${d.end}</span>`;
     }

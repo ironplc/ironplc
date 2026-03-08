@@ -161,6 +161,26 @@ END_PROGRAM
     );
   });
 
+  test("run_source_when_syntax_error_then_diagnostic_code_links_to_documentation", async ({ page }) => {
+    const editor = page.locator('[data-testid="editor"]');
+    await editor.fill("PROGRAM main INVALID END_PROGRAM");
+
+    await page.click("#run-btn");
+
+    const diagnosticsPanel = page.locator('[data-testid="diagnostics-panel"]');
+    await expect(diagnosticsPanel).not.toContainText("No diagnostics", { timeout: 10000 });
+
+    // P-code should be a clickable link
+    const link = diagnosticsPanel.locator("a.diagnostic-code");
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute("href", /https:\/\/www\.ironplc\.com\/reference\/compiler\/problems\/P\d{4}\.html/);
+    await expect(link).toHaveAttribute("target", "_blank");
+
+    // Diagnostic message should include the label context
+    const message = diagnosticsPanel.locator(".diagnostic-message");
+    await expect(message).not.toHaveText("");
+  });
+
   test("step_when_source_changed_then_recompiles_automatically", async ({ page }) => {
     const editor = page.locator('[data-testid="editor"]');
     await editor.fill(`PROGRAM main
