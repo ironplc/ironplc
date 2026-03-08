@@ -339,6 +339,7 @@ function renderVariables(variables, scansCompleted, mode) {
     html += '</tr>';
   }
   html += "</tbody></table>";
+  html += '<p class="raw-bytes-note">Note: Values are shown as raw bytes, not interpreted values. Float types will not display correctly.</p>';
   variablesPanel.innerHTML = html;
 
   previousValues = new Map(variables.map(v => [v.index, v.value]));
