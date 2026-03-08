@@ -16,3 +16,4 @@ ironplc-problems = { path = "../problems", version = "0.165.0" }
 ironplc-analyzer = { path = "../analyzer", version = "0.165.0" }
 ironplc-parser = { path = "../parser", version = "0.165.0" }
 ironplc-vm = { path = "../vm", version = "0.165.0" }
+proptest = "1"
