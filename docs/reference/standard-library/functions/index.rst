@@ -180,31 +180,31 @@ String Functions
      - Status
    * - :doc:`LEN <len>`
      - String length
-     - Not yet supported
+     - Supported
    * - :doc:`LEFT <left>`
      - Left substring
-     - Not yet supported
+     - Supported
    * - :doc:`RIGHT <right>`
      - Right substring
-     - Not yet supported
+     - Supported
    * - :doc:`MID <mid>`
      - Middle substring
-     - Not yet supported
+     - Supported
    * - :doc:`CONCAT <concat>`
      - String concatenation
-     - Not yet supported
+     - Supported
    * - :doc:`INSERT <insert>`
      - String insertion
-     - Not yet supported
+     - Supported
    * - :doc:`DELETE <delete>`
      - String deletion
-     - Not yet supported
+     - Supported
    * - :doc:`REPLACE <replace>`
      - String replacement
-     - Not yet supported
+     - Supported
    * - :doc:`FIND <find>`
      - String search
-     - Not yet supported
+     - Supported
 
 Type Conversion Functions
 -------------------------

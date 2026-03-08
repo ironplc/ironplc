@@ -10,7 +10,7 @@ Concatenates two strings.
    * - **IEC 61131-3**
      - Section 2.5.1.5.7
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Signatures
 ----------
@@ -28,7 +28,7 @@ Signatures
      - ``STRING``
      - ``STRING``
      - ``STRING``
-     - Not yet supported
+     - Supported
    * - 2
      - ``WSTRING``
      - ``WSTRING``
@@ -43,7 +43,8 @@ Returns a new string formed by appending *IN2* to the end of *IN1*.
 Example
 -------
 
-.. code-block::
+.. playground-with-program::
+   :vars: result : STRING;
 
    result := CONCAT('Hello', ' World');    (* result = 'Hello World' *)
    result := CONCAT('A', 'B');             (* result = 'AB' *)

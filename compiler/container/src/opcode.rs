@@ -159,6 +159,26 @@ pub const STR_STORE_VAR: u8 = 0xE1;
 /// Pushes the cur_length as an i32 onto the stack.
 pub const LEN_STR: u8 = 0xE2;
 
+/// Find the first occurrence of IN2 within IN1.
+/// Operands: in1_data_offset: u16, in2_data_offset: u16.
+/// Pushes the 1-based position as i32 (0 if not found).
+pub const FIND_STR: u8 = 0xE3;
+
+/// Replace L characters starting at position P in IN1 with IN2.
+/// Operands: in1_data_offset: u16, in2_data_offset: u16.
+/// Pops P (i32) then L (i32) from stack. Pushes buf_idx (i32).
+pub const REPLACE_STR: u8 = 0xE5;
+
+/// Insert IN2 into IN1 after position P.
+/// Operands: in1_data_offset: u16, in2_data_offset: u16.
+/// Pops P (i32) from stack. Pushes buf_idx (i32).
+pub const INSERT_STR: u8 = 0xE6;
+
+/// Delete L characters from IN1 starting at position P.
+/// Operand: in1_data_offset: u16.
+/// Pops P (i32) then L (i32) from stack. Pushes buf_idx (i32).
+pub const DELETE_STR: u8 = 0xE7;
+
 // --- Truncation opcodes ---
 
 /// Truncate i32 to i8 range, then sign-extend back to i32.
