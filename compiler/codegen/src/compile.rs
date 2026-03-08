@@ -1348,6 +1348,25 @@ fn compile_function_call(
             compile_shift_rotate(emitter, ctx, func, op_type, name.as_str())
         }
         "mux" => compile_mux(emitter, ctx, func, op_type),
+        // Arithmetic function forms (equivalent to +, -, *, /, MOD operators)
+        "add" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_add),
+        "sub" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_sub),
+        "mul" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_mul),
+        "div" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_div),
+        "mod" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_mod),
+        // Comparison function forms (equivalent to >, >=, =, <=, <, <> operators)
+        "gt" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_gt),
+        "ge" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_ge),
+        "eq" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_eq),
+        "le" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_le),
+        "lt" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_lt),
+        "ne" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_ne),
+        // Boolean function forms (equivalent to AND, OR, XOR, NOT operators)
+        "and" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_and),
+        "or" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_or),
+        "xor" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_xor),
+        "not" => compile_not_function(emitter, ctx, func, op_type),
+        // String functions
         "len" => compile_len(emitter, ctx, func),
         _ => {
             if let Some((source, target)) = parse_type_conversion(name) {
@@ -1405,6 +1424,72 @@ fn compile_generic_builtin(
     }
 
     emitter.emit_builtin(func_id);
+    Ok(())
+}
+
+/// Compiles a two-argument function form that maps to an existing operator.
+///
+/// Extracts the two positional arguments, compiles them with the given `op_type`,
+/// and calls the provided emit function. This is used for function forms like
+/// ADD(a, b) which are equivalent to the operator form a + b.
+fn compile_two_arg_operator(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+    emit_fn: fn(&mut Emitter, OpType),
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    compile_expr(emitter, ctx, args[0], op_type)?;
+    compile_expr(emitter, ctx, args[1], op_type)?;
+    emit_fn(emitter, op_type);
+    Ok(())
+}
+
+/// Compiles the NOT function form.
+///
+/// NOT(IN) is equivalent to the NOT operator. Takes a single BOOL argument.
+fn compile_not_function(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    compile_expr(emitter, ctx, args[0], op_type)?;
+    emitter.emit_bool_not();
     Ok(())
 }
 
