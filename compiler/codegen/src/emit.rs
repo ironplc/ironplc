@@ -724,6 +724,29 @@ impl Emitter {
         self.pop_stack(1);
     }
 
+    /// Emits INSERT_STR with two data_offset operands.
+    /// Pops P (i32) from stack, inserts IN2 into IN1 after position P,
+    /// and pushes the result buf_idx.
+    pub fn emit_insert_str(&mut self, in1_data_offset: u16, in2_data_offset: u16) {
+        self.bytecode.push(opcode::INSERT_STR);
+        self.bytecode
+            .extend_from_slice(&in1_data_offset.to_le_bytes());
+        self.bytecode
+            .extend_from_slice(&in2_data_offset.to_le_bytes());
+        // Net effect: pop 1 (P), push 1 (buf_idx) = 0
+    }
+
+    /// Emits DELETE_STR with a data_offset operand.
+    /// Pops P (i32) then L (i32) from stack, deletes L characters from
+    /// IN1 starting at position P, and pushes the result buf_idx.
+    pub fn emit_delete_str(&mut self, in1_data_offset: u16) {
+        self.bytecode.push(opcode::DELETE_STR);
+        self.bytecode
+            .extend_from_slice(&in1_data_offset.to_le_bytes());
+        // Net effect: pop 2 (L, P), push 1 (buf_idx) = pop 1
+        self.pop_stack(1);
+    }
+
     /// Emits RET_VOID.
     pub fn emit_ret_void(&mut self) {
         self.bytecode.push(opcode::RET_VOID);
