@@ -25,6 +25,8 @@ fn execute_when_max_u32_large_values_then_unsigned_comparison() {
             &c,
             &mut b.stack,
             &mut b.vars,
+            &mut b.data_region,
+            &mut b.temp_buf,
             &mut b.tasks,
             &mut b.programs,
             &mut b.ready,

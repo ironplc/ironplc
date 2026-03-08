@@ -127,6 +127,18 @@ impl ConstantPool {
         ]))
     }
 
+    /// Gets a string value (raw bytes) from the constant pool at the given index.
+    pub fn get_str(&self, index: u16) -> Result<&[u8], ContainerError> {
+        let entry = self
+            .entries
+            .get(index as usize)
+            .ok_or(ContainerError::InvalidConstantIndex(index))?;
+        if entry.const_type != ConstType::Str {
+            return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
+        }
+        Ok(&entry.value)
+    }
+
     /// Writes the constant pool to the given writer.
     pub fn write_to(&self, w: &mut impl Write) -> Result<(), ContainerError> {
         w.write_all(&(self.entries.len() as u16).to_le_bytes())?;
