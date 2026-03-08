@@ -37,6 +37,23 @@ impl FileType {
         )
     }
 
+    /// Determines the file type based on content inspection.
+    ///
+    /// This is useful when no file extension is available (e.g., playground input).
+    /// Valid Structured Text never starts with `<`, so this is a reliable heuristic.
+    pub fn from_content(content: &str) -> Self {
+        let trimmed = content.trim_start();
+        if trimmed.starts_with('<') {
+            if trimmed.contains("TcPlcObject") {
+                FileType::TwinCat
+            } else {
+                FileType::Xml
+            }
+        } else {
+            FileType::StructuredText
+        }
+    }
+
     /// Returns the file extensions associated with this file type
     pub fn extensions(&self) -> &'static [&'static str] {
         match self {
@@ -113,6 +130,36 @@ mod tests {
         assert!(FileType::Xml.is_supported());
         assert!(FileType::TwinCat.is_supported());
         assert!(!FileType::Unknown.is_supported());
+    }
+
+    #[test]
+    fn from_content_when_plcopen_xml_then_returns_xml() {
+        let content = r#"<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+</project>"#;
+        assert_eq!(FileType::from_content(content), FileType::Xml);
+    }
+
+    #[test]
+    fn from_content_when_twincat_xml_then_returns_twincat() {
+        let content = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+  </POU>
+</TcPlcObject>"#;
+        assert_eq!(FileType::from_content(content), FileType::TwinCat);
+    }
+
+    #[test]
+    fn from_content_when_structured_text_then_returns_st() {
+        let content = "PROGRAM Main\nEND_PROGRAM";
+        assert_eq!(FileType::from_content(content), FileType::StructuredText);
+    }
+
+    #[test]
+    fn from_content_when_leading_whitespace_xml_then_returns_xml() {
+        let content = "  \n  <?xml version=\"1.0\"?>\n<project xmlns=\"http://www.plcopen.org/xml/tc6_0201\"/>";
+        assert_eq!(FileType::from_content(content), FileType::Xml);
     }
 
     #[test]
