@@ -2141,8 +2141,26 @@ fn compile_type_conversion(
     }
 
     compile_expr(emitter, ctx, args[0], source_op_type)?;
-    emit_conversion_opcode(emitter, &source, &target);
-    emit_truncation(emitter, target);
+
+    // Integer-to-boolean needs a dedicated opcode (non-zero → 1, zero → 0)
+    // rather than the generic conversion + truncation path, because
+    // truncation would only keep the lowest bit instead of testing for zero.
+    if target.storage_bits == 1 {
+        match source.op_width {
+            OpWidth::W32 => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_BOOL),
+            OpWidth::W64 => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_BOOL),
+            _ => {
+                return Err(Diagnostic::todo_with_span(
+                    func.name.span(),
+                    file!(),
+                    line!(),
+                ));
+            }
+        }
+    } else {
+        emit_conversion_opcode(emitter, &source, &target);
+        emit_truncation(emitter, target);
+    }
 
     Ok(())
 }
