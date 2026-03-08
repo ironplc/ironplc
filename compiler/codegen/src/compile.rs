@@ -1384,6 +1384,10 @@ fn compile_function_call(
         "replace" => compile_replace(emitter, ctx, func),
         "insert" => compile_insert(emitter, ctx, func),
         "delete" => compile_delete(emitter, ctx, func),
+        "left" => compile_left(emitter, ctx, func),
+        "right" => compile_right(emitter, ctx, func),
+        "mid" => compile_mid(emitter, ctx, func),
+        "concat" => compile_concat(emitter, ctx, func),
         _ => {
             if let Some((source, target)) = parse_type_conversion(name) {
                 compile_type_conversion(emitter, ctx, func, source, target)
@@ -1774,6 +1778,133 @@ fn compile_delete(
     ctx.num_temp_bufs += 1;
 
     emitter.emit_delete_str(in1_offset);
+    Ok(())
+}
+
+/// Compiles the LEFT standard function call.
+///
+/// LEFT(IN, L) returns the leftmost L characters of IN. IN must be a
+/// STRING variable; L is an integer expression compiled onto the stack.
+fn compile_left(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+
+    // Compile L integer expression onto the stack.
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[1], op_type)?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_left_str(in_offset);
+    Ok(())
+}
+
+/// Compiles the RIGHT standard function call.
+///
+/// RIGHT(IN, L) returns the rightmost L characters of IN. IN must be a
+/// STRING variable; L is an integer expression compiled onto the stack.
+fn compile_right(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+
+    // Compile L integer expression onto the stack.
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[1], op_type)?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_right_str(in_offset);
+    Ok(())
+}
+
+/// Compiles the MID standard function call.
+///
+/// MID(IN, L, P) returns L characters from IN starting at position P
+/// (1-based). IN must be a STRING variable; L and P are integer
+/// expressions compiled onto the stack.
+fn compile_mid(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 3 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+
+    // Compile L and P integer expressions onto the stack.
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[1], op_type)?;
+    compile_expr(emitter, ctx, args[2], op_type)?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_mid_str(in_offset);
+    Ok(())
+}
+
+/// Compiles the CONCAT standard function call.
+///
+/// CONCAT(IN1, IN2) concatenates IN1 and IN2. Both arguments must be
+/// STRING variables.
+fn compile_concat(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in1_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+    let in2_offset = resolve_string_arg(ctx, args[1], &func.name.span())?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_concat_str(in1_offset, in2_offset);
     Ok(())
 }
 
