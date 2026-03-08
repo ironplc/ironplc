@@ -485,4 +485,50 @@ END_FUNCTION_BLOCK";
             Problem::FunctionCallWrongArgCount.code()
         );
     }
+
+    #[test]
+    fn apply_when_arithmetic_function_called_then_ok() {
+        // Note: MOD is excluded because the parser treats it as a keyword (the MOD operator).
+        // MOD(a, b) requires parser changes to allow keywords in function call position.
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+    a : INT;
+    b : INT;
+END_VAR
+    result := ADD(a, b);
+    result := SUB(a, b);
+    result := MUL(a, b);
+    result := DIV(a, b);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_comparison_function_called_then_ok() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : BOOL;
+    a : INT;
+    b : INT;
+END_VAR
+    result := GT(a, b);
+    result := GE(a, b);
+    result := EQ(a, b);
+    result := LE(a, b);
+    result := LT(a, b);
+    result := NE(a, b);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_ok());
+    }
 }
