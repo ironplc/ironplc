@@ -10,7 +10,7 @@ Deletes characters from a string.
    * - **IEC 61131-3**
      - Section 2.5.1.5.7
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Signatures
 ----------
@@ -30,7 +30,7 @@ Signatures
      - ``INT``
      - ``INT``
      - ``STRING``
-     - Not yet supported
+     - Supported
    * - 2
      - ``WSTRING``
      - ``INT``
@@ -47,7 +47,8 @@ position *P*. Positions are 1-based.
 Example
 -------
 
-.. code-block::
+.. playground-with-program::
+   :vars: result : STRING;
 
    result := DELETE('Hello World', 6, 6);   (* result = 'Hello' *)
    result := DELETE('ABCDE', 2, 2);         (* result = 'ADE' *)

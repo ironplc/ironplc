@@ -10,7 +10,7 @@ Searches for a substring within a string.
    * - **IEC 61131-3**
      - Section 2.5.1.5.7
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Signatures
 ----------
@@ -28,7 +28,7 @@ Signatures
      - ``STRING``
      - ``STRING``
      - ``INT``
-     - Not yet supported
+     - Supported
    * - 2
      - ``WSTRING``
      - ``WSTRING``
@@ -45,7 +45,8 @@ the function returns 0.
 Example
 -------
 
-.. code-block::
+.. playground-with-program::
+   :vars: result : INT;
 
    result := FIND('Hello World', 'World');   (* result = 7 *)
    result := FIND('Hello World', 'xyz');     (* result = 0 *)

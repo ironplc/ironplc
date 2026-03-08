@@ -10,7 +10,7 @@ Replaces characters in a string.
    * - **IEC 61131-3**
      - Section 2.5.1.5.7
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Signatures
 ----------
@@ -32,7 +32,7 @@ Signatures
      - ``INT``
      - ``INT``
      - ``STRING``
-     - Not yet supported
+     - Supported
    * - 2
      - ``WSTRING``
      - ``WSTRING``
@@ -53,7 +53,8 @@ the portion being replaced.
 Example
 -------
 
-.. code-block::
+.. playground-with-program::
+   :vars: result : STRING;
 
    result := REPLACE('Hello World', 'Earth', 5, 7);  (* result = 'Hello Earth' *)
    result := REPLACE('ABCDE', 'XY', 2, 2);           (* result = 'AXYDE' *)

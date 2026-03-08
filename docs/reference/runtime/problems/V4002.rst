@@ -26,7 +26,7 @@ The exponent ``-2`` is negative, which is not supported for integer exponentiati
 
 To fix this error, ensure the exponent is non-negative:
 
-.. code-block::
+.. playground::
 
    PROGRAM Main
    VAR

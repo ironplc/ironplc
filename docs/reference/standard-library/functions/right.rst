@@ -10,7 +10,7 @@ Returns the rightmost characters of a string.
    * - **IEC 61131-3**
      - Section 2.5.1.5.7
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Signatures
 ----------
@@ -28,7 +28,7 @@ Signatures
      - ``STRING``
      - ``INT``
      - ``STRING``
-     - Not yet supported
+     - Supported
    * - 2
      - ``WSTRING``
      - ``INT``
@@ -44,7 +44,8 @@ or equal to the length of *IN*, the entire string is returned.
 Example
 -------
 
-.. code-block::
+.. playground-with-program::
+   :vars: result : STRING;
 
    result := RIGHT('Hello', 3);    (* result = 'llo' *)
    result := RIGHT('Hi', 10);      (* result = 'Hi' *)

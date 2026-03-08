@@ -118,31 +118,31 @@ Functions
      - Supported
    * - :doc:`LEN <functions/len>`
      - String length
-     - Not yet supported
+     - Supported
    * - :doc:`LEFT <functions/left>`
      - Left substring
-     - Not yet supported
+     - Supported
    * - :doc:`RIGHT <functions/right>`
      - Right substring
-     - Not yet supported
+     - Supported
    * - :doc:`MID <functions/mid>`
      - Middle substring
-     - Not yet supported
+     - Supported
    * - :doc:`CONCAT <functions/concat>`
      - String concatenation
-     - Not yet supported
+     - Supported
    * - :doc:`INSERT <functions/insert>`
      - String insertion
-     - Not yet supported
+     - Supported
    * - :doc:`DELETE <functions/delete>`
      - String deletion
-     - Not yet supported
+     - Supported
    * - :doc:`REPLACE <functions/replace>`
      - String replacement
-     - Not yet supported
+     - Supported
    * - :doc:`FIND <functions/find>`
      - String search
-     - Not yet supported
+     - Supported
    * - :doc:`Type conversions <functions/type-conversions>`
      - Type conversion functions
      - Supported

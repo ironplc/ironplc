@@ -122,7 +122,7 @@ def generate_problem_index(app, config):
     srcdir = Path(app.srcdir)
 
     _generate_index_for(logger, srcdir, Path('reference') / 'compiler' / 'problems', 'P', 'Problem Codes')
-    _generate_index_for(logger, srcdir, Path('reference') / 'runtime' / 'problems', 'V', 'Error Codes')
+    _generate_index_for(logger, srcdir, Path('reference') / 'runtime' / 'problems', 'V', 'Problem Code Index')
 
 REDIRECT_TEMPLATE = """\
 <!DOCTYPE html>

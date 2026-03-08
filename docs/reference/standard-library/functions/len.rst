@@ -10,7 +10,7 @@ Returns the length of a string.
    * - **IEC 61131-3**
      - Section 2.5.1.5.7
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Signatures
 ----------
@@ -26,7 +26,7 @@ Signatures
    * - 1
      - ``STRING``
      - ``INT``
-     - Not yet supported
+     - Supported
    * - 2
      - ``WSTRING``
      - ``INT``
@@ -41,7 +41,8 @@ result is 0.
 Example
 -------
 
-.. code-block::
+.. playground-with-program::
+   :vars: result : INT;
 
    result := LEN('Hello');    (* result = 5 *)
    result := LEN('');         (* result = 0 *)

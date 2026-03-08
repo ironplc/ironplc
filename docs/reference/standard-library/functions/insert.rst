@@ -10,7 +10,7 @@ Inserts a string into another string at a specified position.
    * - **IEC 61131-3**
      - Section 2.5.1.5.7
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Signatures
 ----------
@@ -30,7 +30,7 @@ Signatures
      - ``STRING``
      - ``INT``
      - ``STRING``
-     - Not yet supported
+     - Supported
    * - 2
      - ``WSTRING``
      - ``WSTRING``
@@ -48,7 +48,8 @@ first character.
 Example
 -------
 
-.. code-block::
+.. playground-with-program::
+   :vars: result : STRING;
 
    result := INSERT('Helo', 'l', 3);       (* result = 'Hello' *)
    result := INSERT('World', 'Hello ', 0); (* result = 'Hello World' *)
