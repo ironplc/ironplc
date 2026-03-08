@@ -118,7 +118,9 @@ mod tests {
     use std::vec;
     use std::vec::Vec;
 
-    use crate::debug_section::{function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry};
+    use crate::debug_section::{
+        function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry,
+    };
     use crate::ContainerBuilder;
 
     #[test]

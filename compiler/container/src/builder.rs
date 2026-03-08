@@ -309,7 +309,10 @@ mod tests {
         );
         assert_eq!(container.task_table.tasks[0].flags, 0x01);
         assert_eq!(container.task_table.tasks[0].interval_us, 0);
-        assert_eq!(container.task_table.tasks[0].single_var_index, NO_SINGLE_VAR);
+        assert_eq!(
+            container.task_table.tasks[0].single_var_index,
+            NO_SINGLE_VAR
+        );
         assert_eq!(container.task_table.tasks[0].watchdog_us, 0);
         assert_eq!(container.task_table.programs.len(), 1);
         assert_eq!(container.task_table.programs[0].instance_id, 0);
