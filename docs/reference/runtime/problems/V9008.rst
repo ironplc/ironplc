@@ -1,0 +1,15 @@
+=====
+V9008
+=====
+
+.. problem-summary:: V9008
+
+The VM tried to read or write beyond the bounds of the data region. This is an
+internal error indicating the compiler computed an incorrect data offset or
+allocated insufficient data region space for variable-length types (e.g. STRING).
+
+This error should not occur during normal operation. It indicates a bug in the
+IronPLC compiler or VM.
+
+Report this as a bug at https://github.com/ironplc/ironplc/issues with the
+``.iplc`` file and the source program that produced it.
