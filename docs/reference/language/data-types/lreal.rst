@@ -29,6 +29,16 @@ Literals
    LREAL#-1.0
    LREAL#1.0E+100
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: precise_value : LREAL; correction : LREAL; result : LREAL;
+
+   precise_value := LREAL#3.14159265358979;
+   correction := LREAL#0.00000000000001;
+   result := precise_value + correction;
+
 See Also
 --------
 

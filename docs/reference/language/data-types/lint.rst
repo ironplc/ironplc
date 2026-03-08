@@ -27,6 +27,16 @@ Literals
    LINT#-100000000
    LINT#16#FFFFFFFF
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: timestamp : LINT; increment : LINT; next_time : LINT;
+
+   timestamp := LINT#1000000000;
+   increment := LINT#500000;
+   next_time := timestamp + increment;  (* next_time = 1000500000 *)
+
 See Also
 --------
 
