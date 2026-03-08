@@ -191,6 +191,15 @@ table.var-table th {
   font-weight: 600;
 }
 
+a.diagnostic-code {
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+a.diagnostic-code:hover {
+  color: #ff9b9b;
+}
+
 .diagnostic-message {
   margin-left: 0.5rem;
 }
