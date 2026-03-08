@@ -15,10 +15,10 @@
   <main>
     <section class="editor-section">
       <div class="toolbar">
-        <button id="run-btn" disabled>Compile &amp; Run</button>
-        <button id="step-btn" disabled data-testid="step-btn">Step</button>
-        <button id="reset-btn" disabled data-testid="reset-btn">Reset</button>
-        <label>
+        <button id="run-btn" disabled>&#x25B6; Run</button>
+        <button id="step-btn" disabled data-testid="step-btn">&#x25B7; Step</button>
+        <button id="reset-btn" disabled data-testid="reset-btn">&#x21BB; Reset</button>
+        <label title="A scan cycle runs the entire program once, reading inputs, executing logic, and writing outputs. In a real PLC this repeats continuously. Here you control how many cycles to run.">
           Scans:
           <input id="scans-input" type="number" value="1" min="0" max="10000">
         </label>
@@ -29,11 +29,16 @@
       </div>
       <textarea id="editor" spellcheck="false" data-testid="editor">PROGRAM main
   VAR
-    x : INT;
-    y : INT;
+    count : INT;
+    doubled : INT;
   END_VAR
-  x := 10;
-  y := x + 32;
+
+  (* In a PLC, the program runs in a loop called
+     a "scan cycle". Each click of Step runs one
+     cycle. Variables keep their values between
+     cycles, so count increases each time. *)
+  count := count + 1;
+  doubled := count * 2;
 END_PROGRAM
 </textarea>
     </section>
