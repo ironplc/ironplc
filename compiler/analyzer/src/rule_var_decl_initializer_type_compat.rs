@@ -99,6 +99,15 @@ impl Visitor<Diagnostic> for RuleInitializerTypeCompat<'_> {
     type Value = ();
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Diagnostic> {
+        // TODO: extend type compatibility checking to other InitialValueAssignmentKind
+        // variants. Currently only Simple (literal constant) initializers are validated.
+        // Other variants that could benefit from checking:
+        // - String: validate string initializer against declared type
+        // - EnumeratedValues: validate inline enumeration initializer
+        // - EnumeratedType: validate named enumeration initializer
+        // - Subrange: validate subrange initializer value is within bounds
+        // - Structure: validate structure field initializer types
+        // - Array: validate array element initializer types
         if let InitialValueAssignmentKind::Simple(si) = &node.initializer {
             if let Some(constant) = &si.initial_value {
                 if let Some(type_attrs) = self.type_environment.get(&si.type_name) {
