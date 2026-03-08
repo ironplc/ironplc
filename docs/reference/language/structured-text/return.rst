@@ -31,7 +31,7 @@ execution resumes at the caller.
 Example
 -------
 
-.. code-block::
+.. playground::
 
    FUNCTION Divide : DINT
        VAR_INPUT
@@ -46,6 +46,16 @@ Example
 
        Divide := numerator / denominator;
    END_FUNCTION
+
+   PROGRAM main
+       VAR
+           safe_result : DINT;
+           normal_result : DINT;
+       END_VAR
+
+       safe_result := Divide(10, 0);
+       normal_result := Divide(10, 3);
+   END_PROGRAM
 
 See Also
 --------

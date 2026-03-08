@@ -45,11 +45,11 @@ selected inputs.
 Example
 -------
 
-.. code-block::
+.. playground-with-program::
+   :vars: result : DINT;
 
    result := SEL(TRUE, 10, 20);     (* result = 20 *)
    result := SEL(FALSE, 10, 20);    (* result = 10 *)
-   flag := SEL(cond, FALSE, TRUE);  (* conditional Boolean *)
 
 See Also
 --------

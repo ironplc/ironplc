@@ -237,3 +237,68 @@ footer {
   font-size: 0.8rem;
   color: var(--text-muted);
 }
+
+/* --- Embed mode --- */
+
+body.embed header,
+body.embed footer,
+body.embed .file-upload,
+body.embed #step-btn,
+body.embed #reset-btn,
+body.embed .toolbar label {
+  display: none;
+}
+
+body.embed {
+  height: 100%;
+}
+
+body.embed main {
+  flex-direction: column;
+}
+
+body.embed .editor-section {
+  border-right: none;
+  border-bottom: 1px solid var(--border);
+  flex: 1 1 55%;
+}
+
+body.embed .output-section {
+  flex: 1 1 45%;
+}
+
+body.embed .toolbar {
+  padding: 0.35rem 0.75rem;
+}
+
+body.embed #editor {
+  padding: 0.75rem;
+  font-size: 0.8rem;
+}
+
+body.embed .panel {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+/* --- Responsive: mobile standalone --- */
+
+@media (max-width: 768px) {
+  main {
+    flex-direction: column;
+  }
+
+  .editor-section {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    flex: 1 1 50%;
+  }
+
+  .output-section {
+    flex: 1 1 50%;
+  }
+
+  .toolbar {
+    flex-wrap: wrap;
+  }
+}

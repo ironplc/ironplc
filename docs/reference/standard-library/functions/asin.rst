@@ -41,7 +41,8 @@ range [-1.0, 1.0]. The result is in the range [-pi/2, pi/2].
 Example
 -------
 
-.. code-block::
+.. playground-with-program::
+   :vars: result : REAL; value : LREAL;
 
    result := ASIN(REAL#0.0);   (* result = 0.0 *)
    value := ASIN(LREAL#1.0);   (* value ~ 1.5707963 *)

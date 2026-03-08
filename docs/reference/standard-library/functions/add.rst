@@ -91,7 +91,8 @@ For integer types, overflow behavior wraps around (modular arithmetic).
 Example
 -------
 
-.. code-block::
+.. playground-with-program::
+   :vars: result : DINT;
 
    result := ADD(10, 20);   (* result = 30 *)
    result := 10 + 20;       (* result = 30, operator form *)

@@ -49,7 +49,7 @@ Use parentheses to override the default precedence.
 Example
 -------
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR

@@ -40,7 +40,7 @@ is present, its statement list executes.
 Example
 -------
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR

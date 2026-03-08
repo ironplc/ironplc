@@ -47,6 +47,16 @@ contribute.
 
         Technical reference for the compiler, editor extension, and runtime.
 
+.. grid:: 1
+
+    .. grid-item-card::  Playground
+        :link: https://playground.ironplc.com
+        :link-type: url
+
+        Try IronPLC in your browser — no installation needed. Write, compile,
+        and run IEC 61131-3 programs directly in the
+        `IronPLC Playground <https://playground.ironplc.com>`_.
+
 .. toctree::
    :maxdepth: 2
    :hidden:

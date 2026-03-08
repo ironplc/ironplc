@@ -41,7 +41,8 @@ the result of ``SQRT`` applied to a negative value is undefined.
 Example
 -------
 
-.. code-block::
+.. playground-with-program::
+   :vars: result : REAL; value : LREAL;
 
    result := SQRT(REAL#9.0);    (* result = 3.0 *)
    value := SQRT(LREAL#2.0);   (* value = 1.41421356... *)
