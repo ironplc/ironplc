@@ -47,6 +47,12 @@ pub fn init_panic_hook() {
     console_error_panic_hook::set_once();
 }
 
+/// Return the crate version so the playground can include it in problem-code URLs.
+#[wasm_bindgen]
+pub fn version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 /// Result of a compilation attempt.
 #[derive(Serialize, Deserialize)]
 struct CompileResult {

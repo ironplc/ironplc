@@ -173,7 +173,7 @@ END_PROGRAM
     // P-code should be a clickable link
     const link = diagnosticsPanel.locator("a.diagnostic-code");
     await expect(link).toBeVisible();
-    await expect(link).toHaveAttribute("href", /https:\/\/www\.ironplc\.com\/reference\/compiler\/problems\/P\d{4}\.html/);
+    await expect(link).toHaveAttribute("href", /https:\/\/www\.ironplc\.com\/reference\/compiler\/problems\/P\d{4}\.html\?version=/);
     await expect(link).toHaveAttribute("target", "_blank");
 
     // Diagnostic message should include the label context

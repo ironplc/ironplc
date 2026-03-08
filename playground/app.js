@@ -11,6 +11,7 @@ const dropOverlay = document.getElementById("drop-overlay");
 
 let sourceChanged = true;
 let previousValues = new Map();
+let compilerVersion = "";
 
 // --- URL parameter handling ---
 
@@ -64,6 +65,7 @@ worker.onmessage = (e) => {
   const msg = e.data;
 
   if (msg.type === "ready") {
+    compilerVersion = msg.version || "";
     runBtn.disabled = false;
     stepBtn.disabled = false;
     resetBtn.disabled = false;
@@ -351,7 +353,7 @@ function renderDiagnostics(diagnostics) {
     html += '<div class="diagnostic-item">';
     const code = escapeHtml(d.code);
     if (/^P\d{4}$/.test(d.code)) {
-      const url = `https://www.ironplc.com/reference/compiler/problems/${d.code}.html`;
+      const url = `https://www.ironplc.com/reference/compiler/problems/${d.code}.html?version=${encodeURIComponent(compilerVersion)}`;
       html += `<a class="diagnostic-code" href="${url}" target="_blank" rel="noopener">${code}</a>`;
     } else {
       html += `<span class="diagnostic-code">${code}</span>`;
