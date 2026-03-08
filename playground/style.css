@@ -74,6 +74,7 @@ main {
   cursor: pointer;
   font-size: 0.875rem;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .toolbar button:hover:not(:disabled),
@@ -207,6 +208,32 @@ table.var-table th {
 
 .success-message {
   color: var(--success);
+}
+
+.scan-summary {
+  background: rgba(107, 255, 155, 0.08);
+  border: 1px solid rgba(107, 255, 155, 0.25);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.scan-count {
+  color: var(--success);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.scan-hint {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+table.var-table tr.changed td {
+  background: rgba(107, 255, 155, 0.15);
 }
 
 .drop-overlay {
