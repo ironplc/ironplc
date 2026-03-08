@@ -347,6 +347,21 @@ fn get_bitshift_functions() -> Vec<FunctionSignature> {
     ]
 }
 
+/// Returns standard string function definitions.
+///
+/// IEC 61131-3 defines LEN as a standard function operating on
+/// ANY_STRING types and returning an INT result.
+fn get_string_functions() -> Vec<FunctionSignature> {
+    vec![
+        // LEN: current length of a string (ANY_STRING -> INT)
+        FunctionSignature::stdlib(
+            "LEN",
+            TypeName::from("INT"),
+            vec![input_param("IN", "ANY_STRING")],
+        ),
+    ]
+}
+
 // =============================================================================
 // Public API
 // =============================================================================
@@ -374,6 +389,9 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     // Bit shift and rotate functions
     functions.extend(get_bitshift_functions());
 
+    // String functions
+    functions.extend(get_string_functions());
+
     functions
 }
 
@@ -393,8 +411,9 @@ mod tests {
         // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT, SEL, LN, LOG, EXP, SIN, COS, TAN, ASIN, ACOS, ATAN = 15
         // Selection functions: MUX = 1
         // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
-        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 1 + 4 = 118
-        assert_eq!(functions.len(), 118);
+        // String functions: LEN = 1
+        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 1 + 4 + 1 = 119
+        assert_eq!(functions.len(), 119);
     }
 
     #[test]

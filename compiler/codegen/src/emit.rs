@@ -690,6 +690,15 @@ impl Emitter {
         self.push_stack(1);
     }
 
+    /// Emits LEN_STR with a data_offset operand.
+    /// Reads the current length of a STRING variable from the data region
+    /// and pushes the result as an i32.
+    pub fn emit_len_str(&mut self, data_offset: u16) {
+        self.bytecode.push(opcode::LEN_STR);
+        self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
+        self.push_stack(1);
+    }
+
     /// Emits RET_VOID.
     pub fn emit_ret_void(&mut self) {
         self.bytecode.push(opcode::RET_VOID);

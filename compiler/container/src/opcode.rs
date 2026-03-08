@@ -154,6 +154,11 @@ pub const STR_LOAD_VAR: u8 = 0xE0;
 /// Operand: data_offset: u16. Pops buf_idx from stack.
 pub const STR_STORE_VAR: u8 = 0xE1;
 
+/// Read the current length of a STRING variable from the data region.
+/// Operand: data_offset: u16.
+/// Pushes the cur_length as an i32 onto the stack.
+pub const LEN_STR: u8 = 0xE2;
+
 // --- Truncation opcodes ---
 
 /// Truncate i32 to i8 range, then sign-extend back to i32.
