@@ -80,21 +80,15 @@ The header is organized into four logical regions:
 | 192 | max_stack_depth | u16 | Maximum operand stack depth across all functions |
 | 194 | max_call_depth | u16 | Maximum call nesting depth |
 | 196 | num_variables | u16 | Total variable table entries (including compiler-generated hidden variables) |
-| 198 | num_fb_instances | u16 | Total function block instance slots (including array elements and nested instances) |
-| 200 | total_fb_instance_bytes | u32 | Total bytes for FB instance memory (compiler-summed: `Σ(num_fields × 8)` for each instance) |
-| 204 | total_str_var_bytes | u32 | Total bytes for STRING variable buffers (compiler-summed: `Σ(declared_length + 1)` for each STRING variable) |
-| 208 | total_wstr_var_bytes | u32 | Total bytes for WSTRING variable buffers (compiler-summed: `Σ(declared_length × 2 + 2)` for each WSTRING variable) |
-| 212 | num_temp_str_bufs | u16 | Temporary STRING buffer pool size |
-| 214 | num_temp_wstr_bufs | u16 | Temporary WSTRING buffer pool size |
-| 216 | max_str_length | u16 | Largest STRING(n) declaration in characters (for temp buffer sizing) |
-| 218 | max_wstr_length | u16 | Largest WSTRING(n) declaration in characters (for temp buffer sizing) |
-| 220 | num_functions | u16 | Number of function entries in the code section |
-| 222 | num_fb_types | u16 | Number of FB type descriptors in the type section |
-| 224 | num_arrays | u16 | Number of array descriptors in the type section |
-| 226 | input_image_bytes | u16 | Total input process image size in bytes (%I) |
-| 228 | output_image_bytes | u16 | Total output process image size in bytes (%Q) |
-| 230 | memory_image_bytes | u16 | Total memory region size in bytes (%M) |
-| 232 | reserved | [u8; 24] | Reserved for future use; must be zero |
+| 198 | data_region_bytes | u32 | Total size of the mutable data region in bytes (compiler-summed across all variable-length variables: strings, arrays, FB instances) — see [ADR-0017](../adrs/0017-unified-data-region.md) |
+| 202 | num_temp_bufs | u16 | Number of temporary buffers for string operations |
+| 204 | max_temp_buf_bytes | u32 | Size of the largest temporary buffer in bytes |
+| 208 | num_functions | u16 | Number of function entries in the code section |
+| 210 | num_fb_types | u16 | Number of FB type descriptors in the type section |
+| 212 | input_image_bytes | u16 | Total input process image size in bytes (%I) |
+| 214 | output_image_bytes | u16 | Total output process image size in bytes (%Q) |
+| 216 | memory_image_bytes | u16 | Total memory region size in bytes (%M) |
+| 218 | reserved | [u8; 38] | Reserved for future use; must be zero |
 
 Total header size: 256 bytes.
 
@@ -106,12 +100,9 @@ The VM uses the resource summary fields to compute the total RAM requirement bef
 ram_required =
     (max_stack_depth × slot_size)               // operand stack
   + (max_call_depth × frame_size)               // call stack
-  + (num_variables × variable_slot_size)         // variable table
-  + total_fb_instance_bytes                       // FB instance table (compiler-summed; includes array-of-FB elements)
-  + total_str_var_bytes                          // STRING variable buffers (compiler-summed)
-  + total_wstr_var_bytes                         // WSTRING variable buffers (compiler-summed)
-  + (num_temp_str_bufs × (max_str_length + 1))   // temporary STRING buffers (worst-case per temp)
-  + (num_temp_wstr_bufs × (max_wstr_length × 2 + 2)) // temporary WSTRING buffers (worst-case per temp)
+  + (num_variables × variable_slot_size)         // variable table (slot table)
+  + data_region_bytes                            // unified data region (strings, arrays, FB instances)
+  + (num_temp_bufs × max_temp_buf_bytes)         // temporary string buffers
   + input_image_bytes                            // input process image snapshot
   + output_image_bytes                           // output staging buffer
   + memory_image_bytes                           // memory region (%M)

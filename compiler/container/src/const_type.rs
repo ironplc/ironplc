@@ -10,6 +10,7 @@ pub enum ConstType {
     U64 = 3,
     F32 = 4,
     F64 = 5,
+    Str = 6,
 }
 
 impl ConstType {
@@ -21,6 +22,7 @@ impl ConstType {
             3 => Ok(ConstType::U64),
             4 => Ok(ConstType::F32),
             5 => Ok(ConstType::F64),
+            6 => Ok(ConstType::Str),
             _ => Err(ContainerError::InvalidConstantType(v)),
         }
     }
@@ -34,6 +36,7 @@ impl ConstType {
             ConstType::U64 => "U64",
             ConstType::F32 => "F32",
             ConstType::F64 => "F64",
+            ConstType::Str => "Str",
         }
     }
 }

@@ -9,3 +9,5 @@ V9004,InvalidConstantIndex,Constant pool index out of bounds,true
 V9005,InvalidVariableIndex,Variable table index out of bounds,true
 V9006,InvalidFunctionId,Function ID not found in container,true
 V9007,InvalidBuiltinFunction,Built-in function ID not recognized,true
+V9008,DataRegionOutOfBounds,Data region access out of bounds,true
+V9009,TempBufferExhausted,Temporary buffer pool exhausted,false

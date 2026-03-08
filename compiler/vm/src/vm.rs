@@ -29,15 +29,19 @@ impl Vm {
     }
 
     /// Loads a container, using caller-provided buffers for stack, variables,
-    /// task states, program instance states, and ready-task buffer.
+    /// data region, temporary buffers, task states, program instance states,
+    /// and ready-task buffer.
     ///
     /// Populates `task_states` and `program_instances` from `container.task_table`.
     /// Consumes the empty VM and returns a ready VM.
+    #[allow(clippy::too_many_arguments)]
     pub fn load<'a>(
         self,
         container: &'a Container,
         stack_buf: &'a mut [Slot],
         var_buf: &'a mut [Slot],
+        data_region_buf: &'a mut [u8],
+        temp_buf: &'a mut [u8],
         task_states: &'a mut [TaskState],
         program_instances: &'a mut [ProgramInstanceState],
         ready_buf: &'a mut [usize],
@@ -77,11 +81,15 @@ impl Vm {
 
         let stack = OperandStack::new(stack_buf);
         let variables = VariableTable::new(var_buf);
+        let max_temp_buf_bytes = container.header.max_temp_buf_bytes as usize;
 
         VmReady {
             container,
             stack,
             variables,
+            data_region: data_region_buf,
+            temp_buf,
+            max_temp_buf_bytes,
             task_states,
             program_instances,
             ready_buf,
@@ -102,6 +110,9 @@ pub struct VmReady<'a> {
     container: &'a Container,
     stack: OperandStack<'a>,
     variables: VariableTable<'a>,
+    data_region: &'a mut [u8],
+    temp_buf: &'a mut [u8],
+    max_temp_buf_bytes: usize,
     task_states: &'a mut [TaskState],
     program_instances: &'a mut [ProgramInstanceState],
     ready_buf: &'a mut [usize],
@@ -146,6 +157,9 @@ impl<'a> VmReady<'a> {
                 self.container,
                 &mut self.stack,
                 &mut self.variables,
+                self.data_region,
+                self.temp_buf,
+                self.max_temp_buf_bytes,
                 &scope,
             )
             .map_err(|trap| FaultContext {
@@ -159,6 +173,9 @@ impl<'a> VmReady<'a> {
             container: self.container,
             stack: self.stack,
             variables: self.variables,
+            data_region: self.data_region,
+            temp_buf: self.temp_buf,
+            max_temp_buf_bytes: self.max_temp_buf_bytes,
             task_states: self.task_states,
             program_instances: self.program_instances,
             ready_buf: self.ready_buf,
@@ -183,6 +200,9 @@ pub struct VmRunning<'a> {
     container: &'a Container,
     stack: OperandStack<'a>,
     variables: VariableTable<'a>,
+    data_region: &'a mut [u8],
+    temp_buf: &'a mut [u8],
+    max_temp_buf_bytes: usize,
     task_states: &'a mut [TaskState],
     program_instances: &'a mut [ProgramInstanceState],
     ready_buf: &'a mut [usize],
@@ -254,6 +274,9 @@ impl<'a> VmRunning<'a> {
                     self.container,
                     &mut self.stack,
                     &mut self.variables,
+                    self.data_region,
+                    self.temp_buf,
+                    self.max_temp_buf_bytes,
                     &scope,
                 )
                 .map_err(|trap| FaultContext {
@@ -388,14 +411,19 @@ impl<'a> VmFaulted<'a> {
 /// This is a free function so that the borrow checker can see
 /// independent borrows of container (immutable) vs stack/variables
 /// (mutable).
+#[allow(clippy::too_many_arguments)]
 fn execute(
     bytecode: &[u8],
     container: &Container,
     stack: &mut OperandStack,
     variables: &mut VariableTable,
+    data_region: &mut [u8],
+    temp_buf: &mut [u8],
+    max_temp_buf_bytes: usize,
     scope: &VariableScope,
 ) -> Result<(), Trap> {
     let mut pc: usize = 0;
+    let mut next_temp_buf: u16 = 0;
 
     while pc < bytecode.len() {
         let op = bytecode[pc];
@@ -898,6 +926,122 @@ fn execute(
                 let func_id = read_u16_le(bytecode, &mut pc);
                 builtin::dispatch(func_id, stack)?;
             }
+            // --- String opcodes ---
+            opcode::STR_INIT => {
+                let data_offset = read_u16_le(bytecode, &mut pc) as usize;
+                let max_length = read_u16_le(bytecode, &mut pc);
+                // Write [max_length: u16][cur_length: u16] at data_offset
+                if data_offset + 4 > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(data_offset as u16));
+                }
+                data_region[data_offset..data_offset + 2]
+                    .copy_from_slice(&max_length.to_le_bytes());
+                data_region[data_offset + 2..data_offset + 4].copy_from_slice(&0u16.to_le_bytes());
+            }
+            opcode::LOAD_CONST_STR => {
+                let index = read_u16_le(bytecode, &mut pc);
+                let str_bytes = container
+                    .constant_pool
+                    .get_str(index)
+                    .map_err(|_| Trap::InvalidConstantIndex(index))?;
+
+                // Allocate a temp buffer
+                if max_temp_buf_bytes == 0 {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                let buf_idx = next_temp_buf;
+                let buf_start = buf_idx as usize * max_temp_buf_bytes;
+                let buf_end = buf_start + max_temp_buf_bytes;
+                if buf_end > temp_buf.len() {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                next_temp_buf = next_temp_buf.wrapping_add(1);
+
+                // Write string layout into temp buffer:
+                // [max_length: u16][cur_length: u16][data]
+                let max_len = (max_temp_buf_bytes - 4) as u16;
+                let cur_len = (str_bytes.len() as u16).min(max_len);
+                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
+                temp_buf[buf_start + 2..buf_start + 4].copy_from_slice(&cur_len.to_le_bytes());
+                temp_buf[buf_start + 4..buf_start + 4 + cur_len as usize]
+                    .copy_from_slice(&str_bytes[..cur_len as usize]);
+
+                stack.push(Slot::from_i32(buf_idx as i32))?;
+            }
+            opcode::STR_STORE_VAR => {
+                let data_offset = read_u16_le(bytecode, &mut pc) as usize;
+                let buf_idx = stack.pop()?.as_i32() as usize;
+
+                // Read source from temp buffer
+                let buf_start = buf_idx * max_temp_buf_bytes;
+                if buf_start + 4 > temp_buf.len() {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                let src_cur_len =
+                    u16::from_le_bytes([temp_buf[buf_start + 2], temp_buf[buf_start + 3]]);
+
+                // Read dest max_length from data region
+                if data_offset + 4 > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(data_offset as u16));
+                }
+                let dest_max_len =
+                    u16::from_le_bytes([data_region[data_offset], data_region[data_offset + 1]]);
+
+                // Assignment semantics per ADR-0015
+                let copy_len = src_cur_len.min(dest_max_len) as usize;
+                if data_offset + 4 + copy_len > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(data_offset as u16));
+                }
+
+                // Copy data from temp buffer to data region
+                for i in 0..copy_len {
+                    data_region[data_offset + 4 + i] = temp_buf[buf_start + 4 + i];
+                }
+                // Set cur_length
+                data_region[data_offset + 2..data_offset + 4]
+                    .copy_from_slice(&(copy_len as u16).to_le_bytes());
+            }
+            opcode::STR_LOAD_VAR => {
+                let data_offset = read_u16_le(bytecode, &mut pc) as usize;
+
+                // Read source from data region
+                if data_offset + 4 > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(data_offset as u16));
+                }
+                let src_max_len =
+                    u16::from_le_bytes([data_region[data_offset], data_region[data_offset + 1]]);
+                let src_cur_len = u16::from_le_bytes([
+                    data_region[data_offset + 2],
+                    data_region[data_offset + 3],
+                ]);
+                let read_len = src_cur_len.min(src_max_len) as usize;
+
+                // Allocate a temp buffer
+                if max_temp_buf_bytes == 0 {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                let buf_idx = next_temp_buf;
+                let buf_start = buf_idx as usize * max_temp_buf_bytes;
+                let buf_end = buf_start + max_temp_buf_bytes;
+                if buf_end > temp_buf.len() {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                next_temp_buf = next_temp_buf.wrapping_add(1);
+
+                // Copy into temp buffer
+                let max_len = (max_temp_buf_bytes - 4) as u16;
+                let cur_len = (read_len as u16).min(max_len);
+                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
+                temp_buf[buf_start + 2..buf_start + 4].copy_from_slice(&cur_len.to_le_bytes());
+                if data_offset + 4 + cur_len as usize > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(data_offset as u16));
+                }
+                for i in 0..cur_len as usize {
+                    temp_buf[buf_start + 4 + i] = data_region[data_offset + 4 + i];
+                }
+
+                stack.push(Slot::from_i32(buf_idx as i32))?;
+            }
             opcode::RET_VOID => {
                 return Ok(());
             }
@@ -933,6 +1077,8 @@ mod tests {
     struct VmBuffers {
         stack: Vec<Slot>,
         vars: Vec<Slot>,
+        data_region: Vec<u8>,
+        temp_buf: Vec<u8>,
         tasks: Vec<TaskState>,
         programs: Vec<ProgramInstanceState>,
         ready: Vec<usize>,
@@ -943,9 +1089,12 @@ mod tests {
             let header = &container.header;
             let task_count = container.task_table.tasks.len();
             let program_count = container.task_table.programs.len();
+            let temp_buf_total = header.num_temp_bufs as usize * header.max_temp_buf_bytes as usize;
             VmBuffers {
                 stack: vec![Slot::default(); header.max_stack_depth as usize],
                 vars: vec![Slot::default(); header.num_variables as usize],
+                data_region: vec![0u8; header.data_region_bytes as usize],
+                temp_buf: vec![0u8; temp_buf_total],
                 tasks: vec![TaskState::default(); task_count],
                 programs: vec![ProgramInstanceState::default(); program_count],
                 ready: vec![0usize; task_count.max(1)],
@@ -1010,6 +1159,8 @@ mod tests {
             &c,
             &mut b.stack,
             &mut b.vars,
+            &mut b.data_region,
+            &mut b.temp_buf,
             &mut b.tasks,
             &mut b.programs,
             &mut b.ready,
@@ -1029,6 +1180,8 @@ mod tests {
                 &c,
                 &mut b.stack,
                 &mut b.vars,
+                &mut b.data_region,
+                &mut b.temp_buf,
                 &mut b.tasks,
                 &mut b.programs,
                 &mut b.ready,
@@ -1051,6 +1204,8 @@ mod tests {
                 &c,
                 &mut b.stack,
                 &mut b.vars,
+                &mut b.data_region,
+                &mut b.temp_buf,
                 &mut b.tasks,
                 &mut b.programs,
                 &mut b.ready,
@@ -1070,6 +1225,8 @@ mod tests {
                 &c,
                 &mut b.stack,
                 &mut b.vars,
+                &mut b.data_region,
+                &mut b.temp_buf,
                 &mut b.tasks,
                 &mut b.programs,
                 &mut b.ready,
@@ -1091,6 +1248,8 @@ mod tests {
                 &c,
                 &mut b.stack,
                 &mut b.vars,
+                &mut b.data_region,
+                &mut b.temp_buf,
                 &mut b.tasks,
                 &mut b.programs,
                 &mut b.ready,
@@ -1110,6 +1269,8 @@ mod tests {
                 &c,
                 &mut b.stack,
                 &mut b.vars,
+                &mut b.data_region,
+                &mut b.temp_buf,
                 &mut b.tasks,
                 &mut b.programs,
                 &mut b.ready,
@@ -1156,6 +1317,8 @@ mod tests {
                 &c,
                 &mut b.stack,
                 &mut b.vars,
+                &mut b.data_region,
+                &mut b.temp_buf,
                 &mut b.tasks,
                 &mut b.programs,
                 &mut b.ready,
@@ -1175,6 +1338,8 @@ mod tests {
                 &c,
                 &mut b.stack,
                 &mut b.vars,
+                &mut b.data_region,
+                &mut b.temp_buf,
                 &mut b.tasks,
                 &mut b.programs,
                 &mut b.ready,
@@ -1199,6 +1364,8 @@ mod tests {
                 &c,
                 &mut b.stack,
                 &mut b.vars,
+                &mut b.data_region,
+                &mut b.temp_buf,
                 &mut b.tasks,
                 &mut b.programs,
                 &mut b.ready,
@@ -1224,6 +1391,8 @@ mod tests {
                 &c,
                 &mut b.stack,
                 &mut b.vars,
+                &mut b.data_region,
+                &mut b.temp_buf,
                 &mut b.tasks,
                 &mut b.programs,
                 &mut b.ready,
@@ -1248,6 +1417,8 @@ mod tests {
                 &c,
                 &mut b.stack,
                 &mut b.vars,
+                &mut b.data_region,
+                &mut b.temp_buf,
                 &mut b.tasks,
                 &mut b.programs,
                 &mut b.ready,
@@ -1269,6 +1440,8 @@ mod tests {
                 &c,
                 &mut b.stack,
                 &mut b.vars,
+                &mut b.data_region,
+                &mut b.temp_buf,
                 &mut b.tasks,
                 &mut b.programs,
                 &mut b.ready,

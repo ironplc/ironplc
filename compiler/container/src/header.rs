@@ -42,26 +42,20 @@ pub struct FileHeader {
     pub code_section_size: u32,
     pub debug_section_offset: u32,
     pub debug_section_size: u32,
-    // Region 4: Runtime parameters (bytes 192-231)
+    // Region 4: Runtime parameters (bytes 192-217)
     pub max_stack_depth: u16,
     pub max_call_depth: u16,
     pub num_variables: u16,
-    pub num_fb_instances: u16,
-    pub total_fb_instance_bytes: u32,
-    pub total_str_var_bytes: u32,
-    pub total_wstr_var_bytes: u32,
-    pub num_temp_str_bufs: u16,
-    pub num_temp_wstr_bufs: u16,
-    pub max_str_length: u16,
-    pub max_wstr_length: u16,
+    pub data_region_bytes: u32,
+    pub num_temp_bufs: u16,
+    pub max_temp_buf_bytes: u32,
     pub num_functions: u16,
     pub num_fb_types: u16,
-    pub num_arrays: u16,
     pub input_image_bytes: u16,
     pub output_image_bytes: u16,
     pub memory_image_bytes: u16,
-    // Reserved (bytes 232-255)
-    pub reserved: [u8; 24],
+    // Reserved (bytes 218-255)
+    pub reserved: [u8; 38],
 }
 
 impl Default for FileHeader {
@@ -92,21 +86,15 @@ impl Default for FileHeader {
             max_stack_depth: 0,
             max_call_depth: 0,
             num_variables: 0,
-            num_fb_instances: 0,
-            total_fb_instance_bytes: 0,
-            total_str_var_bytes: 0,
-            total_wstr_var_bytes: 0,
-            num_temp_str_bufs: 0,
-            num_temp_wstr_bufs: 0,
-            max_str_length: 0,
-            max_wstr_length: 0,
+            data_region_bytes: 0,
+            num_temp_bufs: 0,
+            max_temp_buf_bytes: 0,
             num_functions: 0,
             num_fb_types: 0,
-            num_arrays: 0,
             input_image_bytes: 0,
             output_image_bytes: 0,
             memory_image_bytes: 0,
-            reserved: [0; 24],
+            reserved: [0; 38],
         }
     }
 }
@@ -140,25 +128,19 @@ impl FileHeader {
         w.write_all(&self.code_section_size.to_le_bytes())?;
         w.write_all(&self.debug_section_offset.to_le_bytes())?;
         w.write_all(&self.debug_section_size.to_le_bytes())?;
-        // Region 4: Runtime parameters (bytes 192-231)
+        // Region 4: Runtime parameters (bytes 192-217)
         w.write_all(&self.max_stack_depth.to_le_bytes())?;
         w.write_all(&self.max_call_depth.to_le_bytes())?;
         w.write_all(&self.num_variables.to_le_bytes())?;
-        w.write_all(&self.num_fb_instances.to_le_bytes())?;
-        w.write_all(&self.total_fb_instance_bytes.to_le_bytes())?;
-        w.write_all(&self.total_str_var_bytes.to_le_bytes())?;
-        w.write_all(&self.total_wstr_var_bytes.to_le_bytes())?;
-        w.write_all(&self.num_temp_str_bufs.to_le_bytes())?;
-        w.write_all(&self.num_temp_wstr_bufs.to_le_bytes())?;
-        w.write_all(&self.max_str_length.to_le_bytes())?;
-        w.write_all(&self.max_wstr_length.to_le_bytes())?;
+        w.write_all(&self.data_region_bytes.to_le_bytes())?;
+        w.write_all(&self.num_temp_bufs.to_le_bytes())?;
+        w.write_all(&self.max_temp_buf_bytes.to_le_bytes())?;
         w.write_all(&self.num_functions.to_le_bytes())?;
         w.write_all(&self.num_fb_types.to_le_bytes())?;
-        w.write_all(&self.num_arrays.to_le_bytes())?;
         w.write_all(&self.input_image_bytes.to_le_bytes())?;
         w.write_all(&self.output_image_bytes.to_le_bytes())?;
         w.write_all(&self.memory_image_bytes.to_le_bytes())?;
-        // Reserved (bytes 232-255)
+        // Reserved (bytes 218-255)
         w.write_all(&self.reserved)?;
         Ok(())
     }
@@ -208,28 +190,22 @@ impl FileHeader {
         let debug_section_offset = u32::from_le_bytes([buf[184], buf[185], buf[186], buf[187]]);
         let debug_section_size = u32::from_le_bytes([buf[188], buf[189], buf[190], buf[191]]);
 
-        // Region 4: Runtime parameters (bytes 192-231)
+        // Region 4: Runtime parameters (bytes 192-217)
         let max_stack_depth = u16::from_le_bytes([buf[192], buf[193]]);
         let max_call_depth = u16::from_le_bytes([buf[194], buf[195]]);
         let num_variables = u16::from_le_bytes([buf[196], buf[197]]);
-        let num_fb_instances = u16::from_le_bytes([buf[198], buf[199]]);
-        let total_fb_instance_bytes = u32::from_le_bytes([buf[200], buf[201], buf[202], buf[203]]);
-        let total_str_var_bytes = u32::from_le_bytes([buf[204], buf[205], buf[206], buf[207]]);
-        let total_wstr_var_bytes = u32::from_le_bytes([buf[208], buf[209], buf[210], buf[211]]);
-        let num_temp_str_bufs = u16::from_le_bytes([buf[212], buf[213]]);
-        let num_temp_wstr_bufs = u16::from_le_bytes([buf[214], buf[215]]);
-        let max_str_length = u16::from_le_bytes([buf[216], buf[217]]);
-        let max_wstr_length = u16::from_le_bytes([buf[218], buf[219]]);
-        let num_functions = u16::from_le_bytes([buf[220], buf[221]]);
-        let num_fb_types = u16::from_le_bytes([buf[222], buf[223]]);
-        let num_arrays = u16::from_le_bytes([buf[224], buf[225]]);
-        let input_image_bytes = u16::from_le_bytes([buf[226], buf[227]]);
-        let output_image_bytes = u16::from_le_bytes([buf[228], buf[229]]);
-        let memory_image_bytes = u16::from_le_bytes([buf[230], buf[231]]);
+        let data_region_bytes = u32::from_le_bytes([buf[198], buf[199], buf[200], buf[201]]);
+        let num_temp_bufs = u16::from_le_bytes([buf[202], buf[203]]);
+        let max_temp_buf_bytes = u32::from_le_bytes([buf[204], buf[205], buf[206], buf[207]]);
+        let num_functions = u16::from_le_bytes([buf[208], buf[209]]);
+        let num_fb_types = u16::from_le_bytes([buf[210], buf[211]]);
+        let input_image_bytes = u16::from_le_bytes([buf[212], buf[213]]);
+        let output_image_bytes = u16::from_le_bytes([buf[214], buf[215]]);
+        let memory_image_bytes = u16::from_le_bytes([buf[216], buf[217]]);
 
-        // Reserved (bytes 232-255)
-        let mut reserved = [0u8; 24];
-        reserved.copy_from_slice(&buf[232..256]);
+        // Reserved (bytes 218-255)
+        let mut reserved = [0u8; 38];
+        reserved.copy_from_slice(&buf[218..256]);
 
         Ok(FileHeader {
             magic,
@@ -257,17 +233,11 @@ impl FileHeader {
             max_stack_depth,
             max_call_depth,
             num_variables,
-            num_fb_instances,
-            total_fb_instance_bytes,
-            total_str_var_bytes,
-            total_wstr_var_bytes,
-            num_temp_str_bufs,
-            num_temp_wstr_bufs,
-            max_str_length,
-            max_wstr_length,
+            data_region_bytes,
+            num_temp_bufs,
+            max_temp_buf_bytes,
             num_functions,
             num_fb_types,
-            num_arrays,
             input_image_bytes,
             output_image_bytes,
             memory_image_bytes,
@@ -308,7 +278,7 @@ mod tests {
         assert_eq!(decoded.num_variables, 0);
         assert_eq!(decoded.task_section_offset, 0);
         assert_eq!(decoded.task_section_size, 0);
-        assert_eq!(decoded.reserved, [0; 24]);
+        assert_eq!(decoded.reserved, [0; 38]);
     }
 
     #[test]
