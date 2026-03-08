@@ -34,6 +34,9 @@ Numeric Functions
    * - :doc:`EXPT <expt>`
      - Exponentiation
      - Supported
+   * - :doc:`TRUNC <trunc>`
+     - Truncate real to integer
+     - Supported
 
 Trigonometric Functions
 -----------------------
@@ -117,6 +120,20 @@ Comparison Functions
      - Supported
    * - :doc:`NE <ne>`
      - Not equal
+     - Supported
+
+Assignment Functions
+--------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 50 30
+
+   * - Function
+     - Description
+     - Status
+   * - :doc:`MOVE <move>`
+     - Assignment (copy value)
      - Supported
 
 Selection Functions
@@ -219,6 +236,9 @@ Type Conversion Functions
    * - :doc:`Type conversions <type-conversions>`
      - Type conversion functions (``*_TO_*``)
      - Supported (numeric)
+   * - :doc:`BCD_TO_INT / INT_TO_BCD <bcd>`
+     - BCD conversion functions
+     - Supported
 
 .. toctree::
    :maxdepth: 1
@@ -241,6 +261,7 @@ Type Conversion Functions
    mul
    div
    mod
+   move
    gt
    ge
    eq
@@ -266,3 +287,5 @@ Type Conversion Functions
    replace
    find
    type-conversions
+   trunc
+   bcd

@@ -171,6 +171,17 @@ fn get_bool_to_int_conversions() -> Vec<FunctionSignature> {
         .collect()
 }
 
+/// Generates integer-to-BOOL conversion functions.
+///
+/// Creates functions like SINT_TO_BOOL, INT_TO_BOOL, DINT_TO_BOOL, etc.
+/// 0 converts to FALSE, any non-zero value converts to TRUE.
+fn get_int_to_bool_conversions() -> Vec<FunctionSignature> {
+    ALL_INT_TYPES
+        .iter()
+        .map(|source| build_conversion_function(source, "BOOL"))
+        .collect()
+}
+
 // =============================================================================
 // Numeric Function Definitions (IEC 61131-3 Section 2.5.1.5.2)
 // =============================================================================
@@ -431,6 +442,65 @@ fn get_selection_functions() -> Vec<FunctionSignature> {
 }
 
 // =============================================================================
+// Assignment Function (IEC 61131-3 Section 2.5.1.5.4)
+// =============================================================================
+
+/// Returns the MOVE standard function definition.
+///
+/// MOVE copies the input value to the output, equivalent to assignment.
+/// IEC 61131-3 defines MOVE as operating on ANY type, but since the codegen
+/// currently supports numeric types we use ANY_NUM here.
+fn get_assignment_functions() -> Vec<FunctionSignature> {
+    vec![
+        // MOVE: assignment (ANY_NUM -> ANY_NUM)
+        FunctionSignature::stdlib(
+            "MOVE",
+            TypeName::from("ANY_NUM"),
+            vec![input_param("IN", "ANY_NUM")],
+        ),
+    ]
+}
+
+// =============================================================================
+// Truncation Function (IEC 61131-3 Section 2.5.1.5.2)
+// =============================================================================
+
+/// Returns the TRUNC function definition.
+///
+/// TRUNC truncates a real value toward zero, removing the fractional part.
+/// It takes ANY_REAL and returns ANY_INT.
+fn get_trunc_function() -> Vec<FunctionSignature> {
+    vec![FunctionSignature::stdlib(
+        "TRUNC",
+        TypeName::from("ANY_INT"),
+        vec![input_param("IN", "ANY_REAL")],
+    )]
+}
+
+// =============================================================================
+// BCD Conversion Functions (IEC 61131-3 Section 2.5.1.5)
+// =============================================================================
+
+/// Returns BCD conversion function definitions.
+///
+/// BCD_TO_INT converts a BCD-encoded bit string to an integer.
+/// INT_TO_BCD converts an integer to a BCD-encoded bit string.
+fn get_bcd_functions() -> Vec<FunctionSignature> {
+    vec![
+        FunctionSignature::stdlib(
+            "BCD_TO_INT",
+            TypeName::from("ANY_INT"),
+            vec![input_param("IN", "ANY_BIT")],
+        ),
+        FunctionSignature::stdlib(
+            "INT_TO_BCD",
+            TypeName::from("ANY_BIT"),
+            vec![input_param("IN", "ANY_INT")],
+        ),
+    ]
+}
+
+// =============================================================================
 // Bit shift and rotate functions
 // =============================================================================
 
@@ -573,6 +643,7 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     functions.extend(get_real_to_int_conversions());
     functions.extend(get_real_to_real_conversions());
     functions.extend(get_bool_to_int_conversions());
+    functions.extend(get_int_to_bool_conversions());
 
     // Numeric functions
     functions.extend(get_numeric_functions());
@@ -586,8 +657,17 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     // Boolean functions (functional forms of AND, OR, XOR, NOT)
     functions.extend(get_boolean_functions());
 
+    // Truncation function
+    functions.extend(get_trunc_function());
+
+    // BCD conversion functions
+    functions.extend(get_bcd_functions());
+
     // Selection functions
     functions.extend(get_selection_functions());
+
+    // Assignment function (MOVE)
+    functions.extend(get_assignment_functions());
 
     // Bit shift and rotate functions
     functions.extend(get_bitshift_functions());
@@ -611,15 +691,19 @@ mod tests {
         // Real-to-int: 2 reals × 4 signed + 2 reals × 4 unsigned = 8 + 8 = 16
         // Real-to-real: 2 × 1 = 2
         // Bool-to-int: 8 (BOOL to SINT/INT/DINT/LINT/USINT/UINT/UDINT/ULINT)
+        // Int-to-bool: 8 (SINT/INT/DINT/LINT/USINT/UINT/UDINT/ULINT to BOOL)
         // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT, SEL, LN, LOG, EXP, SIN, COS, TAN, ASIN, ACOS, ATAN = 15
+        // Truncation function: TRUNC = 1
+        // BCD conversion functions: BCD_TO_INT, INT_TO_BCD = 2
         // Arithmetic functions: ADD, SUB, MUL, DIV, MOD = 5
         // Comparison functions: GT, GE, EQ, LE, LT, NE = 6
         // Boolean functions: AND, OR, XOR, NOT = 4
         // Selection functions: MUX = 1
+        // Assignment function: MOVE = 1
         // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
         // String functions: LEN, FIND, REPLACE, INSERT, DELETE, LEFT, RIGHT, MID, CONCAT = 9
-        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 5 + 6 + 4 + 1 + 4 + 9 = 142
-        assert_eq!(functions.len(), 142);
+        // Total: 56 + 16 + 16 + 2 + 8 + 8 + 15 + 1 + 2 + 5 + 6 + 4 + 1 + 1 + 4 + 9 = 154
+        assert_eq!(functions.len(), 154);
     }
 
     #[test]
@@ -878,6 +962,63 @@ mod tests {
         assert_eq!(bool_to_int.parameters[0].param_type, TypeName::from("BOOL"));
         assert_eq!(bool_to_int.return_type, Some(TypeName::from("INT")));
         assert!(bool_to_int.is_stdlib());
+    }
+
+    #[test]
+    fn get_int_to_bool_conversions_when_called_then_contains_all_sources() {
+        let functions = get_int_to_bool_conversions();
+
+        assert_eq!(functions.len(), 8);
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "SINT_TO_BOOL"));
+        assert!(functions.iter().any(|f| f.name.original() == "INT_TO_BOOL"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "DINT_TO_BOOL"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "LINT_TO_BOOL"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "USINT_TO_BOOL"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "UINT_TO_BOOL"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "UDINT_TO_BOOL"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "ULINT_TO_BOOL"));
+    }
+
+    #[test]
+    fn get_int_to_bool_conversions_when_called_then_has_correct_signature() {
+        let functions = get_int_to_bool_conversions();
+        let int_to_bool = functions
+            .iter()
+            .find(|f| f.name.original() == "INT_TO_BOOL")
+            .unwrap();
+
+        assert_eq!(int_to_bool.input_parameter_count(), 1);
+        assert_eq!(int_to_bool.parameters[0].name.original(), "IN");
+        assert_eq!(int_to_bool.parameters[0].param_type, TypeName::from("INT"));
+        assert_eq!(int_to_bool.return_type, Some(TypeName::from("BOOL")));
+        assert!(int_to_bool.is_stdlib());
+    }
+
+    #[test]
+    fn get_assignment_functions_when_move_then_has_one_input() {
+        let functions = get_assignment_functions();
+        let move_fn = functions
+            .iter()
+            .find(|f| f.name.original() == "MOVE")
+            .unwrap();
+
+        assert_eq!(move_fn.input_parameter_count(), 1);
+        assert_eq!(move_fn.parameters[0].name.original(), "IN");
+        assert!(move_fn.is_stdlib());
     }
 
     #[test]
