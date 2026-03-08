@@ -187,3 +187,23 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
+
+// --- Assignment function ---
+
+#[test]
+fn end_to_end_when_move_function_then_returns_input_value() {
+    let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+    result : DINT;
+  END_VAR
+  x := 42;
+  result := MOVE(x);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 42);
+    assert_eq!(bufs.vars[1].as_i32(), 42);
+}
