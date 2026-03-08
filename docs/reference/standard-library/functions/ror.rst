@@ -55,9 +55,9 @@ bits are lost.
 Example
 -------
 
-.. code-block::
+.. playground-with-program::
+   :vars: result : WORD;
 
-   result := ROR(BYTE#2#0000_0011, 1);   (* result = 2#1000_0001 *)
    result := ROR(WORD#16#000F, 4);        (* result = 16#F000 *)
 
 See Also

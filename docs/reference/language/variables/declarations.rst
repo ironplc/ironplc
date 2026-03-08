@@ -30,7 +30,7 @@ separated by commas.
 Example
 -------
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR

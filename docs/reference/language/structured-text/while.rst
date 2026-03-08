@@ -33,7 +33,7 @@ statement list never executes.
 Example
 -------
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR

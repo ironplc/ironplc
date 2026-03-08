@@ -7,6 +7,11 @@ programming. This reference covers the language elements shared across all
 IEC 61131-3 programming languages and the language-specific syntax for each
 supported language.
 
+.. tip::
+
+   Many examples on these pages are interactive — you can edit and run them
+   directly in the `IronPLC Playground <https://playground.ironplc.com>`_.
+
 Support Status
 --------------
 

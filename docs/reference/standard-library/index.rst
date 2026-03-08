@@ -5,6 +5,11 @@ Standard Library
 IronPLC provides the standard functions and function blocks defined by
 IEC 61131-3. These are available in all programming languages.
 
+.. tip::
+
+   Examples on supported function pages are interactive — you can edit and run
+   them directly in the `IronPLC Playground <https://playground.ironplc.com>`_.
+
 Functions
 ---------
 

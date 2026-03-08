@@ -60,7 +60,7 @@ multiplication, division, and modulo.
 Example
 -------
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR
