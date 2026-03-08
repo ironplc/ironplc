@@ -16,8 +16,7 @@ use base64::Engine;
 use ironplc_codegen::compile as codegen_compile;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
-use ironplc_parser::options::ParseOptions;
-use ironplc_parser::parse_program;
+use ironplc_sources::{parse_source, FileType};
 use ironplc_vm::{ProgramInstanceState, Slot, TaskState, Vm};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -57,7 +56,7 @@ struct CompileResult {
 }
 
 /// A single diagnostic (error or warning) from compilation.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct DiagnosticInfo {
     code: String,
     message: String,
@@ -130,7 +129,8 @@ pub fn compile(source: &str) -> String {
 }
 
 fn compile_inner(source: &str) -> CompileResult {
-    let library = match parse_program(source, &FileId::default(), &ParseOptions::default()) {
+    let file_type = FileType::from_content(source);
+    let library = match parse_source(file_type, source, &FileId::default()) {
         Ok(lib) => lib,
         Err(diag) => {
             return CompileResult {
@@ -849,6 +849,80 @@ END_PROGRAM
         let result: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(!result.ok);
         assert!(result.error.unwrap().contains("No program loaded"));
+    }
+
+    #[test]
+    fn compile_when_valid_xml_then_returns_bytecode() {
+        let source = r#"<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
+  <contentHeader name="TestProject">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="main" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="bSwitch">
+              <type><BOOL/></type>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+bSwitch := TRUE;
+            </xhtml>
+          </ST>
+        </body>
+      </pou>
+    </pous>
+  </types>
+</project>"#;
+        let result: CompileResult = serde_json::from_str(&compile(source)).unwrap();
+        assert!(
+            result.ok,
+            "Expected ok but got diagnostics: {:?}",
+            result.diagnostics
+        );
+        assert!(result.bytecode.is_some());
+    }
+
+    #[test]
+    fn compile_when_twincat_xml_then_returns_bytecode() {
+        let source = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="main" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM main
+VAR
+    x : DINT;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[x := 42;]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>"#;
+        let result: CompileResult = serde_json::from_str(&compile(source)).unwrap();
+        assert!(
+            result.ok,
+            "Expected ok but got diagnostics: {:?}",
+            result.diagnostics
+        );
+        assert!(result.bytecode.is_some());
+    }
+
+    #[test]
+    fn compile_when_malformed_xml_then_returns_diagnostics() {
+        let source = "<?xml version=\"1.0\"?><project><invalid";
+        let result: CompileResult = serde_json::from_str(&compile(source)).unwrap();
+        assert!(!result.ok);
+        assert!(!result.diagnostics.is_empty());
     }
 
     #[test]
