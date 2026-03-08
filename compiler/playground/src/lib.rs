@@ -61,6 +61,8 @@ struct CompileResult {
 struct DiagnosticInfo {
     code: String,
     message: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    label: String,
     start: usize,
     end: usize,
 }
@@ -123,7 +125,7 @@ struct StepResult {
 pub fn compile(source: &str) -> String {
     let result = compile_inner(source);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"diagnostics":[{{"code":"INTERNAL","message":"Serialization error: {e}","start":0,"end":0}}]}}"#)
+        format!(r#"{{"ok":false,"diagnostics":[{{"code":"INTERNAL","message":"Serialization error: {e}","label":"","start":0,"end":0}}]}}"#)
     })
 }
 
@@ -137,6 +139,7 @@ fn compile_inner(source: &str) -> CompileResult {
                 diagnostics: vec![DiagnosticInfo {
                     code: diag.code.clone(),
                     message: diag.description(),
+                    label: diag.primary.message.clone(),
                     start: diag.primary.location.start,
                     end: diag.primary.location.end,
                 }],
@@ -153,6 +156,7 @@ fn compile_inner(source: &str) -> CompileResult {
                 diagnostics: vec![DiagnosticInfo {
                     code: diag.code.clone(),
                     message: diag.description(),
+                    label: diag.primary.message.clone(),
                     start: diag.primary.location.start,
                     end: diag.primary.location.end,
                 }],
@@ -168,6 +172,7 @@ fn compile_inner(source: &str) -> CompileResult {
             diagnostics: vec![DiagnosticInfo {
                 code: "INTERNAL".to_string(),
                 message: format!("Failed to serialize bytecode: {e}"),
+                label: String::new(),
                 start: 0,
                 end: 0,
             }],
@@ -571,6 +576,7 @@ END_PROGRAM
         assert!(!result.ok);
         assert!(result.bytecode.is_none());
         assert!(!result.diagnostics.is_empty());
+        assert!(!result.diagnostics[0].label.is_empty());
     }
 
     #[test]
