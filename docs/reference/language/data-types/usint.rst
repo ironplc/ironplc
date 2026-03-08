@@ -27,6 +27,16 @@ Literals
    USINT#255
    USINT#16#FF
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: level : USINT; max_level : USINT; clamped : USINT;
+
+   level := USINT#200;
+   max_level := USINT#255;
+   clamped := level + USINT#30;  (* clamped = 230 *)
+
 See Also
 --------
 

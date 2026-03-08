@@ -27,6 +27,16 @@ Literals
    BYTE#2#11001010
    BYTE#8#377
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: flags : BYTE; mask : BYTE; result : BYTE;
+
+   flags := BYTE#16#A5;
+   mask := BYTE#16#0F;
+   result := flags AND mask;  (* result = 16#05 *)
+
 See Also
 --------
 

@@ -27,6 +27,16 @@ Literals
    WORD#16#00FF
    WORD#2#1010101010101010
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: status_reg : WORD; mask : WORD; masked : WORD;
+
+   status_reg := WORD#16#FF03;
+   mask := WORD#16#00FF;
+   masked := status_reg AND mask;  (* masked = 16#0003 *)
+
 See Also
 --------
 

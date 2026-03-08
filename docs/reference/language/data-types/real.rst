@@ -30,6 +30,16 @@ Literals
    REAL#1.0E+10
    REAL#2.5E-3
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: raw_temp : REAL; scale : REAL; celsius : REAL;
+
+   raw_temp := REAL#2048.0;
+   scale := REAL#0.1;
+   celsius := raw_temp * scale;  (* celsius = 204.8 *)
+
 See Also
 --------
 

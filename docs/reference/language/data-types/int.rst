@@ -27,6 +27,16 @@ Literals
    INT#-1000
    INT#16#FF
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: temperature : INT; offset : INT; adjusted : INT;
+
+   temperature := INT#1500;
+   offset := INT#-50;
+   adjusted := temperature + offset;  (* adjusted = 1450 *)
+
 See Also
 --------
 

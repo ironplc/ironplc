@@ -26,6 +26,16 @@ Literals
    DWORD#16#DEADBEEF
    DWORD#16#00FF00FF
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: config : DWORD; flag_bit : DWORD; updated : DWORD;
+
+   config := DWORD#16#00FF0000;
+   flag_bit := DWORD#16#00000001;
+   updated := config OR flag_bit;  (* updated = 16#00FF0001 *)
+
 See Also
 --------
 

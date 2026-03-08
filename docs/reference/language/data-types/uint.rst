@@ -27,6 +27,16 @@ Literals
    UINT#65535
    UINT#16#FFFF
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: position : UINT; step_size : UINT; new_pos : UINT;
+
+   position := UINT#1000;
+   step_size := UINT#250;
+   new_pos := position + step_size;  (* new_pos = 1250 *)
+
 See Also
 --------
 
