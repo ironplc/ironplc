@@ -22,6 +22,7 @@ mod rule_use_declared_symbolic_var;
 mod rule_var_decl_const_initialized;
 mod rule_var_decl_const_not_fb;
 mod rule_var_decl_global_const_requires_external_const;
+mod rule_var_decl_initializer_type_compat;
 mod scoped_table;
 mod semantic_context;
 pub mod stages;

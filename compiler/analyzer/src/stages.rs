@@ -18,7 +18,7 @@ use crate::{
     rule_pou_hierarchy, rule_program_task_definition_exists, rule_stdlib_type_redefinition,
     rule_task_names_unique, rule_unsupported_stdlib_type, rule_use_declared_enumerated_value,
     rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
-    rule_var_decl_global_const_requires_external_const,
+    rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
     semantic_context::SemanticContext,
     symbol_environment::SymbolEnvironment,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
@@ -178,6 +178,7 @@ pub(crate) fn semantic(library: &Library, context: &SemanticContext) -> Semantic
         rule_unsupported_stdlib_type::apply,
         rule_var_decl_const_initialized::apply,
         rule_var_decl_const_not_fb::apply,
+        rule_var_decl_initializer_type_compat::apply,
         rule_var_decl_global_const_requires_external_const::apply,
         rule_pou_hierarchy::apply,
     ];
