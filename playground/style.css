@@ -16,6 +16,10 @@
   --success: #6bff9b;
 }
 
+html {
+  height: 100%;
+}
+
 body {
   font-family: system-ui, -apple-system, sans-serif;
   background: var(--bg);

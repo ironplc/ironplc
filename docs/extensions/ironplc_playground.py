@@ -28,6 +28,7 @@ Options (playground-with-program only):
 """
 
 from base64 import b64encode
+from math import ceil
 
 from docutils import nodes
 from docutils.parsers.rst import Directive, directives
@@ -60,11 +61,12 @@ def _auto_height(code_lines, scaffold=False, vars_decl=""):
     visible = min(total_lines, _MAX_VISIBLE_LINES)
 
     # The editor section gets ~70% of total height (see embed CSS).
-    # Inside that: toolbar ≈ 35 px, padding ≈ 24 px → 59 px overhead.
+    # Inside that: toolbar ≈ 42 px, padding ≈ 24 px, border ≈ 1 px → 67 px.
+    # Use 70 px to leave a small safety margin for font-rendering variance.
     # Each line ≈ 20 px (0.8rem font × 1.5 line-height at 16px base).
-    # Solve for total:  0.70 × total − 59 ≥ visible × 20
-    #                   total ≥ (visible × 20 + 59) / 0.70
-    height = int((visible * 20 + 59) / 0.70)
+    # Solve for total:  0.70 × total − 70 ≥ visible × 20
+    #                   total ≥ (visible × 20 + 70) / 0.70
+    height = ceil((visible * 20 + 70) / 0.70)
 
     return f"{max(_MIN_HEIGHT_PX, height)}px"
 
