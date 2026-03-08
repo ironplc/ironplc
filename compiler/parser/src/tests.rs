@@ -817,4 +817,60 @@ END_FUNCTION";
         let result = parse_program(source, &FileId::default(), &ParseOptions::default());
         assert!(result.is_err());
     }
+
+    #[test]
+    fn parse_when_mod_function_call_then_parses() {
+        parse_text(
+            "FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+    a : INT;
+    b : INT;
+END_VAR
+    result := MOD(a, b);
+END_FUNCTION_BLOCK",
+        );
+    }
+
+    #[test]
+    fn parse_when_and_function_call_then_parses() {
+        parse_text(
+            "FUNCTION_BLOCK CALLER
+VAR
+    result : BOOL;
+    a : BOOL;
+    b : BOOL;
+END_VAR
+    result := AND(a, b);
+END_FUNCTION_BLOCK",
+        );
+    }
+
+    #[test]
+    fn parse_when_or_function_call_then_parses() {
+        parse_text(
+            "FUNCTION_BLOCK CALLER
+VAR
+    result : BOOL;
+    a : BOOL;
+    b : BOOL;
+END_VAR
+    result := OR(a, b);
+END_FUNCTION_BLOCK",
+        );
+    }
+
+    #[test]
+    fn parse_when_xor_function_call_then_parses() {
+        parse_text(
+            "FUNCTION_BLOCK CALLER
+VAR
+    result : BOOL;
+    a : BOOL;
+    b : BOOL;
+END_VAR
+    result := XOR(a, b);
+END_FUNCTION_BLOCK",
+        );
+    }
 }

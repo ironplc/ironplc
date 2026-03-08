@@ -3,8 +3,8 @@
 //! One smoke test per function form to verify the full pipeline works.
 //! Detailed opcode testing is in compile_func_forms.rs.
 //!
-//! Note: Boolean function forms (AND, OR, XOR, NOT) and MOD are not tested
-//! because the parser treats these names as operator keywords.
+//! Note: NOT(x) is tested via the unary operator path since the parser
+//! treats NOT as a unary operator applied to parenthesized expression (x).
 
 mod common;
 
@@ -180,6 +180,95 @@ PROGRAM main
   END_VAR
   true_result := NE(5, 10);
   false_result := NE(5, 5);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+    assert_eq!(bufs.vars[1].as_i32(), 0);
+}
+
+#[test]
+fn end_to_end_when_mod_function_then_returns_remainder() {
+    let source = "
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := MOD(10, 3);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_and_function_then_returns_bool() {
+    let source = "
+PROGRAM main
+  VAR
+    true_result : DINT;
+    false_result : DINT;
+  END_VAR
+  true_result := AND(TRUE, TRUE);
+  false_result := AND(TRUE, FALSE);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+    assert_eq!(bufs.vars[1].as_i32(), 0);
+}
+
+#[test]
+fn end_to_end_when_or_function_then_returns_bool() {
+    let source = "
+PROGRAM main
+  VAR
+    true_result : DINT;
+    false_result : DINT;
+  END_VAR
+  true_result := OR(FALSE, TRUE);
+  false_result := OR(FALSE, FALSE);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+    assert_eq!(bufs.vars[1].as_i32(), 0);
+}
+
+#[test]
+fn end_to_end_when_xor_function_then_returns_bool() {
+    let source = "
+PROGRAM main
+  VAR
+    true_result : DINT;
+    false_result : DINT;
+  END_VAR
+  true_result := XOR(TRUE, FALSE);
+  false_result := XOR(TRUE, TRUE);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+    assert_eq!(bufs.vars[1].as_i32(), 0);
+}
+
+#[test]
+fn end_to_end_when_not_parens_then_returns_negation() {
+    // NOT(x) parses as unary NOT applied to parenthesized expression (x).
+    // This is semantically equivalent to the NOT function form.
+    let source = "
+PROGRAM main
+  VAR
+    true_result : DINT;
+    false_result : DINT;
+  END_VAR
+  true_result := NOT(FALSE);
+  false_result := NOT(TRUE);
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source);

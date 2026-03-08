@@ -3,9 +3,8 @@
 //! Each test verifies that calling a standard library function form (e.g., ADD(x, 5))
 //! produces the same opcode as the equivalent operator (e.g., x + 5).
 //!
-//! Note: MOD, AND, OR, XOR, NOT function forms are not tested because the parser
-//! treats these names as operator keywords. The codegen routing exists but requires
-//! parser changes to be reachable.
+//! Note: NOT function form is not tested because the parser treats NOT(x) as
+//! unary NOT applied to parenthesized expression (x), which is semantically equivalent.
 
 mod common;
 
@@ -79,6 +78,79 @@ fn compile_when_mul_function_then_produces_mul_bytecode() {
 #[test]
 fn compile_when_div_function_then_produces_div_bytecode() {
     assert_two_arg_bytecode(&two_arg_program("DIV", "DINT"), 0x33);
+}
+
+#[test]
+fn compile_when_mod_function_then_produces_mod_bytecode() {
+    assert_two_arg_bytecode(&two_arg_program("MOD", "DINT"), 0x34);
+}
+
+// --- Boolean functions ---
+
+#[test]
+fn compile_when_and_function_then_produces_and_bytecode() {
+    let source = "
+PROGRAM main
+  VAR
+    x : BOOL;
+    y : BOOL;
+  END_VAR
+  x := TRUE;
+  y := AND(x, FALSE);
+END_PROGRAM
+";
+    let library = parse(source);
+    let container = compile(&library).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    assert!(
+        bytecode.contains(&0x54),
+        "Expected BOOL_AND opcode 0x54 in bytecode: {:02X?}",
+        bytecode
+    );
+}
+
+#[test]
+fn compile_when_or_function_then_produces_or_bytecode() {
+    let source = "
+PROGRAM main
+  VAR
+    x : BOOL;
+    y : BOOL;
+  END_VAR
+  x := FALSE;
+  y := OR(x, TRUE);
+END_PROGRAM
+";
+    let library = parse(source);
+    let container = compile(&library).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    assert!(
+        bytecode.contains(&0x55),
+        "Expected BOOL_OR opcode 0x55 in bytecode: {:02X?}",
+        bytecode
+    );
+}
+
+#[test]
+fn compile_when_xor_function_then_produces_xor_bytecode() {
+    let source = "
+PROGRAM main
+  VAR
+    x : BOOL;
+    y : BOOL;
+  END_VAR
+  x := TRUE;
+  y := XOR(x, TRUE);
+END_PROGRAM
+";
+    let library = parse(source);
+    let container = compile(&library).unwrap();
+    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    assert!(
+        bytecode.contains(&0x56),
+        "Expected BOOL_XOR opcode 0x56 in bytecode: {:02X?}",
+        bytecode
+    );
 }
 
 // --- Comparison functions ---
