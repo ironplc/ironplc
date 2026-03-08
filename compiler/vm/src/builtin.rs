@@ -627,13 +627,13 @@ fn bcd_to_int_u16(bcd: u16) -> u16 {
     let mut shift = 12;
     let mut multiplier: u16 = 1000;
     for _ in 0..3 {
-        let nibble = ((bcd >> shift) & 0x0F) as u16;
+        let nibble = (bcd >> shift) & 0x0F;
         let nibble = if nibble > 9 { 0 } else { nibble };
         result += nibble * multiplier;
         shift -= 4;
         multiplier /= 10;
     }
-    let nibble = (bcd & 0x0F) as u16;
+    let nibble = bcd & 0x0F;
     let nibble = if nibble > 9 { 0 } else { nibble };
     result + nibble
 }
@@ -643,7 +643,7 @@ fn bcd_to_int_u16(bcd: u16) -> u16 {
 fn bcd_to_int_u32(bcd: u32) -> u32 {
     let mut result: u32 = 0;
     for i in 0..8 {
-        let nibble = ((bcd >> (4 * (7 - i))) & 0x0F) as u32;
+        let nibble = (bcd >> (4 * (7 - i))) & 0x0F;
         let nibble = if nibble > 9 { 0 } else { nibble };
         result = result * 10 + nibble;
     }
@@ -655,7 +655,7 @@ fn bcd_to_int_u32(bcd: u32) -> u32 {
 fn bcd_to_int_u64(bcd: u64) -> u64 {
     let mut result: u64 = 0;
     for i in 0..16 {
-        let nibble = ((bcd >> (4 * (15 - i))) & 0x0F) as u64;
+        let nibble = (bcd >> (4 * (15 - i))) & 0x0F;
         let nibble = if nibble > 9 { 0 } else { nibble };
         result = result * 10 + nibble;
     }
@@ -677,7 +677,7 @@ fn int_to_bcd_u16(val: u16) -> u16 {
     let mut remaining = val;
     for i in 0..4 {
         let digit = remaining % 10;
-        result |= (digit as u16) << (4 * i);
+        result |= digit << (4 * i);
         remaining /= 10;
     }
     result
