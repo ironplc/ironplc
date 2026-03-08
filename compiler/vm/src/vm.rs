@@ -1132,6 +1132,22 @@ fn execute(
                 // Push the temp buffer index onto the stack.
                 stack.push(Slot::from_i32(buf_idx as i32))?;
             }
+            // --- String function opcodes ---
+            //
+            // LEN_STR reads the cur_length field from a STRING variable's
+            // header in the data region and pushes it as an i32.
+            opcode::LEN_STR => {
+                let data_offset = read_u16_le(bytecode, &mut pc) as usize;
+
+                if data_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(data_offset as u16));
+                }
+                let cur_len = u16::from_le_bytes([
+                    data_region[data_offset + 2],
+                    data_region[data_offset + 3],
+                ]);
+                stack.push(Slot::from_i32(cur_len as i32))?;
+            }
             opcode::RET_VOID => {
                 return Ok(());
             }
