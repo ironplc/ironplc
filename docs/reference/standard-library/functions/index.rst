@@ -122,6 +122,20 @@ Comparison Functions
      - Not equal
      - Supported
 
+Assignment Functions
+--------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 50 30
+
+   * - Function
+     - Description
+     - Status
+   * - :doc:`MOVE <move>`
+     - Assignment (copy value)
+     - Supported
+
 Selection Functions
 -------------------
 
@@ -247,6 +261,7 @@ Type Conversion Functions
    mul
    div
    mod
+   move
    gt
    ge
    eq
