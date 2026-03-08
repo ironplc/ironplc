@@ -9,6 +9,7 @@ import init, {
   load_program,
   step,
   reset_session,
+  version,
 } from "./pkg/ironplc_playground.js";
 
 let ready = false;
@@ -17,7 +18,7 @@ init()
   .then(() => {
     init_panic_hook();
     ready = true;
-    self.postMessage({ type: "ready" });
+    self.postMessage({ type: "ready", version: version() });
   })
   .catch((err) => {
     self.postMessage({ type: "error", error: `WASM init failed: ${err}` });
