@@ -1,4 +1,4 @@
-use ironplc_container::Container;
+use ironplc_container::{Container, STRING_HEADER_BYTES};
 
 use crate::builtin;
 use crate::error::Trap;
@@ -927,25 +927,72 @@ fn execute(
                 builtin::dispatch(func_id, stack)?;
             }
             // --- String opcodes ---
+            //
+            // Strings are variable-length and can't fit in the fixed-width
+            // 64-bit stack slots. They live in two places:
+            //
+            //   1. **Data region**: persistent storage for STRING variables.
+            //      Each string is laid out per ADR-0015 as:
+            //        [max_length: u16][cur_length: u16][data: up to max_length bytes]
+            //      The `data_offset` (byte offset into the data region) identifies
+            //      each string and is baked into the bytecode operand.
+            //
+            //   2. **Temp buffers**: short-lived staging area for intermediate
+            //      string values. Same [max][cur][data] layout. The temp buffer
+            //      pool is a flat byte array divided into equal-sized slots; a
+            //      `buf_idx` (which fits in one stack slot) identifies which temp
+            //      buffer holds the data. A bump allocator (`next_temp_buf`)
+            //      hands out temp buffers within a single function call.
+            //
+            // The typical pattern for string assignment is:
+            //   LOAD_CONST_STR pool[i]    -- copy literal → temp buf, push buf_idx
+            //   STR_STORE_VAR  offset     -- pop buf_idx, copy temp buf → data region
+
+            // STR_INIT: Initialize a string variable's header in the data region.
+            //
+            // Operands: data_offset (u16), max_length (u16)
+            // Stack effect: none
+            //
+            // Sets max_length and zeros cur_length. This is emitted once per
+            // STRING variable during program initialization, before any values
+            // are stored. STR_STORE_VAR relies on max_length being set here
+            // to enforce the capacity bound.
             opcode::STR_INIT => {
                 let data_offset = read_u16_le(bytecode, &mut pc) as usize;
                 let max_length = read_u16_le(bytecode, &mut pc);
-                // Write [max_length: u16][cur_length: u16] at data_offset
-                if data_offset + 4 > data_region.len() {
+
+                if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u16));
                 }
+                // Write max_length at data_offset+0, cur_length=0 at data_offset+2.
                 data_region[data_offset..data_offset + 2]
                     .copy_from_slice(&max_length.to_le_bytes());
-                data_region[data_offset + 2..data_offset + 4].copy_from_slice(&0u16.to_le_bytes());
+                data_region[data_offset + 2..data_offset + STRING_HEADER_BYTES]
+                    .copy_from_slice(&0u16.to_le_bytes());
             }
+
+            // LOAD_CONST_STR: Load a string literal from the constant pool
+            // into a temp buffer.
+            //
+            // Operands: pool_index (u16)
+            // Stack effect: pushes buf_idx (the temp buffer holding the string)
+            //
+            // Steps:
+            //   1. Look up raw bytes in the constant pool
+            //   2. Claim the next temp buffer from the bump allocator
+            //   3. Write the string into the temp buffer in [max][cur][data] format
+            //   4. Push the buf_idx onto the stack so a subsequent opcode
+            //      (e.g. STR_STORE_VAR) can find the data
             opcode::LOAD_CONST_STR => {
+                // 1. Fetch the raw string bytes from the constant pool.
                 let index = read_u16_le(bytecode, &mut pc);
                 let str_bytes = container
                     .constant_pool
                     .get_str(index)
                     .map_err(|_| Trap::InvalidConstantIndex(index))?;
 
-                // Allocate a temp buffer
+                // 2. Allocate a temp buffer (bump allocator: just increment
+                //    the counter and bounds-check).
                 if max_temp_buf_bytes == 0 {
                     return Err(Trap::TempBufferExhausted);
                 }
@@ -957,55 +1004,92 @@ fn execute(
                 }
                 next_temp_buf = next_temp_buf.wrapping_add(1);
 
-                // Write string layout into temp buffer:
-                // [max_length: u16][cur_length: u16][data]
-                let max_len = (max_temp_buf_bytes - 4) as u16;
+                // 3. Write the [max_length][cur_length][data] layout into
+                //    the temp buffer. max_length is the buffer capacity
+                //    (total size minus the header). cur_length is clamped
+                //    to fit.
+                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (str_bytes.len() as u16).min(max_len);
                 temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + 4].copy_from_slice(&cur_len.to_le_bytes());
-                temp_buf[buf_start + 4..buf_start + 4 + cur_len as usize]
+                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
+                    .copy_from_slice(&cur_len.to_le_bytes());
+                temp_buf[buf_start + STRING_HEADER_BYTES
+                    ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
                     .copy_from_slice(&str_bytes[..cur_len as usize]);
 
+                // 4. Push the temp buffer index onto the stack.
                 stack.push(Slot::from_i32(buf_idx as i32))?;
             }
+
+            // STR_STORE_VAR: Copy a string from a temp buffer into the
+            // data region (i.e., assign to a STRING variable).
+            //
+            // Operands: data_offset (u16) — where the destination string lives
+            // Stack effect: pops buf_idx
+            //
+            // Steps:
+            //   1. Pop buf_idx to locate the source temp buffer
+            //   2. Read the source's cur_length from the temp buffer header
+            //   3. Read the destination's max_length from the data region header
+            //      (set earlier by STR_INIT)
+            //   4. Copy min(src_cur_length, dest_max_length) bytes — this
+            //      silently truncates if the source is longer than the
+            //      destination can hold (IEC 61131-3 assignment semantics)
+            //   5. Update the destination's cur_length
             opcode::STR_STORE_VAR => {
                 let data_offset = read_u16_le(bytecode, &mut pc) as usize;
+
+                // 1. Pop the temp buffer index from the stack.
                 let buf_idx = stack.pop()?.as_i32() as usize;
 
-                // Read source from temp buffer
+                // 2. Read the source string's current length from the temp
+                //    buffer header (bytes 2..3).
                 let buf_start = buf_idx * max_temp_buf_bytes;
-                if buf_start + 4 > temp_buf.len() {
+                if buf_start + STRING_HEADER_BYTES > temp_buf.len() {
                     return Err(Trap::TempBufferExhausted);
                 }
                 let src_cur_len =
                     u16::from_le_bytes([temp_buf[buf_start + 2], temp_buf[buf_start + 3]]);
 
-                // Read dest max_length from data region
-                if data_offset + 4 > data_region.len() {
+                // 3. Read the destination's max_length from the data region
+                //    header (bytes 0..1). This was written by STR_INIT.
+                if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u16));
                 }
                 let dest_max_len =
                     u16::from_le_bytes([data_region[data_offset], data_region[data_offset + 1]]);
 
-                // Assignment semantics per ADR-0015
+                // 4. Copy the character data, truncating to the destination's
+                //    capacity if the source is longer.
                 let copy_len = src_cur_len.min(dest_max_len) as usize;
-                if data_offset + 4 + copy_len > data_region.len() {
+                if data_offset + STRING_HEADER_BYTES + copy_len > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u16));
                 }
-
-                // Copy data from temp buffer to data region
                 for i in 0..copy_len {
-                    data_region[data_offset + 4 + i] = temp_buf[buf_start + 4 + i];
+                    data_region[data_offset + STRING_HEADER_BYTES + i] =
+                        temp_buf[buf_start + STRING_HEADER_BYTES + i];
                 }
-                // Set cur_length
-                data_region[data_offset + 2..data_offset + 4]
+
+                // 5. Update the destination's cur_length to reflect how many
+                //    bytes were actually copied.
+                data_region[data_offset + 2..data_offset + STRING_HEADER_BYTES]
                     .copy_from_slice(&(copy_len as u16).to_le_bytes());
             }
+
+            // STR_LOAD_VAR: Copy a string from the data region into a temp
+            // buffer (i.e., read a STRING variable for use in an expression).
+            //
+            // Operands: data_offset (u16) — where the source string lives
+            // Stack effect: pushes buf_idx
+            //
+            // This is the inverse of STR_STORE_VAR: it reads from the data
+            // region and writes to a temp buffer so the string value can be
+            // passed through the stack to another opcode.
             opcode::STR_LOAD_VAR => {
                 let data_offset = read_u16_le(bytecode, &mut pc) as usize;
 
-                // Read source from data region
-                if data_offset + 4 > data_region.len() {
+                // Read the source string's header from the data region.
+                if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u16));
                 }
                 let src_max_len =
@@ -1014,9 +1098,11 @@ fn execute(
                     data_region[data_offset + 2],
                     data_region[data_offset + 3],
                 ]);
+                // Defensive: never read more than max_length bytes even if
+                // cur_length is somehow corrupted.
                 let read_len = src_cur_len.min(src_max_len) as usize;
 
-                // Allocate a temp buffer
+                // Allocate a temp buffer via the bump allocator.
                 if max_temp_buf_bytes == 0 {
                     return Err(Trap::TempBufferExhausted);
                 }
@@ -1028,18 +1114,22 @@ fn execute(
                 }
                 next_temp_buf = next_temp_buf.wrapping_add(1);
 
-                // Copy into temp buffer
-                let max_len = (max_temp_buf_bytes - 4) as u16;
+                // Copy the string into the temp buffer in [max][cur][data]
+                // format, clamping to the temp buffer's capacity.
+                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (read_len as u16).min(max_len);
                 temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + 4].copy_from_slice(&cur_len.to_le_bytes());
-                if data_offset + 4 + cur_len as usize > data_region.len() {
+                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
+                    .copy_from_slice(&cur_len.to_le_bytes());
+                if data_offset + STRING_HEADER_BYTES + cur_len as usize > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u16));
                 }
                 for i in 0..cur_len as usize {
-                    temp_buf[buf_start + 4 + i] = data_region[data_offset + 4 + i];
+                    temp_buf[buf_start + STRING_HEADER_BYTES + i] =
+                        data_region[data_offset + STRING_HEADER_BYTES + i];
                 }
 
+                // Push the temp buffer index onto the stack.
                 stack.push(Slot::from_i32(buf_idx as i32))?;
             }
             opcode::RET_VOID => {

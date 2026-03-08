@@ -36,7 +36,7 @@
 
 use std::collections::HashMap;
 
-use ironplc_container::{opcode, Container, ContainerBuilder};
+use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES};
 use ironplc_dsl::common::{
     Boolean, ConstantKind, FunctionBlockBodyKind, InitialValueAssignmentKind, Library,
     LibraryElementKind, ProgramDeclaration, SignedInteger, VarDecl,
@@ -171,7 +171,7 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
         if ctx.num_temp_bufs > 0 {
             builder = builder
                 .num_temp_bufs(ctx.num_temp_bufs)
-                .max_temp_buf_bytes((4 + ctx.max_string_capacity) as u32);
+                .max_temp_buf_bytes((STRING_HEADER_BYTES as u16 + ctx.max_string_capacity) as u32);
         }
     }
 
@@ -357,7 +357,7 @@ fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Resul
 
                     // Allocate space in the data region: [max_length: u16][cur_length: u16][data]
                     let data_offset = ctx.data_region_offset;
-                    let total_bytes = 4 + max_length;
+                    let total_bytes = STRING_HEADER_BYTES as u16 + max_length;
                     ctx.data_region_offset = ctx
                         .data_region_offset
                         .checked_add(total_bytes)
@@ -380,6 +380,8 @@ fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Resul
                         },
                     );
                 }
+                // Other initializer kinds (EnumeratedType, FunctionBlock, Array, etc.)
+                // do not yet have type info tracked in codegen.
                 _ => {}
             }
         }
@@ -438,6 +440,8 @@ fn emit_initial_values(
                         }
                     }
                 }
+                // Other initializer kinds (EnumeratedType, FunctionBlock, Array, etc.)
+                // do not yet support initial values in codegen.
                 _ => {}
             }
         }

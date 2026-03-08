@@ -3,6 +3,7 @@
 mod common;
 
 use common::parse_and_run;
+use ironplc_container::STRING_HEADER_BYTES;
 
 /// Reads a STRING value from the data region at the given byte offset.
 ///
@@ -11,7 +12,7 @@ use common::parse_and_run;
 fn read_string(data_region: &[u8], data_offset: usize) -> String {
     let cur_len =
         u16::from_le_bytes([data_region[data_offset + 2], data_region[data_offset + 3]]) as usize;
-    let data_start = data_offset + 4;
+    let data_start = data_offset + STRING_HEADER_BYTES;
     let bytes = &data_region[data_start..data_start + cur_len];
     // STRING uses Latin-1 encoding (ADR-0016), which maps 1:1 to Unicode for 0x00-0xFF.
     bytes.iter().map(|&b| b as char).collect()

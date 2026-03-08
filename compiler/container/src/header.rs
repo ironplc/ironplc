@@ -9,6 +9,12 @@ pub const MAGIC: u32 = 0x49504C43;
 /// Current container format version.
 pub const FORMAT_VERSION: u16 = 1;
 
+/// Size in bytes of the string header (max_length: u16 + cur_length: u16).
+///
+/// See ADR-0015: every string in the data region is laid out as
+/// `[max_length: u16][cur_length: u16][data: max_length bytes]`.
+pub const STRING_HEADER_BYTES: usize = 4;
+
 /// Fixed size of the file header in bytes.
 pub const HEADER_SIZE: usize = 256;
 
