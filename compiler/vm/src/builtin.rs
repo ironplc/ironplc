@@ -477,6 +477,47 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_i64(a as u64 as i64))?;
             Ok(())
         }
+        // --- BCD conversion opcodes ---
+        opcode::builtin::BCD_TO_INT_8 => {
+            let a = stack.pop()?.as_i32() as u8;
+            stack.push(Slot::from_i32(bcd_to_int_u8(a) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::BCD_TO_INT_16 => {
+            let a = stack.pop()?.as_i32() as u16;
+            stack.push(Slot::from_i32(bcd_to_int_u16(a) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::BCD_TO_INT_32 => {
+            let a = stack.pop()?.as_i32() as u32;
+            stack.push(Slot::from_i32(bcd_to_int_u32(a) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::BCD_TO_INT_64 => {
+            let a = stack.pop()?.as_i64() as u64;
+            stack.push(Slot::from_i64(bcd_to_int_u64(a) as i64))?;
+            Ok(())
+        }
+        opcode::builtin::INT_TO_BCD_8 => {
+            let a = stack.pop()?.as_i32() as u8;
+            stack.push(Slot::from_i32(int_to_bcd_u8(a) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::INT_TO_BCD_16 => {
+            let a = stack.pop()?.as_i32() as u16;
+            stack.push(Slot::from_i32(int_to_bcd_u16(a) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::INT_TO_BCD_32 => {
+            let a = stack.pop()?.as_i32() as u32;
+            stack.push(Slot::from_i32(int_to_bcd_u32(a) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::INT_TO_BCD_64 => {
+            let a = stack.pop()?.as_i64() as u64;
+            stack.push(Slot::from_i64(int_to_bcd_u64(a) as i64))?;
+            Ok(())
+        }
         // MUX (multiplexer) for all type widths
         id if opcode::builtin::is_mux(id) => {
             let n = opcode::builtin::mux_info(id).unwrap() as usize;
@@ -562,6 +603,112 @@ fn float_clamp_f32(val: f32, mn: f32, mx: f32) -> f32 {
     } else {
         val
     }
+}
+
+// =============================================================================
+// BCD conversion helpers
+// =============================================================================
+
+/// Decodes a BCD-encoded u8 (2 digits, max 99) to its integer value.
+/// Invalid BCD nibbles (>9) are treated as 0.
+#[inline]
+fn bcd_to_int_u8(bcd: u8) -> u8 {
+    let d1 = (bcd >> 4) & 0x0F;
+    let d0 = bcd & 0x0F;
+    let d1 = if d1 > 9 { 0 } else { d1 };
+    let d0 = if d0 > 9 { 0 } else { d0 };
+    d1 * 10 + d0
+}
+
+/// Decodes a BCD-encoded u16 (4 digits, max 9999) to its integer value.
+#[inline]
+fn bcd_to_int_u16(bcd: u16) -> u16 {
+    let mut result: u16 = 0;
+    let mut shift = 12;
+    let mut multiplier: u16 = 1000;
+    for _ in 0..3 {
+        let nibble = (bcd >> shift) & 0x0F;
+        let nibble = if nibble > 9 { 0 } else { nibble };
+        result += nibble * multiplier;
+        shift -= 4;
+        multiplier /= 10;
+    }
+    let nibble = bcd & 0x0F;
+    let nibble = if nibble > 9 { 0 } else { nibble };
+    result + nibble
+}
+
+/// Decodes a BCD-encoded u32 (8 digits, max 99_999_999) to its integer value.
+#[inline]
+fn bcd_to_int_u32(bcd: u32) -> u32 {
+    let mut result: u32 = 0;
+    for i in 0..8 {
+        let nibble = (bcd >> (4 * (7 - i))) & 0x0F;
+        let nibble = if nibble > 9 { 0 } else { nibble };
+        result = result * 10 + nibble;
+    }
+    result
+}
+
+/// Decodes a BCD-encoded u64 (16 digits) to its integer value.
+#[inline]
+fn bcd_to_int_u64(bcd: u64) -> u64 {
+    let mut result: u64 = 0;
+    for i in 0..16 {
+        let nibble = (bcd >> (4 * (15 - i))) & 0x0F;
+        let nibble = if nibble > 9 { 0 } else { nibble };
+        result = result * 10 + nibble;
+    }
+    result
+}
+
+/// Encodes a u8 value (max 99) as BCD. Values > 99 wrap.
+#[inline]
+fn int_to_bcd_u8(val: u8) -> u8 {
+    let val = val % 100;
+    ((val / 10) << 4) | (val % 10)
+}
+
+/// Encodes a u16 value (max 9999) as BCD. Values > 9999 wrap.
+#[inline]
+fn int_to_bcd_u16(val: u16) -> u16 {
+    let val = val % 10000;
+    let mut result: u16 = 0;
+    let mut remaining = val;
+    for i in 0..4 {
+        let digit = remaining % 10;
+        result |= digit << (4 * i);
+        remaining /= 10;
+    }
+    result
+}
+
+/// Encodes a u32 value (max 99_999_999) as BCD. Values > 99_999_999 wrap.
+#[inline]
+fn int_to_bcd_u32(val: u32) -> u32 {
+    let val = val % 100_000_000;
+    let mut result: u32 = 0;
+    let mut remaining = val;
+    for i in 0..8 {
+        let digit = remaining % 10;
+        result |= digit << (4 * i);
+        remaining /= 10;
+    }
+    result
+}
+
+/// Encodes a u64 value as BCD (16 digits).
+#[inline]
+fn int_to_bcd_u64(val: u64) -> u64 {
+    let val = val % 10_000_000_000_000_000;
+    let mut result: u64 = 0;
+    let mut remaining = val;
+    for i in 0..16 {
+        let digit = remaining % 10;
+        result |= digit << (4 * i);
+        remaining /= 10;
+    }
+    result
 }
 
 /// IEEE 754-safe clamp for f64. See [`float_clamp_f32`] for semantics.
