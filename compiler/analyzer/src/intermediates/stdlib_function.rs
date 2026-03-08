@@ -496,6 +496,28 @@ fn get_string_functions() -> Vec<FunctionSignature> {
                 input_param("P", "ANY_INT"),
             ],
         ),
+        // INSERT: insert IN2 into IN1 after position P
+        // (ANY_STRING, ANY_STRING, ANY_INT -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "INSERT",
+            TypeName::from("ANY_STRING"),
+            vec![
+                input_param("IN1", "ANY_STRING"),
+                input_param("IN2", "ANY_STRING"),
+                input_param("P", "ANY_INT"),
+            ],
+        ),
+        // DELETE: delete L chars from IN1 starting at position P
+        // (ANY_STRING, ANY_INT, ANY_INT -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "DELETE",
+            TypeName::from("ANY_STRING"),
+            vec![
+                input_param("IN1", "ANY_STRING"),
+                input_param("L", "ANY_INT"),
+                input_param("P", "ANY_INT"),
+            ],
+        ),
     ]
 }
 
@@ -560,9 +582,9 @@ mod tests {
         // Boolean functions: AND, OR, XOR, NOT = 4
         // Selection functions: MUX = 1
         // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
-        // String functions: LEN, FIND, REPLACE = 3
-        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 5 + 6 + 4 + 1 + 4 + 3 = 136
-        assert_eq!(functions.len(), 136);
+        // String functions: LEN, FIND, REPLACE, INSERT, DELETE = 5
+        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 5 + 6 + 4 + 1 + 4 + 5 = 138
+        assert_eq!(functions.len(), 138);
     }
 
     #[test]

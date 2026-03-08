@@ -1382,6 +1382,8 @@ fn compile_function_call(
         "len" => compile_len(emitter, ctx, func),
         "find" => compile_find(emitter, ctx, func),
         "replace" => compile_replace(emitter, ctx, func),
+        "insert" => compile_insert(emitter, ctx, func),
+        "delete" => compile_delete(emitter, ctx, func),
         _ => {
             if let Some((source, target)) = parse_type_conversion(name) {
                 compile_type_conversion(emitter, ctx, func, source, target)
@@ -1704,6 +1706,74 @@ fn compile_replace(
     ctx.num_temp_bufs += 1;
 
     emitter.emit_replace_str(in1_offset, in2_offset);
+    Ok(())
+}
+
+/// Compiles the INSERT standard function call.
+///
+/// INSERT(IN1, IN2, P) inserts string IN2 into IN1 after position P
+/// (1-based) and returns the result as a new string. IN1 and IN2 must
+/// be STRING variables; P is an integer expression compiled onto the stack.
+fn compile_insert(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 3 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in1_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+    let in2_offset = resolve_string_arg(ctx, args[1], &func.name.span())?;
+
+    // Compile P integer expression onto the stack.
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[2], op_type)?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_insert_str(in1_offset, in2_offset);
+    Ok(())
+}
+
+/// Compiles the DELETE standard function call.
+///
+/// DELETE(IN1, L, P) deletes L characters from IN1 starting at position
+/// P (1-based) and returns the result as a new string. IN1 must be a
+/// STRING variable; L and P are integer expressions compiled onto the stack.
+fn compile_delete(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 3 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in1_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+
+    // Compile L and P integer expressions onto the stack.
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[1], op_type)?;
+    compile_expr(emitter, ctx, args[2], op_type)?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_delete_str(in1_offset);
     Ok(())
 }
 

@@ -169,6 +169,16 @@ pub const FIND_STR: u8 = 0xE3;
 /// Pops P (i32) then L (i32) from stack. Pushes buf_idx (i32).
 pub const REPLACE_STR: u8 = 0xE5;
 
+/// Insert IN2 into IN1 after position P.
+/// Operands: in1_data_offset: u16, in2_data_offset: u16.
+/// Pops P (i32) from stack. Pushes buf_idx (i32).
+pub const INSERT_STR: u8 = 0xE6;
+
+/// Delete L characters from IN1 starting at position P.
+/// Operand: in1_data_offset: u16.
+/// Pops P (i32) then L (i32) from stack. Pushes buf_idx (i32).
+pub const DELETE_STR: u8 = 0xE7;
+
 // --- Truncation opcodes ---
 
 /// Truncate i32 to i8 range, then sign-extend back to i32.

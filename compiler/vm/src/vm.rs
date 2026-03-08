@@ -1283,6 +1283,167 @@ fn execute(
 
                 stack.push(Slot::from_i32(buf_idx as i32))?;
             }
+            // INSERT_STR: Insert IN2 into IN1 after position P.
+            // Pops P from stack, pushes buf_idx.
+            opcode::INSERT_STR => {
+                let in1_offset = read_u16_le(bytecode, &mut pc) as usize;
+                let in2_offset = read_u16_le(bytecode, &mut pc) as usize;
+
+                let p_val = stack.pop()?.as_i32();
+
+                // Read IN1's current length.
+                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u16));
+                }
+                let in1_len =
+                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
+                        as usize;
+
+                // Read IN2's current length.
+                if in2_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(in2_offset as u16));
+                }
+                let in2_len =
+                    u16::from_le_bytes([data_region[in2_offset + 2], data_region[in2_offset + 3]])
+                        as usize;
+
+                let in1_start = in1_offset + STRING_HEADER_BYTES;
+                let in2_start = in2_offset + STRING_HEADER_BYTES;
+
+                // Clamp P to valid range (1-based, minimum 0 means insert at start).
+                let p = if p_val < 0 { 0usize } else { p_val as usize };
+
+                // Insert point: after position P (0-based index = P).
+                let insert_idx = p.min(in1_len);
+
+                // Result = IN1[0..insert_idx] + IN2 + IN1[insert_idx..]
+                let prefix_len = insert_idx;
+                let suffix_len = in1_len - insert_idx;
+                let result_len = prefix_len + in2_len + suffix_len;
+
+                // Allocate a temp buffer.
+                if max_temp_buf_bytes == 0 {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                let buf_idx = next_temp_buf;
+                let buf_start = buf_idx as usize * max_temp_buf_bytes;
+                let buf_end = buf_start + max_temp_buf_bytes;
+                if buf_end > temp_buf.len() {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                next_temp_buf = next_temp_buf.wrapping_add(1);
+
+                // Clamp result to temp buffer capacity.
+                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                let cur_len = (result_len as u16).min(max_len);
+
+                // Write header.
+                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
+                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
+                    .copy_from_slice(&cur_len.to_le_bytes());
+
+                // Write result data: prefix + IN2 + suffix.
+                let data_start = buf_start + STRING_HEADER_BYTES;
+                let mut write_pos = 0usize;
+
+                // Copy prefix (IN1[0..insert_idx]).
+                let prefix_copy = prefix_len.min(cur_len as usize);
+                for i in 0..prefix_copy {
+                    temp_buf[data_start + write_pos] = data_region[in1_start + i];
+                    write_pos += 1;
+                }
+
+                // Copy IN2.
+                let in2_copy = in2_len.min((cur_len as usize).saturating_sub(write_pos));
+                for i in 0..in2_copy {
+                    temp_buf[data_start + write_pos] = data_region[in2_start + i];
+                    write_pos += 1;
+                }
+
+                // Copy suffix (IN1[insert_idx..]).
+                let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
+                for i in 0..suffix_copy {
+                    temp_buf[data_start + write_pos] = data_region[in1_start + insert_idx + i];
+                    write_pos += 1;
+                }
+
+                stack.push(Slot::from_i32(buf_idx as i32))?;
+            }
+            // DELETE_STR: Delete L characters from IN1 starting at position P.
+            // Pops P then L from stack, pushes buf_idx.
+            opcode::DELETE_STR => {
+                let in1_offset = read_u16_le(bytecode, &mut pc) as usize;
+
+                let p_val = stack.pop()?.as_i32();
+                let l_val = stack.pop()?.as_i32();
+
+                // Read IN1's current length.
+                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u16));
+                }
+                let in1_len =
+                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
+                        as usize;
+
+                let in1_start = in1_offset + STRING_HEADER_BYTES;
+
+                // Clamp P to valid range (1-based, minimum 1).
+                let p = if p_val < 1 { 1usize } else { p_val as usize };
+                // Clamp L to non-negative.
+                let l = if l_val < 0 { 0usize } else { l_val as usize };
+
+                // Convert P from 1-based to 0-based index.
+                let start_idx = (p - 1).min(in1_len);
+                // Number of characters to delete, clamped to remaining length.
+                let delete_len = l.min(in1_len - start_idx);
+
+                // Result = IN1[0..start_idx] + IN1[start_idx+delete_len..]
+                let prefix_len = start_idx;
+                let suffix_start = start_idx + delete_len;
+                let suffix_len = in1_len - suffix_start;
+                let result_len = prefix_len + suffix_len;
+
+                // Allocate a temp buffer.
+                if max_temp_buf_bytes == 0 {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                let buf_idx = next_temp_buf;
+                let buf_start = buf_idx as usize * max_temp_buf_bytes;
+                let buf_end = buf_start + max_temp_buf_bytes;
+                if buf_end > temp_buf.len() {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                next_temp_buf = next_temp_buf.wrapping_add(1);
+
+                // Clamp result to temp buffer capacity.
+                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                let cur_len = (result_len as u16).min(max_len);
+
+                // Write header.
+                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
+                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
+                    .copy_from_slice(&cur_len.to_le_bytes());
+
+                // Write result data: prefix + suffix.
+                let data_start = buf_start + STRING_HEADER_BYTES;
+                let mut write_pos = 0usize;
+
+                // Copy prefix (IN1[0..start_idx]).
+                let prefix_copy = prefix_len.min(cur_len as usize);
+                for i in 0..prefix_copy {
+                    temp_buf[data_start + write_pos] = data_region[in1_start + i];
+                    write_pos += 1;
+                }
+
+                // Copy suffix (IN1[suffix_start..]).
+                let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
+                for i in 0..suffix_copy {
+                    temp_buf[data_start + write_pos] = data_region[in1_start + suffix_start + i];
+                    write_pos += 1;
+                }
+
+                stack.push(Slot::from_i32(buf_idx as i32))?;
+            }
             opcode::RET_VOID => {
                 return Ok(());
             }
