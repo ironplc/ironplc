@@ -3,7 +3,6 @@
 mod common;
 
 use common::{single_function_container, VmBuffers};
-use ironplc_vm::Vm;
 
 #[test]
 fn execute_when_limit_u32_below_min_then_clamped() {
@@ -24,19 +23,7 @@ fn execute_when_limit_u32_below_min_then_clamped() {
         &[1_000_000_000, 500_000_000, 3_000_000_000_u32 as i32],
     );
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap() as u32, 1_000_000_000);
@@ -60,19 +47,7 @@ fn execute_when_limit_u32_in_range_then_unchanged() {
         &[1_000_000_000, 2_000_000_000, 3_000_000_000_u32 as i32],
     );
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap() as u32, 2_000_000_000);

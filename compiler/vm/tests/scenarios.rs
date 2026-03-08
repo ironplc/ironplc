@@ -3,38 +3,11 @@
 //! Phase 2: Multi-scan state accumulation and fault handling.
 //! Phase 3: Multi-task execution, variable scope isolation, and watchdog.
 
-use ironplc_container::{Container, ContainerBuilder, ProgramInstanceEntry, TaskEntry, TaskType};
+mod common;
+
+use common::{load_and_start, VmBuffers};
+use ironplc_container::{ContainerBuilder, ProgramInstanceEntry, TaskEntry, TaskType};
 use ironplc_vm::error::Trap;
-use ironplc_vm::{ProgramInstanceState, Slot, TaskState, Vm};
-
-/// Helper struct that allocates Vec-backed buffers for VM usage.
-struct VmBuffers {
-    stack: Vec<Slot>,
-    vars: Vec<Slot>,
-    data_region: Vec<u8>,
-    temp_buf: Vec<u8>,
-    tasks: Vec<TaskState>,
-    programs: Vec<ProgramInstanceState>,
-    ready: Vec<usize>,
-}
-
-impl VmBuffers {
-    fn from_container(c: &Container) -> Self {
-        let h = &c.header;
-        let task_count = c.task_table.tasks.len();
-        let program_count = c.task_table.programs.len();
-        let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
-        VmBuffers {
-            stack: vec![Slot::default(); h.max_stack_depth as usize],
-            vars: vec![Slot::default(); h.num_variables as usize],
-            data_region: vec![0u8; h.data_region_bytes as usize],
-            temp_buf: vec![0u8; temp_buf_total],
-            tasks: vec![TaskState::default(); task_count],
-            programs: vec![ProgramInstanceState::default(); program_count],
-            ready: vec![0usize; task_count.max(1)],
-        }
-    }
-}
 
 /// Builds a container for a program that increments var[0] by 1 each scan.
 ///
@@ -45,7 +18,7 @@ impl VmBuffers {
 ///   ADD_I32                   // x + 1
 ///   STORE_VAR_I32 var[0]      // write back
 ///   RET_VOID
-fn counter_container() -> Container {
+fn counter_container() -> ironplc_container::Container {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x10, 0x00, 0x00,  // LOAD_VAR_I32 var[0]
@@ -69,19 +42,7 @@ fn counter_container() -> Container {
 fn scenario_when_counter_increments_each_scan_then_accumulates() {
     let c = counter_container();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = load_and_start(&c, &mut b).unwrap();
 
     for _ in 0..10 {
         vm.run_round(0).unwrap();
@@ -94,19 +55,7 @@ fn scenario_when_counter_increments_each_scan_then_accumulates() {
 fn scenario_when_stop_then_scan_count_reflects_completed_rounds() {
     let c = counter_container();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = load_and_start(&c, &mut b).unwrap();
 
     for _ in 0..5 {
         vm.run_round(0).unwrap();
@@ -156,19 +105,7 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
         .build();
 
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = load_and_start(&c, &mut b).unwrap();
     let result = vm.run_round(0);
 
     // The counter ran successfully before the fault program trapped
@@ -202,19 +139,7 @@ fn scenario_when_variables_read_after_fault_then_accessible() {
         .build();
 
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = load_and_start(&c, &mut b).unwrap();
     let result = vm.run_round(0);
 
     assert!(result.is_err());
@@ -300,19 +225,7 @@ fn scenario_when_two_freewheeling_tasks_then_both_execute() {
         .build();
 
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 10); // set by task 0
@@ -358,19 +271,7 @@ fn scenario_when_tasks_share_global_then_communication_works() {
         .build();
 
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 99); // global, written by task 0
@@ -399,19 +300,7 @@ fn scenario_when_scope_violation_then_trap() {
         .build();
 
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = load_and_start(&c, &mut b).unwrap();
     let result = vm.run_round(0);
 
     assert!(result.is_err());

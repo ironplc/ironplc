@@ -3,7 +3,6 @@
 mod common;
 
 use common::{single_function_container, VmBuffers};
-use ironplc_vm::Vm;
 
 #[test]
 fn execute_when_min_i32_then_returns_smaller() {
@@ -18,19 +17,7 @@ fn execute_when_min_i32_then_returns_smaller() {
     ];
     let c = single_function_container(&bytecode, 1, &[10, 3]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 3);
@@ -49,19 +36,7 @@ fn execute_when_min_i32_equal_then_returns_value() {
     ];
     let c = single_function_container(&bytecode, 1, &[5]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 5);
@@ -80,19 +55,7 @@ fn execute_when_min_i32_negative_vs_positive_then_returns_negative() {
     ];
     let c = single_function_container(&bytecode, 1, &[-3, 7]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), -3);

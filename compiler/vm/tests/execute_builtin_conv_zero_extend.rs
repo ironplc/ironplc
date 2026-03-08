@@ -3,7 +3,6 @@
 mod common;
 
 use common::{single_function_container, VmBuffers};
-use ironplc_vm::Vm;
 
 // --- CONV_U32_TO_I64 ---
 
@@ -20,19 +19,7 @@ fn execute_when_conv_u32_to_i64_small_then_correct() {
     let c = single_function_container(&bytecode, 1, &[42]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_i64();
@@ -53,19 +40,7 @@ fn execute_when_conv_u32_to_i64_large_unsigned_then_correct() {
     let c = single_function_container(&bytecode, 1, &[-1_i32]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_i64();

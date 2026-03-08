@@ -5,7 +5,6 @@ mod common;
 
 use common::{single_function_container, VmBuffers};
 use ironplc_container::ContainerBuilder;
-use ironplc_vm::Vm;
 
 // --- SHL_I32 ---
 
@@ -22,19 +21,7 @@ fn execute_when_shl_i32_then_shifts_left() {
     ];
     let c = single_function_container(&bytecode, 1, &[0x0F, 4]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0xF0);
@@ -60,19 +47,7 @@ fn execute_when_shl_i64_then_shifts_left() {
         .add_function(0, &bytecode, 16, 1)
         .build();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     vm.stop();
@@ -94,19 +69,7 @@ fn execute_when_shr_i32_then_shifts_right_logical() {
     ];
     let c = single_function_container(&bytecode, 1, &[0xF0, 4]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0x0F);
@@ -125,19 +88,7 @@ fn execute_when_shr_i32_high_bit_set_then_logical_shift() {
     ];
     let c = single_function_container(&bytecode, 1, &[i32::MIN, 1]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0x40000000);
@@ -163,19 +114,7 @@ fn execute_when_shr_i64_then_shifts_right() {
         .add_function(0, &bytecode, 16, 1)
         .build();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     vm.stop();
@@ -197,19 +136,7 @@ fn execute_when_rol_i32_then_rotates_left() {
     ];
     let c = single_function_container(&bytecode, 1, &[0x80000001_u32 as i32, 1]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0x00000003);
@@ -235,19 +162,7 @@ fn execute_when_rol_i64_then_rotates_left() {
         .add_function(0, &bytecode, 16, 1)
         .build();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     vm.stop();
@@ -269,19 +184,7 @@ fn execute_when_ror_i32_then_rotates_right() {
     ];
     let c = single_function_container(&bytecode, 1, &[0x80000001_u32 as i32, 1]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0xC0000000_u32 as i32);
@@ -307,19 +210,7 @@ fn execute_when_ror_i64_then_rotates_right() {
         .add_function(0, &bytecode, 16, 1)
         .build();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     vm.stop();
@@ -341,19 +232,7 @@ fn execute_when_rol_u8_then_rotates_within_8_bits() {
     ];
     let c = single_function_container(&bytecode, 1, &[0x81, 1]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0x03);
@@ -374,19 +253,7 @@ fn execute_when_rol_u16_then_rotates_within_16_bits() {
     ];
     let c = single_function_container(&bytecode, 1, &[0x8001, 1]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0x0003);
@@ -407,19 +274,7 @@ fn execute_when_ror_u8_then_rotates_within_8_bits() {
     ];
     let c = single_function_container(&bytecode, 1, &[0x81, 1]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0xC0);
@@ -440,19 +295,7 @@ fn execute_when_ror_u16_then_rotates_within_16_bits() {
     ];
     let c = single_function_container(&bytecode, 1, &[0x8001, 1]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(0).unwrap(), 0xC000);

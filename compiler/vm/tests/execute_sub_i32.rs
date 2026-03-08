@@ -4,7 +4,6 @@ mod common;
 
 use common::{assert_trap, single_function_container, VmBuffers};
 use ironplc_vm::error::Trap;
-use ironplc_vm::Vm;
 
 #[test]
 fn execute_when_sub_i32_basic_then_correct() {
@@ -18,19 +17,7 @@ fn execute_when_sub_i32_basic_then_correct() {
     ];
     let c = single_function_container(&bytecode, 1, &[10, 3]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 7);
@@ -48,19 +35,7 @@ fn execute_when_sub_i32_result_negative_then_correct() {
     ];
     let c = single_function_container(&bytecode, 1, &[3, 10]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), -7);
@@ -78,19 +53,7 @@ fn execute_when_sub_i32_both_zero_then_zero() {
     ];
     let c = single_function_container(&bytecode, 1, &[0]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -108,19 +71,7 @@ fn execute_when_sub_i32_same_value_then_zero() {
     ];
     let c = single_function_container(&bytecode, 1, &[42]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), 0);
@@ -139,19 +90,7 @@ fn execute_when_sub_i32_wraps_at_min_then_correct() {
     ];
     let c = single_function_container(&bytecode, 1, &[i32::MIN, 1]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), i32::MAX);
@@ -170,19 +109,7 @@ fn execute_when_sub_i32_wraps_at_max_then_correct() {
     ];
     let c = single_function_container(&bytecode, 1, &[i32::MAX, -1]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(0).unwrap(), i32::MIN);
@@ -201,19 +128,7 @@ fn execute_when_sub_i32_min_minus_max_then_wraps_to_one() {
     ];
     let c = single_function_container(&bytecode, 1, &[i32::MIN, i32::MAX]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     // i32::MIN - i32::MAX = -2147483648 - 2147483647 = wraps to 1
@@ -233,19 +148,7 @@ fn execute_when_sub_i32_max_minus_min_then_wraps_to_neg_one() {
     ];
     let c = single_function_container(&bytecode, 1, &[i32::MAX, i32::MIN]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     // i32::MAX - i32::MIN = 2147483647 - (-2147483648) = wraps to -1
@@ -265,19 +168,7 @@ fn execute_when_sub_i32_zero_minus_min_then_wraps() {
     ];
     let c = single_function_container(&bytecode, 1, &[0, i32::MIN]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     // 0 - i32::MIN = 0 - (-2147483648) = wraps to i32::MIN
@@ -297,19 +188,7 @@ fn execute_when_sub_i32_negative_operands_then_correct() {
     ];
     let c = single_function_container(&bytecode, 1, &[-10, -3]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     // -10 - (-3) = -7
@@ -321,19 +200,7 @@ fn execute_when_sub_i32_stack_underflow_then_trap() {
     // SUB_I32 tries to pop 2 values from an empty stack
     let c = single_function_container(&[0x31], 0, &[]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new()
-        .load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        )
-        .start()
-        .unwrap();
+    let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     assert_trap(&mut vm, Trap::StackUnderflow);
 }
