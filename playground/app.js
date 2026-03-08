@@ -10,6 +10,7 @@ const diagnosticsPanel = document.getElementById("diagnostics-panel");
 const dropOverlay = document.getElementById("drop-overlay");
 
 let sourceChanged = true;
+let previousValues = new Map();
 
 // --- URL parameter handling ---
 
@@ -109,9 +110,11 @@ runBtn.addEventListener("click", async () => {
   const scans = parseInt(scansInput.value, 10) || 1;
 
   status.textContent = "Compiling and running\u2026";
+  runBtn.textContent = "\u25A0 Stop";
   runBtn.disabled = true;
 
   const msg = await postCommand("run_source", { source, scans });
+  runBtn.textContent = "\u25B6 Run";
   runBtn.disabled = false;
 
   if (msg.type === "error") {
@@ -133,6 +136,7 @@ editor.addEventListener("input", () => {
 
 stepBtn.addEventListener("click", async () => {
   const scans = parseInt(scansInput.value, 10) || 1;
+  stepBtn.textContent = "\u25A0 Stepping\u2026";
   stepBtn.disabled = true;
   resetBtn.disabled = true;
 
@@ -141,6 +145,7 @@ stepBtn.addEventListener("click", async () => {
     const loadMsg = await postCommand("load_program", { source: editor.value });
     if (loadMsg.type === "error") {
       status.textContent = loadMsg.error;
+      stepBtn.textContent = "\u25B7 Step";
       stepBtn.disabled = false;
       resetBtn.disabled = false;
       return;
@@ -148,6 +153,7 @@ stepBtn.addEventListener("click", async () => {
     const loadResult = JSON.parse(loadMsg.json);
     if (!loadResult.ok) {
       displayStepResult(loadResult);
+      stepBtn.textContent = "\u25B7 Step";
       stepBtn.disabled = false;
       resetBtn.disabled = false;
       return;
@@ -157,6 +163,7 @@ stepBtn.addEventListener("click", async () => {
 
   status.textContent = "Stepping\u2026";
   const msg = await postCommand("step", { scans });
+  stepBtn.textContent = "\u25B7 Step";
   stepBtn.disabled = false;
   resetBtn.disabled = false;
 
@@ -178,6 +185,7 @@ resetBtn.addEventListener("click", async () => {
   await postCommand("reset");
 
   sourceChanged = true;
+  previousValues = new Map();
   variablesPanel.innerHTML = '<p class="placeholder">Run a program to see variable values.</p>';
   diagnosticsPanel.innerHTML = '<p class="placeholder">No diagnostics.</p>';
   status.textContent = "Ready";
@@ -252,9 +260,10 @@ document.addEventListener("drop", (e) => {
 
 function displayResult(result) {
   if (result.ok) {
-    renderVariables(result.variables, result.scans_completed);
+    previousValues = new Map();
+    renderVariables(result.variables, result.scans_completed, "run");
     diagnosticsPanel.innerHTML = '<p class="placeholder">No diagnostics.</p>';
-    status.textContent = `Completed ${result.scans_completed} scan(s)`;
+    status.textContent = `Ran ${result.scans_completed} scan cycle(s)`;
     activateTab("variables");
   } else if (result.diagnostics && result.diagnostics.length > 0) {
     renderDiagnostics(result.diagnostics);
@@ -262,7 +271,8 @@ function displayResult(result) {
     status.textContent = `${result.diagnostics.length} error(s)`;
     activateTab("diagnostics");
   } else if (result.error) {
-    renderVariables(result.variables || [], result.scans_completed);
+    previousValues = new Map();
+    renderVariables(result.variables || [], result.scans_completed, "run");
     diagnosticsPanel.innerHTML = `<p class="error-message">${escapeHtml(result.error)}</p>`;
     status.textContent = "Runtime error";
     activateTab("diagnostics");
@@ -271,12 +281,14 @@ function displayResult(result) {
 
 function displayRunResult(result, filename) {
   if (result.ok) {
-    renderVariables(result.variables, result.scans_completed);
+    previousValues = new Map();
+    renderVariables(result.variables, result.scans_completed, "run");
     diagnosticsPanel.innerHTML = '<p class="placeholder">No diagnostics.</p>';
-    status.textContent = `${filename}: ${result.scans_completed} scan(s)`;
+    status.textContent = `${filename}: ran ${result.scans_completed} scan cycle(s)`;
     activateTab("variables");
   } else {
-    renderVariables(result.variables || [], result.scans_completed);
+    previousValues = new Map();
+    renderVariables(result.variables || [], result.scans_completed, "run");
     diagnosticsPanel.innerHTML = `<p class="error-message">${escapeHtml(result.error || "Unknown error")}</p>`;
     status.textContent = `${filename}: runtime error`;
     activateTab("diagnostics");
@@ -285,9 +297,9 @@ function displayRunResult(result, filename) {
 
 function displayStepResult(result) {
   if (result.ok) {
-    renderVariables(result.variables, result.total_scans);
+    renderVariables(result.variables, result.total_scans, "step");
     diagnosticsPanel.innerHTML = '<p class="placeholder">No diagnostics.</p>';
-    status.textContent = `Total scans: ${result.total_scans}`;
+    status.textContent = `Scan cycle ${result.total_scans} completed`;
     activateTab("variables");
   } else if (result.diagnostics && result.diagnostics.length > 0) {
     renderDiagnostics(result.diagnostics);
@@ -295,26 +307,41 @@ function displayStepResult(result) {
     status.textContent = `${result.diagnostics.length} error(s)`;
     activateTab("diagnostics");
   } else if (result.error) {
-    renderVariables(result.variables || [], result.total_scans);
+    renderVariables(result.variables || [], result.total_scans, "step");
     diagnosticsPanel.innerHTML = `<p class="error-message">${escapeHtml(result.error)}</p>`;
     status.textContent = "Runtime error";
     activateTab("diagnostics");
   }
 }
 
-function renderVariables(variables, scansCompleted) {
+function renderVariables(variables, scansCompleted, mode) {
   if (!variables || variables.length === 0) {
     variablesPanel.innerHTML = '<p class="placeholder">No variables.</p>';
     return;
   }
 
-  let html = `<p class="success-message">Scans completed: ${scansCompleted}</p>`;
+  let html = '<div class="scan-summary">';
+  if (mode === "step") {
+    html += `<span class="scan-count">Scan cycle ${scansCompleted} completed</span>`;
+    html += '<span class="scan-hint">Click Step again to run another cycle and see values change.</span>';
+  } else {
+    html += `<span class="scan-count">Ran ${scansCompleted} scan cycle(s) from initial state</span>`;
+    html += '<span class="scan-hint">Each scan runs the entire program once. Variables persist between scans.</span>';
+  }
+  html += '</div>';
+
   html += '<table class="var-table"><thead><tr><th>Index</th><th>Value</th></tr></thead><tbody>';
   for (const v of variables) {
-    html += `<tr><td>var[${v.index}]</td><td>${v.value}</td></tr>`;
+    const prev = previousValues.get(v.index);
+    const changed = prev !== undefined && prev !== v.value;
+    html += `<tr${changed ? ' class="changed"' : ''}>`;
+    html += `<td>var[${v.index}]</td><td>${v.value}</td>`;
+    html += '</tr>';
   }
   html += "</tbody></table>";
   variablesPanel.innerHTML = html;
+
+  previousValues = new Map(variables.map(v => [v.index, v.value]));
 }
 
 function renderDiagnostics(diagnostics) {

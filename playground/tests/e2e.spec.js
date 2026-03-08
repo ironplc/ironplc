@@ -91,7 +91,7 @@ END_PROGRAM
     const editor = page.locator('[data-testid="editor"]');
     const content = await editor.inputValue();
     expect(content).toContain("PROGRAM main");
-    expect(content).toContain("x := 10");
+    expect(content).toContain("count := count + 1");
   });
 
   test("step_when_program_loaded_then_shows_variables_and_scan_count", async ({ page }) => {
@@ -111,7 +111,7 @@ END_PROGRAM
     const variablesPanel = page.locator('[data-testid="variables-panel"]');
     await expect(variablesPanel).toContainText("10", { timeout: 10000 });
     await expect(variablesPanel).toContainText("42");
-    await expect(page.locator('[data-testid="status"]')).toContainText("Total scans: 1");
+    await expect(page.locator('[data-testid="status"]')).toContainText("Scan cycle 1 completed");
   });
 
   test("step_when_clicked_twice_then_scan_count_accumulates", async ({ page }) => {
@@ -125,12 +125,12 @@ END_PROGRAM
 `);
 
     await page.click('[data-testid="step-btn"]');
-    await expect(page.locator('[data-testid="status"]')).toContainText("Total scans: 1", {
+    await expect(page.locator('[data-testid="status"]')).toContainText("Scan cycle 1 completed", {
       timeout: 10000,
     });
 
     await page.click('[data-testid="step-btn"]');
-    await expect(page.locator('[data-testid="status"]')).toContainText("Total scans: 2", {
+    await expect(page.locator('[data-testid="status"]')).toContainText("Scan cycle 2 completed", {
       timeout: 10000,
     });
   });
@@ -147,7 +147,7 @@ END_PROGRAM
 
     // Step first to populate output
     await page.click('[data-testid="step-btn"]');
-    await expect(page.locator('[data-testid="status"]')).toContainText("Total scans: 1", {
+    await expect(page.locator('[data-testid="status"]')).toContainText("Scan cycle 1 completed", {
       timeout: 10000,
     });
 
@@ -186,6 +186,6 @@ END_PROGRAM
 
     await page.click('[data-testid="step-btn"]');
     await expect(variablesPanel).toContainText("99", { timeout: 10000 });
-    await expect(page.locator('[data-testid="status"]')).toContainText("Total scans: 1");
+    await expect(page.locator('[data-testid="status"]')).toContainText("Scan cycle 1 completed");
   });
 });
