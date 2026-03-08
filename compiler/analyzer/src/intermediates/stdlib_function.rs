@@ -466,8 +466,7 @@ fn get_bitshift_functions() -> Vec<FunctionSignature> {
 
 /// Returns standard string function definitions.
 ///
-/// IEC 61131-3 defines LEN as a standard function operating on
-/// ANY_STRING types and returning an INT result.
+/// IEC 61131-3 defines string functions operating on ANY_STRING types.
 fn get_string_functions() -> Vec<FunctionSignature> {
     vec![
         // LEN: current length of a string (ANY_STRING -> INT)
@@ -475,6 +474,27 @@ fn get_string_functions() -> Vec<FunctionSignature> {
             "LEN",
             TypeName::from("INT"),
             vec![input_param("IN", "ANY_STRING")],
+        ),
+        // FIND: find first occurrence of IN2 within IN1 (ANY_STRING, ANY_STRING -> INT)
+        FunctionSignature::stdlib(
+            "FIND",
+            TypeName::from("INT"),
+            vec![
+                input_param("IN1", "ANY_STRING"),
+                input_param("IN2", "ANY_STRING"),
+            ],
+        ),
+        // REPLACE: replace L chars at position P in IN1 with IN2
+        // (ANY_STRING, ANY_STRING, ANY_INT, ANY_INT -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "REPLACE",
+            TypeName::from("ANY_STRING"),
+            vec![
+                input_param("IN1", "ANY_STRING"),
+                input_param("IN2", "ANY_STRING"),
+                input_param("L", "ANY_INT"),
+                input_param("P", "ANY_INT"),
+            ],
         ),
     ]
 }
@@ -540,9 +560,9 @@ mod tests {
         // Boolean functions: AND, OR, XOR, NOT = 4
         // Selection functions: MUX = 1
         // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
-        // String functions: LEN = 1
-        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 5 + 6 + 4 + 1 + 4 + 1 = 134
-        assert_eq!(functions.len(), 134);
+        // String functions: LEN, FIND, REPLACE = 3
+        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 5 + 6 + 4 + 1 + 4 + 3 = 136
+        assert_eq!(functions.len(), 136);
     }
 
     #[test]
