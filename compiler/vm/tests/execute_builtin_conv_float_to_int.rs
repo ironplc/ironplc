@@ -3,7 +3,6 @@
 mod common;
 
 use common::{single_function_container_f32, single_function_container_f64, VmBuffers};
-use ironplc_vm::Vm;
 
 // --- CONV_F32_TO_I32 ---
 
@@ -20,19 +19,7 @@ fn execute_when_conv_f32_to_i32_truncation_then_correct() {
     let c = single_function_container_f32(&bytecode, 1, &[3.7]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_i32();
@@ -52,19 +39,7 @@ fn execute_when_conv_f32_to_i32_negative_then_correct() {
     let c = single_function_container_f32(&bytecode, 1, &[-7.9]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_i32();
@@ -86,19 +61,7 @@ fn execute_when_conv_f64_to_i32_then_correct() {
     let c = single_function_container_f64(&bytecode, 1, &[99.99]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_i32();
@@ -120,19 +83,7 @@ fn execute_when_conv_f64_to_i64_then_correct() {
     let c = single_function_container_f64(&bytecode, 1, &[5_000_000_000.7]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_i64();
@@ -154,19 +105,7 @@ fn execute_when_conv_f32_to_u32_then_correct() {
     let c = single_function_container_f32(&bytecode, 1, &[100.5]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_i32() as u32;

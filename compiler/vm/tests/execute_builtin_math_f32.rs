@@ -3,7 +3,6 @@
 mod common;
 
 use common::{single_function_container_f32, VmBuffers};
-use ironplc_vm::Vm;
 
 // --- LN_F32 ---
 
@@ -20,19 +19,7 @@ fn execute_when_ln_f32_e_then_one() {
     let c = single_function_container_f32(&bytecode, 1, &[std::f32::consts::E]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -52,19 +39,7 @@ fn execute_when_ln_f32_one_then_zero() {
     let c = single_function_container_f32(&bytecode, 1, &[1.0]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -86,19 +61,7 @@ fn execute_when_log_f32_hundred_then_two() {
     let c = single_function_container_f32(&bytecode, 1, &[100.0]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -118,19 +81,7 @@ fn execute_when_log_f32_one_then_zero() {
     let c = single_function_container_f32(&bytecode, 1, &[1.0]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -152,19 +103,7 @@ fn execute_when_exp_f32_zero_then_one() {
     let c = single_function_container_f32(&bytecode, 1, &[0.0]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();
@@ -184,19 +123,7 @@ fn execute_when_exp_f32_one_then_e() {
     let c = single_function_container_f32(&bytecode, 1, &[1.0]);
     let mut b = VmBuffers::from_container(&c);
     {
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = common::load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     let result = b.vars[0].as_f32();

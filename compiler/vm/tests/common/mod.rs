@@ -4,7 +4,7 @@
 
 use ironplc_container::{Container, ContainerBuilder};
 use ironplc_vm::error::Trap;
-use ironplc_vm::{ProgramInstanceState, Slot, TaskState, VmRunning};
+use ironplc_vm::{FaultContext, ProgramInstanceState, Slot, TaskState, Vm, VmRunning};
 
 /// Helper struct that allocates Vec-backed buffers for VM usage.
 pub struct VmBuffers {
@@ -175,6 +175,28 @@ pub fn single_function_container_i32_f64(
         .init_function_id(0)
         .entry_function_id(1)
         .build()
+}
+
+/// Loads a container into the VM using the given buffers and starts execution.
+///
+/// This centralizes the `.load()` call so that adding new buffer parameters
+/// only requires updating this one function instead of every test file.
+pub fn load_and_start<'a>(
+    container: &'a Container,
+    bufs: &'a mut VmBuffers,
+) -> Result<VmRunning<'a>, FaultContext> {
+    Vm::new()
+        .load(
+            container,
+            &mut bufs.stack,
+            &mut bufs.vars,
+            &mut bufs.data_region,
+            &mut bufs.temp_buf,
+            &mut bufs.tasks,
+            &mut bufs.programs,
+            &mut bufs.ready,
+        )
+        .start()
 }
 
 /// Asserts that a run_round produces a specific trap.

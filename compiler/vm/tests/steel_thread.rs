@@ -1,7 +1,9 @@
+mod common;
+
 use std::io::Cursor;
 
+use common::{load_and_start, VmBuffers};
 use ironplc_container::{Container, ContainerBuilder};
-use ironplc_vm::{ProgramInstanceState, Slot, TaskState, Vm};
 
 /// End-to-end steel thread test: hand-assembled bytecode -> container
 /// format -> serialize -> deserialize -> VM execution -> correct result.
@@ -41,34 +43,12 @@ fn steel_thread_when_full_round_trip_then_x_is_10_y_is_42() {
     // 3. Deserialize from bytes.
     let loaded = Container::read_from(&mut Cursor::new(&buf)).unwrap();
 
-    // 4. Allocate buffers from header sizes.
-    let h = &loaded.header;
-    let mut stack = vec![Slot::default(); h.max_stack_depth as usize];
-    let mut vars = vec![Slot::default(); h.num_variables as usize];
-    let mut tasks = vec![TaskState::default(); loaded.task_table.tasks.len()];
-    let mut programs = vec![ProgramInstanceState::default(); loaded.task_table.programs.len()];
-    let mut ready = vec![0usize; loaded.task_table.tasks.len()];
-    let mut data_region = vec![0u8; h.data_region_bytes as usize];
-    let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
-    let mut temp_buf = vec![0u8; temp_buf_total];
-
-    // 5. Load into VM, start, and run one scheduling round.
-    let mut vm = Vm::new()
-        .load(
-            &loaded,
-            &mut stack,
-            &mut vars,
-            &mut data_region,
-            &mut temp_buf,
-            &mut tasks,
-            &mut programs,
-            &mut ready,
-        )
-        .start()
-        .unwrap();
+    // 4. Allocate buffers from header sizes and run.
+    let mut b = VmBuffers::from_container(&loaded);
+    let mut vm = load_and_start(&loaded, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
-    // 6. Verify results.
+    // 5. Verify results.
     assert_eq!(vm.read_variable(0).unwrap(), 10);
     assert_eq!(vm.read_variable(1).unwrap(), 42);
 }
