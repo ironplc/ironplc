@@ -631,23 +631,35 @@ fn compile_statement(
     match stmt {
         StmtKind::Assignment(assignment) => {
             // Look up the target variable's type info.
-            let var_index = resolve_variable(ctx, &assignment.target)?;
             let target_name = resolve_variable_name(&assignment.target);
-            let type_info = target_name.and_then(|name| ctx.var_type_info(name));
-            let op_type = type_info
-                .map(|ti| (ti.op_width, ti.signedness))
-                .unwrap_or(DEFAULT_OP_TYPE);
 
-            // Compile the right-hand side expression at the target's operation width.
-            compile_expr(emitter, ctx, &assignment.value, op_type)?;
+            // Check if the target is a STRING variable (stored in data region).
+            let string_info =
+                target_name.and_then(|name| ctx.string_vars.get(name).map(|info| info.data_offset));
 
-            // Truncate if the storage width is narrower than the operation width.
-            if let Some(ti) = type_info {
-                emit_truncation(emitter, ti);
+            if let Some(data_offset) = string_info {
+                // String target: compile RHS (produces buf_idx), then STR_STORE_VAR.
+                let op_type = DEFAULT_OP_TYPE;
+                compile_expr(emitter, ctx, &assignment.value, op_type)?;
+                emitter.emit_str_store_var(data_offset);
+            } else {
+                let var_index = resolve_variable(ctx, &assignment.target)?;
+                let type_info = target_name.and_then(|name| ctx.var_type_info(name));
+                let op_type = type_info
+                    .map(|ti| (ti.op_width, ti.signedness))
+                    .unwrap_or(DEFAULT_OP_TYPE);
+
+                // Compile the right-hand side expression at the target's operation width.
+                compile_expr(emitter, ctx, &assignment.value, op_type)?;
+
+                // Truncate if the storage width is narrower than the operation width.
+                if let Some(ti) = type_info {
+                    emit_truncation(emitter, ti);
+                }
+
+                // Store into the target variable.
+                emit_store_var(emitter, var_index, op_type);
             }
-
-            // Store into the target variable.
-            emit_store_var(emitter, var_index, op_type);
             Ok(())
         }
         StmtKind::FbCall(fb_call) => {
@@ -1368,6 +1380,8 @@ fn compile_function_call(
         "not" => compile_not_function(emitter, ctx, func, op_type),
         // String functions
         "len" => compile_len(emitter, ctx, func),
+        "find" => compile_find(emitter, ctx, func),
+        "replace" => compile_replace(emitter, ctx, func),
         _ => {
             if let Some((source, target)) = parse_type_conversion(name) {
                 compile_type_conversion(emitter, ctx, func, source, target)
@@ -1597,6 +1611,99 @@ fn compile_len(
         .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
 
     emitter.emit_len_str(info.data_offset);
+    Ok(())
+}
+
+/// Extracts a string variable's data_offset from a function argument expression.
+fn resolve_string_arg(
+    ctx: &CompileContext,
+    arg: &Expr,
+    func_span: &ironplc_dsl::core::SourceSpan,
+) -> Result<u16, Diagnostic> {
+    let var_name = match &arg.kind {
+        ExprKind::Variable(variable) => resolve_variable_name(variable),
+        _ => None,
+    };
+    let name =
+        var_name.ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
+    let info = ctx
+        .string_vars
+        .get(name)
+        .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
+    Ok(info.data_offset)
+}
+
+/// Collects positional input arguments from a function call.
+fn collect_positional_args(func: &Function) -> Vec<&Expr> {
+    func.param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Compiles the FIND standard function call.
+///
+/// FIND(IN1, IN2) returns the 1-based position of the first occurrence
+/// of IN2 within IN1, or 0 if not found. Both arguments must be STRING
+/// variables.
+fn compile_find(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in1_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+    let in2_offset = resolve_string_arg(ctx, args[1], &func.name.span())?;
+
+    emitter.emit_find_str(in1_offset, in2_offset);
+    Ok(())
+}
+
+/// Compiles the REPLACE standard function call.
+///
+/// REPLACE(IN1, IN2, L, P) deletes L characters from IN1 starting at
+/// position P (1-based), inserts IN2 in their place, and returns the
+/// result as a new string. IN1 and IN2 must be STRING variables; L and P
+/// are integer expressions compiled onto the stack.
+fn compile_replace(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 4 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in1_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+    let in2_offset = resolve_string_arg(ctx, args[1], &func.name.span())?;
+
+    // Compile L and P integer expressions onto the stack.
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[2], op_type)?;
+    compile_expr(emitter, ctx, args[3], op_type)?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_replace_str(in1_offset, in2_offset);
     Ok(())
 }
 
