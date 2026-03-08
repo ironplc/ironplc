@@ -477,6 +477,17 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_i64(a as u64 as i64))?;
             Ok(())
         }
+        // --- Integer to boolean conversion opcodes ---
+        opcode::builtin::CONV_I32_TO_BOOL => {
+            let a = stack.pop()?.as_i32();
+            stack.push(Slot::from_i32(if a != 0 { 1 } else { 0 }))?;
+            Ok(())
+        }
+        opcode::builtin::CONV_I64_TO_BOOL => {
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i32(if a != 0 { 1 } else { 0 }))?;
+            Ok(())
+        }
         // --- BCD conversion opcodes ---
         opcode::builtin::BCD_TO_INT_8 => {
             let a = stack.pop()?.as_i32() as u8;

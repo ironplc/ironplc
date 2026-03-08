@@ -1450,6 +1450,8 @@ fn compile_function_call(
         "or" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_or),
         "xor" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_xor),
         "not" => compile_not_function(emitter, ctx, func, op_type),
+        // Assignment function (equivalent to := operator)
+        "move" => compile_move(emitter, ctx, func, op_type),
         // Truncation function
         "trunc" => compile_trunc(emitter, ctx, func, op_type),
         // BCD conversion functions
@@ -1587,6 +1589,39 @@ fn compile_not_function(
 
     compile_expr(emitter, ctx, args[0], op_type)?;
     emitter.emit_bool_not();
+    Ok(())
+}
+
+/// Compiles the MOVE function form.
+///
+/// MOVE(IN) is equivalent to assignment. Takes a single argument and returns
+/// it unchanged. No opcode is needed since the value is already on the stack.
+fn compile_move(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    compile_expr(emitter, ctx, args[0], op_type)?;
+    // No additional opcode needed - the value is already on the stack
+
     Ok(())
 }
 
@@ -2178,8 +2213,26 @@ fn compile_type_conversion(
     }
 
     compile_expr(emitter, ctx, args[0], source_op_type)?;
-    emit_conversion_opcode(emitter, &source, &target);
-    emit_truncation(emitter, target);
+
+    // Integer-to-boolean needs a dedicated opcode (non-zero → 1, zero → 0)
+    // rather than the generic conversion + truncation path, because
+    // truncation would only keep the lowest bit instead of testing for zero.
+    if target.storage_bits == 1 {
+        match source.op_width {
+            OpWidth::W32 => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_BOOL),
+            OpWidth::W64 => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_BOOL),
+            _ => {
+                return Err(Diagnostic::todo_with_span(
+                    func.name.span(),
+                    file!(),
+                    line!(),
+                ));
+            }
+        }
+    } else {
+        emit_conversion_opcode(emitter, &source, &target);
+        emit_truncation(emitter, target);
+    }
 
     Ok(())
 }
