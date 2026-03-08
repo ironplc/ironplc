@@ -21,7 +21,7 @@ as an iframe on documentation pages.
        result := ABS(-42);
 
 Options (both directives):
-    :height:  Iframe height (default "400px").
+    :height:  Iframe height (default auto-calculated from line count).
 
 Options (playground-with-program only):
     :vars:    Variable declarations for scaffold mode (semicolon-separated).
@@ -33,6 +33,40 @@ from docutils import nodes
 from docutils.parsers.rst import Directive, directives
 
 PLAYGROUND_URL = "https://playground.ironplc.com/"
+
+# Maximum number of visible lines before the editor scrolls.
+_MAX_VISIBLE_LINES = 15
+# Minimum iframe height in pixels.
+_MIN_HEIGHT_PX = 300
+
+
+def _auto_height(code_lines, scaffold=False, vars_decl=""):
+    """Calculate an iframe height that shows the full example (up to a limit).
+
+    Accounts for the scaffold wrapper lines that the playground adds when
+    ``scaffold=true`` (PROGRAM, VAR/END_VAR, END_PROGRAM) so the editor is
+    tall enough to display them without scrolling.
+    """
+    total_lines = code_lines
+
+    if scaffold:
+        # PROGRAM main + END_PROGRAM
+        total_lines += 2
+        if vars_decl:
+            var_count = len([v for v in vars_decl.split(";") if v.strip()])
+            # VAR + each declaration + END_VAR
+            total_lines += 2 + var_count
+
+    visible = min(total_lines, _MAX_VISIBLE_LINES)
+
+    # The editor section gets ~70% of total height (see embed CSS).
+    # Inside that: toolbar ≈ 35 px, padding ≈ 24 px → 59 px overhead.
+    # Each line ≈ 20 px (0.8rem font × 1.5 line-height at 16px base).
+    # Solve for total:  0.70 × total − 59 ≥ visible × 20
+    #                   total ≥ (visible × 20 + 59) / 0.70
+    height = int((visible * 20 + 59) / 0.70)
+
+    return f"{max(_MIN_HEIGHT_PX, height)}px"
 
 
 def _build_iframe(code, height, scaffold=False, vars_decl=""):
@@ -68,7 +102,8 @@ class PlaygroundDirective(Directive):
 
     def run(self):
         code = "\n".join(self.content)
-        height = self.options.get("height", "400px")
+        code_lines = len(self.content)
+        height = self.options.get("height") or _auto_height(code_lines)
         return [_build_iframe(code, height)]
 
 
@@ -81,8 +116,11 @@ class PlaygroundWithProgramDirective(Directive):
 
     def run(self):
         code = "\n".join(self.content)
-        height = self.options.get("height", "400px")
+        code_lines = len(self.content)
         vars_decl = self.options.get("vars", "")
+        height = self.options.get("height") or _auto_height(
+            code_lines, scaffold=True, vars_decl=vars_decl
+        )
         return [_build_iframe(code, height, scaffold=True, vars_decl=vars_decl)]
 
 
