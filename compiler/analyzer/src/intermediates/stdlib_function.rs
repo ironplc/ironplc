@@ -285,6 +285,123 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
 }
 
 // =============================================================================
+// Arithmetic Function Definitions (IEC 61131-3 Section 2.5.1.5.2)
+// =============================================================================
+
+/// Returns standard arithmetic function definitions.
+///
+/// These are the functional equivalents of the arithmetic operators:
+/// ADD (+), SUB (-), MUL (*), DIV (/), MOD (MOD).
+/// Each takes two inputs and returns a result of the same type.
+fn get_arithmetic_functions() -> Vec<FunctionSignature> {
+    vec![
+        FunctionSignature::stdlib(
+            "ADD",
+            TypeName::from("ANY_NUM"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "SUB",
+            TypeName::from("ANY_NUM"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "MUL",
+            TypeName::from("ANY_NUM"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "DIV",
+            TypeName::from("ANY_NUM"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "MOD",
+            TypeName::from("ANY_NUM"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+    ]
+}
+
+// =============================================================================
+// Comparison Function Definitions (IEC 61131-3 Section 2.5.1.5.3)
+// =============================================================================
+
+/// Returns standard comparison function definitions.
+///
+/// These are the functional equivalents of the comparison operators:
+/// GT (>), GE (>=), EQ (=), LE (<=), LT (<), NE (<>).
+/// Each takes two inputs and returns BOOL.
+fn get_comparison_functions() -> Vec<FunctionSignature> {
+    vec![
+        FunctionSignature::stdlib(
+            "GT",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "GE",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "EQ",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "LE",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "LT",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "NE",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+    ]
+}
+
+// =============================================================================
+// Boolean Function Definitions (IEC 61131-3 Section 2.5.1.5.1)
+// =============================================================================
+
+/// Returns standard boolean function definitions.
+///
+/// These are the functional equivalents of the boolean operators:
+/// AND, OR, XOR (two inputs), NOT (one input).
+/// All take BOOL inputs and return BOOL.
+fn get_boolean_functions() -> Vec<FunctionSignature> {
+    vec![
+        FunctionSignature::stdlib(
+            "AND",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "BOOL"), input_param("IN2", "BOOL")],
+        ),
+        FunctionSignature::stdlib(
+            "OR",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "BOOL"), input_param("IN2", "BOOL")],
+        ),
+        FunctionSignature::stdlib(
+            "XOR",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "BOOL"), input_param("IN2", "BOOL")],
+        ),
+        FunctionSignature::stdlib(
+            "NOT",
+            TypeName::from("BOOL"),
+            vec![input_param("IN", "BOOL")],
+        ),
+    ]
+}
+
+// =============================================================================
 // Selection Function Definitions (IEC 61131-3 Section 2.5.1.5.4)
 // =============================================================================
 
@@ -383,6 +500,15 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     // Numeric functions
     functions.extend(get_numeric_functions());
 
+    // Arithmetic functions (functional forms of +, -, *, /, MOD)
+    functions.extend(get_arithmetic_functions());
+
+    // Comparison functions (functional forms of >, >=, =, <=, <, <>)
+    functions.extend(get_comparison_functions());
+
+    // Boolean functions (functional forms of AND, OR, XOR, NOT)
+    functions.extend(get_boolean_functions());
+
     // Selection functions
     functions.extend(get_selection_functions());
 
@@ -409,11 +535,14 @@ mod tests {
         // Real-to-real: 2 × 1 = 2
         // Bool-to-int: 8 (BOOL to SINT/INT/DINT/LINT/USINT/UINT/UDINT/ULINT)
         // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT, SEL, LN, LOG, EXP, SIN, COS, TAN, ASIN, ACOS, ATAN = 15
+        // Arithmetic functions: ADD, SUB, MUL, DIV, MOD = 5
+        // Comparison functions: GT, GE, EQ, LE, LT, NE = 6
+        // Boolean functions: AND, OR, XOR, NOT = 4
         // Selection functions: MUX = 1
         // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
         // String functions: LEN = 1
-        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 1 + 4 + 1 = 119
-        assert_eq!(functions.len(), 119);
+        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 5 + 6 + 4 + 1 + 4 + 1 = 134
+        assert_eq!(functions.len(), 134);
     }
 
     #[test]
