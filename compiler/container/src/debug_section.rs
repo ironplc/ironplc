@@ -37,6 +37,12 @@ pub mod iec_type_tag {
     pub const OTHER: u8 = 255;
 }
 
+/// Function ID constants for debug variable ownership.
+pub mod function_id {
+    /// Indicates a variable belongs to program/global scope (not a specific function).
+    pub const GLOBAL_SCOPE: u16 = 0xFFFF;
+}
+
 /// IEC 61131-3 variable section encoding.
 pub mod var_section {
     pub const VAR: u8 = 0;
@@ -294,7 +300,7 @@ mod tests {
             var_names: vec![
                 VarNameEntry {
                     var_index: 0,
-                    function_id: 0xFFFF,
+                    function_id: function_id::GLOBAL_SCOPE,
                     var_section: var_section::VAR,
                     iec_type_tag: iec_type_tag::DINT,
                     name: "counter".into(),
@@ -302,7 +308,7 @@ mod tests {
                 },
                 VarNameEntry {
                     var_index: 1,
-                    function_id: 0xFFFF,
+                    function_id: function_id::GLOBAL_SCOPE,
                     var_section: var_section::VAR,
                     iec_type_tag: iec_type_tag::REAL,
                     name: "temp".into(),
@@ -423,7 +429,7 @@ mod tests {
         let section = DebugSection {
             var_names: vec![VarNameEntry {
                 var_index: 0,
-                function_id: 0xFFFF,
+                function_id: function_id::GLOBAL_SCOPE,
                 var_section: var_section::VAR,
                 iec_type_tag: iec_type_tag::DINT,
                 name: "x".into(),

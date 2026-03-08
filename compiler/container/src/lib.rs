@@ -24,7 +24,7 @@ mod container;
 #[cfg(feature = "std")]
 pub mod debug_section;
 #[cfg(feature = "std")]
-mod task_table;
+pub mod task_table;
 
 // Always-available re-exports
 pub use const_type::ConstType;

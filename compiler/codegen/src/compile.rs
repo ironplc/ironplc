@@ -36,7 +36,9 @@
 
 use std::collections::HashMap;
 
-use ironplc_container::debug_section::{iec_type_tag, var_section, FuncNameEntry, VarNameEntry};
+use ironplc_container::debug_section::{
+    function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry,
+};
 use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES};
 use ironplc_dsl::common::{
     Boolean, ConstantKind, FunctionBlockBodyKind, InitialValueAssignmentKind, Library,
@@ -411,7 +413,7 @@ fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Resul
 
             ctx.debug_var_names.push(VarNameEntry {
                 var_index: index,
-                function_id: 0xFFFF, // program scope
+                function_id: function_id::GLOBAL_SCOPE,
                 var_section: map_var_section(&decl.var_type),
                 iec_type_tag: type_tag,
                 name: id.to_string(),

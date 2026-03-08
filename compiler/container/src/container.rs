@@ -118,7 +118,7 @@ mod tests {
     use std::vec;
     use std::vec::Vec;
 
-    use crate::debug_section::{iec_type_tag, var_section, FuncNameEntry, VarNameEntry};
+    use crate::debug_section::{function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry};
     use crate::ContainerBuilder;
 
     #[test]
@@ -187,7 +187,7 @@ mod tests {
             .add_function(0, &bytecode, 1, 1)
             .add_var_name(VarNameEntry {
                 var_index: 0,
-                function_id: 0xFFFF,
+                function_id: function_id::GLOBAL_SCOPE,
                 var_section: var_section::VAR,
                 iec_type_tag: iec_type_tag::DINT,
                 name: "x".into(),

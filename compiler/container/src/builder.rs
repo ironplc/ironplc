@@ -7,7 +7,7 @@ use crate::constant_pool::{ConstEntry, ConstantPool};
 use crate::container::Container;
 use crate::debug_section::{DebugSection, FuncNameEntry, VarNameEntry};
 use crate::header::FileHeader;
-use crate::task_table::{ProgramInstanceEntry, TaskEntry, TaskTable};
+use crate::task_table::{ProgramInstanceEntry, TaskEntry, TaskTable, NO_SINGLE_VAR};
 use crate::task_type::TaskType;
 
 /// Fluent builder for constructing a [`Container`].
@@ -204,7 +204,7 @@ impl ContainerBuilder {
                 task_type: TaskType::Freewheeling,
                 flags: 0x01, // enabled
                 interval_us: 0,
-                single_var_index: 0xFFFF,
+                single_var_index: NO_SINGLE_VAR,
                 watchdog_us: 0,
                 input_image_offset: 0,
                 output_image_offset: 0,
@@ -309,7 +309,7 @@ mod tests {
         );
         assert_eq!(container.task_table.tasks[0].flags, 0x01);
         assert_eq!(container.task_table.tasks[0].interval_us, 0);
-        assert_eq!(container.task_table.tasks[0].single_var_index, 0xFFFF);
+        assert_eq!(container.task_table.tasks[0].single_var_index, NO_SINGLE_VAR);
         assert_eq!(container.task_table.tasks[0].watchdog_us, 0);
         assert_eq!(container.task_table.programs.len(), 1);
         assert_eq!(container.task_table.programs[0].instance_id, 0);
