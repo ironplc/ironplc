@@ -1378,6 +1378,11 @@ fn compile_function_call(
         "or" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_or),
         "xor" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_xor),
         "not" => compile_not_function(emitter, ctx, func, op_type),
+        // Truncation function
+        "trunc" => compile_trunc(emitter, ctx, func, op_type),
+        // BCD conversion functions
+        "bcd_to_int" => compile_bcd_to_int(emitter, ctx, func, op_type),
+        "int_to_bcd" => compile_int_to_bcd(emitter, ctx, func, op_type),
         // String functions
         "len" => compile_len(emitter, ctx, func),
         "find" => compile_find(emitter, ctx, func),
@@ -1510,6 +1515,166 @@ fn compile_not_function(
 
     compile_expr(emitter, ctx, args[0], op_type)?;
     emitter.emit_bool_not();
+    Ok(())
+}
+
+/// Compiles TRUNC(IN) — truncates a real value toward zero.
+///
+/// The argument is compiled using its own (float) op_type derived from the
+/// argument's resolved type. The result is converted to the target integer
+/// type using the existing conversion opcodes.
+fn compile_trunc(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    target_op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    // Determine the argument's float type from its resolved type.
+    let arg_op_type = op_type(args[0])?;
+    compile_expr(emitter, ctx, args[0], arg_op_type)?;
+
+    // Build VarTypeInfo for source (float) and target (integer) to reuse
+    // the existing conversion opcode emission.
+    let source = VarTypeInfo {
+        op_width: arg_op_type.0,
+        signedness: arg_op_type.1,
+        storage_bits: match arg_op_type.0 {
+            OpWidth::F32 => 32,
+            OpWidth::F64 => 64,
+            _ => 32,
+        },
+    };
+    let target = VarTypeInfo {
+        op_width: target_op_type.0,
+        signedness: target_op_type.1,
+        storage_bits: match target_op_type.0 {
+            OpWidth::W32 => 32,
+            OpWidth::W64 => 64,
+            _ => 32,
+        },
+    };
+    emit_conversion_opcode(emitter, &source, &target);
+
+    Ok(())
+}
+
+/// Compiles BCD_TO_INT(IN) — converts a BCD-encoded bit string to an integer.
+///
+/// The argument is compiled using its own (bit-string) op_type. The BCD
+/// decoding opcode is selected based on the argument's storage bit width.
+fn compile_bcd_to_int(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    _target_op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let arg_op_type = op_type(args[0])?;
+    let bits = storage_bits(args[0])?;
+    compile_expr(emitter, ctx, args[0], arg_op_type)?;
+
+    let func_id = match bits {
+        8 => opcode::builtin::BCD_TO_INT_8,
+        16 => opcode::builtin::BCD_TO_INT_16,
+        32 => opcode::builtin::BCD_TO_INT_32,
+        64 => opcode::builtin::BCD_TO_INT_64,
+        _ => {
+            return Err(Diagnostic::todo_with_span(
+                func.name.span(),
+                file!(),
+                line!(),
+            ))
+        }
+    };
+    emitter.emit_builtin(func_id);
+    Ok(())
+}
+
+/// Compiles INT_TO_BCD(IN) — converts an integer to a BCD-encoded bit string.
+///
+/// The argument is compiled using its own (integer) op_type. The BCD
+/// encoding opcode is selected based on the target's operation width.
+fn compile_int_to_bcd(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    target_op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let arg_op_type = op_type(args[0])?;
+    let bits = storage_bits(args[0])?;
+    compile_expr(emitter, ctx, args[0], arg_op_type)?;
+
+    let func_id = match (arg_op_type.0, bits) {
+        (OpWidth::W32, 8) => opcode::builtin::INT_TO_BCD_8,
+        (OpWidth::W32, 16) => opcode::builtin::INT_TO_BCD_16,
+        (OpWidth::W32, 32) => opcode::builtin::INT_TO_BCD_32,
+        (OpWidth::W64, 64) => opcode::builtin::INT_TO_BCD_64,
+        _ => {
+            // For wider target than source, select based on target width
+            match target_op_type.0 {
+                OpWidth::W32 => opcode::builtin::INT_TO_BCD_32,
+                OpWidth::W64 => opcode::builtin::INT_TO_BCD_64,
+                _ => {
+                    return Err(Diagnostic::todo_with_span(
+                        func.name.span(),
+                        file!(),
+                        line!(),
+                    ))
+                }
+            }
+        }
+    };
+    emitter.emit_builtin(func_id);
     Ok(())
 }
 
