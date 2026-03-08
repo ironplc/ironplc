@@ -349,7 +349,7 @@ mod tests {
             .with_stdlib_functions()
             .build();
         // Exact count is tested in stdlib_function::tests; here just verify integration.
-        assert!(env.len() > 0);
+        assert!(!env.is_empty());
         // Should be able to find conversion functions
         assert!(env.contains(&Id::from("INT_TO_REAL")));
         assert!(env.contains(&Id::from("REAL_TO_INT")));

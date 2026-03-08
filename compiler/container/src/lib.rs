@@ -22,7 +22,9 @@ mod constant_pool;
 #[cfg(feature = "std")]
 mod container;
 #[cfg(feature = "std")]
-mod task_table;
+pub mod debug_section;
+#[cfg(feature = "std")]
+pub mod task_table;
 
 // Always-available re-exports
 pub use const_type::ConstType;
@@ -40,5 +42,7 @@ pub use code_section::{CodeSection, FuncEntry};
 pub use constant_pool::{ConstEntry, ConstantPool};
 #[cfg(feature = "std")]
 pub use container::Container;
+#[cfg(feature = "std")]
+pub use debug_section::{DebugSection, FuncNameEntry, VarNameEntry};
 #[cfg(feature = "std")]
 pub use task_table::{ProgramInstanceEntry, TaskEntry, TaskTable};
