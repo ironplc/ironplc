@@ -296,11 +296,11 @@ body.embed main {
 body.embed .editor-section {
   border-right: none;
   border-bottom: 1px solid var(--border);
-  flex: 1 1 55%;
+  flex: 1 1 70%;
 }
 
 body.embed .output-section {
-  flex: 1 1 45%;
+  flex: 1 1 30%;
 }
 
 body.embed .toolbar {
