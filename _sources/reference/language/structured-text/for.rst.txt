@@ -38,7 +38,7 @@ must all be integer types.
 Example
 -------
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR

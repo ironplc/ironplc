@@ -13,7 +13,7 @@
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/overrides.css?v=f0f90eab" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/overrides.css?v=638de70a" />
     
     
 
@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.164.0">
+<meta name="ironplc-version" content="0.165.0">
 </head>
   <body>
     
@@ -444,6 +444,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4019.html">P4019</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4020.html">P4020</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4021.html">P4021</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4022.html">P4022</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -482,6 +483,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9005.html">V9005</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9006.html">V9006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9007.html">V9007</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9008.html">V9008</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9009.html">V9009</a></li>
 </ul>
 </li>
 </ul>
@@ -923,19 +926,35 @@ to <code class="docutils literal notranslate"><span class="pre">FALSE</span></co
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BOOL_TO_SINT</span></code></p></td>
 <td><p>Boolean to 8-bit signed</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">BOOL_TO_INT</span></code></p></td>
 <td><p>Boolean to 16-bit signed</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BOOL_TO_DINT</span></code></p></td>
 <td><p>Boolean to 32-bit signed</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">BOOL_TO_LINT</span></code></p></td>
 <td><p>Boolean to 64-bit signed</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BOOL_TO_USINT</span></code></p></td>
+<td><p>Boolean to 8-bit unsigned</p></td>
+<td><p>Supported</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">BOOL_TO_UINT</span></code></p></td>
+<td><p>Boolean to 16-bit unsigned</p></td>
+<td><p>Supported</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BOOL_TO_UDINT</span></code></p></td>
+<td><p>Boolean to 32-bit unsigned</p></td>
+<td><p>Supported</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">BOOL_TO_ULINT</span></code></p></td>
+<td><p>Boolean to 64-bit unsigned</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SINT_TO_BOOL</span></code></p></td>
 <td><p>8-bit signed to Boolean</p></td>
@@ -1060,13 +1079,7 @@ target type may be truncated or cause a runtime error.</p>
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">int_val</span> <span class="o">:=</span> <span class="n">REAL_TO_INT</span><span class="p">(</span><span class="n">REAL</span><span class="c1">#3.14);     (* int_val = 3 *)</span>
-<span class="n">real_val</span> <span class="o">:=</span> <span class="n">INT_TO_REAL</span><span class="p">(</span><span class="mi">42</span><span class="p">);</span>            <span class="p">(</span><span class="o">*</span> <span class="n">real_val</span> <span class="o">=</span> <span class="mf">42.0</span> <span class="o">*</span><span class="p">)</span>
-<span class="n">str_val</span> <span class="o">:=</span> <span class="n">INT_TO_STRING</span><span class="p">(</span><span class="mi">100</span><span class="p">);</span>          <span class="p">(</span><span class="o">*</span> <span class="n">str_val</span> <span class="o">=</span> <span class="s1">&#39;100&#39;</span> <span class="o">*</span><span class="p">)</span>
-<span class="n">big_val</span> <span class="o">:=</span> <span class="n">INT_TO_DINT</span><span class="p">(</span><span class="mi">1000</span><span class="p">);</span>           <span class="p">(</span><span class="o">*</span> <span class="n">big_val</span> <span class="o">=</span> <span class="mi">1000</span><span class="p">,</span> <span class="n">widening</span> <span class="o">*</span><span class="p">)</span>
-</pre></div>
-</div>
-</section>
+<iframe src="https://playground.ironplc.com/?embed=true&scaffold=true&code=aW50X3ZhbCA6PSBSRUFMX1RPX0lOVChSRUFMIzMuMTQpOyAgICAgKCogaW50X3ZhbCA9IDMgKikKcmVhbF92YWwgOj0gSU5UX1RPX1JFQUwoNDIpOyAgICAgICAgICAgICgqIHJlYWxfdmFsID0gNDIuMCAqKQpiaWdfdmFsIDo9IElOVF9UT19ESU5UKDEwMDApOyAgICAgICAgICAgKCogYmlnX3ZhbCA9IDEwMDAsIHdpZGVuaW5nICop&vars=aW50X3ZhbCA6IElOVDsgcmVhbF92YWwgOiBSRUFMOyBiaWdfdmFsIDogRElOVDs=" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:400px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">

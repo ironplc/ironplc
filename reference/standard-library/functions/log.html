@@ -13,7 +13,7 @@
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/overrides.css?v=f0f90eab" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/overrides.css?v=638de70a" />
     
     
 
@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.164.0">
+<meta name="ironplc-version" content="0.165.0">
 </head>
   <body>
     
@@ -444,6 +444,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4019.html">P4019</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4020.html">P4020</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4021.html">P4021</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4022.html">P4022</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -482,6 +483,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9005.html">V9005</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9006.html">V9006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9007.html">V9007</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9008.html">V9008</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9009.html">V9009</a></li>
 </ul>
 </li>
 </ul>
@@ -606,11 +609,7 @@ is undefined.</p>
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">:=</span> <span class="n">LOG</span><span class="p">(</span><span class="n">REAL</span><span class="c1">#100.0);  (* result = 2.0 *)</span>
-<span class="n">value</span> <span class="o">:=</span> <span class="n">LOG</span><span class="p">(</span><span class="n">LREAL</span><span class="c1">#1000.0); (* value = 3.0 *)</span>
-</pre></div>
-</div>
-</section>
+<iframe src="https://playground.ironplc.com/?embed=true&scaffold=true&code=cmVzdWx0IDo9IExPRyhSRUFMIzEwMC4wKTsgICgqIHJlc3VsdCA9IDIuMCAqKQp2YWx1ZSA6PSBMT0coTFJFQUwjMTAwMC4wKTsgKCogdmFsdWUgPSAzLjAgKik=&vars=cmVzdWx0IDogUkVBTDsgdmFsdWUgOiBMUkVBTDs=" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:400px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">

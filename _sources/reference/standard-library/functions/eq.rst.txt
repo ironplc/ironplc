@@ -88,7 +88,8 @@ floating-point precision limitations.
 Example
 -------
 
-.. code-block::
+.. playground-with-program::
+   :vars: result : BOOL;
 
    result := EQ(5, 5);     (* result = TRUE *)
    result := 5 = 5;        (* result = TRUE, operator form *)

@@ -1,0 +1,15 @@
+=====
+V9009
+=====
+
+.. problem-summary:: V9009
+
+The VM exhausted its pool of temporary buffers during string operations. This is
+an internal error indicating the compiler underestimated the number of temporary
+buffers needed for the program.
+
+This error should not occur during normal operation. It indicates a bug in the
+IronPLC compiler or VM.
+
+Report this as a bug at https://github.com/ironplc/ironplc/issues with the
+``.iplc`` file and the source program that produced it.

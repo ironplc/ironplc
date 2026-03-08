@@ -87,7 +87,8 @@ causes a runtime fault.
 Example
 -------
 
-.. code-block::
+.. playground-with-program::
+   :vars: result : DINT;
 
    result := DIV(42, 6);   (* result = 7 *)
    result := 42 / 6;       (* result = 7, operator form *)
