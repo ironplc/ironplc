@@ -5,11 +5,12 @@ use crate::code_section::{CodeSection, FuncEntry};
 use crate::const_type::ConstType;
 use crate::constant_pool::{ConstEntry, ConstantPool};
 use crate::container::Container;
+use crate::debug_section::{DebugSection, FuncNameEntry, VarNameEntry};
 use crate::header::FileHeader;
 use crate::task_table::{ProgramInstanceEntry, TaskEntry, TaskTable};
 use crate::task_type::TaskType;
 
-/// Fluent builder for constructing a [`Container`] in tests.
+/// Fluent builder for constructing a [`Container`].
 pub struct ContainerBuilder {
     num_variables: u16,
     max_stack_depth: u16,
@@ -24,6 +25,8 @@ pub struct ContainerBuilder {
     shared_globals_size: u16,
     init_function_id: u16,
     entry_function_id: u16,
+    debug_var_names: Vec<VarNameEntry>,
+    debug_func_names: Vec<FuncNameEntry>,
 }
 
 impl ContainerBuilder {
@@ -42,6 +45,8 @@ impl ContainerBuilder {
             shared_globals_size: 0,
             init_function_id: 0,
             entry_function_id: 0,
+            debug_var_names: Vec::new(),
+            debug_func_names: Vec::new(),
         }
     }
 
@@ -168,6 +173,18 @@ impl ContainerBuilder {
         self
     }
 
+    /// Adds a variable name entry to the debug section.
+    pub fn add_var_name(mut self, entry: VarNameEntry) -> Self {
+        self.debug_var_names.push(entry);
+        self
+    }
+
+    /// Adds a function name entry to the debug section.
+    pub fn add_func_name(mut self, entry: FuncNameEntry) -> Self {
+        self.debug_func_names.push(entry);
+        self
+    }
+
     /// Builds the container, computing header fields from the added data.
     ///
     /// If no tasks have been added, synthesizes a default freewheeling task
@@ -216,6 +233,15 @@ impl ContainerBuilder {
             }
         };
 
+        let debug_section = if self.debug_var_names.is_empty() && self.debug_func_names.is_empty() {
+            None
+        } else {
+            Some(DebugSection {
+                var_names: self.debug_var_names,
+                func_names: self.debug_func_names,
+            })
+        };
+
         let header = FileHeader {
             num_variables: self.num_variables,
             max_stack_depth: self.max_stack_depth,
@@ -231,6 +257,7 @@ impl ContainerBuilder {
             task_table,
             constant_pool,
             code,
+            debug_section,
         }
     }
 }

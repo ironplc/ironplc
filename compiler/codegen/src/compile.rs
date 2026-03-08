@@ -36,10 +36,11 @@
 
 use std::collections::HashMap;
 
+use ironplc_container::debug_section::{iec_type_tag, var_section, FuncNameEntry, VarNameEntry};
 use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES};
 use ironplc_dsl::common::{
     Boolean, ConstantKind, FunctionBlockBodyKind, InitialValueAssignmentKind, Library,
-    LibraryElementKind, ProgramDeclaration, SignedInteger, VarDecl,
+    LibraryElementKind, ProgramDeclaration, SignedInteger, VarDecl, VariableType,
 };
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -197,6 +198,21 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
 
     builder = builder.init_function_id(0).entry_function_id(1);
 
+    // Add debug info.
+    let program_name = program.name.to_string();
+    builder = builder
+        .add_func_name(FuncNameEntry {
+            function_id: 0,
+            name: format!("{program_name}_init"),
+        })
+        .add_func_name(FuncNameEntry {
+            function_id: 1,
+            name: program_name,
+        });
+    for entry in ctx.debug_var_names {
+        builder = builder.add_var_name(entry);
+    }
+
     Ok(builder.build())
 }
 
@@ -219,6 +235,8 @@ struct CompileContext {
     max_string_capacity: u16,
     /// Number of temp buffers needed (one per string load in the init function).
     num_temp_bufs: u16,
+    /// Debug info: variable name entries collected during assign_variables.
+    debug_var_names: Vec<VarNameEntry>,
 }
 
 impl CompileContext {
@@ -232,6 +250,7 @@ impl CompileContext {
             data_region_offset: 0,
             max_string_capacity: 0,
             num_temp_bufs: 0,
+            debug_var_names: Vec::new(),
         }
     }
 
@@ -342,11 +361,15 @@ fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Resul
             let index = ctx.variables.len() as u16;
             ctx.variables.insert(id.clone(), index);
 
-            match &decl.initializer {
+            // Resolve type info and collect debug metadata.
+            let (type_tag, type_name_str) = match &decl.initializer {
                 InitialValueAssignmentKind::Simple(simple) => {
                     if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
                         ctx.var_types.insert(id.clone(), type_info);
                     }
+                    let tag = resolve_iec_type_tag(&simple.type_name.name);
+                    let name = simple.type_name.name.to_string().to_uppercase();
+                    (tag, name)
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = string_init
@@ -379,14 +402,61 @@ fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Resul
                             max_length,
                         },
                     );
+                    (iec_type_tag::STRING, "STRING".into())
                 }
                 // Other initializer kinds (EnumeratedType, FunctionBlock, Array, etc.)
                 // do not yet have type info tracked in codegen.
-                _ => {}
-            }
+                _ => (iec_type_tag::OTHER, String::new()),
+            };
+
+            ctx.debug_var_names.push(VarNameEntry {
+                var_index: index,
+                function_id: 0xFFFF, // program scope
+                var_section: map_var_section(&decl.var_type),
+                iec_type_tag: type_tag,
+                name: id.to_string(),
+                type_name: type_name_str,
+            });
         }
     }
     Ok(())
+}
+
+/// Maps a DSL VariableType to the debug section var_section encoding.
+fn map_var_section(vt: &VariableType) -> u8 {
+    match vt {
+        VariableType::Var => var_section::VAR,
+        VariableType::VarTemp => var_section::VAR_TEMP,
+        VariableType::Input => var_section::VAR_INPUT,
+        VariableType::Output => var_section::VAR_OUTPUT,
+        VariableType::InOut => var_section::VAR_IN_OUT,
+        VariableType::External => var_section::VAR_EXTERNAL,
+        VariableType::Global => var_section::VAR_GLOBAL,
+        VariableType::Access => var_section::VAR,
+    }
+}
+
+/// Maps an IEC 61131-3 type name to its debug type tag.
+fn resolve_iec_type_tag(name: &Id) -> u8 {
+    match name.lower_case().as_str() {
+        "bool" => iec_type_tag::BOOL,
+        "sint" => iec_type_tag::SINT,
+        "int" => iec_type_tag::INT,
+        "dint" => iec_type_tag::DINT,
+        "lint" => iec_type_tag::LINT,
+        "usint" => iec_type_tag::USINT,
+        "uint" => iec_type_tag::UINT,
+        "udint" => iec_type_tag::UDINT,
+        "ulint" => iec_type_tag::ULINT,
+        "real" => iec_type_tag::REAL,
+        "lreal" => iec_type_tag::LREAL,
+        "byte" => iec_type_tag::BYTE,
+        "word" => iec_type_tag::WORD,
+        "dword" => iec_type_tag::DWORD,
+        "lword" => iec_type_tag::LWORD,
+        "time" => iec_type_tag::TIME,
+        _ => iec_type_tag::OTHER,
+    }
 }
 
 /// Emits bytecode to initialize variables that have declared initial values.

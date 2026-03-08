@@ -340,10 +340,11 @@ Each VarNameEntry (variable size):
 | 0 | var_index | u16 | Variable table index |
 | 2 | function_id | u16 | Owning function ID (0xFFFF = global scope) |
 | 4 | var_section | u8 | IEC 61131-3 variable section (see encoding below) |
-| 5 | name_length | u8 | Length of variable name in bytes |
-| 6 | name | [u8; name_length] | UTF-8 variable name |
-| 6+N | type_name_length | u8 | Length of type name in bytes |
-| 7+N | type_name | [u8; type_name_length] | UTF-8 type name (e.g., "DINT", "REAL", "TON") |
+| 5 | iec_type_tag | u8 | Numeric type tag for value interpretation (see encoding below) |
+| 6 | name_length | u8 | Length of variable name in bytes |
+| 7 | name | [u8; name_length] | UTF-8 variable name |
+| 7+N | type_name_length | u8 | Length of type name in bytes |
+| 8+N | type_name | [u8; type_name_length] | UTF-8 type name (e.g., "DINT", "REAL", "TON") |
 
 var_section encoding:
 
@@ -356,6 +357,30 @@ var_section encoding:
 | 4 | VAR_IN_OUT |
 | 5 | VAR_EXTERNAL |
 | 6 | VAR_GLOBAL |
+
+iec_type_tag encoding:
+
+| Value | IEC Type | Interpretation |
+|-------|----------|----------------|
+| 0 | BOOL | Non-zero = TRUE, zero = FALSE |
+| 1 | SINT | Signed 8-bit integer |
+| 2 | INT | Signed 16-bit integer |
+| 3 | DINT | Signed 32-bit integer |
+| 4 | LINT | Signed 64-bit integer |
+| 5 | USINT | Unsigned 8-bit integer |
+| 6 | UINT | Unsigned 16-bit integer |
+| 7 | UDINT | Unsigned 32-bit integer |
+| 8 | ULINT | Unsigned 64-bit integer |
+| 9 | REAL | IEEE 754 single-precision float |
+| 10 | LREAL | IEEE 754 double-precision float |
+| 11 | BYTE | Unsigned 8-bit, display as hex |
+| 12 | WORD | Unsigned 16-bit, display as hex |
+| 13 | DWORD | Unsigned 32-bit, display as hex |
+| 14 | LWORD | Unsigned 64-bit, display as hex |
+| 15 | STRING | Latin-1 string |
+| 16 | WSTRING | UTF-16 string |
+| 17 | TIME | Duration |
+| 255 | OTHER | Fallback; use type_name for display |
 
 **Tag 3 — FUNC_NAME:**
 
