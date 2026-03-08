@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.166.0">
+<meta name="ironplc-version" content="0.167.0">
 </head>
   <body>
     
@@ -337,6 +337,7 @@
 <li class="toctree-l4"><a class="reference internal" href="functions/mul.html">MUL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="functions/div.html">DIV</a></li>
 <li class="toctree-l4"><a class="reference internal" href="functions/mod.html">MOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="functions/move.html">MOVE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="functions/gt.html">GT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="functions/ge.html">GE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="functions/eq.html">EQ</a></li>
@@ -362,6 +363,8 @@
 <li class="toctree-l4"><a class="reference internal" href="functions/replace.html">REPLACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="functions/find.html">FIND</a></li>
 <li class="toctree-l4"><a class="reference internal" href="functions/type-conversions.html">Type Conversions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="functions/trunc.html">TRUNC</a></li>
+<li class="toctree-l4"><a class="reference internal" href="functions/bcd.html">BCD_TO_INT / INT_TO_BCD</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="function-blocks/index.html">Function Blocks</a><input aria-label="Toggle navigation of Function Blocks" class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" role="switch" type="checkbox"/><label for="toctree-checkbox-16"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -380,8 +383,8 @@
 </ul>
 </li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="../compiler/index.html">Compiler</a><input aria-label="Toggle navigation of Compiler" class="toctree-checkbox" id="toctree-checkbox-17" name="toctree-checkbox-17" role="switch" type="checkbox"/><label for="toctree-checkbox-17"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l3"><a class="reference internal" href="../compiler/ironplcc.html">Command Reference</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../compiler/overview.html">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../compiler/ironplcc.html">Command Reference</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../compiler/source-formats/index.html">Source Formats</a><input aria-label="Toggle navigation of Source Formats" class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" role="switch" type="checkbox"/><label for="toctree-checkbox-18"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/source-formats/text.html">Text</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/source-formats/plcopen-xml.html">PLCopen XML</a></li>
@@ -705,39 +708,39 @@ them directly in the <a class="reference external" href="https://playground.iron
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="functions/len.html"><span class="doc">LEN</span></a></p></td>
 <td><p>String length</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="functions/left.html"><span class="doc">LEFT</span></a></p></td>
 <td><p>Left substring</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="functions/right.html"><span class="doc">RIGHT</span></a></p></td>
 <td><p>Right substring</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="functions/mid.html"><span class="doc">MID</span></a></p></td>
 <td><p>Middle substring</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="functions/concat.html"><span class="doc">CONCAT</span></a></p></td>
 <td><p>String concatenation</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="functions/insert.html"><span class="doc">INSERT</span></a></p></td>
 <td><p>String insertion</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="functions/delete.html"><span class="doc">DELETE</span></a></p></td>
 <td><p>String deletion</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="functions/replace.html"><span class="doc">REPLACE</span></a></p></td>
 <td><p>String replacement</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="functions/find.html"><span class="doc">FIND</span></a></p></td>
 <td><p>String search</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="functions/type-conversions.html"><span class="doc">Type conversions</span></a></p></td>
 <td><p>Type conversion functions</p></td>

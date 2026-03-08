@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="Function Blocks" href="../function-blocks/index.html"><link rel="prev" title="FIND" href="find.html">
+<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="TRUNC" href="trunc.html"><link rel="prev" title="FIND" href="find.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Type Conversions - IronPLC documentation</title>
@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.166.0">
+<meta name="ironplc-version" content="0.167.0">
 </head>
   <body>
     
@@ -337,6 +337,7 @@
 <li class="toctree-l4"><a class="reference internal" href="mul.html">MUL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="div.html">DIV</a></li>
 <li class="toctree-l4"><a class="reference internal" href="mod.html">MOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="move.html">MOVE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="gt.html">GT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="ge.html">GE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="eq.html">EQ</a></li>
@@ -362,6 +363,8 @@
 <li class="toctree-l4"><a class="reference internal" href="replace.html">REPLACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="find.html">FIND</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">Type Conversions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="trunc.html">TRUNC</a></li>
+<li class="toctree-l4"><a class="reference internal" href="bcd.html">BCD_TO_INT / INT_TO_BCD</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../function-blocks/index.html">Function Blocks</a><input aria-label="Toggle navigation of Function Blocks" class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" role="switch" type="checkbox"/><label for="toctree-checkbox-16"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -380,8 +383,8 @@
 </ul>
 </li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="../../compiler/index.html">Compiler</a><input aria-label="Toggle navigation of Compiler" class="toctree-checkbox" id="toctree-checkbox-17" name="toctree-checkbox-17" role="switch" type="checkbox"/><label for="toctree-checkbox-17"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l3"><a class="reference internal" href="../../compiler/ironplcc.html">Command Reference</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../compiler/overview.html">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../compiler/ironplcc.html">Command Reference</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../compiler/source-formats/index.html">Source Formats</a><input aria-label="Toggle navigation of Source Formats" class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" role="switch" type="checkbox"/><label for="toctree-checkbox-18"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/source-formats/text.html">Text</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/source-formats/plcopen-xml.html">PLCopen XML</a></li>
@@ -958,19 +961,35 @@ to <code class="docutils literal notranslate"><span class="pre">FALSE</span></co
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SINT_TO_BOOL</span></code></p></td>
 <td><p>8-bit signed to Boolean</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">INT_TO_BOOL</span></code></p></td>
 <td><p>16-bit signed to Boolean</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DINT_TO_BOOL</span></code></p></td>
 <td><p>32-bit signed to Boolean</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">LINT_TO_BOOL</span></code></p></td>
 <td><p>64-bit signed to Boolean</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">USINT_TO_BOOL</span></code></p></td>
+<td><p>8-bit unsigned to Boolean</p></td>
+<td><p>Supported</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">UINT_TO_BOOL</span></code></p></td>
+<td><p>16-bit unsigned to Boolean</p></td>
+<td><p>Supported</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">UDINT_TO_BOOL</span></code></p></td>
+<td><p>32-bit unsigned to Boolean</p></td>
+<td><p>Supported</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ULINT_TO_BOOL</span></code></p></td>
+<td><p>64-bit unsigned to Boolean</p></td>
+<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -1079,7 +1098,7 @@ target type may be truncated or cause a runtime error.</p>
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
-<iframe src="https://playground.ironplc.com/?embed=true&scaffold=true&code=aW50X3ZhbCA6PSBSRUFMX1RPX0lOVChSRUFMIzMuMTQpOyAgICAgKCogaW50X3ZhbCA9IDMgKikKcmVhbF92YWwgOj0gSU5UX1RPX1JFQUwoNDIpOyAgICAgICAgICAgICgqIHJlYWxfdmFsID0gNDIuMCAqKQpiaWdfdmFsIDo9IElOVF9UT19ESU5UKDEwMDApOyAgICAgICAgICAgKCogYmlnX3ZhbCA9IDEwMDAsIHdpZGVuaW5nICop&vars=aW50X3ZhbCA6IElOVDsgcmVhbF92YWwgOiBSRUFMOyBiaWdfdmFsIDogRElOVDs=" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:370px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
+<iframe src="https://playground.ironplc.com/?embed=true&scaffold=true&code=aW50X3ZhbCA6PSBSRUFMX1RPX0lOVChSRUFMIzMuMTQpOyAgICAgKCogaW50X3ZhbCA9IDMgKikKcmVhbF92YWwgOj0gSU5UX1RPX1JFQUwoNDIpOyAgICAgICAgICAgICgqIHJlYWxfdmFsID0gNDIuMCAqKQpiaWdfdmFsIDo9IElOVF9UT19ESU5UKDEwMDApOyAgICAgICAgICAgKCogYmlnX3ZhbCA9IDEwMDAsIHdpZGVuaW5nICop&vars=aW50X3ZhbCA6IElOVDsgcmVhbF92YWwgOiBSRUFMOyBiaWdfdmFsIDogRElOVDs=" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:386px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">
@@ -1093,12 +1112,12 @@ target type may be truncated or cause a runtime error.</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="../function-blocks/index.html">
+          <a class="next-page" href="trunc.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Function Blocks</div>
+                <div class="title">TRUNC</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>

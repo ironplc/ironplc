@@ -10,7 +10,7 @@ Returns a substring from the middle of a string.
    * - **IEC 61131-3**
      - Section 2.5.1.5.7
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Signatures
 ----------
@@ -30,7 +30,7 @@ Signatures
      - ``INT``
      - ``INT``
      - ``STRING``
-     - Not yet supported
+     - Supported
    * - 2
      - ``WSTRING``
      - ``INT``
@@ -48,7 +48,8 @@ position 1.
 Example
 -------
 
-.. code-block::
+.. playground-with-program::
+   :vars: result : STRING;
 
    result := MID('Hello World', 5, 1);   (* result = 'Hello' *)
    result := MID('Hello World', 5, 7);   (* result = 'World' *)

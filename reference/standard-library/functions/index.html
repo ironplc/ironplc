@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.166.0">
+<meta name="ironplc-version" content="0.167.0">
 </head>
   <body>
     
@@ -337,6 +337,7 @@
 <li class="toctree-l4"><a class="reference internal" href="mul.html">MUL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="div.html">DIV</a></li>
 <li class="toctree-l4"><a class="reference internal" href="mod.html">MOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="move.html">MOVE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="gt.html">GT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="ge.html">GE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="eq.html">EQ</a></li>
@@ -362,6 +363,8 @@
 <li class="toctree-l4"><a class="reference internal" href="replace.html">REPLACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="find.html">FIND</a></li>
 <li class="toctree-l4"><a class="reference internal" href="type-conversions.html">Type Conversions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="trunc.html">TRUNC</a></li>
+<li class="toctree-l4"><a class="reference internal" href="bcd.html">BCD_TO_INT / INT_TO_BCD</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../function-blocks/index.html">Function Blocks</a><input aria-label="Toggle navigation of Function Blocks" class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" role="switch" type="checkbox"/><label for="toctree-checkbox-16"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -380,8 +383,8 @@
 </ul>
 </li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="../../compiler/index.html">Compiler</a><input aria-label="Toggle navigation of Compiler" class="toctree-checkbox" id="toctree-checkbox-17" name="toctree-checkbox-17" role="switch" type="checkbox"/><label for="toctree-checkbox-17"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l3"><a class="reference internal" href="../../compiler/ironplcc.html">Command Reference</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../compiler/overview.html">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../compiler/ironplcc.html">Command Reference</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../compiler/source-formats/index.html">Source Formats</a><input aria-label="Toggle navigation of Source Formats" class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" role="switch" type="checkbox"/><label for="toctree-checkbox-18"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/source-formats/text.html">Text</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/source-formats/plcopen-xml.html">PLCopen XML</a></li>
@@ -595,6 +598,10 @@ output for the same inputs every time.</p>
 <td><p>Exponentiation</p></td>
 <td><p>Supported</p></td>
 </tr>
+<tr class="row-even"><td><p><a class="reference internal" href="trunc.html"><span class="doc">TRUNC</span></a></p></td>
+<td><p>Truncate real to integer</p></td>
+<td><p>Supported</p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -727,6 +734,30 @@ output for the same inputs every time.</p>
 </table>
 </div>
 </section>
+<section id="assignment-functions">
+<h2>Assignment Functions<a class="headerlink" href="#assignment-functions" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-given docutils container">
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 50.0%" />
+<col style="width: 30.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Function</p></th>
+<th class="head"><p>Description</p></th>
+<th class="head"><p>Status</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><a class="reference internal" href="move.html"><span class="doc">MOVE</span></a></p></td>
+<td><p>Assignment (copy value)</p></td>
+<td><p>Supported</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
 <section id="selection-functions">
 <h2>Selection Functions<a class="headerlink" href="#selection-functions" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper colwidths-given docutils container">
@@ -821,39 +852,39 @@ output for the same inputs every time.</p>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="len.html"><span class="doc">LEN</span></a></p></td>
 <td><p>String length</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="left.html"><span class="doc">LEFT</span></a></p></td>
 <td><p>Left substring</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="right.html"><span class="doc">RIGHT</span></a></p></td>
 <td><p>Right substring</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="mid.html"><span class="doc">MID</span></a></p></td>
 <td><p>Middle substring</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="concat.html"><span class="doc">CONCAT</span></a></p></td>
 <td><p>String concatenation</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="insert.html"><span class="doc">INSERT</span></a></p></td>
 <td><p>String insertion</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="delete.html"><span class="doc">DELETE</span></a></p></td>
 <td><p>String deletion</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="replace.html"><span class="doc">REPLACE</span></a></p></td>
 <td><p>String replacement</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="find.html"><span class="doc">FIND</span></a></p></td>
 <td><p>String search</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -878,6 +909,10 @@ output for the same inputs every time.</p>
 <tr class="row-even"><td><p><a class="reference internal" href="type-conversions.html"><span class="doc">Type conversions</span></a></p></td>
 <td><p>Type conversion functions (<code class="docutils literal notranslate"><span class="pre">*_TO_*</span></code>)</p></td>
 <td><p>Supported (numeric)</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="bcd.html"><span class="doc">BCD_TO_INT / INT_TO_BCD</span></a></p></td>
+<td><p>BCD conversion functions</p></td>
+<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -955,6 +990,7 @@ output for the same inputs every time.</p>
 <li><a class="reference internal" href="#trigonometric-functions">Trigonometric Functions</a></li>
 <li><a class="reference internal" href="#arithmetic-functions">Arithmetic Functions</a></li>
 <li><a class="reference internal" href="#comparison-functions">Comparison Functions</a></li>
+<li><a class="reference internal" href="#assignment-functions">Assignment Functions</a></li>
 <li><a class="reference internal" href="#selection-functions">Selection Functions</a></li>
 <li><a class="reference internal" href="#bit-string-functions">Bit String Functions</a></li>
 <li><a class="reference internal" href="#string-functions">String Functions</a></li>

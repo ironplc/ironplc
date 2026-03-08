@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.166.0">
+<meta name="ironplc-version" content="0.167.0">
 </head>
   <body>
     
@@ -337,6 +337,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mul.html">MUL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/div.html">DIV</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mod.html">MOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/move.html">MOVE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/gt.html">GT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/ge.html">GE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/eq.html">EQ</a></li>
@@ -362,6 +363,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/replace.html">REPLACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/find.html">FIND</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/type-conversions.html">Type Conversions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/trunc.html">TRUNC</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/bcd.html">BCD_TO_INT / INT_TO_BCD</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../standard-library/function-blocks/index.html">Function Blocks</a><input aria-label="Toggle navigation of Function Blocks" class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" role="switch" type="checkbox"/><label for="toctree-checkbox-16"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -380,8 +383,8 @@
 </ul>
 </li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="../../compiler/index.html">Compiler</a><input aria-label="Toggle navigation of Compiler" class="toctree-checkbox" id="toctree-checkbox-17" name="toctree-checkbox-17" role="switch" type="checkbox"/><label for="toctree-checkbox-17"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l3"><a class="reference internal" href="../../compiler/ironplcc.html">Command Reference</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../compiler/overview.html">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../compiler/ironplcc.html">Command Reference</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../compiler/source-formats/index.html">Source Formats</a><input aria-label="Toggle navigation of Source Formats" class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" role="switch" type="checkbox"/><label for="toctree-checkbox-18"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/source-formats/text.html">Text</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/source-formats/plcopen-xml.html">PLCopen XML</a></li>
@@ -588,7 +591,7 @@
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
-<iframe src="https://playground.ironplc.com/?embed=true&scaffold=true&code=YmFzZSA6PSBTSU5UIzEwMDsKb2Zmc2V0IDo9IFNJTlQjMTA7CnJlc3VsdCA6PSBiYXNlICsgb2Zmc2V0OyAgKCogcmVzdWx0ID0gMTEwICop&vars=YmFzZSA6IFNJTlQ7IG9mZnNldCA6IFNJTlQ7IHJlc3VsdCA6IFNJTlQ7" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:370px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
+<iframe src="https://playground.ironplc.com/?embed=true&scaffold=true&code=YmFzZSA6PSBTSU5UIzEwMDsKb2Zmc2V0IDo9IFNJTlQjMTA7CnJlc3VsdCA6PSBiYXNlICsgb2Zmc2V0OyAgKCogcmVzdWx0ID0gMTEwICop&vars=YmFzZSA6IFNJTlQ7IG9mZnNldCA6IFNJTlQ7IHJlc3VsdCA6IFNJTlQ7" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:386px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">

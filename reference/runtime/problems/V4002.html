@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.166.0">
+<meta name="ironplc-version" content="0.167.0">
 </head>
   <body>
     
@@ -337,6 +337,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mul.html">MUL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/div.html">DIV</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mod.html">MOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/move.html">MOVE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/gt.html">GT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/ge.html">GE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/eq.html">EQ</a></li>
@@ -362,6 +363,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/replace.html">REPLACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/find.html">FIND</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/type-conversions.html">Type Conversions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/trunc.html">TRUNC</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/bcd.html">BCD_TO_INT / INT_TO_BCD</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../standard-library/function-blocks/index.html">Function Blocks</a><input aria-label="Toggle navigation of Function Blocks" class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" role="switch" type="checkbox"/><label for="toctree-checkbox-16"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -380,8 +383,8 @@
 </ul>
 </li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="../../compiler/index.html">Compiler</a><input aria-label="Toggle navigation of Compiler" class="toctree-checkbox" id="toctree-checkbox-17" name="toctree-checkbox-17" role="switch" type="checkbox"/><label for="toctree-checkbox-17"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l3"><a class="reference internal" href="../../compiler/ironplcc.html">Command Reference</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../compiler/overview.html">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../compiler/ironplcc.html">Command Reference</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../compiler/source-formats/index.html">Source Formats</a><input aria-label="Toggle navigation of Source Formats" class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" role="switch" type="checkbox"/><label for="toctree-checkbox-18"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/source-formats/text.html">Text</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/source-formats/plcopen-xml.html">PLCopen XML</a></li>
@@ -574,19 +577,7 @@ function. IEC 61131-3 integer exponentiation does not support negative exponents
 </div>
 <p>The exponent <code class="docutils literal notranslate"><span class="pre">-2</span></code> is negative, which is not supported for integer exponentiation.</p>
 <p>To fix this error, ensure the exponent is non-negative:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">Main</span>
-<span class="n">VAR</span>
-    <span class="n">x</span> <span class="p">:</span> <span class="n">INT</span> <span class="o">:=</span> <span class="mi">5</span><span class="p">;</span>
-    <span class="n">exp</span> <span class="p">:</span> <span class="n">INT</span> <span class="o">:=</span> <span class="mi">2</span><span class="p">;</span>
-    <span class="n">result</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
-<span class="n">END_VAR</span>
-<span class="n">IF</span> <span class="n">exp</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="n">THEN</span>
-    <span class="n">result</span> <span class="o">:=</span> <span class="n">EXPT</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">exp</span><span class="p">);</span>
-<span class="n">END_IF</span><span class="p">;</span>
-<span class="n">END_PROGRAM</span>
-</pre></div>
-</div>
-</section>
+<iframe src="https://playground.ironplc.com/?embed=true&code=UFJPR1JBTSBNYWluClZBUgogICAgeCA6IElOVCA6PSA1OwogICAgZXhwIDogSU5UIDo9IDI7CiAgICByZXN1bHQgOiBJTlQ7CkVORF9WQVIKSUYgZXhwID49IDAgVEhFTgogICAgcmVzdWx0IDo9IEVYUFQoeCwgZXhwKTsKRU5EX0lGOwpFTkRfUFJPR1JBTQ==" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:386px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
 </section>
 
         </article>
