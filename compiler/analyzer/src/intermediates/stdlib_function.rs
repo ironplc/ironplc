@@ -431,6 +431,26 @@ fn get_selection_functions() -> Vec<FunctionSignature> {
 }
 
 // =============================================================================
+// Assignment Function (IEC 61131-3 Section 2.5.1.5.4)
+// =============================================================================
+
+/// Returns the MOVE standard function definition.
+///
+/// MOVE copies the input value to the output, equivalent to assignment.
+/// IEC 61131-3 defines MOVE as operating on ANY type, but since the codegen
+/// currently supports numeric types we use ANY_NUM here.
+fn get_assignment_functions() -> Vec<FunctionSignature> {
+    vec![
+        // MOVE: assignment (ANY_NUM -> ANY_NUM)
+        FunctionSignature::stdlib(
+            "MOVE",
+            TypeName::from("ANY_NUM"),
+            vec![input_param("IN", "ANY_NUM")],
+        ),
+    ]
+}
+
+// =============================================================================
 // Truncation Function (IEC 61131-3 Section 2.5.1.5.2)
 // =============================================================================
 
@@ -634,6 +654,9 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     // Selection functions
     functions.extend(get_selection_functions());
 
+    // Assignment function (MOVE)
+    functions.extend(get_assignment_functions());
+
     // Bit shift and rotate functions
     functions.extend(get_bitshift_functions());
 
@@ -663,10 +686,11 @@ mod tests {
         // Comparison functions: GT, GE, EQ, LE, LT, NE = 6
         // Boolean functions: AND, OR, XOR, NOT = 4
         // Selection functions: MUX = 1
+        // Assignment function: MOVE = 1
         // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
         // String functions: LEN, FIND, REPLACE, INSERT, DELETE, LEFT, RIGHT, MID, CONCAT = 9
-        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 1 + 2 + 5 + 6 + 4 + 1 + 4 + 9 = 145
-        assert_eq!(functions.len(), 145);
+        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 1 + 2 + 5 + 6 + 4 + 1 + 1 + 4 + 9 = 146
+        assert_eq!(functions.len(), 146);
     }
 
     #[test]
@@ -925,6 +949,19 @@ mod tests {
         assert_eq!(bool_to_int.parameters[0].param_type, TypeName::from("BOOL"));
         assert_eq!(bool_to_int.return_type, Some(TypeName::from("INT")));
         assert!(bool_to_int.is_stdlib());
+    }
+
+    #[test]
+    fn get_assignment_functions_when_move_then_has_one_input() {
+        let functions = get_assignment_functions();
+        let move_fn = functions
+            .iter()
+            .find(|f| f.name.original() == "MOVE")
+            .unwrap();
+
+        assert_eq!(move_fn.input_parameter_count(), 1);
+        assert_eq!(move_fn.parameters[0].name.original(), "IN");
+        assert!(move_fn.is_stdlib());
     }
 
     #[test]
