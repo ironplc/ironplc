@@ -518,6 +518,41 @@ fn get_string_functions() -> Vec<FunctionSignature> {
                 input_param("P", "ANY_INT"),
             ],
         ),
+        // LEFT: return leftmost L characters of IN
+        // (ANY_STRING, ANY_INT -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "LEFT",
+            TypeName::from("ANY_STRING"),
+            vec![input_param("IN", "ANY_STRING"), input_param("L", "ANY_INT")],
+        ),
+        // RIGHT: return rightmost L characters of IN
+        // (ANY_STRING, ANY_INT -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "RIGHT",
+            TypeName::from("ANY_STRING"),
+            vec![input_param("IN", "ANY_STRING"), input_param("L", "ANY_INT")],
+        ),
+        // MID: return L characters from IN starting at position P
+        // (ANY_STRING, ANY_INT, ANY_INT -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "MID",
+            TypeName::from("ANY_STRING"),
+            vec![
+                input_param("IN", "ANY_STRING"),
+                input_param("L", "ANY_INT"),
+                input_param("P", "ANY_INT"),
+            ],
+        ),
+        // CONCAT: concatenate IN1 and IN2
+        // (ANY_STRING, ANY_STRING -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "CONCAT",
+            TypeName::from("ANY_STRING"),
+            vec![
+                input_param("IN1", "ANY_STRING"),
+                input_param("IN2", "ANY_STRING"),
+            ],
+        ),
     ]
 }
 
@@ -582,9 +617,9 @@ mod tests {
         // Boolean functions: AND, OR, XOR, NOT = 4
         // Selection functions: MUX = 1
         // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
-        // String functions: LEN, FIND, REPLACE, INSERT, DELETE = 5
-        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 5 + 6 + 4 + 1 + 4 + 5 = 138
-        assert_eq!(functions.len(), 138);
+        // String functions: LEN, FIND, REPLACE, INSERT, DELETE, LEFT, RIGHT, MID, CONCAT = 9
+        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 5 + 6 + 4 + 1 + 4 + 9 = 142
+        assert_eq!(functions.len(), 142);
     }
 
     #[test]
