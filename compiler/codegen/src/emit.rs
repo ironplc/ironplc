@@ -369,6 +369,47 @@ impl Emitter {
         self.push_stack(1);
     }
 
+    /// Emits POP (discards top of stack).
+    #[allow(dead_code)]
+    pub fn emit_pop(&mut self) {
+        self.bytecode.push(opcode::POP);
+        self.pop_stack(1);
+    }
+
+    /// Emits FB_LOAD_INSTANCE with a variable index.
+    #[allow(dead_code)]
+    pub fn emit_fb_load_instance(&mut self, var_index: u16) {
+        self.bytecode.push(opcode::FB_LOAD_INSTANCE);
+        self.bytecode.extend_from_slice(&var_index.to_le_bytes());
+        self.push_stack(1);
+    }
+
+    /// Emits FB_STORE_PARAM with a field index.
+    /// Pops one value (the parameter); fb_ref remains on stack.
+    #[allow(dead_code)]
+    pub fn emit_fb_store_param(&mut self, field: u8) {
+        self.bytecode.push(opcode::FB_STORE_PARAM);
+        self.bytecode.push(field);
+        self.pop_stack(1);
+    }
+
+    /// Emits FB_LOAD_PARAM with a field index.
+    /// Pushes one value (the output parameter); fb_ref remains on stack.
+    #[allow(dead_code)]
+    pub fn emit_fb_load_param(&mut self, field: u8) {
+        self.bytecode.push(opcode::FB_LOAD_PARAM);
+        self.bytecode.push(field);
+        self.push_stack(1);
+    }
+
+    /// Emits FB_CALL with a type_id.
+    /// Net stack effect: 0 (fb_ref stays on stack).
+    #[allow(dead_code)]
+    pub fn emit_fb_call(&mut self, type_id: u16) {
+        self.bytecode.push(opcode::FB_CALL);
+        self.bytecode.extend_from_slice(&type_id.to_le_bytes());
+    }
+
     /// Emits RET_VOID.
     pub fn emit_ret_void(&mut self) {
         self.bytecode.push(opcode::RET_VOID);
