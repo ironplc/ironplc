@@ -164,6 +164,7 @@ impl<'a> VmReady<'a> {
                 self.temp_buf,
                 self.max_temp_buf_bytes,
                 &scope,
+                0, // init functions don't need real time
             )
             .map_err(|trap| FaultContext {
                 trap,
@@ -311,6 +312,7 @@ impl<'a> VmRunning<'a> {
                     self.temp_buf,
                     self.max_temp_buf_bytes,
                     &scope,
+                    current_time_us,
                 )
                 .map_err(|trap| FaultContext {
                     trap,
@@ -344,6 +346,22 @@ impl<'a> VmRunning<'a> {
     pub fn read_variable_raw(&self, index: u16) -> Result<u64, Trap> {
         let slot = self.variables.load(index)?;
         Ok(slot.as_u64())
+    }
+
+    /// Reads a variable value as an i64.
+    pub fn read_variable_i64(&self, index: u16) -> Result<i64, Trap> {
+        let slot = self.variables.load(index)?;
+        Ok(slot.as_i64())
+    }
+
+    /// Writes a variable value as an i32.
+    pub fn write_variable(&mut self, index: u16, value: i32) -> Result<(), Trap> {
+        self.variables.store(index, Slot::from_i32(value))
+    }
+
+    /// Returns a reference to the data region.
+    pub fn data_region(&self) -> &[u8] {
+        self.data_region
     }
 
     /// Returns the number of variable slots in the loaded container.
@@ -522,6 +540,7 @@ fn execute(
     temp_buf: &mut [u8],
     max_temp_buf_bytes: usize,
     scope: &VariableScope,
+    _current_time_us: u64,
 ) -> Result<(), Trap> {
     let mut pc: usize = 0;
     let mut next_temp_buf: u16 = 0;
@@ -1462,6 +1481,44 @@ fn execute(
                 }
 
                 stack.push(Slot::from_i32(buf_idx as i32))?;
+            }
+            opcode::POP => {
+                stack.pop()?;
+            }
+            // --- Function block opcodes ---
+            opcode::FB_LOAD_INSTANCE => {
+                let var_index = read_u16_le(bytecode, &mut pc);
+                scope.check_access(var_index)?;
+                let slot = variables.load(var_index)?;
+                stack.push(slot)?;
+            }
+            opcode::FB_STORE_PARAM => {
+                let field = bytecode[pc] as u16;
+                pc += 1;
+                let value = stack.pop()?;
+                let fb_ref = stack.peek()?.as_i32() as u32;
+                let offset = fb_ref as usize + field as usize * 8;
+                if offset + 8 > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(offset as u16));
+                }
+                data_region[offset..offset + 8].copy_from_slice(&value.as_i64().to_le_bytes());
+            }
+            opcode::FB_LOAD_PARAM => {
+                let field = bytecode[pc] as u16;
+                pc += 1;
+                let fb_ref = stack.peek()?.as_i32() as u32;
+                let offset = fb_ref as usize + field as usize * 8;
+                if offset + 8 > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(offset as u16));
+                }
+                let mut buf = [0u8; 8];
+                buf.copy_from_slice(&data_region[offset..offset + 8]);
+                stack.push(Slot::from_i64(i64::from_le_bytes(buf)))?;
+            }
+            opcode::FB_CALL => {
+                let type_id = read_u16_le(bytecode, &mut pc);
+                // No intrinsics registered yet — all type IDs are invalid.
+                return Err(Trap::InvalidFbTypeId(type_id));
             }
             opcode::RET_VOID => {
                 return Ok(());
