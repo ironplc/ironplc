@@ -5,8 +5,6 @@
 
 mod common;
 
-use common::{single_function_container, VmBuffers};
-
 #[test]
 fn execute_when_abs_i32_min_then_wraps() {
     // ABS(i32::MIN) wraps to i32::MIN (wrapping_abs)
@@ -17,10 +15,8 @@ fn execute_when_abs_i32_min_then_wraps() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[i32::MIN]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), i32::MIN);
+    assert_eq!(
+        common::run_and_read_i32(&bytecode, 1, &[i32::MIN]),
+        i32::MIN
+    );
 }

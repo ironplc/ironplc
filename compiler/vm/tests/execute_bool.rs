@@ -5,8 +5,6 @@
 
 mod common;
 
-use common::{single_function_container, VmBuffers};
-
 #[test]
 fn execute_when_bool_and_nonzero_coercion_then_one() {
     // 5 AND 3 → 1 (both non-zero, coerced to true)
@@ -18,12 +16,7 @@ fn execute_when_bool_and_nonzero_coercion_then_one() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[5, 3]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 1);
+    assert_eq!(common::run_and_read_i32(&bytecode, 1, &[5, 3]), 1);
 }
 
 #[test]
@@ -37,12 +30,7 @@ fn execute_when_bool_or_nonzero_coercion_then_one() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[5, 0]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 1);
+    assert_eq!(common::run_and_read_i32(&bytecode, 1, &[5, 0]), 1);
 }
 
 #[test]
@@ -56,12 +44,7 @@ fn execute_when_bool_xor_nonzero_coercion_then_zero() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[5, 3]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 0);
+    assert_eq!(common::run_and_read_i32(&bytecode, 1, &[5, 3]), 0);
 }
 
 #[test]
@@ -74,10 +57,5 @@ fn execute_when_bool_not_nonzero_coercion_then_zero() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[5]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 0);
+    assert_eq!(common::run_and_read_i32(&bytecode, 1, &[5]), 0);
 }

@@ -180,3 +180,34 @@ pub fn assert_trap(vm: &mut VmRunning, expected: Trap) {
     );
     assert_eq!(result.unwrap_err().trap, expected);
 }
+
+/// Runs bytecode with i32 constants and returns var[0] as i32.
+///
+/// Shorthand for the common pattern: build container, allocate buffers,
+/// load VM, execute one round, read variable 0.
+pub fn run_and_read_i32(bytecode: &[u8], num_vars: u16, constants: &[i32]) -> i32 {
+    let c = single_function_container(bytecode, num_vars, constants);
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = load_and_start(&c, &mut b).unwrap();
+    vm.run_round(0).unwrap();
+    vm.read_variable(0).unwrap()
+}
+
+/// Runs bytecode with i64 constants and returns var[0] as i64.
+pub fn run_and_read_i64(bytecode: &[u8], num_vars: u16, constants: &[i64]) -> i64 {
+    let c = single_function_container_i64(bytecode, num_vars, constants);
+    let mut b = VmBuffers::from_container(&c);
+    {
+        let mut vm = load_and_start(&c, &mut b).unwrap();
+        vm.run_round(0).unwrap();
+    }
+    b.vars[0].as_i64()
+}
+
+/// Runs bytecode with i32 constants expecting a trap, returns the trap.
+pub fn run_and_expect_trap_i32(bytecode: &[u8], num_vars: u16, constants: &[i32]) -> Trap {
+    let c = single_function_container(bytecode, num_vars, constants);
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = load_and_start(&c, &mut b).unwrap();
+    vm.run_round(0).unwrap_err().trap
+}
