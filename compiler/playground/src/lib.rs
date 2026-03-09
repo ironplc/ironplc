@@ -14,7 +14,7 @@ use std::io::Cursor;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
-use ironplc_analyzer::stages::resolve_types;
+use ironplc_analyzer::stages::analyze;
 use ironplc_codegen::compile as codegen_compile;
 use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::Container;
@@ -213,11 +213,12 @@ fn compile_inner(source: &str) -> CompileResult {
         }
     };
 
-    // Run type resolution so codegen has resolved types on expressions.
-    // Without this, functions like BCD_TO_INT that inspect argument types
-    // would fail because expr.resolved_type is None.
-    let library = match resolve_types(&[&library]) {
-        Ok((resolved_lib, _context)) => resolved_lib,
+    // Run the full analysis pipeline: type resolution + semantic checks.
+    // Type resolution populates expr.resolved_type so codegen can select
+    // correct opcodes. Semantic checks catch errors like undeclared variables,
+    // wrong argument counts, type mismatches, etc.
+    let (library, context) = match analyze(&[&library]) {
+        Ok((resolved_lib, ctx)) => (resolved_lib, ctx),
         Err(diagnostics) => {
             return CompileResult {
                 ok: false,
@@ -235,6 +236,25 @@ fn compile_inner(source: &str) -> CompileResult {
             };
         }
     };
+
+    // Report any semantic diagnostics (non-fatal errors found during analysis).
+    if context.has_diagnostics() {
+        return CompileResult {
+            ok: false,
+            bytecode: None,
+            diagnostics: context
+                .diagnostics()
+                .iter()
+                .map(|d| DiagnosticInfo {
+                    code: d.code.clone(),
+                    message: d.description(),
+                    label: d.primary.message.clone(),
+                    start: d.primary.location.start,
+                    end: d.primary.location.end,
+                })
+                .collect(),
+        };
+    }
 
     let container = match codegen_compile(&library) {
         Ok(c) => c,
@@ -1110,5 +1130,20 @@ END_PROGRAM
         let result: RunSourceResult = serde_json::from_str(&run_source(source, 1)).unwrap();
         assert!(result.ok, "Expected ok but got error: {:?}", result.error);
         assert_eq!(result.variables[0].value, "16#42");
+    }
+
+    #[test]
+    fn compile_when_undeclared_variable_then_returns_diagnostic() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  x := undeclared_var;
+END_PROGRAM
+";
+        let result: CompileResult = serde_json::from_str(&compile(source)).unwrap();
+        assert!(!result.ok);
+        assert!(!result.diagnostics.is_empty());
     }
 }
