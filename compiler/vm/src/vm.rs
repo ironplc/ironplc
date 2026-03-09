@@ -540,7 +540,7 @@ fn execute(
     temp_buf: &mut [u8],
     max_temp_buf_bytes: usize,
     scope: &VariableScope,
-    _current_time_us: u64,
+    current_time_us: u64,
 ) -> Result<(), Trap> {
     let mut pc: usize = 0;
     let mut next_temp_buf: u16 = 0;
@@ -1517,8 +1517,22 @@ fn execute(
             }
             opcode::FB_CALL => {
                 let type_id = read_u16_le(bytecode, &mut pc);
-                // No intrinsics registered yet — all type IDs are invalid.
-                return Err(Trap::InvalidFbTypeId(type_id));
+                let fb_ref = stack.peek()?.as_i32() as u32;
+                let instance_start = fb_ref as usize;
+                match type_id {
+                    opcode::fb_type::TON => {
+                        let instance_size = crate::intrinsic::TON_INSTANCE_FIELDS * 8;
+                        let instance_end = instance_start + instance_size;
+                        if instance_end > data_region.len() {
+                            return Err(Trap::DataRegionOutOfBounds(instance_start as u16));
+                        }
+                        crate::intrinsic::ton(
+                            &mut data_region[instance_start..instance_end],
+                            current_time_us as i64,
+                        )?;
+                    }
+                    _ => return Err(Trap::InvalidFbTypeId(type_id)),
+                }
             }
             opcode::RET_VOID => {
                 return Ok(());
