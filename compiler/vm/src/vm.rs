@@ -125,6 +125,9 @@ impl<'a> VmReady<'a> {
     /// variable initial values. Returns `Err(FaultContext)` if an init
     /// function traps. On success, returns a running VM ready for scan
     /// cycles.
+    ///
+    /// Use [`resume`](VmReady::resume) instead when variable buffers
+    /// already contain initialized values.
     pub fn start(mut self) -> Result<VmRunning<'a>, FaultContext> {
         let shared_globals_size = self.container.task_table.shared_globals_size;
 
@@ -183,6 +186,30 @@ impl<'a> VmReady<'a> {
             scan_count: 0,
             stop_requested: false,
         })
+    }
+
+    /// Resumes execution without running init functions.
+    ///
+    /// Use this when variable buffers already contain initialized values
+    /// (e.g., from a previous session). The `initial_scan_count` sets the
+    /// starting scan counter so cycle tracking continues from where it
+    /// left off.
+    pub fn resume(self, initial_scan_count: u64) -> VmRunning<'a> {
+        let shared_globals_size = self.container.task_table.shared_globals_size;
+        VmRunning {
+            container: self.container,
+            stack: self.stack,
+            variables: self.variables,
+            data_region: self.data_region,
+            temp_buf: self.temp_buf,
+            max_temp_buf_bytes: self.max_temp_buf_bytes,
+            task_states: self.task_states,
+            program_instances: self.program_instances,
+            ready_buf: self.ready_buf,
+            shared_globals_size,
+            scan_count: initial_scan_count,
+            stop_requested: false,
+        }
     }
 
     /// Reads a variable value as an i32.
