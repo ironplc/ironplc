@@ -20,7 +20,7 @@ use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
 use ironplc_sources::{parse_source, FileType};
-use ironplc_vm::{ProgramInstanceState, Slot, TaskState, Vm};
+use ironplc_vm::{Slot, Vm, VmBuffers};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -32,7 +32,7 @@ use wasm_bindgen::prelude::*;
 struct VmSession {
     container_bytes: Vec<u8>,
     var_buf: Vec<Slot>,
-    total_scans: u64,
+    scan_count: u64,
     faulted: bool,
 }
 
@@ -338,28 +338,18 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
         }
     };
 
-    let h = &container.header;
-    let mut stack_buf = vec![Slot::default(); h.max_stack_depth as usize];
-    let mut var_buf = vec![Slot::default(); h.num_variables as usize];
-    let mut data_region_buf = vec![0u8; h.data_region_bytes as usize];
-    let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
-    let mut temp_buf = vec![0u8; temp_buf_total];
-    let task_count = container.task_table.tasks.len();
-    let program_count = container.task_table.programs.len();
-    let mut task_states = vec![TaskState::default(); task_count];
-    let mut program_instances = vec![ProgramInstanceState::default(); program_count];
-    let mut ready_buf = vec![0usize; task_count.max(1)];
+    let mut bufs = VmBuffers::from_container(&container);
 
     let mut running = match Vm::new()
         .load(
             &container,
-            &mut stack_buf,
-            &mut var_buf,
-            &mut data_region_buf,
-            &mut temp_buf,
-            &mut task_states,
-            &mut program_instances,
-            &mut ready_buf,
+            &mut bufs.stack,
+            &mut bufs.vars,
+            &mut bufs.data_region,
+            &mut bufs.temp_buf,
+            &mut bufs.tasks,
+            &mut bufs.programs,
+            &mut bufs.ready,
         )
         .start()
     {
@@ -543,13 +533,42 @@ fn load_program_inner(source: &str) -> StepResult {
         }
     };
 
-    let num_vars = container.header.num_variables as usize;
+    // Run the init function once to apply initial values to the variable buffer.
+    // Subsequent calls to step() will use resume() to skip re-initialization.
+    let mut bufs = VmBuffers::from_container(&container);
+
+    match Vm::new()
+        .load(
+            &container,
+            &mut bufs.stack,
+            &mut bufs.vars,
+            &mut bufs.data_region,
+            &mut bufs.temp_buf,
+            &mut bufs.tasks,
+            &mut bufs.programs,
+            &mut bufs.ready,
+        )
+        .start()
+    {
+        Ok(running) => {
+            running.stop();
+        }
+        Err(ctx) => {
+            return StepResult {
+                ok: false,
+                diagnostics: vec![],
+                variables: vec![],
+                total_scans: 0,
+                error: Some(format!("VM init trap: {}", ctx.trap)),
+            };
+        }
+    }
 
     SESSION.with(|cell| {
         *cell.borrow_mut() = Some(VmSession {
             container_bytes,
-            var_buf: vec![Slot::default(); num_vars],
-            total_scans: 0,
+            var_buf: bufs.vars,
+            scan_count: 0,
             faulted: false,
         });
     });
@@ -596,7 +615,7 @@ fn step_inner(scans: u32) -> StepResult {
                 ok: false,
                 diagnostics: vec![],
                 variables: vec![],
-                total_scans: session.total_scans,
+                total_scans: 0,
                 error: Some("Session is faulted. Call reset_session to start over.".to_string()),
             };
         }
@@ -608,17 +627,16 @@ fn step_inner(scans: u32) -> StepResult {
                     ok: false,
                     diagnostics: vec![],
                     variables: vec![],
-                    total_scans: session.total_scans,
+                    total_scans: 0,
                     error: Some(format!("Failed to load bytecode: {e}")),
                 };
             }
         };
 
-        let base_scans = session.total_scans;
-        let (variables, scans_done, error) =
-            run_vm_step(&container, &mut session.var_buf, base_scans, scans);
+        let (variables, total_scans, error) =
+            run_vm_step(&container, &mut session.var_buf, session.scan_count, scans);
 
-        session.total_scans += scans_done as u64;
+        session.scan_count = total_scans;
         if error.is_some() {
             session.faulted = true;
         }
@@ -627,7 +645,7 @@ fn step_inner(scans: u32) -> StepResult {
             ok: error.is_none(),
             diagnostics: vec![],
             variables,
-            total_scans: session.total_scans,
+            total_scans,
             error,
         }
     })
@@ -635,47 +653,36 @@ fn step_inner(scans: u32) -> StepResult {
 
 /// Run an ephemeral VM for N scans using the given container and variable buffer.
 ///
-/// Returns `(variables, scans_completed, error)`.
+/// Uses [`VmReady::resume`] to skip re-initialization so that variable values
+/// (including initial values) persist across calls. The VM's internal scan
+/// counter is the source of truth for total cycles executed.
+///
+/// Returns `(variables, total_scan_count, error)`.
 fn run_vm_step(
     container: &Container,
     var_buf: &mut [Slot],
-    base_scans: u64,
+    base_scan_count: u64,
     scans: u32,
-) -> (Vec<VariableInfo>, u32, Option<String>) {
-    let h = &container.header;
-    let mut stack_buf = vec![Slot::default(); h.max_stack_depth as usize];
-    let mut data_region_buf = vec![0u8; h.data_region_bytes as usize];
-    let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
-    let mut temp_buf = vec![0u8; temp_buf_total];
-    let task_count = container.task_table.tasks.len();
-    let program_count = container.task_table.programs.len();
-    let mut task_states = vec![TaskState::default(); task_count];
-    let mut program_instances = vec![ProgramInstanceState::default(); program_count];
-    let mut ready_buf = vec![0usize; task_count.max(1)];
+) -> (Vec<VariableInfo>, u64, Option<String>) {
+    let mut bufs = VmBuffers::from_container(container);
 
-    let mut running = match Vm::new()
+    let mut running = Vm::new()
         .load(
             container,
-            &mut stack_buf,
+            &mut bufs.stack,
             var_buf,
-            &mut data_region_buf,
-            &mut temp_buf,
-            &mut task_states,
-            &mut program_instances,
-            &mut ready_buf,
+            &mut bufs.data_region,
+            &mut bufs.temp_buf,
+            &mut bufs.tasks,
+            &mut bufs.programs,
+            &mut bufs.ready,
         )
-        .start()
-    {
-        Ok(r) => r,
-        Err(ctx) => {
-            let error = format!("VM init trap: {}", ctx.trap);
-            return (vec![], 0, Some(error));
-        }
-    };
+        .resume(base_scan_count);
 
-    for round in 0..scans {
-        let current_us = (base_scans + round as u64) * 1000;
+    for _ in 0..scans {
+        let current_us = running.scan_count() * 1000;
         if let Err(ctx) = running.run_round(current_us) {
+            let total_scans = running.scan_count();
             let faulted = running.fault(ctx);
             let debug_map = build_var_debug_map(container);
             let variables = read_all_variables_faulted(&faulted, &debug_map);
@@ -685,15 +692,16 @@ fn run_vm_step(
                 faulted.task_id(),
                 faulted.instance_id()
             );
-            return (variables, round, Some(error));
+            return (variables, total_scans, Some(error));
         }
     }
 
     let debug_map = build_var_debug_map(container);
     let num_vars = running.num_variables();
     let variables = read_all_variables_running(&running, num_vars, &debug_map);
+    let total_scans = running.scan_count();
     running.stop();
-    (variables, scans, None)
+    (variables, total_scans, None)
 }
 
 /// Clear the stepping session.
@@ -1100,6 +1108,35 @@ END_PROGRAM
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert_eq!(r2.variables[0].value, "20");
         assert_eq!(r2.total_scans, 1);
+    }
+
+    #[test]
+    fn step_when_variable_has_initial_value_then_persists_across_steps() {
+        reset_session();
+        let source = "
+PROGRAM main
+  VAR
+    exponentially : INT := 1;
+  END_VAR
+  exponentially := exponentially * 2;
+END_PROGRAM
+";
+        load_program(source);
+
+        let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert!(r1.ok);
+        assert_eq!(r1.total_scans, 1);
+        assert_eq!(r1.variables[0].value, "2"); // 1 * 2
+
+        let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert!(r2.ok);
+        assert_eq!(r2.total_scans, 2);
+        assert_eq!(r2.variables[0].value, "4"); // 2 * 2
+
+        let r3: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert!(r3.ok);
+        assert_eq!(r3.total_scans, 3);
+        assert_eq!(r3.variables[0].value, "8"); // 4 * 2
     }
 
     #[test]

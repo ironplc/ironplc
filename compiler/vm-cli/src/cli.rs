@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use ironplc_vm::{ProgramInstanceState, Slot, TaskState, Vm};
+use ironplc_vm::{Vm, VmBuffers};
 use serde_json::json;
 
 use crate::error::{self, VmError};
@@ -34,28 +34,18 @@ pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<
         )
     })?;
 
-    // Allocate buffers from header sizes
-    let h = &container.header;
-    let mut stack_buf = vec![Slot::default(); h.max_stack_depth as usize];
-    let mut var_buf = vec![Slot::default(); h.num_variables as usize];
-    let mut data_region_buf = vec![0u8; h.data_region_bytes as usize];
-    let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
-    let mut temp_buf = vec![0u8; temp_buf_total];
-    let mut task_states = vec![TaskState::default(); container.task_table.tasks.len()];
-    let mut program_instances =
-        vec![ProgramInstanceState::default(); container.task_table.programs.len()];
-    let mut ready_buf = vec![0usize; container.task_table.tasks.len()];
+    let mut bufs = VmBuffers::from_container(&container);
 
     let mut running = Vm::new()
         .load(
             &container,
-            &mut stack_buf,
-            &mut var_buf,
-            &mut data_region_buf,
-            &mut temp_buf,
-            &mut task_states,
-            &mut program_instances,
-            &mut ready_buf,
+            &mut bufs.stack,
+            &mut bufs.vars,
+            &mut bufs.data_region,
+            &mut bufs.temp_buf,
+            &mut bufs.tasks,
+            &mut bufs.programs,
+            &mut bufs.ready,
         )
         .start()
         .map_err(|ctx| VmError::from_trap(&ctx.trap, ctx.task_id, ctx.instance_id))?;
@@ -123,27 +113,18 @@ pub fn benchmark(path: &Path, cycles: u64, warmup: u64) -> Result<(), VmError> {
         )
     })?;
 
-    let h = &container.header;
-    let mut stack_buf = vec![Slot::default(); h.max_stack_depth as usize];
-    let mut var_buf = vec![Slot::default(); h.num_variables as usize];
-    let mut data_region_buf = vec![0u8; h.data_region_bytes as usize];
-    let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
-    let mut temp_buf = vec![0u8; temp_buf_total];
-    let mut task_states = vec![TaskState::default(); container.task_table.tasks.len()];
-    let mut program_instances =
-        vec![ProgramInstanceState::default(); container.task_table.programs.len()];
-    let mut ready_buf = vec![0usize; container.task_table.tasks.len()];
+    let mut bufs = VmBuffers::from_container(&container);
 
     let mut running = Vm::new()
         .load(
             &container,
-            &mut stack_buf,
-            &mut var_buf,
-            &mut data_region_buf,
-            &mut temp_buf,
-            &mut task_states,
-            &mut program_instances,
-            &mut ready_buf,
+            &mut bufs.stack,
+            &mut bufs.vars,
+            &mut bufs.data_region,
+            &mut bufs.temp_buf,
+            &mut bufs.tasks,
+            &mut bufs.programs,
+            &mut bufs.ready,
         )
         .start()
         .map_err(|ctx| VmError::from_trap(&ctx.trap, ctx.task_id, ctx.instance_id))?;
@@ -197,7 +178,8 @@ pub fn benchmark(path: &Path, cycles: u64, warmup: u64) -> Result<(), VmError> {
         .unwrap_or_default();
 
     // Build per-task metadata from task_states (borrow released by stop()).
-    let tasks_json: Vec<serde_json::Value> = task_states
+    let tasks_json: Vec<serde_json::Value> = bufs
+        .tasks
         .iter()
         .map(|ts| {
             let mut task = json!({

@@ -4,36 +4,8 @@
 
 use ironplc_container::{Container, ContainerBuilder};
 use ironplc_vm::error::Trap;
-use ironplc_vm::{FaultContext, ProgramInstanceState, Slot, TaskState, Vm, VmRunning};
-
-/// Helper struct that allocates Vec-backed buffers for VM usage.
-pub struct VmBuffers {
-    pub stack: Vec<Slot>,
-    pub vars: Vec<Slot>,
-    pub data_region: Vec<u8>,
-    pub temp_buf: Vec<u8>,
-    pub tasks: Vec<TaskState>,
-    pub programs: Vec<ProgramInstanceState>,
-    pub ready: Vec<usize>,
-}
-
-impl VmBuffers {
-    pub fn from_container(container: &Container) -> Self {
-        let header = &container.header;
-        let task_count = container.task_table.tasks.len();
-        let program_count = container.task_table.programs.len();
-        let temp_buf_total = header.num_temp_bufs as usize * header.max_temp_buf_bytes as usize;
-        VmBuffers {
-            stack: vec![Slot::default(); header.max_stack_depth as usize],
-            vars: vec![Slot::default(); header.num_variables as usize],
-            data_region: vec![0u8; header.data_region_bytes as usize],
-            temp_buf: vec![0u8; temp_buf_total],
-            tasks: vec![TaskState::default(); task_count],
-            programs: vec![ProgramInstanceState::default(); program_count],
-            ready: vec![0usize; task_count.max(1)],
-        }
-    }
-}
+pub use ironplc_vm::VmBuffers;
+use ironplc_vm::{FaultContext, Vm, VmRunning};
 
 /// Builds a container with an init function (RET_VOID) and a scan function
 /// from the given bytecode, with `num_vars` variables and the given constants.

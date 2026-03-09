@@ -125,6 +125,9 @@ impl<'a> VmReady<'a> {
     /// variable initial values. Returns `Err(FaultContext)` if an init
     /// function traps. On success, returns a running VM ready for scan
     /// cycles.
+    ///
+    /// Use [`resume`](VmReady::resume) instead when variable buffers
+    /// already contain initialized values.
     pub fn start(mut self) -> Result<VmRunning<'a>, FaultContext> {
         let shared_globals_size = self.container.task_table.shared_globals_size;
 
@@ -183,6 +186,30 @@ impl<'a> VmReady<'a> {
             scan_count: 0,
             stop_requested: false,
         })
+    }
+
+    /// Resumes execution without running init functions.
+    ///
+    /// Use this when variable buffers already contain initialized values
+    /// (e.g., from a previous session). The `initial_scan_count` sets the
+    /// starting scan counter so cycle tracking continues from where it
+    /// left off.
+    pub fn resume(self, initial_scan_count: u64) -> VmRunning<'a> {
+        let shared_globals_size = self.container.task_table.shared_globals_size;
+        VmRunning {
+            container: self.container,
+            stack: self.stack,
+            variables: self.variables,
+            data_region: self.data_region,
+            temp_buf: self.temp_buf,
+            max_temp_buf_bytes: self.max_temp_buf_bytes,
+            task_states: self.task_states,
+            program_instances: self.program_instances,
+            ready_buf: self.ready_buf,
+            shared_globals_size,
+            scan_count: initial_scan_count,
+            stop_requested: false,
+        }
     }
 
     /// Reads a variable value as an i32.
@@ -1731,36 +1758,8 @@ fn read_i16_le(bytecode: &[u8], pc: &mut usize) -> i16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::VmBuffers;
     use ironplc_container::ContainerBuilder;
-
-    /// Helper struct that allocates Vec-backed buffers for VM usage.
-    struct VmBuffers {
-        stack: Vec<Slot>,
-        vars: Vec<Slot>,
-        data_region: Vec<u8>,
-        temp_buf: Vec<u8>,
-        tasks: Vec<TaskState>,
-        programs: Vec<ProgramInstanceState>,
-        ready: Vec<usize>,
-    }
-
-    impl VmBuffers {
-        fn from_container(container: &Container) -> Self {
-            let header = &container.header;
-            let task_count = container.task_table.tasks.len();
-            let program_count = container.task_table.programs.len();
-            let temp_buf_total = header.num_temp_bufs as usize * header.max_temp_buf_bytes as usize;
-            VmBuffers {
-                stack: vec![Slot::default(); header.max_stack_depth as usize],
-                vars: vec![Slot::default(); header.num_variables as usize],
-                data_region: vec![0u8; header.data_region_bytes as usize],
-                temp_buf: vec![0u8; temp_buf_total],
-                tasks: vec![TaskState::default(); task_count],
-                programs: vec![ProgramInstanceState::default(); program_count],
-                ready: vec![0usize; task_count.max(1)],
-            }
-        }
-    }
 
     /// Builds a container with one function from the given bytecode,
     /// with `num_vars` variables and the given constants.
