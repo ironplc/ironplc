@@ -20,7 +20,7 @@ use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
 use ironplc_sources::{parse_source, FileType};
-use ironplc_vm::{ProgramInstanceState, Slot, TaskState, Vm};
+use ironplc_vm::{Slot, Vm, VmBuffers};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -338,28 +338,18 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
         }
     };
 
-    let h = &container.header;
-    let mut stack_buf = vec![Slot::default(); h.max_stack_depth as usize];
-    let mut var_buf = vec![Slot::default(); h.num_variables as usize];
-    let mut data_region_buf = vec![0u8; h.data_region_bytes as usize];
-    let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
-    let mut temp_buf = vec![0u8; temp_buf_total];
-    let task_count = container.task_table.tasks.len();
-    let program_count = container.task_table.programs.len();
-    let mut task_states = vec![TaskState::default(); task_count];
-    let mut program_instances = vec![ProgramInstanceState::default(); program_count];
-    let mut ready_buf = vec![0usize; task_count.max(1)];
+    let mut bufs = VmBuffers::from_container(&container);
 
     let mut running = match Vm::new()
         .load(
             &container,
-            &mut stack_buf,
-            &mut var_buf,
-            &mut data_region_buf,
-            &mut temp_buf,
-            &mut task_states,
-            &mut program_instances,
-            &mut ready_buf,
+            &mut bufs.stack,
+            &mut bufs.vars,
+            &mut bufs.data_region,
+            &mut bufs.temp_buf,
+            &mut bufs.tasks,
+            &mut bufs.programs,
+            &mut bufs.ready,
         )
         .start()
     {
@@ -545,28 +535,18 @@ fn load_program_inner(source: &str) -> StepResult {
 
     // Run the init function once to apply initial values to the variable buffer.
     // Subsequent calls to step() will use resume() to skip re-initialization.
-    let h = &container.header;
-    let mut stack_buf = vec![Slot::default(); h.max_stack_depth as usize];
-    let mut var_buf = vec![Slot::default(); h.num_variables as usize];
-    let mut data_region_buf = vec![0u8; h.data_region_bytes as usize];
-    let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
-    let mut temp_buf = vec![0u8; temp_buf_total];
-    let task_count = container.task_table.tasks.len();
-    let program_count = container.task_table.programs.len();
-    let mut task_states = vec![TaskState::default(); task_count];
-    let mut program_instances = vec![ProgramInstanceState::default(); program_count];
-    let mut ready_buf = vec![0usize; task_count.max(1)];
+    let mut bufs = VmBuffers::from_container(&container);
 
     match Vm::new()
         .load(
             &container,
-            &mut stack_buf,
-            &mut var_buf,
-            &mut data_region_buf,
-            &mut temp_buf,
-            &mut task_states,
-            &mut program_instances,
-            &mut ready_buf,
+            &mut bufs.stack,
+            &mut bufs.vars,
+            &mut bufs.data_region,
+            &mut bufs.temp_buf,
+            &mut bufs.tasks,
+            &mut bufs.programs,
+            &mut bufs.ready,
         )
         .start()
     {
@@ -587,7 +567,7 @@ fn load_program_inner(source: &str) -> StepResult {
     SESSION.with(|cell| {
         *cell.borrow_mut() = Some(VmSession {
             container_bytes,
-            var_buf,
+            var_buf: bufs.vars,
             scan_count: 0,
             faulted: false,
         });
@@ -684,27 +664,18 @@ fn run_vm_step(
     base_scan_count: u64,
     scans: u32,
 ) -> (Vec<VariableInfo>, u64, Option<String>) {
-    let h = &container.header;
-    let mut stack_buf = vec![Slot::default(); h.max_stack_depth as usize];
-    let mut data_region_buf = vec![0u8; h.data_region_bytes as usize];
-    let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
-    let mut temp_buf = vec![0u8; temp_buf_total];
-    let task_count = container.task_table.tasks.len();
-    let program_count = container.task_table.programs.len();
-    let mut task_states = vec![TaskState::default(); task_count];
-    let mut program_instances = vec![ProgramInstanceState::default(); program_count];
-    let mut ready_buf = vec![0usize; task_count.max(1)];
+    let mut bufs = VmBuffers::from_container(container);
 
     let mut running = Vm::new()
         .load(
             container,
-            &mut stack_buf,
+            &mut bufs.stack,
             var_buf,
-            &mut data_region_buf,
-            &mut temp_buf,
-            &mut task_states,
-            &mut program_instances,
-            &mut ready_buf,
+            &mut bufs.data_region,
+            &mut bufs.temp_buf,
+            &mut bufs.tasks,
+            &mut bufs.programs,
+            &mut bufs.ready,
         )
         .resume(base_scan_count);
 

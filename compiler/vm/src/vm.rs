@@ -1758,36 +1758,8 @@ fn read_i16_le(bytecode: &[u8], pc: &mut usize) -> i16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::VmBuffers;
     use ironplc_container::ContainerBuilder;
-
-    /// Helper struct that allocates Vec-backed buffers for VM usage.
-    struct VmBuffers {
-        stack: Vec<Slot>,
-        vars: Vec<Slot>,
-        data_region: Vec<u8>,
-        temp_buf: Vec<u8>,
-        tasks: Vec<TaskState>,
-        programs: Vec<ProgramInstanceState>,
-        ready: Vec<usize>,
-    }
-
-    impl VmBuffers {
-        fn from_container(container: &Container) -> Self {
-            let header = &container.header;
-            let task_count = container.task_table.tasks.len();
-            let program_count = container.task_table.programs.len();
-            let temp_buf_total = header.num_temp_bufs as usize * header.max_temp_buf_bytes as usize;
-            VmBuffers {
-                stack: vec![Slot::default(); header.max_stack_depth as usize],
-                vars: vec![Slot::default(); header.num_variables as usize],
-                data_region: vec![0u8; header.data_region_bytes as usize],
-                temp_buf: vec![0u8; temp_buf_total],
-                tasks: vec![TaskState::default(); task_count],
-                programs: vec![ProgramInstanceState::default(); program_count],
-                ready: vec![0usize; task_count.max(1)],
-            }
-        }
-    }
 
     /// Builds a container with one function from the given bytecode,
     /// with `num_vars` variables and the given constants.

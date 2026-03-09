@@ -8,37 +8,8 @@ use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::ParseOptions;
 use ironplc_parser::parse_program;
-use ironplc_vm::{FaultContext, ProgramInstanceState, Slot, TaskState, Vm};
-
-/// Helper struct that allocates Vec-backed buffers for VM usage.
-#[derive(Debug)]
-pub struct VmBuffers {
-    pub stack: Vec<Slot>,
-    pub vars: Vec<Slot>,
-    pub data_region: Vec<u8>,
-    pub temp_buf: Vec<u8>,
-    pub tasks: Vec<TaskState>,
-    pub programs: Vec<ProgramInstanceState>,
-    pub ready: Vec<usize>,
-}
-
-impl VmBuffers {
-    pub fn from_container(c: &Container) -> Self {
-        let h = &c.header;
-        let task_count = c.task_table.tasks.len();
-        let program_count = c.task_table.programs.len();
-        let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
-        VmBuffers {
-            stack: vec![Slot::default(); h.max_stack_depth as usize],
-            vars: vec![Slot::default(); h.num_variables as usize],
-            data_region: vec![0u8; h.data_region_bytes as usize],
-            temp_buf: vec![0u8; temp_buf_total],
-            tasks: vec![TaskState::default(); task_count],
-            programs: vec![ProgramInstanceState::default(); program_count],
-            ready: vec![0usize; task_count.max(1)],
-        }
-    }
-}
+pub use ironplc_vm::VmBuffers;
+use ironplc_vm::{FaultContext, Vm};
 
 /// Parses an IEC 61131-3 source string and runs type resolution via the analyzer.
 ///
