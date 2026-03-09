@@ -66,30 +66,30 @@ jobs:
     steps:
       # Checkout the repository/fetch input artifacts
       - name: Checkout branch or tag ${{ inputs.commit-ref }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         if: ${{ inputs.commit-ref }}
         with:
           ref: ${{ inputs.commit-ref  }}
       - name: Checkout HEAD
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         if: ${{ !inputs.commit-ref }}
 
       # Configure the execution environment
-      - uses: taiki-e/install-action@just
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
+      - uses: actions-rust-lang/setup-rust-toolchain@a0b538fa0b742a6aa35d6e2c169b4bd06d225a98 # v1
         with:
           components: rustfmt, clippy
           target: ${{ matrix.rust_target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@ad397744b0d591a723ab90405b7247fac0e6b8db # v2
         with:
           workspaces: "compiler -> target"
           # Include target triple in cache key for cross-compilation
           key: ${{ matrix.rust_target }}
-      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@03e268b84870ac3cfa58a44d9b504511b732a857 # cargo-llvm-cov
       - name: Cache NSIS
         if: ${{ matrix.os == 'windows-2025' }}
         id: cache-nsis
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: 'C:\Program Files (x86)\NSIS'
           # Bump the suffix (v1 -> v2, etc.) to force a fresh NSIS install
@@ -113,7 +113,7 @@ jobs:
       # Save output artifacts
       - name: Upload Compiler Installer to Build Artifacts
         if: ${{ inputs.gh-release-tag }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.artifact }}
           path: compiler/${{ matrix.artifact }}
@@ -121,14 +121,14 @@ jobs:
 
       - name: Upload Compiler Installer SHA256 to Build Artifacts
         if: ${{ inputs.gh-release-tag }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.artifact }}.sha256
           path: compiler/${{ matrix.artifact }}.sha256
           if-no-files-found: error
       - name: Upload Compiler Installer to GitHub Release
         if: ${{ inputs.gh-release-tag }}
-        uses: svenstaro/upload-release-action@v2
+        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b # v2
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           tag: ${{ inputs.gh-release-tag }}
@@ -136,7 +136,7 @@ jobs:
           file: compiler/${{ matrix.artifact }}
       - name: Upload Compiler Installer SHA256 to GitHub Release
         if: ${{ inputs.gh-release-tag }}
-        uses: svenstaro/upload-release-action@v2
+        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b # v2
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           tag: ${{ inputs.gh-release-tag }}

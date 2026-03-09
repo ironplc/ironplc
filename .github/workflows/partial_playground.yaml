@@ -24,17 +24,17 @@ jobs:
     steps:
       # Fetch input artifacts and code
       - name: Checkout branch or tag ${{ inputs.commit-ref }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         if: ${{ inputs.commit-ref }}
         with:
           ref: ${{ inputs.commit-ref }}
       - name: Checkout HEAD
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         if: ${{ !inputs.commit-ref }}
 
       # Configure the execution environment
-      - uses: taiki-e/install-action@just
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
 
       # Execute build recipes
       - name: Build wasm and playground
@@ -43,7 +43,7 @@ jobs:
 
       # Save artifacts
       - name: Upload playground artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ironplc-playground
           path: playground/_build
