@@ -117,34 +117,36 @@ jobs:
     steps:
       # Checkout the repository/fetch input artifacts
       - name: Checkout tag ${{ needs.release.outputs.commit-tag }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         if: ${{ needs.release.outputs.commit-tag }}
         with:
           ref: ${{ needs.release.outputs.commit-tag  }}
       - name: Checkout HEAD
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         if: ${{ !needs.release.outputs.commit-tag }}
       - name: Download VSIX Build Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ironplc-vscode-extension.vsix
           path: ./integrations/vscode
       
       # Configure the execution environment
-      - uses: taiki-e/install-action@just
-      - uses: actions/setup-node@v4
+      - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
 
       # Execute build recipes
       - name: Install dependencies
         run: just setup
       - name: Publish VS Code Extension to Marketplace
         if: ${{ !inputs.dryrun }}
-        run: just publish ironplc-vscode-extension.vsix ${{ secrets.VS_MARKETPLACE_TOKEN }}
+        run: just publish ironplc-vscode-extension.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VS_MARKETPLACE_TOKEN }}
 
       # Save artifacts
       - name: Publish GitHub Release
         if: ${{ !inputs.dryrun }}
-        uses: irongut/EditRelease@v1.2.0
+        uses: irongut/EditRelease@ccf529ad26dddf9996e7dd0f24ca5da4ea507cc2 # v1.2.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           id: ${{ needs.release.outputs.gh-release-id }}
@@ -156,7 +158,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download playground artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ironplc-playground
           path: ./playground-dist
@@ -166,7 +168,7 @@ jobs:
 
       - name: Publish to ironplc/ironplc-playground repository
         if: ${{ !inputs.dryrun }}
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@4a2e02b36f31d8974a0d09d3bb9f3172aa2d0d0d # v3
         with:
           publish_branch: main
           external_repository: ironplc/ironplc-playground
@@ -184,15 +186,15 @@ jobs:
         working-directory: ./compiler
     steps:
       # Fetch input artifacts and code
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         if: ${{ !inputs.dryrun }}
         with:
           ref: ${{ needs.release.outputs.commit-tag }}
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         if: ${{ inputs.dryrun }}
 
       # Configure the execution environment
-      - uses: taiki-e/install-action@just
+      - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
 
       # Execute build recipes
       - name: Build Homebrew repository
@@ -201,7 +203,7 @@ jobs:
       # Save artifacts
       - name: Copy to Homebrew Tap Repository
         if: ${{ !inputs.dryrun }}
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@4a2e02b36f31d8974a0d09d3bb9f3172aa2d0d0d # v3
         with:
           publish_branch: main
           external_repository: ironplc/homebrew-brew
@@ -219,7 +221,7 @@ jobs:
       # Execute build recipes
       - name: Cleanup Drafts and Old Release
         if: ${{ !inputs.dryrun }}
-        uses: eregon/keep-last-n-releases@v1
+        uses: eregon/keep-last-n-releases@3ac06d4bedebd0e96890db1a32e14841d1794d04 # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
