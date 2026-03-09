@@ -1,7 +1,7 @@
 name: IronPLC Integration
 on:
   pull_request:
-    branches:    
+    branches:
       - main
   push:
     branches:
@@ -9,9 +9,18 @@ on:
   # Allow triggering directly
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
+  # Restrict PR builds to organization members and collaborators to prevent
+  # resource abuse from arbitrary external PRs. Push and workflow_dispatch
+  # events are already restricted by branch protection and permissions.
   ironplcc-tests:
     name: Build IronPLC Compiler
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     uses: ./.github/workflows/partial_compiler.yaml
     with:
       commit-ref: ""
@@ -20,6 +29,9 @@ jobs:
 
   vscode-extension:
     name: Build Visual Studio Code Extension
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     uses: ./.github/workflows/partial_vscode_extension.yaml
     with:
       commit-ref: ""
@@ -28,6 +40,9 @@ jobs:
 
   docs:
     name: Build Website
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     # The website doesn't depend on these but we don't publish
     # if those are failing so we depend on those.
     uses: ./.github/workflows/partial_website.yaml

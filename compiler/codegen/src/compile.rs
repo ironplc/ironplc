@@ -1892,23 +1892,58 @@ fn compile_len(
     Ok(())
 }
 
-/// Extracts a string variable's data_offset from a function argument expression.
+/// Resolves a string argument to its data_offset in the data region.
+///
+/// Handles both variable references (looked up in `string_vars`) and
+/// string literals (allocated inline in the data region with initialization
+/// code emitted at the point of use).
 fn resolve_string_arg(
-    ctx: &CompileContext,
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
     arg: &Expr,
     func_span: &ironplc_dsl::core::SourceSpan,
 ) -> Result<u16, Diagnostic> {
-    let var_name = match &arg.kind {
-        ExprKind::Variable(variable) => resolve_variable_name(variable),
-        _ => None,
-    };
-    let name =
-        var_name.ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
-    let info = ctx
-        .string_vars
-        .get(name)
-        .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
-    Ok(info.data_offset)
+    match &arg.kind {
+        ExprKind::Variable(variable) => {
+            let var_name = resolve_variable_name(variable)
+                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
+            let info = ctx
+                .string_vars
+                .get(var_name)
+                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
+            Ok(info.data_offset)
+        }
+        ExprKind::Const(ConstantKind::CharacterString(lit)) => {
+            // Allocate space in the data region for this string literal.
+            let bytes: Vec<u8> = lit.value.iter().map(|&ch| ch as u8).collect();
+            let max_length = DEFAULT_STRING_MAX_LENGTH;
+            let data_offset = ctx.data_region_offset;
+            let total_bytes = STRING_HEADER_BYTES as u16 + max_length;
+            ctx.data_region_offset = ctx
+                .data_region_offset
+                .checked_add(total_bytes)
+                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
+
+            if max_length > ctx.max_string_capacity {
+                ctx.max_string_capacity = max_length;
+            }
+
+            // Emit initialization: header + value.
+            emitter.emit_str_init(data_offset, max_length);
+
+            let pool_index = ctx.add_str_constant(bytes);
+            ctx.num_temp_bufs += 1;
+            emitter.emit_load_const_str(pool_index);
+            emitter.emit_str_store_var(data_offset);
+
+            Ok(data_offset)
+        }
+        _ => Err(Diagnostic::todo_with_span(
+            func_span.clone(),
+            file!(),
+            line!(),
+        )),
+    }
 }
 
 /// Collects positional input arguments from a function call.
@@ -1942,8 +1977,8 @@ fn compile_find(
         ));
     }
 
-    let in1_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(ctx, args[1], &func.name.span())?;
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
 
     emitter.emit_find_str(in1_offset, in2_offset);
     Ok(())
@@ -1970,8 +2005,8 @@ fn compile_replace(
         ));
     }
 
-    let in1_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(ctx, args[1], &func.name.span())?;
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
 
     // Compile L and P integer expressions onto the stack.
     let op_type = DEFAULT_OP_TYPE;
@@ -2005,8 +2040,8 @@ fn compile_insert(
         ));
     }
 
-    let in1_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(ctx, args[1], &func.name.span())?;
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
 
     // Compile P integer expression onto the stack.
     let op_type = DEFAULT_OP_TYPE;
@@ -2039,7 +2074,7 @@ fn compile_delete(
         ));
     }
 
-    let in1_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
 
     // Compile L and P integer expressions onto the stack.
     let op_type = DEFAULT_OP_TYPE;
@@ -2072,7 +2107,7 @@ fn compile_left(
         ));
     }
 
-    let in_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
 
     // Compile L integer expression onto the stack.
     let op_type = DEFAULT_OP_TYPE;
@@ -2104,7 +2139,7 @@ fn compile_right(
         ));
     }
 
-    let in_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
 
     // Compile L integer expression onto the stack.
     let op_type = DEFAULT_OP_TYPE;
@@ -2137,7 +2172,7 @@ fn compile_mid(
         ));
     }
 
-    let in_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
 
     // Compile L and P integer expressions onto the stack.
     let op_type = DEFAULT_OP_TYPE;
@@ -2170,8 +2205,8 @@ fn compile_concat(
         ));
     }
 
-    let in1_offset = resolve_string_arg(ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(ctx, args[1], &func.name.span())?;
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
 
     // Account for the temp buffer needed for the result.
     ctx.num_temp_bufs += 1;

@@ -151,3 +151,70 @@ END_PROGRAM
     let result_offset = string_offset(&[254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "ABCABC");
 }
+
+#[test]
+fn end_to_end_when_concat_two_literals_then_correct_result() {
+    let source = "
+PROGRAM main
+  VAR
+    result : STRING;
+  END_VAR
+  result := CONCAT('Hello', ' World');
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // result is the first (and only) declared string variable at offset 0.
+    let result_offset = string_offset(&[]);
+    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
+}
+
+#[test]
+fn end_to_end_when_concat_literal_and_variable_then_correct_result() {
+    let source = "
+PROGRAM main
+  VAR
+    s1 : STRING := 'World';
+    result : STRING;
+  END_VAR
+  result := CONCAT('Hello ', s1);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    let result_offset = string_offset(&[254]);
+    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
+}
+
+#[test]
+fn end_to_end_when_concat_variable_and_literal_then_correct_result() {
+    let source = "
+PROGRAM main
+  VAR
+    s1 : STRING := 'Hello';
+    result : STRING;
+  END_VAR
+  result := CONCAT(s1, ' World');
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    let result_offset = string_offset(&[254]);
+    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
+}
+
+#[test]
+fn end_to_end_when_concat_single_char_literals_then_correct_result() {
+    let source = "
+PROGRAM main
+  VAR
+    result : STRING;
+  END_VAR
+  result := CONCAT('A', 'B');
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    let result_offset = string_offset(&[]);
+    assert_eq!(read_string(&bufs.data_region, result_offset), "AB");
+}
