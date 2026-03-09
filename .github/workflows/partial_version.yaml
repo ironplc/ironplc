@@ -66,7 +66,7 @@ jobs:
         
         steps:
           # Checkout the repository including the tags
-          - uses: actions/checkout@v4
+          - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
             with:
               fetch-depth: 0
               # This is a workaround for branch protections. In general, we want to
@@ -79,9 +79,9 @@ jobs:
               git pull --tags
           
           # Configure the execution environment
-          - uses: taiki-e/install-action@just
-          - uses: actions-rust-lang/setup-rust-toolchain@v1
-          - uses: actions/setup-node@v4
+          - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
+          - uses: actions-rust-lang/setup-rust-toolchain@a0b538fa0b742a6aa35d6e2c169b4bd06d225a98 # v1
+          - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
 
           # Execute build recipe
           - name: Get the next version number
@@ -103,7 +103,7 @@ jobs:
           - name: Create Github Release
             if: ${{ !inputs.dryrun }}
             id: create-release
-            uses: softprops/action-gh-release@v2
+            uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
             with:
               token: "${{ secrets.GITHUB_TOKEN }}"
               tag_name: v${{ steps.nextversion.outputs.version }}
