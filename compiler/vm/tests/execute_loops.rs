@@ -50,12 +50,7 @@ fn execute_when_while_false_then_skips_body() {
         // END (offset 13):
         0xB5,                   // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[99]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 0);
+    assert_eq!(common::run_and_read_i32(&bytecode, 1, &[99]), 0);
 }
 
 #[test]
@@ -78,12 +73,7 @@ fn execute_when_repeat_until_then_loops_twice() {
         // END (offset 20):
         0xB5,                   // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[1, 2]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 2);
+    assert_eq!(common::run_and_read_i32(&bytecode, 1, &[1, 2]), 2);
 }
 
 #[test]
@@ -145,10 +135,5 @@ fn execute_when_backward_jump_then_loops() {
         // END (offset 20):
         0xB5,                   // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[1, 2]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 2);
+    assert_eq!(common::run_and_read_i32(&bytecode, 1, &[1, 2]), 2);
 }

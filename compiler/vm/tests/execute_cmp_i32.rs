@@ -5,8 +5,6 @@
 
 mod common;
 
-use common::{single_function_container, VmBuffers};
-
 // i32::MIN < i32::MAX → 1
 #[test]
 fn execute_when_lt_i32_min_vs_max_then_one() {
@@ -18,12 +16,10 @@ fn execute_when_lt_i32_min_vs_max_then_one() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[i32::MIN, i32::MAX]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 1);
+    assert_eq!(
+        common::run_and_read_i32(&bytecode, 1, &[i32::MIN, i32::MAX]),
+        1
+    );
 }
 
 // i32::MAX > i32::MIN → 1
@@ -37,12 +33,10 @@ fn execute_when_gt_i32_max_vs_min_then_one() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[i32::MAX, i32::MIN]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 1);
+    assert_eq!(
+        common::run_and_read_i32(&bytecode, 1, &[i32::MAX, i32::MIN]),
+        1
+    );
 }
 
 // i32::MIN == i32::MIN → 1
@@ -56,12 +50,7 @@ fn execute_when_eq_i32_min_vs_min_then_one() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[i32::MIN]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 1);
+    assert_eq!(common::run_and_read_i32(&bytecode, 1, &[i32::MIN]), 1);
 }
 
 // i32::MIN != i32::MAX → 1
@@ -75,10 +64,8 @@ fn execute_when_ne_i32_min_vs_max_then_one() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[i32::MIN, i32::MAX]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 1);
+    assert_eq!(
+        common::run_and_read_i32(&bytecode, 1, &[i32::MIN, i32::MAX]),
+        1
+    );
 }

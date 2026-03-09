@@ -2,8 +2,6 @@
 
 mod common;
 
-use common::{single_function_container, VmBuffers};
-
 #[test]
 fn execute_when_add_i32_wraps_at_max_then_correct() {
     #[rustfmt::skip]
@@ -14,12 +12,10 @@ fn execute_when_add_i32_wraps_at_max_then_correct() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[i32::MAX, 1]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-    vm.run_round(0).unwrap();
-
-    assert_eq!(vm.read_variable(0).unwrap(), i32::MIN);
+    assert_eq!(
+        common::run_and_read_i32(&bytecode, 1, &[i32::MAX, 1]),
+        i32::MIN
+    );
 }
 
 #[test]
@@ -32,10 +28,8 @@ fn execute_when_add_i32_wraps_at_min_then_correct() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[i32::MIN, -1]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-    vm.run_round(0).unwrap();
-
-    assert_eq!(vm.read_variable(0).unwrap(), i32::MAX);
+    assert_eq!(
+        common::run_and_read_i32(&bytecode, 1, &[i32::MIN, -1]),
+        i32::MAX
+    );
 }

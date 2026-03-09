@@ -38,12 +38,7 @@ fn execute_when_jmp_if_not_true_then_no_jump() {
         0x18, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         0xB5,                   // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[1, 42]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 42);
+    assert_eq!(common::run_and_read_i32(&bytecode, 1, &[1, 42]), 42);
 }
 
 #[test]
@@ -58,12 +53,7 @@ fn execute_when_jmp_if_not_false_then_jumps() {
         0x18, 0x00, 0x00,       // STORE_VAR_I32 var[0]       -- skipped
         0xB5,                   // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[0, 42]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 0);
+    assert_eq!(common::run_and_read_i32(&bytecode, 1, &[0, 42]), 0);
 }
 
 #[test]
@@ -85,12 +75,7 @@ fn execute_when_if_else_true_then_takes_then_branch() {
         // END (offset 21):
         0xB5,                   // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[1, 10, 20]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 10);
+    assert_eq!(common::run_and_read_i32(&bytecode, 1, &[1, 10, 20]), 10);
 }
 
 #[test]
@@ -112,10 +97,5 @@ fn execute_when_if_else_false_then_takes_else_branch() {
         // END (offset 21):
         0xB5,                   // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[0, 10, 20]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 20);
+    assert_eq!(common::run_and_read_i32(&bytecode, 1, &[0, 10, 20]), 20);
 }

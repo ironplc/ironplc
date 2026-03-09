@@ -3,6 +3,8 @@ pub(crate) mod builtin;
 pub mod error;
 pub(crate) mod scheduler;
 pub(crate) mod stack;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 pub(crate) mod value;
 pub(crate) mod variable_table;
 mod vm;

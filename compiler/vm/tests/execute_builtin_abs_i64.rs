@@ -5,8 +5,6 @@
 
 mod common;
 
-use common::{single_function_container_i64, VmBuffers};
-
 #[test]
 fn execute_when_abs_i64_min_then_wraps() {
     // ABS(i64::MIN) wraps to i64::MIN (wrapping_abs)
@@ -17,11 +15,8 @@ fn execute_when_abs_i64_min_then_wraps() {
         0x19, 0x00, 0x00,  // STORE_VAR_I64 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container_i64(&bytecode, 1, &[i64::MIN]);
-    let mut b = VmBuffers::from_container(&c);
-    {
-        let mut vm = common::load_and_start(&c, &mut b).unwrap();
-        vm.run_round(0).unwrap();
-    }
-    assert_eq!(b.vars[0].as_i64(), i64::MIN);
+    assert_eq!(
+        common::run_and_read_i64(&bytecode, 1, &[i64::MIN]),
+        i64::MIN
+    );
 }
