@@ -609,6 +609,7 @@ version = "0.167.0"
 dependencies = [
  "base64",
  "console_error_panic_hook",
+ "ironplc-analyzer",
  "ironplc-codegen",
  "ironplc-container",
  "ironplc-dsl",

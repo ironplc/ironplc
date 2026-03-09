@@ -29,13 +29,13 @@ use crate::{
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
 ///
-/// Returns `Ok(SemanticContext)` containing all type, function, and symbol information
-/// gathered during analysis. If any analysis step found errors, they are stored in
-/// `context.diagnostics()` rather than causing an `Err` return.
+/// Returns `Ok((Library, SemanticContext))` containing the type-resolved AST and all type,
+/// function, and symbol information gathered during analysis. If any analysis step found
+/// errors, they are stored in `context.diagnostics()` rather than causing an `Err` return.
 ///
 /// Returns `Err` only when no sources are provided or when foundational type resolution
 /// fails (declaration sorting or type environment building).
-pub fn analyze(sources: &[&Library]) -> Result<SemanticContext, Vec<Diagnostic>> {
+pub fn analyze(sources: &[&Library]) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
     if sources.is_empty() {
         let span = SourceSpan::range(0, 0).with_file_id(&FileId::default());
         return Err(vec![Diagnostic::problem(
@@ -61,7 +61,7 @@ pub fn analyze(sources: &[&Library]) -> Result<SemanticContext, Vec<Diagnostic>>
         }
     }
 
-    Ok(context)
+    Ok((library, context))
 }
 
 pub fn resolve_types(sources: &[&Library]) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
@@ -222,7 +222,7 @@ mod tests {
     fn analyze_when_first_steps_semantic_error_then_ok_with_diagnostics() {
         let lib = parse_shared_library("first_steps_semantic_error.st");
         let res = analyze(&[&lib]);
-        let context = res.unwrap();
+        let (_library, context) = res.unwrap();
         assert!(context.has_diagnostics());
     }
 
