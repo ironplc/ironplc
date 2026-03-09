@@ -28,6 +28,11 @@ on:
 
 name: IronPLC Deployment
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
   release:
     name: Create Version Numbers and GitHub Release for the Artifacts

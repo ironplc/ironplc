@@ -22,6 +22,9 @@ on:
 
 name: IronPLC Update Dependencies
 
+permissions:
+  contents: write
+
 jobs:
   timestamp:
     name: Determine current time

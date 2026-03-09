@@ -1,13 +1,16 @@
 name: IronPLC Integration
 on:
   pull_request:
-    branches:    
+    branches:
       - main
   push:
     branches:
       - main
   # Allow triggering directly
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   # Restrict PR builds to organization members and collaborators to prevent
