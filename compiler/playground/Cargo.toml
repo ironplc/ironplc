@@ -14,6 +14,7 @@ crate-type = ["cdylib", "rlib"]
 ironplc-dsl = { path = "../dsl", version = "0.167.0" }
 ironplc-parser = { path = "../parser", version = "0.167.0" }
 ironplc-sources = { path = "../sources", version = "0.167.0" }
+ironplc-analyzer = { path = "../analyzer", version = "0.167.0" }
 ironplc-codegen = { path = "../codegen", version = "0.167.0" }
 ironplc-container = { path = "../container", version = "0.167.0" }
 ironplc-vm = { path = "../vm", version = "0.167.0" }

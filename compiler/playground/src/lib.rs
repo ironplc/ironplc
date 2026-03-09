@@ -14,6 +14,7 @@ use std::io::Cursor;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
+use ironplc_analyzer::stages::resolve_types;
 use ironplc_codegen::compile as codegen_compile;
 use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::Container;
@@ -208,6 +209,29 @@ fn compile_inner(source: &str) -> CompileResult {
                     start: diag.primary.location.start,
                     end: diag.primary.location.end,
                 }],
+            };
+        }
+    };
+
+    // Run type resolution so codegen has resolved types on expressions.
+    // Without this, functions like BCD_TO_INT that inspect argument types
+    // would fail because expr.resolved_type is None.
+    let library = match resolve_types(&[&library]) {
+        Ok((resolved_lib, _context)) => resolved_lib,
+        Err(diagnostics) => {
+            return CompileResult {
+                ok: false,
+                bytecode: None,
+                diagnostics: diagnostics
+                    .into_iter()
+                    .map(|d| DiagnosticInfo {
+                        code: d.code.clone(),
+                        message: d.description(),
+                        label: d.primary.message.clone(),
+                        start: d.primary.location.start,
+                        end: d.primary.location.end,
+                    })
+                    .collect(),
             };
         }
     };
@@ -1056,5 +1080,35 @@ END_PROGRAM
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert_eq!(r2.variables[0].value, "20");
         assert_eq!(r2.total_scans, 1);
+    }
+
+    #[test]
+    fn run_source_when_bcd_to_int_with_literal_then_returns_value() {
+        let source = "
+PROGRAM main
+  VAR
+    int_val : USINT;
+  END_VAR
+  int_val := BCD_TO_INT(BYTE#16#42);
+END_PROGRAM
+";
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1)).unwrap();
+        assert!(result.ok, "Expected ok but got error: {:?}", result.error);
+        assert_eq!(result.variables[0].value, "42");
+    }
+
+    #[test]
+    fn run_source_when_int_to_bcd_with_literal_then_returns_value() {
+        let source = "
+PROGRAM main
+  VAR
+    bcd_val : BYTE;
+  END_VAR
+  bcd_val := INT_TO_BCD(USINT#42);
+END_PROGRAM
+";
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1)).unwrap();
+        assert!(result.ok, "Expected ok but got error: {:?}", result.error);
+        assert_eq!(result.variables[0].value, "16#42");
     }
 }
