@@ -11,6 +11,7 @@ const dropOverlay = document.getElementById("drop-overlay");
 
 let sourceChanged = true;
 let previousValues = new Map();
+let compilerVersion = "";
 
 // --- URL parameter handling ---
 
@@ -64,6 +65,7 @@ worker.onmessage = (e) => {
   const msg = e.data;
 
   if (msg.type === "ready") {
+    compilerVersion = msg.version || "";
     runBtn.disabled = false;
     stepBtn.disabled = false;
     resetBtn.disabled = false;
@@ -330,16 +332,16 @@ function renderVariables(variables, scansCompleted, mode) {
   }
   html += '</div>';
 
-  html += '<table class="var-table"><thead><tr><th>Index</th><th>Value</th></tr></thead><tbody>';
+  html += '<table class="var-table"><thead><tr><th>Variable</th><th>Value</th></tr></thead><tbody>';
   for (const v of variables) {
     const prev = previousValues.get(v.index);
     const changed = prev !== undefined && prev !== v.value;
     html += `<tr${changed ? ' class="changed"' : ''}>`;
-    html += `<td>var[${v.index}]</td><td>${v.value}</td>`;
+    const label = v.name ? `${escapeHtml(v.name)} : ${escapeHtml(v.type_name)}` : `var[${v.index}]`;
+    html += `<td>${label}</td><td>${v.value}</td>`;
     html += '</tr>';
   }
   html += "</tbody></table>";
-  html += '<p class="raw-bytes-note">Note: Values are shown as raw bytes, not interpreted values. Float types will not display correctly.</p>';
   variablesPanel.innerHTML = html;
 
   previousValues = new Map(variables.map(v => [v.index, v.value]));
@@ -351,7 +353,7 @@ function renderDiagnostics(diagnostics) {
     html += '<div class="diagnostic-item">';
     const code = escapeHtml(d.code);
     if (/^P\d{4}$/.test(d.code)) {
-      const url = `https://www.ironplc.com/reference/compiler/problems/${d.code}.html`;
+      const url = `https://www.ironplc.com/reference/compiler/problems/${d.code}.html?version=${encodeURIComponent(compilerVersion)}`;
       html += `<a class="diagnostic-code" href="${url}" target="_blank" rel="noopener">${code}</a>`;
     } else {
       html += `<span class="diagnostic-code">${code}</span>`;
