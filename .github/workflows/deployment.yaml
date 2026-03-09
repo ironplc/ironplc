@@ -139,7 +139,9 @@ jobs:
         run: just setup
       - name: Publish VS Code Extension to Marketplace
         if: ${{ !inputs.dryrun }}
-        run: just publish ironplc-vscode-extension.vsix ${{ secrets.VS_MARKETPLACE_TOKEN }}
+        run: just publish ironplc-vscode-extension.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VS_MARKETPLACE_TOKEN }}
 
       # Save artifacts
       - name: Publish GitHub Release
