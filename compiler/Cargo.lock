@@ -787,7 +787,6 @@ version = "0.169.0"
 name = "ironplc-vm"
 version = "0.169.0"
 dependencies = [
- "criterion",
  "csv",
  "ironplc-container",
 ]
