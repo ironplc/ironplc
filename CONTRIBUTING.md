@@ -10,6 +10,7 @@ as a single repository that hosts all of components:
 * the [compiler](compiler/CONTRIBUTING.md)
 * the [Visual Studio Code Extension](integrations/vscode/CONTRIBUTING.md)
 * the [documentation website](docs/CONTRIBUTING.md)
+* the [interactive playground](playground/)
 
 See below for common recommendations or follow the links above for information
 about how to develop each component.

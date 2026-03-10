@@ -60,6 +60,7 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 - `compiler/` - Rust compiler (multiple crates)
 - `integrations/vscode/` - VS Code extension
 - `docs/` - Sphinx documentation website
+- `playground/` - Interactive playground (browser-based editor/runner, built from `compiler/playground/` WASM crate)
 
 ### Critical Rules
 1. **NEVER push directly to `main`** - Always use a feature branch and pull request

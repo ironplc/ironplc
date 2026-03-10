@@ -14,6 +14,7 @@ IronPLC uses [just](https://github.com/casey/just) as its command runner. All bu
 - **`compiler/justfile`**: Compiler build, test, coverage, lint, package
 - **`docs/justfile`**: Documentation build and publishing
 - **`integrations/vscode/justfile`**: VS Code extension tasks
+- **`playground/justfile`**: Playground build, serve, and CI
 
 ## CRITICAL: Git Workflow
 
@@ -81,6 +82,7 @@ Before creating a PR, verify:
 - [ ] Coverage threshold is met
 - [ ] For VS Code extension changes: `cd integrations/vscode && just ci`
 - [ ] For documentation changes: `cd docs && just`
+- [ ] For playground changes: `cd playground && just`
 
 ## Most Common Commands
 
@@ -125,6 +127,19 @@ just             # Runs: compile, lint
 just ci          # Full CI: compile, lint, test
 just clean       # Remove built files (out/, *.vsix)
 ```
+
+#### Playground
+
+```bash
+cd playground
+just             # Runs: setup, compile (full CI entry point)
+just compile     # Build WASM package and assemble site into _build/
+just serve       # Build and serve locally at http://localhost:8080
+just setup       # Install wasm-pack (prerequisite)
+just clean       # Remove build artifacts (_build/)
+```
+
+**Note**: The playground WASM crate lives in `compiler/playground/` but is built through `playground/justfile`, not `compiler/justfile`. Requires `wasm-pack` (installed by `just setup`) and the `wasm32-unknown-unknown` Rust target.
 
 ### Cross-Component Tasks
 
