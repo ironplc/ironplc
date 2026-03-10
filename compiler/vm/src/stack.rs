@@ -34,6 +34,14 @@ impl<'a> OperandStack<'a> {
         self.len -= 1;
         Ok(self.data[self.len])
     }
+
+    /// Returns the top slot without removing it.
+    pub fn peek(&self) -> Result<Slot, Trap> {
+        if self.len == 0 {
+            return Err(Trap::StackUnderflow);
+        }
+        Ok(self.data[self.len - 1])
+    }
 }
 
 #[cfg(test)]
@@ -55,6 +63,25 @@ mod tests {
         let mut stack = OperandStack::new(&mut buf);
 
         assert_eq!(stack.pop(), Err(Trap::StackUnderflow));
+    }
+
+    #[test]
+    fn stack_peek_when_empty_then_stack_underflow() {
+        let mut buf = [Slot::default(); 4];
+        let stack = OperandStack::new(&mut buf);
+
+        assert_eq!(stack.peek(), Err(Trap::StackUnderflow));
+    }
+
+    #[test]
+    fn stack_peek_when_value_present_then_returns_without_removing() {
+        let mut buf = [Slot::default(); 4];
+        let mut stack = OperandStack::new(&mut buf);
+        stack.push(Slot::from_i32(42)).unwrap();
+
+        assert_eq!(stack.peek().unwrap().as_i32(), 42);
+        // Value should still be on stack
+        assert_eq!(stack.pop().unwrap().as_i32(), 42);
     }
 
     #[test]

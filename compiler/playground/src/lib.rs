@@ -9,15 +9,18 @@
 //! - [`reset_session`] - Clear the stepping session
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::Cursor;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
+use ironplc_analyzer::stages::analyze;
 use ironplc_codegen::compile as codegen_compile;
+use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
 use ironplc_sources::{parse_source, FileType};
-use ironplc_vm::{ProgramInstanceState, Slot, TaskState, Vm};
+use ironplc_vm::{Slot, Vm, VmBuffers};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -29,7 +32,7 @@ use wasm_bindgen::prelude::*;
 struct VmSession {
     container_bytes: Vec<u8>,
     var_buf: Vec<Slot>,
-    total_scans: u64,
+    scan_count: u64,
     faulted: bool,
 }
 
@@ -43,6 +46,12 @@ thread_local! {
 #[wasm_bindgen]
 pub fn init_panic_hook() {
     console_error_panic_hook::set_once();
+}
+
+/// Return the crate version so the playground can include it in problem-code URLs.
+#[wasm_bindgen]
+pub fn version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 /// Result of a compilation attempt.
@@ -81,7 +90,64 @@ struct RunResult {
 #[derive(Serialize, Deserialize)]
 struct VariableInfo {
     index: u16,
-    value: i32,
+    value: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    type_name: String,
+}
+
+/// Debug metadata for a variable, extracted from the container's debug section.
+struct VarDebugInfo {
+    name: String,
+    type_name: String,
+    iec_type_tag: u8,
+}
+
+/// Builds a lookup map from var_index to debug info from the container's debug section.
+fn build_var_debug_map(container: &Container) -> HashMap<u16, VarDebugInfo> {
+    let mut map = HashMap::new();
+    if let Some(debug) = &container.debug_section {
+        for entry in &debug.var_names {
+            map.insert(
+                entry.var_index,
+                VarDebugInfo {
+                    name: entry.name.clone(),
+                    type_name: entry.type_name.clone(),
+                    iec_type_tag: entry.iec_type_tag,
+                },
+            );
+        }
+    }
+    map
+}
+
+/// Formats a raw 64-bit slot value according to the IEC type tag.
+fn format_variable_value(raw: u64, tag: u8) -> String {
+    match tag {
+        iec_type_tag::BOOL => {
+            if (raw as i32) != 0 {
+                "TRUE".into()
+            } else {
+                "FALSE".into()
+            }
+        }
+        iec_type_tag::SINT => format!("{}", raw as i32 as i8),
+        iec_type_tag::INT => format!("{}", raw as i32 as i16),
+        iec_type_tag::DINT => format!("{}", raw as i32),
+        iec_type_tag::LINT => format!("{}", raw as i64),
+        iec_type_tag::USINT => format!("{}", raw as u8),
+        iec_type_tag::UINT => format!("{}", raw as u16),
+        iec_type_tag::UDINT => format!("{}", raw as u32),
+        iec_type_tag::ULINT => format!("{}", raw),
+        iec_type_tag::REAL => format!("{}", f32::from_bits(raw as u32)),
+        iec_type_tag::LREAL => format!("{}", f64::from_bits(raw)),
+        iec_type_tag::BYTE => format!("16#{:02X}", raw as u8),
+        iec_type_tag::WORD => format!("16#{:04X}", raw as u16),
+        iec_type_tag::DWORD => format!("16#{:08X}", raw as u32),
+        iec_type_tag::LWORD => format!("16#{:016X}", raw),
+        _ => format!("{}", raw as i32), // fallback
+    }
 }
 
 /// Result of compile-and-run (combines both).
@@ -146,6 +212,49 @@ fn compile_inner(source: &str) -> CompileResult {
             };
         }
     };
+
+    // Run the full analysis pipeline: type resolution + semantic checks.
+    // Type resolution populates expr.resolved_type so codegen can select
+    // correct opcodes. Semantic checks catch errors like undeclared variables,
+    // wrong argument counts, type mismatches, etc.
+    let (library, context) = match analyze(&[&library]) {
+        Ok((resolved_lib, ctx)) => (resolved_lib, ctx),
+        Err(diagnostics) => {
+            return CompileResult {
+                ok: false,
+                bytecode: None,
+                diagnostics: diagnostics
+                    .into_iter()
+                    .map(|d| DiagnosticInfo {
+                        code: d.code.clone(),
+                        message: d.description(),
+                        label: d.primary.message.clone(),
+                        start: d.primary.location.start,
+                        end: d.primary.location.end,
+                    })
+                    .collect(),
+            };
+        }
+    };
+
+    // Report any semantic diagnostics (non-fatal errors found during analysis).
+    if context.has_diagnostics() {
+        return CompileResult {
+            ok: false,
+            bytecode: None,
+            diagnostics: context
+                .diagnostics()
+                .iter()
+                .map(|d| DiagnosticInfo {
+                    code: d.code.clone(),
+                    message: d.description(),
+                    label: d.primary.message.clone(),
+                    start: d.primary.location.start,
+                    end: d.primary.location.end,
+                })
+                .collect(),
+        };
+    }
 
     let container = match codegen_compile(&library) {
         Ok(c) => c,
@@ -229,28 +338,18 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
         }
     };
 
-    let h = &container.header;
-    let mut stack_buf = vec![Slot::default(); h.max_stack_depth as usize];
-    let mut var_buf = vec![Slot::default(); h.num_variables as usize];
-    let mut data_region_buf = vec![0u8; h.data_region_bytes as usize];
-    let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
-    let mut temp_buf = vec![0u8; temp_buf_total];
-    let task_count = container.task_table.tasks.len();
-    let program_count = container.task_table.programs.len();
-    let mut task_states = vec![TaskState::default(); task_count];
-    let mut program_instances = vec![ProgramInstanceState::default(); program_count];
-    let mut ready_buf = vec![0usize; task_count.max(1)];
+    let mut bufs = VmBuffers::from_container(&container);
 
     let mut running = match Vm::new()
         .load(
             &container,
-            &mut stack_buf,
-            &mut var_buf,
-            &mut data_region_buf,
-            &mut temp_buf,
-            &mut task_states,
-            &mut program_instances,
-            &mut ready_buf,
+            &mut bufs.stack,
+            &mut bufs.vars,
+            &mut bufs.data_region,
+            &mut bufs.temp_buf,
+            &mut bufs.tasks,
+            &mut bufs.programs,
+            &mut bufs.ready,
         )
         .start()
     {
@@ -268,11 +367,13 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
         }
     };
 
+    let debug_map = build_var_debug_map(&container);
+
     for round in 0..scans {
         let current_us = (round as u64) * 1000;
         if let Err(ctx) = running.run_round(current_us) {
             let faulted = running.fault(ctx);
-            let variables = read_all_variables_faulted(&faulted);
+            let variables = read_all_variables_faulted(&faulted, &debug_map);
             return RunResult {
                 ok: false,
                 variables,
@@ -288,7 +389,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
     }
 
     let num_vars = running.num_variables();
-    let variables = read_all_variables_running(&running, num_vars);
+    let variables = read_all_variables_running(&running, num_vars, &debug_map);
     let scans_completed = running.scan_count();
     running.stop();
 
@@ -336,23 +437,58 @@ fn run_source_inner(source: &str, scans: u32) -> RunSourceResult {
     }
 }
 
-fn read_all_variables_running(vm: &ironplc_vm::VmRunning, num_vars: u16) -> Vec<VariableInfo> {
+fn read_all_variables_running(
+    vm: &ironplc_vm::VmRunning,
+    num_vars: u16,
+    debug_map: &HashMap<u16, VarDebugInfo>,
+) -> Vec<VariableInfo> {
     (0..num_vars)
         .filter_map(|i| {
-            vm.read_variable(i)
-                .ok()
-                .map(|value| VariableInfo { index: i, value })
+            vm.read_variable_raw(i).ok().map(|raw| {
+                let (name, type_name, value) = if let Some(info) = debug_map.get(&i) {
+                    (
+                        info.name.clone(),
+                        info.type_name.clone(),
+                        format_variable_value(raw, info.iec_type_tag),
+                    )
+                } else {
+                    (String::new(), String::new(), format!("{}", raw as i32))
+                };
+                VariableInfo {
+                    index: i,
+                    value,
+                    name,
+                    type_name,
+                }
+            })
         })
         .collect()
 }
 
-fn read_all_variables_faulted(vm: &ironplc_vm::VmFaulted) -> Vec<VariableInfo> {
+fn read_all_variables_faulted(
+    vm: &ironplc_vm::VmFaulted,
+    debug_map: &HashMap<u16, VarDebugInfo>,
+) -> Vec<VariableInfo> {
     let num_vars = vm.num_variables();
     (0..num_vars)
         .filter_map(|i| {
-            vm.read_variable(i)
-                .ok()
-                .map(|value| VariableInfo { index: i, value })
+            vm.read_variable_raw(i).ok().map(|raw| {
+                let (name, type_name, value) = if let Some(info) = debug_map.get(&i) {
+                    (
+                        info.name.clone(),
+                        info.type_name.clone(),
+                        format_variable_value(raw, info.iec_type_tag),
+                    )
+                } else {
+                    (String::new(), String::new(), format!("{}", raw as i32))
+                };
+                VariableInfo {
+                    index: i,
+                    value,
+                    name,
+                    type_name,
+                }
+            })
         })
         .collect()
 }
@@ -397,13 +533,42 @@ fn load_program_inner(source: &str) -> StepResult {
         }
     };
 
-    let num_vars = container.header.num_variables as usize;
+    // Run the init function once to apply initial values to the variable buffer.
+    // Subsequent calls to step() will use resume() to skip re-initialization.
+    let mut bufs = VmBuffers::from_container(&container);
+
+    match Vm::new()
+        .load(
+            &container,
+            &mut bufs.stack,
+            &mut bufs.vars,
+            &mut bufs.data_region,
+            &mut bufs.temp_buf,
+            &mut bufs.tasks,
+            &mut bufs.programs,
+            &mut bufs.ready,
+        )
+        .start()
+    {
+        Ok(running) => {
+            running.stop();
+        }
+        Err(ctx) => {
+            return StepResult {
+                ok: false,
+                diagnostics: vec![],
+                variables: vec![],
+                total_scans: 0,
+                error: Some(format!("VM init trap: {}", ctx.trap)),
+            };
+        }
+    }
 
     SESSION.with(|cell| {
         *cell.borrow_mut() = Some(VmSession {
             container_bytes,
-            var_buf: vec![Slot::default(); num_vars],
-            total_scans: 0,
+            var_buf: bufs.vars,
+            scan_count: 0,
             faulted: false,
         });
     });
@@ -450,7 +615,7 @@ fn step_inner(scans: u32) -> StepResult {
                 ok: false,
                 diagnostics: vec![],
                 variables: vec![],
-                total_scans: session.total_scans,
+                total_scans: 0,
                 error: Some("Session is faulted. Call reset_session to start over.".to_string()),
             };
         }
@@ -462,17 +627,16 @@ fn step_inner(scans: u32) -> StepResult {
                     ok: false,
                     diagnostics: vec![],
                     variables: vec![],
-                    total_scans: session.total_scans,
+                    total_scans: 0,
                     error: Some(format!("Failed to load bytecode: {e}")),
                 };
             }
         };
 
-        let base_scans = session.total_scans;
-        let (variables, scans_done, error) =
-            run_vm_step(&container, &mut session.var_buf, base_scans, scans);
+        let (variables, total_scans, error) =
+            run_vm_step(&container, &mut session.var_buf, session.scan_count, scans);
 
-        session.total_scans += scans_done as u64;
+        session.scan_count = total_scans;
         if error.is_some() {
             session.faulted = true;
         }
@@ -481,7 +645,7 @@ fn step_inner(scans: u32) -> StepResult {
             ok: error.is_none(),
             diagnostics: vec![],
             variables,
-            total_scans: session.total_scans,
+            total_scans,
             error,
         }
     })
@@ -489,63 +653,55 @@ fn step_inner(scans: u32) -> StepResult {
 
 /// Run an ephemeral VM for N scans using the given container and variable buffer.
 ///
-/// Returns `(variables, scans_completed, error)`.
+/// Uses [`VmReady::resume`] to skip re-initialization so that variable values
+/// (including initial values) persist across calls. The VM's internal scan
+/// counter is the source of truth for total cycles executed.
+///
+/// Returns `(variables, total_scan_count, error)`.
 fn run_vm_step(
     container: &Container,
     var_buf: &mut [Slot],
-    base_scans: u64,
+    base_scan_count: u64,
     scans: u32,
-) -> (Vec<VariableInfo>, u32, Option<String>) {
-    let h = &container.header;
-    let mut stack_buf = vec![Slot::default(); h.max_stack_depth as usize];
-    let mut data_region_buf = vec![0u8; h.data_region_bytes as usize];
-    let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
-    let mut temp_buf = vec![0u8; temp_buf_total];
-    let task_count = container.task_table.tasks.len();
-    let program_count = container.task_table.programs.len();
-    let mut task_states = vec![TaskState::default(); task_count];
-    let mut program_instances = vec![ProgramInstanceState::default(); program_count];
-    let mut ready_buf = vec![0usize; task_count.max(1)];
+) -> (Vec<VariableInfo>, u64, Option<String>) {
+    let mut bufs = VmBuffers::from_container(container);
 
-    let mut running = match Vm::new()
+    let mut running = Vm::new()
         .load(
             container,
-            &mut stack_buf,
+            &mut bufs.stack,
             var_buf,
-            &mut data_region_buf,
-            &mut temp_buf,
-            &mut task_states,
-            &mut program_instances,
-            &mut ready_buf,
+            &mut bufs.data_region,
+            &mut bufs.temp_buf,
+            &mut bufs.tasks,
+            &mut bufs.programs,
+            &mut bufs.ready,
         )
-        .start()
-    {
-        Ok(r) => r,
-        Err(ctx) => {
-            let error = format!("VM init trap: {}", ctx.trap);
-            return (vec![], 0, Some(error));
-        }
-    };
+        .resume(base_scan_count);
 
-    for round in 0..scans {
-        let current_us = (base_scans + round as u64) * 1000;
+    for _ in 0..scans {
+        let current_us = running.scan_count() * 1000;
         if let Err(ctx) = running.run_round(current_us) {
+            let total_scans = running.scan_count();
             let faulted = running.fault(ctx);
-            let variables = read_all_variables_faulted(&faulted);
+            let debug_map = build_var_debug_map(container);
+            let variables = read_all_variables_faulted(&faulted, &debug_map);
             let error = format!(
                 "VM trap: {} (task {}, instance {})",
                 faulted.trap(),
                 faulted.task_id(),
                 faulted.instance_id()
             );
-            return (variables, round, Some(error));
+            return (variables, total_scans, Some(error));
         }
     }
 
+    let debug_map = build_var_debug_map(container);
     let num_vars = running.num_variables();
-    let variables = read_all_variables_running(&running, num_vars);
+    let variables = read_all_variables_running(&running, num_vars, &debug_map);
+    let total_scans = running.scan_count();
     running.stop();
-    (variables, scans, None)
+    (variables, total_scans, None)
 }
 
 /// Clear the stepping session.
@@ -606,7 +762,7 @@ END_PROGRAM
         assert!(result.ok);
         assert_eq!(result.scans_completed, 1);
         assert!(!result.variables.is_empty());
-        assert_eq!(result.variables[0].value, 42);
+        assert_eq!(result.variables[0].value, "42");
     }
 
     #[test]
@@ -642,8 +798,8 @@ END_PROGRAM
         assert!(result.error.is_none());
         assert_eq!(result.scans_completed, 1);
         assert!(result.variables.len() >= 2);
-        assert_eq!(result.variables[0].value, 10);
-        assert_eq!(result.variables[1].value, 42);
+        assert_eq!(result.variables[0].value, "10");
+        assert_eq!(result.variables[1].value, "42");
     }
 
     #[test]
@@ -668,7 +824,7 @@ END_PROGRAM
         let result: RunSourceResult = serde_json::from_str(&run_source(source, 5)).unwrap();
         assert!(result.ok);
         assert_eq!(result.scans_completed, 5);
-        assert_eq!(result.variables[0].value, 99);
+        assert_eq!(result.variables[0].value, "99");
     }
 
     #[test]
@@ -759,7 +915,7 @@ END_PROGRAM
         assert!(result.ok);
         assert_eq!(result.total_scans, 1);
         assert!(!result.variables.is_empty());
-        assert_eq!(result.variables[0].value, 42);
+        assert_eq!(result.variables[0].value, "42");
     }
 
     #[test]
@@ -777,11 +933,11 @@ END_PROGRAM
 
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r1.ok);
-        assert_eq!(r1.variables[0].value, 1);
+        assert_eq!(r1.variables[0].value, "1");
 
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r2.ok);
-        assert_eq!(r2.variables[0].value, 2);
+        assert_eq!(r2.variables[0].value, "2");
     }
 
     #[test]
@@ -938,7 +1094,7 @@ END_PROGRAM
 ";
         load_program(source_a);
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
-        assert_eq!(r1.variables[0].value, 10);
+        assert_eq!(r1.variables[0].value, "10");
 
         let source_b = "
 PROGRAM main
@@ -950,7 +1106,81 @@ END_PROGRAM
 ";
         load_program(source_b);
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
-        assert_eq!(r2.variables[0].value, 20);
+        assert_eq!(r2.variables[0].value, "20");
         assert_eq!(r2.total_scans, 1);
+    }
+
+    #[test]
+    fn step_when_variable_has_initial_value_then_persists_across_steps() {
+        reset_session();
+        let source = "
+PROGRAM main
+  VAR
+    exponentially : INT := 1;
+  END_VAR
+  exponentially := exponentially * 2;
+END_PROGRAM
+";
+        load_program(source);
+
+        let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert!(r1.ok);
+        assert_eq!(r1.total_scans, 1);
+        assert_eq!(r1.variables[0].value, "2"); // 1 * 2
+
+        let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert!(r2.ok);
+        assert_eq!(r2.total_scans, 2);
+        assert_eq!(r2.variables[0].value, "4"); // 2 * 2
+
+        let r3: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert!(r3.ok);
+        assert_eq!(r3.total_scans, 3);
+        assert_eq!(r3.variables[0].value, "8"); // 4 * 2
+    }
+
+    #[test]
+    fn run_source_when_bcd_to_int_with_literal_then_returns_value() {
+        let source = "
+PROGRAM main
+  VAR
+    int_val : USINT;
+  END_VAR
+  int_val := BCD_TO_INT(BYTE#16#42);
+END_PROGRAM
+";
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1)).unwrap();
+        assert!(result.ok, "Expected ok but got error: {:?}", result.error);
+        assert_eq!(result.variables[0].value, "42");
+    }
+
+    #[test]
+    fn run_source_when_int_to_bcd_with_literal_then_returns_value() {
+        let source = "
+PROGRAM main
+  VAR
+    bcd_val : BYTE;
+  END_VAR
+  bcd_val := INT_TO_BCD(USINT#42);
+END_PROGRAM
+";
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1)).unwrap();
+        assert!(result.ok, "Expected ok but got error: {:?}", result.error);
+        assert_eq!(result.variables[0].value, "16#42");
+    }
+
+    #[test]
+    fn compile_when_undeclared_variable_then_returns_diagnostic() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  x := undeclared_var;
+END_PROGRAM
+";
+        let result: CompileResult = serde_json::from_str(&compile(source)).unwrap();
+        assert!(!result.ok);
+        assert!(!result.diagnostics.is_empty());
     }
 }

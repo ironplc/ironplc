@@ -134,6 +134,27 @@ pub const BUILTIN: u8 = 0xC4;
 /// Return from the current function (void return).
 pub const RET_VOID: u8 = 0xB5;
 
+/// Discard the top value from the operand stack.
+pub const POP: u8 = 0xA0;
+
+// --- Function block opcodes ---
+
+/// Push FB instance reference from variable table.
+/// Operand: u16 variable index (little-endian).
+pub const FB_LOAD_INSTANCE: u8 = 0xC0;
+
+/// Store input parameter on FB instance; keeps fb_ref on stack.
+/// Operand: u8 field index.
+pub const FB_STORE_PARAM: u8 = 0xC1;
+
+/// Load output parameter from FB instance; keeps fb_ref on stack.
+/// Operand: u8 field index.
+pub const FB_LOAD_PARAM: u8 = 0xC2;
+
+/// Call function block (VM dispatches to intrinsic or bytecode body).
+/// Operand: u16 type_id (little-endian).
+pub const FB_CALL: u8 = 0xC3;
+
 // --- String opcodes ---
 
 /// Load a STRING literal from the constant pool into a temporary buffer.
@@ -153,6 +174,51 @@ pub const STR_LOAD_VAR: u8 = 0xE0;
 /// Copy temp buffer contents into STRING variable at data_offset.
 /// Operand: data_offset: u16. Pops buf_idx from stack.
 pub const STR_STORE_VAR: u8 = 0xE1;
+
+/// Read the current length of a STRING variable from the data region.
+/// Operand: data_offset: u16.
+/// Pushes the cur_length as an i32 onto the stack.
+pub const LEN_STR: u8 = 0xE2;
+
+/// Find the first occurrence of IN2 within IN1.
+/// Operands: in1_data_offset: u16, in2_data_offset: u16.
+/// Pushes the 1-based position as i32 (0 if not found).
+pub const FIND_STR: u8 = 0xE3;
+
+/// Replace L characters starting at position P in IN1 with IN2.
+/// Operands: in1_data_offset: u16, in2_data_offset: u16.
+/// Pops P (i32) then L (i32) from stack. Pushes buf_idx (i32).
+pub const REPLACE_STR: u8 = 0xE5;
+
+/// Insert IN2 into IN1 after position P.
+/// Operands: in1_data_offset: u16, in2_data_offset: u16.
+/// Pops P (i32) from stack. Pushes buf_idx (i32).
+pub const INSERT_STR: u8 = 0xE6;
+
+/// Delete L characters from IN1 starting at position P.
+/// Operand: in1_data_offset: u16.
+/// Pops P (i32) then L (i32) from stack. Pushes buf_idx (i32).
+pub const DELETE_STR: u8 = 0xE7;
+
+/// Return the leftmost L characters of IN.
+/// Operand: in_data_offset: u16.
+/// Pops L (i32) from stack. Pushes buf_idx (i32).
+pub const LEFT_STR: u8 = 0xE8;
+
+/// Return the rightmost L characters of IN.
+/// Operand: in_data_offset: u16.
+/// Pops L (i32) from stack. Pushes buf_idx (i32).
+pub const RIGHT_STR: u8 = 0xE9;
+
+/// Return L characters from IN starting at position P.
+/// Operand: in_data_offset: u16.
+/// Pops P (i32) then L (i32) from stack. Pushes buf_idx (i32).
+pub const MID_STR: u8 = 0xEA;
+
+/// Concatenate IN1 and IN2.
+/// Operands: in1_data_offset: u16, in2_data_offset: u16.
+/// Pushes buf_idx (i32).
+pub const CONCAT_STR: u8 = 0xEB;
 
 // --- Truncation opcodes ---
 
@@ -665,6 +731,40 @@ pub mod builtin {
     /// Zero-extend unsigned 32-bit integer to 64-bit integer.
     pub const CONV_U32_TO_I64: u16 = 0x0390;
 
+    // --- BCD conversion opcodes ---
+
+    /// BCD_TO_INT for 8-bit (BYTE → USINT): decode 2 BCD digits.
+    pub const BCD_TO_INT_8: u16 = 0x0391;
+
+    /// BCD_TO_INT for 16-bit (WORD → UINT): decode 4 BCD digits.
+    pub const BCD_TO_INT_16: u16 = 0x0392;
+
+    /// BCD_TO_INT for 32-bit (DWORD → UDINT): decode 8 BCD digits.
+    pub const BCD_TO_INT_32: u16 = 0x0393;
+
+    /// BCD_TO_INT for 64-bit (LWORD → ULINT): decode 16 BCD digits.
+    pub const BCD_TO_INT_64: u16 = 0x0394;
+
+    /// INT_TO_BCD for 8-bit (USINT → BYTE): encode 2 BCD digits.
+    pub const INT_TO_BCD_8: u16 = 0x0395;
+
+    /// INT_TO_BCD for 16-bit (UINT → WORD): encode 4 BCD digits.
+    pub const INT_TO_BCD_16: u16 = 0x0396;
+
+    /// INT_TO_BCD for 32-bit (UDINT → DWORD): encode 8 BCD digits.
+    pub const INT_TO_BCD_32: u16 = 0x0397;
+
+    /// INT_TO_BCD for 64-bit (ULINT → LWORD): encode 16 BCD digits.
+    pub const INT_TO_BCD_64: u16 = 0x0398;
+
+    // --- Integer to boolean conversion opcodes ---
+
+    /// Convert 32-bit integer to boolean: 0 → FALSE (0), non-zero → TRUE (1).
+    pub const CONV_I32_TO_BOOL: u16 = 0x0399;
+
+    /// Convert 64-bit integer to boolean: 0 → FALSE (0), non-zero → TRUE (1).
+    pub const CONV_I64_TO_BOOL: u16 = 0x039A;
+
     // =========================================================================
     // MUX (multiplexer) range-based opcodes
     //
@@ -724,7 +824,9 @@ pub mod builtin {
             | CONV_U32_TO_F32 | CONV_U32_TO_F64 | CONV_U64_TO_F32 | CONV_U64_TO_F64
             | CONV_F32_TO_I32 | CONV_F32_TO_I64 | CONV_F64_TO_I32 | CONV_F64_TO_I64
             | CONV_F32_TO_U32 | CONV_F32_TO_U64 | CONV_F64_TO_U32 | CONV_F64_TO_U64
-            | CONV_F32_TO_F64 | CONV_F64_TO_F32 | CONV_U32_TO_I64 => 1,
+            | CONV_F32_TO_F64 | CONV_F64_TO_F32 | CONV_U32_TO_I64 | BCD_TO_INT_8
+            | BCD_TO_INT_16 | BCD_TO_INT_32 | BCD_TO_INT_64 | INT_TO_BCD_8 | INT_TO_BCD_16
+            | INT_TO_BCD_32 | INT_TO_BCD_64 | CONV_I32_TO_BOOL | CONV_I64_TO_BOOL => 1,
             EXPT_I32 | EXPT_F32 | EXPT_F64 | EXPT_I64 | MIN_I32 | MIN_F32 | MIN_F64 | MIN_I64
             | MIN_U32 | MIN_U64 | MAX_I32 | MAX_F32 | MAX_F64 | MAX_I64 | MAX_U32 | MAX_U64
             | SHL_I32 | SHL_I64 | SHR_I32 | SHR_I64 | ROL_I32 | ROL_I64 | ROR_I32 | ROR_I64
@@ -738,4 +840,10 @@ pub mod builtin {
             _ => panic!("unknown builtin function ID: 0x{:04X}", func_id),
         }
     }
+}
+
+/// Well-known function block type IDs for intrinsic dispatch.
+pub mod fb_type {
+    /// TON (on-delay timer).
+    pub const TON: u16 = 0x0010;
 }

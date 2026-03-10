@@ -53,17 +53,17 @@ jobs:
     steps:
       # Checkout the repository/fetch input artifacts
       - name: Checkout tag ${{ inputs.commit-ref }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         if: ${{ inputs.commit-ref }}
         with:
           ref: ${{ inputs.commit-ref }}
       - name: Checkout HEAD
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         if: ${{ !inputs.commit-ref }}
 
       # Configure the execution environment
-      - uses: taiki-e/install-action@just
-      - uses: actions/setup-node@v4
+      - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           cache: npm
           cache-dependency-path: './integrations/vscode/package-lock.json'
@@ -84,14 +84,14 @@ jobs:
       # Save output artifacts
       - name: Upload VSIX to build artifact
         if: ${{ inputs.artifact-name }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ inputs.artifact-name }}
           path: integrations/vscode/ironplc-vscode-extension.vsix
           if-no-files-found: error
       - name: Upload VSIX to GibHub Release
         if: ${{ inputs.gh-release-tag }}
-        uses: svenstaro/upload-release-action@v2
+        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b # v2
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           tag: ${{ inputs.gh-release-tag }}

@@ -36,10 +36,13 @@
 
 use std::collections::HashMap;
 
+use ironplc_container::debug_section::{
+    function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry,
+};
 use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES};
 use ironplc_dsl::common::{
     Boolean, ConstantKind, FunctionBlockBodyKind, InitialValueAssignmentKind, Library,
-    LibraryElementKind, ProgramDeclaration, SignedInteger, VarDecl,
+    LibraryElementKind, ProgramDeclaration, SignedInteger, VarDecl, VariableType,
 };
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -197,6 +200,21 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
 
     builder = builder.init_function_id(0).entry_function_id(1);
 
+    // Add debug info.
+    let program_name = program.name.to_string();
+    builder = builder
+        .add_func_name(FuncNameEntry {
+            function_id: 0,
+            name: format!("{program_name}_init"),
+        })
+        .add_func_name(FuncNameEntry {
+            function_id: 1,
+            name: program_name,
+        });
+    for entry in ctx.debug_var_names {
+        builder = builder.add_var_name(entry);
+    }
+
     Ok(builder.build())
 }
 
@@ -219,6 +237,8 @@ struct CompileContext {
     max_string_capacity: u16,
     /// Number of temp buffers needed (one per string load in the init function).
     num_temp_bufs: u16,
+    /// Debug info: variable name entries collected during assign_variables.
+    debug_var_names: Vec<VarNameEntry>,
 }
 
 impl CompileContext {
@@ -232,6 +252,7 @@ impl CompileContext {
             data_region_offset: 0,
             max_string_capacity: 0,
             num_temp_bufs: 0,
+            debug_var_names: Vec::new(),
         }
     }
 
@@ -342,11 +363,15 @@ fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Resul
             let index = ctx.variables.len() as u16;
             ctx.variables.insert(id.clone(), index);
 
-            match &decl.initializer {
+            // Resolve type info and collect debug metadata.
+            let (type_tag, type_name_str) = match &decl.initializer {
                 InitialValueAssignmentKind::Simple(simple) => {
                     if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
                         ctx.var_types.insert(id.clone(), type_info);
                     }
+                    let tag = resolve_iec_type_tag(&simple.type_name.name);
+                    let name = simple.type_name.name.to_string().to_uppercase();
+                    (tag, name)
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = string_init
@@ -379,14 +404,61 @@ fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Resul
                             max_length,
                         },
                     );
+                    (iec_type_tag::STRING, "STRING".into())
                 }
                 // Other initializer kinds (EnumeratedType, FunctionBlock, Array, etc.)
                 // do not yet have type info tracked in codegen.
-                _ => {}
-            }
+                _ => (iec_type_tag::OTHER, String::new()),
+            };
+
+            ctx.debug_var_names.push(VarNameEntry {
+                var_index: index,
+                function_id: function_id::GLOBAL_SCOPE,
+                var_section: map_var_section(&decl.var_type),
+                iec_type_tag: type_tag,
+                name: id.to_string(),
+                type_name: type_name_str,
+            });
         }
     }
     Ok(())
+}
+
+/// Maps a DSL VariableType to the debug section var_section encoding.
+fn map_var_section(vt: &VariableType) -> u8 {
+    match vt {
+        VariableType::Var => var_section::VAR,
+        VariableType::VarTemp => var_section::VAR_TEMP,
+        VariableType::Input => var_section::VAR_INPUT,
+        VariableType::Output => var_section::VAR_OUTPUT,
+        VariableType::InOut => var_section::VAR_IN_OUT,
+        VariableType::External => var_section::VAR_EXTERNAL,
+        VariableType::Global => var_section::VAR_GLOBAL,
+        VariableType::Access => var_section::VAR,
+    }
+}
+
+/// Maps an IEC 61131-3 type name to its debug type tag.
+fn resolve_iec_type_tag(name: &Id) -> u8 {
+    match name.lower_case().as_str() {
+        "bool" => iec_type_tag::BOOL,
+        "sint" => iec_type_tag::SINT,
+        "int" => iec_type_tag::INT,
+        "dint" => iec_type_tag::DINT,
+        "lint" => iec_type_tag::LINT,
+        "usint" => iec_type_tag::USINT,
+        "uint" => iec_type_tag::UINT,
+        "udint" => iec_type_tag::UDINT,
+        "ulint" => iec_type_tag::ULINT,
+        "real" => iec_type_tag::REAL,
+        "lreal" => iec_type_tag::LREAL,
+        "byte" => iec_type_tag::BYTE,
+        "word" => iec_type_tag::WORD,
+        "dword" => iec_type_tag::DWORD,
+        "lword" => iec_type_tag::LWORD,
+        "time" => iec_type_tag::TIME,
+        _ => iec_type_tag::OTHER,
+    }
 }
 
 /// Emits bytecode to initialize variables that have declared initial values.
@@ -631,23 +703,35 @@ fn compile_statement(
     match stmt {
         StmtKind::Assignment(assignment) => {
             // Look up the target variable's type info.
-            let var_index = resolve_variable(ctx, &assignment.target)?;
             let target_name = resolve_variable_name(&assignment.target);
-            let type_info = target_name.and_then(|name| ctx.var_type_info(name));
-            let op_type = type_info
-                .map(|ti| (ti.op_width, ti.signedness))
-                .unwrap_or(DEFAULT_OP_TYPE);
 
-            // Compile the right-hand side expression at the target's operation width.
-            compile_expr(emitter, ctx, &assignment.value, op_type)?;
+            // Check if the target is a STRING variable (stored in data region).
+            let string_info =
+                target_name.and_then(|name| ctx.string_vars.get(name).map(|info| info.data_offset));
 
-            // Truncate if the storage width is narrower than the operation width.
-            if let Some(ti) = type_info {
-                emit_truncation(emitter, ti);
+            if let Some(data_offset) = string_info {
+                // String target: compile RHS (produces buf_idx), then STR_STORE_VAR.
+                let op_type = DEFAULT_OP_TYPE;
+                compile_expr(emitter, ctx, &assignment.value, op_type)?;
+                emitter.emit_str_store_var(data_offset);
+            } else {
+                let var_index = resolve_variable(ctx, &assignment.target)?;
+                let type_info = target_name.and_then(|name| ctx.var_type_info(name));
+                let op_type = type_info
+                    .map(|ti| (ti.op_width, ti.signedness))
+                    .unwrap_or(DEFAULT_OP_TYPE);
+
+                // Compile the right-hand side expression at the target's operation width.
+                compile_expr(emitter, ctx, &assignment.value, op_type)?;
+
+                // Truncate if the storage width is narrower than the operation width.
+                if let Some(ti) = type_info {
+                    emit_truncation(emitter, ti);
+                }
+
+                // Store into the target variable.
+                emit_store_var(emitter, var_index, op_type);
             }
-
-            // Store into the target variable.
-            emit_store_var(emitter, var_index, op_type);
             Ok(())
         }
         StmtKind::FbCall(fb_call) => {
@@ -1348,6 +1432,41 @@ fn compile_function_call(
             compile_shift_rotate(emitter, ctx, func, op_type, name.as_str())
         }
         "mux" => compile_mux(emitter, ctx, func, op_type),
+        // Arithmetic function forms (equivalent to +, -, *, /, MOD operators)
+        "add" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_add),
+        "sub" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_sub),
+        "mul" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_mul),
+        "div" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_div),
+        "mod" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_mod),
+        // Comparison function forms (equivalent to >, >=, =, <=, <, <> operators)
+        "gt" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_gt),
+        "ge" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_ge),
+        "eq" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_eq),
+        "le" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_le),
+        "lt" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_lt),
+        "ne" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_ne),
+        // Boolean function forms (equivalent to AND, OR, XOR, NOT operators)
+        "and" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_and),
+        "or" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_or),
+        "xor" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_xor),
+        "not" => compile_not_function(emitter, ctx, func, op_type),
+        // Assignment function (equivalent to := operator)
+        "move" => compile_move(emitter, ctx, func, op_type),
+        // Truncation function
+        "trunc" => compile_trunc(emitter, ctx, func, op_type),
+        // BCD conversion functions
+        "bcd_to_int" => compile_bcd_to_int(emitter, ctx, func, op_type),
+        "int_to_bcd" => compile_int_to_bcd(emitter, ctx, func, op_type),
+        // String functions
+        "len" => compile_len(emitter, ctx, func),
+        "find" => compile_find(emitter, ctx, func),
+        "replace" => compile_replace(emitter, ctx, func),
+        "insert" => compile_insert(emitter, ctx, func),
+        "delete" => compile_delete(emitter, ctx, func),
+        "left" => compile_left(emitter, ctx, func),
+        "right" => compile_right(emitter, ctx, func),
+        "mid" => compile_mid(emitter, ctx, func),
+        "concat" => compile_concat(emitter, ctx, func),
         _ => {
             if let Some((source, target)) = parse_type_conversion(name) {
                 compile_type_conversion(emitter, ctx, func, source, target)
@@ -1403,6 +1522,265 @@ fn compile_generic_builtin(
         compile_expr(emitter, ctx, arg, arg_op_type)?;
     }
 
+    emitter.emit_builtin(func_id);
+    Ok(())
+}
+
+/// Compiles a two-argument function form that maps to an existing operator.
+///
+/// Extracts the two positional arguments, compiles them with the given `op_type`,
+/// and calls the provided emit function. This is used for function forms like
+/// ADD(a, b) which are equivalent to the operator form a + b.
+fn compile_two_arg_operator(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+    emit_fn: fn(&mut Emitter, OpType),
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    compile_expr(emitter, ctx, args[0], op_type)?;
+    compile_expr(emitter, ctx, args[1], op_type)?;
+    emit_fn(emitter, op_type);
+    Ok(())
+}
+
+/// Compiles the NOT function form.
+///
+/// NOT(IN) is equivalent to the NOT operator. Takes a single BOOL argument.
+fn compile_not_function(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    compile_expr(emitter, ctx, args[0], op_type)?;
+    emitter.emit_bool_not();
+    Ok(())
+}
+
+/// Compiles the MOVE function form.
+///
+/// MOVE(IN) is equivalent to assignment. Takes a single argument and returns
+/// it unchanged. No opcode is needed since the value is already on the stack.
+fn compile_move(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    compile_expr(emitter, ctx, args[0], op_type)?;
+    // No additional opcode needed - the value is already on the stack
+
+    Ok(())
+}
+
+/// Compiles TRUNC(IN) — truncates a real value toward zero.
+///
+/// The argument is compiled using its own (float) op_type derived from the
+/// argument's resolved type. The result is converted to the target integer
+/// type using the existing conversion opcodes.
+fn compile_trunc(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    target_op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    // Determine the argument's float type from its resolved type.
+    let arg_op_type = op_type(args[0])?;
+    compile_expr(emitter, ctx, args[0], arg_op_type)?;
+
+    // Build VarTypeInfo for source (float) and target (integer) to reuse
+    // the existing conversion opcode emission.
+    let source = VarTypeInfo {
+        op_width: arg_op_type.0,
+        signedness: arg_op_type.1,
+        storage_bits: match arg_op_type.0 {
+            OpWidth::F32 => 32,
+            OpWidth::F64 => 64,
+            _ => 32,
+        },
+    };
+    let target = VarTypeInfo {
+        op_width: target_op_type.0,
+        signedness: target_op_type.1,
+        storage_bits: match target_op_type.0 {
+            OpWidth::W32 => 32,
+            OpWidth::W64 => 64,
+            _ => 32,
+        },
+    };
+    emit_conversion_opcode(emitter, &source, &target);
+
+    Ok(())
+}
+
+/// Compiles BCD_TO_INT(IN) — converts a BCD-encoded bit string to an integer.
+///
+/// The argument is compiled using its own (bit-string) op_type. The BCD
+/// decoding opcode is selected based on the argument's storage bit width.
+fn compile_bcd_to_int(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    _target_op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let arg_op_type = op_type(args[0])?;
+    let bits = storage_bits(args[0])?;
+    compile_expr(emitter, ctx, args[0], arg_op_type)?;
+
+    let func_id = match bits {
+        8 => opcode::builtin::BCD_TO_INT_8,
+        16 => opcode::builtin::BCD_TO_INT_16,
+        32 => opcode::builtin::BCD_TO_INT_32,
+        64 => opcode::builtin::BCD_TO_INT_64,
+        _ => {
+            return Err(Diagnostic::todo_with_span(
+                func.name.span(),
+                file!(),
+                line!(),
+            ))
+        }
+    };
+    emitter.emit_builtin(func_id);
+    Ok(())
+}
+
+/// Compiles INT_TO_BCD(IN) — converts an integer to a BCD-encoded bit string.
+///
+/// The argument is compiled using its own (integer) op_type. The BCD
+/// encoding opcode is selected based on the target's operation width.
+fn compile_int_to_bcd(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    target_op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let arg_op_type = op_type(args[0])?;
+    let bits = storage_bits(args[0])?;
+    compile_expr(emitter, ctx, args[0], arg_op_type)?;
+
+    let func_id = match (arg_op_type.0, bits) {
+        (OpWidth::W32, 8) => opcode::builtin::INT_TO_BCD_8,
+        (OpWidth::W32, 16) => opcode::builtin::INT_TO_BCD_16,
+        (OpWidth::W32, 32) => opcode::builtin::INT_TO_BCD_32,
+        (OpWidth::W64, 64) => opcode::builtin::INT_TO_BCD_64,
+        _ => {
+            // For wider target than source, select based on target width
+            match target_op_type.0 {
+                OpWidth::W32 => opcode::builtin::INT_TO_BCD_32,
+                OpWidth::W64 => opcode::builtin::INT_TO_BCD_64,
+                _ => {
+                    return Err(Diagnostic::todo_with_span(
+                        func.name.span(),
+                        file!(),
+                        line!(),
+                    ))
+                }
+            }
+        }
+    };
     emitter.emit_builtin(func_id);
     Ok(())
 }
@@ -1468,6 +1846,375 @@ fn compile_mux(
     Ok(())
 }
 
+/// Compiles the LEN standard function call.
+///
+/// LEN takes a single STRING variable argument and returns its current length
+/// as an i32. Instead of going through the BUILTIN dispatch, LEN uses the
+/// dedicated `LEN_STR` opcode which reads `cur_length` directly from the
+/// string's data region header.
+fn compile_len(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    // The argument must be a string variable so we can look up its data_offset.
+    let var_name = match &args[0].kind {
+        ExprKind::Variable(variable) => resolve_variable_name(variable),
+        _ => None,
+    };
+
+    let name =
+        var_name.ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
+
+    let info = ctx
+        .string_vars
+        .get(name)
+        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
+
+    emitter.emit_len_str(info.data_offset);
+    Ok(())
+}
+
+/// Resolves a string argument to its data_offset in the data region.
+///
+/// Handles both variable references (looked up in `string_vars`) and
+/// string literals (allocated inline in the data region with initialization
+/// code emitted at the point of use).
+fn resolve_string_arg(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    arg: &Expr,
+    func_span: &ironplc_dsl::core::SourceSpan,
+) -> Result<u16, Diagnostic> {
+    match &arg.kind {
+        ExprKind::Variable(variable) => {
+            let var_name = resolve_variable_name(variable)
+                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
+            let info = ctx
+                .string_vars
+                .get(var_name)
+                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
+            Ok(info.data_offset)
+        }
+        ExprKind::Const(ConstantKind::CharacterString(lit)) => {
+            // Allocate space in the data region for this string literal.
+            let bytes: Vec<u8> = lit.value.iter().map(|&ch| ch as u8).collect();
+            let max_length = DEFAULT_STRING_MAX_LENGTH;
+            let data_offset = ctx.data_region_offset;
+            let total_bytes = STRING_HEADER_BYTES as u16 + max_length;
+            ctx.data_region_offset = ctx
+                .data_region_offset
+                .checked_add(total_bytes)
+                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
+
+            if max_length > ctx.max_string_capacity {
+                ctx.max_string_capacity = max_length;
+            }
+
+            // Emit initialization: header + value.
+            emitter.emit_str_init(data_offset, max_length);
+
+            let pool_index = ctx.add_str_constant(bytes);
+            ctx.num_temp_bufs += 1;
+            emitter.emit_load_const_str(pool_index);
+            emitter.emit_str_store_var(data_offset);
+
+            Ok(data_offset)
+        }
+        _ => Err(Diagnostic::todo_with_span(
+            func_span.clone(),
+            file!(),
+            line!(),
+        )),
+    }
+}
+
+/// Collects positional input arguments from a function call.
+fn collect_positional_args(func: &Function) -> Vec<&Expr> {
+    func.param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Compiles the FIND standard function call.
+///
+/// FIND(IN1, IN2) returns the 1-based position of the first occurrence
+/// of IN2 within IN1, or 0 if not found. Both arguments must be STRING
+/// variables.
+fn compile_find(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
+
+    emitter.emit_find_str(in1_offset, in2_offset);
+    Ok(())
+}
+
+/// Compiles the REPLACE standard function call.
+///
+/// REPLACE(IN1, IN2, L, P) deletes L characters from IN1 starting at
+/// position P (1-based), inserts IN2 in their place, and returns the
+/// result as a new string. IN1 and IN2 must be STRING variables; L and P
+/// are integer expressions compiled onto the stack.
+fn compile_replace(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 4 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
+
+    // Compile L and P integer expressions onto the stack.
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[2], op_type)?;
+    compile_expr(emitter, ctx, args[3], op_type)?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_replace_str(in1_offset, in2_offset);
+    Ok(())
+}
+
+/// Compiles the INSERT standard function call.
+///
+/// INSERT(IN1, IN2, P) inserts string IN2 into IN1 after position P
+/// (1-based) and returns the result as a new string. IN1 and IN2 must
+/// be STRING variables; P is an integer expression compiled onto the stack.
+fn compile_insert(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 3 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
+
+    // Compile P integer expression onto the stack.
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[2], op_type)?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_insert_str(in1_offset, in2_offset);
+    Ok(())
+}
+
+/// Compiles the DELETE standard function call.
+///
+/// DELETE(IN1, L, P) deletes L characters from IN1 starting at position
+/// P (1-based) and returns the result as a new string. IN1 must be a
+/// STRING variable; L and P are integer expressions compiled onto the stack.
+fn compile_delete(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 3 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+
+    // Compile L and P integer expressions onto the stack.
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[1], op_type)?;
+    compile_expr(emitter, ctx, args[2], op_type)?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_delete_str(in1_offset);
+    Ok(())
+}
+
+/// Compiles the LEFT standard function call.
+///
+/// LEFT(IN, L) returns the leftmost L characters of IN. IN must be a
+/// STRING variable; L is an integer expression compiled onto the stack.
+fn compile_left(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+
+    // Compile L integer expression onto the stack.
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[1], op_type)?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_left_str(in_offset);
+    Ok(())
+}
+
+/// Compiles the RIGHT standard function call.
+///
+/// RIGHT(IN, L) returns the rightmost L characters of IN. IN must be a
+/// STRING variable; L is an integer expression compiled onto the stack.
+fn compile_right(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+
+    // Compile L integer expression onto the stack.
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[1], op_type)?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_right_str(in_offset);
+    Ok(())
+}
+
+/// Compiles the MID standard function call.
+///
+/// MID(IN, L, P) returns L characters from IN starting at position P
+/// (1-based). IN must be a STRING variable; L and P are integer
+/// expressions compiled onto the stack.
+fn compile_mid(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 3 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+
+    // Compile L and P integer expressions onto the stack.
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[1], op_type)?;
+    compile_expr(emitter, ctx, args[2], op_type)?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_mid_str(in_offset);
+    Ok(())
+}
+
+/// Compiles the CONCAT standard function call.
+///
+/// CONCAT(IN1, IN2) concatenates IN1 and IN2. Both arguments must be
+/// STRING variables.
+fn compile_concat(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
+
+    // Account for the temp buffer needed for the result.
+    ctx.num_temp_bufs += 1;
+
+    emitter.emit_concat_str(in1_offset, in2_offset);
+    Ok(())
+}
+
 /// Compiles a type conversion function call (e.g., INT_TO_REAL).
 ///
 /// Unlike generic builtins, conversion functions have different source and
@@ -1501,8 +2248,26 @@ fn compile_type_conversion(
     }
 
     compile_expr(emitter, ctx, args[0], source_op_type)?;
-    emit_conversion_opcode(emitter, &source, &target);
-    emit_truncation(emitter, target);
+
+    // Integer-to-boolean needs a dedicated opcode (non-zero → 1, zero → 0)
+    // rather than the generic conversion + truncation path, because
+    // truncation would only keep the lowest bit instead of testing for zero.
+    if target.storage_bits == 1 {
+        match source.op_width {
+            OpWidth::W32 => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_BOOL),
+            OpWidth::W64 => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_BOOL),
+            _ => {
+                return Err(Diagnostic::todo_with_span(
+                    func.name.span(),
+                    file!(),
+                    line!(),
+                ));
+            }
+        }
+    } else {
+        emit_conversion_opcode(emitter, &source, &target);
+        emit_truncation(emitter, target);
+    }
 
     Ok(())
 }

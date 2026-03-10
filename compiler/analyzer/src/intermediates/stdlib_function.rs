@@ -171,6 +171,17 @@ fn get_bool_to_int_conversions() -> Vec<FunctionSignature> {
         .collect()
 }
 
+/// Generates integer-to-BOOL conversion functions.
+///
+/// Creates functions like SINT_TO_BOOL, INT_TO_BOOL, DINT_TO_BOOL, etc.
+/// 0 converts to FALSE, any non-zero value converts to TRUE.
+fn get_int_to_bool_conversions() -> Vec<FunctionSignature> {
+    ALL_INT_TYPES
+        .iter()
+        .map(|source| build_conversion_function(source, "BOOL"))
+        .collect()
+}
+
 // =============================================================================
 // Numeric Function Definitions (IEC 61131-3 Section 2.5.1.5.2)
 // =============================================================================
@@ -285,6 +296,123 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
 }
 
 // =============================================================================
+// Arithmetic Function Definitions (IEC 61131-3 Section 2.5.1.5.2)
+// =============================================================================
+
+/// Returns standard arithmetic function definitions.
+///
+/// These are the functional equivalents of the arithmetic operators:
+/// ADD (+), SUB (-), MUL (*), DIV (/), MOD (MOD).
+/// Each takes two inputs and returns a result of the same type.
+fn get_arithmetic_functions() -> Vec<FunctionSignature> {
+    vec![
+        FunctionSignature::stdlib(
+            "ADD",
+            TypeName::from("ANY_NUM"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "SUB",
+            TypeName::from("ANY_NUM"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "MUL",
+            TypeName::from("ANY_NUM"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "DIV",
+            TypeName::from("ANY_NUM"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "MOD",
+            TypeName::from("ANY_NUM"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+    ]
+}
+
+// =============================================================================
+// Comparison Function Definitions (IEC 61131-3 Section 2.5.1.5.3)
+// =============================================================================
+
+/// Returns standard comparison function definitions.
+///
+/// These are the functional equivalents of the comparison operators:
+/// GT (>), GE (>=), EQ (=), LE (<=), LT (<), NE (<>).
+/// Each takes two inputs and returns BOOL.
+fn get_comparison_functions() -> Vec<FunctionSignature> {
+    vec![
+        FunctionSignature::stdlib(
+            "GT",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "GE",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "EQ",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "LE",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "LT",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "NE",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
+    ]
+}
+
+// =============================================================================
+// Boolean Function Definitions (IEC 61131-3 Section 2.5.1.5.1)
+// =============================================================================
+
+/// Returns standard boolean function definitions.
+///
+/// These are the functional equivalents of the boolean operators:
+/// AND, OR, XOR (two inputs), NOT (one input).
+/// All take BOOL inputs and return BOOL.
+fn get_boolean_functions() -> Vec<FunctionSignature> {
+    vec![
+        FunctionSignature::stdlib(
+            "AND",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "BOOL"), input_param("IN2", "BOOL")],
+        ),
+        FunctionSignature::stdlib(
+            "OR",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "BOOL"), input_param("IN2", "BOOL")],
+        ),
+        FunctionSignature::stdlib(
+            "XOR",
+            TypeName::from("BOOL"),
+            vec![input_param("IN1", "BOOL"), input_param("IN2", "BOOL")],
+        ),
+        FunctionSignature::stdlib(
+            "NOT",
+            TypeName::from("BOOL"),
+            vec![input_param("IN", "BOOL")],
+        ),
+    ]
+}
+
+// =============================================================================
 // Selection Function Definitions (IEC 61131-3 Section 2.5.1.5.4)
 // =============================================================================
 
@@ -309,6 +437,65 @@ fn get_selection_functions() -> Vec<FunctionSignature> {
                 input_param("IN1", "ANY_NUM"),
             ],
             17,
+        ),
+    ]
+}
+
+// =============================================================================
+// Assignment Function (IEC 61131-3 Section 2.5.1.5.4)
+// =============================================================================
+
+/// Returns the MOVE standard function definition.
+///
+/// MOVE copies the input value to the output, equivalent to assignment.
+/// IEC 61131-3 defines MOVE as operating on ANY type, but since the codegen
+/// currently supports numeric types we use ANY_NUM here.
+fn get_assignment_functions() -> Vec<FunctionSignature> {
+    vec![
+        // MOVE: assignment (ANY_NUM -> ANY_NUM)
+        FunctionSignature::stdlib(
+            "MOVE",
+            TypeName::from("ANY_NUM"),
+            vec![input_param("IN", "ANY_NUM")],
+        ),
+    ]
+}
+
+// =============================================================================
+// Truncation Function (IEC 61131-3 Section 2.5.1.5.2)
+// =============================================================================
+
+/// Returns the TRUNC function definition.
+///
+/// TRUNC truncates a real value toward zero, removing the fractional part.
+/// It takes ANY_REAL and returns ANY_INT.
+fn get_trunc_function() -> Vec<FunctionSignature> {
+    vec![FunctionSignature::stdlib(
+        "TRUNC",
+        TypeName::from("ANY_INT"),
+        vec![input_param("IN", "ANY_REAL")],
+    )]
+}
+
+// =============================================================================
+// BCD Conversion Functions (IEC 61131-3 Section 2.5.1.5)
+// =============================================================================
+
+/// Returns BCD conversion function definitions.
+///
+/// BCD_TO_INT converts a BCD-encoded bit string to an integer.
+/// INT_TO_BCD converts an integer to a BCD-encoded bit string.
+fn get_bcd_functions() -> Vec<FunctionSignature> {
+    vec![
+        FunctionSignature::stdlib(
+            "BCD_TO_INT",
+            TypeName::from("ANY_INT"),
+            vec![input_param("IN", "ANY_BIT")],
+        ),
+        FunctionSignature::stdlib(
+            "INT_TO_BCD",
+            TypeName::from("ANY_BIT"),
+            vec![input_param("IN", "ANY_INT")],
         ),
     ]
 }
@@ -347,6 +534,98 @@ fn get_bitshift_functions() -> Vec<FunctionSignature> {
     ]
 }
 
+/// Returns standard string function definitions.
+///
+/// IEC 61131-3 defines string functions operating on ANY_STRING types.
+fn get_string_functions() -> Vec<FunctionSignature> {
+    vec![
+        // LEN: current length of a string (ANY_STRING -> INT)
+        FunctionSignature::stdlib(
+            "LEN",
+            TypeName::from("INT"),
+            vec![input_param("IN", "ANY_STRING")],
+        ),
+        // FIND: find first occurrence of IN2 within IN1 (ANY_STRING, ANY_STRING -> INT)
+        FunctionSignature::stdlib(
+            "FIND",
+            TypeName::from("INT"),
+            vec![
+                input_param("IN1", "ANY_STRING"),
+                input_param("IN2", "ANY_STRING"),
+            ],
+        ),
+        // REPLACE: replace L chars at position P in IN1 with IN2
+        // (ANY_STRING, ANY_STRING, ANY_INT, ANY_INT -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "REPLACE",
+            TypeName::from("ANY_STRING"),
+            vec![
+                input_param("IN1", "ANY_STRING"),
+                input_param("IN2", "ANY_STRING"),
+                input_param("L", "ANY_INT"),
+                input_param("P", "ANY_INT"),
+            ],
+        ),
+        // INSERT: insert IN2 into IN1 after position P
+        // (ANY_STRING, ANY_STRING, ANY_INT -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "INSERT",
+            TypeName::from("ANY_STRING"),
+            vec![
+                input_param("IN1", "ANY_STRING"),
+                input_param("IN2", "ANY_STRING"),
+                input_param("P", "ANY_INT"),
+            ],
+        ),
+        // DELETE: delete L chars from IN1 starting at position P
+        // (ANY_STRING, ANY_INT, ANY_INT -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "DELETE",
+            TypeName::from("ANY_STRING"),
+            vec![
+                input_param("IN1", "ANY_STRING"),
+                input_param("L", "ANY_INT"),
+                input_param("P", "ANY_INT"),
+            ],
+        ),
+        // LEFT: return leftmost L characters of IN
+        // (ANY_STRING, ANY_INT -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "LEFT",
+            TypeName::from("ANY_STRING"),
+            vec![input_param("IN", "ANY_STRING"), input_param("L", "ANY_INT")],
+        ),
+        // RIGHT: return rightmost L characters of IN
+        // (ANY_STRING, ANY_INT -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "RIGHT",
+            TypeName::from("ANY_STRING"),
+            vec![input_param("IN", "ANY_STRING"), input_param("L", "ANY_INT")],
+        ),
+        // MID: return L characters from IN starting at position P
+        // (ANY_STRING, ANY_INT, ANY_INT -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "MID",
+            TypeName::from("ANY_STRING"),
+            vec![
+                input_param("IN", "ANY_STRING"),
+                input_param("L", "ANY_INT"),
+                input_param("P", "ANY_INT"),
+            ],
+        ),
+        // CONCAT: concatenate IN1 and IN2
+        // (ANY_STRING, ANY_STRING -> ANY_STRING)
+        FunctionSignature::stdlib(
+            "CONCAT",
+            TypeName::from("ANY_STRING"),
+            vec![
+                input_param("IN1", "ANY_STRING"),
+                input_param("IN2", "ANY_STRING"),
+            ],
+        ),
+    ]
+}
+
 // =============================================================================
 // Public API
 // =============================================================================
@@ -364,15 +643,37 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     functions.extend(get_real_to_int_conversions());
     functions.extend(get_real_to_real_conversions());
     functions.extend(get_bool_to_int_conversions());
+    functions.extend(get_int_to_bool_conversions());
 
     // Numeric functions
     functions.extend(get_numeric_functions());
 
+    // Arithmetic functions (functional forms of +, -, *, /, MOD)
+    functions.extend(get_arithmetic_functions());
+
+    // Comparison functions (functional forms of >, >=, =, <=, <, <>)
+    functions.extend(get_comparison_functions());
+
+    // Boolean functions (functional forms of AND, OR, XOR, NOT)
+    functions.extend(get_boolean_functions());
+
+    // Truncation function
+    functions.extend(get_trunc_function());
+
+    // BCD conversion functions
+    functions.extend(get_bcd_functions());
+
     // Selection functions
     functions.extend(get_selection_functions());
 
+    // Assignment function (MOVE)
+    functions.extend(get_assignment_functions());
+
     // Bit shift and rotate functions
     functions.extend(get_bitshift_functions());
+
+    // String functions
+    functions.extend(get_string_functions());
 
     functions
 }
@@ -390,11 +691,19 @@ mod tests {
         // Real-to-int: 2 reals × 4 signed + 2 reals × 4 unsigned = 8 + 8 = 16
         // Real-to-real: 2 × 1 = 2
         // Bool-to-int: 8 (BOOL to SINT/INT/DINT/LINT/USINT/UINT/UDINT/ULINT)
+        // Int-to-bool: 8 (SINT/INT/DINT/LINT/USINT/UINT/UDINT/ULINT to BOOL)
         // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT, SEL, LN, LOG, EXP, SIN, COS, TAN, ASIN, ACOS, ATAN = 15
+        // Truncation function: TRUNC = 1
+        // BCD conversion functions: BCD_TO_INT, INT_TO_BCD = 2
+        // Arithmetic functions: ADD, SUB, MUL, DIV, MOD = 5
+        // Comparison functions: GT, GE, EQ, LE, LT, NE = 6
+        // Boolean functions: AND, OR, XOR, NOT = 4
         // Selection functions: MUX = 1
+        // Assignment function: MOVE = 1
         // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
-        // Total: 56 + 16 + 16 + 2 + 8 + 15 + 1 + 4 = 118
-        assert_eq!(functions.len(), 118);
+        // String functions: LEN, FIND, REPLACE, INSERT, DELETE, LEFT, RIGHT, MID, CONCAT = 9
+        // Total: 56 + 16 + 16 + 2 + 8 + 8 + 15 + 1 + 2 + 5 + 6 + 4 + 1 + 1 + 4 + 9 = 154
+        assert_eq!(functions.len(), 154);
     }
 
     #[test]
@@ -653,6 +962,63 @@ mod tests {
         assert_eq!(bool_to_int.parameters[0].param_type, TypeName::from("BOOL"));
         assert_eq!(bool_to_int.return_type, Some(TypeName::from("INT")));
         assert!(bool_to_int.is_stdlib());
+    }
+
+    #[test]
+    fn get_int_to_bool_conversions_when_called_then_contains_all_sources() {
+        let functions = get_int_to_bool_conversions();
+
+        assert_eq!(functions.len(), 8);
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "SINT_TO_BOOL"));
+        assert!(functions.iter().any(|f| f.name.original() == "INT_TO_BOOL"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "DINT_TO_BOOL"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "LINT_TO_BOOL"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "USINT_TO_BOOL"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "UINT_TO_BOOL"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "UDINT_TO_BOOL"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "ULINT_TO_BOOL"));
+    }
+
+    #[test]
+    fn get_int_to_bool_conversions_when_called_then_has_correct_signature() {
+        let functions = get_int_to_bool_conversions();
+        let int_to_bool = functions
+            .iter()
+            .find(|f| f.name.original() == "INT_TO_BOOL")
+            .unwrap();
+
+        assert_eq!(int_to_bool.input_parameter_count(), 1);
+        assert_eq!(int_to_bool.parameters[0].name.original(), "IN");
+        assert_eq!(int_to_bool.parameters[0].param_type, TypeName::from("INT"));
+        assert_eq!(int_to_bool.return_type, Some(TypeName::from("BOOL")));
+        assert!(int_to_bool.is_stdlib());
+    }
+
+    #[test]
+    fn get_assignment_functions_when_move_then_has_one_input() {
+        let functions = get_assignment_functions();
+        let move_fn = functions
+            .iter()
+            .find(|f| f.name.original() == "MOVE")
+            .unwrap();
+
+        assert_eq!(move_fn.input_parameter_count(), 1);
+        assert_eq!(move_fn.parameters[0].name.original(), "IN");
+        assert!(move_fn.is_stdlib());
     }
 
     #[test]

@@ -27,6 +27,16 @@ Literals
    DINT#-100000
    DINT#16#FFFF
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: count : DINT; batch_size : DINT; total : DINT;
+
+   count := DINT#250;
+   batch_size := DINT#1000;
+   total := count * batch_size;  (* total = 250000 *)
+
 See Also
 --------
 
