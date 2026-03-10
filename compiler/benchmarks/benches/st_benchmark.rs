@@ -5,7 +5,7 @@
 //! complement the hand-crafted bytecode benchmarks in `ironplc-vm` by
 //! exercising realistic code paths.
 //!
-//! Run with: `cargo bench --package ironplc-codegen`
+//! Run with: `cargo bench --package ironplc-benchmarks`
 
 mod bench_helpers;
 

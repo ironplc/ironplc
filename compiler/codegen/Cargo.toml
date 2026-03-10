@@ -16,9 +16,4 @@ ironplc-problems = { path = "../problems", version = "0.169.0" }
 ironplc-analyzer = { path = "../analyzer", version = "0.169.0" }
 ironplc-parser = { path = "../parser", version = "0.169.0" }
 ironplc-vm = { path = "../vm", version = "0.169.0", features = ["test-support"] }
-criterion = { version = "0.5", features = ["html_reports"] }
 proptest = "1"
-
-[[bench]]
-name = "st_benchmark"
-harness = false
