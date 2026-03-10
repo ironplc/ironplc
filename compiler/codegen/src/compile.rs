@@ -47,7 +47,7 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    CaseSelectionKind, CompareOp, Expr, ExprKind, Function, Operator, ParamAssignmentKind,
+    CaseSelectionKind, CompareOp, Expr, ExprKind, FbCall, Function, Operator, ParamAssignmentKind,
     Statements, StmtKind, SymbolicVariableKind, UnaryOp, Variable,
 };
 use ironplc_problems::Problem;
@@ -219,6 +219,18 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
 }
 
 /// Tracks state during compilation of a single program.
+/// Metadata for a function block instance variable.
+struct FbInstanceInfo {
+    /// Variable table index holding the data region offset.
+    var_index: u16,
+    /// Type ID for FB_CALL dispatch.
+    type_id: u16,
+    /// Data region byte offset where this instance's fields start.
+    data_offset: u16,
+    /// Maps field name (lowercase) to field index.
+    field_indices: HashMap<String, u8>,
+}
+
 struct CompileContext {
     /// Maps variable identifiers to their variable table indices.
     variables: HashMap<Id, u16>,
@@ -231,6 +243,8 @@ struct CompileContext {
     loop_exit_labels: Vec<crate::emit::Label>,
     /// Maps STRING variable identifiers to their data region metadata.
     string_vars: HashMap<Id, StringVarInfo>,
+    /// Maps FB instance variable identifiers to their metadata.
+    fb_instances: HashMap<Id, FbInstanceInfo>,
     /// Next available byte offset in the data region.
     data_region_offset: u16,
     /// Maximum string capacity across all STRING variables (for temp buffer sizing).
@@ -249,6 +263,7 @@ impl CompileContext {
             constants: Vec::new(),
             loop_exit_labels: Vec::new(),
             string_vars: HashMap::new(),
+            fb_instances: HashMap::new(),
             data_region_offset: 0,
             max_string_capacity: 0,
             num_temp_bufs: 0,
@@ -406,7 +421,34 @@ fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Resul
                     );
                     (iec_type_tag::STRING, "STRING".into())
                 }
-                // Other initializer kinds (EnumeratedType, FunctionBlock, Array, etc.)
+                InitialValueAssignmentKind::FunctionBlock(fb_init) => {
+                    let fb_name = fb_init.type_name.to_string().to_uppercase();
+                    if let Some((type_id, num_fields, field_map)) = resolve_fb_type(&fb_name) {
+                        let instance_size = num_fields as u16 * 8;
+                        let data_offset = ctx.data_region_offset;
+                        ctx.data_region_offset = ctx
+                            .data_region_offset
+                            .checked_add(instance_size)
+                            .ok_or_else(|| {
+                                Diagnostic::problem(
+                                    Problem::NotImplemented,
+                                    Label::span(decl.identifier.span(), "Data region overflow"),
+                                )
+                            })?;
+
+                        ctx.fb_instances.insert(
+                            id.clone(),
+                            FbInstanceInfo {
+                                var_index: index,
+                                type_id,
+                                data_offset,
+                                field_indices: field_map,
+                            },
+                        );
+                    }
+                    (iec_type_tag::OTHER, fb_name)
+                }
+                // Other initializer kinds (EnumeratedType, Array, etc.)
                 // do not yet have type info tracked in codegen.
                 _ => (iec_type_tag::OTHER, String::new()),
             };
@@ -512,7 +554,17 @@ fn emit_initial_values(
                         }
                     }
                 }
-                // Other initializer kinds (EnumeratedType, FunctionBlock, Array, etc.)
+                InitialValueAssignmentKind::FunctionBlock(_) => {
+                    if let Some(fb_info) = ctx.fb_instances.get(id) {
+                        let data_offset = fb_info.data_offset;
+                        let var_index = fb_info.var_index;
+                        // Store the data region byte offset into the variable slot.
+                        let offset_const = ctx.add_i32_constant(data_offset as i32);
+                        emitter.emit_load_const_i32(offset_const);
+                        emitter.emit_store_var_i32(var_index);
+                    }
+                }
+                // Other initializer kinds (EnumeratedType, Array, etc.)
                 // do not yet support initial values in codegen.
                 _ => {}
             }
@@ -601,6 +653,28 @@ fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
             signedness: Signedness::Unsigned,
             storage_bits: 64,
         }),
+        "time" => Some(VarTypeInfo {
+            op_width: OpWidth::W64,
+            signedness: Signedness::Signed,
+            storage_bits: 64,
+        }),
+        _ => None,
+    }
+}
+
+/// Resolves a standard FB type name to its (type_id, total_num_fields, field_name->index map).
+/// Returns None for unknown FB types.
+fn resolve_fb_type(name: &str) -> Option<(u16, usize, HashMap<String, u8>)> {
+    match name {
+        "TON" => {
+            let mut fields = HashMap::new();
+            fields.insert("in".to_string(), 0);
+            fields.insert("pt".to_string(), 1);
+            fields.insert("q".to_string(), 2);
+            fields.insert("et".to_string(), 3);
+            // Fields 4-5 are hidden (start_time, running)
+            Some((opcode::fb_type::TON, 6, fields))
+        }
         _ => None,
     }
 }
@@ -734,9 +808,7 @@ fn compile_statement(
             }
             Ok(())
         }
-        StmtKind::FbCall(fb_call) => {
-            Err(Diagnostic::todo_with_span(fb_call.span(), file!(), line!()))
-        }
+        StmtKind::FbCall(fb_call) => compile_fb_call(emitter, ctx, fb_call),
         StmtKind::If(if_stmt) => compile_if(emitter, ctx, if_stmt),
         StmtKind::Case(case_stmt) => compile_case(emitter, ctx, case_stmt),
         StmtKind::For(for_stmt) => compile_for(emitter, ctx, for_stmt),
@@ -759,6 +831,67 @@ fn compile_statement(
             emitter.emit_jmp(label);
             Ok(())
         }
+    }
+}
+
+/// Compiles a function block invocation: stores inputs, calls FB, reads outputs.
+fn compile_fb_call(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    fb_call: &FbCall,
+) -> Result<(), Diagnostic> {
+    let fb_info = ctx
+        .fb_instances
+        .get(&fb_call.var_name)
+        .ok_or_else(|| Diagnostic::todo_with_span(fb_call.span(), file!(), line!()))?;
+    let type_id = fb_info.type_id;
+    let field_indices = fb_info.field_indices.clone();
+    let var_index = fb_info.var_index;
+
+    // Push FB instance reference.
+    emitter.emit_fb_load_instance(var_index);
+
+    // Store input parameters.
+    for param in &fb_call.params {
+        if let ParamAssignmentKind::NamedInput(input) = param {
+            let field_name = input.name.to_string().to_lowercase();
+            let field_idx = field_indices
+                .get(&field_name)
+                .ok_or_else(|| Diagnostic::todo_with_span(input.name.span(), file!(), line!()))?;
+            let op_type = fb_field_op_type(&field_name);
+            compile_expr(emitter, ctx, &input.expr, op_type)?;
+            emitter.emit_fb_store_param(*field_idx);
+        }
+    }
+
+    // Call the function block.
+    emitter.emit_fb_call(type_id);
+
+    // Read output parameters.
+    for param in &fb_call.params {
+        if let ParamAssignmentKind::Output(output) = param {
+            let field_name = output.src.to_string().to_lowercase();
+            let field_idx = field_indices
+                .get(&field_name)
+                .ok_or_else(|| Diagnostic::todo_with_span(output.src.span(), file!(), line!()))?;
+            emitter.emit_fb_load_param(*field_idx);
+            let target_index = resolve_variable(ctx, &output.tgt)?;
+            let op_type = fb_field_op_type(&field_name);
+            emit_store_var(emitter, target_index, op_type);
+        }
+    }
+
+    // Discard fb_ref.
+    emitter.emit_pop();
+    Ok(())
+}
+
+/// Returns the op_type for a standard FB field by name.
+fn fb_field_op_type(field_name: &str) -> OpType {
+    match field_name {
+        "in" | "q" => (OpWidth::W32, Signedness::Signed),
+        "pt" | "et" => (OpWidth::W64, Signedness::Signed),
+        _ => DEFAULT_OP_TYPE,
     }
 }
 
@@ -2538,7 +2671,12 @@ fn compile_constant(
             Ok(())
         }
         ConstantKind::CharacterString(_) => Err(Diagnostic::todo(file!(), line!())),
-        ConstantKind::Duration(_) => Err(Diagnostic::todo(file!(), line!())),
+        ConstantKind::Duration(lit) => {
+            let microseconds = lit.interval.whole_microseconds() as i64;
+            let pool_index = ctx.add_i64_constant(microseconds);
+            emitter.emit_load_const_i64(pool_index);
+            Ok(())
+        }
         ConstantKind::TimeOfDay(_) => Err(Diagnostic::todo(file!(), line!())),
         ConstantKind::Date(_) => Err(Diagnostic::todo(file!(), line!())),
         ConstantKind::DateAndTime(_) => Err(Diagnostic::todo(file!(), line!())),
