@@ -6,13 +6,14 @@ This steering file defines the core development standards and patterns for the I
 
 ## Project Structure
 
-IronPLC consists of three primary components that must be kept in sync:
+IronPLC consists of four primary components:
 
 1. **Compiler** (`compiler/`) - The core Rust compiler with multiple crates
 2. **VS Code Extension** (`integrations/vscode/`) - Language server and IDE integration
 3. **Documentation Website** (`docs/`) - Sphinx-based documentation
+4. **Interactive Playground** (`playground/` frontend, `compiler/playground/` WASM crate) - Browser-based IEC 61131-3 editor and runner at playground.ironplc.com, embedded in documentation pages via custom Sphinx directives
 
-**Critical**: The build will fail if these components get out of sync. Always ensure version numbers, problem codes, and language features are synchronized across all three components.
+**Critical**: The build will fail if the compiler, VS Code extension, and documentation website get out of sync. Always ensure version numbers, problem codes, and language features are synchronized across those three components.
 
 ## Specs Directory Structure
 
@@ -187,6 +188,39 @@ All Sphinx documentation must use the correct RST roles for consistent rendering
 **Menu paths** use ` --> ` as separator: `:menuselection:\`File --> Preferences --> Settings\``
 
 **Platform-specific keyboard shortcuts** use separate `:kbd:` roles: `:kbd:\`Ctrl+Shift+X\`` for Windows/Linux, `:kbd:\`⌘+Shift+X\`` for macOS.
+
+### Interactive Examples in Documentation
+
+Documentation pages that include IEC 61131-3 code examples **should** use interactive playground directives instead of static `.. code-block::` when the example is a valid, compilable program or snippet. This lets readers edit and run the code directly in the browser.
+
+Two Sphinx directives are available (defined in `docs/extensions/ironplc_playground.py`):
+
+| Directive | Use when |
+|-----------|----------|
+| `.. playground::` | The example is a complete program (includes `PROGRAM`/`END_PROGRAM`) |
+| `.. playground-with-program::` | The example is a code snippet that should be auto-wrapped in a `PROGRAM` scaffold |
+
+**`playground-with-program` options:**
+- `:vars:` — semicolon-separated variable declarations (e.g., `:vars: result : DINT; value : REAL;`)
+- `:height:` — custom iframe height (auto-calculated by default)
+
+**Example** (from a standard library function page):
+```rst
+.. playground-with-program::
+   :vars: result : DINT;
+
+   result := ABS(-42);    (* result = 42 *)
+```
+
+**When NOT to use playground directives:**
+- Problem code documentation (`docs/compiler/problems/`) — these show invalid code that would fail compilation
+- Partial syntax fragments that are not runnable
+
+**Source of truth for the playground:**
+- Frontend: `playground/` (HTML/JS/CSS single-page app)
+- WASM compiler crate: `compiler/playground/` (Rust compiled to WebAssembly via wasm-pack)
+- Sphinx extension: `docs/extensions/ironplc_playground.py` (directive implementation)
+- Build system: `playground/justfile`
 
 ### Documentation Content Guidelines
 
