@@ -1,81 +1,11 @@
-//! Integration tests for the SUB_I32 opcode.
+//! VM-specific edge case tests for the SUB_I32 opcode.
+//!
+//! Basic subtraction correctness is covered by end_to_end_sub.rs.
+//! These tests cover overflow wrapping and trap behavior.
 
 mod common;
 
-use common::{assert_trap, single_function_container, VmBuffers};
 use ironplc_vm::error::Trap;
-
-#[test]
-fn execute_when_sub_i32_basic_then_correct() {
-    #[rustfmt::skip]
-    let bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (10)
-        0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (3)
-        0x31,              // SUB_I32
-        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
-    ];
-    let c = single_function_container(&bytecode, 1, &[10, 3]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-    vm.run_round(0).unwrap();
-
-    assert_eq!(vm.read_variable(0).unwrap(), 7);
-}
-
-#[test]
-fn execute_when_sub_i32_result_negative_then_correct() {
-    #[rustfmt::skip]
-    let bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (3)
-        0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (10)
-        0x31,              // SUB_I32
-        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
-    ];
-    let c = single_function_container(&bytecode, 1, &[3, 10]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-    vm.run_round(0).unwrap();
-
-    assert_eq!(vm.read_variable(0).unwrap(), -7);
-}
-
-#[test]
-fn execute_when_sub_i32_both_zero_then_zero() {
-    #[rustfmt::skip]
-    let bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (0)
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (0)
-        0x31,              // SUB_I32
-        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
-    ];
-    let c = single_function_container(&bytecode, 1, &[0]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-    vm.run_round(0).unwrap();
-
-    assert_eq!(vm.read_variable(0).unwrap(), 0);
-}
-
-#[test]
-fn execute_when_sub_i32_same_value_then_zero() {
-    #[rustfmt::skip]
-    let bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (42)
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (42)
-        0x31,              // SUB_I32
-        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
-    ];
-    let c = single_function_container(&bytecode, 1, &[42]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-    vm.run_round(0).unwrap();
-
-    assert_eq!(vm.read_variable(0).unwrap(), 0);
-}
 
 // Overflow: i32::MIN - 1 wraps to i32::MAX
 #[test]
@@ -88,12 +18,10 @@ fn execute_when_sub_i32_wraps_at_min_then_correct() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[i32::MIN, 1]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-    vm.run_round(0).unwrap();
-
-    assert_eq!(vm.read_variable(0).unwrap(), i32::MAX);
+    assert_eq!(
+        common::run_and_read_i32(&bytecode, 1, &[i32::MIN, 1]),
+        i32::MAX
+    );
 }
 
 // Overflow: i32::MAX - (-1) wraps to i32::MIN
@@ -107,12 +35,10 @@ fn execute_when_sub_i32_wraps_at_max_then_correct() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[i32::MAX, -1]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-    vm.run_round(0).unwrap();
-
-    assert_eq!(vm.read_variable(0).unwrap(), i32::MIN);
+    assert_eq!(
+        common::run_and_read_i32(&bytecode, 1, &[i32::MAX, -1]),
+        i32::MIN
+    );
 }
 
 // Overflow: i32::MIN - i32::MAX wraps to 1
@@ -126,13 +52,10 @@ fn execute_when_sub_i32_min_minus_max_then_wraps_to_one() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[i32::MIN, i32::MAX]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-    vm.run_round(0).unwrap();
-
-    // i32::MIN - i32::MAX = -2147483648 - 2147483647 = wraps to 1
-    assert_eq!(vm.read_variable(0).unwrap(), 1);
+    assert_eq!(
+        common::run_and_read_i32(&bytecode, 1, &[i32::MIN, i32::MAX]),
+        1
+    );
 }
 
 // Overflow: i32::MAX - i32::MIN wraps to -1
@@ -146,13 +69,10 @@ fn execute_when_sub_i32_max_minus_min_then_wraps_to_neg_one() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[i32::MAX, i32::MIN]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-    vm.run_round(0).unwrap();
-
-    // i32::MAX - i32::MIN = 2147483647 - (-2147483648) = wraps to -1
-    assert_eq!(vm.read_variable(0).unwrap(), -1);
+    assert_eq!(
+        common::run_and_read_i32(&bytecode, 1, &[i32::MAX, i32::MIN]),
+        -1
+    );
 }
 
 // Edge: 0 - i32::MIN wraps to i32::MIN (since -i32::MIN overflows)
@@ -166,41 +86,16 @@ fn execute_when_sub_i32_zero_minus_min_then_wraps() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[0, i32::MIN]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-    vm.run_round(0).unwrap();
-
-    // 0 - i32::MIN = 0 - (-2147483648) = wraps to i32::MIN
-    assert_eq!(vm.read_variable(0).unwrap(), i32::MIN);
-}
-
-// Subtraction with negative operands
-#[test]
-fn execute_when_sub_i32_negative_operands_then_correct() {
-    #[rustfmt::skip]
-    let bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (-10)
-        0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (-3)
-        0x31,              // SUB_I32
-        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
-    ];
-    let c = single_function_container(&bytecode, 1, &[-10, -3]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-    vm.run_round(0).unwrap();
-
-    // -10 - (-3) = -7
-    assert_eq!(vm.read_variable(0).unwrap(), -7);
+    assert_eq!(
+        common::run_and_read_i32(&bytecode, 1, &[0, i32::MIN]),
+        i32::MIN
+    );
 }
 
 #[test]
 fn execute_when_sub_i32_stack_underflow_then_trap() {
-    // SUB_I32 tries to pop 2 values from an empty stack
-    let c = single_function_container(&[0x31], 0, &[]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    assert_trap(&mut vm, Trap::StackUnderflow);
+    assert_eq!(
+        common::run_and_expect_trap_i32(&[0x31], 0, &[]),
+        Trap::StackUnderflow
+    );
 }

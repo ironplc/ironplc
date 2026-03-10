@@ -16,6 +16,10 @@
   --success: #6bff9b;
 }
 
+html {
+  height: 100%;
+}
+
 body {
   font-family: system-ui, -apple-system, sans-serif;
   background: var(--bg);
@@ -243,6 +247,18 @@ a.diagnostic-code:hover {
 
 table.var-table tr.changed td {
   background: rgba(107, 255, 155, 0.15);
+}
+
+.raw-bytes-note {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-style: italic;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: rgba(255, 200, 50, 0.08);
+  border: 1px solid rgba(255, 200, 50, 0.2);
+  border-radius: 4px;
 }
 
 .drop-overlay {

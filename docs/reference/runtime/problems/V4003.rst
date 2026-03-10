@@ -29,7 +29,7 @@ the task to exceed the watchdog time limit.
 To fix this error, check loop termination conditions and ensure the loop variable
 is updated:
 
-.. code-block::
+.. playground::
 
    PROGRAM Main
    VAR

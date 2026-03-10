@@ -125,6 +125,9 @@ impl<'a> VmReady<'a> {
     /// variable initial values. Returns `Err(FaultContext)` if an init
     /// function traps. On success, returns a running VM ready for scan
     /// cycles.
+    ///
+    /// Use [`resume`](VmReady::resume) instead when variable buffers
+    /// already contain initialized values.
     pub fn start(mut self) -> Result<VmRunning<'a>, FaultContext> {
         let shared_globals_size = self.container.task_table.shared_globals_size;
 
@@ -185,10 +188,40 @@ impl<'a> VmReady<'a> {
         })
     }
 
+    /// Resumes execution without running init functions.
+    ///
+    /// Use this when variable buffers already contain initialized values
+    /// (e.g., from a previous session). The `initial_scan_count` sets the
+    /// starting scan counter so cycle tracking continues from where it
+    /// left off.
+    pub fn resume(self, initial_scan_count: u64) -> VmRunning<'a> {
+        let shared_globals_size = self.container.task_table.shared_globals_size;
+        VmRunning {
+            container: self.container,
+            stack: self.stack,
+            variables: self.variables,
+            data_region: self.data_region,
+            temp_buf: self.temp_buf,
+            max_temp_buf_bytes: self.max_temp_buf_bytes,
+            task_states: self.task_states,
+            program_instances: self.program_instances,
+            ready_buf: self.ready_buf,
+            shared_globals_size,
+            scan_count: initial_scan_count,
+            stop_requested: false,
+        }
+    }
+
     /// Reads a variable value as an i32.
     pub fn read_variable(&self, index: u16) -> Result<i32, Trap> {
         let slot = self.variables.load(index)?;
         Ok(slot.as_i32())
+    }
+
+    /// Reads a variable's raw 64-bit slot value.
+    pub fn read_variable_raw(&self, index: u16) -> Result<u64, Trap> {
+        let slot = self.variables.load(index)?;
+        Ok(slot.as_u64())
     }
 }
 
@@ -307,6 +340,12 @@ impl<'a> VmRunning<'a> {
         Ok(slot.as_i32())
     }
 
+    /// Reads a variable's raw 64-bit slot value.
+    pub fn read_variable_raw(&self, index: u16) -> Result<u64, Trap> {
+        let slot = self.variables.load(index)?;
+        Ok(slot.as_u64())
+    }
+
     /// Returns the number of variable slots in the loaded container.
     pub fn num_variables(&self) -> u16 {
         self.variables.len()
@@ -359,6 +398,12 @@ impl<'a> VmStopped<'a> {
         Ok(slot.as_i32())
     }
 
+    /// Reads a variable's raw 64-bit slot value.
+    pub fn read_variable_raw(&self, index: u16) -> Result<u64, Trap> {
+        let slot = self.variables.load(index)?;
+        Ok(slot.as_u64())
+    }
+
     /// Returns the number of variable slots.
     pub fn num_variables(&self) -> u16 {
         self.variables.len()
@@ -400,10 +445,66 @@ impl<'a> VmFaulted<'a> {
         Ok(slot.as_i32())
     }
 
+    /// Reads a variable's raw 64-bit slot value.
+    pub fn read_variable_raw(&self, index: u16) -> Result<u64, Trap> {
+        let slot = self.variables.load(index)?;
+        Ok(slot.as_u64())
+    }
+
     /// Returns the number of variable slots.
     pub fn num_variables(&self) -> u16 {
         self.variables.len()
     }
+}
+
+/// Binary operation: pop b then a, compute result, push.
+macro_rules! binop {
+    ($stack:expr, $as_ty:ident, $from_ty:ident, $a:ident, $b:ident, $result:expr) => {{
+        let $b = $stack.pop()?.$as_ty();
+        let $a = $stack.pop()?.$as_ty();
+        $stack.push(Slot::$from_ty($result))?;
+    }};
+}
+
+/// Comparison: pop b then a, compare, push i32 boolean.
+macro_rules! cmpop {
+    ($stack:expr, $as_ty:ident, $a:ident, $b:ident, $cond:expr) => {{
+        let $b = $stack.pop()?.$as_ty();
+        let $a = $stack.pop()?.$as_ty();
+        $stack.push(Slot::from_i32(if $cond { 1 } else { 0 }))?;
+    }};
+}
+
+/// Unary operation: pop one, compute, push.
+macro_rules! unaryop {
+    ($stack:expr, $as_ty:ident, $from_ty:ident, $a:ident, $result:expr) => {{
+        let $a = $stack.pop()?.$as_ty();
+        $stack.push(Slot::$from_ty($result))?;
+    }};
+}
+
+/// Checked division: pop b then a, check b != zero, compute, push.
+macro_rules! checked_divop {
+    ($stack:expr, $as_ty:ident, $from_ty:ident, $zero:expr, $a:ident, $b:ident, $result:expr) => {{
+        let $b = $stack.pop()?.$as_ty();
+        let $a = $stack.pop()?.$as_ty();
+        if $b == $zero {
+            return Err(Trap::DivideByZero);
+        }
+        $stack.push(Slot::$from_ty($result))?;
+    }};
+}
+
+/// Load constant from pool: read index, look up, push.
+macro_rules! load_const {
+    ($bytecode:expr, $pc:expr, $container:expr, $stack:expr, $get:ident, $from:ident) => {{
+        let index = read_u16_le($bytecode, &mut $pc);
+        let value = $container
+            .constant_pool
+            .$get(index)
+            .map_err(|_| Trap::InvalidConstantIndex(index))?;
+        $stack.push(Slot::$from(value))?;
+    }};
 }
 
 /// Executes bytecode until RET_VOID or a trap.
@@ -430,13 +531,18 @@ fn execute(
         pc += 1;
 
         match op {
+            // --- Load constants ---
             opcode::LOAD_CONST_I32 => {
-                let index = read_u16_le(bytecode, &mut pc);
-                let value = container
-                    .constant_pool
-                    .get_i32(index)
-                    .map_err(|_| Trap::InvalidConstantIndex(index))?;
-                stack.push(Slot::from_i32(value))?;
+                load_const!(bytecode, pc, container, stack, get_i32, from_i32)
+            }
+            opcode::LOAD_CONST_I64 => {
+                load_const!(bytecode, pc, container, stack, get_i64, from_i64)
+            }
+            opcode::LOAD_CONST_F32 => {
+                load_const!(bytecode, pc, container, stack, get_f32, from_f32)
+            }
+            opcode::LOAD_CONST_F64 => {
+                load_const!(bytecode, pc, container, stack, get_f64, from_f64)
             }
             opcode::LOAD_TRUE => {
                 stack.push(Slot::from_i32(1))?;
@@ -444,473 +550,152 @@ fn execute(
             opcode::LOAD_FALSE => {
                 stack.push(Slot::from_i32(0))?;
             }
-            opcode::LOAD_VAR_I32 => {
+            // --- Load/store variables (type-erased slots) ---
+            opcode::LOAD_VAR_I32
+            | opcode::LOAD_VAR_I64
+            | opcode::LOAD_VAR_F32
+            | opcode::LOAD_VAR_F64 => {
                 let index = read_u16_le(bytecode, &mut pc);
                 scope.check_access(index)?;
                 let slot = variables.load(index)?;
                 stack.push(slot)?;
             }
-            opcode::STORE_VAR_I32 => {
+            opcode::STORE_VAR_I32
+            | opcode::STORE_VAR_I64
+            | opcode::STORE_VAR_F32
+            | opcode::STORE_VAR_F64 => {
                 let index = read_u16_le(bytecode, &mut pc);
                 scope.check_access(index)?;
                 let slot = stack.pop()?;
                 variables.store(index, slot)?;
             }
-            opcode::ADD_I32 => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(a.wrapping_add(b)))?;
-            }
-            opcode::SUB_I32 => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(a.wrapping_sub(b)))?;
-            }
-            opcode::MUL_I32 => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(a.wrapping_mul(b)))?;
-            }
+            // --- Integer arithmetic (wrapping) ---
+            opcode::ADD_I32 => binop!(stack, as_i32, from_i32, a, b, a.wrapping_add(b)),
+            opcode::SUB_I32 => binop!(stack, as_i32, from_i32, a, b, a.wrapping_sub(b)),
+            opcode::MUL_I32 => binop!(stack, as_i32, from_i32, a, b, a.wrapping_mul(b)),
+            opcode::ADD_I64 => binop!(stack, as_i64, from_i64, a, b, a.wrapping_add(b)),
+            opcode::SUB_I64 => binop!(stack, as_i64, from_i64, a, b, a.wrapping_sub(b)),
+            opcode::MUL_I64 => binop!(stack, as_i64, from_i64, a, b, a.wrapping_mul(b)),
+            // --- Integer division (checked for zero) ---
             opcode::DIV_I32 => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                if b == 0 {
-                    return Err(Trap::DivideByZero);
-                }
-                stack.push(Slot::from_i32(a.wrapping_div(b)))?;
+                checked_divop!(stack, as_i32, from_i32, 0i32, a, b, a.wrapping_div(b))
             }
             opcode::MOD_I32 => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                if b == 0 {
-                    return Err(Trap::DivideByZero);
-                }
-                stack.push(Slot::from_i32(a.wrapping_rem(b)))?;
-            }
-            opcode::NEG_I32 => {
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(a.wrapping_neg()))?;
-            }
-            // --- Truncation opcodes ---
-            opcode::TRUNC_I8 => {
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32((a as i8) as i32))?;
-            }
-            opcode::TRUNC_U8 => {
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32((a as u8) as i32))?;
-            }
-            opcode::TRUNC_I16 => {
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32((a as i16) as i32))?;
-            }
-            opcode::TRUNC_U16 => {
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32((a as u16) as i32))?;
-            }
-            // --- 64-bit load/store ---
-            opcode::LOAD_CONST_I64 => {
-                let index = read_u16_le(bytecode, &mut pc);
-                let value = container
-                    .constant_pool
-                    .get_i64(index)
-                    .map_err(|_| Trap::InvalidConstantIndex(index))?;
-                stack.push(Slot::from_i64(value))?;
-            }
-            opcode::LOAD_VAR_I64 => {
-                let index = read_u16_le(bytecode, &mut pc);
-                scope.check_access(index)?;
-                let slot = variables.load(index)?;
-                stack.push(slot)?;
-            }
-            opcode::STORE_VAR_I64 => {
-                let index = read_u16_le(bytecode, &mut pc);
-                scope.check_access(index)?;
-                let slot = stack.pop()?;
-                variables.store(index, slot)?;
-            }
-            // --- 64-bit arithmetic ---
-            opcode::ADD_I64 => {
-                let b = stack.pop()?.as_i64();
-                let a = stack.pop()?.as_i64();
-                stack.push(Slot::from_i64(a.wrapping_add(b)))?;
-            }
-            opcode::SUB_I64 => {
-                let b = stack.pop()?.as_i64();
-                let a = stack.pop()?.as_i64();
-                stack.push(Slot::from_i64(a.wrapping_sub(b)))?;
-            }
-            opcode::MUL_I64 => {
-                let b = stack.pop()?.as_i64();
-                let a = stack.pop()?.as_i64();
-                stack.push(Slot::from_i64(a.wrapping_mul(b)))?;
+                checked_divop!(stack, as_i32, from_i32, 0i32, a, b, a.wrapping_rem(b))
             }
             opcode::DIV_I64 => {
-                let b = stack.pop()?.as_i64();
-                let a = stack.pop()?.as_i64();
-                if b == 0 {
-                    return Err(Trap::DivideByZero);
-                }
-                stack.push(Slot::from_i64(a.wrapping_div(b)))?;
+                checked_divop!(stack, as_i64, from_i64, 0i64, a, b, a.wrapping_div(b))
             }
             opcode::MOD_I64 => {
-                let b = stack.pop()?.as_i64();
-                let a = stack.pop()?.as_i64();
-                if b == 0 {
-                    return Err(Trap::DivideByZero);
-                }
-                stack.push(Slot::from_i64(a.wrapping_rem(b)))?;
+                checked_divop!(stack, as_i64, from_i64, 0i64, a, b, a.wrapping_rem(b))
             }
-            opcode::NEG_I64 => {
-                let a = stack.pop()?.as_i64();
-                stack.push(Slot::from_i64(a.wrapping_neg()))?;
-            }
-            // --- Float load/store ---
-            opcode::LOAD_CONST_F32 => {
-                let index = read_u16_le(bytecode, &mut pc);
-                let value = container
-                    .constant_pool
-                    .get_f32(index)
-                    .map_err(|_| Trap::InvalidConstantIndex(index))?;
-                stack.push(Slot::from_f32(value))?;
-            }
-            opcode::LOAD_CONST_F64 => {
-                let index = read_u16_le(bytecode, &mut pc);
-                let value = container
-                    .constant_pool
-                    .get_f64(index)
-                    .map_err(|_| Trap::InvalidConstantIndex(index))?;
-                stack.push(Slot::from_f64(value))?;
-            }
-            opcode::LOAD_VAR_F32 => {
-                let index = read_u16_le(bytecode, &mut pc);
-                scope.check_access(index)?;
-                let slot = variables.load(index)?;
-                stack.push(slot)?;
-            }
-            opcode::LOAD_VAR_F64 => {
-                let index = read_u16_le(bytecode, &mut pc);
-                scope.check_access(index)?;
-                let slot = variables.load(index)?;
-                stack.push(slot)?;
-            }
-            opcode::STORE_VAR_F32 => {
-                let index = read_u16_le(bytecode, &mut pc);
-                scope.check_access(index)?;
-                let slot = stack.pop()?;
-                variables.store(index, slot)?;
-            }
-            opcode::STORE_VAR_F64 => {
-                let index = read_u16_le(bytecode, &mut pc);
-                scope.check_access(index)?;
-                let slot = stack.pop()?;
-                variables.store(index, slot)?;
-            }
+            // --- Unsigned integer division (checked for zero) ---
+            opcode::DIV_U32 => checked_divop!(
+                stack,
+                as_i32,
+                from_i32,
+                0i32,
+                a,
+                b,
+                ((a as u32) / (b as u32)) as i32
+            ),
+            opcode::MOD_U32 => checked_divop!(
+                stack,
+                as_i32,
+                from_i32,
+                0i32,
+                a,
+                b,
+                ((a as u32) % (b as u32)) as i32
+            ),
+            opcode::DIV_U64 => checked_divop!(
+                stack,
+                as_i64,
+                from_i64,
+                0i64,
+                a,
+                b,
+                ((a as u64) / (b as u64)) as i64
+            ),
+            opcode::MOD_U64 => checked_divop!(
+                stack,
+                as_i64,
+                from_i64,
+                0i64,
+                a,
+                b,
+                ((a as u64) % (b as u64)) as i64
+            ),
             // --- Float arithmetic ---
-            opcode::ADD_F32 => {
-                let b = stack.pop()?.as_f32();
-                let a = stack.pop()?.as_f32();
-                stack.push(Slot::from_f32(a + b))?;
-            }
-            opcode::SUB_F32 => {
-                let b = stack.pop()?.as_f32();
-                let a = stack.pop()?.as_f32();
-                stack.push(Slot::from_f32(a - b))?;
-            }
-            opcode::MUL_F32 => {
-                let b = stack.pop()?.as_f32();
-                let a = stack.pop()?.as_f32();
-                stack.push(Slot::from_f32(a * b))?;
-            }
-            opcode::DIV_F32 => {
-                let b = stack.pop()?.as_f32();
-                let a = stack.pop()?.as_f32();
-                stack.push(Slot::from_f32(a / b))?;
-            }
-            opcode::NEG_F32 => {
-                let a = stack.pop()?.as_f32();
-                stack.push(Slot::from_f32(-a))?;
-            }
-            opcode::ADD_F64 => {
-                let b = stack.pop()?.as_f64();
-                let a = stack.pop()?.as_f64();
-                stack.push(Slot::from_f64(a + b))?;
-            }
-            opcode::SUB_F64 => {
-                let b = stack.pop()?.as_f64();
-                let a = stack.pop()?.as_f64();
-                stack.push(Slot::from_f64(a - b))?;
-            }
-            opcode::MUL_F64 => {
-                let b = stack.pop()?.as_f64();
-                let a = stack.pop()?.as_f64();
-                stack.push(Slot::from_f64(a * b))?;
-            }
-            opcode::DIV_F64 => {
-                let b = stack.pop()?.as_f64();
-                let a = stack.pop()?.as_f64();
-                stack.push(Slot::from_f64(a / b))?;
-            }
-            opcode::NEG_F64 => {
-                let a = stack.pop()?.as_f64();
-                stack.push(Slot::from_f64(-a))?;
-            }
+            opcode::ADD_F32 => binop!(stack, as_f32, from_f32, a, b, a + b),
+            opcode::SUB_F32 => binop!(stack, as_f32, from_f32, a, b, a - b),
+            opcode::MUL_F32 => binop!(stack, as_f32, from_f32, a, b, a * b),
+            opcode::DIV_F32 => binop!(stack, as_f32, from_f32, a, b, a / b),
+            opcode::ADD_F64 => binop!(stack, as_f64, from_f64, a, b, a + b),
+            opcode::SUB_F64 => binop!(stack, as_f64, from_f64, a, b, a - b),
+            opcode::MUL_F64 => binop!(stack, as_f64, from_f64, a, b, a * b),
+            opcode::DIV_F64 => binop!(stack, as_f64, from_f64, a, b, a / b),
+            // --- Negation ---
+            opcode::NEG_I32 => unaryop!(stack, as_i32, from_i32, a, a.wrapping_neg()),
+            opcode::NEG_I64 => unaryop!(stack, as_i64, from_i64, a, a.wrapping_neg()),
+            opcode::NEG_F32 => unaryop!(stack, as_f32, from_f32, a, -a),
+            opcode::NEG_F64 => unaryop!(stack, as_f64, from_f64, a, -a),
+            // --- Truncation ---
+            opcode::TRUNC_I8 => unaryop!(stack, as_i32, from_i32, a, (a as i8) as i32),
+            opcode::TRUNC_U8 => unaryop!(stack, as_i32, from_i32, a, (a as u8) as i32),
+            opcode::TRUNC_I16 => unaryop!(stack, as_i32, from_i32, a, (a as i16) as i32),
+            opcode::TRUNC_U16 => unaryop!(stack, as_i32, from_i32, a, (a as u16) as i32),
+            // --- Signed comparison ---
+            opcode::EQ_I32 => cmpop!(stack, as_i32, a, b, a == b),
+            opcode::NE_I32 => cmpop!(stack, as_i32, a, b, a != b),
+            opcode::LT_I32 => cmpop!(stack, as_i32, a, b, a < b),
+            opcode::LE_I32 => cmpop!(stack, as_i32, a, b, a <= b),
+            opcode::GT_I32 => cmpop!(stack, as_i32, a, b, a > b),
+            opcode::GE_I32 => cmpop!(stack, as_i32, a, b, a >= b),
+            opcode::EQ_I64 => cmpop!(stack, as_i64, a, b, a == b),
+            opcode::NE_I64 => cmpop!(stack, as_i64, a, b, a != b),
+            opcode::LT_I64 => cmpop!(stack, as_i64, a, b, a < b),
+            opcode::LE_I64 => cmpop!(stack, as_i64, a, b, a <= b),
+            opcode::GT_I64 => cmpop!(stack, as_i64, a, b, a > b),
+            opcode::GE_I64 => cmpop!(stack, as_i64, a, b, a >= b),
+            // --- Unsigned comparison ---
+            opcode::LT_U32 => cmpop!(stack, as_i32, a, b, (a as u32) < (b as u32)),
+            opcode::LE_U32 => cmpop!(stack, as_i32, a, b, (a as u32) <= (b as u32)),
+            opcode::GT_U32 => cmpop!(stack, as_i32, a, b, (a as u32) > (b as u32)),
+            opcode::GE_U32 => cmpop!(stack, as_i32, a, b, (a as u32) >= (b as u32)),
+            opcode::LT_U64 => cmpop!(stack, as_i64, a, b, (a as u64) < (b as u64)),
+            opcode::LE_U64 => cmpop!(stack, as_i64, a, b, (a as u64) <= (b as u64)),
+            opcode::GT_U64 => cmpop!(stack, as_i64, a, b, (a as u64) > (b as u64)),
+            opcode::GE_U64 => cmpop!(stack, as_i64, a, b, (a as u64) >= (b as u64)),
             // --- Float comparison ---
-            opcode::EQ_F32 => {
-                let b = stack.pop()?.as_f32();
-                let a = stack.pop()?.as_f32();
-                stack.push(Slot::from_i32(if a == b { 1 } else { 0 }))?;
-            }
-            opcode::NE_F32 => {
-                let b = stack.pop()?.as_f32();
-                let a = stack.pop()?.as_f32();
-                stack.push(Slot::from_i32(if a != b { 1 } else { 0 }))?;
-            }
-            opcode::LT_F32 => {
-                let b = stack.pop()?.as_f32();
-                let a = stack.pop()?.as_f32();
-                stack.push(Slot::from_i32(if a < b { 1 } else { 0 }))?;
-            }
-            opcode::LE_F32 => {
-                let b = stack.pop()?.as_f32();
-                let a = stack.pop()?.as_f32();
-                stack.push(Slot::from_i32(if a <= b { 1 } else { 0 }))?;
-            }
-            opcode::GT_F32 => {
-                let b = stack.pop()?.as_f32();
-                let a = stack.pop()?.as_f32();
-                stack.push(Slot::from_i32(if a > b { 1 } else { 0 }))?;
-            }
-            opcode::GE_F32 => {
-                let b = stack.pop()?.as_f32();
-                let a = stack.pop()?.as_f32();
-                stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
-            }
-            opcode::EQ_F64 => {
-                let b = stack.pop()?.as_f64();
-                let a = stack.pop()?.as_f64();
-                stack.push(Slot::from_i32(if a == b { 1 } else { 0 }))?;
-            }
-            opcode::NE_F64 => {
-                let b = stack.pop()?.as_f64();
-                let a = stack.pop()?.as_f64();
-                stack.push(Slot::from_i32(if a != b { 1 } else { 0 }))?;
-            }
-            opcode::LT_F64 => {
-                let b = stack.pop()?.as_f64();
-                let a = stack.pop()?.as_f64();
-                stack.push(Slot::from_i32(if a < b { 1 } else { 0 }))?;
-            }
-            opcode::LE_F64 => {
-                let b = stack.pop()?.as_f64();
-                let a = stack.pop()?.as_f64();
-                stack.push(Slot::from_i32(if a <= b { 1 } else { 0 }))?;
-            }
-            opcode::GT_F64 => {
-                let b = stack.pop()?.as_f64();
-                let a = stack.pop()?.as_f64();
-                stack.push(Slot::from_i32(if a > b { 1 } else { 0 }))?;
-            }
-            opcode::GE_F64 => {
-                let b = stack.pop()?.as_f64();
-                let a = stack.pop()?.as_f64();
-                stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
-            }
-            // --- Unsigned 32-bit division ---
-            opcode::DIV_U32 => {
-                let b = stack.pop()?.as_i32() as u32;
-                let a = stack.pop()?.as_i32() as u32;
-                if b == 0 {
-                    return Err(Trap::DivideByZero);
-                }
-                stack.push(Slot::from_i32((a / b) as i32))?;
-            }
-            opcode::MOD_U32 => {
-                let b = stack.pop()?.as_i32() as u32;
-                let a = stack.pop()?.as_i32() as u32;
-                if b == 0 {
-                    return Err(Trap::DivideByZero);
-                }
-                stack.push(Slot::from_i32((a % b) as i32))?;
-            }
-            opcode::DIV_U64 => {
-                let b = stack.pop()?.as_i64() as u64;
-                let a = stack.pop()?.as_i64() as u64;
-                if b == 0 {
-                    return Err(Trap::DivideByZero);
-                }
-                stack.push(Slot::from_i64((a / b) as i64))?;
-            }
-            opcode::MOD_U64 => {
-                let b = stack.pop()?.as_i64() as u64;
-                let a = stack.pop()?.as_i64() as u64;
-                if b == 0 {
-                    return Err(Trap::DivideByZero);
-                }
-                stack.push(Slot::from_i64((a % b) as i64))?;
-            }
-            opcode::EQ_I32 => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(if a == b { 1 } else { 0 }))?;
-            }
-            opcode::NE_I32 => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(if a != b { 1 } else { 0 }))?;
-            }
-            opcode::LT_I32 => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(if a < b { 1 } else { 0 }))?;
-            }
-            opcode::LE_I32 => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(if a <= b { 1 } else { 0 }))?;
-            }
-            opcode::GT_I32 => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(if a > b { 1 } else { 0 }))?;
-            }
-            opcode::GE_I32 => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
-            }
-            // --- 64-bit comparison opcodes ---
-            opcode::EQ_I64 => {
-                let b = stack.pop()?.as_i64();
-                let a = stack.pop()?.as_i64();
-                stack.push(Slot::from_i32(if a == b { 1 } else { 0 }))?;
-            }
-            opcode::NE_I64 => {
-                let b = stack.pop()?.as_i64();
-                let a = stack.pop()?.as_i64();
-                stack.push(Slot::from_i32(if a != b { 1 } else { 0 }))?;
-            }
-            opcode::LT_I64 => {
-                let b = stack.pop()?.as_i64();
-                let a = stack.pop()?.as_i64();
-                stack.push(Slot::from_i32(if a < b { 1 } else { 0 }))?;
-            }
-            opcode::LE_I64 => {
-                let b = stack.pop()?.as_i64();
-                let a = stack.pop()?.as_i64();
-                stack.push(Slot::from_i32(if a <= b { 1 } else { 0 }))?;
-            }
-            opcode::GT_I64 => {
-                let b = stack.pop()?.as_i64();
-                let a = stack.pop()?.as_i64();
-                stack.push(Slot::from_i32(if a > b { 1 } else { 0 }))?;
-            }
-            opcode::GE_I64 => {
-                let b = stack.pop()?.as_i64();
-                let a = stack.pop()?.as_i64();
-                stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
-            }
-            // --- Unsigned 32-bit comparison opcodes ---
-            opcode::LT_U32 => {
-                let b = stack.pop()?.as_i32() as u32;
-                let a = stack.pop()?.as_i32() as u32;
-                stack.push(Slot::from_i32(if a < b { 1 } else { 0 }))?;
-            }
-            opcode::LE_U32 => {
-                let b = stack.pop()?.as_i32() as u32;
-                let a = stack.pop()?.as_i32() as u32;
-                stack.push(Slot::from_i32(if a <= b { 1 } else { 0 }))?;
-            }
-            opcode::GT_U32 => {
-                let b = stack.pop()?.as_i32() as u32;
-                let a = stack.pop()?.as_i32() as u32;
-                stack.push(Slot::from_i32(if a > b { 1 } else { 0 }))?;
-            }
-            opcode::GE_U32 => {
-                let b = stack.pop()?.as_i32() as u32;
-                let a = stack.pop()?.as_i32() as u32;
-                stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
-            }
-            // --- Unsigned 64-bit comparison opcodes ---
-            opcode::LT_U64 => {
-                let b = stack.pop()?.as_i64() as u64;
-                let a = stack.pop()?.as_i64() as u64;
-                stack.push(Slot::from_i32(if a < b { 1 } else { 0 }))?;
-            }
-            opcode::LE_U64 => {
-                let b = stack.pop()?.as_i64() as u64;
-                let a = stack.pop()?.as_i64() as u64;
-                stack.push(Slot::from_i32(if a <= b { 1 } else { 0 }))?;
-            }
-            opcode::GT_U64 => {
-                let b = stack.pop()?.as_i64() as u64;
-                let a = stack.pop()?.as_i64() as u64;
-                stack.push(Slot::from_i32(if a > b { 1 } else { 0 }))?;
-            }
-            opcode::GE_U64 => {
-                let b = stack.pop()?.as_i64() as u64;
-                let a = stack.pop()?.as_i64() as u64;
-                stack.push(Slot::from_i32(if a >= b { 1 } else { 0 }))?;
-            }
-            opcode::BOOL_AND => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(if (a != 0) && (b != 0) { 1 } else { 0 }))?;
-            }
-            opcode::BOOL_OR => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(if (a != 0) || (b != 0) { 1 } else { 0 }))?;
-            }
-            opcode::BOOL_XOR => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(if (a != 0) != (b != 0) { 1 } else { 0 }))?;
-            }
-            opcode::BOOL_NOT => {
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(if a == 0 { 1 } else { 0 }))?;
-            }
-            // --- Bitwise opcodes (32-bit) ---
-            opcode::BIT_AND_32 => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(a & b))?;
-            }
-            opcode::BIT_OR_32 => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(a | b))?;
-            }
-            opcode::BIT_XOR_32 => {
-                let b = stack.pop()?.as_i32();
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(a ^ b))?;
-            }
-            opcode::BIT_NOT_32 => {
-                let a = stack.pop()?.as_i32();
-                stack.push(Slot::from_i32(!a))?;
-            }
-            // --- Bitwise opcodes (64-bit) ---
-            opcode::BIT_AND_64 => {
-                let b = stack.pop()?.as_i64();
-                let a = stack.pop()?.as_i64();
-                stack.push(Slot::from_i64(a & b))?;
-            }
-            opcode::BIT_OR_64 => {
-                let b = stack.pop()?.as_i64();
-                let a = stack.pop()?.as_i64();
-                stack.push(Slot::from_i64(a | b))?;
-            }
-            opcode::BIT_XOR_64 => {
-                let b = stack.pop()?.as_i64();
-                let a = stack.pop()?.as_i64();
-                stack.push(Slot::from_i64(a ^ b))?;
-            }
-            opcode::BIT_NOT_64 => {
-                let a = stack.pop()?.as_i64();
-                stack.push(Slot::from_i64(!a))?;
-            }
+            opcode::EQ_F32 => cmpop!(stack, as_f32, a, b, a == b),
+            opcode::NE_F32 => cmpop!(stack, as_f32, a, b, a != b),
+            opcode::LT_F32 => cmpop!(stack, as_f32, a, b, a < b),
+            opcode::LE_F32 => cmpop!(stack, as_f32, a, b, a <= b),
+            opcode::GT_F32 => cmpop!(stack, as_f32, a, b, a > b),
+            opcode::GE_F32 => cmpop!(stack, as_f32, a, b, a >= b),
+            opcode::EQ_F64 => cmpop!(stack, as_f64, a, b, a == b),
+            opcode::NE_F64 => cmpop!(stack, as_f64, a, b, a != b),
+            opcode::LT_F64 => cmpop!(stack, as_f64, a, b, a < b),
+            opcode::LE_F64 => cmpop!(stack, as_f64, a, b, a <= b),
+            opcode::GT_F64 => cmpop!(stack, as_f64, a, b, a > b),
+            opcode::GE_F64 => cmpop!(stack, as_f64, a, b, a >= b),
+            // --- Boolean logic ---
+            opcode::BOOL_AND => cmpop!(stack, as_i32, a, b, (a != 0) && (b != 0)),
+            opcode::BOOL_OR => cmpop!(stack, as_i32, a, b, (a != 0) || (b != 0)),
+            opcode::BOOL_XOR => cmpop!(stack, as_i32, a, b, (a != 0) != (b != 0)),
+            opcode::BOOL_NOT => unaryop!(stack, as_i32, from_i32, a, if a == 0 { 1 } else { 0 }),
+            // --- Bitwise (32-bit) ---
+            opcode::BIT_AND_32 => binop!(stack, as_i32, from_i32, a, b, a & b),
+            opcode::BIT_OR_32 => binop!(stack, as_i32, from_i32, a, b, a | b),
+            opcode::BIT_XOR_32 => binop!(stack, as_i32, from_i32, a, b, a ^ b),
+            opcode::BIT_NOT_32 => unaryop!(stack, as_i32, from_i32, a, !a),
+            // --- Bitwise (64-bit) ---
+            opcode::BIT_AND_64 => binop!(stack, as_i64, from_i64, a, b, a & b),
+            opcode::BIT_OR_64 => binop!(stack, as_i64, from_i64, a, b, a | b),
+            opcode::BIT_XOR_64 => binop!(stack, as_i64, from_i64, a, b, a ^ b),
+            opcode::BIT_NOT_64 => unaryop!(stack, as_i64, from_i64, a, !a),
+            // --- Control flow ---
             opcode::JMP => {
                 let offset = read_i16_le(bytecode, &mut pc);
                 pc = (pc as isize + offset as isize) as usize;
@@ -1132,6 +917,552 @@ fn execute(
                 // Push the temp buffer index onto the stack.
                 stack.push(Slot::from_i32(buf_idx as i32))?;
             }
+            // --- String function opcodes ---
+            //
+            // LEN_STR reads the cur_length field from a STRING variable's
+            // header in the data region and pushes it as an i32.
+            opcode::LEN_STR => {
+                let data_offset = read_u16_le(bytecode, &mut pc) as usize;
+
+                if data_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(data_offset as u16));
+                }
+                let cur_len = u16::from_le_bytes([
+                    data_region[data_offset + 2],
+                    data_region[data_offset + 3],
+                ]);
+                stack.push(Slot::from_i32(cur_len as i32))?;
+            }
+            // FIND_STR: Find the first occurrence of IN2 within IN1.
+            // Returns 1-based position or 0 if not found.
+            opcode::FIND_STR => {
+                let in1_offset = read_u16_le(bytecode, &mut pc) as usize;
+                let in2_offset = read_u16_le(bytecode, &mut pc) as usize;
+
+                // Read IN1's current length.
+                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u16));
+                }
+                let in1_len =
+                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
+                        as usize;
+
+                // Read IN2's current length.
+                if in2_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(in2_offset as u16));
+                }
+                let in2_len =
+                    u16::from_le_bytes([data_region[in2_offset + 2], data_region[in2_offset + 3]])
+                        as usize;
+
+                let result = if in2_len == 0 || in2_len > in1_len {
+                    // Empty search string or search string longer than haystack: not found.
+                    0i32
+                } else {
+                    let in1_start = in1_offset + STRING_HEADER_BYTES;
+                    let in2_start = in2_offset + STRING_HEADER_BYTES;
+                    let in1_data = &data_region[in1_start..in1_start + in1_len];
+                    let in2_data = &data_region[in2_start..in2_start + in2_len];
+
+                    // Linear search for the first occurrence.
+                    let mut found = 0i32;
+                    for i in 0..=(in1_len - in2_len) {
+                        if in1_data[i..i + in2_len] == *in2_data {
+                            found = (i + 1) as i32; // 1-based position
+                            break;
+                        }
+                    }
+                    found
+                };
+                stack.push(Slot::from_i32(result))?;
+            }
+            // REPLACE_STR: Replace L characters starting at position P in IN1
+            // with IN2. Pops P then L from stack, pushes buf_idx.
+            opcode::REPLACE_STR => {
+                let in1_offset = read_u16_le(bytecode, &mut pc) as usize;
+                let in2_offset = read_u16_le(bytecode, &mut pc) as usize;
+
+                let p_val = stack.pop()?.as_i32();
+                let l_val = stack.pop()?.as_i32();
+
+                // Read IN1's current length.
+                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u16));
+                }
+                let in1_len =
+                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
+                        as usize;
+
+                // Read IN2's current length.
+                if in2_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(in2_offset as u16));
+                }
+                let in2_len =
+                    u16::from_le_bytes([data_region[in2_offset + 2], data_region[in2_offset + 3]])
+                        as usize;
+
+                let in1_start = in1_offset + STRING_HEADER_BYTES;
+                let in2_start = in2_offset + STRING_HEADER_BYTES;
+
+                // Clamp P to valid range (1-based, minimum 1).
+                let p = if p_val < 1 { 1usize } else { p_val as usize };
+                // Clamp L to non-negative.
+                let l = if l_val < 0 { 0usize } else { l_val as usize };
+
+                // Convert P from 1-based to 0-based index.
+                let start_idx = (p - 1).min(in1_len);
+                // Number of characters to delete, clamped to remaining length.
+                let delete_len = l.min(in1_len - start_idx);
+
+                // Result = IN1[0..start_idx] + IN2 + IN1[start_idx+delete_len..]
+                let prefix_len = start_idx;
+                let suffix_start = start_idx + delete_len;
+                let suffix_len = in1_len - suffix_start;
+                let result_len = prefix_len + in2_len + suffix_len;
+
+                // Allocate a temp buffer.
+                if max_temp_buf_bytes == 0 {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                let buf_idx = next_temp_buf;
+                let buf_start = buf_idx as usize * max_temp_buf_bytes;
+                let buf_end = buf_start + max_temp_buf_bytes;
+                if buf_end > temp_buf.len() {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                next_temp_buf = next_temp_buf.wrapping_add(1);
+
+                // Clamp result to temp buffer capacity.
+                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                let cur_len = (result_len as u16).min(max_len);
+
+                // Write header.
+                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
+                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
+                    .copy_from_slice(&cur_len.to_le_bytes());
+
+                // Write result data: prefix + IN2 + suffix.
+                let data_start = buf_start + STRING_HEADER_BYTES;
+                let mut write_pos = 0usize;
+
+                // Copy prefix (IN1[0..start_idx]).
+                let prefix_copy = prefix_len.min(cur_len as usize);
+                for i in 0..prefix_copy {
+                    temp_buf[data_start + write_pos] = data_region[in1_start + i];
+                    write_pos += 1;
+                }
+
+                // Copy IN2.
+                let in2_copy = in2_len.min((cur_len as usize).saturating_sub(write_pos));
+                for i in 0..in2_copy {
+                    temp_buf[data_start + write_pos] = data_region[in2_start + i];
+                    write_pos += 1;
+                }
+
+                // Copy suffix (IN1[suffix_start..]).
+                let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
+                for i in 0..suffix_copy {
+                    temp_buf[data_start + write_pos] = data_region[in1_start + suffix_start + i];
+                    write_pos += 1;
+                }
+
+                stack.push(Slot::from_i32(buf_idx as i32))?;
+            }
+            // INSERT_STR: Insert IN2 into IN1 after position P.
+            // Pops P from stack, pushes buf_idx.
+            opcode::INSERT_STR => {
+                let in1_offset = read_u16_le(bytecode, &mut pc) as usize;
+                let in2_offset = read_u16_le(bytecode, &mut pc) as usize;
+
+                let p_val = stack.pop()?.as_i32();
+
+                // Read IN1's current length.
+                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u16));
+                }
+                let in1_len =
+                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
+                        as usize;
+
+                // Read IN2's current length.
+                if in2_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(in2_offset as u16));
+                }
+                let in2_len =
+                    u16::from_le_bytes([data_region[in2_offset + 2], data_region[in2_offset + 3]])
+                        as usize;
+
+                let in1_start = in1_offset + STRING_HEADER_BYTES;
+                let in2_start = in2_offset + STRING_HEADER_BYTES;
+
+                // Clamp P to valid range (1-based, minimum 0 means insert at start).
+                let p = if p_val < 0 { 0usize } else { p_val as usize };
+
+                // Insert point: after position P (0-based index = P).
+                let insert_idx = p.min(in1_len);
+
+                // Result = IN1[0..insert_idx] + IN2 + IN1[insert_idx..]
+                let prefix_len = insert_idx;
+                let suffix_len = in1_len - insert_idx;
+                let result_len = prefix_len + in2_len + suffix_len;
+
+                // Allocate a temp buffer.
+                if max_temp_buf_bytes == 0 {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                let buf_idx = next_temp_buf;
+                let buf_start = buf_idx as usize * max_temp_buf_bytes;
+                let buf_end = buf_start + max_temp_buf_bytes;
+                if buf_end > temp_buf.len() {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                next_temp_buf = next_temp_buf.wrapping_add(1);
+
+                // Clamp result to temp buffer capacity.
+                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                let cur_len = (result_len as u16).min(max_len);
+
+                // Write header.
+                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
+                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
+                    .copy_from_slice(&cur_len.to_le_bytes());
+
+                // Write result data: prefix + IN2 + suffix.
+                let data_start = buf_start + STRING_HEADER_BYTES;
+                let mut write_pos = 0usize;
+
+                // Copy prefix (IN1[0..insert_idx]).
+                let prefix_copy = prefix_len.min(cur_len as usize);
+                for i in 0..prefix_copy {
+                    temp_buf[data_start + write_pos] = data_region[in1_start + i];
+                    write_pos += 1;
+                }
+
+                // Copy IN2.
+                let in2_copy = in2_len.min((cur_len as usize).saturating_sub(write_pos));
+                for i in 0..in2_copy {
+                    temp_buf[data_start + write_pos] = data_region[in2_start + i];
+                    write_pos += 1;
+                }
+
+                // Copy suffix (IN1[insert_idx..]).
+                let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
+                for i in 0..suffix_copy {
+                    temp_buf[data_start + write_pos] = data_region[in1_start + insert_idx + i];
+                    write_pos += 1;
+                }
+
+                stack.push(Slot::from_i32(buf_idx as i32))?;
+            }
+            // DELETE_STR: Delete L characters from IN1 starting at position P.
+            // Pops P then L from stack, pushes buf_idx.
+            opcode::DELETE_STR => {
+                let in1_offset = read_u16_le(bytecode, &mut pc) as usize;
+
+                let p_val = stack.pop()?.as_i32();
+                let l_val = stack.pop()?.as_i32();
+
+                // Read IN1's current length.
+                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u16));
+                }
+                let in1_len =
+                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
+                        as usize;
+
+                let in1_start = in1_offset + STRING_HEADER_BYTES;
+
+                // Clamp P to valid range (1-based, minimum 1).
+                let p = if p_val < 1 { 1usize } else { p_val as usize };
+                // Clamp L to non-negative.
+                let l = if l_val < 0 { 0usize } else { l_val as usize };
+
+                // Convert P from 1-based to 0-based index.
+                let start_idx = (p - 1).min(in1_len);
+                // Number of characters to delete, clamped to remaining length.
+                let delete_len = l.min(in1_len - start_idx);
+
+                // Result = IN1[0..start_idx] + IN1[start_idx+delete_len..]
+                let prefix_len = start_idx;
+                let suffix_start = start_idx + delete_len;
+                let suffix_len = in1_len - suffix_start;
+                let result_len = prefix_len + suffix_len;
+
+                // Allocate a temp buffer.
+                if max_temp_buf_bytes == 0 {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                let buf_idx = next_temp_buf;
+                let buf_start = buf_idx as usize * max_temp_buf_bytes;
+                let buf_end = buf_start + max_temp_buf_bytes;
+                if buf_end > temp_buf.len() {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                next_temp_buf = next_temp_buf.wrapping_add(1);
+
+                // Clamp result to temp buffer capacity.
+                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                let cur_len = (result_len as u16).min(max_len);
+
+                // Write header.
+                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
+                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
+                    .copy_from_slice(&cur_len.to_le_bytes());
+
+                // Write result data: prefix + suffix.
+                let data_start = buf_start + STRING_HEADER_BYTES;
+                let mut write_pos = 0usize;
+
+                // Copy prefix (IN1[0..start_idx]).
+                let prefix_copy = prefix_len.min(cur_len as usize);
+                for i in 0..prefix_copy {
+                    temp_buf[data_start + write_pos] = data_region[in1_start + i];
+                    write_pos += 1;
+                }
+
+                // Copy suffix (IN1[suffix_start..]).
+                let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
+                for i in 0..suffix_copy {
+                    temp_buf[data_start + write_pos] = data_region[in1_start + suffix_start + i];
+                    write_pos += 1;
+                }
+
+                stack.push(Slot::from_i32(buf_idx as i32))?;
+            }
+            // LEFT_STR: Return the leftmost L characters of IN.
+            // Pops L from stack, pushes buf_idx.
+            opcode::LEFT_STR => {
+                let in_offset = read_u16_le(bytecode, &mut pc) as usize;
+
+                let l_val = stack.pop()?.as_i32();
+
+                // Read IN's current length.
+                if in_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(in_offset as u16));
+                }
+                let in_len =
+                    u16::from_le_bytes([data_region[in_offset + 2], data_region[in_offset + 3]])
+                        as usize;
+
+                let in_start = in_offset + STRING_HEADER_BYTES;
+
+                // Clamp L to non-negative.
+                let l = if l_val < 0 { 0usize } else { l_val as usize };
+
+                // Result length is min(L, in_len).
+                let result_len = l.min(in_len);
+
+                // Allocate a temp buffer.
+                if max_temp_buf_bytes == 0 {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                let buf_idx = next_temp_buf;
+                let buf_start = buf_idx as usize * max_temp_buf_bytes;
+                let buf_end = buf_start + max_temp_buf_bytes;
+                if buf_end > temp_buf.len() {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                next_temp_buf = next_temp_buf.wrapping_add(1);
+
+                // Clamp result to temp buffer capacity.
+                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                let cur_len = (result_len as u16).min(max_len);
+
+                // Write header.
+                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
+                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
+                    .copy_from_slice(&cur_len.to_le_bytes());
+
+                // Copy leftmost characters from IN.
+                let data_start = buf_start + STRING_HEADER_BYTES;
+                let copy_len = cur_len as usize;
+                temp_buf[data_start..data_start + copy_len]
+                    .copy_from_slice(&data_region[in_start..in_start + copy_len]);
+
+                stack.push(Slot::from_i32(buf_idx as i32))?;
+            }
+            // RIGHT_STR: Return the rightmost L characters of IN.
+            // Pops L from stack, pushes buf_idx.
+            opcode::RIGHT_STR => {
+                let in_offset = read_u16_le(bytecode, &mut pc) as usize;
+
+                let l_val = stack.pop()?.as_i32();
+
+                // Read IN's current length.
+                if in_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(in_offset as u16));
+                }
+                let in_len =
+                    u16::from_le_bytes([data_region[in_offset + 2], data_region[in_offset + 3]])
+                        as usize;
+
+                let in_start = in_offset + STRING_HEADER_BYTES;
+
+                // Clamp L to non-negative.
+                let l = if l_val < 0 { 0usize } else { l_val as usize };
+
+                // Result length is min(L, in_len).
+                let result_len = l.min(in_len);
+
+                // Start index within IN for the rightmost characters.
+                let src_start = in_len - result_len;
+
+                // Allocate a temp buffer.
+                if max_temp_buf_bytes == 0 {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                let buf_idx = next_temp_buf;
+                let buf_start = buf_idx as usize * max_temp_buf_bytes;
+                let buf_end = buf_start + max_temp_buf_bytes;
+                if buf_end > temp_buf.len() {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                next_temp_buf = next_temp_buf.wrapping_add(1);
+
+                // Clamp result to temp buffer capacity.
+                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                let cur_len = (result_len as u16).min(max_len);
+
+                // Write header.
+                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
+                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
+                    .copy_from_slice(&cur_len.to_le_bytes());
+
+                // Copy rightmost characters from IN.
+                let data_start = buf_start + STRING_HEADER_BYTES;
+                let copy_len = cur_len as usize;
+                let src = in_start + src_start;
+                temp_buf[data_start..data_start + copy_len]
+                    .copy_from_slice(&data_region[src..src + copy_len]);
+
+                stack.push(Slot::from_i32(buf_idx as i32))?;
+            }
+            // MID_STR: Return L characters from IN starting at position P.
+            // Pops P then L from stack, pushes buf_idx.
+            opcode::MID_STR => {
+                let in_offset = read_u16_le(bytecode, &mut pc) as usize;
+
+                let p_val = stack.pop()?.as_i32();
+                let l_val = stack.pop()?.as_i32();
+
+                // Read IN's current length.
+                if in_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(in_offset as u16));
+                }
+                let in_len =
+                    u16::from_le_bytes([data_region[in_offset + 2], data_region[in_offset + 3]])
+                        as usize;
+
+                let in_start = in_offset + STRING_HEADER_BYTES;
+
+                // Clamp P to valid range (1-based, minimum 1).
+                let p = if p_val < 1 { 1usize } else { p_val as usize };
+                // Clamp L to non-negative.
+                let l = if l_val < 0 { 0usize } else { l_val as usize };
+
+                // Convert P from 1-based to 0-based index.
+                let start_idx = (p - 1).min(in_len);
+                // Number of characters to extract, clamped to remaining length.
+                let result_len = l.min(in_len - start_idx);
+
+                // Allocate a temp buffer.
+                if max_temp_buf_bytes == 0 {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                let buf_idx = next_temp_buf;
+                let buf_start = buf_idx as usize * max_temp_buf_bytes;
+                let buf_end = buf_start + max_temp_buf_bytes;
+                if buf_end > temp_buf.len() {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                next_temp_buf = next_temp_buf.wrapping_add(1);
+
+                // Clamp result to temp buffer capacity.
+                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                let cur_len = (result_len as u16).min(max_len);
+
+                // Write header.
+                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
+                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
+                    .copy_from_slice(&cur_len.to_le_bytes());
+
+                // Copy characters from IN starting at start_idx.
+                let data_start = buf_start + STRING_HEADER_BYTES;
+                let copy_len = cur_len as usize;
+                let src = in_start + start_idx;
+                temp_buf[data_start..data_start + copy_len]
+                    .copy_from_slice(&data_region[src..src + copy_len]);
+
+                stack.push(Slot::from_i32(buf_idx as i32))?;
+            }
+            // CONCAT_STR: Concatenate IN1 and IN2.
+            // Pushes buf_idx.
+            opcode::CONCAT_STR => {
+                let in1_offset = read_u16_le(bytecode, &mut pc) as usize;
+                let in2_offset = read_u16_le(bytecode, &mut pc) as usize;
+
+                // Read IN1's current length.
+                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u16));
+                }
+                let in1_len =
+                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
+                        as usize;
+
+                // Read IN2's current length.
+                if in2_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(in2_offset as u16));
+                }
+                let in2_len =
+                    u16::from_le_bytes([data_region[in2_offset + 2], data_region[in2_offset + 3]])
+                        as usize;
+
+                let in1_start = in1_offset + STRING_HEADER_BYTES;
+                let in2_start = in2_offset + STRING_HEADER_BYTES;
+
+                let result_len = in1_len + in2_len;
+
+                // Allocate a temp buffer.
+                if max_temp_buf_bytes == 0 {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                let buf_idx = next_temp_buf;
+                let buf_start = buf_idx as usize * max_temp_buf_bytes;
+                let buf_end = buf_start + max_temp_buf_bytes;
+                if buf_end > temp_buf.len() {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                next_temp_buf = next_temp_buf.wrapping_add(1);
+
+                // Clamp result to temp buffer capacity.
+                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                let cur_len = (result_len as u16).min(max_len);
+
+                // Write header.
+                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
+                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
+                    .copy_from_slice(&cur_len.to_le_bytes());
+
+                // Write result data: IN1 + IN2.
+                let data_start = buf_start + STRING_HEADER_BYTES;
+                let mut write_pos = 0usize;
+
+                // Copy IN1.
+                let in1_copy = in1_len.min(cur_len as usize);
+                for i in 0..in1_copy {
+                    temp_buf[data_start + write_pos] = data_region[in1_start + i];
+                    write_pos += 1;
+                }
+
+                // Copy IN2.
+                let in2_copy = in2_len.min((cur_len as usize).saturating_sub(write_pos));
+                for i in 0..in2_copy {
+                    temp_buf[data_start + write_pos] = data_region[in2_start + i];
+                    write_pos += 1;
+                }
+
+                stack.push(Slot::from_i32(buf_idx as i32))?;
+            }
             opcode::RET_VOID => {
                 return Ok(());
             }
@@ -1161,36 +1492,8 @@ fn read_i16_le(bytecode: &[u8], pc: &mut usize) -> i16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::VmBuffers;
     use ironplc_container::ContainerBuilder;
-
-    /// Helper struct that allocates Vec-backed buffers for VM usage.
-    struct VmBuffers {
-        stack: Vec<Slot>,
-        vars: Vec<Slot>,
-        data_region: Vec<u8>,
-        temp_buf: Vec<u8>,
-        tasks: Vec<TaskState>,
-        programs: Vec<ProgramInstanceState>,
-        ready: Vec<usize>,
-    }
-
-    impl VmBuffers {
-        fn from_container(container: &Container) -> Self {
-            let header = &container.header;
-            let task_count = container.task_table.tasks.len();
-            let program_count = container.task_table.programs.len();
-            let temp_buf_total = header.num_temp_bufs as usize * header.max_temp_buf_bytes as usize;
-            VmBuffers {
-                stack: vec![Slot::default(); header.max_stack_depth as usize],
-                vars: vec![Slot::default(); header.num_variables as usize],
-                data_region: vec![0u8; header.data_region_bytes as usize],
-                temp_buf: vec![0u8; temp_buf_total],
-                tasks: vec![TaskState::default(); task_count],
-                programs: vec![ProgramInstanceState::default(); program_count],
-                ready: vec![0usize; task_count.max(1)],
-            }
-        }
-    }
 
     /// Builds a container with one function from the given bytecode,
     /// with `num_vars` variables and the given constants.

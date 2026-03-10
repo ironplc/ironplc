@@ -145,7 +145,7 @@ impl Project for FileBackedProject {
 
         // Do the analysis
         match analyze(&all_libraries) {
-            Ok(context) => {
+            Ok((_library, context)) => {
                 // Always cache the context so LSP features (document symbols, etc.)
                 // remain available even when there are semantic diagnostics.
                 debug!("FileBackedProject: Analysis completed {context:?}");
