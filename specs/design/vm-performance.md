@@ -155,6 +155,68 @@ ADR-0005 notes 99 opcode slots remain, and the emitter/verifier can be extended 
 
 **Files**: `container/src/opcode.rs`, `vm/src/vm.rs`, `codegen/src/emit.rs`, verifier
 
+### 4b. Opcode Consolidation to Reduce Instruction Cache Pressure
+
+**The dispatch loop compiles to ~18KB of machine code** (measured in release builds). A typical L1 instruction cache is 32KB, so the dispatch loop alone occupies over half of L1i. This creates two performance problems:
+
+1. **L1i cache thrashing**: With ~96 dispatch targets, the instruction footprint exceeds what fits comfortably in L1i. Cold opcode paths evict hot ones.
+2. **Branch target buffer (BTB) pressure**: CPUs have limited BTB entries for indirect branches. With ~96 targets in the dispatch `match`, the indirect branch at the top of the loop misses frequently, causing pipeline stalls.
+
+The root cause is type specialization at the opcode level. Every arithmetic and comparison operation has 4 separate opcodes per type family (i32, i64, f32, f64), plus unsigned variants. For example, ADD alone has 4 opcodes (ADD_I32, ADD_I64, ADD_F32, ADD_F64). Each expands to nearly identical machine code — pop two slots, apply one CPU instruction, push result — but the compiler emits separate code for every dispatch target. Source-level macro deduplication does not help; the compiled output is the same size.
+
+**Key insight**: `Slot` is already type-erased — it's a `u64` wrapper. The LOAD_VAR/STORE_VAR consolidation proved this: all four type variants had identical code and collapsed into a single arm via or-patterns. Arithmetic ops can't fully type-erase (the CPU instruction genuinely differs for integer vs float), but the dispatch structure can be reorganized so the CPU sees far fewer unique code paths.
+
+#### Option A: Two-Level Dispatch (Recommended)
+
+Restructure the opcode byte so that bits encode both operation class and type:
+
+```
+opcode byte layout:  [operation:5][type:3]
+```
+
+The outer dispatch matches on operation class (~25-30 targets instead of ~96), and each arm contains a small inner switch on type. The inner switch is:
+- **Small**: 2-4 arms, fitting in a few cache lines
+- **Predictable**: IEC 61131-3 programs tend to operate on the same type within a code section, so the branch predictor learns quickly
+
+Cost: one extra mask/shift per dispatch plus a predictable inner branch (~1-3 cycles). Benefit: avoiding icache misses that cost ~100+ cycles each.
+
+#### Option B: Function Pointer Tables
+
+Store typed operation implementations as function pointers indexed by type tag:
+
+```rust
+type BinOp = fn(Slot, Slot) -> Result<Slot, Trap>;
+const ADD_TABLE: [BinOp; 4] = [add_i32, add_i64, add_f32, add_f64];
+
+// In dispatch:
+OpClass::ADD => {
+    let type_tag = opcode & 0x07;
+    let b = stack.pop()?;
+    let a = stack.pop()?;
+    stack.push(ADD_TABLE[type_tag as usize](a, b)?)?;
+}
+```
+
+Makes the dispatch loop very compact but trades for an indirect function call per operation. The call overhead (call/ret, possible icache miss on the callee) may offset gains.
+
+#### Option C: Collapse Only Identical Implementations
+
+The least invasive approach. Use or-patterns to merge arms that have truly identical machine code (as already done for LOAD_VAR/STORE_VAR). Leave type-specific operations as separate arms but group them for spatial locality.
+
+Lowest risk, but smallest icache benefit.
+
+#### Estimated Impact
+
+| Metric | Current | After Option A |
+|--------|---------|----------------|
+| `execute` function size | ~18KB | ~6-8KB |
+| Dispatch targets in main match | ~96 | ~25-30 |
+| L1i budget consumed | ~56% of 32KB | ~19-25% |
+
+This is a bytecode format change, so it should be coordinated with other opcode encoding changes (superinstructions, inline constants) to avoid multiple breaking changes.
+
+**Files**: `container/src/opcode.rs`, `vm/src/vm.rs`, `codegen/src/emit.rs`, verifier
+
 ## Tier 2: Medium Impact, Significant Effort
 
 ### 5. Internal Register-Based Translation (wasmi-style)
@@ -327,6 +389,7 @@ Start with Layer 1 (richer abstract interpretation) + Layer 4 (property-based te
 | 2 | String copy_from_slice | High (for string code) | Low | Yes | Equivalent |
 | 3 | MUX stack peek (no alloc) | Medium | Low | Yes (fixes no_std bug) | Equivalent |
 | 4 | Fused superinstructions | High | Medium | Yes | Maintained via verifier |
+| 4b | Opcode consolidation (icache/BTB) | High | Medium | Yes | Equivalent (encoding change) |
 | 7c | Raw pointer PC | Medium | Low | Yes | Requires verifier |
 | 8 | Inline small constants | Medium | Low | Yes | Equivalent |
 | 10 | Precomputed jump targets | Low-Medium | Low | Yes | Equivalent |
