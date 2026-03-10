@@ -1,0 +1,86 @@
+//! Native intrinsic implementations for standard function blocks.
+
+use crate::error::Trap;
+
+/// Field byte size (all fields are 8-byte aligned slots).
+const FIELD_SIZE: usize = 8;
+
+/// Reads an i32 from an FB instance field.
+fn read_i32(instance: &[u8], field: usize) -> i32 {
+    let offset = field * FIELD_SIZE;
+    let bytes: [u8; 4] = instance[offset..offset + 4].try_into().unwrap();
+    i32::from_le_bytes(bytes)
+}
+
+/// Writes an i32 to an FB instance field.
+fn write_i32(instance: &mut [u8], field: usize, value: i32) {
+    let offset = field * FIELD_SIZE;
+    instance[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    // Zero upper 4 bytes for slot consistency.
+    instance[offset + 4..offset + 8].copy_from_slice(&[0, 0, 0, 0]);
+}
+
+/// Reads an i64 from an FB instance field.
+fn read_i64(instance: &[u8], field: usize) -> i64 {
+    let offset = field * FIELD_SIZE;
+    let bytes: [u8; 8] = instance[offset..offset + 8].try_into().unwrap();
+    i64::from_le_bytes(bytes)
+}
+
+/// Writes an i64 to an FB instance field.
+fn write_i64(instance: &mut [u8], field: usize, value: i64) {
+    let offset = field * FIELD_SIZE;
+    instance[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+}
+
+/// TON field indices.
+const TON_IN: usize = 0;
+const TON_PT: usize = 1;
+const TON_Q: usize = 2;
+const TON_ET: usize = 3;
+const TON_START_TIME: usize = 4; // hidden
+const TON_RUNNING: usize = 5; // hidden
+
+/// Number of fields (including hidden) for a TON instance.
+pub const TON_INSTANCE_FIELDS: usize = 6;
+
+/// Executes one scan of the TON (on-delay timer) intrinsic.
+///
+/// # Arguments
+/// * `instance` - Mutable slice of the FB instance memory (6 fields * 8 bytes = 48 bytes).
+/// * `cycle_time` - Current scan cycle time in microseconds.
+///
+/// # TON behavior (IEC 61131-3 section 2.5.2.3.1):
+/// - When IN rises (FALSE->TRUE): start timing, ET=0, Q=FALSE
+/// - While IN is TRUE: ET increments up to PT. When ET >= PT, Q becomes TRUE.
+/// - When IN falls (TRUE->FALSE): Q=FALSE, ET=0, stop timing.
+pub fn ton(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
+    let in_val = read_i32(instance, TON_IN) != 0;
+    let pt = read_i64(instance, TON_PT);
+    let running = read_i32(instance, TON_RUNNING) != 0;
+
+    if in_val {
+        if !running {
+            // Rising edge: start timing
+            write_i64(instance, TON_START_TIME, cycle_time);
+            write_i32(instance, TON_RUNNING, 1);
+            write_i64(instance, TON_ET, 0);
+            write_i32(instance, TON_Q, 0);
+        } else {
+            // Timing in progress
+            let start_time = read_i64(instance, TON_START_TIME);
+            let elapsed = cycle_time - start_time;
+            let et = if elapsed > pt { pt } else { elapsed };
+            write_i64(instance, TON_ET, et);
+            if et >= pt {
+                write_i32(instance, TON_Q, 1);
+            }
+        }
+    } else {
+        // IN is FALSE: reset
+        write_i32(instance, TON_Q, 0);
+        write_i64(instance, TON_ET, 0);
+        write_i32(instance, TON_RUNNING, 0);
+    }
+    Ok(())
+}

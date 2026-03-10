@@ -15,6 +15,7 @@ pub enum Trap {
     InvalidBuiltinFunction(u16),
     DataRegionOutOfBounds(u16),
     TempBufferExhausted,
+    InvalidFbTypeId(u16),
 }
 
 // v_code() and exit_code() are generated from resources/problem-codes.csv
@@ -39,6 +40,9 @@ impl fmt::Display for Trap {
                 write!(f, "data region access out of bounds at offset {offset}")
             }
             Trap::TempBufferExhausted => write!(f, "temporary buffer pool exhausted"),
+            Trap::InvalidFbTypeId(id) => {
+                write!(f, "invalid FB type ID: 0x{id:04X}")
+            }
         }
     }
 }
@@ -104,6 +108,11 @@ mod tests {
     }
 
     #[test]
+    fn v_code_when_invalid_fb_type_id_then_v9010() {
+        assert_eq!(Trap::InvalidFbTypeId(0x0010).v_code(), "V9010");
+    }
+
+    #[test]
     fn exit_code_when_user_error_then_1() {
         assert_eq!(Trap::DivideByZero.exit_code(), 1);
         assert_eq!(Trap::NegativeExponent.exit_code(), 1);
@@ -119,5 +128,6 @@ mod tests {
         assert_eq!(Trap::InvalidVariableIndex(0).exit_code(), 3);
         assert_eq!(Trap::InvalidFunctionId(0).exit_code(), 3);
         assert_eq!(Trap::InvalidBuiltinFunction(0).exit_code(), 3);
+        assert_eq!(Trap::InvalidFbTypeId(0).exit_code(), 3);
     }
 }

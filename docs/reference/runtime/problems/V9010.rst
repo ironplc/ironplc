@@ -1,0 +1,15 @@
+=====
+V9010
+=====
+
+.. problem-summary:: V9010
+
+The VM encountered a function block type ID that is not recognized as a built-in
+intrinsic. This is an internal error indicating the compiler emitted an FB_CALL
+instruction with a type ID that the VM does not support.
+
+This error should not occur during normal operation. It indicates a bug in the
+IronPLC compiler or VM.
+
+Report this as a bug at https://github.com/ironplc/ironplc/issues with the
+``.iplc`` file and the source program that produced it.

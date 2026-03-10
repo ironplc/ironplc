@@ -134,6 +134,27 @@ pub const BUILTIN: u8 = 0xC4;
 /// Return from the current function (void return).
 pub const RET_VOID: u8 = 0xB5;
 
+/// Discard the top value from the operand stack.
+pub const POP: u8 = 0xA0;
+
+// --- Function block opcodes ---
+
+/// Push FB instance reference from variable table.
+/// Operand: u16 variable index (little-endian).
+pub const FB_LOAD_INSTANCE: u8 = 0xC0;
+
+/// Store input parameter on FB instance; keeps fb_ref on stack.
+/// Operand: u8 field index.
+pub const FB_STORE_PARAM: u8 = 0xC1;
+
+/// Load output parameter from FB instance; keeps fb_ref on stack.
+/// Operand: u8 field index.
+pub const FB_LOAD_PARAM: u8 = 0xC2;
+
+/// Call function block (VM dispatches to intrinsic or bytecode body).
+/// Operand: u16 type_id (little-endian).
+pub const FB_CALL: u8 = 0xC3;
+
 // --- String opcodes ---
 
 /// Load a STRING literal from the constant pool into a temporary buffer.
@@ -819,4 +840,10 @@ pub mod builtin {
             _ => panic!("unknown builtin function ID: 0x{:04X}", func_id),
         }
     }
+}
+
+/// Well-known function block type IDs for intrinsic dispatch.
+pub mod fb_type {
+    /// TON (on-delay timer).
+    pub const TON: u16 = 0x0010;
 }

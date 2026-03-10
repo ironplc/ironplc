@@ -1,6 +1,7 @@
 mod buffers;
 pub(crate) mod builtin;
 pub mod error;
+pub(crate) mod intrinsic;
 pub(crate) mod scheduler;
 pub(crate) mod stack;
 #[cfg(any(test, feature = "test-support"))]
