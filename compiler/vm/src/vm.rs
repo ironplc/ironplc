@@ -1479,6 +1479,17 @@ fn execute(
                             current_time_us as i64,
                         )?;
                     }
+                    opcode::fb_type::TOF => {
+                        let instance_size = crate::intrinsic::TOF_INSTANCE_FIELDS * 8;
+                        let instance_end = instance_start + instance_size;
+                        if instance_end > data_region.len() {
+                            return Err(Trap::DataRegionOutOfBounds(instance_start as u16));
+                        }
+                        crate::intrinsic::tof(
+                            &mut data_region[instance_start..instance_end],
+                            current_time_us as i64,
+                        )?;
+                    }
                     _ => return Err(Trap::InvalidFbTypeId(type_id)),
                 }
             }

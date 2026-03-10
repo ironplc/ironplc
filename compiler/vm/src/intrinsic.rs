@@ -84,3 +84,55 @@ pub fn ton(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
     }
     Ok(())
 }
+
+/// TOF field indices (same layout as TON).
+const TOF_IN: usize = 0;
+const TOF_PT: usize = 1;
+const TOF_Q: usize = 2;
+const TOF_ET: usize = 3;
+const TOF_START_TIME: usize = 4; // hidden
+const TOF_RUNNING: usize = 5; // hidden
+
+/// Number of fields (including hidden) for a TOF instance.
+pub const TOF_INSTANCE_FIELDS: usize = 6;
+
+/// Executes one scan of the TOF (off-delay timer) intrinsic.
+///
+/// # Arguments
+/// * `instance` - Mutable slice of the FB instance memory (6 fields * 8 bytes = 48 bytes).
+/// * `cycle_time` - Current scan cycle time in microseconds.
+///
+/// # TOF behavior (IEC 61131-3 section 2.5.2.3.2):
+/// - When IN is TRUE: Q=TRUE, ET=0, stop timing.
+/// - When IN falls (TRUE->FALSE): start timing, ET=0, Q=TRUE.
+/// - While IN is FALSE and timing: ET increments up to PT. When ET >= PT, Q becomes FALSE.
+/// - If IN returns to TRUE while timing: reset.
+pub fn tof(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
+    let in_val = read_i32(instance, TOF_IN) != 0;
+    let pt = read_i64(instance, TOF_PT);
+    let running = read_i32(instance, TOF_RUNNING) != 0;
+
+    if in_val {
+        // IN is TRUE: Q=TRUE, ET=0, stop any timing
+        write_i32(instance, TOF_Q, 1);
+        write_i64(instance, TOF_ET, 0);
+        write_i32(instance, TOF_RUNNING, 0);
+    } else if !running {
+        // Falling edge: start timing
+        write_i64(instance, TOF_START_TIME, cycle_time);
+        write_i32(instance, TOF_RUNNING, 1);
+        write_i64(instance, TOF_ET, 0);
+        // Q stays TRUE during timing
+        write_i32(instance, TOF_Q, 1);
+    } else {
+        // Timing in progress (IN is FALSE)
+        let start_time = read_i64(instance, TOF_START_TIME);
+        let elapsed = cycle_time - start_time;
+        let et = if elapsed > pt { pt } else { elapsed };
+        write_i64(instance, TOF_ET, et);
+        if et >= pt {
+            write_i32(instance, TOF_Q, 0);
+        }
+    }
+    Ok(())
+}

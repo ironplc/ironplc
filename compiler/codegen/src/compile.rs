@@ -675,6 +675,15 @@ fn resolve_fb_type(name: &str) -> Option<(u16, usize, HashMap<String, u8>)> {
             // Fields 4-5 are hidden (start_time, running)
             Some((opcode::fb_type::TON, 6, fields))
         }
+        "TOF" => {
+            let mut fields = HashMap::new();
+            fields.insert("in".to_string(), 0);
+            fields.insert("pt".to_string(), 1);
+            fields.insert("q".to_string(), 2);
+            fields.insert("et".to_string(), 3);
+            // Fields 4-5 are hidden (start_time, running)
+            Some((opcode::fb_type::TOF, 6, fields))
+        }
         _ => None,
     }
 }

@@ -846,4 +846,6 @@ pub mod builtin {
 pub mod fb_type {
     /// TON (on-delay timer).
     pub const TON: u16 = 0x0010;
+    /// TOF (off-delay timer).
+    pub const TOF: u16 = 0x0011;
 }

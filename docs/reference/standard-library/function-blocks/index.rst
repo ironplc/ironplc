@@ -19,7 +19,7 @@ Timers
      - Supported
    * - :doc:`TOF <tof>`
      - Off-delay timer
-     - Not yet supported
+     - Supported
    * - :doc:`TP <tp>`
      - Pulse timer
      - Not yet supported
