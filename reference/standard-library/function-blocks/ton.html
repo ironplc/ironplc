@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.169.0">
+<meta name="ironplc-version" content="0.170.0">
 </head>
   <body>
     
@@ -488,6 +488,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9007.html">V9007</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9008.html">V9008</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9009.html">V9009</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9010.html">V9010</a></li>
 </ul>
 </li>
 </ul>
@@ -568,7 +569,7 @@
 <td><p>Section 2.5.2.3.3</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Support</strong></p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -638,17 +639,7 @@ both <code class="docutils literal notranslate"><span class="pre">ET</span></cod
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">VAR</span>
-  <span class="n">timer1</span> <span class="p">:</span> <span class="n">TON</span><span class="p">;</span>
-  <span class="n">start</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
-  <span class="n">done</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
-<span class="n">END_VAR</span>
-
-<span class="n">timer1</span><span class="p">(</span><span class="n">IN</span> <span class="o">:=</span> <span class="n">start</span><span class="p">,</span> <span class="n">PT</span> <span class="o">:=</span> <span class="n">T</span><span class="c1">#5s);</span>
-<span class="n">done</span> <span class="o">:=</span> <span class="n">timer1</span><span class="o">.</span><span class="n">Q</span><span class="p">;</span>
-</pre></div>
-</div>
-</section>
+<iframe src="https://playground.ironplc.com/?embed=true&code=UFJPR1JBTSBtYWluCiAgIFZBUgogICAgICBteVRpbWVyIDogVE9OOwogICAgICBzdGFydCA6IEJPT0wgOj0gVFJVRTsKICAgICAgZG9uZSA6IEJPT0w7CiAgICAgIGVsYXBzZWQgOiBUSU1FOwogICBFTkRfVkFSCgogICBteVRpbWVyKElOIDo9IHN0YXJ0LCBQVCA6PSBUIzVzLCBRID0+IGRvbmUsIEVUID0+IGVsYXBzZWQpOwpFTkRfUFJPR1JBTQ==" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:386px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">
