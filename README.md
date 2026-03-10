@@ -30,6 +30,7 @@ a first class environment.
 * ✅ **Runtime** (`ironplcvm`) — executes compiled bytecode with task scheduling
 * ✅ **Visual Studio Code Extension** — syntax highlighting, real-time diagnostics, build tasks, and bytecode viewer
 * ✅ **Multiple Source Formats** — Structured Text (`.st`, `.iec`), PLCopen XML (`.xml`), and TwinCAT (`.TcPOU`, `.TcGVL`, `.TcDUT`)
+* ✅ **Interactive Playground** — try IronPLC in the browser at [playground.ironplc.com](https://playground.ironplc.com)
 * ✅ **Documentation website**
 
 ### Limitations
