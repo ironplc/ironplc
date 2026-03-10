@@ -675,6 +675,7 @@ dependencies = [
 name = "ironplc-codegen"
 version = "0.169.0"
 dependencies = [
+ "criterion",
  "ironplc-analyzer",
  "ironplc-container",
  "ironplc-dsl",
