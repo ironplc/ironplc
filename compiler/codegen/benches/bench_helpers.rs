@@ -12,10 +12,15 @@ use ironplc_dsl::core::FileId;
 use ironplc_parser::options::ParseOptions;
 use ironplc_parser::parse_program;
 
-/// Compiles an IEC 61131-3 source string through the full pipeline.
+/// Compiles an IEC 61131-3 source string through the full pipeline:
+/// parse → analyze (all semantic rules) → codegen.
 fn compile_st(source: &str) -> Container {
     let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
-    let (analyzed, _ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
+    let (analyzed, context) = ironplc_analyzer::stages::analyze(&[&library]).unwrap();
+    assert!(
+        !context.has_diagnostics(),
+        "Benchmark source has semantic diagnostics"
+    );
     compile(&analyzed).unwrap()
 }
 
