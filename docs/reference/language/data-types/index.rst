@@ -5,6 +5,12 @@ Data Types
 IEC 61131-3 defines a set of elementary data types and mechanisms for
 creating derived types.
 
+.. tip::
+
+   Examples on supported data type pages are interactive — edit the code
+   and see results in your browser. Powered by the
+   `IronPLC Playground <https://playground.ironplc.com>`_.
+
 Elementary Types
 ----------------
 

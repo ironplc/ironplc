@@ -34,6 +34,9 @@ Numeric Functions
    * - :doc:`EXPT <expt>`
      - Exponentiation
      - Supported
+   * - :doc:`TRUNC <trunc>`
+     - Truncate real to integer
+     - Supported
 
 Trigonometric Functions
 -----------------------
@@ -119,6 +122,20 @@ Comparison Functions
      - Not equal
      - Supported
 
+Assignment Functions
+--------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 50 30
+
+   * - Function
+     - Description
+     - Status
+   * - :doc:`MOVE <move>`
+     - Assignment (copy value)
+     - Supported
+
 Selection Functions
 -------------------
 
@@ -180,31 +197,31 @@ String Functions
      - Status
    * - :doc:`LEN <len>`
      - String length
-     - Not yet supported
+     - Supported
    * - :doc:`LEFT <left>`
      - Left substring
-     - Not yet supported
+     - Supported
    * - :doc:`RIGHT <right>`
      - Right substring
-     - Not yet supported
+     - Supported
    * - :doc:`MID <mid>`
      - Middle substring
-     - Not yet supported
+     - Supported
    * - :doc:`CONCAT <concat>`
      - String concatenation
-     - Not yet supported
+     - Supported
    * - :doc:`INSERT <insert>`
      - String insertion
-     - Not yet supported
+     - Supported
    * - :doc:`DELETE <delete>`
      - String deletion
-     - Not yet supported
+     - Supported
    * - :doc:`REPLACE <replace>`
      - String replacement
-     - Not yet supported
+     - Supported
    * - :doc:`FIND <find>`
      - String search
-     - Not yet supported
+     - Supported
 
 Type Conversion Functions
 -------------------------
@@ -219,6 +236,9 @@ Type Conversion Functions
    * - :doc:`Type conversions <type-conversions>`
      - Type conversion functions (``*_TO_*``)
      - Supported (numeric)
+   * - :doc:`BCD_TO_INT / INT_TO_BCD <bcd>`
+     - BCD conversion functions
+     - Supported
 
 .. toctree::
    :maxdepth: 1
@@ -241,6 +261,7 @@ Type Conversion Functions
    mul
    div
    mod
+   move
    gt
    ge
    eq
@@ -266,3 +287,5 @@ Type Conversion Functions
    replace
    find
    type-conversions
+   trunc
+   bcd

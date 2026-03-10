@@ -27,7 +27,7 @@ The variable ``b`` is zero, so the division operation cannot be performed.
 
 To fix this error, guard division operations with a check for zero:
 
-.. code-block::
+.. playground::
 
    PROGRAM Main
    VAR

@@ -35,7 +35,7 @@ jobs:
       # Update the release
       #- name: Label GitHub Release as pre-release
       #  if: ${{ !inputs.dryrun }}
-      #  uses: irongut/EditRelease@v1.2.0
+      #  uses: irongut/EditRelease@ccf529ad26dddf9996e7dd0f24ca5da4ea507cc2 # v1.2.0
       #  with:
       #    token: ${{ secrets.GITHUB_TOKEN }}
       #    id: ${{ inputs.gh-release-id }}

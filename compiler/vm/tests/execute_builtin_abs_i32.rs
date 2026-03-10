@@ -1,62 +1,9 @@
-//! Integration tests for the BUILTIN ABS_I32 opcode.
+//! VM-specific edge case tests for the BUILTIN ABS_I32 opcode.
+//!
+//! Basic correctness (positive, negative, zero) is covered by end_to_end_abs.rs.
+//! This test covers overflow wrapping that cannot be expressed in IEC 61131-3 source.
 
 mod common;
-
-use common::{single_function_container, VmBuffers};
-
-#[test]
-fn execute_when_abs_i32_positive_then_unchanged() {
-    // ABS(42) = 42
-    #[rustfmt::skip]
-    let bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (42)
-        0xC4, 0x43, 0x03,  // BUILTIN ABS_I32
-        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
-    ];
-    let c = single_function_container(&bytecode, 1, &[42]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 42);
-}
-
-#[test]
-fn execute_when_abs_i32_negative_then_positive() {
-    // ABS(-7) = 7
-    #[rustfmt::skip]
-    let bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (-7)
-        0xC4, 0x43, 0x03,  // BUILTIN ABS_I32
-        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
-    ];
-    let c = single_function_container(&bytecode, 1, &[-7]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 7);
-}
-
-#[test]
-fn execute_when_abs_i32_zero_then_zero() {
-    // ABS(0) = 0
-    #[rustfmt::skip]
-    let bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (0)
-        0xC4, 0x43, 0x03,  // BUILTIN ABS_I32
-        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
-    ];
-    let c = single_function_container(&bytecode, 1, &[0]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 0);
-}
 
 #[test]
 fn execute_when_abs_i32_min_then_wraps() {
@@ -68,10 +15,8 @@ fn execute_when_abs_i32_min_then_wraps() {
         0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
-    let c = single_function_container(&bytecode, 1, &[i32::MIN]);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = common::load_and_start(&c, &mut b).unwrap();
-
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), i32::MIN);
+    assert_eq!(
+        common::run_and_read_i32(&bytecode, 1, &[i32::MIN]),
+        i32::MIN
+    );
 }

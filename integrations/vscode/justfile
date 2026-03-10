@@ -67,12 +67,12 @@ update:
   npm update
 
 # Publishes a VSIX archive to the Visual Studio Marketplace
-publish vsixfilename $VSCE_PAT:
-  # vsixfilename: The name of the VSIX archive to publish. 
+publish vsixfilename:
+  # vsixfilename: The name of the VSIX archive to publish.
   #
-  # VSCE_PAT: The personal access token for publishing
+  # VSCE_PAT: The personal access token for publishing (read from environment)
   ls
-  npx vsce publish -p $VSCE_PAT --packagePath {{vsixfilename}} --pre-release 
+  npx vsce publish -p $VSCE_PAT --packagePath {{vsixfilename}} --pre-release
 
 # Remove build artifacts
 clean:

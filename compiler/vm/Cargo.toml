@@ -1,14 +1,17 @@
 [package]
 name = "ironplc-vm"
 description = "Bytecode virtual machine for IronPLC"
-version = "0.165.0"
+version = "0.169.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+test-support = []
+
 [dependencies]
-ironplc-container = { path = "../container", version = "0.165.0" }
+ironplc-container = { path = "../container", version = "0.169.0" }
 
 [build-dependencies]
 csv = "1"

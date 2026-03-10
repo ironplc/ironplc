@@ -6,6 +6,7 @@
 mod common;
 
 use common::{load_and_start, VmBuffers};
+use ironplc_container::task_table::NO_SINGLE_VAR;
 use ironplc_container::{ContainerBuilder, ProgramInstanceEntry, TaskEntry, TaskType};
 use ironplc_vm::error::Trap;
 
@@ -161,7 +162,7 @@ fn freewheeling_task(task_id: u16, priority: u16, watchdog_us: u64) -> TaskEntry
         task_type: TaskType::Freewheeling,
         flags: 0x01, // enabled
         interval_us: 0,
-        single_var_index: 0xFFFF,
+        single_var_index: NO_SINGLE_VAR,
         watchdog_us,
         input_image_offset: 0,
         output_image_offset: 0,
