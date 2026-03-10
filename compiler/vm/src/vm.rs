@@ -481,10 +481,18 @@ fn execute(
 
         match op {
             // --- Load constants ---
-            opcode::LOAD_CONST_I32 => load_const!(bytecode, pc, container, stack, get_i32, from_i32),
-            opcode::LOAD_CONST_I64 => load_const!(bytecode, pc, container, stack, get_i64, from_i64),
-            opcode::LOAD_CONST_F32 => load_const!(bytecode, pc, container, stack, get_f32, from_f32),
-            opcode::LOAD_CONST_F64 => load_const!(bytecode, pc, container, stack, get_f64, from_f64),
+            opcode::LOAD_CONST_I32 => {
+                load_const!(bytecode, pc, container, stack, get_i32, from_i32)
+            }
+            opcode::LOAD_CONST_I64 => {
+                load_const!(bytecode, pc, container, stack, get_i64, from_i64)
+            }
+            opcode::LOAD_CONST_F32 => {
+                load_const!(bytecode, pc, container, stack, get_f32, from_f32)
+            }
+            opcode::LOAD_CONST_F64 => {
+                load_const!(bytecode, pc, container, stack, get_f64, from_f64)
+            }
             opcode::LOAD_TRUE => {
                 stack.push(Slot::from_i32(1))?;
             }
@@ -492,15 +500,19 @@ fn execute(
                 stack.push(Slot::from_i32(0))?;
             }
             // --- Load/store variables (type-erased slots) ---
-            opcode::LOAD_VAR_I32 | opcode::LOAD_VAR_I64
-            | opcode::LOAD_VAR_F32 | opcode::LOAD_VAR_F64 => {
+            opcode::LOAD_VAR_I32
+            | opcode::LOAD_VAR_I64
+            | opcode::LOAD_VAR_F32
+            | opcode::LOAD_VAR_F64 => {
                 let index = read_u16_le(bytecode, &mut pc);
                 scope.check_access(index)?;
                 let slot = variables.load(index)?;
                 stack.push(slot)?;
             }
-            opcode::STORE_VAR_I32 | opcode::STORE_VAR_I64
-            | opcode::STORE_VAR_F32 | opcode::STORE_VAR_F64 => {
+            opcode::STORE_VAR_I32
+            | opcode::STORE_VAR_I64
+            | opcode::STORE_VAR_F32
+            | opcode::STORE_VAR_F64 => {
                 let index = read_u16_le(bytecode, &mut pc);
                 scope.check_access(index)?;
                 let slot = stack.pop()?;
@@ -514,19 +526,55 @@ fn execute(
             opcode::SUB_I64 => binop!(stack, as_i64, from_i64, a, b, a.wrapping_sub(b)),
             opcode::MUL_I64 => binop!(stack, as_i64, from_i64, a, b, a.wrapping_mul(b)),
             // --- Integer division (checked for zero) ---
-            opcode::DIV_I32 => checked_divop!(stack, as_i32, from_i32, 0i32, a, b, a.wrapping_div(b)),
-            opcode::MOD_I32 => checked_divop!(stack, as_i32, from_i32, 0i32, a, b, a.wrapping_rem(b)),
-            opcode::DIV_I64 => checked_divop!(stack, as_i64, from_i64, 0i64, a, b, a.wrapping_div(b)),
-            opcode::MOD_I64 => checked_divop!(stack, as_i64, from_i64, 0i64, a, b, a.wrapping_rem(b)),
+            opcode::DIV_I32 => {
+                checked_divop!(stack, as_i32, from_i32, 0i32, a, b, a.wrapping_div(b))
+            }
+            opcode::MOD_I32 => {
+                checked_divop!(stack, as_i32, from_i32, 0i32, a, b, a.wrapping_rem(b))
+            }
+            opcode::DIV_I64 => {
+                checked_divop!(stack, as_i64, from_i64, 0i64, a, b, a.wrapping_div(b))
+            }
+            opcode::MOD_I64 => {
+                checked_divop!(stack, as_i64, from_i64, 0i64, a, b, a.wrapping_rem(b))
+            }
             // --- Unsigned integer division (checked for zero) ---
-            opcode::DIV_U32 => checked_divop!(stack, as_i32, from_i32, 0i32, a, b,
-                ((a as u32) / (b as u32)) as i32),
-            opcode::MOD_U32 => checked_divop!(stack, as_i32, from_i32, 0i32, a, b,
-                ((a as u32) % (b as u32)) as i32),
-            opcode::DIV_U64 => checked_divop!(stack, as_i64, from_i64, 0i64, a, b,
-                ((a as u64) / (b as u64)) as i64),
-            opcode::MOD_U64 => checked_divop!(stack, as_i64, from_i64, 0i64, a, b,
-                ((a as u64) % (b as u64)) as i64),
+            opcode::DIV_U32 => checked_divop!(
+                stack,
+                as_i32,
+                from_i32,
+                0i32,
+                a,
+                b,
+                ((a as u32) / (b as u32)) as i32
+            ),
+            opcode::MOD_U32 => checked_divop!(
+                stack,
+                as_i32,
+                from_i32,
+                0i32,
+                a,
+                b,
+                ((a as u32) % (b as u32)) as i32
+            ),
+            opcode::DIV_U64 => checked_divop!(
+                stack,
+                as_i64,
+                from_i64,
+                0i64,
+                a,
+                b,
+                ((a as u64) / (b as u64)) as i64
+            ),
+            opcode::MOD_U64 => checked_divop!(
+                stack,
+                as_i64,
+                from_i64,
+                0i64,
+                a,
+                b,
+                ((a as u64) % (b as u64)) as i64
+            ),
             // --- Float arithmetic ---
             opcode::ADD_F32 => binop!(stack, as_f32, from_f32, a, b, a + b),
             opcode::SUB_F32 => binop!(stack, as_f32, from_f32, a, b, a - b),
