@@ -76,6 +76,14 @@ publish $VERSION $MACFILENAME $LINUXFILENAME:
   cp -r homebrew target
   export MACSHA256=`cat {{MACFILENAME}}.sha256 | cut -f 1 -d " "` && export LINUXSHA256=`cat {{LINUXFILENAME}}.sha256 | cut -f 1 -d " "` && envsubst < homebrew/Formula/ironplc.rb > target/homebrew/Formula/ironplc.rb
 
+# Run performance benchmarks
+bench:
+  cargo bench --package ironplc-vm --features ironplc-vm/test-support
+
+# Run benchmarks and save baseline for comparison
+bench-baseline name="main":
+  cargo bench --package ironplc-vm --features ironplc-vm/test-support -- --save-baseline {{name}}
+
 # Updates dependencies to latest version (or at least tries)
 update:
   cargo update
