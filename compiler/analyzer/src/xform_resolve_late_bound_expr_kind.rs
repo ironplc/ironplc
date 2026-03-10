@@ -173,9 +173,10 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
             ExprKind::UnaryOp(node) => node
                 .recurse_fold(self)
                 .map(|v| Ok(ExprKind::UnaryOp(Box::new(v))))?,
-            ExprKind::Expression(node) => node
-                .recurse_fold(self)
-                .map(|v| Ok(ExprKind::Expression(Box::new(v))))?,
+            ExprKind::Expression(node) => {
+                let folded = self.fold_expr(*node)?;
+                Ok(ExprKind::Expression(Box::new(folded)))
+            }
             ExprKind::Const(node) => node
                 .recurse_fold(self)
                 .map(|v: ConstantKind| Ok(ExprKind::Const(v)))?,

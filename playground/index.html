@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IronPLC Playground</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>IronPLC Playground</h1>
+    <span class="subtitle">IEC 61131-3 in the browser</span>
+  </header>
+
+  <main>
+    <section class="editor-section">
+      <div class="toolbar">
+        <button id="run-btn" disabled>&#x25B6; Run</button>
+        <button id="step-btn" disabled data-testid="step-btn">&#x25B7; Step</button>
+        <button id="reset-btn" disabled data-testid="reset-btn">&#x21BB; Reset</button>
+        <label title="A scan cycle runs the entire program once, reading inputs, executing logic, and writing outputs. In a real PLC this repeats continuously. Here you control how many cycles to run.">
+          Scans:
+          <input id="scans-input" type="number" value="1" min="0" max="10000">
+        </label>
+        <label class="file-upload" id="file-upload-label">
+          Load .iplc
+          <input id="file-input" type="file" accept=".iplc" hidden>
+        </label>
+      </div>
+      <textarea id="editor" spellcheck="false" data-testid="editor">PROGRAM main
+  VAR
+    count : INT;
+    doubled : INT;
+  END_VAR
+
+  (* In a PLC, the program runs in a loop called
+     a "scan cycle". Each click of Step runs one
+     cycle. Variables keep their values between
+     cycles, so count increases each time. *)
+  count := count + 1;
+  doubled := count * 2;
+END_PROGRAM
+</textarea>
+    </section>
+
+    <section class="output-section">
+      <div class="output-tabs">
+        <button class="tab active" data-tab="variables">Variables</button>
+        <button class="tab" data-tab="diagnostics">Diagnostics</button>
+      </div>
+
+      <div id="variables-panel" class="panel active" data-testid="variables-panel">
+        <p class="placeholder">Run a program to see variable values.</p>
+      </div>
+
+      <div id="diagnostics-panel" class="panel" data-testid="diagnostics-panel">
+        <p class="placeholder">No diagnostics.</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="drop-overlay" class="drop-overlay" data-testid="drop-overlay">
+    <div class="drop-message">Drop .iplc file to load and execute</div>
+  </div>
+
+  <footer>
+    <span id="status" data-testid="status">Loading WebAssembly…</span>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

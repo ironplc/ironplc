@@ -1,0 +1,41 @@
+=====
+V4001
+=====
+
+.. problem-summary:: V4001
+
+The program attempted to divide by zero at runtime. Integer division and modulo
+operations (``DIV``, ``MOD``) fail when the divisor is zero.
+
+Example
+-------
+
+The following code will generate error V4001:
+
+.. code-block::
+
+   PROGRAM Main
+   VAR
+       a : INT := 10;
+       b : INT := 0;
+       result : INT;
+   END_VAR
+   result := a / b;  (* Error: division by zero *)
+   END_PROGRAM
+
+The variable ``b`` is zero, so the division operation cannot be performed.
+
+To fix this error, guard division operations with a check for zero:
+
+.. playground::
+
+   PROGRAM Main
+   VAR
+       a : INT := 10;
+       b : INT := 0;
+       result : INT;
+   END_VAR
+   IF b <> 0 THEN
+       result := a / b;
+   END_IF;
+   END_PROGRAM

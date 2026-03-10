@@ -1,0 +1,41 @@
+=====
+V4003
+=====
+
+.. problem-summary:: V4003
+
+A task exceeded the configured watchdog time limit (``max_scan_time``). This
+typically indicates an infinite loop or unexpectedly long computation.
+
+Example
+-------
+
+The following code may generate error V4003:
+
+.. code-block::
+
+   PROGRAM Main
+   VAR
+       i : INT := 0;
+   END_VAR
+   WHILE i < 10 DO
+       (* Error: i is never incremented, loop never terminates *)
+   END_WHILE;
+   END_PROGRAM
+
+The ``WHILE`` loop never terminates because ``i`` is never incremented, causing
+the task to exceed the watchdog time limit.
+
+To fix this error, check loop termination conditions and ensure the loop variable
+is updated:
+
+.. playground::
+
+   PROGRAM Main
+   VAR
+       i : INT := 0;
+   END_VAR
+   WHILE i < 10 DO
+       i := i + 1;
+   END_WHILE;
+   END_PROGRAM

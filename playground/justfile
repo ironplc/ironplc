@@ -1,0 +1,22 @@
+# Build the IronPLC playground (wasm + static files)
+
+# Install build tools
+setup:
+  cargo install wasm-pack
+
+# Build the wasm package and assemble the deployable site into _build/
+compile:
+  mkdir -p _build/pkg
+  wasm-pack build ../compiler/playground --target web --out-dir ../../playground/_build/pkg --no-typescript
+  cp index.html app.js worker.js style.css _build/
+
+# Build everything (CI entry point)
+ci: setup compile
+
+# Serve locally for development
+serve: compile
+  cd _build && python3 -m http.server 8080
+
+# Clean build artifacts
+clean:
+  rm -rf _build/

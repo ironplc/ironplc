@@ -1,19 +1,32 @@
-use crate::code_section::{CodeSection, FuncEntry};
-use crate::constant_pool::{ConstEntry, ConstType, ConstantPool};
-use crate::container::Container;
-use crate::header::FileHeader;
-use crate::task_table::{ProgramInstanceEntry, TaskEntry, TaskTable, TaskType};
+use std::vec;
+use std::vec::Vec;
 
-/// Fluent builder for constructing a [`Container`] in tests.
+use crate::code_section::{CodeSection, FuncEntry};
+use crate::const_type::ConstType;
+use crate::constant_pool::{ConstEntry, ConstantPool};
+use crate::container::Container;
+use crate::debug_section::{DebugSection, FuncNameEntry, VarNameEntry};
+use crate::header::FileHeader;
+use crate::task_table::{ProgramInstanceEntry, TaskEntry, TaskTable, NO_SINGLE_VAR};
+use crate::task_type::TaskType;
+
+/// Fluent builder for constructing a [`Container`].
 pub struct ContainerBuilder {
     num_variables: u16,
     max_stack_depth: u16,
+    data_region_bytes: u32,
+    num_temp_bufs: u16,
+    max_temp_buf_bytes: u32,
     constant_pool: ConstantPool,
     functions: Vec<FuncEntry>,
     bytecode: Vec<u8>,
     tasks: Vec<TaskEntry>,
     programs: Vec<ProgramInstanceEntry>,
     shared_globals_size: u16,
+    init_function_id: u16,
+    entry_function_id: u16,
+    debug_var_names: Vec<VarNameEntry>,
+    debug_func_names: Vec<FuncNameEntry>,
 }
 
 impl ContainerBuilder {
@@ -21,12 +34,19 @@ impl ContainerBuilder {
         ContainerBuilder {
             num_variables: 0,
             max_stack_depth: 0,
+            data_region_bytes: 0,
+            num_temp_bufs: 0,
+            max_temp_buf_bytes: 0,
             constant_pool: ConstantPool::default(),
             functions: Vec::new(),
             bytecode: Vec::new(),
             tasks: Vec::new(),
             programs: Vec::new(),
             shared_globals_size: 0,
+            init_function_id: 0,
+            entry_function_id: 0,
+            debug_var_names: Vec::new(),
+            debug_func_names: Vec::new(),
         }
     }
 
@@ -36,10 +56,64 @@ impl ContainerBuilder {
         self
     }
 
+    /// Sets the total size of the unified data region in bytes.
+    pub fn data_region_bytes(mut self, n: u32) -> Self {
+        self.data_region_bytes = n;
+        self
+    }
+
+    /// Sets the number of temporary buffers for string operations.
+    pub fn num_temp_bufs(mut self, n: u16) -> Self {
+        self.num_temp_bufs = n;
+        self
+    }
+
+    /// Sets the size of the largest temporary buffer in bytes.
+    pub fn max_temp_buf_bytes(mut self, n: u32) -> Self {
+        self.max_temp_buf_bytes = n;
+        self
+    }
+
     /// Adds an i32 constant to the constant pool.
     pub fn add_i32_constant(mut self, value: i32) -> Self {
         self.constant_pool.push(ConstEntry {
             const_type: ConstType::I32,
+            value: value.to_le_bytes().to_vec(),
+        });
+        self
+    }
+
+    /// Adds an f32 constant to the constant pool.
+    pub fn add_f32_constant(mut self, value: f32) -> Self {
+        self.constant_pool.push(ConstEntry {
+            const_type: ConstType::F32,
+            value: value.to_le_bytes().to_vec(),
+        });
+        self
+    }
+
+    /// Adds an f64 constant to the constant pool.
+    pub fn add_f64_constant(mut self, value: f64) -> Self {
+        self.constant_pool.push(ConstEntry {
+            const_type: ConstType::F64,
+            value: value.to_le_bytes().to_vec(),
+        });
+        self
+    }
+
+    /// Adds a string constant (Latin-1 bytes) to the constant pool.
+    pub fn add_str_constant(mut self, value: &[u8]) -> Self {
+        self.constant_pool.push(ConstEntry {
+            const_type: ConstType::Str,
+            value: value.to_vec(),
+        });
+        self
+    }
+
+    /// Adds an i64 constant to the constant pool.
+    pub fn add_i64_constant(mut self, value: i64) -> Self {
+        self.constant_pool.push(ConstEntry {
+            const_type: ConstType::I64,
             value: value.to_le_bytes().to_vec(),
         });
         self
@@ -87,6 +161,30 @@ impl ContainerBuilder {
         self
     }
 
+    /// Sets the init function ID for the default synthesized program instance.
+    pub fn init_function_id(mut self, id: u16) -> Self {
+        self.init_function_id = id;
+        self
+    }
+
+    /// Sets the entry (scan) function ID for the default synthesized program instance.
+    pub fn entry_function_id(mut self, id: u16) -> Self {
+        self.entry_function_id = id;
+        self
+    }
+
+    /// Adds a variable name entry to the debug section.
+    pub fn add_var_name(mut self, entry: VarNameEntry) -> Self {
+        self.debug_var_names.push(entry);
+        self
+    }
+
+    /// Adds a function name entry to the debug section.
+    pub fn add_func_name(mut self, entry: FuncNameEntry) -> Self {
+        self.debug_func_names.push(entry);
+        self
+    }
+
     /// Builds the container, computing header fields from the added data.
     ///
     /// If no tasks have been added, synthesizes a default freewheeling task
@@ -106,7 +204,7 @@ impl ContainerBuilder {
                 task_type: TaskType::Freewheeling,
                 flags: 0x01, // enabled
                 interval_us: 0,
-                single_var_index: 0xFFFF,
+                single_var_index: NO_SINGLE_VAR,
                 watchdog_us: 0,
                 input_image_offset: 0,
                 output_image_offset: 0,
@@ -115,12 +213,12 @@ impl ContainerBuilder {
             let default_program = ProgramInstanceEntry {
                 instance_id: 0,
                 task_id: 0,
-                entry_function_id: 0,
+                entry_function_id: self.entry_function_id,
                 var_table_offset: 0,
                 var_table_count: self.num_variables,
                 fb_instance_offset: 0,
                 fb_instance_count: 0,
-                reserved: 0,
+                init_function_id: self.init_function_id,
             };
             TaskTable {
                 shared_globals_size: 0,
@@ -135,9 +233,21 @@ impl ContainerBuilder {
             }
         };
 
+        let debug_section = if self.debug_var_names.is_empty() && self.debug_func_names.is_empty() {
+            None
+        } else {
+            Some(DebugSection {
+                var_names: self.debug_var_names,
+                func_names: self.debug_func_names,
+            })
+        };
+
         let header = FileHeader {
             num_variables: self.num_variables,
             max_stack_depth: self.max_stack_depth,
+            data_region_bytes: self.data_region_bytes,
+            num_temp_bufs: self.num_temp_bufs,
+            max_temp_buf_bytes: self.max_temp_buf_bytes,
             num_functions: code.functions.len() as u16,
             ..FileHeader::default()
         };
@@ -147,6 +257,7 @@ impl ContainerBuilder {
             task_table,
             constant_pool,
             code,
+            debug_section,
         }
     }
 }
@@ -160,6 +271,8 @@ impl Default for ContainerBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::vec;
+    use std::vec::Vec;
 
     #[test]
     fn builder_when_steel_thread_program_then_builds_valid_container() {
@@ -196,7 +309,10 @@ mod tests {
         );
         assert_eq!(container.task_table.tasks[0].flags, 0x01);
         assert_eq!(container.task_table.tasks[0].interval_us, 0);
-        assert_eq!(container.task_table.tasks[0].single_var_index, 0xFFFF);
+        assert_eq!(
+            container.task_table.tasks[0].single_var_index,
+            NO_SINGLE_VAR
+        );
         assert_eq!(container.task_table.tasks[0].watchdog_us, 0);
         assert_eq!(container.task_table.programs.len(), 1);
         assert_eq!(container.task_table.programs[0].instance_id, 0);

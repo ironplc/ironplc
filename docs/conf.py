@@ -43,6 +43,7 @@ html_theme = 'furo'
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 html_css_files = ["overrides.css"]
+html_js_files = ["version-check.js"]
 
 html_theme_options = {
     "light_css_variables": {
@@ -79,7 +80,7 @@ html_theme_options = {
 }
 
 rst_prolog = """.. attention::
-    These docs are a bit ambitious. The steps described are accurate but IronPLC cannot yet run programs.
+    IronPLC can only run very simple programs. The steps described are accurate but many language features are not yet supported.
 """
 
 # -- Version configuration ---------------------------------------------------
@@ -102,6 +103,6 @@ path.append(abspath("./extensions"))
 
 extlinks = {'download_artifact': ('https://github.com/ironplc/ironplc/releases/download/v' + version + '/%s',
                       '%s')}
-extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks", "sphinx.ext.autosectionlabel", "sphinx_copybutton", "ironplc_problemcode"]
+extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks", "sphinx.ext.autosectionlabel", "sphinx_copybutton", "ironplc_problemcode", "ironplc_playground"]
 
 autosectionlabel_prefix_document = True

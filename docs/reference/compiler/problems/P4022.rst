@@ -1,0 +1,34 @@
+=====
+P4022
+=====
+
+.. problem-summary:: P4022
+
+This error occurs when a variable's initializer value is not compatible with the variable's
+declared type. Each type in IEC 61131-3 accepts only specific kinds of literal values.
+
+Example
+-------
+
+The following code will generate error P4022:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       dummy : INT := 10.0;  (* Error: real literal cannot initialize integer type *)
+   END_VAR
+   END_PROGRAM
+
+The literal ``10.0`` is a real (floating-point) value, but ``INT`` is an integer type.
+Real literals can only initialize ``REAL`` or ``LREAL`` variables.
+
+To fix this error, use a literal that matches the declared type:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       dummy : INT := 10;
+   END_VAR
+   END_PROGRAM

@@ -1,11 +1,11 @@
-use std::fmt;
-use std::io;
+use core::fmt;
 
 /// Errors that can occur when reading or writing a bytecode container.
 #[derive(Debug)]
 pub enum ContainerError {
     /// An I/O error occurred during reading or writing.
-    Io(io::Error),
+    #[cfg(feature = "std")]
+    Io(std::io::Error),
     /// The file does not start with the expected magic number.
     InvalidMagic,
     /// The container format version is not supported.
@@ -18,11 +18,15 @@ pub enum ContainerError {
     SectionSizeMismatch,
     /// A task entry has an unrecognized task type tag.
     InvalidTaskType(u8),
+    /// The debug section contains invalid data.
+    #[cfg(feature = "std")]
+    InvalidDebugSection,
 }
 
 impl fmt::Display for ContainerError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            #[cfg(feature = "std")]
             ContainerError::Io(e) => write!(f, "I/O error: {e}"),
             ContainerError::InvalidMagic => write!(f, "invalid magic number"),
             ContainerError::UnsupportedVersion => write!(f, "unsupported container format version"),
@@ -36,10 +40,13 @@ impl fmt::Display for ContainerError {
             ContainerError::InvalidTaskType(t) => {
                 write!(f, "invalid task type tag: {t}")
             }
+            #[cfg(feature = "std")]
+            ContainerError::InvalidDebugSection => write!(f, "invalid debug section"),
         }
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for ContainerError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
@@ -49,8 +56,9 @@ impl std::error::Error for ContainerError {
     }
 }
 
-impl From<io::Error> for ContainerError {
-    fn from(e: io::Error) -> Self {
+#[cfg(feature = "std")]
+impl From<std::io::Error> for ContainerError {
+    fn from(e: std::io::Error) -> Self {
         ContainerError::Io(e)
     }
 }

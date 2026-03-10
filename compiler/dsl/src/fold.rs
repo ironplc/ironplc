@@ -318,6 +318,8 @@ pub trait Fold<E> {
 
     dispatch!(LateBound);
 
+    dispatch!(Expr);
+
     dispatch!(ExprKind);
 
     // 3.3.2.1

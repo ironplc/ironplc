@@ -7,6 +7,7 @@ import {
   ServerOptions,
 } from 'vscode-languageclient/node';
 import { IplcEditorProvider } from './iplcEditorProvider';
+import { IronplcTaskProvider } from './ironplcTaskProvider';
 import { CompilerEnvironment, findCompilerPath } from './compilerDiscovery';
 import { ProblemCode, formatProblem } from './problems';
 
@@ -21,7 +22,10 @@ const VERBOSITY = new Map<string, string[]>([
 let client: LanguageClient | undefined;
 
 function openProblemInBrowser(code: ProblemCode) {
-  vscode.env.openExternal(vscode.Uri.parse('https://www.ironplc.com/vscode/problems/' + code + '.html'));
+  const ext = vscode.extensions.getExtension('ironplc.ironplc');
+  const version = ext?.packageJSON?.version ?? '';
+  const url = 'https://www.ironplc.com/reference/editor/problems/' + code + '.html?version=' + encodeURIComponent(version);
+  vscode.env.openExternal(vscode.Uri.parse(url));
 }
 
 // This method is called when this extension is activated.
@@ -51,6 +55,13 @@ export function activate(context: vscode.ExtensionContext) {
     });
     return;
   }
+
+  context.subscriptions.push(
+    vscode.tasks.registerTaskProvider(
+      IronplcTaskProvider.type,
+      new IronplcTaskProvider(result.path),
+    ),
+  );
 
   const config = vscode.workspace.getConfiguration('ironplc');
   client = createClient(result.path, config);

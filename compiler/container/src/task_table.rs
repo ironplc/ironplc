@@ -1,5 +1,7 @@
 use std::io::{Read, Write};
+use std::vec::Vec;
 
+use crate::task_type::TaskType;
 use crate::ContainerError;
 
 /// Size of a single task entry in bytes.
@@ -8,34 +10,8 @@ const TASK_ENTRY_SIZE: usize = 32;
 /// Size of a single program instance entry in bytes.
 const PROGRAM_INSTANCE_ENTRY_SIZE: usize = 16;
 
-/// Type tags for task scheduling types.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub enum TaskType {
-    Cyclic = 0,
-    Event = 1,
-    Freewheeling = 2,
-}
-
-impl TaskType {
-    fn from_u8(v: u8) -> Result<Self, ContainerError> {
-        match v {
-            0 => Ok(TaskType::Cyclic),
-            1 => Ok(TaskType::Event),
-            2 => Ok(TaskType::Freewheeling),
-            _ => Err(ContainerError::InvalidTaskType(v)),
-        }
-    }
-
-    /// Returns the human-readable name for this task type.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            TaskType::Cyclic => "Cyclic",
-            TaskType::Event => "Event",
-            TaskType::Freewheeling => "Freewheeling",
-        }
-    }
-}
+/// Sentinel value for `single_var_index` indicating no SINGLE trigger variable.
+pub const NO_SINGLE_VAR: u16 = 0xFFFF;
 
 /// A single task entry in the task table (32 bytes fixed).
 #[derive(Clone, Debug)]
@@ -62,7 +38,7 @@ pub struct ProgramInstanceEntry {
     pub var_table_count: u16,
     pub fb_instance_offset: u16,
     pub fb_instance_count: u16,
-    pub reserved: u16,
+    pub init_function_id: u16,
 }
 
 /// The task table section of a bytecode container.
@@ -115,7 +91,7 @@ impl TaskTable {
             w.write_all(&prog.var_table_count.to_le_bytes())?;
             w.write_all(&prog.fb_instance_offset.to_le_bytes())?;
             w.write_all(&prog.fb_instance_count.to_le_bytes())?;
-            w.write_all(&prog.reserved.to_le_bytes())?;
+            w.write_all(&prog.init_function_id.to_le_bytes())?;
         }
 
         Ok(())
@@ -167,7 +143,7 @@ impl TaskTable {
                 var_table_count: u16::from_le_bytes([buf[8], buf[9]]),
                 fb_instance_offset: u16::from_le_bytes([buf[10], buf[11]]),
                 fb_instance_count: u16::from_le_bytes([buf[12], buf[13]]),
-                reserved: u16::from_le_bytes([buf[14], buf[15]]),
+                init_function_id: u16::from_le_bytes([buf[14], buf[15]]),
             });
         }
 
@@ -183,6 +159,8 @@ impl TaskTable {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::vec;
+    use std::vec::Vec;
 
     #[test]
     fn section_size_when_empty_then_returns_header_only() {
@@ -214,7 +192,7 @@ mod tests {
                 var_table_count: 0,
                 fb_instance_offset: 0,
                 fb_instance_count: 0,
-                reserved: 0,
+                init_function_id: 0,
             }],
         };
         // 6 (header) + 32 (1 task) + 16 (1 program) = 54
@@ -231,7 +209,7 @@ mod tests {
                 task_type: TaskType::Cyclic,
                 flags: 0x01,
                 interval_us: 10_000,
-                single_var_index: 0xFFFF,
+                single_var_index: NO_SINGLE_VAR,
                 watchdog_us: 50_000,
                 input_image_offset: 0,
                 output_image_offset: 64,
@@ -245,7 +223,7 @@ mod tests {
                 var_table_count: 5,
                 fb_instance_offset: 0,
                 fb_instance_count: 0,
-                reserved: 0,
+                init_function_id: 0,
             }],
         };
 
@@ -263,7 +241,7 @@ mod tests {
         assert_eq!(decoded.tasks[0].task_type, TaskType::Cyclic);
         assert_eq!(decoded.tasks[0].flags, 0x01);
         assert_eq!(decoded.tasks[0].interval_us, 10_000);
-        assert_eq!(decoded.tasks[0].single_var_index, 0xFFFF);
+        assert_eq!(decoded.tasks[0].single_var_index, NO_SINGLE_VAR);
         assert_eq!(decoded.tasks[0].watchdog_us, 50_000);
         assert_eq!(decoded.tasks[0].input_image_offset, 0);
         assert_eq!(decoded.tasks[0].output_image_offset, 64);
@@ -277,7 +255,7 @@ mod tests {
         assert_eq!(decoded.programs[0].var_table_count, 5);
         assert_eq!(decoded.programs[0].fb_instance_offset, 0);
         assert_eq!(decoded.programs[0].fb_instance_count, 0);
-        assert_eq!(decoded.programs[0].reserved, 0);
+        assert_eq!(decoded.programs[0].init_function_id, 0);
     }
 
     #[test]

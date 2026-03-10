@@ -1,0 +1,40 @@
+=====
+V4002
+=====
+
+.. problem-summary:: V4002
+
+The program attempted to raise a value to a negative exponent using the ``EXPT``
+function. IEC 61131-3 integer exponentiation does not support negative exponents.
+
+Example
+-------
+
+The following code will generate error V4002:
+
+.. code-block::
+
+   PROGRAM Main
+   VAR
+       x : INT := 5;
+       result : INT;
+   END_VAR
+   result := EXPT(x, -2);  (* Error: negative exponent *)
+   END_PROGRAM
+
+The exponent ``-2`` is negative, which is not supported for integer exponentiation.
+
+To fix this error, ensure the exponent is non-negative:
+
+.. playground::
+
+   PROGRAM Main
+   VAR
+       x : INT := 5;
+       exp : INT := 2;
+       result : INT;
+   END_VAR
+   IF exp >= 0 THEN
+       result := EXPT(x, exp);
+   END_IF;
+   END_PROGRAM

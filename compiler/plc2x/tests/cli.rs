@@ -3,6 +3,7 @@ use assert_cmd::prelude::*;
 use ironplc_test::shared_resource_path;
 use predicates::prelude::*;
 use std::{path::PathBuf, process::Command};
+use tempfile::NamedTempFile;
 
 pub fn path_to_test_resource(name: &'static str) -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -151,6 +152,65 @@ fn tokenize_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> 
     cmd.assert().success().stdout(predicate::str::contains(
         "Type: EndConfiguration, Value: \'END_CONFIGURATION\', At: Ln 175,Col 0",
     ));
+
+    Ok(())
+}
+
+#[test]
+fn compile_when_valid_file_then_creates_output() -> Result<(), Box<dyn std::error::Error>> {
+    let output = NamedTempFile::new()?;
+    let mut cmd = Command::new(cargo::cargo_bin!());
+
+    cmd.arg("compile")
+        .arg(shared_resource_path("steel_thread.st"))
+        .arg("--output")
+        .arg(output.path());
+    cmd.assert().success().stdout(predicate::str::is_empty());
+
+    assert!(output.path().metadata()?.len() > 0);
+
+    Ok(())
+}
+
+#[test]
+fn compile_when_short_output_flag_then_creates_output() -> Result<(), Box<dyn std::error::Error>> {
+    let output = NamedTempFile::new()?;
+    let mut cmd = Command::new(cargo::cargo_bin!());
+
+    cmd.arg("compile")
+        .arg(shared_resource_path("steel_thread.st"))
+        .arg("-o")
+        .arg(output.path());
+    cmd.assert().success().stdout(predicate::str::is_empty());
+
+    assert!(output.path().metadata()?.len() > 0);
+
+    Ok(())
+}
+
+#[test]
+fn compile_when_syntax_error_then_err() -> Result<(), Box<dyn std::error::Error>> {
+    let output = NamedTempFile::new()?;
+    let mut cmd = Command::new(cargo::cargo_bin!());
+
+    cmd.arg("compile")
+        .arg(shared_resource_path("first_steps_syntax_error.st"))
+        .arg("--output")
+        .arg(output.path());
+    cmd.assert().failure();
+
+    Ok(())
+}
+
+#[test]
+fn compile_when_missing_output_then_err() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::new(cargo::cargo_bin!());
+
+    cmd.arg("compile")
+        .arg(shared_resource_path("steel_thread.st"));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("--output"));
 
     Ok(())
 }

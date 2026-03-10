@@ -1,10 +1,12 @@
+mod common;
+
 use std::io::Cursor;
 
+use common::{load_and_start, VmBuffers};
 use ironplc_container::{Container, ContainerBuilder};
-use ironplc_vm::Vm;
 
-/// End-to-end steel thread test: hand-assembled bytecode → container
-/// format → serialize → deserialize → VM execution → correct result.
+/// End-to-end steel thread test: hand-assembled bytecode -> container
+/// format -> serialize -> deserialize -> VM execution -> correct result.
 ///
 /// Test program:
 ///   x := 10;
@@ -28,7 +30,10 @@ fn steel_thread_when_full_round_trip_then_x_is_10_y_is_42() {
         .num_variables(2)
         .add_i32_constant(10)
         .add_i32_constant(32)
-        .add_function(0, &bytecode, 2, 2)
+        .add_function(0, &[0xB5], 0, 2) // init: RET_VOID
+        .add_function(1, &bytecode, 2, 2) // scan: program body
+        .init_function_id(0)
+        .entry_function_id(1)
         .build();
 
     // 2. Serialize to bytes.
@@ -38,9 +43,10 @@ fn steel_thread_when_full_round_trip_then_x_is_10_y_is_42() {
     // 3. Deserialize from bytes.
     let loaded = Container::read_from(&mut Cursor::new(&buf)).unwrap();
 
-    // 4. Load into VM, start, and run one scheduling round.
-    let mut vm = Vm::new().load(loaded).start();
-    vm.run_round().unwrap();
+    // 4. Allocate buffers from header sizes and run.
+    let mut b = VmBuffers::from_container(&loaded);
+    let mut vm = load_and_start(&loaded, &mut b).unwrap();
+    vm.run_round(0).unwrap();
 
     // 5. Verify results.
     assert_eq!(vm.read_variable(0).unwrap(), 10);

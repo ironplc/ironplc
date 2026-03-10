@@ -18,24 +18,24 @@ use crate::{
     rule_pou_hierarchy, rule_program_task_definition_exists, rule_stdlib_type_redefinition,
     rule_task_names_unique, rule_unsupported_stdlib_type, rule_use_declared_enumerated_value,
     rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
-    rule_var_decl_global_const_requires_external_const,
+    rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
     semantic_context::SemanticContext,
     symbol_environment::SymbolEnvironment,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
-    type_table, xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
-    xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
-    xform_resolve_type_decl_environment, xform_toposort_declarations,
+    type_table, xform_resolve_expr_types, xform_resolve_late_bound_expr_kind,
+    xform_resolve_late_bound_type_initializer, xform_resolve_symbol_and_function_environment,
+    xform_resolve_type_aliases, xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
 ///
-/// Returns `Ok(SemanticContext)` containing all type, function, and symbol information
-/// gathered during analysis. If any analysis step found errors, they are stored in
-/// `context.diagnostics()` rather than causing an `Err` return.
+/// Returns `Ok((Library, SemanticContext))` containing the type-resolved AST and all type,
+/// function, and symbol information gathered during analysis. If any analysis step found
+/// errors, they are stored in `context.diagnostics()` rather than causing an `Err` return.
 ///
 /// Returns `Err` only when no sources are provided or when foundational type resolution
 /// fails (declaration sorting or type environment building).
-pub fn analyze(sources: &[&Library]) -> Result<SemanticContext, Vec<Diagnostic>> {
+pub fn analyze(sources: &[&Library]) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
     if sources.is_empty() {
         let span = SourceSpan::range(0, 0).with_file_id(&FileId::default());
         return Err(vec![Diagnostic::problem(
@@ -61,12 +61,10 @@ pub fn analyze(sources: &[&Library]) -> Result<SemanticContext, Vec<Diagnostic>>
         }
     }
 
-    Ok(context)
+    Ok((library, context))
 }
 
-pub(crate) fn resolve_types(
-    sources: &[&Library],
-) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
+pub fn resolve_types(sources: &[&Library]) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
     let mut diagnostics: Vec<Diagnostic> = vec![];
 
     // We want to analyze this as a complete set, so we need to join the items together
@@ -127,6 +125,16 @@ pub(crate) fn resolve_types(
         }
     }
 
+    // Recoverable: resolve expression types using the function environment.
+    let fallback = library.clone();
+    match xform_resolve_expr_types::apply(library, &mut type_environment, &function_environment) {
+        Ok(result) => library = result,
+        Err(errs) => {
+            diagnostics.extend(errs);
+            library = fallback;
+        }
+    }
+
     // Recoverable: takes Library by value; clone to recover on failure.
     let fallback = library.clone();
     match xform_resolve_type_aliases::apply(library, &type_environment, &mut symbol_environment) {
@@ -170,6 +178,7 @@ pub(crate) fn semantic(library: &Library, context: &SemanticContext) -> Semantic
         rule_unsupported_stdlib_type::apply,
         rule_var_decl_const_initialized::apply,
         rule_var_decl_const_not_fb::apply,
+        rule_var_decl_initializer_type_compat::apply,
         rule_var_decl_global_const_requires_external_const::apply,
         rule_pou_hierarchy::apply,
     ];
@@ -213,7 +222,7 @@ mod tests {
     fn analyze_when_first_steps_semantic_error_then_ok_with_diagnostics() {
         let lib = parse_shared_library("first_steps_semantic_error.st");
         let res = analyze(&[&lib]);
-        let context = res.unwrap();
+        let (_library, context) = res.unwrap();
         assert!(context.has_diagnostics());
     }
 

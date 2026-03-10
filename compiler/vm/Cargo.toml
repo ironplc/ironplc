@@ -1,26 +1,17 @@
 [package]
 name = "ironplc-vm"
 description = "Bytecode virtual machine for IronPLC"
-version = "0.158.0"
+version = "0.169.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+test-support = []
+
 [dependencies]
-ironplc-container = { path = "../container", version = "0.158.0" }
-ctrlc = "3"
+ironplc-container = { path = "../container", version = "0.169.0" }
 
-time = "0.3.17"
-clap = { version = "4.0", features = ["derive", "wrap_help"] }
-env_logger = "0.10.0"
-log = "0.4.20"
-
-[dev-dependencies]
-assert_cmd = { version = "2.0" }
-predicates = { version = "3.0" }
-tempfile = "3"
-
-[[bin]]
-name = "ironplcvm"
-path = "bin/main.rs"
+[build-dependencies]
+csv = "1"

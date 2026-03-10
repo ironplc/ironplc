@@ -1,0 +1,23 @@
+=====
+V6004
+=====
+
+.. problem-summary:: V6004
+
+The VM could not create the variable dump output file specified by ``--dump-vars``.
+
+Solutions
+---------
+
+1. Verify the output directory exists
+2. Check that you have write permissions for the target directory
+3. Ensure the file path does not contain invalid characters
+4. Confirm the disk has sufficient free space
+
+.. code-block:: bash
+
+   # Ensure the output directory exists
+   mkdir -p /path/to/output/
+
+   # Check write permissions
+   ls -ld /path/to/output/

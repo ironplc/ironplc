@@ -447,13 +447,18 @@ fn map_diagnostic(
     let description = diagnostic.description();
     let range = map_label(&diagnostic.primary, project);
 
-    let code_description = match Uri::from_str(
-        format!(
-            "https://www.ironplc.com/compiler/problems/{}.html",
-            diagnostic.code
-        )
-        .as_str(),
-    ) {
+    let mut url_string = format!(
+        "https://www.ironplc.com/reference/compiler/problems/{}.html?version={}",
+        diagnostic.code,
+        env!("CARGO_PKG_VERSION")
+    );
+    if let Some(ref file) = diagnostic.source_file {
+        url_string.push_str(&format!("&file={}", file));
+    }
+    if let Some(line) = diagnostic.source_line {
+        url_string.push_str(&format!("&line={}", line));
+    }
+    let code_description = match Uri::from_str(&url_string) {
         Ok(url) => Some(CodeDescription { href: url }),
         Err(_) => None,
     };
@@ -535,6 +540,7 @@ fn map_label(label: &ironplc_dsl::diagnostic::Label, project: &dyn Project) -> l
 
 #[cfg(test)]
 mod test {
+    use std::path::PathBuf;
     use std::str::FromStr;
 
     use ironplc_dsl::core::SourceSpan;
@@ -815,6 +821,69 @@ INVALID_SYNTAX"
     }
 
     #[test]
+    fn map_diagnostic_when_problem_then_url_has_version_only() {
+        use ironplc_dsl::core::FileId;
+        use ironplc_dsl::diagnostic::{
+            Diagnostic as DslDiagnostic, Label as DslLabel, Location as DslLocation,
+        };
+
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content = "PROGRAM Main\nEND_PROGRAM";
+        proj.change_text_document(&url, content.to_owned());
+
+        let file_id = FileId::from_path(&std::path::PathBuf::from(url.path().as_str()));
+
+        let diag = DslDiagnostic::problem(
+            ironplc_problems::Problem::SyntaxError,
+            DslLabel {
+                location: DslLocation { start: 0, end: 7 },
+                file_id,
+                message: "some error".to_string(),
+            },
+        );
+
+        let lsp_diag = super::map_diagnostic(diag, proj.wrapped.as_ref());
+
+        let href = lsp_diag.code_description.unwrap().href.to_string();
+        assert!(href.contains("?version="));
+        assert!(!href.contains("&file="));
+        assert!(!href.contains("&line="));
+    }
+
+    #[test]
+    fn map_diagnostic_when_todo_then_url_has_version_file_and_line() {
+        use ironplc_dsl::core::FileId;
+        use ironplc_dsl::diagnostic::{
+            Diagnostic as DslDiagnostic, Label as DslLabel, Location as DslLocation,
+        };
+
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content = "PROGRAM Main\nEND_PROGRAM";
+        proj.change_text_document(&url, content.to_owned());
+
+        let file_id = FileId::from_path(&std::path::PathBuf::from(url.path().as_str()));
+
+        let diag = DslDiagnostic::problem(
+            ironplc_problems::Problem::SyntaxError,
+            DslLabel {
+                location: DslLocation { start: 0, end: 7 },
+                file_id,
+                message: "some error".to_string(),
+            },
+        )
+        .with_source("compiler/analyzer/src/rule_example.rs", 42);
+
+        let lsp_diag = super::map_diagnostic(diag, proj.wrapped.as_ref());
+
+        let href = lsp_diag.code_description.unwrap().href.to_string();
+        assert!(href.contains("?version="));
+        assert!(href.contains("&file=compiler/analyzer/src/rule_example.rs"));
+        assert!(href.contains("&line=42"));
+    }
+
+    #[test]
     fn document_symbols_when_no_document_then_empty() {
         let proj = new_empty_project();
         let url = Uri::from_str(FAKE_PATH).unwrap();
@@ -1005,6 +1074,33 @@ INVALID_SYNTAX"
             }
             _ => panic!("Expected nested response"),
         }
+    }
+
+    #[test]
+    fn map_diagnostic_when_problem_code_url_then_docs_directory_exists() {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        // compiler/plc2x/ -> repo root
+        path.push("../..");
+        path.push("docs/reference/compiler/problems");
+        assert!(
+            path.is_dir(),
+            "Documentation directory for compiler problem codes does not exist: {}",
+            path.display()
+        );
+
+        // Verify at least one problem code .rst file exists
+        let has_problem_files = std::fs::read_dir(&path)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                name.starts_with('P') && name.ends_with(".rst")
+            });
+        assert!(
+            has_problem_files,
+            "No P*.rst files found in {}",
+            path.display()
+        );
     }
 
     #[test]

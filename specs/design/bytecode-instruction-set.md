@@ -1,0 +1,862 @@
+# Spec: Virtual PLC Bytecode Instruction Set
+
+## Overview
+
+This spec defines the bytecode instruction set for the IronPLC virtual PLC runtime. The instruction set is designed for a stack-based virtual machine that executes IEC 61131-3 programs compiled from Structured Text (and potentially other IEC 61131-3 languages).
+
+The instruction set builds on five design decisions documented as ADRs:
+
+0. **[ADR-0000](../adrs/0000-stack-based-bytecode-vm.md)**: Stack-based bytecode VM as the execution model — chosen over register-based VM, native compilation, tree-walking interpretation, and C transpilation
+1. **[ADR-0001](../adrs/0001-bytecode-integer-arithmetic-type-strategy.md)**: Two-width integer arithmetic with explicit narrowing — sub-32-bit types are promoted to 32-bit on load; 64-bit types remain at 64-bit; explicit NARROW instructions handle truncation back to narrow types
+2. **[ADR-0002](../adrs/0002-bytecode-overflow-behavior.md)**: Configurable overflow behavior at narrowing points — the VM supports wrap, saturate, and fault modes as a startup configuration
+3. **[ADR-0003](../adrs/0003-plc-standard-function-blocks-as-intrinsics.md)**: Standard function blocks as VM intrinsics via FB_CALL — timers, counters, and other standard FBs use the same FB_CALL instruction as user-defined FBs, with the VM fast-pathing known types
+4. **[ADR-0008](../adrs/0008-unified-builtin-opcode.md)**: Unified BUILTIN opcode for standard library functions — string functions, numeric functions, and other standard library functions share a single BUILTIN opcode with func_id dispatch
+
+## Encoding
+
+All opcodes are encoded as a single byte (0x00–0xFF). Operands follow the opcode byte and are encoded as fixed-width values whose size depends on the opcode. The encoding is little-endian.
+
+| Operand type | Size | Description |
+|-------------|------|-------------|
+| u8 | 1 byte | Small index (field index, type tag) |
+| u16 | 2 bytes | Variable/constant pool index |
+| i16 | 2 bytes | Signed jump offset (near jumps) |
+| i32 | 4 bytes | Signed jump offset (far jumps) |
+| u32 | 4 bytes | Extended index (for large constant pools) |
+
+## Type System
+
+The VM operates on six value types internally, following the two-width model from ADR-0001:
+
+| VM type | Width | IEC 61131-3 source types | Notes |
+|---------|-------|-------------------------|-------|
+| I32 | 32-bit signed | SINT, INT, DINT | SINT/INT sign-extended on load |
+| U32 | 32-bit unsigned | USINT, UINT, UDINT | USINT/UINT zero-extended on load |
+| I64 | 64-bit signed | LINT | Native width |
+| U64 | 64-bit unsigned | ULINT | Native width |
+| F32 | 32-bit float | REAL | IEEE 754 single |
+| F64 | 64-bit float | LREAL | IEEE 754 double |
+
+Additional IEC 61131-3 types are handled as follows:
+
+| IEC type | VM representation | Notes |
+|----------|------------------|-------|
+| BOOL | I32 (0 or 1) | Promoted to I32; boolean ops produce 0 or 1 |
+| BYTE | U32 | Treated as unsigned 8-bit, zero-extended |
+| WORD | U32 | Treated as unsigned 16-bit, zero-extended |
+| DWORD | U32 | Native width |
+| LWORD | U64 | Native width |
+| TIME | I64 | Microseconds since epoch; sign allows negative durations |
+| DATE, TOD, DT | I64 | Microseconds; specific interpretation is runtime-defined |
+| STRING | buf_idx | Index to a fixed-size buffer (max length known at compile time); see String Operations |
+| WSTRING | buf_idx | Index to a fixed-size wide-char buffer (max length known at compile time); see String Operations |
+| VAR_IN_OUT reference | var_ref | Reference to a variable slot; used for VAR_IN_OUT parameter passing (see Reference Operations) |
+
+### Stack Slot Layout
+
+All stack slots are 8 bytes wide (uniform width). Smaller values (I32, U32, F32, buf_idx, fb_ref, var_ref) occupy the low bytes of the slot; the upper bytes are zero-filled. This uniform layout simplifies the interpreter — POP, DUP, and SWAP operate on fixed-size slots without consulting a type tag. The 8-byte width accommodates the widest native types (I64, U64, F64) without padding or spilling.
+
+## Instruction Set
+
+### Notation
+
+Each instruction is shown as:
+
+```
+OPCODE operand1, operand2   — description
+  Stack effect: [before] → [after]
+```
+
+Stack effects show what the instruction pops from and pushes to the operand stack. Values are consumed left-to-right and the rightmost value is the top of stack.
+
+---
+
+### Load and Store
+
+These instructions move values between the operand stack and memory regions.
+
+#### Constants
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x01 | LOAD_CONST_I32 | index: u16 | [] → [I32] | Push 32-bit signed integer from constant pool |
+| 0x02 | LOAD_CONST_U32 | index: u16 | [] → [U32] | Push 32-bit unsigned integer from constant pool |
+| 0x03 | LOAD_CONST_I64 | index: u16 | [] → [I64] | Push 64-bit signed integer from constant pool |
+| 0x04 | LOAD_CONST_U64 | index: u16 | [] → [U64] | Push 64-bit unsigned integer from constant pool |
+| 0x05 | LOAD_CONST_F32 | index: u16 | [] → [F32] | Push 32-bit float from constant pool |
+| 0x06 | LOAD_CONST_F64 | index: u16 | [] → [F64] | Push 64-bit float from constant pool |
+| 0x07 | LOAD_TRUE | — | [] → [I32] | Push I32 value 1 (boolean TRUE) |
+| 0x08 | LOAD_FALSE | — | [] → [I32] | Push I32 value 0 (boolean FALSE) |
+| 0x09 | LOAD_CONST_STR | index: u16 | [] → [buf_idx] | Copy STRING literal from constant pool into a temporary buffer; push buf_idx |
+| 0x0A | LOAD_CONST_WSTR | index: u16 | [] → [buf_idx] | Copy WSTRING literal from constant pool into a temporary buffer; push buf_idx |
+| 0x0B | LOAD_CONST_TIME | index: u16 | [] → [I64] | Push TIME/DATE/TOD/DT constant from constant pool as I64 microseconds; verifier produces I64_time subtype |
+
+#### Variables
+
+Variable instructions use a 16-bit index into the current scope's variable table. The compiler resolves variable names to indices at compile time.
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x10 | LOAD_VAR_I32 | index: u16 | [] → [I32] | Load 32-bit signed variable (includes promoted SINT, INT, DINT) |
+| 0x11 | LOAD_VAR_U32 | index: u16 | [] → [U32] | Load 32-bit unsigned variable (includes promoted USINT, UINT, UDINT) |
+| 0x12 | LOAD_VAR_I64 | index: u16 | [] → [I64] | Load 64-bit signed variable |
+| 0x13 | LOAD_VAR_U64 | index: u16 | [] → [U64] | Load 64-bit unsigned variable |
+| 0x14 | LOAD_VAR_F32 | index: u16 | [] → [F32] | Load 32-bit float variable |
+| 0x15 | LOAD_VAR_F64 | index: u16 | [] → [F64] | Load 64-bit float variable |
+| 0x18 | STORE_VAR_I32 | index: u16 | [I32] → [] | Store to 32-bit signed variable |
+| 0x19 | STORE_VAR_U32 | index: u16 | [U32] → [] | Store to 32-bit unsigned variable |
+| 0x1A | STORE_VAR_I64 | index: u16 | [I64] → [] | Store to 64-bit signed variable |
+| 0x1B | STORE_VAR_U64 | index: u16 | [U64] → [] | Store to 64-bit unsigned variable |
+| 0x1C | STORE_VAR_F32 | index: u16 | [F32] → [] | Store to 32-bit float variable |
+| 0x1D | STORE_VAR_F64 | index: u16 | [F64] → [] | Store to 64-bit float variable |
+
+#### Process Image (I/O)
+
+Process image instructions access the PLC's input and output memory. Inputs are frozen at the start of each scan cycle; outputs are flushed at the end.
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x20 | LOAD_INPUT | region: u8, index: u16 | [] → [value] | Read from input process image (%I) |
+| 0x21 | STORE_OUTPUT | region: u8, index: u16 | [value] → [] | Write to output process image (%Q) |
+| 0x22 | LOAD_MEMORY | region: u8, index: u16 | [] → [value] | Read from memory region (%M) |
+| 0x23 | STORE_MEMORY | region: u8, index: u16 | [value] → [] | Write to memory region (%M) |
+
+The `region` byte encodes the access width and determines the stack value type:
+
+| Region | Width | IEC notation | Stack type |
+|--------|-------|-------------|------------|
+| 0 | Bit | X | I32 (0 or 1) |
+| 1 | Byte | B | U32 (zero-extended) |
+| 2 | Word | W | U32 (zero-extended) |
+| 3 | Doubleword | D | U32 |
+| 4 | Longword | L | U64 |
+
+The verifier uses this mapping to determine the type pushed by LOAD_INPUT / LOAD_MEMORY and the type expected by STORE_OUTPUT / STORE_MEMORY.
+
+#### Array Access
+
+Dedicated array opcodes enforce bounds checking on every access. The VM validates that the index is within the declared array bounds and traps on out-of-bounds access — eliminating buffer overflows by construction. The alternative (compiling array access to pointer arithmetic) would make bounds checking optional and fragile.
+
+The `type` byte encodes the element type: 0=I32, 1=U32, 2=I64, 3=U64, 4=F32, 5=F64, 6=buf_idx (STRING element), 7=buf_idx (WSTRING element), 8=fb_ref (struct/FB element). The `array` operand is a u16 index into the variable table identifying the array base.
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x24 | LOAD_ARRAY | array: u16, type: u8 | [I32] → [value] | Load element from array; index on stack; traps on out-of-bounds |
+| 0x25 | STORE_ARRAY | array: u16, type: u8 | [value, I32] → [] | Store element to array; index on stack; traps on out-of-bounds |
+
+#### Struct and FB Fields
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x28 | LOAD_FIELD | field: u8 | [fb_ref] → [value] | Load field from struct/FB instance on stack |
+| 0x29 | STORE_FIELD | field: u8 | [value, fb_ref] → [] | Store field to struct/FB instance on stack |
+
+The type of `value` pushed by LOAD_FIELD (and expected by STORE_FIELD) is determined by the field's declared `field_type` in the FB type descriptor. The verifier resolves the fb_ref to its type_id, looks up the field descriptor, and uses the field_type to check type correctness.
+
+---
+
+### Arithmetic
+
+All arithmetic operates at the promoted width per ADR-0001. The compiler emits NARROW instructions (see Type Conversion) when the result must be stored to a sub-32-bit variable.
+
+#### Integer Arithmetic (32-bit)
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x30 | ADD_I32 | — | [I32, I32] → [I32] | Signed 32-bit addition |
+| 0x31 | SUB_I32 | — | [I32, I32] → [I32] | Signed 32-bit subtraction |
+| 0x32 | MUL_I32 | — | [I32, I32] → [I32] | Signed 32-bit multiplication |
+| 0x33 | DIV_I32 | — | [I32, I32] → [I32] | Signed 32-bit division (truncates toward zero) |
+| 0x34 | MOD_I32 | — | [I32, I32] → [I32] | Signed 32-bit modulo |
+| 0x35 | NEG_I32 | — | [I32] → [I32] | Signed 32-bit negation |
+| 0x36 | ADD_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit addition |
+| 0x37 | SUB_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit subtraction |
+| 0x38 | MUL_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit multiplication |
+| 0x39 | DIV_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit division |
+| 0x3A | MOD_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit modulo |
+
+#### Integer Arithmetic (64-bit)
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x3C | ADD_I64 | — | [I64, I64] → [I64] | Signed 64-bit addition |
+| 0x3D | SUB_I64 | — | [I64, I64] → [I64] | Signed 64-bit subtraction |
+| 0x3E | MUL_I64 | — | [I64, I64] → [I64] | Signed 64-bit multiplication |
+| 0x3F | DIV_I64 | — | [I64, I64] → [I64] | Signed 64-bit division |
+| 0x40 | MOD_I64 | — | [I64, I64] → [I64] | Signed 64-bit modulo |
+| 0x41 | NEG_I64 | — | [I64] → [I64] | Signed 64-bit negation |
+| 0x42 | ADD_U64 | — | [U64, U64] → [U64] | Unsigned 64-bit addition |
+| 0x43 | SUB_U64 | — | [U64, U64] → [U64] | Unsigned 64-bit subtraction |
+| 0x44 | MUL_U64 | — | [U64, U64] → [U64] | Unsigned 64-bit multiplication |
+| 0x45 | DIV_U64 | — | [U64, U64] → [U64] | Unsigned 64-bit division |
+| 0x46 | MOD_U64 | — | [U64, U64] → [U64] | Unsigned 64-bit modulo |
+
+#### Floating-Point Arithmetic
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x48 | ADD_F32 | — | [F32, F32] → [F32] | 32-bit float addition |
+| 0x49 | SUB_F32 | — | [F32, F32] → [F32] | 32-bit float subtraction |
+| 0x4A | MUL_F32 | — | [F32, F32] → [F32] | 32-bit float multiplication |
+| 0x4B | DIV_F32 | — | [F32, F32] → [F32] | 32-bit float division |
+| 0x4C | NEG_F32 | — | [F32] → [F32] | 32-bit float negation |
+| 0x4D | ADD_F64 | — | [F64, F64] → [F64] | 64-bit float addition |
+| 0x4E | SUB_F64 | — | [F64, F64] → [F64] | 64-bit float subtraction |
+| 0x4F | MUL_F64 | — | [F64, F64] → [F64] | 64-bit float multiplication |
+| 0x50 | DIV_F64 | — | [F64, F64] → [F64] | 64-bit float division |
+| 0x51 | NEG_F64 | — | [F64] → [F64] | 64-bit float negation |
+
+---
+
+### Boolean and Bitwise
+
+Boolean operations operate on I32 values where 0 = FALSE and 1 = TRUE. Bitwise operations operate on the full bit width of their operands.
+
+#### Boolean (operate on BOOL, which is I32 0 or 1)
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x54 | BOOL_AND | — | [I32, I32] → [I32] | Logical AND (result is 0 or 1) |
+| 0x55 | BOOL_OR | — | [I32, I32] → [I32] | Logical OR (result is 0 or 1) |
+| 0x56 | BOOL_XOR | — | [I32, I32] → [I32] | Logical XOR (result is 0 or 1) |
+| 0x57 | BOOL_NOT | — | [I32] → [I32] | Logical NOT (result is 0 or 1) |
+
+Boolean operations coerce inputs: any non-zero I32 value is treated as TRUE and normalized to 1 before the operation. The result is always 0 or 1. This means `BOOL_AND` on inputs (5, 3) produces 1, not a bitwise AND. The compiler is responsible for ensuring BOOL-typed variables contain only 0 or 1, but the boolean opcodes are defensive against non-canonical inputs.
+
+#### Bitwise (operate on full-width integer values)
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x58 | BIT_AND_32 | — | [U32, U32] → [U32] | Bitwise AND, 32-bit |
+| 0x59 | BIT_OR_32 | — | [U32, U32] → [U32] | Bitwise OR, 32-bit |
+| 0x5A | BIT_XOR_32 | — | [U32, U32] → [U32] | Bitwise XOR, 32-bit |
+| 0x5B | BIT_NOT_32 | — | [U32] → [U32] | Bitwise NOT, 32-bit |
+| 0x5C | SHL_32 | — | [U32, U32] → [U32] | Shift left, 32-bit (shift amount on top) |
+| 0x5D | SHR_32 | — | [U32, U32] → [U32] | Shift right (logical), 32-bit |
+| 0x5E | ROL_32 | — | [U32, U32] → [U32] | Rotate left, 32-bit |
+| 0x5F | ROR_32 | — | [U32, U32] → [U32] | Rotate right, 32-bit |
+| 0x60 | BIT_AND_64 | — | [U64, U64] → [U64] | Bitwise AND, 64-bit |
+| 0x61 | BIT_OR_64 | — | [U64, U64] → [U64] | Bitwise OR, 64-bit |
+| 0x62 | BIT_XOR_64 | — | [U64, U64] → [U64] | Bitwise XOR, 64-bit |
+| 0x63 | BIT_NOT_64 | — | [U64] → [U64] | Bitwise NOT, 64-bit |
+| 0x64 | SHL_64 | — | [U64, U64] → [U64] | Shift left, 64-bit |
+| 0x65 | SHR_64 | — | [U64, U64] → [U64] | Shift right (logical), 64-bit |
+| 0x66 | ROL_64 | — | [U64, U64] → [U64] | Rotate left, 64-bit |
+| 0x67 | ROR_64 | — | [U64, U64] → [U64] | Rotate right, 64-bit |
+
+IEC 61131-3 shift functions (SHL, SHR, ROL, ROR) accept ANY_INT for the shift amount, but the bytecode shift opcodes require U32 for the shift amount (both 32-bit and 64-bit variants). The compiler is responsible for emitting appropriate type conversions (e.g., I32_TO_U32 via REINTERPRET_I32_U32) when the source shift amount is a signed type.
+
+---
+
+### Comparison
+
+Comparison instructions pop two values and push an I32 (0 or 1) result. Separate opcodes for signed, unsigned, and float comparisons because the hardware operations differ (signed vs unsigned comparison, IEEE 754 float comparison with NaN handling).
+
+#### Signed Integer Comparison (32-bit)
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x68 | EQ_I32 | — | [I32, I32] → [I32] | Equal |
+| 0x69 | NE_I32 | — | [I32, I32] → [I32] | Not equal |
+| 0x6A | LT_I32 | — | [I32, I32] → [I32] | Less than (signed) |
+| 0x6B | LE_I32 | — | [I32, I32] → [I32] | Less than or equal (signed) |
+| 0x6C | GT_I32 | — | [I32, I32] → [I32] | Greater than (signed) |
+| 0x6D | GE_I32 | — | [I32, I32] → [I32] | Greater than or equal (signed) |
+
+#### Unsigned Integer Comparison (32-bit)
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x6E | EQ_U32 | — | [U32, U32] → [I32] | Equal |
+| 0x6F | NE_U32 | — | [U32, U32] → [I32] | Not equal |
+| 0x70 | LT_U32 | — | [U32, U32] → [I32] | Less than (unsigned) |
+| 0x71 | LE_U32 | — | [U32, U32] → [I32] | Less than or equal (unsigned) |
+| 0x72 | GT_U32 | — | [U32, U32] → [I32] | Greater than (unsigned) |
+| 0x73 | GE_U32 | — | [U32, U32] → [I32] | Greater than or equal (unsigned) |
+
+#### 64-bit Comparison (signed and unsigned)
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x74 | EQ_I64 | — | [I64, I64] → [I32] | Equal (signed 64-bit) |
+| 0x75 | NE_I64 | — | [I64, I64] → [I32] | Not equal (signed 64-bit) |
+| 0x76 | LT_I64 | — | [I64, I64] → [I32] | Less than (signed 64-bit) |
+| 0x77 | LE_I64 | — | [I64, I64] → [I32] | Less than or equal (signed 64-bit) |
+| 0x78 | GT_I64 | — | [I64, I64] → [I32] | Greater than (signed 64-bit) |
+| 0x79 | GE_I64 | — | [I64, I64] → [I32] | Greater than or equal (signed 64-bit) |
+| 0x7A | EQ_U64 | — | [U64, U64] → [I32] | Equal (unsigned 64-bit) |
+| 0x7B | NE_U64 | — | [U64, U64] → [I32] | Not equal (unsigned 64-bit) |
+| 0x7C | LT_U64 | — | [U64, U64] → [I32] | Less than (unsigned 64-bit) |
+| 0x7D | LE_U64 | — | [U64, U64] → [I32] | Less than or equal (unsigned 64-bit) |
+| 0x7E | GT_U64 | — | [U64, U64] → [I32] | Greater than (unsigned 64-bit) |
+| 0x7F | GE_U64 | — | [U64, U64] → [I32] | Greater than or equal (unsigned 64-bit) |
+
+#### Float Comparison
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x80 | EQ_F32 | — | [F32, F32] → [I32] | Equal (NaN ≠ NaN → 0) |
+| 0x81 | NE_F32 | — | [F32, F32] → [I32] | Not equal |
+| 0x82 | LT_F32 | — | [F32, F32] → [I32] | Less than |
+| 0x83 | LE_F32 | — | [F32, F32] → [I32] | Less than or equal |
+| 0x84 | GT_F32 | — | [F32, F32] → [I32] | Greater than |
+| 0x85 | GE_F32 | — | [F32, F32] → [I32] | Greater than or equal |
+| 0x86 | EQ_F64 | — | [F64, F64] → [I32] | Equal (NaN ≠ NaN → 0) |
+| 0x87 | NE_F64 | — | [F64, F64] → [I32] | Not equal |
+| 0x88 | LT_F64 | — | [F64, F64] → [I32] | Less than |
+| 0x89 | LE_F64 | — | [F64, F64] → [I32] | Less than or equal |
+| 0x8A | GT_F64 | — | [F64, F64] → [I32] | Greater than |
+| 0x8B | GE_F64 | — | [F64, F64] → [I32] | Greater than or equal |
+
+---
+
+### Type Conversion
+
+#### Narrowing (with overflow policy per ADR-0002)
+
+These instructions truncate a 32-bit value to a sub-32-bit width. The VM's configured overflow policy (wrap, saturate, fault) determines the behavior when the value exceeds the target range.
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x90 | NARROW_I8 | — | [I32] → [I32] | Narrow to SINT range (-128..127), result stays in I32 |
+| 0x91 | NARROW_I16 | — | [I32] → [I32] | Narrow to INT range (-32768..32767), result stays in I32 |
+| 0x92 | NARROW_U8 | — | [U32] → [U32] | Narrow to USINT range (0..255), result stays in U32 |
+| 0x93 | NARROW_U16 | — | [U32] → [U32] | Narrow to UINT range (0..65535), result stays in U32 |
+
+Note: the narrowed value remains at 32-bit width on the stack (since the VM always operates at 32-bit minimum). The NARROW instruction constrains the *value* to the target range, not the stack slot width.
+
+#### Widening (lossless)
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x94 | WIDEN_I32_TO_I64 | — | [I32] → [I64] | Sign-extend I32 to I64 |
+| 0x95 | WIDEN_U32_TO_U64 | — | [U32] → [U64] | Zero-extend U32 to U64 |
+| 0x96 | WIDEN_F32_TO_F64 | — | [F32] → [F64] | Promote float to double |
+
+#### Cross-Domain Conversion
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0x98 | I32_TO_F32 | — | [I32] → [F32] | Signed integer to float |
+| 0x99 | I32_TO_F64 | — | [I32] → [F64] | Signed integer to double |
+| 0x9A | I64_TO_F64 | — | [I64] → [F64] | Signed long to double |
+| 0x9B | U32_TO_F32 | — | [U32] → [F32] | Unsigned integer to float |
+| 0x9C | U32_TO_F64 | — | [U32] → [F64] | Unsigned integer to double |
+| 0x9D | U64_TO_F64 | — | [U64] → [F64] | Unsigned long to double |
+| 0x9E | F32_TO_I32 | — | [F32] → [I32] | Float to signed integer (truncates toward zero) |
+| 0x9F | F64_TO_I32 | — | [F64] → [I32] | Double to signed integer (truncates toward zero) |
+| 0xA0 | F64_TO_I64 | — | [F64] → [I64] | Double to signed long (truncates toward zero) |
+| 0xA6 | F32_TO_U32 | — | [F32] → [U32] | Float to unsigned 32-bit (truncates toward zero) |
+| 0xA7 | F64_TO_U32 | — | [F64] → [U32] | Double to unsigned 32-bit (truncates toward zero) |
+| 0xA8 | F64_TO_U64 | — | [F64] → [U64] | Double to unsigned 64-bit (truncates toward zero) |
+| 0xA1 | NARROW_I64_TO_I32 | — | [I64] → [I32] | Narrow 64-bit to 32-bit signed (with overflow policy) |
+| 0xA2 | NARROW_U64_TO_U32 | — | [U64] → [U32] | Narrow 64-bit to 32-bit unsigned (with overflow policy) |
+| 0xA3 | NARROW_F64_TO_F32 | — | [F64] → [F32] | Narrow double to float (IEEE 754 rounding) |
+
+#### Reinterpretation (bitcast)
+
+These instructions reinterpret the bit pattern of a value as a different signedness without changing any bits. They are zero-cost at runtime (the value is unchanged on the stack; only the verifier's type tracking changes). The compiler emits these when IEC 61131-3 semantics require treating a signed value as unsigned or vice versa (e.g., assigning a DINT to a UDINT, or passing a signed shift amount to a bitwise shift opcode).
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xA9 | REINTERPRET_I32_U32 | — | [I32] → [U32] | Reinterpret signed 32-bit as unsigned 32-bit (bitcast) |
+| 0xAA | REINTERPRET_U32_I32 | — | [U32] → [I32] | Reinterpret unsigned 32-bit as signed 32-bit (bitcast) |
+| 0xAB | REINTERPRET_I64_U64 | — | [I64] → [U64] | Reinterpret signed 64-bit as unsigned 64-bit (bitcast) |
+| 0xAC | REINTERPRET_U64_I64 | — | [U64] → [I64] | Reinterpret unsigned 64-bit as signed 64-bit (bitcast) |
+
+#### TIME Arithmetic
+
+TIME values are I64 microseconds. Although raw I64 arithmetic produces correct results, dedicated TIME opcodes enforce type discipline: the VM can verify that only TIME-typed values are passed to these instructions, catching accidental mixing of TIME and unrelated integers. This prevents a class of unit-confusion bugs (e.g., accidentally adding a loop counter to a timestamp). TIME constants are loaded via LOAD_CONST_TIME (0x0B), which the verifier tags as I64_time subtype, ensuring the type discipline chain is unbroken from constant loading through arithmetic.
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xA4 | TIME_ADD | — | [I64, I64] → [I64] | Add two TIME/duration values (microseconds) |
+| 0xA5 | TIME_SUB | — | [I64, I64] → [I64] | Subtract TIME/duration values (microseconds) |
+
+---
+
+### Control Flow
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xB0 | JMP | offset: i16 | [] → [] | Unconditional jump (relative to next instruction) |
+| 0xB1 | JMP_IF | offset: i16 | [I32] → [] | Jump if top of stack is nonzero (TRUE) |
+| 0xB2 | JMP_IF_NOT | offset: i16 | [I32] → [] | Jump if top of stack is zero (FALSE) |
+| 0xB3 | CALL | index: u16 | [args...] → [result] | Call function by index; pushes return value |
+| 0xB4 | RET | — | [result] → [] | Return from function; pops return value |
+| 0xB5 | RET_VOID | — | [] → [] | Return from function with no return value |
+| 0xB6 | JMP_FAR | offset: i32 | [] → [] | Unconditional far jump (relative to next instruction); for functions exceeding i16 range |
+| 0xB7 | JMP_IF_FAR | offset: i32 | [I32] → [] | Far conditional jump if top of stack is nonzero (TRUE) |
+| 0xB8 | JMP_IF_NOT_FAR | offset: i32 | [I32] → [] | Far conditional jump if top of stack is zero (FALSE) |
+
+---
+
+### Function Block Operations
+
+Function block invocation follows the pattern: load the FB instance reference, store input parameters, call the FB, load output parameters.
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xC0 | FB_LOAD_INSTANCE | index: u16 | [] → [fb_ref] | Push FB instance reference from variable table |
+| 0xC1 | FB_STORE_PARAM | field: u8 | [value, fb_ref] → [fb_ref] | Store input parameter on FB instance; keeps fb_ref on stack |
+| 0xC2 | FB_LOAD_PARAM | field: u8 | [fb_ref] → [value, fb_ref] | Load output parameter from FB instance; keeps fb_ref on stack |
+| 0xC3 | FB_CALL | type_id: u16 | [fb_ref] → [fb_ref] | Call function block (VM dispatches to intrinsic or bytecode body per ADR-0003); preserves fb_ref for output parameter access |
+
+#### Calling Convention
+
+A typical FB invocation compiles to:
+
+```
+(* Source: myTimer(IN := start, PT := T#5s); elapsed := myTimer.ET; *)
+
+FB_LOAD_INSTANCE  0x0001      -- push myTimer instance ref
+LOAD_VAR_I32      0x0002      -- push start variable
+FB_STORE_PARAM    0            -- store to IN (field 0), ref stays on stack
+LOAD_CONST_TIME   0x0003      -- push T#5s as I64 microseconds (TIME subtype)
+FB_STORE_PARAM    1            -- store to PT (field 1), ref stays on stack
+FB_CALL           0x0010      -- call TON (type_id 0x0010); ref stays on stack
+FB_LOAD_PARAM     3            -- load ET (field 3); ref still on stack
+STORE_VAR_I64     0x0004      -- store to elapsed variable
+POP                            -- discard fb_ref
+```
+
+FB_STORE_PARAM, FB_LOAD_PARAM, and FB_CALL all keep the instance reference on the stack. This allows chaining parameter stores, the call, and output parameter loads without reloading the reference. The caller must POP the fb_ref when done (or let it be consumed by a subsequent operation).
+
+---
+
+### Reference Operations (VAR_IN_OUT)
+
+IEC 61131-3 VAR_IN_OUT parameters pass a *reference* to a variable, allowing the called function block to read and write the caller's variable directly. The reference operations support this by pushing a `var_ref` (a reference to a variable slot) onto the stack, and by loading/storing values through that reference.
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xC5 | LOAD_VAR_REF | index: u16 | [] → [var_ref] | Push reference to variable at index in the variable table |
+| 0xC6 | DEREF_LOAD | type: u8 | [var_ref] → [value] | Load value through reference; type byte determines the value type pushed |
+| 0xC7 | DEREF_STORE | type: u8 | [value, var_ref] → [] | Store value through reference; type byte determines the value type expected |
+
+The `type` byte for DEREF_LOAD and DEREF_STORE uses the same encoding as the array access `type` byte: 0=I32, 1=U32, 2=I64, 3=U64, 4=F32, 5=F64, 6=buf_idx (STRING), 7=buf_idx (WSTRING).
+
+#### VAR_IN_OUT Compilation Example
+
+```
+(* Source *)
+FUNCTION_BLOCK Accumulator
+  VAR_IN_OUT
+    counter : DINT;
+  END_VAR
+  VAR_INPUT
+    increment : DINT;
+  END_VAR
+  counter := counter + increment;
+END_FUNCTION_BLOCK
+
+(* Caller *)
+VAR myCounter : DINT; END_VAR
+myAccum(counter := myCounter, increment := 5);
+
+(* Caller bytecode *)
+FB_LOAD_INSTANCE  0x0001      -- push myAccum instance ref
+LOAD_VAR_REF      0x0000      -- push reference to myCounter
+FB_STORE_PARAM    0            -- store ref to VAR_IN_OUT counter (field 0)
+LOAD_CONST_I32    0x0005      -- push 5
+FB_STORE_PARAM    1            -- store to increment (field 1)
+FB_CALL           0x0020      -- call Accumulator
+POP                            -- discard fb_ref
+
+(* FB body bytecode for counter := counter + increment *)
+DEREF_LOAD        0            -- load I32 through VAR_IN_OUT counter reference
+LOAD_FIELD        1            -- load increment from self
+ADD_I32                        -- counter + increment
+DEREF_STORE       0            -- store I32 through VAR_IN_OUT counter reference
+```
+
+---
+
+### Built-in Standard Library Functions
+
+The BUILTIN opcode provides a single dispatch mechanism for all standard library functions (string operations, numeric functions, and future extensions). Rather than dedicating a separate opcode to each function, BUILTIN uses a u16 `func_id` operand to identify the target function. The VM dispatches to the appropriate native implementation based on the func_id. The verifier uses the func_id to determine the expected stack types (see Built-in Function Table below).
+
+This approach parallels FB_CALL: one opcode handles an extensible family of operations, with the operand identifying the specific operation.
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xC4 | BUILTIN | func_id: u16 | [args...] → [result] | Call built-in function; stack effect depends on func_id |
+
+#### Built-in Function Table
+
+##### STRING Functions (func_id 0x0100–0x010A)
+
+| func_id | Name | Stack effect | Description |
+|---------|------|-------------|-------------|
+| 0x0100 | STR_LEN | [buf_idx_str] → [I32] | String length (LEN) |
+| 0x0101 | STR_CONCAT | [buf_idx_str, buf_idx_str] → [buf_idx_str] | Concatenate two strings (CONCAT) |
+| 0x0102 | STR_LEFT | [buf_idx_str, I32] → [buf_idx_str] | Left substring (LEFT) |
+| 0x0103 | STR_RIGHT | [buf_idx_str, I32] → [buf_idx_str] | Right substring (RIGHT) |
+| 0x0104 | STR_MID | [buf_idx_str, I32, I32] → [buf_idx_str] | Mid substring (MID); position, length on stack |
+| 0x0105 | STR_FIND | [buf_idx_str, buf_idx_str] → [I32] | Find substring position (FIND); 0 if not found |
+| 0x0106 | STR_INSERT | [buf_idx_str, buf_idx_str, I32] → [buf_idx_str] | Insert string at position (INSERT) |
+| 0x0107 | STR_DELETE | [buf_idx_str, I32, I32] → [buf_idx_str] | Delete characters (DELETE); position, length |
+| 0x0108 | STR_REPLACE | [buf_idx_str, buf_idx_str, I32, I32] → [buf_idx_str] | Replace characters (REPLACE) |
+| 0x0109 | STR_EQ | [buf_idx_str, buf_idx_str] → [I32] | String equality comparison |
+| 0x010A | STR_LT | [buf_idx_str, buf_idx_str] → [I32] | String less-than (lexicographic) |
+
+##### WSTRING Functions (func_id 0x0200–0x020A)
+
+| func_id | Name | Stack effect | Description |
+|---------|------|-------------|-------------|
+| 0x0200 | WSTR_LEN | [buf_idx_wstr] → [I32] | Wide string length (LEN) |
+| 0x0201 | WSTR_CONCAT | [buf_idx_wstr, buf_idx_wstr] → [buf_idx_wstr] | Concatenate two wide strings (CONCAT) |
+| 0x0202 | WSTR_LEFT | [buf_idx_wstr, I32] → [buf_idx_wstr] | Left substring (LEFT) |
+| 0x0203 | WSTR_RIGHT | [buf_idx_wstr, I32] → [buf_idx_wstr] | Right substring (RIGHT) |
+| 0x0204 | WSTR_MID | [buf_idx_wstr, I32, I32] → [buf_idx_wstr] | Mid substring (MID); position, length on stack |
+| 0x0205 | WSTR_FIND | [buf_idx_wstr, buf_idx_wstr] → [I32] | Find substring position (FIND); 0 if not found |
+| 0x0206 | WSTR_INSERT | [buf_idx_wstr, buf_idx_wstr, I32] → [buf_idx_wstr] | Insert string at position (INSERT) |
+| 0x0207 | WSTR_DELETE | [buf_idx_wstr, I32, I32] → [buf_idx_wstr] | Delete characters (DELETE); position, length |
+| 0x0208 | WSTR_REPLACE | [buf_idx_wstr, buf_idx_wstr, I32, I32] → [buf_idx_wstr] | Replace characters (REPLACE) |
+| 0x0209 | WSTR_EQ | [buf_idx_wstr, buf_idx_wstr] → [I32] | Wide string equality comparison |
+| 0x020A | WSTR_LT | [buf_idx_wstr, buf_idx_wstr] → [I32] | Wide string less-than (lexicographic) |
+
+##### Numeric Functions (func_id 0x0300–0x03FF)
+
+Numeric functions are monomorphized by the compiler from generic IEC 61131-3 signatures (ANY_NUM, ANY_REAL) to type-specific func_ids. The compiler determines the concrete type from the arguments and emits the appropriate func_id.
+
+| func_id | Name | Stack effect | Description |
+|---------|------|-------------|-------------|
+| 0x0300 | ABS_I32 | [I32] → [I32] | Absolute value (signed 32-bit) |
+| 0x0301 | ABS_I64 | [I64] → [I64] | Absolute value (signed 64-bit) |
+| 0x0302 | ABS_F32 | [F32] → [F32] | Absolute value (32-bit float) |
+| 0x0303 | ABS_F64 | [F64] → [F64] | Absolute value (64-bit float) |
+| 0x0310 | SQRT_F32 | [F32] → [F32] | Square root (32-bit float) |
+| 0x0311 | SQRT_F64 | [F64] → [F64] | Square root (64-bit float) |
+| 0x0320 | MIN_I32 | [I32, I32] → [I32] | Minimum (signed 32-bit) |
+| 0x0321 | MIN_U32 | [U32, U32] → [U32] | Minimum (unsigned 32-bit) |
+| 0x0322 | MIN_I64 | [I64, I64] → [I64] | Minimum (signed 64-bit) |
+| 0x0323 | MIN_U64 | [U64, U64] → [U64] | Minimum (unsigned 64-bit) |
+| 0x0324 | MIN_F32 | [F32, F32] → [F32] | Minimum (32-bit float) |
+| 0x0325 | MIN_F64 | [F64, F64] → [F64] | Minimum (64-bit float) |
+| 0x0330 | MAX_I32 | [I32, I32] → [I32] | Maximum (signed 32-bit) |
+| 0x0331 | MAX_U32 | [U32, U32] → [U32] | Maximum (unsigned 32-bit) |
+| 0x0332 | MAX_I64 | [I64, I64] → [I64] | Maximum (signed 64-bit) |
+| 0x0333 | MAX_U64 | [U64, U64] → [U64] | Maximum (unsigned 64-bit) |
+| 0x0334 | MAX_F32 | [F32, F32] → [F32] | Maximum (32-bit float) |
+| 0x0335 | MAX_F64 | [F64, F64] → [F64] | Maximum (64-bit float) |
+| 0x0340 | LIMIT_I32 | [I32, I32, I32] → [I32] | Clamp to range (signed 32-bit): MN, IN, MX |
+| 0x0341 | LIMIT_U32 | [U32, U32, U32] → [U32] | Clamp to range (unsigned 32-bit): MN, IN, MX |
+| 0x0342 | LIMIT_I64 | [I64, I64, I64] → [I64] | Clamp to range (signed 64-bit): MN, IN, MX |
+| 0x0343 | LIMIT_U64 | [U64, U64, U64] → [U64] | Clamp to range (unsigned 64-bit): MN, IN, MX |
+| 0x0344 | LIMIT_F32 | [F32, F32, F32] → [F32] | Clamp to range (32-bit float): MN, IN, MX |
+| 0x0345 | LIMIT_F64 | [F64, F64, F64] → [F64] | Clamp to range (64-bit float): MN, IN, MX |
+
+#### Built-in Function ID Ranges
+
+| Range | Category | Description |
+|-------|----------|-------------|
+| 0x0000–0x00FF | Reserved | Future use |
+| 0x0100–0x01FF | STRING functions | String operations on single-byte STRING buffers |
+| 0x0200–0x02FF | WSTRING functions | String operations on wide-character WSTRING buffers |
+| 0x0300–0x03FF | Numeric functions | ABS, SQRT, MIN, MAX, LIMIT (type-specific variants) |
+| 0x0400–0xFFFF | Reserved | Future standard library extensions (trigonometric, logarithmic, date/time, etc.) |
+
+STRING and WSTRING functions are in separate func_id ranges so the verifier can distinguish STRING operations from WSTRING operations by func_id alone, without runtime type tags.
+
+---
+
+### Stack Operations
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xD0 | POP | — | [value] → [] | Discard top of stack |
+| 0xD1 | DUP | — | [value] → [value, value] | Duplicate top of stack |
+| 0xD2 | SWAP | — | [a, b] → [b, a] | Swap top two stack values |
+
+---
+
+### String Operations
+
+IEC 61131-3 strings have a declared maximum length known at compile time (e.g., `STRING(20)` holds at most 20 characters). Strings are stored as fixed-size buffers — not heap-allocated — matching the behavior of PLC runtimes like CODESYS and TwinCAT. This ensures deterministic memory usage with no dynamic allocation during scan cycles.
+
+The VM manages two kinds of string buffers:
+
+- **Variable buffers** — each STRING/WSTRING variable has a fixed-size buffer in the variable table, sized per its declaration (e.g., 81 bytes for `STRING(80)`: 1-byte length prefix + 80 chars data)
+- **Temporary buffers** — a pre-allocated pool of fixed-size buffers used for intermediate results from string operations (e.g., the result of CONCAT before it is stored). The compiler determines the required pool size by analyzing maximum expression depth.
+
+The `buf_idx` values on the operand stack are small indices (not pointers) into the buffer table. Stack operations like DUP and SWAP copy only the index, not the buffer contents. Actual buffer-to-buffer copies happen only at STR_STORE_VAR / WSTR_STORE_VAR (string assignment) and within string operation handlers.
+
+WSTRING uses UCS-2 encoding (ISO 10646 Basic Multilingual Plane, 2 bytes per character), as specified by IEC 61131-3. UCS-2 is a fixed-width encoding restricted to code points U+0000 through U+FFFF; surrogate pairs are not supported. This means WSTRING cannot represent characters outside the BMP (e.g., emoji, CJK Extension B). The `max_wstr_length` in the container header counts UCS-2 code units (2-byte characters), not bytes.
+
+STRING and WSTRING are statically distinguished throughout the instruction set. Variable access uses separate opcodes (STR_LOAD_VAR vs WSTR_LOAD_VAR), and string functions use separate BUILTIN func_id ranges (0x0100 for STRING, 0x0200 for WSTRING). The VM asserts that STRING operations always receive single-byte buffers and WSTRING operations always receive wide-character buffers, trapping immediately on a mismatch rather than silently misinterpreting character data.
+
+String operations are dispatched through the BUILTIN opcode (0xC4) with function-specific func_id values. This keeps the instruction set compact while supporting the full IEC 61131-3 string function library and providing an extensible mechanism for future functions. String operations that produce a string result (CONCAT, LEFT, etc.) write into a temporary buffer and push its index. If the result exceeds the temporary buffer's max length, it is truncated — matching standard PLC string truncation semantics.
+
+**Buffer Lifecycle.** Temporary string buffers are allocated from the pre-allocated pool at the start of a string operation and are valid until the next string operation that allocates a temporary buffer, or until STR_STORE_VAR / WSTR_STORE_VAR copies the buffer contents into a variable. The compiler must ensure that no temporary buf_idx is live across a subsequent string operation that could reuse the same temporary buffer slot. In practice, the compiler emits STR_STORE_VAR / WSTR_STORE_VAR immediately after a string expression completes, before starting the next string expression. The verifier does not enforce buffer lifetime (this is a compiler correctness invariant, not a verifiable property), but the fixed pool size in the header guarantees that the pool is never exhausted if the compiler's analysis is correct.
+
+#### STRING Variable Access
+
+String variable access uses dedicated opcodes because string assignment has different semantics from integer assignment — STR_STORE_VAR performs a content copy into the data region (value semantics), not an index copy. The operand is a `data_offset` — a byte offset into the unified data region ([ADR-0017](../adrs/0017-unified-data-region.md)) where the string variable's `[max_length][cur_length][data]` layout begins.
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xE0 | STR_LOAD_VAR | data_offset: u16 | [] → [buf_idx] | Copy STRING from data region into a temp buffer; push temp buf_idx |
+| 0xE1 | STR_STORE_VAR | data_offset: u16 | [buf_idx] → [] | Copy temp buffer contents into STRING variable at data_offset (value-copy assignment) |
+
+#### WSTRING Variable Access
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xE2 | WSTR_LOAD_VAR | data_offset: u16 | [] → [buf_idx] | Copy WSTRING from data region into a temp buffer; push temp buf_idx |
+| 0xE3 | WSTR_STORE_VAR | data_offset: u16 | [buf_idx] → [] | Copy temp buffer contents into WSTRING variable at data_offset (value-copy assignment) |
+
+#### String Functions
+
+String functions (LEN, CONCAT, LEFT, RIGHT, MID, FIND, INSERT, DELETE, REPLACE, EQ, LT) for both STRING and WSTRING are dispatched through the BUILTIN opcode (0xC4) using func_id operands. See the Built-in Function Table in the Built-in Standard Library Functions section for the complete function ID assignments.
+
+---
+
+### Debug
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xFC | NOP | — | [] → [] | No operation |
+| 0xFD | BREAKPOINT | — | [] → [] | Debug breakpoint (NOP in release mode) |
+| 0xFE | LINE | line: u16 | [] → [] | Source line number marker for debugging |
+
+---
+
+## Opcode Summary
+
+| Category | Range | Count | Description |
+|----------|-------|-------|-------------|
+| Load/Store Constants | 0x01–0x0B | 11 | Constant pool loads, boolean literals, string constants, TIME constant |
+| Load/Store Variables | 0x10–0x1D | 12 | Typed variable access (numeric types only) |
+| Process Image | 0x20–0x23 | 4 | I/O and memory access (%I, %Q, %M) |
+| Array Access | 0x24–0x25 | 2 | Bounds-checked array element load/store |
+| Struct/FB Fields | 0x28–0x29 | 2 | Field access on FB references |
+| Integer Arithmetic 32 | 0x30–0x3A | 11 | I32 and U32 arithmetic |
+| Integer Arithmetic 64 | 0x3C–0x46 | 11 | I64 and U64 arithmetic |
+| Float Arithmetic | 0x48–0x51 | 10 | F32 and F64 arithmetic |
+| Boolean | 0x54–0x57 | 4 | Logical AND/OR/XOR/NOT |
+| Bitwise | 0x58–0x67 | 16 | Bitwise ops and shifts, 32 and 64-bit |
+| Comparison | 0x68–0x8B | 36 | Typed comparisons across all VM types |
+| Type Conversion (narrow/widen) | 0x90–0xA3 | 16 | Narrowing, widening, cross-domain |
+| Float-to-Unsigned Conversion | 0xA6–0xA8 | 3 | Float/double to unsigned integer |
+| Reinterpretation | 0xA9–0xAC | 4 | Signed/unsigned bitcast (zero-cost) |
+| TIME Arithmetic | 0xA4–0xA5 | 2 | Type-checked TIME addition and subtraction |
+| Control Flow | 0xB0–0xB8 | 9 | Jumps (near/far), calls, returns |
+| Function Block | 0xC0–0xC3 | 4 | FB instance management and invocation |
+| Built-in Functions | 0xC4 | 1 | BUILTIN dispatch for standard library functions |
+| Reference Operations | 0xC5–0xC7 | 3 | VAR_IN_OUT reference load/deref/store |
+| Stack | 0xD0–0xD2 | 3 | Stack manipulation |
+| STRING Variable Access | 0xE0–0xE1 | 2 | STRING variable load/store |
+| WSTRING Variable Access | 0xE2–0xE3 | 2 | WSTRING variable load/store |
+| Debug | 0xFC–0xFE | 3 | NOP, breakpoint, line info |
+| **Total** | | **171** | |
+
+The opcode budget uses 171 of 256 slots (67%), leaving 85 slots for future extensions (e.g., OOP method dispatch).
+
+## Compilation Examples
+
+### Simple Arithmetic with Narrowing
+
+```
+(* Source *)
+VAR x : SINT; y : SINT; z : SINT; END_VAR
+z := x + y;
+
+(* Bytecode *)
+LOAD_VAR_I32   0x0000    -- load x (SINT, sign-extended to I32)
+LOAD_VAR_I32   0x0001    -- load y (SINT, sign-extended to I32)
+ADD_I32                   -- I32 addition
+NARROW_I8                 -- apply overflow policy, constrain to SINT range
+STORE_VAR_I32  0x0002    -- store z
+```
+
+### IF/ELSE
+
+```
+(* Source *)
+IF condition THEN
+  x := 1;
+ELSE
+  x := 2;
+END_IF;
+
+(* Bytecode *)
+LOAD_VAR_I32   0x0000    -- load condition (BOOL as I32)
+JMP_IF_NOT     +8        -- jump to ELSE if false
+LOAD_CONST_I32 0x0001    -- push 1
+STORE_VAR_I32  0x0001    -- store x
+JMP            +5        -- jump past ELSE
+LOAD_CONST_I32 0x0002    -- push 2 (ELSE target)
+STORE_VAR_I32  0x0001    -- store x
+                          -- (end of IF)
+```
+
+### FOR Loop
+
+```
+(* Source *)
+FOR i := 0 TO 9 DO
+  sum := sum + i;
+END_FOR;
+
+(* Bytecode *)
+LOAD_CONST_I32 0x0000    -- push 0
+STORE_VAR_I32  0x0000    -- i := 0
+                          -- loop_start:
+LOAD_VAR_I32   0x0000    -- load i
+LOAD_CONST_I32 0x0001    -- push 9
+GT_I32                    -- i > 9?
+JMP_IF         +12       -- exit loop if true
+LOAD_VAR_I32   0x0001    -- load sum
+LOAD_VAR_I32   0x0000    -- load i
+ADD_I32                   -- sum + i
+STORE_VAR_I32  0x0001    -- store sum
+LOAD_VAR_I32   0x0000    -- load i
+LOAD_CONST_I32 0x0002    -- push 1
+ADD_I32                   -- i + 1
+STORE_VAR_I32  0x0000    -- store i
+JMP            -28       -- jump to loop_start
+                          -- loop_exit:
+```
+
+### Function Block Call (Timer)
+
+```
+(* Source *)
+myTimer(IN := startButton, PT := T#5s);
+IF myTimer.Q THEN
+  output := TRUE;
+END_IF;
+
+(* Bytecode *)
+FB_LOAD_INSTANCE 0x0000  -- push myTimer ref
+LOAD_VAR_I32     0x0001  -- push startButton
+FB_STORE_PARAM   0        -- store IN parameter
+LOAD_CONST_TIME  0x0000  -- push 5000000 (5s in microseconds, TIME subtype)
+FB_STORE_PARAM   1        -- store PT parameter
+FB_CALL          0x0010  -- invoke TON; ref stays on stack
+FB_LOAD_PARAM    2        -- load Q output; ref still on stack
+SWAP                      -- [fb_ref, Q] → [Q, fb_ref]
+POP                       -- discard fb_ref
+JMP_IF_NOT       +4       -- skip if Q is FALSE
+LOAD_TRUE                 -- push TRUE
+STORE_VAR_I32    0x0002  -- store output
+```
+
+## Design Decisions
+
+The following questions were resolved with a "prioritize safety" principle: when in doubt, prefer opcodes that encode type information and invariants statically, so the VM can enforce them, over clever encodings that save opcode space but rely on the compiler always getting things right.
+
+1. **WSTRING vs STRING opcodes → Separate opcodes.** Polymorphic dispatch would require a runtime type-tag check on every string operation, and a bug in the tag (or a stale `buf_idx`) would silently misinterpret character data — UTF-16 as single-byte or vice versa. Separate STR_* and WSTR_* opcode families make the encoding type statically checkable: the compiler emits the correct family, and the VM traps immediately on a type mismatch. The cost is 13 additional opcodes (one WSTR_* per STR_*), well within the 256-opcode budget.
+
+2. **Array access → Dedicated LOAD_ARRAY / STORE_ARRAY with mandatory bounds checking.** Compiling array access to pointer arithmetic (`base + index * size`) makes bounds checking optional and fragile — a compiler bug silently produces buffer overflows. A dedicated opcode makes bounds checking mandatory and atomic: the VM validates the index against the declared array size on every access and traps on out-of-bounds. Buffer overflows are the #1 class of safety bugs in embedded systems; this eliminates them by construction.
+
+3. **CASE statement → No TABLE_SWITCH; keep JMP_IF chains.** A TABLE_SWITCH opcode requires the VM to validate that the jump table is well-formed (no out-of-range targets, no missing entries). A chain of CMP + JMP_IF comparisons is trivially verifiable — each jump target is individually validated. The performance difference is negligible for typical PLC CASE statements (5–20 arms). TABLE_SWITCH is a premature optimization that adds an opcode with a complex encoding and a new class of potential bugs.
+
+4. **Exponentiation → Standard library call, not an opcode.** Exponentiation involves floating-point edge cases (0^0, negative base with fractional exponent, overflow). A library function can return explicit error indicators and be tested/audited independently. Baking it into the VM as an opcode fixes the error-handling semantics and makes them harder to inspect. Since EXPT is rare in PLC code, there is no performance argument for a dedicated opcode.
+
+5. **String and numeric functions → Single BUILTIN opcode with func_id dispatch.** String operations (LEN, CONCAT, LEFT, etc.) and numeric functions (ABS, SQRT, MIN, MAX, LIMIT) are standard library functions, not fundamental type operations. A single BUILTIN opcode with a u16 func_id operand handles all of them. STRING and WSTRING functions have distinct func_id ranges, and the verifier checks type correctness per func_id. The BUILTIN pattern mirrors FB_CALL: one opcode dispatches to an extensible set of native implementations.
+
+6. **TIME arithmetic → Dedicated TIME_ADD / TIME_SUB opcodes.** Raw I64 arithmetic on TIME values is numerically correct but semantically invisible to the VM. If a programmer accidentally adds a TIME and a DINT, raw I64 arithmetic silently produces a nonsensical result. Dedicated TIME opcodes let the VM enforce type discipline: TIME_ADD only accepts two TIME-typed operands (or TIME + duration). This catches unit-confusion bugs at runtime and makes bytecode verification easier — an auditor can confirm that time values are never mixed with unrelated integers.
+
+## Arithmetic Edge Cases
+
+The following behaviors are normative. The VM must implement these exactly to ensure deterministic, portable execution across all targets.
+
+### Division by Zero
+
+All integer division and modulo instructions trap on division by zero. The VM halts the current scan cycle and reports a runtime fault. This applies to:
+
+- DIV_I32, DIV_U32, DIV_I64, DIV_U64
+- MOD_I32, MOD_U32, MOD_I64, MOD_U64
+
+Floating-point division by zero follows IEEE 754: `x / 0.0` produces `+Inf` or `-Inf` (depending on the sign of x), and `0.0 / 0.0` produces `NaN`. This applies to DIV_F32 and DIV_F64. The VM does not trap on floating-point division by zero.
+
+### Signed Integer Overflow on Negation
+
+NEG_I32 on `i32::MIN` (-2147483648) and NEG_I64 on `i64::MIN` produce a result governed by the configured overflow policy (ADR-0002):
+
+| Policy | NEG_I32 on -2147483648 | NEG_I64 on i64::MIN |
+|--------|------------------------|----------------------|
+| Wrap | -2147483648 (wraps to itself) | i64::MIN (wraps to itself) |
+| Saturate | 2147483647 (i32::MAX) | i64::MAX |
+| Fault | Runtime trap | Runtime trap |
+
+### Shift Amounts
+
+Shift and rotate instructions mask the shift amount to the bit width of the operand:
+
+| Instructions | Mask | Effect |
+|---|---|---|
+| SHL_32, SHR_32, ROL_32, ROR_32 | `amount & 31` | Shift amount 0–31 |
+| SHL_64, SHR_64, ROL_64, ROR_64 | `amount & 63` | Shift amount 0–63 |
+
+A shift by 32 on a 32-bit value produces the same result as a shift by 0. This matches Rust's `wrapping_shl` / `wrapping_shr` and ensures deterministic behavior across hardware platforms (ARM and x86 differ in their native shift behavior for out-of-range amounts).
+
+### Float-to-Integer Overflow
+
+When a floating-point value exceeds the range of the target integer type, the conversion instructions follow the configured overflow policy (ADR-0002):
+
+| Instructions | Target range |
+|---|---|
+| F32_TO_I32, F64_TO_I32 | -2147483648 to 2147483647 |
+| F32_TO_U32, F64_TO_U32 | 0 to 4294967295 |
+| F64_TO_I64 | -9223372036854775808 to 9223372036854775807 |
+| F64_TO_U64 | 0 to 18446744073709551615 |
+
+| Policy | Value > max | Value < min | Value is NaN |
+|--------|-------------|-------------|--------------|
+| Wrap | Truncate to target width | Truncate to target width | 0 |
+| Saturate | Target max | Target min | 0 |
+| Fault | Runtime trap | Runtime trap | Runtime trap |
+
+### Float Comparison with NaN
+
+All float comparison instructions (EQ_F32, LT_F32, etc.) follow IEEE 754 semantics:
+
+- `NaN == NaN` → 0 (false)
+- `NaN != NaN` → 1 (true)
+- `NaN < x` → 0 (false) for any x
+- `NaN > x` → 0 (false) for any x
+- `NaN <= x` → 0 (false) for any x
+- `NaN >= x` → 0 (false) for any x
+
+### Integer Overflow on Addition, Subtraction, Multiplication
+
+For full-width arithmetic (ADD_I32 on I32, ADD_I64 on I64, etc.), the overflow policy from ADR-0002 applies. The compiler inserts NARROW instructions at assignment points for sub-width types (SINT, INT), but full-width overflow can occur in intermediate computations:
+
+| Policy | Behavior |
+|--------|----------|
+| Wrap | Two's complement wrapping (Rust's `wrapping_add`, etc.) |
+| Saturate | Clamp to type min/max |
+| Fault | Runtime trap |
+
+The overflow policy is a VM startup configuration, not a per-instruction setting.
+
+## Known Limitations
+
+The following are known limitations of this version of the instruction set. They are intentional trade-offs for the initial implementation and may be addressed in future versions.
+
+1. **Jump offset range** — The primary jump opcodes (JMP, JMP_IF, JMP_IF_NOT) use i16 offsets (range -32768..+32767 bytes from the next instruction), which is sufficient for typical PLC programs. For functions whose bytecode exceeds ~32 KB, the far jump variants (JMP_FAR, JMP_IF_FAR, JMP_IF_NOT_FAR) use i32 offsets (range ±2 GB). The compiler emits near jumps by default and promotes to far jumps only when the target is out of i16 range.
+
+2. **Array bounds** — Array descriptor bounds are i16 (range -32768..32767). Arrays with more than ~32K elements or arbitrary LINT-typed bounds cannot be represented. This is sufficient for typical PLC array usage.
+
+3. **Field index** — LOAD_FIELD/STORE_FIELD use a u8 field index, limiting FB types to 255 fields. This is sufficient for all standard function blocks and typical user-defined FBs.
+
+4. **Multi-dimensional arrays** — IEC 61131-3 supports multi-dimensional arrays (e.g., `ARRAY[1..3, 1..4] OF INT`). The bytecode instruction set supports only one-dimensional arrays. The compiler flattens multi-dimensional arrays to 1D using row-major order and computes the linear index from the multi-dimensional subscripts. For example, `arr[i, j]` in a `[1..3, 1..4]` array becomes `arr[(i-1)*4 + (j-1)]` in the flattened 1D representation.
+
+5. **No runtime service opcodes** — There is no CLOCK or SYSCALL instruction for bytecode to access runtime services (wall clock, hardware timers). Standard FBs that need timer access (TON, TOF, TP) are implemented as intrinsics (ADR-0003). User-defined FBs that extend standard timer FBs via EXTENDS will fall through to bytecode interpretation and will not have direct timer access. Such FBs should use composition (wrapping a standard timer instance) rather than inheritance to access timer functionality.
+
+## Out of Scope for Version 1
+
+The following PLC runtime features are **not addressed** by this instruction set and will require separate specifications:
+
+1. **Multi-tasking** — IEC 61131-3 supports TASK configurations where multiple programs run at different priorities and intervals. This spec assumes single-threaded execution within a single scan cycle. Multi-task support (scheduling, shared memory, priority) will be a separate spec.
+
+2. **Online change** — Updating the running program without stopping the PLC (hot-swapping bytecode while preserving variable state). This requires careful handling of variable persistence, bytecode replacement at scan cycle boundaries, and FB instance state migration.
+
+3. **RETAIN / PERSISTENT variables** — IEC 61131-3 variables with RETAIN or PERSISTENT qualifiers survive power cycles (stored in non-volatile memory). The variable table currently has no flag for this. A future container format revision should add retention flags to VarEntry.
+
+4. **User-defined types** — Enumerations and subrange types are compiled to their underlying integer types. Enumeration symbolic names are preserved only in the debug section. Subrange constraints are not enforced at runtime (they could be added as specialized NARROW instructions in a future version).
+
+5. **Pointer / reference types** — IEC 61131-3 edition 3 introduces REFERENCE TO and pointer types. General-purpose pointers and REFERENCE TO are not supported in version 1. VAR_IN_OUT pass-by-reference is supported via the Reference Operations (LOAD_VAR_REF, DEREF_LOAD, DEREF_STORE), but these are restricted to variable-table references and do not support arbitrary pointer arithmetic.

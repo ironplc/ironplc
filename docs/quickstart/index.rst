@@ -2,11 +2,13 @@
 Quick start tutorial
 ====================
 
-Let's start your IronPLC journey! IronPLC is still expanding
-so you journey will be quick. In this chapter, we'll discuss:
+This tutorial guides you from installation to a working IEC 61131-3
+application, introducing one concept at a time. Each chapter builds on the
+last and leaves you with a program you can check for correctness.
 
-* Installing IronPLC
-* Writing a program and checking syntax
+If you are completely new to PLC programming, you may want to read
+:doc:`/explanation/what-is-iec-61131-3` first for background on the
+concepts.
 
 .. toctree::
    :maxdepth: 1
@@ -14,3 +16,7 @@ so you journey will be quick. In this chapter, we'll discuss:
 
    Installation <installation>
    Hello, World! <helloworld>
+   The Sense-Control-Actuate Cycle <sense-control-actuate>
+   Configuring Your Application <configuring>
+   Working with Multiple Files <multiple-files>
+   Compiling and Running <compiling-and-running>

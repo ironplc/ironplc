@@ -11,7 +11,9 @@ members = [
     "problems",
     "sources",
     "test",
-    "vm"
+    "vm",
+    "vm-cli",
+    "playground"
 ]
 resolver = "2"
 

@@ -35,16 +35,19 @@ impl VariableScope {
 }
 
 /// Variable table: indexed storage for program variables.
-pub struct VariableTable {
-    slots: Vec<Slot>,
+pub struct VariableTable<'a> {
+    slots: &'a mut [Slot],
 }
 
-impl VariableTable {
-    /// Creates a new variable table with `count` slots, all initialized to zero.
-    pub fn new(count: u16) -> Self {
-        VariableTable {
-            slots: vec![Slot::default(); count as usize],
-        }
+impl<'a> VariableTable<'a> {
+    /// Creates a new variable table backed by the given slice.
+    pub fn new(backing: &'a mut [Slot]) -> Self {
+        VariableTable { slots: backing }
+    }
+
+    /// Returns the number of variable slots.
+    pub fn len(&self) -> u16 {
+        self.slots.len() as u16
     }
 
     /// Loads the slot at the given index.
@@ -72,7 +75,8 @@ mod tests {
 
     #[test]
     fn variable_table_new_when_created_then_all_slots_zero() {
-        let table = VariableTable::new(3);
+        let mut buf = [Slot::default(); 3];
+        let table = VariableTable::new(&mut buf);
 
         assert_eq!(table.load(0).unwrap().as_i32(), 0);
         assert_eq!(table.load(1).unwrap().as_i32(), 0);
@@ -81,17 +85,27 @@ mod tests {
 
     #[test]
     fn variable_table_load_when_out_of_bounds_then_error() {
-        let table = VariableTable::new(2);
+        let mut buf = [Slot::default(); 2];
+        let table = VariableTable::new(&mut buf);
 
         assert_eq!(table.load(2), Err(Trap::InvalidVariableIndex(2)));
     }
 
     #[test]
     fn variable_table_store_load_when_value_stored_then_loads_correctly() {
-        let mut table = VariableTable::new(2);
+        let mut buf = [Slot::default(); 2];
+        let mut table = VariableTable::new(&mut buf);
         table.store(1, Slot::from_i32(42)).unwrap();
 
         assert_eq!(table.load(1).unwrap().as_i32(), 42);
+    }
+
+    #[test]
+    fn variable_table_len_when_created_then_returns_count() {
+        let mut buf = [Slot::default(); 5];
+        let table = VariableTable::new(&mut buf);
+
+        assert_eq!(table.len(), 5);
     }
 
     #[test]

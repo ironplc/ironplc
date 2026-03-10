@@ -27,7 +27,7 @@ Today, both the `ironplc-vm` and `ironplc-container` crates depend on `std`. Sho
 
 Chosen option: "`no_std` without `alloc` (fully static)", because it maximizes the range of deployable targets (including AVR with 8 KB SRAM) and aligns with the PLC philosophy of deterministic, bounded resource usage. The implementation uses **two separate crates** instead of feature flags: `ironplc-vm` is unconditionally `#![no_std]` (the execution engine), and a new `ironplc-vm-cli` crate provides the desktop CLI binary with full `std`. Feature flags are confined to the `ironplc-container` crate, which uses `#[cfg(feature = "std")]` to gate its I/O serialization and builder modules.
 
-See [no-std-vm-implementation.md](../plans/no-std-vm-implementation.md) for the implementation plan.
+See [no_std VM Design](../design/no-std-vm.md) for the design and [Implementation Plan: no_std VM](../plans/no-std-vm-impl.md) for the phased implementation.
 
 ### Consequences
 

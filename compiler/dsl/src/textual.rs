@@ -3,6 +3,7 @@
 //! See section 3.
 use crate::common::{
     AddressAssignment, ConstantKind, EnumeratedValue, IntegerLiteral, SignedInteger, Subrange,
+    TypeName,
 };
 use crate::core::{Id, Located, SourceSpan};
 use std::fmt;
@@ -124,7 +125,7 @@ pub struct ArrayVariable {
     pub subscripted_variable: Box<SymbolicVariableKind>,
     /// The ordered set of subscripts. These should be expressions that
     /// evaluate to an index.
-    pub subscripts: Vec<ExprKind>,
+    pub subscripts: Vec<Expr>,
 }
 
 impl fmt::Display for ArrayVariable {
@@ -189,8 +190,8 @@ impl Located for FbCall {
 pub struct CompareExpr {
     #[recurse(ignore)]
     pub op: CompareOp,
-    pub left: ExprKind,
-    pub right: ExprKind,
+    pub left: Expr,
+    pub right: Expr,
 }
 
 /// A binary expression that produces an arithmetic result by operating on
@@ -201,8 +202,8 @@ pub struct CompareExpr {
 pub struct BinaryExpr {
     #[recurse(ignore)]
     pub op: Operator,
-    pub left: ExprKind,
-    pub right: ExprKind,
+    pub left: Expr,
+    pub right: Expr,
 }
 
 /// A unary expression that produces a boolean or arithmetic result by
@@ -213,7 +214,7 @@ pub struct BinaryExpr {
 pub struct UnaryExpr {
     #[recurse(ignore)]
     pub op: UnaryOp,
-    pub term: ExprKind,
+    pub term: Expr,
 }
 
 #[derive(Debug, Clone, PartialEq, Recurse)]
@@ -239,13 +240,48 @@ impl fmt::Display for LateBound {
     }
 }
 
+/// Wrapper around `ExprKind` that carries optional resolved type information.
+///
+/// The `resolved_type` field is populated by a later analysis pass. During
+/// parsing and initial construction, it is always `None`.
+#[derive(Debug, PartialEq, Clone, Recurse)]
+pub struct Expr {
+    pub kind: ExprKind,
+    #[recurse(ignore)]
+    pub resolved_type: Option<TypeName>,
+}
+
+impl Expr {
+    /// Creates a new `Expr` with no resolved type.
+    pub fn new(kind: ExprKind) -> Expr {
+        Expr {
+            kind,
+            resolved_type: None,
+        }
+    }
+
+    /// Creates a new `Expr` with a resolved type.
+    pub fn with_type(kind: ExprKind, type_name: TypeName) -> Expr {
+        Expr {
+            kind,
+            resolved_type: Some(type_name),
+        }
+    }
+}
+
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.kind)
+    }
+}
+
 /// Expression that yields a value derived from the input(s) to the expression.
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum ExprKind {
     Compare(Box<CompareExpr>),
     BinaryOp(Box<BinaryExpr>),
     UnaryOp(Box<UnaryExpr>),
-    Expression(Box<ExprKind>),
+    Expression(Box<Expr>),
     Const(ConstantKind),
     EnumeratedValue(EnumeratedValue),
     Variable(Variable),
@@ -255,15 +291,26 @@ pub enum ExprKind {
 
 impl ExprKind {
     pub fn compare(op: CompareOp, left: ExprKind, right: ExprKind) -> ExprKind {
-        ExprKind::Compare(Box::new(CompareExpr { op, left, right }))
+        ExprKind::Compare(Box::new(CompareExpr {
+            op,
+            left: Expr::new(left),
+            right: Expr::new(right),
+        }))
     }
 
     pub fn binary(op: Operator, left: ExprKind, right: ExprKind) -> ExprKind {
-        ExprKind::BinaryOp(Box::new(BinaryExpr { op, left, right }))
+        ExprKind::BinaryOp(Box::new(BinaryExpr {
+            op,
+            left: Expr::new(left),
+            right: Expr::new(right),
+        }))
     }
 
     pub fn unary(op: UnaryOp, term: ExprKind) -> ExprKind {
-        ExprKind::UnaryOp(Box::new(UnaryExpr { op, term }))
+        ExprKind::UnaryOp(Box::new(UnaryExpr {
+            op,
+            term: Expr::new(term),
+        }))
     }
 
     pub fn named_variable(name: &str) -> ExprKind {
@@ -322,7 +369,7 @@ impl fmt::Display for ExprKind {
 /// See section 3.2.3.
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct PositionalInput {
-    pub expr: ExprKind,
+    pub expr: Expr,
 }
 
 /// Input argument to a function or function block invocation.
@@ -333,7 +380,7 @@ pub struct PositionalInput {
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct NamedInput {
     pub name: Id,
-    pub expr: ExprKind,
+    pub expr: Expr,
 }
 
 /// Output argument captured from a function or function block invocation.
@@ -356,13 +403,15 @@ pub enum ParamAssignmentKind {
 
 impl ParamAssignmentKind {
     pub fn positional(expr: ExprKind) -> ParamAssignmentKind {
-        ParamAssignmentKind::PositionalInput(PositionalInput { expr })
+        ParamAssignmentKind::PositionalInput(PositionalInput {
+            expr: Expr::new(expr),
+        })
     }
 
     pub fn named(name: &str, expr: ExprKind) -> ParamAssignmentKind {
         ParamAssignmentKind::NamedInput(NamedInput {
             name: Id::from(name),
-            expr,
+            expr: Expr::new(expr),
         })
     }
 }
@@ -483,13 +532,13 @@ pub enum StmtKind {
     Return,
     // Exit statement.
     #[recurse(ignore)]
-    Exit,
+    Exit(SourceSpan),
 }
 
 impl StmtKind {
     pub fn if_then(condition: ExprKind, body: Vec<StmtKind>) -> StmtKind {
         StmtKind::If(If {
-            expr: condition,
+            expr: Expr::new(condition),
             body,
             else_ifs: vec![],
             else_body: vec![],
@@ -502,7 +551,7 @@ impl StmtKind {
         else_body: Vec<StmtKind>,
     ) -> StmtKind {
         StmtKind::If(If {
-            expr: condition,
+            expr: Expr::new(condition),
             body,
             else_ifs: vec![],
             else_body,
@@ -544,15 +593,18 @@ impl StmtKind {
     }
 
     pub fn assignment(target: Variable, value: ExprKind) -> StmtKind {
-        StmtKind::Assignment(Assignment { target, value })
+        StmtKind::Assignment(Assignment {
+            target,
+            value: Expr::new(value),
+        })
     }
 
     pub fn simple_assignment(target: &str, src: &str) -> StmtKind {
         StmtKind::Assignment(Assignment {
             target: Variable::named(target),
-            value: ExprKind::LateBound(LateBound {
+            value: Expr::new(ExprKind::LateBound(LateBound {
                 value: Id::from(src),
-            }),
+            })),
         })
     }
 
@@ -565,7 +617,7 @@ impl StmtKind {
         }));
         StmtKind::Assignment(Assignment {
             target: Variable::named(target),
-            value: ExprKind::Variable(variable),
+            value: Expr::new(ExprKind::Variable(variable)),
         })
     }
 }
@@ -576,7 +628,7 @@ impl StmtKind {
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct Assignment {
     pub target: Variable,
-    pub value: ExprKind,
+    pub value: Expr,
 }
 
 /// If selection statement.
@@ -584,7 +636,7 @@ pub struct Assignment {
 /// See section 3.3.2.3.
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct If {
-    pub expr: ExprKind,
+    pub expr: Expr,
     pub body: Vec<StmtKind>,
     pub else_ifs: Vec<ElseIf>,
     pub else_body: Vec<StmtKind>,
@@ -592,7 +644,7 @@ pub struct If {
 
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct ElseIf {
-    pub expr: ExprKind,
+    pub expr: Expr,
     pub body: Vec<StmtKind>,
 }
 
@@ -602,7 +654,7 @@ pub struct ElseIf {
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct Case {
     /// An expression, the result of which is used to select a particular case.
-    pub selector: ExprKind,
+    pub selector: Expr,
     pub statement_groups: Vec<CaseStatementGroup>,
     pub else_body: Vec<StmtKind>,
 }
@@ -633,9 +685,9 @@ pub enum CaseSelectionKind {
 pub struct For {
     /// The variable that is assigned and contains the value for each loop iteration.
     pub control: Id,
-    pub from: ExprKind,
-    pub to: ExprKind,
-    pub step: Option<ExprKind>,
+    pub from: Expr,
+    pub to: Expr,
+    pub step: Option<Expr>,
     pub body: Vec<StmtKind>,
 }
 
@@ -644,7 +696,7 @@ pub struct For {
 /// See section 3.3.2.4.
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct While {
-    pub condition: ExprKind,
+    pub condition: Expr,
     pub body: Vec<StmtKind>,
 }
 
@@ -653,7 +705,7 @@ pub struct While {
 /// See section 3.3.2.4.
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct Repeat {
-    pub until: ExprKind,
+    pub until: Expr,
     pub body: Vec<StmtKind>,
 }
 
@@ -667,7 +719,7 @@ mod tests {
             subscripted_variable: Box::new(SymbolicVariableKind::Named(NamedVariable {
                 name: Id::from("data"),
             })),
-            subscripts: vec![ExprKind::integer_literal("0")],
+            subscripts: vec![Expr::new(ExprKind::integer_literal("0"))],
         };
 
         let result = format!("{}", array_var);
@@ -682,8 +734,8 @@ mod tests {
                 name: Id::from("matrix"),
             })),
             subscripts: vec![
-                ExprKind::integer_literal("1"),
-                ExprKind::integer_literal("2"),
+                Expr::new(ExprKind::integer_literal("1")),
+                Expr::new(ExprKind::integer_literal("2")),
             ],
         };
 
@@ -698,7 +750,7 @@ mod tests {
             subscripted_variable: Box::new(SymbolicVariableKind::Named(NamedVariable {
                 name: Id::from("arr"),
             })),
-            subscripts: vec![ExprKind::named_variable("i")],
+            subscripts: vec![Expr::new(ExprKind::named_variable("i"))],
         };
 
         let result = format!("{}", array_var);

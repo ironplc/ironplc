@@ -1,4 +1,6 @@
 use std::io::{Read, Write};
+use std::vec;
+use std::vec::Vec;
 
 use crate::ContainerError;
 
@@ -104,6 +106,8 @@ impl CodeSection {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::vec;
+    use std::vec::Vec;
 
     #[test]
     fn code_section_write_read_when_single_function_then_roundtrips() {

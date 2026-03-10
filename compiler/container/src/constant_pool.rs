@@ -1,44 +1,9 @@
 use std::io::{Read, Write};
+use std::vec;
+use std::vec::Vec;
 
+use crate::const_type::ConstType;
 use crate::ContainerError;
-
-/// Type tags for constant pool entries.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub enum ConstType {
-    I32 = 0,
-    U32 = 1,
-    I64 = 2,
-    U64 = 3,
-    F32 = 4,
-    F64 = 5,
-}
-
-impl ConstType {
-    fn from_u8(v: u8) -> Result<Self, ContainerError> {
-        match v {
-            0 => Ok(ConstType::I32),
-            1 => Ok(ConstType::U32),
-            2 => Ok(ConstType::I64),
-            3 => Ok(ConstType::U64),
-            4 => Ok(ConstType::F32),
-            5 => Ok(ConstType::F64),
-            _ => Err(ContainerError::InvalidConstantType(v)),
-        }
-    }
-
-    /// Returns the human-readable name for this constant type.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ConstType::I32 => "I32",
-            ConstType::U32 => "U32",
-            ConstType::I64 => "I64",
-            ConstType::U64 => "U64",
-            ConstType::F32 => "F32",
-            ConstType::F64 => "F64",
-        }
-    }
-}
 
 /// A single entry in the constant pool.
 #[derive(Clone, Debug)]
@@ -103,6 +68,77 @@ impl ConstantPool {
         ]))
     }
 
+    /// Gets an f32 value from the constant pool at the given index.
+    pub fn get_f32(&self, index: u16) -> Result<f32, ContainerError> {
+        let entry = self
+            .entries
+            .get(index as usize)
+            .ok_or(ContainerError::InvalidConstantIndex(index))?;
+        if entry.const_type != ConstType::F32 {
+            return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
+        }
+        Ok(f32::from_le_bytes([
+            entry.value[0],
+            entry.value[1],
+            entry.value[2],
+            entry.value[3],
+        ]))
+    }
+
+    /// Gets an f64 value from the constant pool at the given index.
+    pub fn get_f64(&self, index: u16) -> Result<f64, ContainerError> {
+        let entry = self
+            .entries
+            .get(index as usize)
+            .ok_or(ContainerError::InvalidConstantIndex(index))?;
+        if entry.const_type != ConstType::F64 {
+            return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
+        }
+        Ok(f64::from_le_bytes([
+            entry.value[0],
+            entry.value[1],
+            entry.value[2],
+            entry.value[3],
+            entry.value[4],
+            entry.value[5],
+            entry.value[6],
+            entry.value[7],
+        ]))
+    }
+
+    /// Gets an i64 value from the constant pool at the given index.
+    pub fn get_i64(&self, index: u16) -> Result<i64, ContainerError> {
+        let entry = self
+            .entries
+            .get(index as usize)
+            .ok_or(ContainerError::InvalidConstantIndex(index))?;
+        if entry.const_type != ConstType::I64 {
+            return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
+        }
+        Ok(i64::from_le_bytes([
+            entry.value[0],
+            entry.value[1],
+            entry.value[2],
+            entry.value[3],
+            entry.value[4],
+            entry.value[5],
+            entry.value[6],
+            entry.value[7],
+        ]))
+    }
+
+    /// Gets a string value (raw bytes) from the constant pool at the given index.
+    pub fn get_str(&self, index: u16) -> Result<&[u8], ContainerError> {
+        let entry = self
+            .entries
+            .get(index as usize)
+            .ok_or(ContainerError::InvalidConstantIndex(index))?;
+        if entry.const_type != ConstType::Str {
+            return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
+        }
+        Ok(&entry.value)
+    }
+
     /// Writes the constant pool to the given writer.
     pub fn write_to(&self, w: &mut impl Write) -> Result<(), ContainerError> {
         w.write_all(&(self.entries.len() as u16).to_le_bytes())?;
@@ -141,6 +177,7 @@ impl ConstantPool {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::vec::Vec;
 
     #[test]
     fn constant_pool_write_read_when_i32_constants_then_roundtrips() {
@@ -195,7 +232,7 @@ mod tests {
         });
         pool.push(ConstEntry {
             const_type: ConstType::F64,
-            value: 3.14f64.to_le_bytes().to_vec(),
+            value: 2.72f64.to_le_bytes().to_vec(),
         });
 
         let entries: Vec<_> = pool.iter().collect();
