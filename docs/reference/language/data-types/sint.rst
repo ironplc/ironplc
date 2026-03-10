@@ -27,6 +27,16 @@ Literals
    SINT#-100
    SINT#16#7F
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: base : SINT; offset : SINT; result : SINT;
+
+   base := SINT#100;
+   offset := SINT#10;
+   result := base + offset;  (* result = 110 *)
+
 See Also
 --------
 

@@ -28,6 +28,16 @@ Literals
    BOOL#1
    BOOL#0
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: sensor : BOOL; enabled : BOOL; run : BOOL;
+
+   sensor := TRUE;
+   enabled := TRUE;
+   run := sensor AND enabled;  (* run = TRUE *)
+
 See Also
 --------
 
