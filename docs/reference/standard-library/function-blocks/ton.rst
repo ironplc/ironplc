@@ -58,16 +58,18 @@ both ``ET`` and ``Q`` are reset.
 Example
 -------
 
-.. code-block::
+.. playground::
 
-   VAR
-     timer1 : TON;
-     start : BOOL;
-     done : BOOL;
-   END_VAR
+   PROGRAM main
+      VAR
+         myTimer : TON;
+         start : BOOL := TRUE;
+         done : BOOL;
+         elapsed : TIME;
+      END_VAR
 
-   timer1(IN := start, PT := T#5s);
-   done := timer1.Q;
+      myTimer(IN := start, PT := T#5s, Q => done, ET => elapsed);
+   END_PROGRAM
 
 See Also
 --------

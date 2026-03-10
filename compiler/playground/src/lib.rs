@@ -32,7 +32,9 @@ use wasm_bindgen::prelude::*;
 struct VmSession {
     container_bytes: Vec<u8>,
     var_buf: Vec<Slot>,
+    data_region: Vec<u8>,
     scan_count: u64,
+    cycle_time_us: u64,
     faulted: bool,
 }
 
@@ -146,7 +148,45 @@ fn format_variable_value(raw: u64, tag: u8) -> String {
         iec_type_tag::WORD => format!("16#{:04X}", raw as u16),
         iec_type_tag::DWORD => format!("16#{:08X}", raw as u32),
         iec_type_tag::LWORD => format!("16#{:016X}", raw),
+        iec_type_tag::TIME => format_time_value(raw as i64),
         _ => format!("{}", raw as i32), // fallback
+    }
+}
+
+/// Formats a TIME value (stored as i64 microseconds) as an IEC 61131-3 duration.
+///
+/// Uses `T#<value>ms` for values under 1 second, `T#<value>s` for values at or
+/// above 1 second (with decimal for sub-second precision).
+fn format_time_value(us: i64) -> String {
+    if us == 0 {
+        return "T#0ms".to_string();
+    }
+    let abs_us = us.unsigned_abs();
+    let sign = if us < 0 { "-" } else { "" };
+    if abs_us < 1_000_000 {
+        let ms = abs_us / 1000;
+        let frac_us = abs_us % 1000;
+        if frac_us == 0 {
+            format!("{sign}T#{ms}ms")
+        } else {
+            let frac_ms = frac_us as f64 / 1000.0;
+            let total_ms = ms as f64 + frac_ms;
+            // Trim trailing zeros from decimal
+            let formatted = format!("{total_ms}");
+            format!("{sign}T#{formatted}ms")
+        }
+    } else {
+        let secs = abs_us / 1_000_000;
+        let frac_us = abs_us % 1_000_000;
+        if frac_us == 0 {
+            format!("{sign}T#{secs}s")
+        } else {
+            let frac_s = frac_us as f64 / 1_000_000.0;
+            let total_s = secs as f64 + frac_s;
+            // Trim trailing zeros from decimal
+            let formatted = format!("{total_s}");
+            format!("{sign}T#{formatted}s")
+        }
     }
 }
 
@@ -568,7 +608,9 @@ fn load_program_inner(source: &str) -> StepResult {
         *cell.borrow_mut() = Some(VmSession {
             container_bytes,
             var_buf: bufs.vars,
+            data_region: bufs.data_region,
             scan_count: 0,
+            cycle_time_us: 100_000,
             faulted: false,
         });
     });
@@ -633,8 +675,14 @@ fn step_inner(scans: u32) -> StepResult {
             }
         };
 
-        let (variables, total_scans, error) =
-            run_vm_step(&container, &mut session.var_buf, session.scan_count, scans);
+        let (variables, total_scans, error) = run_vm_step(
+            &container,
+            &mut session.var_buf,
+            &mut session.data_region,
+            session.scan_count,
+            scans,
+            session.cycle_time_us,
+        );
 
         session.scan_count = total_scans;
         if error.is_some() {
@@ -661,8 +709,10 @@ fn step_inner(scans: u32) -> StepResult {
 fn run_vm_step(
     container: &Container,
     var_buf: &mut [Slot],
+    data_region: &mut [u8],
     base_scan_count: u64,
     scans: u32,
+    cycle_time_us: u64,
 ) -> (Vec<VariableInfo>, u64, Option<String>) {
     let mut bufs = VmBuffers::from_container(container);
 
@@ -671,7 +721,7 @@ fn run_vm_step(
             container,
             &mut bufs.stack,
             var_buf,
-            &mut bufs.data_region,
+            data_region,
             &mut bufs.temp_buf,
             &mut bufs.tasks,
             &mut bufs.programs,
@@ -680,7 +730,7 @@ fn run_vm_step(
         .resume(base_scan_count);
 
     for _ in 0..scans {
-        let current_us = running.scan_count() * 1000;
+        let current_us = running.scan_count() * cycle_time_us;
         if let Err(ctx) = running.run_round(current_us) {
             let total_scans = running.scan_count();
             let faulted = running.fault(ctx);
@@ -1182,5 +1232,71 @@ END_PROGRAM
         let result: CompileResult = serde_json::from_str(&compile(source)).unwrap();
         assert!(!result.ok);
         assert!(!result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn step_when_ton_then_q_transitions_to_true() {
+        reset_session();
+        // PT = T#5s = 5_000_000 us. With cycle_time_us = 100_000, Q should
+        // become TRUE after 50 steps (50 * 100_000 = 5_000_000 us).
+        let source = "
+PROGRAM main
+  VAR
+    myTimer : TON;
+    start : BOOL := TRUE;
+    done : BOOL;
+    elapsed : TIME;
+  END_VAR
+  myTimer(IN := start, PT := T#5s, Q => done, ET => elapsed);
+END_PROGRAM
+";
+        let load: StepResult = serde_json::from_str(&load_program(source)).unwrap();
+        assert!(
+            load.ok,
+            "load failed: error={:?}, diagnostics={:?}",
+            load.error, load.diagnostics
+        );
+
+        // After 10 steps (1s elapsed), Q should still be FALSE
+        let r1: StepResult = serde_json::from_str(&step(10)).unwrap();
+        assert!(r1.ok, "step(10) failed: {:?}", r1.error);
+        let done_var = r1.variables.iter().find(|v| v.name == "done").unwrap();
+        assert_eq!(done_var.value, "FALSE");
+
+        // After 50 total steps (5s elapsed), Q should be TRUE
+        let r2: StepResult = serde_json::from_str(&step(41)).unwrap();
+        assert!(r2.ok, "step(41) failed: {:?}", r2.error);
+        let done_var = r2.variables.iter().find(|v| v.name == "done").unwrap();
+        assert_eq!(done_var.value, "TRUE");
+    }
+
+    #[test]
+    fn format_time_value_when_zero_then_returns_zero_ms() {
+        assert_eq!(format_time_value(0), "T#0ms");
+    }
+
+    #[test]
+    fn format_time_value_when_whole_milliseconds_then_no_decimal() {
+        assert_eq!(format_time_value(5000), "T#5ms");
+    }
+
+    #[test]
+    fn format_time_value_when_fractional_milliseconds_then_shows_decimal() {
+        assert_eq!(format_time_value(1500), "T#1.5ms");
+    }
+
+    #[test]
+    fn format_time_value_when_whole_seconds_then_no_decimal() {
+        assert_eq!(format_time_value(3_000_000), "T#3s");
+    }
+
+    #[test]
+    fn format_time_value_when_fractional_seconds_then_shows_decimal() {
+        assert_eq!(format_time_value(1_500_000), "T#1.5s");
+    }
+
+    #[test]
+    fn format_time_value_when_negative_then_shows_sign() {
+        assert_eq!(format_time_value(-2_000_000), "-T#2s");
     }
 }

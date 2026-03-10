@@ -14,7 +14,7 @@ Duration value representing an interval of time.
    * - **IEC 61131-3**
      - Section 2.3.1
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Literals
 --------
