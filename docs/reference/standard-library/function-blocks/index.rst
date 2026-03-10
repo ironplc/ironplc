@@ -16,7 +16,7 @@ Timers
      - Status
    * - :doc:`TON <ton>`
      - On-delay timer
-     - Not yet supported
+     - Supported
    * - :doc:`TOF <tof>`
      - Off-delay timer
      - Not yet supported

@@ -41,7 +41,10 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 use std::collections::HashMap;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    intermediates::stdlib_function_block::is_stdlib_function_block, result::SemanticResult,
+    semantic_context::SemanticContext,
+};
 
 /// Returns the first variable matching the specified name and one of the
 /// variable types or `None` if the owner does not contain a matching
@@ -257,6 +260,11 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
         let function_block_name = self.var_to_fb.get(&fb_call.var_name);
         match function_block_name {
             Some(function_block_name) => {
+                // Standard library function blocks (TON, TOF, TP, CTU, etc.)
+                // are validated during type resolution, not here.
+                if is_stdlib_function_block(&function_block_name.name) {
+                    return Ok(());
+                }
                 let function_block_decl = self.function_blocks.get(function_block_name);
                 match function_block_decl {
                     None => Err(Diagnostic::problem(
