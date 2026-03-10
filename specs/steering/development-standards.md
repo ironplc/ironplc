@@ -46,6 +46,8 @@ Guidance for AI assistants working with the codebase (conventions, patterns, wor
 
 When a document contains both design and plan content, split it into two files with cross-references between them. The design file goes in `specs/design/` and the plan file goes in `specs/plans/`.
 
+**Important**: Plan and design documents must **never** be placed in `docs/`. The `docs/` directory is exclusively for the public Sphinx documentation website. All internal technical documents (plans, designs, ADRs, steering files) belong in `specs/`.
+
 ## Code Organization
 
 ### Module Structure

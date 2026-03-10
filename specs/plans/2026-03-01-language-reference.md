@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Create a comprehensive IEC 61131-3 language reference manual with ~95 individual pages organized under `reference/language/` and `reference/standard-library/`, following the design in `docs/plans/2026-03-01-language-reference-design.md`.
+**Goal:** Create a comprehensive IEC 61131-3 language reference manual with ~95 individual pages organized under `reference/language/` and `reference/standard-library/`, following the design in `specs/design/language-reference.md`.
 
 **Architecture:** Two new top-level sections under `reference/`: `language/` for syntax and semantics (shared elements + language-specific subsections for ST and LD), and `standard-library/` for standard functions and function blocks. Each element gets its own page using consistent templates. Hub/index pages provide navigation and support-status overviews.
 
