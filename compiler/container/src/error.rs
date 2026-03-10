@@ -21,6 +21,8 @@ pub enum ContainerError {
     /// The debug section contains invalid data.
     #[cfg(feature = "std")]
     InvalidDebugSection,
+    /// A field entry has an unrecognized field type tag.
+    InvalidFieldType(u8),
 }
 
 impl fmt::Display for ContainerError {
@@ -42,6 +44,9 @@ impl fmt::Display for ContainerError {
             }
             #[cfg(feature = "std")]
             ContainerError::InvalidDebugSection => write!(f, "invalid debug section"),
+            ContainerError::InvalidFieldType(t) => {
+                write!(f, "invalid field type: {t}")
+            }
         }
     }
 }
