@@ -11,7 +11,7 @@ On-delay timer. Output ``Q`` becomes ``TRUE`` after input ``IN`` has been
    * - **IEC 61131-3**
      - Section 2.5.2.3.3
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Inputs
 ------
