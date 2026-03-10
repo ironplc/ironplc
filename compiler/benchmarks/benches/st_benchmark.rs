@@ -214,6 +214,121 @@ END_PROGRAM",
     group.finish();
 }
 
+/// Narrow opcode diversity — loop body uses only ~5 distinct opcodes
+/// (LOAD_VAR, LOAD_CONST, ADD, STORE_VAR, GT, JMP_IF_NOT, JMP).
+/// Baseline for comparison with diverse_opcodes below.
+fn bench_narrow_opcodes(c: &mut Criterion) {
+    let mut group = c.benchmark_group("st_narrow_opcodes");
+    let container = compile_st(
+        "PROGRAM main
+  VAR i : DINT; x : DINT; limit : DINT; END_VAR
+  FOR i := 1 TO limit DO
+    x := x + 1;
+    x := x + 2;
+    x := x + 3;
+    x := x + 4;
+  END_FOR;
+END_PROGRAM",
+    );
+
+    for limit in [100, 1000, 10_000] {
+        group.throughput(Throughput::Elements(limit as u64));
+        bench_run!(
+            group,
+            BenchmarkId::from_parameter(limit),
+            &container,
+            |bufs| {
+                bufs.vars[2] = Slot::from_i32(limit);
+            }
+        );
+    }
+    group.finish();
+}
+
+/// Diverse opcode mix — loop body touches many distinct opcode handlers:
+/// i32 arithmetic (ADD, SUB, MUL, DIV, MOD, NEG), f64 arithmetic (ADD, SUB,
+/// MUL, DIV), comparisons (GT, LT, EQ, NE, GE, LE), boolean logic (AND, OR,
+/// XOR, NOT), builtins (ABS, MIN, MAX, LIMIT, SQRT, SHL), type conversions
+/// (DINT_TO_LREAL, LREAL_TO_DINT), and bitwise ops (AND, OR, XOR, NOT).
+/// This forces many dispatch table entries into L1 icache simultaneously.
+fn bench_diverse_opcodes(c: &mut Criterion) {
+    let mut group = c.benchmark_group("st_diverse_opcodes");
+    let container = compile_st(
+        "PROGRAM main
+  VAR
+    i : DINT;
+    limit : DINT;
+    d1 : DINT; d2 : DINT; d3 : DINT;
+    f1 : LREAL; f2 : LREAL;
+    b1 : BOOL; b2 : BOOL; b3 : BOOL;
+    w1 : DWORD; w2 : DWORD;
+  END_VAR
+  d1 := 100;
+  d2 := 7;
+  f1 := 3.14;
+  b1 := TRUE;
+  w1 := 16#FF00FF00;
+  FOR i := 1 TO limit DO
+    (* i32 arithmetic: ADD, SUB, MUL, DIV, MOD *)
+    d3 := (d1 + d2) - (d1 * 2);
+    d3 := d1 / d2;
+    d3 := d1 MOD d2;
+    d3 := -d3;
+
+    (* f64 arithmetic: ADD, SUB, MUL, DIV *)
+    f2 := (f1 + 1.0) * 2.0;
+    f2 := f2 - 0.5;
+    f2 := f2 / 3.0;
+
+    (* comparisons: GT, LT, EQ, NE, GE, LE *)
+    b1 := d1 > d2;
+    b2 := d1 < d2;
+    b3 := d1 = d2;
+    b1 := d1 <> d2;
+    b2 := d1 >= d2;
+    b3 := d1 <= d2;
+
+    (* boolean logic: AND, OR, XOR, NOT *)
+    b1 := b1 AND b2;
+    b1 := b1 OR b3;
+    b1 := b1 XOR b2;
+    b1 := NOT b1;
+
+    (* bitwise: AND, OR, XOR, NOT *)
+    w2 := w1 AND 16#0F0F0F0F;
+    w2 := w2 OR 16#F0F0F0F0;
+    w2 := w2 XOR 16#AAAAAAAA;
+    w2 := NOT w2;
+
+    (* builtins: ABS, MIN, MAX, LIMIT, SQRT, SHL *)
+    d3 := ABS(d3);
+    d3 := MIN(d1, d2);
+    d3 := MAX(d1, d2);
+    d3 := LIMIT(0, d3, 1000);
+    f2 := SQRT(f2 * f2 + 1.0);
+    d3 := SHL(d3, 2);
+
+    (* type conversions: DINT_TO_LREAL, LREAL_TO_DINT *)
+    f2 := DINT_TO_LREAL(d3);
+    d3 := LREAL_TO_DINT(f2);
+  END_FOR;
+END_PROGRAM",
+    );
+
+    for limit in [100, 1000, 10_000] {
+        group.throughput(Throughput::Elements(limit as u64));
+        bench_run!(
+            group,
+            BenchmarkId::from_parameter(limit),
+            &container,
+            |bufs| {
+                bufs.vars[1] = Slot::from_i32(limit);
+            }
+        );
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_counter_loop,
@@ -222,5 +337,7 @@ criterion_group!(
     bench_branching,
     bench_for_loop,
     bench_nested_loops,
+    bench_narrow_opcodes,
+    bench_diverse_opcodes,
 );
 criterion_main!(benches);
