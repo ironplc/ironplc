@@ -850,4 +850,10 @@ pub mod fb_type {
     pub const TOF: u16 = 0x0011;
     /// TP (pulse timer).
     pub const TP: u16 = 0x0012;
+    /// CTU (count up counter).
+    pub const CTU: u16 = 0x0020;
+    /// CTD (count down counter).
+    pub const CTD: u16 = 0x0021;
+    /// CTUD (count up/down counter).
+    pub const CTUD: u16 = 0x0022;
 }
