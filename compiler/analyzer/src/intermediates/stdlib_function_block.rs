@@ -417,6 +417,31 @@ mod tests {
     }
 
     #[test]
+    fn build_tof_when_called_then_has_correct_inputs_and_outputs() {
+        let tof = build_tof();
+        if let IntermediateType::FunctionBlock { name, fields } = &tof.representation {
+            assert_eq!(name, "TOF");
+            assert_eq!(fields.len(), 4);
+
+            // Check inputs
+            assert_eq!(fields[0].name.original(), "IN");
+            assert_eq!(fields[0].var_type, Some(FunctionBlockVarType::Input));
+
+            assert_eq!(fields[1].name.original(), "PT");
+            assert_eq!(fields[1].var_type, Some(FunctionBlockVarType::Input));
+
+            // Check outputs
+            assert_eq!(fields[2].name.original(), "Q");
+            assert_eq!(fields[2].var_type, Some(FunctionBlockVarType::Output));
+
+            assert_eq!(fields[3].name.original(), "ET");
+            assert_eq!(fields[3].var_type, Some(FunctionBlockVarType::Output));
+        } else {
+            panic!("Expected FunctionBlock type");
+        }
+    }
+
+    #[test]
     fn build_ctu_variant_when_called_then_has_correct_fields() {
         let ctu = build_ctu_variant(
             "",
