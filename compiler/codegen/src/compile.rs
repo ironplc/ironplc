@@ -668,6 +668,7 @@ fn resolve_fb_type(name: &str) -> Option<(u16, usize, HashMap<String, u8>)> {
     match name {
         "TON" => Some((opcode::fb_type::TON, 6, timer_fb_fields())),
         "TOF" => Some((opcode::fb_type::TOF, 6, timer_fb_fields())),
+        "TP" => Some((opcode::fb_type::TP, 6, timer_fb_fields())),
         _ => None,
     }
 }

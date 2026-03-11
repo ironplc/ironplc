@@ -848,4 +848,6 @@ pub mod fb_type {
     pub const TON: u16 = 0x0010;
     /// TOF (off-delay timer).
     pub const TOF: u16 = 0x0011;
+    /// TP (pulse timer).
+    pub const TP: u16 = 0x0012;
 }

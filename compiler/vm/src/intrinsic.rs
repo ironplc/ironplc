@@ -126,3 +126,40 @@ pub fn tof(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
     }
     Ok(())
 }
+
+/// Executes one scan of the TP (pulse timer) intrinsic.
+///
+/// # Arguments
+/// * `instance` - Mutable slice of the FB instance memory (6 fields * 8 bytes = 48 bytes).
+/// * `cycle_time` - Current scan cycle time in microseconds.
+///
+/// # TP behavior (IEC 61131-3 section 2.5.2.3.3):
+/// - When IN rises (FALSE->TRUE) and not already pulsing: Q=TRUE, start timing, ET=0.
+/// - While pulsing: ET increments up to PT. When ET >= PT, Q becomes FALSE, pulse ends.
+/// - Changes to IN during the pulse are ignored; the pulse always runs for full duration PT.
+pub fn tp(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
+    let in_val = read_i32(instance, TIMER_IN) != 0;
+    let pt = read_i64(instance, TIMER_PT);
+    let running = read_i32(instance, TIMER_RUNNING) != 0;
+
+    if running {
+        // Pulse in progress — ignore IN changes
+        let start_time = read_i64(instance, TIMER_START_TIME);
+        let elapsed = cycle_time - start_time;
+        let et = if elapsed > pt { pt } else { elapsed };
+        write_i64(instance, TIMER_ET, et);
+        if et >= pt {
+            // Pulse complete
+            write_i32(instance, TIMER_Q, 0);
+            write_i32(instance, TIMER_RUNNING, 0);
+        }
+    } else if in_val {
+        // Rising edge: start pulse
+        write_i64(instance, TIMER_START_TIME, cycle_time);
+        write_i32(instance, TIMER_RUNNING, 1);
+        write_i64(instance, TIMER_ET, 0);
+        write_i32(instance, TIMER_Q, 1);
+    }
+    // else: not running and IN is FALSE — no action, Q stays as-is
+    Ok(())
+}
