@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.170.0">
+<meta name="ironplc-version" content="0.171.0">
 </head>
   <body>
     
@@ -569,7 +569,7 @@ input <code class="docutils literal notranslate"><span class="pre">IN</span></co
 <td><p>Section 2.5.2.3.3</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Support</strong></p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -641,17 +641,7 @@ stays <code class="docutils literal notranslate"><span class="pre">TRUE</span></
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">VAR</span>
-  <span class="n">timer1</span> <span class="p">:</span> <span class="n">TOF</span><span class="p">;</span>
-  <span class="n">run</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
-  <span class="n">active</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
-<span class="n">END_VAR</span>
-
-<span class="n">timer1</span><span class="p">(</span><span class="n">IN</span> <span class="o">:=</span> <span class="n">run</span><span class="p">,</span> <span class="n">PT</span> <span class="o">:=</span> <span class="n">T</span><span class="c1">#3s);</span>
-<span class="n">active</span> <span class="o">:=</span> <span class="n">timer1</span><span class="o">.</span><span class="n">Q</span><span class="p">;</span>
-</pre></div>
-</div>
-</section>
+<iframe src="https://playground.ironplc.com/?embed=true&code=UFJPR1JBTSBtYWluCiAgIFZBUgogICAgICBteVRpbWVyIDogVE9GOwogICAgICBydW4gOiBCT09MIDo9IFRSVUU7CiAgICAgIGFjdGl2ZSA6IEJPT0w7CiAgICAgIGVsYXBzZWQgOiBUSU1FOwogICBFTkRfVkFSCgogICBteVRpbWVyKElOIDo9IHJ1biwgUFQgOj0gVCM1cywgUSA9PiBhY3RpdmUsIEVUID0%2BIGVsYXBzZWQpOwpFTkRfUFJPR1JBTQ%3D%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:386px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">
