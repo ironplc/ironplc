@@ -11,7 +11,7 @@ input ``IN``.
    * - **IEC 61131-3**
      - Section 2.5.2.3.3
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Inputs
 ------

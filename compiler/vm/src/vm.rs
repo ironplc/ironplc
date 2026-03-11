@@ -1468,7 +1468,7 @@ fn execute(
                 let fb_ref = stack.peek()?.as_i32() as u32;
                 let instance_start = fb_ref as usize;
                 match type_id {
-                    opcode::fb_type::TON | opcode::fb_type::TOF => {
+                    opcode::fb_type::TON | opcode::fb_type::TOF | opcode::fb_type::TP => {
                         let instance_size = crate::intrinsic::TIMER_INSTANCE_FIELDS * 8;
                         let instance_end = instance_start + instance_size;
                         if instance_end > data_region.len() {
@@ -1479,6 +1479,7 @@ fn execute(
                         match type_id {
                             opcode::fb_type::TON => crate::intrinsic::ton(slice, time)?,
                             opcode::fb_type::TOF => crate::intrinsic::tof(slice, time)?,
+                            opcode::fb_type::TP => crate::intrinsic::tp(slice, time)?,
                             _ => unreachable!(),
                         }
                     }
