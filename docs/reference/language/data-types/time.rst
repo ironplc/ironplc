@@ -16,6 +16,14 @@ Duration value representing an interval of time.
    * - **Support**
      - Supported
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: duration : TIME;
+
+   duration := T#2s;
+
 Literals
 --------
 

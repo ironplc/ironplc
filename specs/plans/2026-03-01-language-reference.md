@@ -432,7 +432,7 @@ STRING (single-byte), WSTRING (double-byte/Unicode). Support status: Not yet sup
 
 **Step 4: Create date/time type pages**
 
-TIME (duration, `T#1s`, `T#100ms`), DATE (`D#2024-01-15`), TIME_OF_DAY (`TOD#14:30:00`), DATE_AND_TIME (`DT#2024-01-15-14:30:00`). Support status: TIME = Not yet supported, others = Not yet supported.
+TIME (duration, `T#1s`, `T#100ms`), DATE (`D#2024-01-15`), TIME_OF_DAY (`TOD#14:30:00`), DATE_AND_TIME (`DT#2024-01-15-14:30:00`). Support status: TIME = Supported, others = Not yet supported.
 
 **Step 5: Build and verify**
 
