@@ -64,7 +64,7 @@ outputs are read from the instance:
 Example
 -------
 
-.. code-block::
+.. playground::
 
    FUNCTION Add : DINT
        VAR_INPUT

@@ -29,6 +29,7 @@ Options (playground-with-program only):
 
 from base64 import b64encode
 from math import ceil
+from urllib.parse import quote
 
 from docutils import nodes
 from docutils.parsers.rst import Directive, directives
@@ -77,10 +78,10 @@ def _build_iframe(code, height, scaffold=False, vars_decl=""):
     if scaffold:
         params.append("scaffold=true")
 
-    params.append("code=" + b64encode(code.encode()).decode())
+    params.append("code=" + quote(b64encode(code.encode()).decode(), safe=""))
 
     if vars_decl:
-        params.append("vars=" + b64encode(vars_decl.encode()).decode())
+        params.append("vars=" + quote(b64encode(vars_decl.encode()).decode(), safe=""))
 
     src = PLAYGROUND_URL + "?" + "&".join(params)
 
