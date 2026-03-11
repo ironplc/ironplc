@@ -1271,6 +1271,36 @@ END_PROGRAM
     }
 
     #[test]
+    fn step_when_tof_then_q_transitions_to_false() {
+        reset_session();
+        // PT = T#5s = 5_000_000 us. With cycle_time_us = 100_000, Q should
+        // become FALSE after 50 steps of IN=FALSE (50 * 100_000 = 5_000_000 us).
+        let source = "
+PROGRAM main
+  VAR
+    myTimer : TOF;
+    run : BOOL := TRUE;
+    active : BOOL;
+    elapsed : TIME;
+  END_VAR
+  myTimer(IN := run, PT := T#5s, Q => active, ET => elapsed);
+END_PROGRAM
+";
+        let load: StepResult = serde_json::from_str(&load_program(source)).unwrap();
+        assert!(
+            load.ok,
+            "load failed: error={:?}, diagnostics={:?}",
+            load.error, load.diagnostics
+        );
+
+        // After 10 steps with IN=TRUE, Q should be TRUE
+        let r1: StepResult = serde_json::from_str(&step(10)).unwrap();
+        assert!(r1.ok, "step(10) failed: {:?}", r1.error);
+        let active_var = r1.variables.iter().find(|v| v.name == "active").unwrap();
+        assert_eq!(active_var.value, "TRUE");
+    }
+
+    #[test]
     fn format_time_value_when_zero_then_returns_zero_ms() {
         assert_eq!(format_time_value(0), "T#0ms");
     }

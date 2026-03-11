@@ -11,7 +11,7 @@ input ``IN`` goes ``FALSE``.
    * - **IEC 61131-3**
      - Section 2.5.2.3.3
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Inputs
 ------
@@ -60,16 +60,18 @@ stays ``TRUE``.
 Example
 -------
 
-.. code-block::
+.. playground::
 
-   VAR
-     timer1 : TOF;
-     run : BOOL;
-     active : BOOL;
-   END_VAR
+   PROGRAM main
+      VAR
+         myTimer : TOF;
+         run : BOOL := TRUE;
+         active : BOOL;
+         elapsed : TIME;
+      END_VAR
 
-   timer1(IN := run, PT := T#3s);
-   active := timer1.Q;
+      myTimer(IN := run, PT := T#5s, Q => active, ET => elapsed);
+   END_PROGRAM
 
 See Also
 --------
