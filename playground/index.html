@@ -15,17 +15,18 @@
   <main>
     <section class="editor-section">
       <div class="toolbar">
-        <button id="run-btn" disabled>&#x25B6; Run</button>
-        <button id="step-btn" disabled data-testid="step-btn">&#x25B7; Step</button>
-        <button id="reset-btn" disabled data-testid="reset-btn">&#x21BB; Reset</button>
-        <label title="A scan cycle runs the entire program once, reading inputs, executing logic, and writing outputs. In a real PLC this repeats continuously. Here you control how many cycles to run.">
-          Scans:
-          <input id="scans-input" type="number" value="1" min="0" max="10000">
+        <button id="start-btn" disabled data-testid="start-btn" title="Compile and start running">&#x25B6;</button>
+        <button id="stop-btn" disabled data-testid="stop-btn" title="Stop and reset">&#x25A0;</button>
+        <button id="pause-btn" disabled data-testid="pause-btn" title="Pause/resume execution">&#x23F8;</button>
+        <label title="Milliseconds between scan cycles">
+          Interval (ms):
+          <input id="interval-input" type="number" value="500" min="1" max="60000" data-testid="interval-input">
         </label>
-        <label class="file-upload" id="file-upload-label">
-          Load .iplc
-          <input id="file-input" type="file" accept=".iplc" hidden>
-        </label>
+        <span class="transport-info">
+          <span id="duration-display" data-testid="duration-display">0.0s</span>
+          <span class="transport-separator">|</span>
+          <span id="cycles-display" data-testid="cycles-display">0 cycles</span>
+        </span>
       </div>
       <textarea id="editor" spellcheck="false" data-testid="editor">PROGRAM main
   VAR
@@ -33,10 +34,10 @@
     doubled : INT;
   END_VAR
 
-  (* In a PLC, the program runs in a loop called
-     a "scan cycle". Each click of Step runs one
-     cycle. Variables keep their values between
-     cycles, so count increases each time. *)
+  (* Click Start to begin running. The program
+     runs one scan cycle per interval. Variables
+     keep their values between cycles, so count
+     increases each time. *)
   count := count + 1;
   doubled := count * 2;
 END_PROGRAM
@@ -50,7 +51,7 @@ END_PROGRAM
       </div>
 
       <div id="variables-panel" class="panel active" data-testid="variables-panel">
-        <p class="placeholder">Run a program to see variable values.</p>
+        <p class="placeholder">Start a program to see variable values.</p>
       </div>
 
       <div id="diagnostics-panel" class="panel" data-testid="diagnostics-panel">
@@ -58,10 +59,6 @@ END_PROGRAM
       </div>
     </section>
   </main>
-
-  <div id="drop-overlay" class="drop-overlay" data-testid="drop-overlay">
-    <div class="drop-message">Drop .iplc file to load and execute</div>
-  </div>
 
   <footer>
     <span id="status" data-testid="status">Loading WebAssembly…</span>

@@ -538,14 +538,14 @@ fn read_all_variables_faulted(
 /// The session stores compiled bytecode and a variable buffer that persists
 /// across calls to [`step`]. Returns a JSON `StepResult` with `total_scans: 0`.
 #[wasm_bindgen]
-pub fn load_program(source: &str) -> String {
-    let result = load_program_inner(source);
+pub fn load_program(source: &str, cycle_time_us: u32) -> String {
+    let result = load_program_inner(source, cycle_time_us);
     serde_json::to_string(&result).unwrap_or_else(|e| {
         format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":"Serialization error: {e}"}}"#)
     })
 }
 
-fn load_program_inner(source: &str) -> StepResult {
+fn load_program_inner(source: &str, cycle_time_us: u32) -> StepResult {
     let compile_result = compile_inner(source);
     if !compile_result.ok {
         return StepResult {
@@ -610,7 +610,7 @@ fn load_program_inner(source: &str) -> StepResult {
             var_buf: bufs.vars,
             data_region: bufs.data_region,
             scan_count: 0,
-            cycle_time_us: 100_000,
+            cycle_time_us: cycle_time_us as u64,
             faulted: false,
         });
     });
@@ -925,7 +925,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-        let result: StepResult = serde_json::from_str(&load_program(source)).unwrap();
+        let result: StepResult = serde_json::from_str(&load_program(source, 100_000)).unwrap();
         assert!(result.ok);
         assert_eq!(result.total_scans, 0);
         assert!(result.diagnostics.is_empty());
@@ -936,7 +936,7 @@ END_PROGRAM
     fn load_program_when_syntax_error_then_returns_diagnostics() {
         reset_session();
         let source = "PROGRAM main INVALID END_PROGRAM";
-        let result: StepResult = serde_json::from_str(&load_program(source)).unwrap();
+        let result: StepResult = serde_json::from_str(&load_program(source, 100_000)).unwrap();
         assert!(!result.ok);
         assert!(!result.diagnostics.is_empty());
     }
@@ -960,7 +960,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-        load_program(source);
+        load_program(source, 100_000);
         let result: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(result.ok);
         assert_eq!(result.total_scans, 1);
@@ -979,7 +979,7 @@ PROGRAM main
   count := count + 1;
 END_PROGRAM
 ";
-        load_program(source);
+        load_program(source, 100_000);
 
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r1.ok);
@@ -1001,7 +1001,7 @@ PROGRAM main
   x := 1;
 END_PROGRAM
 ";
-        load_program(source);
+        load_program(source, 100_000);
 
         let r1: StepResult = serde_json::from_str(&step(3)).unwrap();
         assert_eq!(r1.total_scans, 3);
@@ -1023,7 +1023,7 @@ PROGRAM main
   x := 1 / y;
 END_PROGRAM
 ";
-        load_program(source);
+        load_program(source, 100_000);
 
         // First step should fault (divide by zero)
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
@@ -1046,7 +1046,7 @@ PROGRAM main
   x := 1;
 END_PROGRAM
 ";
-        load_program(source);
+        load_program(source, 100_000);
         step(1);
 
         reset_session();
@@ -1142,7 +1142,7 @@ PROGRAM main
   x := 10;
 END_PROGRAM
 ";
-        load_program(source_a);
+        load_program(source_a, 100_000);
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert_eq!(r1.variables[0].value, "10");
 
@@ -1154,7 +1154,7 @@ PROGRAM main
   x := 20;
 END_PROGRAM
 ";
-        load_program(source_b);
+        load_program(source_b, 100_000);
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert_eq!(r2.variables[0].value, "20");
         assert_eq!(r2.total_scans, 1);
@@ -1171,7 +1171,7 @@ PROGRAM main
   exponentially := exponentially * 2;
 END_PROGRAM
 ";
-        load_program(source);
+        load_program(source, 100_000);
 
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r1.ok);
@@ -1250,7 +1250,7 @@ PROGRAM main
   myTimer(IN := start, PT := T#5s, Q => done, ET => elapsed);
 END_PROGRAM
 ";
-        let load: StepResult = serde_json::from_str(&load_program(source)).unwrap();
+        let load: StepResult = serde_json::from_str(&load_program(source, 100_000)).unwrap();
         assert!(
             load.ok,
             "load failed: error={:?}, diagnostics={:?}",
@@ -1286,7 +1286,7 @@ PROGRAM main
   myTimer(IN := run, PT := T#5s, Q => active, ET => elapsed);
 END_PROGRAM
 ";
-        let load: StepResult = serde_json::from_str(&load_program(source)).unwrap();
+        let load: StepResult = serde_json::from_str(&load_program(source, 100_000)).unwrap();
         assert!(
             load.ok,
             "load failed: error={:?}, diagnostics={:?}",

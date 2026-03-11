@@ -1,15 +1,25 @@
 const editor = document.getElementById("editor");
-const runBtn = document.getElementById("run-btn");
-const stepBtn = document.getElementById("step-btn");
-const resetBtn = document.getElementById("reset-btn");
-const scansInput = document.getElementById("scans-input");
-const fileInput = document.getElementById("file-input");
+const startBtn = document.getElementById("start-btn");
+const stopBtn = document.getElementById("stop-btn");
+const pauseBtn = document.getElementById("pause-btn");
+const intervalInput = document.getElementById("interval-input");
+const durationDisplay = document.getElementById("duration-display");
+const cyclesDisplay = document.getElementById("cycles-display");
 const status = document.getElementById("status");
 const variablesPanel = document.getElementById("variables-panel");
 const diagnosticsPanel = document.getElementById("diagnostics-panel");
-const dropOverlay = document.getElementById("drop-overlay");
 
-let sourceChanged = true;
+// --- State ---
+
+let stepIntervalId = null;
+let renderIntervalId = null;
+let isRunning = false;
+let isPaused = false;
+let cycleCount = 0;
+let startTime = 0;
+let pausedElapsed = 0;
+let lastVariables = null;
+let stepInFlight = false;
 let previousValues = new Map();
 let compilerVersion = "";
 
@@ -20,6 +30,7 @@ const isEmbed = params.get("embed") === "true";
 
 if (isEmbed) {
   document.body.classList.add("embed");
+  intervalInput.disabled = true;
 }
 
 // Pre-load code from URL parameters
@@ -66,9 +77,7 @@ worker.onmessage = (e) => {
 
   if (msg.type === "ready") {
     compilerVersion = msg.version || "";
-    runBtn.disabled = false;
-    stepBtn.disabled = false;
-    resetBtn.disabled = false;
+    startBtn.disabled = false;
     status.textContent = "Ready";
     return;
   }
@@ -105,234 +114,224 @@ document.querySelectorAll(".tab").forEach((tab) => {
   });
 });
 
-// --- Compile & Run from editor ---
+// --- Transport controls ---
 
-runBtn.addEventListener("click", async () => {
-  const source = editor.value;
-  const scans = parseInt(scansInput.value, 10) || 1;
-
-  status.textContent = "Compiling and running\u2026";
-  runBtn.textContent = "\u25A0 Stop";
-  runBtn.disabled = true;
-
-  const msg = await postCommand("run_source", { source, scans });
-  runBtn.textContent = "\u25B6 Run";
-  runBtn.disabled = false;
-
-  if (msg.type === "error") {
-    status.textContent = msg.error;
-    return;
-  }
-
-  const result = JSON.parse(msg.json);
-  displayResult(result);
-});
-
-// --- Source change tracking ---
-
-editor.addEventListener("input", () => {
-  sourceChanged = true;
-});
-
-// --- Step through execution ---
-
-stepBtn.addEventListener("click", async () => {
-  const scans = parseInt(scansInput.value, 10) || 1;
-  stepBtn.textContent = "\u25A0 Stepping\u2026";
-  stepBtn.disabled = true;
-  resetBtn.disabled = true;
-
-  if (sourceChanged) {
-    status.textContent = "Compiling\u2026";
-    const loadMsg = await postCommand("load_program", { source: editor.value });
-    if (loadMsg.type === "error") {
-      status.textContent = loadMsg.error;
-      stepBtn.textContent = "\u25B7 Step";
-      stepBtn.disabled = false;
-      resetBtn.disabled = false;
-      return;
-    }
-    const loadResult = JSON.parse(loadMsg.json);
-    if (!loadResult.ok) {
-      displayStepResult(loadResult);
-      stepBtn.textContent = "\u25B7 Step";
-      stepBtn.disabled = false;
-      resetBtn.disabled = false;
-      return;
-    }
-    sourceChanged = false;
-  }
-
-  status.textContent = "Stepping\u2026";
-  const msg = await postCommand("step", { scans });
-  stepBtn.textContent = "\u25B7 Step";
-  stepBtn.disabled = false;
-  resetBtn.disabled = false;
-
-  if (msg.type === "error") {
-    status.textContent = msg.error;
-    return;
-  }
-
-  const result = JSON.parse(msg.json);
-  displayStepResult(result);
-});
-
-// --- Reset session ---
-
-resetBtn.addEventListener("click", async () => {
-  resetBtn.disabled = true;
-  stepBtn.disabled = true;
-
-  await postCommand("reset");
-
-  sourceChanged = true;
-  previousValues = new Map();
-  variablesPanel.innerHTML = '<p class="placeholder">Run a program to see variable values.</p>';
-  diagnosticsPanel.innerHTML = '<p class="placeholder">No diagnostics.</p>';
-  status.textContent = "Ready";
-  stepBtn.disabled = false;
-  resetBtn.disabled = false;
-});
-
-// --- Load .iplc file ---
-
-fileInput.addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  loadIplcFile(file);
-});
-
-async function loadIplcFile(file) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const base64 = uint8ArrayToBase64(bytes);
-  const scans = parseInt(scansInput.value, 10) || 1;
-
-  status.textContent = `Running ${file.name}\u2026`;
-  runBtn.disabled = true;
-
-  const msg = await postCommand("run", { bytecodeBase64: base64, scans });
-  runBtn.disabled = false;
-
-  if (msg.type === "error") {
-    status.textContent = `${file.name}: ${msg.error}`;
-    return;
-  }
-
-  const result = JSON.parse(msg.json);
-  displayRunResult(result, file.name);
+function getIntervalMs() {
+  const val = parseInt(intervalInput.value, 10);
+  return val > 0 ? val : 500;
 }
 
-// --- Drag and drop ---
+function startStepLoop() {
+  const intervalMs = getIntervalMs();
 
-let dragCounter = 0;
-document.addEventListener("dragenter", (e) => {
-  e.preventDefault();
-  dragCounter++;
-  dropOverlay.classList.add("visible");
+  stepIntervalId = setInterval(async () => {
+    if (stepInFlight) return;
+    stepInFlight = true;
+
+    const before = performance.now();
+    const msg = await postCommand("step", { scans: 1 });
+    const elapsed = performance.now() - before;
+    stepInFlight = false;
+
+    if (!isRunning || isPaused) return;
+
+    if (msg.type === "error") {
+      stopExecution();
+      status.textContent = msg.error;
+      return;
+    }
+
+    const result = JSON.parse(msg.json);
+    if (!result.ok) {
+      stopExecution();
+      if (result.diagnostics && result.diagnostics.length > 0) {
+        renderDiagnostics(result.diagnostics);
+        activateTab("diagnostics");
+        status.textContent = `${result.diagnostics.length} error(s)`;
+      } else if (result.error) {
+        renderVariables(result.variables || []);
+        diagnosticsPanel.innerHTML = `<p class="error-message">${escapeHtml(result.error)}</p>`;
+        status.textContent = "Runtime error";
+        activateTab("diagnostics");
+      }
+      return;
+    }
+
+    // Check for cycle overrun
+    if (elapsed > intervalMs) {
+      stopExecution();
+      status.textContent = `Cycle overrun: execution took ${elapsed.toFixed(0)}ms but interval is ${intervalMs}ms`;
+      diagnosticsPanel.innerHTML = `<p class="error-message">Cycle overrun: program execution took ${elapsed.toFixed(0)}ms but the cycle interval is ${intervalMs}ms. Reduce program complexity or increase the interval.</p>`;
+      activateTab("diagnostics");
+      return;
+    }
+
+    cycleCount = result.total_scans;
+    lastVariables = result.variables;
+  }, intervalMs);
+}
+
+function startRenderLoop() {
+  updateDisplays();
+  renderIntervalId = setInterval(() => {
+    updateDisplays();
+  }, 500);
+}
+
+function updateDisplays() {
+  const elapsed = performance.now() - startTime + pausedElapsed;
+  durationDisplay.textContent = (elapsed / 1000).toFixed(1) + "s";
+  cyclesDisplay.textContent = `${cycleCount} cycles`;
+
+  if (lastVariables) {
+    renderVariables(lastVariables);
+    activateTab("variables");
+  }
+}
+
+function stopExecution() {
+  clearInterval(stepIntervalId);
+  clearInterval(renderIntervalId);
+  stepIntervalId = null;
+  renderIntervalId = null;
+  isRunning = false;
+  isPaused = false;
+  stepInFlight = false;
+  resetTransportButtons();
+}
+
+function resetTransportButtons() {
+  startBtn.disabled = false;
+  startBtn.classList.remove("active");
+  stopBtn.disabled = true;
+  pauseBtn.disabled = true;
+  pauseBtn.classList.remove("active");
+  if (!isEmbed) {
+    intervalInput.disabled = false;
+  }
+}
+
+// --- Start ---
+
+startBtn.addEventListener("click", async () => {
+  const source = editor.value;
+  const intervalMs = getIntervalMs();
+  const cycleTimeUs = intervalMs * 1000;
+
+  startBtn.disabled = true;
+  stopBtn.disabled = true;
+  pauseBtn.disabled = true;
+  intervalInput.disabled = true;
+
+  status.textContent = "Compiling\u2026";
+
+  const loadMsg = await postCommand("load_program", { source, cycleTimeUs });
+
+  if (loadMsg.type === "error") {
+    status.textContent = loadMsg.error;
+    resetTransportButtons();
+    return;
+  }
+
+  const loadResult = JSON.parse(loadMsg.json);
+  if (!loadResult.ok) {
+    if (loadResult.diagnostics && loadResult.diagnostics.length > 0) {
+      renderDiagnostics(loadResult.diagnostics);
+      activateTab("diagnostics");
+      status.textContent = `${loadResult.diagnostics.length} error(s)`;
+    } else if (loadResult.error) {
+      status.textContent = loadResult.error;
+    }
+    resetTransportButtons();
+    return;
+  }
+
+  // Reset counters and start
+  cycleCount = 0;
+  pausedElapsed = 0;
+  startTime = performance.now();
+  previousValues = new Map();
+  lastVariables = null;
+  isRunning = true;
+  isPaused = false;
+
+  startBtn.disabled = true;
+  startBtn.classList.add("active");
+  stopBtn.disabled = false;
+  pauseBtn.disabled = false;
+  intervalInput.disabled = true;
+
+  status.textContent = "Running";
+
+  startStepLoop();
+  startRenderLoop();
 });
 
-document.addEventListener("dragleave", (e) => {
-  e.preventDefault();
-  dragCounter--;
-  if (dragCounter <= 0) {
-    dragCounter = 0;
-    dropOverlay.classList.remove("visible");
+// --- Stop ---
+
+stopBtn.addEventListener("click", async () => {
+  const finalVars = lastVariables;
+  stopExecution();
+
+  if (finalVars) {
+    renderVariables(finalVars);
+  }
+
+  await postCommand("reset");
+  previousValues = new Map();
+  status.textContent = `Stopped after ${cycleCount} cycles`;
+});
+
+// --- Pause / Resume ---
+
+pauseBtn.addEventListener("click", () => {
+  if (isPaused) {
+    // Resume
+    isPaused = false;
+    pauseBtn.classList.remove("active");
+    startTime = performance.now();
+
+    startStepLoop();
+    startRenderLoop();
+
+    status.textContent = "Running";
+  } else {
+    // Pause
+    isPaused = true;
+    pausedElapsed += performance.now() - startTime;
+    pauseBtn.classList.add("active");
+
+    clearInterval(stepIntervalId);
+    clearInterval(renderIntervalId);
+    stepIntervalId = null;
+    renderIntervalId = null;
+
+    // Final render with current state
+    updateDisplays();
+
+    status.textContent = `Paused at ${cycleCount} cycles`;
   }
 });
 
-document.addEventListener("dragover", (e) => {
-  e.preventDefault();
-});
+// --- Source change handling ---
 
-document.addEventListener("drop", (e) => {
-  e.preventDefault();
-  dragCounter = 0;
-  dropOverlay.classList.remove("visible");
-
-  const file = e.dataTransfer.files[0];
-  if (file && file.name.endsWith(".iplc")) {
-    loadIplcFile(file);
-  } else if (file) {
-    status.textContent = `Unsupported file type: ${file.name}. Expected .iplc`;
+editor.addEventListener("input", () => {
+  if (isRunning) {
+    stopExecution();
+    postCommand("reset");
+    status.textContent = "Source changed \u2014 stopped. Click Start to recompile.";
   }
 });
 
 // --- Display helpers ---
 
-function displayResult(result) {
-  if (result.ok) {
-    previousValues = new Map();
-    renderVariables(result.variables, result.scans_completed, "run");
-    diagnosticsPanel.innerHTML = '<p class="placeholder">No diagnostics.</p>';
-    status.textContent = `Ran ${result.scans_completed} scan cycle(s)`;
-    activateTab("variables");
-  } else if (result.diagnostics && result.diagnostics.length > 0) {
-    renderDiagnostics(result.diagnostics);
-    variablesPanel.innerHTML = '<p class="placeholder">Compilation failed.</p>';
-    status.textContent = `${result.diagnostics.length} error(s)`;
-    activateTab("diagnostics");
-  } else if (result.error) {
-    previousValues = new Map();
-    renderVariables(result.variables || [], result.scans_completed, "run");
-    diagnosticsPanel.innerHTML = `<p class="error-message">${escapeHtml(result.error)}</p>`;
-    status.textContent = "Runtime error";
-    activateTab("diagnostics");
-  }
-}
-
-function displayRunResult(result, filename) {
-  if (result.ok) {
-    previousValues = new Map();
-    renderVariables(result.variables, result.scans_completed, "run");
-    diagnosticsPanel.innerHTML = '<p class="placeholder">No diagnostics.</p>';
-    status.textContent = `${filename}: ran ${result.scans_completed} scan cycle(s)`;
-    activateTab("variables");
-  } else {
-    previousValues = new Map();
-    renderVariables(result.variables || [], result.scans_completed, "run");
-    diagnosticsPanel.innerHTML = `<p class="error-message">${escapeHtml(result.error || "Unknown error")}</p>`;
-    status.textContent = `${filename}: runtime error`;
-    activateTab("diagnostics");
-  }
-}
-
-function displayStepResult(result) {
-  if (result.ok) {
-    renderVariables(result.variables, result.total_scans, "step");
-    diagnosticsPanel.innerHTML = '<p class="placeholder">No diagnostics.</p>';
-    status.textContent = `Scan cycle ${result.total_scans} completed`;
-    activateTab("variables");
-  } else if (result.diagnostics && result.diagnostics.length > 0) {
-    renderDiagnostics(result.diagnostics);
-    variablesPanel.innerHTML = '<p class="placeholder">Compilation failed.</p>';
-    status.textContent = `${result.diagnostics.length} error(s)`;
-    activateTab("diagnostics");
-  } else if (result.error) {
-    renderVariables(result.variables || [], result.total_scans, "step");
-    diagnosticsPanel.innerHTML = `<p class="error-message">${escapeHtml(result.error)}</p>`;
-    status.textContent = "Runtime error";
-    activateTab("diagnostics");
-  }
-}
-
-function renderVariables(variables, scansCompleted, mode) {
+function renderVariables(variables) {
   if (!variables || variables.length === 0) {
     variablesPanel.innerHTML = '<p class="placeholder">No variables.</p>';
     return;
   }
 
-  let html = '<div class="scan-summary">';
-  if (mode === "step") {
-    html += `<span class="scan-count">Scan cycle ${scansCompleted} completed</span>`;
-    html += '<span class="scan-hint">Click Step again to run another cycle and see values change.</span>';
-  } else {
-    html += `<span class="scan-count">Ran ${scansCompleted} scan cycle(s) from initial state</span>`;
-    html += '<span class="scan-hint">Each scan runs the entire program once. Variables persist between scans.</span>';
-  }
-  html += '</div>';
-
-  html += '<table class="var-table"><thead><tr><th>Variable</th><th>Value</th></tr></thead><tbody>';
+  let html = '<table class="var-table"><thead><tr><th>Variable</th><th>Value</th></tr></thead><tbody>';
   for (const v of variables) {
     const prev = previousValues.get(v.index);
     const changed = prev !== undefined && prev !== v.value;
@@ -378,14 +377,6 @@ function activateTab(tabName) {
   const panel = document.getElementById(`${tabName}-panel`);
   if (tab) tab.classList.add("active");
   if (panel) panel.classList.add("active");
-}
-
-function uint8ArrayToBase64(bytes) {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
 }
 
 function escapeHtml(str) {
