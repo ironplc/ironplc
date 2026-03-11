@@ -669,6 +669,15 @@ fn resolve_fb_type(name: &str) -> Option<(u16, usize, HashMap<String, u8>)> {
         "TON" => Some((opcode::fb_type::TON, 6, timer_fb_fields())),
         "TOF" => Some((opcode::fb_type::TOF, 6, timer_fb_fields())),
         "TP" => Some((opcode::fb_type::TP, 6, timer_fb_fields())),
+        "CTU" | "CTU_INT" | "CTU_DINT" | "CTU_LINT" | "CTU_UDINT" | "CTU_ULINT" => {
+            Some((opcode::fb_type::CTU, 6, ctu_fb_fields()))
+        }
+        "CTD" | "CTD_INT" | "CTD_DINT" | "CTD_LINT" | "CTD_UDINT" | "CTD_ULINT" => {
+            Some((opcode::fb_type::CTD, 6, ctd_fb_fields()))
+        }
+        "CTUD" | "CTUD_INT" | "CTUD_DINT" | "CTUD_LINT" | "CTUD_UDINT" | "CTUD_ULINT" => {
+            Some((opcode::fb_type::CTUD, 10, ctud_fb_fields()))
+        }
         _ => None,
     }
 }
@@ -681,6 +690,45 @@ fn timer_fb_fields() -> HashMap<String, u8> {
     fields.insert("pt".to_string(), 1);
     fields.insert("q".to_string(), 2);
     fields.insert("et".to_string(), 3);
+    fields
+}
+
+/// Returns the field map for CTU (count up) FBs.
+/// Field 5 is hidden (prev_cu) and not included.
+fn ctu_fb_fields() -> HashMap<String, u8> {
+    let mut fields = HashMap::new();
+    fields.insert("cu".to_string(), 0);
+    fields.insert("r".to_string(), 1);
+    fields.insert("pv".to_string(), 2);
+    fields.insert("q".to_string(), 3);
+    fields.insert("cv".to_string(), 4);
+    fields
+}
+
+/// Returns the field map for CTD (count down) FBs.
+/// Field 5 is hidden (prev_cd) and not included.
+fn ctd_fb_fields() -> HashMap<String, u8> {
+    let mut fields = HashMap::new();
+    fields.insert("cd".to_string(), 0);
+    fields.insert("ld".to_string(), 1);
+    fields.insert("pv".to_string(), 2);
+    fields.insert("q".to_string(), 3);
+    fields.insert("cv".to_string(), 4);
+    fields
+}
+
+/// Returns the field map for CTUD (count up/down) FBs.
+/// Fields 8-9 are hidden (prev_cu, prev_cd) and not included.
+fn ctud_fb_fields() -> HashMap<String, u8> {
+    let mut fields = HashMap::new();
+    fields.insert("cu".to_string(), 0);
+    fields.insert("cd".to_string(), 1);
+    fields.insert("r".to_string(), 2);
+    fields.insert("ld".to_string(), 3);
+    fields.insert("pv".to_string(), 4);
+    fields.insert("qu".to_string(), 5);
+    fields.insert("qd".to_string(), 6);
+    fields.insert("cv".to_string(), 7);
     fields
 }
 
