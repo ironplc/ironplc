@@ -1,7 +1,5 @@
 // @ts-check
 const { test, expect } = require("@playwright/test");
-const path = require("path");
-const fs = require("fs");
 
 test.describe("IronPLC Playground", () => {
   test.beforeEach(async ({ page }) => {
@@ -15,10 +13,12 @@ test.describe("IronPLC Playground", () => {
   test("page_when_loaded_then_shows_editor_and_ready_status", async ({ page }) => {
     await expect(page).toHaveTitle(/IronPLC/);
     await expect(page.locator('[data-testid="editor"]')).toBeVisible();
-    await expect(page.locator("#run-btn")).toBeEnabled();
+    await expect(page.locator('[data-testid="start-btn"]')).toBeEnabled();
+    await expect(page.locator('[data-testid="stop-btn"]')).toBeDisabled();
+    await expect(page.locator('[data-testid="pause-btn"]')).toBeDisabled();
   });
 
-  test("run_source_when_steel_thread_program_then_shows_variable_values", async ({ page }) => {
+  test("start_when_valid_program_then_shows_variable_values", async ({ page }) => {
     const editor = page.locator('[data-testid="editor"]');
     await editor.fill(`PROGRAM main
   VAR
@@ -30,91 +30,32 @@ test.describe("IronPLC Playground", () => {
 END_PROGRAM
 `);
 
-    await page.click("#run-btn");
+    await page.click('[data-testid="start-btn"]');
 
-    // Wait for results
+    // Wait for variables to appear
     const variablesPanel = page.locator('[data-testid="variables-panel"]');
     await expect(variablesPanel).toContainText("10", { timeout: 10000 });
     await expect(variablesPanel).toContainText("42");
-    await expect(page.locator('[data-testid="status"]')).toContainText("1 scan");
+
+    // Stop to clean up
+    await page.click('[data-testid="stop-btn"]');
   });
 
-  test("run_source_when_syntax_error_then_shows_diagnostics", async ({ page }) => {
+  test("start_when_syntax_error_then_shows_diagnostics", async ({ page }) => {
     const editor = page.locator('[data-testid="editor"]');
     await editor.fill("PROGRAM main INVALID END_PROGRAM");
 
-    await page.click("#run-btn");
+    await page.click('[data-testid="start-btn"]');
 
     const diagnosticsPanel = page.locator('[data-testid="diagnostics-panel"]');
     await expect(diagnosticsPanel).toBeVisible({ timeout: 10000 });
-    // Should switch to diagnostics tab and show error
     await expect(diagnosticsPanel).not.toContainText("No diagnostics");
+
+    // Start button should be re-enabled after compilation failure
+    await expect(page.locator('[data-testid="start-btn"]')).toBeEnabled();
   });
 
-  test("run_source_when_multiple_scans_then_shows_correct_count", async ({ page }) => {
-    const editor = page.locator('[data-testid="editor"]');
-    await editor.fill(`PROGRAM main
-  VAR
-    x : DINT;
-  END_VAR
-  x := 99;
-END_PROGRAM
-`);
-
-    await page.fill("#scans-input", "5");
-    await page.click("#run-btn");
-
-    await expect(page.locator('[data-testid="status"]')).toContainText("5 scan", {
-      timeout: 10000,
-    });
-  });
-
-  test("file_upload_when_iplc_file_then_executes_and_shows_results", async ({ page }) => {
-    // First compile a program to get bytecode, then use it as a file upload
-    // We test the file input by creating a synthetic .iplc from compilation
-    const editor = page.locator('[data-testid="editor"]');
-    await editor.fill(`PROGRAM main
-  VAR
-    x : DINT;
-  END_VAR
-  x := 77;
-END_PROGRAM
-`);
-
-    // Run from source first to verify the pipeline works
-    await page.click("#run-btn");
-    const variablesPanel = page.locator('[data-testid="variables-panel"]');
-    await expect(variablesPanel).toContainText("77", { timeout: 10000 });
-  });
-
-  test("editor_when_default_content_then_contains_example_program", async ({ page }) => {
-    const editor = page.locator('[data-testid="editor"]');
-    const content = await editor.inputValue();
-    expect(content).toContain("PROGRAM main");
-    expect(content).toContain("count := count + 1");
-  });
-
-  test("step_when_program_loaded_then_shows_variables_and_scan_count", async ({ page }) => {
-    const editor = page.locator('[data-testid="editor"]');
-    await editor.fill(`PROGRAM main
-  VAR
-    x : INT;
-    y : INT;
-  END_VAR
-  x := 10;
-  y := x + 32;
-END_PROGRAM
-`);
-
-    await page.click('[data-testid="step-btn"]');
-
-    const variablesPanel = page.locator('[data-testid="variables-panel"]');
-    await expect(variablesPanel).toContainText("10", { timeout: 10000 });
-    await expect(variablesPanel).toContainText("42");
-    await expect(page.locator('[data-testid="status"]')).toContainText("Scan cycle 1 completed");
-  });
-
-  test("step_when_clicked_twice_then_scan_count_accumulates", async ({ page }) => {
+  test("start_when_running_then_cycles_increment_over_time", async ({ page }) => {
     const editor = page.locator('[data-testid="editor"]');
     await editor.fill(`PROGRAM main
   VAR
@@ -124,18 +65,22 @@ END_PROGRAM
 END_PROGRAM
 `);
 
-    await page.click('[data-testid="step-btn"]');
-    await expect(page.locator('[data-testid="status"]')).toContainText("Scan cycle 1 completed", {
-      timeout: 10000,
-    });
+    // Use a short interval to accumulate cycles quickly
+    await page.fill('[data-testid="interval-input"]', "100");
+    await page.click('[data-testid="start-btn"]');
 
-    await page.click('[data-testid="step-btn"]');
-    await expect(page.locator('[data-testid="status"]')).toContainText("Scan cycle 2 completed", {
-      timeout: 10000,
-    });
+    // Wait for cycles to accumulate
+    const cyclesDisplay = page.locator('[data-testid="cycles-display"]');
+    await expect(cyclesDisplay).not.toHaveText("0 cycles", { timeout: 10000 });
+
+    // Duration should be counting up
+    const durationDisplay = page.locator('[data-testid="duration-display"]');
+    await expect(durationDisplay).not.toHaveText("0.0s", { timeout: 5000 });
+
+    await page.click('[data-testid="stop-btn"]');
   });
 
-  test("reset_when_clicked_then_clears_output_and_shows_ready", async ({ page }) => {
+  test("stop_when_clicked_then_resets_state", async ({ page }) => {
     const editor = page.locator('[data-testid="editor"]');
     await editor.fill(`PROGRAM main
   VAR
@@ -145,27 +90,134 @@ END_PROGRAM
 END_PROGRAM
 `);
 
-    // Step first to populate output
-    await page.click('[data-testid="step-btn"]');
-    await expect(page.locator('[data-testid="status"]')).toContainText("Scan cycle 1 completed", {
+    await page.click('[data-testid="start-btn"]');
+
+    // Wait for at least one cycle
+    const variablesPanel = page.locator('[data-testid="variables-panel"]');
+    await expect(variablesPanel).toContainText("1", { timeout: 10000 });
+
+    await page.click('[data-testid="stop-btn"]');
+    await expect(page.locator('[data-testid="status"]')).toContainText("Stopped", {
       timeout: 10000,
     });
 
-    // Reset
-    await page.click('[data-testid="reset-btn"]');
-    await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
-      timeout: 10000,
-    });
-    await expect(page.locator('[data-testid="variables-panel"]')).toContainText(
-      "Run a program"
-    );
+    // Start button should be re-enabled
+    await expect(page.locator('[data-testid="start-btn"]')).toBeEnabled();
+    await expect(page.locator('[data-testid="stop-btn"]')).toBeDisabled();
   });
 
-  test("run_source_when_syntax_error_then_diagnostic_code_links_to_documentation", async ({ page }) => {
+  test("stop_when_clicked_then_resets_memory", async ({ page }) => {
+    const editor = page.locator('[data-testid="editor"]');
+    await editor.fill(`PROGRAM main
+  VAR
+    count : DINT;
+  END_VAR
+  count := count + 1;
+END_PROGRAM
+`);
+
+    await page.fill('[data-testid="interval-input"]', "100");
+    await page.click('[data-testid="start-btn"]');
+
+    // Wait for count to be > 1
+    const variablesPanel = page.locator('[data-testid="variables-panel"]');
+    await expect(variablesPanel).not.toContainText("Start a program", { timeout: 10000 });
+
+    await page.click('[data-testid="stop-btn"]');
+
+    // Start again - count should restart from 1
+    await page.click('[data-testid="start-btn"]');
+    await expect(variablesPanel).toContainText("1", { timeout: 10000 });
+
+    await page.click('[data-testid="stop-btn"]');
+  });
+
+  test("pause_when_clicked_then_stops_cycle_counting", async ({ page }) => {
+    const editor = page.locator('[data-testid="editor"]');
+    await editor.fill(`PROGRAM main
+  VAR
+    count : DINT;
+  END_VAR
+  count := count + 1;
+END_PROGRAM
+`);
+
+    await page.fill('[data-testid="interval-input"]', "100");
+    await page.click('[data-testid="start-btn"]');
+
+    // Wait for some cycles
+    const cyclesDisplay = page.locator('[data-testid="cycles-display"]');
+    await expect(cyclesDisplay).not.toHaveText("0 cycles", { timeout: 10000 });
+
+    // Pause
+    await page.click('[data-testid="pause-btn"]');
+    await expect(page.locator('[data-testid="status"]')).toContainText("Paused", {
+      timeout: 5000,
+    });
+
+    // Record cycle count after pause
+    const pausedText = await cyclesDisplay.textContent();
+
+    // Wait a moment and verify count hasn't changed
+    await page.waitForTimeout(600);
+    await expect(cyclesDisplay).toHaveText(pausedText, { timeout: 1000 });
+
+    // Resume
+    await page.click('[data-testid="pause-btn"]');
+    await expect(page.locator('[data-testid="status"]')).toContainText("Running", {
+      timeout: 5000,
+    });
+
+    // Cycles should continue
+    await expect(cyclesDisplay).not.toHaveText(pausedText, { timeout: 10000 });
+
+    await page.click('[data-testid="stop-btn"]');
+  });
+
+  test("editor_when_default_content_then_contains_example_program", async ({ page }) => {
+    const editor = page.locator('[data-testid="editor"]');
+    const content = await editor.inputValue();
+    expect(content).toContain("PROGRAM main");
+    expect(content).toContain("count := count + 1");
+  });
+
+  test("source_change_when_running_then_stops_execution", async ({ page }) => {
+    const editor = page.locator('[data-testid="editor"]');
+    await editor.fill(`PROGRAM main
+  VAR
+    x : DINT;
+  END_VAR
+  x := 10;
+END_PROGRAM
+`);
+
+    await page.click('[data-testid="start-btn"]');
+
+    // Wait for running
+    const variablesPanel = page.locator('[data-testid="variables-panel"]');
+    await expect(variablesPanel).toContainText("10", { timeout: 10000 });
+
+    // Change source while running
+    await editor.fill(`PROGRAM main
+  VAR
+    x : DINT;
+  END_VAR
+  x := 99;
+END_PROGRAM
+`);
+
+    // Should stop and show message
+    await expect(page.locator('[data-testid="status"]')).toContainText("Source changed", {
+      timeout: 10000,
+    });
+    await expect(page.locator('[data-testid="start-btn"]')).toBeEnabled();
+  });
+
+  test("start_when_syntax_error_then_diagnostic_code_links_to_documentation", async ({ page }) => {
     const editor = page.locator('[data-testid="editor"]');
     await editor.fill("PROGRAM main INVALID END_PROGRAM");
 
-    await page.click("#run-btn");
+    await page.click('[data-testid="start-btn"]');
 
     const diagnosticsPanel = page.locator('[data-testid="diagnostics-panel"]');
     await expect(diagnosticsPanel).not.toContainText("No diagnostics", { timeout: 10000 });
@@ -181,31 +233,24 @@ END_PROGRAM
     await expect(message).not.toHaveText("");
   });
 
-  test("step_when_source_changed_then_recompiles_automatically", async ({ page }) => {
-    const editor = page.locator('[data-testid="editor"]');
-    await editor.fill(`PROGRAM main
-  VAR
-    x : DINT;
-  END_VAR
-  x := 10;
-END_PROGRAM
-`);
+  test("embed_when_loaded_then_shows_start_and_stop_only", async ({ page }) => {
+    await page.goto("/?embed=true");
+    await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
+      timeout: 15000,
+    });
 
-    await page.click('[data-testid="step-btn"]');
-    const variablesPanel = page.locator('[data-testid="variables-panel"]');
-    await expect(variablesPanel).toContainText("10", { timeout: 10000 });
+    // Start and stop should be visible
+    await expect(page.locator('[data-testid="start-btn"]')).toBeVisible();
+    await expect(page.locator('[data-testid="stop-btn"]')).toBeVisible();
 
-    // Change source — should auto-recompile on next step
-    await editor.fill(`PROGRAM main
-  VAR
-    x : DINT;
-  END_VAR
-  x := 99;
-END_PROGRAM
-`);
+    // Pause should be hidden
+    await expect(page.locator('[data-testid="pause-btn"]')).toBeHidden();
 
-    await page.click('[data-testid="step-btn"]');
-    await expect(variablesPanel).toContainText("99", { timeout: 10000 });
-    await expect(page.locator('[data-testid="status"]')).toContainText("Scan cycle 1 completed");
+    // Interval input should be visible but disabled
+    await expect(page.locator('[data-testid="interval-input"]')).toBeDisabled();
+
+    // Duration and cycles should be visible
+    await expect(page.locator('[data-testid="duration-display"]')).toBeVisible();
+    await expect(page.locator('[data-testid="cycles-display"]')).toBeVisible();
   });
 });
