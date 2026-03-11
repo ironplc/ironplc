@@ -113,4 +113,4 @@ The playground is already embedded in 48+ standard library function pages and se
 
 ### Why not wait for unsupported types?
 
-The unsupported type pages (STRING, WSTRING, TIME, DATE, TIME_OF_DAY, DATE_AND_TIME) do not get examples because the playground cannot run code using those types. Adding examples to the 15 supported types now does not create a commitment to add examples to unsupported types — those will get examples when their type support ships.
+The unsupported type pages (STRING, WSTRING, DATE, TIME_OF_DAY, DATE_AND_TIME) do not get examples because the playground cannot run code using those types. Adding examples to the supported types now does not create a commitment to add examples to unsupported types — those will get examples when their type support ships.

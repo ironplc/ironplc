@@ -784,3 +784,30 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod lexer_tests {
+    use super::*;
+    use logos::Logos;
+
+    #[test]
+    fn tokenize_when_time_alone_then_produces_time_token() {
+        let mut lex = TokenType::lexer("TIME");
+        let tok = lex.next().unwrap().unwrap();
+        assert_eq!(tok, TokenType::Time);
+    }
+
+    #[test]
+    fn tokenize_when_time_of_day_then_produces_time_of_day_token() {
+        let mut lex = TokenType::lexer("TIME_OF_DAY");
+        let tok = lex.next().unwrap().unwrap();
+        assert_eq!(tok, TokenType::TimeOfDay);
+    }
+
+    #[test]
+    fn tokenize_when_time_followed_by_semicolon_then_produces_time_token() {
+        let mut lex = TokenType::lexer("TIME;");
+        let tok = lex.next().unwrap().unwrap();
+        assert_eq!(tok, TokenType::Time);
+    }
+}

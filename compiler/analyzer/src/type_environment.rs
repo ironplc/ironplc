@@ -97,7 +97,11 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 23] = [
             size: ByteSized::B64,
         },
     ),
-    // date_type_name
+    // time_type_name — TIME must appear before TIME_OF_DAY so that
+    // resolve_elementary_type_name() finds the canonical name first.
+    ("time", IntermediateType::Time),
+    // date_type_name — DATE must appear before DATE_AND_TIME for the
+    // same reason.
     ("date", IntermediateType::Date),
     ("time_of_day", IntermediateType::Time),
     ("tod", IntermediateType::Time),
@@ -132,7 +136,6 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 23] = [
     // remaining elementary_type_name
     ("string", IntermediateType::String { max_len: None }),
     ("wstring", IntermediateType::String { max_len: None }),
-    ("time", IntermediateType::Time),
 ];
 
 #[derive(Debug)]

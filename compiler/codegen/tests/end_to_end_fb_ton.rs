@@ -10,6 +10,31 @@ use ironplc_codegen::compile;
 use ironplc_vm::test_support::load_and_start;
 
 #[test]
+fn end_to_end_when_time_variable_then_debug_type_name_is_time() {
+    let source = "
+PROGRAM main
+  VAR
+    elapsed : TIME;
+  END_VAR
+  elapsed := T#5s;
+END_PROGRAM
+";
+    let library = parse(source);
+    let container = compile(&library).unwrap();
+    let debug = container.debug_section.as_ref().unwrap();
+    let elapsed_entry = debug
+        .var_names
+        .iter()
+        .find(|e| e.name == "elapsed")
+        .unwrap();
+    assert_eq!(
+        elapsed_entry.type_name, "TIME",
+        "TIME variable should have type_name TIME, got {}",
+        elapsed_entry.type_name
+    );
+}
+
+#[test]
 fn end_to_end_when_ton_not_triggered_then_q_is_false() {
     let source = "
 PROGRAM main
