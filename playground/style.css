@@ -63,32 +63,38 @@ main {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
   padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--border);
 }
 
-.toolbar button,
-.toolbar .file-upload {
+.toolbar button {
   background: var(--accent);
   color: #fff;
   border: none;
-  padding: 0.4rem 1rem;
+  padding: 0.4rem 0.7rem;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: 0.9rem;
   font-weight: 500;
   white-space: nowrap;
+  min-width: 2rem;
+  text-align: center;
 }
 
-.toolbar button:hover:not(:disabled),
-.toolbar .file-upload:hover {
+.toolbar button:hover:not(:disabled) {
   background: var(--accent-hover);
 }
 
 .toolbar button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Depressed/active state for transport buttons */
+.toolbar button.active {
+  background: var(--accent-hover);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
 .toolbar label {
@@ -107,6 +113,21 @@ main {
   border-radius: 4px;
   padding: 0.3rem 0.5rem;
   font-size: 0.875rem;
+}
+
+/* Transport info (duration + cycles) in toolbar */
+.transport-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-left: auto;
+  font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
+}
+
+.transport-separator {
+  color: var(--border);
 }
 
 #editor {
@@ -223,28 +244,6 @@ a.diagnostic-code:hover {
   color: var(--success);
 }
 
-.scan-summary {
-  background: rgba(107, 255, 155, 0.08);
-  border: 1px solid rgba(107, 255, 155, 0.25);
-  border-radius: 6px;
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-.scan-count {
-  color: var(--success);
-  font-weight: 600;
-  font-size: 0.95rem;
-}
-
-.scan-hint {
-  display: block;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  margin-top: 0.25rem;
-  font-family: system-ui, -apple-system, sans-serif;
-}
-
 table.var-table tr.changed td {
   background: rgba(107, 255, 155, 0.15);
 }
@@ -261,28 +260,6 @@ table.var-table tr.changed td {
   border-radius: 4px;
 }
 
-.drop-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  z-index: 100;
-  align-items: center;
-  justify-content: center;
-}
-
-.drop-overlay.visible {
-  display: flex;
-}
-
-.drop-message {
-  font-size: 1.5rem;
-  color: var(--accent);
-  border: 3px dashed var(--accent);
-  padding: 3rem 4rem;
-  border-radius: 12px;
-}
-
 footer {
   padding: 0.4rem 1.5rem;
   border-top: 1px solid var(--border);
@@ -294,10 +271,7 @@ footer {
 
 body.embed header,
 body.embed footer,
-body.embed .file-upload,
-body.embed #step-btn,
-body.embed #reset-btn,
-body.embed .toolbar label {
+body.embed #pause-btn {
   display: none;
 }
 

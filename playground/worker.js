@@ -25,7 +25,7 @@ init()
   });
 
 self.onmessage = (e) => {
-  const { id, command, source, bytecodeBase64, scans } = e.data;
+  const { id, command, source, bytecodeBase64, scans, cycleTimeUs } = e.data;
 
   if (!ready) {
     self.postMessage({
@@ -49,7 +49,7 @@ self.onmessage = (e) => {
         json = run_source(source, scans);
         break;
       case "load_program":
-        json = load_program(source);
+        json = load_program(source, cycleTimeUs || 100000);
         break;
       case "step":
         json = step(scans);
