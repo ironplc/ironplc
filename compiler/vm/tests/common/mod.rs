@@ -192,6 +192,62 @@ pub fn timer_test_container(pt_us: i64, fb_type_id: u16) -> Container {
         .build()
 }
 
+/// Builds a container for CTUD FB tests.
+///
+/// The container runs: load fb_ref, store CU, store CD, store R, store LD,
+/// store PV, call FB, load QU, load QD, load CV.
+///
+/// Variable layout:
+///   var[0] = fb_ref (offset 0 into data region)
+///   var[1] = CU value (set by test via write_variable)
+///   var[2] = CD value (set by test via write_variable)
+///   var[3] = R value (set by test via write_variable)
+///   var[4] = LD value (set by test via write_variable)
+///   var[5] = QU output (read by test)
+///   var[6] = QD output (read by test)
+///   var[7] = CV output (read by test)
+/// Constant layout:
+///   constant[0] = PV value (i32)
+pub fn ctud_test_container(pv: i32) -> Container {
+    use ironplc_container::opcode;
+
+    let type_id_bytes = opcode::fb_type::CTUD.to_le_bytes();
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        opcode::FB_LOAD_INSTANCE, 0x00, 0x00,              // push fb_ref from var[0]
+        opcode::LOAD_VAR_I32,     0x01, 0x00,              // push CU from var[1]
+        opcode::FB_STORE_PARAM,   0x00,                     // store to FB.CU (field 0)
+        opcode::LOAD_VAR_I32,     0x02, 0x00,              // push CD from var[2]
+        opcode::FB_STORE_PARAM,   0x01,                     // store to FB.CD (field 1)
+        opcode::LOAD_VAR_I32,     0x03, 0x00,              // push R from var[3]
+        opcode::FB_STORE_PARAM,   0x02,                     // store to FB.R (field 2)
+        opcode::LOAD_VAR_I32,     0x04, 0x00,              // push LD from var[4]
+        opcode::FB_STORE_PARAM,   0x03,                     // store to FB.LD (field 3)
+        opcode::LOAD_CONST_I32,   0x00, 0x00,              // push PV constant
+        opcode::FB_STORE_PARAM,   0x04,                     // store to FB.PV (field 4)
+        opcode::FB_CALL,          type_id_bytes[0], type_id_bytes[1], // call CTUD
+        opcode::FB_LOAD_PARAM,    0x05,                     // load FB.QU (field 5)
+        opcode::STORE_VAR_I32,    0x05, 0x00,               // store QU to var[5]
+        opcode::FB_LOAD_PARAM,    0x06,                     // load FB.QD (field 6)
+        opcode::STORE_VAR_I32,    0x06, 0x00,               // store QD to var[6]
+        opcode::FB_LOAD_PARAM,    0x07,                     // load FB.CV (field 7)
+        opcode::STORE_VAR_I32,    0x07, 0x00,               // store CV to var[7]
+        opcode::POP,                                        // discard fb_ref
+        opcode::RET_VOID,
+    ];
+
+    let init_bytecode: Vec<u8> = vec![opcode::RET_VOID];
+    ContainerBuilder::new()
+        .num_variables(8)
+        .data_region_bytes(80) // 10 fields * 8 bytes
+        .add_i32_constant(pv)
+        .add_function(0, &init_bytecode, 0, 8)
+        .add_function(1, &bytecode, 16, 8)
+        .init_function_id(0)
+        .entry_function_id(1)
+        .build()
+}
+
 /// Runs bytecode with i32 constants and returns var[0] as i32.
 ///
 /// Shorthand for the common pattern: build container, allocate buffers,

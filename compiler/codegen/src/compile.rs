@@ -668,6 +668,7 @@ fn resolve_fb_type(name: &str) -> Option<(u16, usize, HashMap<String, u8>)> {
     match name {
         "TON" => Some((opcode::fb_type::TON, 6, timer_fb_fields())),
         "TOF" => Some((opcode::fb_type::TOF, 6, timer_fb_fields())),
+        "CTUD" | "CTUD_DINT" | "CTUD_UDINT" => Some((opcode::fb_type::CTUD, 10, ctud_fb_fields())),
         _ => None,
     }
 }
@@ -680,6 +681,21 @@ fn timer_fb_fields() -> HashMap<String, u8> {
     fields.insert("pt".to_string(), 1);
     fields.insert("q".to_string(), 2);
     fields.insert("et".to_string(), 3);
+    fields
+}
+
+/// Returns the shared field map for CTUD counter FBs.
+/// Fields 8-9 are hidden (prev_cu, prev_cd) and not included.
+fn ctud_fb_fields() -> HashMap<String, u8> {
+    let mut fields = HashMap::new();
+    fields.insert("cu".to_string(), 0);
+    fields.insert("cd".to_string(), 1);
+    fields.insert("r".to_string(), 2);
+    fields.insert("ld".to_string(), 3);
+    fields.insert("pv".to_string(), 4);
+    fields.insert("qu".to_string(), 5);
+    fields.insert("qd".to_string(), 6);
+    fields.insert("cv".to_string(), 7);
     fields
 }
 

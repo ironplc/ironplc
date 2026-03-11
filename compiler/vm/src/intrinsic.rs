@@ -45,6 +45,73 @@ const TIMER_RUNNING: usize = 5; // hidden
 /// Number of fields (including hidden) for a timer FB instance.
 pub const TIMER_INSTANCE_FIELDS: usize = 6;
 
+// =============================================================================
+// Counter Function Blocks (IEC 61131-3 Section 2.5.2.3.4)
+// =============================================================================
+
+/// Shared field indices for CTUD function block.
+const CTUD_CU: usize = 0;
+const CTUD_CD: usize = 1;
+const CTUD_R: usize = 2;
+const CTUD_LD: usize = 3;
+const CTUD_PV: usize = 4;
+const CTUD_QU: usize = 5;
+const CTUD_QD: usize = 6;
+const CTUD_CV: usize = 7;
+const CTUD_PREV_CU: usize = 8; // hidden
+const CTUD_PREV_CD: usize = 9; // hidden
+
+/// Number of fields (including hidden) for a CTUD FB instance.
+pub const CTUD_INSTANCE_FIELDS: usize = 10;
+
+/// Executes one scan of the CTUD (count up/down) intrinsic.
+///
+/// # Arguments
+/// * `instance` - Mutable slice of the FB instance memory (10 fields * 8 bytes = 80 bytes).
+///
+/// # CTUD behavior (IEC 61131-3 section 2.5.2.3.4):
+/// - When R is TRUE: CV = 0 (reset takes priority)
+/// - When LD is TRUE (and R is FALSE): CV = PV (load takes priority over counting)
+/// - On rising edge of CU: CV increments by 1
+/// - On rising edge of CD: CV decrements by 1
+/// - QU = (CV >= PV), QD = (CV <= 0)
+pub fn ctud(instance: &mut [u8]) -> Result<(), Trap> {
+    let cu = read_i32(instance, CTUD_CU) != 0;
+    let cd = read_i32(instance, CTUD_CD) != 0;
+    let r = read_i32(instance, CTUD_R) != 0;
+    let ld = read_i32(instance, CTUD_LD) != 0;
+    let pv = read_i32(instance, CTUD_PV);
+    let prev_cu = read_i32(instance, CTUD_PREV_CU) != 0;
+    let prev_cd = read_i32(instance, CTUD_PREV_CD) != 0;
+
+    let mut cv = read_i32(instance, CTUD_CV);
+
+    if r {
+        cv = 0;
+    } else if ld {
+        cv = pv;
+    } else {
+        if cu && !prev_cu {
+            cv = cv.saturating_add(1);
+        }
+        if cd && !prev_cd {
+            cv = cv.saturating_sub(1);
+        }
+    }
+
+    write_i32(instance, CTUD_CV, cv);
+    write_i32(instance, CTUD_QU, if cv >= pv { 1 } else { 0 });
+    write_i32(instance, CTUD_QD, if cv <= 0 { 1 } else { 0 });
+    write_i32(instance, CTUD_PREV_CU, i32::from(cu));
+    write_i32(instance, CTUD_PREV_CD, i32::from(cd));
+
+    Ok(())
+}
+
+// =============================================================================
+// Timer Function Blocks (IEC 61131-3 Section 2.5.2.3)
+// =============================================================================
+
 /// Executes one scan of the TON (on-delay timer) intrinsic.
 ///
 /// # Arguments

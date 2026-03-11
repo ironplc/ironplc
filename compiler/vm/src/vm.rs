@@ -1482,6 +1482,15 @@ fn execute(
                             _ => unreachable!(),
                         }
                     }
+                    opcode::fb_type::CTUD => {
+                        let instance_size = crate::intrinsic::CTUD_INSTANCE_FIELDS * 8;
+                        let instance_end = instance_start + instance_size;
+                        if instance_end > data_region.len() {
+                            return Err(Trap::DataRegionOutOfBounds(instance_start as u16));
+                        }
+                        let slice = &mut data_region[instance_start..instance_end];
+                        crate::intrinsic::ctud(slice)?;
+                    }
                     _ => return Err(Trap::InvalidFbTypeId(type_id)),
                 }
             }

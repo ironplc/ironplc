@@ -12,7 +12,7 @@ output ``QU`` and a lower-limit output ``QD``.
    * - **IEC 61131-3**
      - Section 2.5.2.3.4
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Inputs
 ------
