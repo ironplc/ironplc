@@ -93,7 +93,7 @@ Elementary Types
    * - :doc:`TIME <time>`
      - 64 bits
      - Duration
-     - Not yet supported
+     - Supported
    * - :doc:`DATE <date>`
      - —
      - Calendar date
