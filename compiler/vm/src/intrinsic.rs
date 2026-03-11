@@ -33,16 +33,17 @@ fn write_i64(instance: &mut [u8], field: usize, value: i64) {
     instance[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
 }
 
-/// TON field indices.
-const TON_IN: usize = 0;
-const TON_PT: usize = 1;
-const TON_Q: usize = 2;
-const TON_ET: usize = 3;
-const TON_START_TIME: usize = 4; // hidden
-const TON_RUNNING: usize = 5; // hidden
+/// Shared field indices for timer FBs (TON, TOF, TP).
+/// All timer FBs use the same 6-field layout.
+const TIMER_IN: usize = 0;
+const TIMER_PT: usize = 1;
+const TIMER_Q: usize = 2;
+const TIMER_ET: usize = 3;
+const TIMER_START_TIME: usize = 4; // hidden
+const TIMER_RUNNING: usize = 5; // hidden
 
-/// Number of fields (including hidden) for a TON instance.
-pub const TON_INSTANCE_FIELDS: usize = 6;
+/// Number of fields (including hidden) for a timer FB instance.
+pub const TIMER_INSTANCE_FIELDS: usize = 6;
 
 /// Executes one scan of the TON (on-delay timer) intrinsic.
 ///
@@ -55,46 +56,35 @@ pub const TON_INSTANCE_FIELDS: usize = 6;
 /// - While IN is TRUE: ET increments up to PT. When ET >= PT, Q becomes TRUE.
 /// - When IN falls (TRUE->FALSE): Q=FALSE, ET=0, stop timing.
 pub fn ton(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
-    let in_val = read_i32(instance, TON_IN) != 0;
-    let pt = read_i64(instance, TON_PT);
-    let running = read_i32(instance, TON_RUNNING) != 0;
+    let in_val = read_i32(instance, TIMER_IN) != 0;
+    let pt = read_i64(instance, TIMER_PT);
+    let running = read_i32(instance, TIMER_RUNNING) != 0;
 
     if in_val {
         if !running {
             // Rising edge: start timing
-            write_i64(instance, TON_START_TIME, cycle_time);
-            write_i32(instance, TON_RUNNING, 1);
-            write_i64(instance, TON_ET, 0);
-            write_i32(instance, TON_Q, 0);
+            write_i64(instance, TIMER_START_TIME, cycle_time);
+            write_i32(instance, TIMER_RUNNING, 1);
+            write_i64(instance, TIMER_ET, 0);
+            write_i32(instance, TIMER_Q, 0);
         } else {
             // Timing in progress
-            let start_time = read_i64(instance, TON_START_TIME);
+            let start_time = read_i64(instance, TIMER_START_TIME);
             let elapsed = cycle_time - start_time;
             let et = if elapsed > pt { pt } else { elapsed };
-            write_i64(instance, TON_ET, et);
+            write_i64(instance, TIMER_ET, et);
             if et >= pt {
-                write_i32(instance, TON_Q, 1);
+                write_i32(instance, TIMER_Q, 1);
             }
         }
     } else {
         // IN is FALSE: reset
-        write_i32(instance, TON_Q, 0);
-        write_i64(instance, TON_ET, 0);
-        write_i32(instance, TON_RUNNING, 0);
+        write_i32(instance, TIMER_Q, 0);
+        write_i64(instance, TIMER_ET, 0);
+        write_i32(instance, TIMER_RUNNING, 0);
     }
     Ok(())
 }
-
-/// TOF field indices (same layout as TON).
-const TOF_IN: usize = 0;
-const TOF_PT: usize = 1;
-const TOF_Q: usize = 2;
-const TOF_ET: usize = 3;
-const TOF_START_TIME: usize = 4; // hidden
-const TOF_RUNNING: usize = 5; // hidden
-
-/// Number of fields (including hidden) for a TOF instance.
-pub const TOF_INSTANCE_FIELDS: usize = 6;
 
 /// Executes one scan of the TOF (off-delay timer) intrinsic.
 ///
@@ -108,30 +98,30 @@ pub const TOF_INSTANCE_FIELDS: usize = 6;
 /// - While IN is FALSE and timing: ET increments up to PT. When ET >= PT, Q becomes FALSE.
 /// - If IN returns to TRUE while timing: reset.
 pub fn tof(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
-    let in_val = read_i32(instance, TOF_IN) != 0;
-    let pt = read_i64(instance, TOF_PT);
-    let running = read_i32(instance, TOF_RUNNING) != 0;
+    let in_val = read_i32(instance, TIMER_IN) != 0;
+    let pt = read_i64(instance, TIMER_PT);
+    let running = read_i32(instance, TIMER_RUNNING) != 0;
 
     if in_val {
         // IN is TRUE: Q=TRUE, ET=0, stop any timing
-        write_i32(instance, TOF_Q, 1);
-        write_i64(instance, TOF_ET, 0);
-        write_i32(instance, TOF_RUNNING, 0);
+        write_i32(instance, TIMER_Q, 1);
+        write_i64(instance, TIMER_ET, 0);
+        write_i32(instance, TIMER_RUNNING, 0);
     } else if !running {
         // Falling edge: start timing
-        write_i64(instance, TOF_START_TIME, cycle_time);
-        write_i32(instance, TOF_RUNNING, 1);
-        write_i64(instance, TOF_ET, 0);
+        write_i64(instance, TIMER_START_TIME, cycle_time);
+        write_i32(instance, TIMER_RUNNING, 1);
+        write_i64(instance, TIMER_ET, 0);
         // Q stays TRUE during timing
-        write_i32(instance, TOF_Q, 1);
+        write_i32(instance, TIMER_Q, 1);
     } else {
         // Timing in progress (IN is FALSE)
-        let start_time = read_i64(instance, TOF_START_TIME);
+        let start_time = read_i64(instance, TIMER_START_TIME);
         let elapsed = cycle_time - start_time;
         let et = if elapsed > pt { pt } else { elapsed };
-        write_i64(instance, TOF_ET, et);
+        write_i64(instance, TIMER_ET, et);
         if et >= pt {
-            write_i32(instance, TOF_Q, 0);
+            write_i32(instance, TIMER_Q, 0);
         }
     }
     Ok(())
