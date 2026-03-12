@@ -400,6 +400,7 @@ parser! {
       / tok(TokenType::String) { ElementaryTypeName::STRING }
       / tok(TokenType::WString) { ElementaryTypeName::WSTRING }
       / tok(TokenType::Time) { ElementaryTypeName::TIME }
+      / tok(TokenType::Ltime) { ElementaryTypeName::LTIME }
     rule numeric_type_name() -> ElementaryTypeName = integer_type_name() / real_type_name()
     rule integer_type_name() -> ElementaryTypeName = signed_integer_type_name() / unsigned_integer_type_name()
     rule signed_integer_type_name() -> ElementaryTypeName = tok(TokenType::Sint) { ElementaryTypeName::SINT }  / tok(TokenType::Int) { ElementaryTypeName::INT } / tok(TokenType::Dint) { ElementaryTypeName::DINT } / tok(TokenType::Lint) { ElementaryTypeName::LINT }

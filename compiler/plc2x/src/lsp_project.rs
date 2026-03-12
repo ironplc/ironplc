@@ -404,6 +404,7 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::Ulint => Some(KEYWORD_INDEX),
             TokenType::Real => Some(KEYWORD_INDEX),
             TokenType::Time => Some(KEYWORD_INDEX),
+            TokenType::Ltime => Some(KEYWORD_INDEX),
             TokenType::Date => Some(KEYWORD_INDEX),
             TokenType::TimeOfDay => Some(KEYWORD_INDEX),
             TokenType::DateAndTime => Some(KEYWORD_INDEX),
