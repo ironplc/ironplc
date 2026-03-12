@@ -6,6 +6,9 @@
   "scripts": {
     "test:e2e": "playwright test"
   },
+  "dependencies": {
+    "uplot": "^1.6.31"
+  },
   "devDependencies": {
     "@playwright/test": "^1.40.0"
   }
