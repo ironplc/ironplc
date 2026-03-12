@@ -10,9 +10,9 @@ output ``QU`` and a lower-limit output ``QD``.
    :widths: 30 70
 
    * - **IEC 61131-3**
-     - Section 2.5.2.3.4
+     - Section 2.5.2.3.3
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Inputs
 ------
@@ -70,24 +70,29 @@ On each rising edge of ``CD``, ``CV`` is decremented by one. When ``R`` is
 greater than or equal to ``PV``. The output ``QD`` is ``TRUE`` when ``CV`` is
 less than or equal to zero.
 
+Typed variants ``CTUD_DINT``, ``CTUD_LINT``, ``CTUD_UDINT``, and ``CTUD_ULINT``
+use the corresponding integer type for ``PV`` and ``CV``.
+
 Example
 -------
 
-.. code-block::
+This example counts up with ``CU`` held ``TRUE``. After the first scan,
+``CV`` is 1 which reaches ``PV``, so ``at_max`` is ``TRUE``.
 
-   VAR
-     counter1 : CTUD;
-     up_pulse : BOOL;
-     down_pulse : BOOL;
-     reset : BOOL;
-     load : BOOL;
-     at_max : BOOL;
-     at_min : BOOL;
-   END_VAR
+.. playground::
 
-   counter1(CU := up_pulse, CD := down_pulse, R := reset, LD := load, PV := 100);
-   at_max := counter1.QU;
-   at_min := counter1.QD;
+   PROGRAM main
+      VAR
+         counter : CTUD;
+         at_max : BOOL;
+         at_min : BOOL;
+         count : INT;
+      END_VAR
+
+      counter(CU := TRUE, CD := FALSE, R := FALSE, LD := FALSE, PV := 1,
+              QU => at_max, QD => at_min, CV => count);
+      (* After first scan: count = 1, at_max = TRUE, at_min = FALSE *)
+   END_PROGRAM
 
 See Also
 --------
