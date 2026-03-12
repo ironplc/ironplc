@@ -30,7 +30,7 @@ struct Args {
 #[derive(clap::ValueEnum, Clone, Debug)]
 enum StdVersion {
     /// IEC 61131-3:2013 — enables Edition 3 features such as LTIME.
-    #[value(name = "iec-61131-3:2013")]
+    #[value(name = "2013")]
     Iec6113132013,
 }
 
@@ -43,7 +43,7 @@ struct FileArgs {
 
     /// Select the IEC 61131-3 standard version to compile against.
     /// Without this flag, only Edition 2 features are accepted.
-    #[arg(long = "std")]
+    #[arg(long = "std-iec-61131-3")]
     std_version: Option<StdVersion>,
 }
 
