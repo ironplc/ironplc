@@ -80,7 +80,7 @@ html_theme_options = {
 }
 
 rst_prolog = """.. attention::
-    IronPLC can only run very simple programs. The steps described are accurate but many language features are not yet supported.
+    IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include arrays and structures. Try it out in the `IronPLC Playground <https://playground.ironplc.com>`_.
 """
 
 # -- Version configuration ---------------------------------------------------
