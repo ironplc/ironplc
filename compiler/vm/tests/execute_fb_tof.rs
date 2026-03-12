@@ -4,7 +4,7 @@ use ironplc_container::opcode;
 
 #[test]
 fn tof_when_in_true_then_q_true_et_zero() {
-    let c = common::timer_test_container(5_000_000, opcode::fb_type::TOF);
+    let c = common::timer_test_container(5000, opcode::fb_type::TOF);
     let mut b = VmBuffers::from_container(&c);
     let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
@@ -13,12 +13,12 @@ fn tof_when_in_true_then_q_true_et_zero() {
     vm.run_round(1_000_000).unwrap(); // t = 1s
 
     assert_eq!(vm.read_variable(2).unwrap(), 1); // Q = TRUE
-    assert_eq!(vm.read_variable_i64(3).unwrap(), 0); // ET = 0
+    assert_eq!(vm.read_variable(3).unwrap(), 0); // ET = 0
 }
 
 #[test]
 fn tof_when_in_false_before_pt_then_q_true_et_increasing() {
-    let c = common::timer_test_container(5_000_000, opcode::fb_type::TOF);
+    let c = common::timer_test_container(5000, opcode::fb_type::TOF);
     let mut b = VmBuffers::from_container(&c);
     let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
@@ -33,12 +33,12 @@ fn tof_when_in_false_before_pt_then_q_true_et_increasing() {
     // Still timing
     vm.run_round(4_000_000).unwrap(); // t=4s: 2s elapsed
     assert_eq!(vm.read_variable(2).unwrap(), 1); // Q = TRUE (still in off-delay)
-    assert_eq!(vm.read_variable_i64(3).unwrap(), 2_000_000); // ET = 2s
+    assert_eq!(vm.read_variable(3).unwrap(), 2000); // ET = 2s = 2000 ms
 }
 
 #[test]
 fn tof_when_in_false_after_pt_then_q_false_et_clamped() {
-    let c = common::timer_test_container(5_000_000, opcode::fb_type::TOF);
+    let c = common::timer_test_container(5000, opcode::fb_type::TOF);
     let mut b = VmBuffers::from_container(&c);
     let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
@@ -54,12 +54,12 @@ fn tof_when_in_false_after_pt_then_q_false_et_clamped() {
     vm.run_round(8_000_000).unwrap(); // t=8s: 6s elapsed > 5s PT
 
     assert_eq!(vm.read_variable(2).unwrap(), 0); // Q = FALSE
-    assert_eq!(vm.read_variable_i64(3).unwrap(), 5_000_000); // ET clamped to PT
+    assert_eq!(vm.read_variable(3).unwrap(), 5000); // ET clamped to PT (5000 ms)
 }
 
 #[test]
 fn tof_when_in_rises_during_timing_then_resets() {
-    let c = common::timer_test_container(5_000_000, opcode::fb_type::TOF);
+    let c = common::timer_test_container(5000, opcode::fb_type::TOF);
     let mut b = VmBuffers::from_container(&c);
     let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
@@ -79,12 +79,12 @@ fn tof_when_in_rises_during_timing_then_resets() {
     vm.run_round(5_000_000).unwrap(); // t=5s
 
     assert_eq!(vm.read_variable(2).unwrap(), 1); // Q = TRUE
-    assert_eq!(vm.read_variable_i64(3).unwrap(), 0); // ET = 0 (reset)
+    assert_eq!(vm.read_variable(3).unwrap(), 0); // ET = 0 (reset)
 }
 
 #[test]
 fn tof_when_in_never_true_then_q_false() {
-    let c = common::timer_test_container(5_000_000, opcode::fb_type::TOF);
+    let c = common::timer_test_container(5000, opcode::fb_type::TOF);
     let mut b = VmBuffers::from_container(&c);
     let mut vm = common::load_and_start(&c, &mut b).unwrap();
 

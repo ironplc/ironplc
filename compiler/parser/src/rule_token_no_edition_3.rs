@@ -6,17 +6,17 @@ use crate::{
 };
 
 pub fn apply(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnostic>> {
-    if options.allow_c_style_comments {
+    if options.allow_edition_3 {
         return Ok(());
     }
 
     let mut errors = Vec::new();
 
     for tok in tokens {
-        if tok.token_type == TokenType::Comment && tok.text.starts_with("//") {
+        if tok.token_type == TokenType::Ltime {
             errors.push(Diagnostic::problem(
-                ironplc_problems::Problem::CStyleComment,
-                Label::span(tok.span.clone(), "Comment"),
+                ironplc_problems::Problem::Edition3Feature,
+                Label::span(tok.span.clone(), "LTIME requires --edition-3 flag"),
             ));
         }
     }
@@ -33,24 +33,24 @@ mod test {
 
     use crate::{
         options::ParseOptions,
-        rule_token_no_c_style_comment::apply,
+        rule_token_no_edition_3::apply,
         token::{Token, TokenType},
     };
 
     #[test]
-    fn apply_when_has_cstyle_comment_and_not_allowed_then_error() {
+    fn apply_when_has_ltime_and_not_allowed_then_error() {
         let tokens = vec![Token {
-            token_type: TokenType::Comment,
+            token_type: TokenType::Ltime,
             span: SourceSpan::default(),
             line: 1,
             col: 1,
-            text: String::from("// comment"),
+            text: String::from("LTIME"),
         }];
 
         let result = apply(
             &tokens,
             &ParseOptions {
-                allow_c_style_comments: false,
+                allow_edition_3: false,
                 ..ParseOptions::default()
             },
         );
@@ -58,19 +58,19 @@ mod test {
     }
 
     #[test]
-    fn apply_when_has_cstyle_comment_and_allowed_then_ok() {
+    fn apply_when_has_ltime_and_allowed_then_ok() {
         let tokens = vec![Token {
-            token_type: TokenType::Comment,
+            token_type: TokenType::Ltime,
             span: SourceSpan::default(),
             line: 1,
             col: 1,
-            text: String::from("// comment"),
+            text: String::from("LTIME"),
         }];
 
         let result = apply(
             &tokens,
             &ParseOptions {
-                allow_c_style_comments: true,
+                allow_edition_3: true,
                 ..ParseOptions::default()
             },
         );

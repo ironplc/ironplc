@@ -25,7 +25,7 @@ impl TypeCategory {
             | IntermediateType::UInt { .. }
             | IntermediateType::Real { .. }
             | IntermediateType::Bytes { .. }
-            | IntermediateType::Time
+            | IntermediateType::Time { .. }
             | IntermediateType::Date
             | IntermediateType::String { .. } => TypeCategory::Elementary,
             IntermediateType::Structure { .. } | IntermediateType::Enumeration { .. } => {

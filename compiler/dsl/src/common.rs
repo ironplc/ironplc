@@ -700,6 +700,7 @@ pub enum ElementaryTypeName {
     REAL,
     LREAL,
     TIME,
+    LTIME,
     DATE,
     TimeOfDay,
     DateAndTime,
@@ -726,6 +727,7 @@ impl ElementaryTypeName {
             ElementaryTypeName::REAL => Id::from("REAL"),
             ElementaryTypeName::LREAL => Id::from("LREAL"),
             ElementaryTypeName::TIME => Id::from("TIME"),
+            ElementaryTypeName::LTIME => Id::from("LTIME"),
             ElementaryTypeName::DATE => Id::from("DATE"),
             ElementaryTypeName::TimeOfDay => Id::from("TIME_OF_DAY"),
             ElementaryTypeName::DateAndTime => Id::from("DATE_AND_TIME"),
@@ -760,6 +762,7 @@ impl From<ElementaryTypeName> for Id {
             ElementaryTypeName::REAL => Id::from("REAL"),
             ElementaryTypeName::LREAL => Id::from("LREAL"),
             ElementaryTypeName::TIME => Id::from("TIME"),
+            ElementaryTypeName::LTIME => Id::from("LTIME"),
             ElementaryTypeName::DATE => Id::from("DATE"),
             ElementaryTypeName::TimeOfDay => Id::from("TIME_OF_DAY"),
             ElementaryTypeName::DateAndTime => Id::from("DATE_AND_TIME"),
@@ -788,6 +791,7 @@ impl From<ElementaryTypeName> for TypeName {
             ElementaryTypeName::REAL => TypeName::from("REAL"),
             ElementaryTypeName::LREAL => TypeName::from("LREAL"),
             ElementaryTypeName::TIME => TypeName::from("TIME"),
+            ElementaryTypeName::LTIME => TypeName::from("LTIME"),
             ElementaryTypeName::DATE => TypeName::from("DATE"),
             ElementaryTypeName::TimeOfDay => TypeName::from("TIME_OF_DAY"),
             ElementaryTypeName::DateAndTime => TypeName::from("DATE_AND_TIME"),
@@ -933,6 +937,7 @@ impl GenericTypeName {
                 matches!(
                     elementary,
                     ElementaryTypeName::TIME
+                        | ElementaryTypeName::LTIME
                         | ElementaryTypeName::SINT
                         | ElementaryTypeName::INT
                         | ElementaryTypeName::DINT

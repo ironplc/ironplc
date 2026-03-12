@@ -23,7 +23,9 @@ fn bool_type() -> IntermediateType {
 }
 
 fn time_type() -> IntermediateType {
-    IntermediateType::Time
+    IntermediateType::Time {
+        size: ByteSized::B32,
+    }
 }
 
 /// Integer type variants for counter function blocks.

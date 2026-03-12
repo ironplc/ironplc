@@ -32,6 +32,10 @@ struct FileArgs {
     /// Files to include. Directory names can be given to
     /// add all files in the given directory.
     files: Vec<PathBuf>,
+
+    /// Enable IEC 61131-3 Edition 3 (2013) features such as LTIME.
+    #[arg(long)]
+    edition_3: bool,
 }
 
 #[derive(clap::Subcommand, Debug)]
