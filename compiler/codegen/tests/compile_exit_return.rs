@@ -17,8 +17,8 @@ PROGRAM main
   END_WHILE;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     // Bytecode layout:
     //   0: LOAD_TRUE                    (condition: TRUE)
@@ -49,8 +49,8 @@ PROGRAM main
   x := 20;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     // Bytecode layout:
     //   0: LOAD_CONST_I32 pool:0 (10)
