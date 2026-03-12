@@ -206,6 +206,17 @@ table.var-table th {
   font-weight: 500;
 }
 
+/* Sparkline column */
+.sparkline-cell {
+  width: 130px;
+  min-width: 130px;
+  padding: 0.2rem 0.5rem;
+}
+
+.sparkline-cell .uplot {
+  display: inline-block;
+}
+
 .diagnostic-item {
   padding: 0.4rem 0;
   border-bottom: 1px solid var(--border);
@@ -305,6 +316,11 @@ body.embed #editor {
 body.embed .panel {
   padding: 0.5rem 0.75rem;
   font-size: 0.8rem;
+}
+
+body.embed .sparkline-cell {
+  width: 80px;
+  min-width: 80px;
 }
 
 /* --- Responsive: mobile standalone --- */

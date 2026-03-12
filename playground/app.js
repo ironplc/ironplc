@@ -1,3 +1,5 @@
+import uPlot from './uPlot.esm.js';
+
 const editor = document.getElementById("editor");
 const startBtn = document.getElementById("start-btn");
 const stopBtn = document.getElementById("stop-btn");
@@ -27,6 +29,42 @@ let compilerVersion = "";
 
 const params = new URLSearchParams(window.location.search);
 const isEmbed = params.get("embed") === "true";
+
+// --- Sparkline history ---
+
+const STEP_INTERVAL_MS = 100;
+const RENDER_INTERVAL_MS = 500;
+const HISTORY_MAX = 50;
+let valueHistory = new Map();
+
+// --- uPlot sparkline options ---
+
+const sparkWidth = isEmbed ? 70 : 120;
+const sparkHeight = isEmbed ? 18 : 24;
+
+function makeSparkOpts(stepped) {
+  return {
+    width: sparkWidth,
+    height: sparkHeight,
+    pxAlign: false,
+    cursor: { show: false },
+    select: { show: false },
+    legend: { show: false },
+    scales: { x: { time: false } },
+    axes: [{ show: false }, { show: false }],
+    series: [
+      {},
+      {
+        stroke: "#6c8cff",
+        width: 1.5 / devicePixelRatio,
+        paths: stepped ? uPlot.paths.stepped({ align: 1 }) : undefined,
+      },
+    ],
+  };
+}
+
+const sparkOpts = makeSparkOpts(false);
+const boolSparkOpts = makeSparkOpts(true);
 
 if (isEmbed) {
   document.body.classList.add("embed");
@@ -122,8 +160,6 @@ function getIntervalMs() {
 }
 
 function startStepLoop() {
-  const intervalMs = getIntervalMs();
-
   stepIntervalId = setInterval(async () => {
     if (stepInFlight) return;
     stepInFlight = true;
@@ -157,25 +193,26 @@ function startStepLoop() {
       return;
     }
 
-    // Check for cycle overrun
-    if (elapsed > intervalMs) {
+    // Check for cycle overrun against the step interval
+    if (elapsed > STEP_INTERVAL_MS) {
       stopExecution();
-      status.textContent = `Cycle overrun: execution took ${elapsed.toFixed(0)}ms but interval is ${intervalMs}ms`;
-      diagnosticsPanel.innerHTML = `<p class="error-message">Cycle overrun: program execution took ${elapsed.toFixed(0)}ms but the cycle interval is ${intervalMs}ms. Reduce program complexity or increase the interval.</p>`;
+      status.textContent = `Cycle overrun: execution took ${elapsed.toFixed(0)}ms but step interval is ${STEP_INTERVAL_MS}ms`;
+      diagnosticsPanel.innerHTML = `<p class="error-message">Cycle overrun: program execution took ${elapsed.toFixed(0)}ms but the step interval is ${STEP_INTERVAL_MS}ms. Reduce program complexity or increase the interval.</p>`;
       activateTab("diagnostics");
       return;
     }
 
     cycleCount = result.total_scans;
     lastVariables = result.variables;
-  }, intervalMs);
+    accumulateHistory(result.variables);
+  }, STEP_INTERVAL_MS);
 }
 
 function startRenderLoop() {
   updateDisplays();
   renderIntervalId = setInterval(() => {
     updateDisplays();
-  }, 500);
+  }, RENDER_INTERVAL_MS);
 }
 
 function updateDisplays() {
@@ -251,6 +288,7 @@ startBtn.addEventListener("click", async () => {
   pausedElapsed = 0;
   startTime = performance.now();
   previousValues = new Map();
+  valueHistory = new Map();
   lastVariables = null;
   isRunning = true;
   isPaused = false;
@@ -279,6 +317,7 @@ stopBtn.addEventListener("click", async () => {
 
   await postCommand("reset");
   previousValues = new Map();
+  valueHistory = new Map();
   status.textContent = `Stopped after ${cycleCount} cycles`;
 });
 
@@ -323,6 +362,67 @@ editor.addEventListener("input", () => {
   }
 });
 
+// --- Value parsing for sparklines ---
+
+function parseNumericValue(value, typeName) {
+  const t = typeName.toUpperCase();
+
+  if (t === "BOOL") {
+    return value === "TRUE" ? 1 : 0;
+  }
+
+  if (["SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT"].includes(t)) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  if (t === "REAL" || t === "LREAL") {
+    const n = parseFloat(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  if (["BYTE", "WORD", "DWORD", "LWORD"].includes(t)) {
+    if (value.startsWith("16#")) {
+      const n = parseInt(value.slice(3), 16);
+      return Number.isFinite(n) ? n : null;
+    }
+    return null;
+  }
+
+  if (t === "TIME") {
+    return parseTimeValue(value);
+  }
+
+  return null;
+}
+
+function parseTimeValue(value) {
+  const match = value.match(/^(-?)T#([\d.]+)(ms|s)$/);
+  if (!match) return null;
+  const sign = match[1] === "-" ? -1 : 1;
+  const num = parseFloat(match[2]);
+  const unit = match[3];
+  const ms = unit === "s" ? num * 1000 : num;
+  return Number.isFinite(ms) ? sign * ms : null;
+}
+
+function accumulateHistory(variables) {
+  for (const v of variables) {
+    const numVal = parseNumericValue(v.value, v.type_name);
+    if (numVal !== null) {
+      let hist = valueHistory.get(v.index);
+      if (!hist) {
+        hist = [];
+        valueHistory.set(v.index, hist);
+      }
+      hist.push(numVal);
+      if (hist.length > HISTORY_MAX) {
+        hist.shift();
+      }
+    }
+  }
+}
+
 // --- Display helpers ---
 
 function renderVariables(variables) {
@@ -331,17 +431,31 @@ function renderVariables(variables) {
     return;
   }
 
-  let html = '<table class="var-table"><thead><tr><th>Variable</th><th>Value</th></tr></thead><tbody>';
+  let html = '<table class="var-table"><thead><tr><th>Variable</th><th>Value</th><th>History</th></tr></thead><tbody>';
   for (const v of variables) {
     const prev = previousValues.get(v.index);
     const changed = prev !== undefined && prev !== v.value;
     html += `<tr${changed ? ' class="changed"' : ''}>`;
     const label = v.name ? `${escapeHtml(v.name)} : ${escapeHtml(v.type_name)}` : `var[${v.index}]`;
     html += `<td>${label}</td><td>${v.value}</td>`;
+    html += `<td class="sparkline-cell" data-var-idx="${v.index}"></td>`;
     html += '</tr>';
   }
   html += "</tbody></table>";
   variablesPanel.innerHTML = html;
+
+  // Create uPlot sparklines in the empty cells
+  for (const v of variables) {
+    const hist = valueHistory.get(v.index);
+    if (hist && hist.length >= 2) {
+      const cell = variablesPanel.querySelector(`[data-var-idx="${v.index}"]`);
+      if (cell) {
+        const xs = hist.map((_, i) => i);
+        const opts = v.type_name.toUpperCase() === "BOOL" ? boolSparkOpts : sparkOpts;
+        new uPlot(opts, [xs, [...hist]], cell);
+      }
+    }
+  }
 
   previousValues = new Map(variables.map(v => [v.index, v.value]));
 }

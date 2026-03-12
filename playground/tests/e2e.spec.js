@@ -233,6 +233,26 @@ END_PROGRAM
     await expect(message).not.toHaveText("");
   });
 
+  test("start_when_running_multiple_cycles_then_shows_sparklines", async ({ page }) => {
+    const editor = page.locator('[data-testid="editor"]');
+    await editor.fill(`PROGRAM main
+  VAR
+    count : INT;
+  END_VAR
+  count := count + 1;
+END_PROGRAM
+`);
+
+    await page.fill('[data-testid="interval-input"]', "100");
+    await page.click('[data-testid="start-btn"]');
+
+    // Wait for sparkline canvases to appear (need at least 2 data points)
+    const variablesPanel = page.locator('[data-testid="variables-panel"]');
+    await expect(variablesPanel.locator("canvas")).toBeVisible({ timeout: 10000 });
+
+    await page.click('[data-testid="stop-btn"]');
+  });
+
   test("embed_when_loaded_then_shows_start_and_stop_only", async ({ page }) => {
     await page.goto("/?embed=true");
     await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
