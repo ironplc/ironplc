@@ -873,4 +873,56 @@ END_VAR
 END_FUNCTION_BLOCK",
         );
     }
+
+    #[test]
+    fn parse_when_bit_access_then_succeeds() {
+        let res = parse_resource("bit_access.st");
+        assert!(res.is_ok())
+    }
+
+    #[test]
+    fn parse_when_bit_access_then_returns_bit_access_variable() {
+        let lib = parse_text(
+            "FUNCTION_BLOCK FB1
+VAR
+    x : WORD;
+    y : BOOL;
+END_VAR
+    y := x.0;
+END_FUNCTION_BLOCK",
+        );
+        let elem = &lib.elements[0];
+        let fb = match elem {
+            LibraryElementKind::FunctionBlockDeclaration(fb) => fb,
+            _ => panic!("expected function block"),
+        };
+        let stmts = match &fb.body {
+            FunctionBlockBodyKind::Statements(s) => &s.body,
+            _ => panic!("expected statements"),
+        };
+        let assign = match &stmts[0] {
+            StmtKind::Assignment(a) => a,
+            _ => panic!("expected assignment"),
+        };
+        // The value (RHS) should be a bit access variable x.0
+        let var = match &assign.value.kind {
+            ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::BitAccess(ba))) => ba,
+            other => panic!("expected bit access variable, got {:?}", other),
+        };
+        assert_eq!(var.variable.as_ref().to_string(), "x");
+        assert_eq!(var.index.value, 0);
+    }
+
+    #[test]
+    fn parse_when_struct_access_with_bit_access_support_then_still_succeeds() {
+        parse_text(
+            "FUNCTION_BLOCK FB1
+VAR
+    counter : CounterST;
+    result : INT;
+END_VAR
+    result := counter.OUT;
+END_FUNCTION_BLOCK",
+        );
+    }
 }
