@@ -359,3 +359,53 @@ pub fn ctud(instance: &mut [u8]) -> Result<(), Trap> {
 
     Ok(())
 }
+
+// =============================================================================
+// R_TRIG (Rising Edge Detector)
+// =============================================================================
+
+/// Field indices for R_TRIG instances.
+const R_TRIG_CLK: usize = 0;
+const R_TRIG_Q: usize = 1;
+const R_TRIG_M: usize = 2; // hidden: previous CLK value
+
+/// Total fields per R_TRIG instance (including hidden).
+pub const R_TRIG_INSTANCE_FIELDS: usize = 3;
+
+/// Rising edge detector: Q is TRUE for one scan when CLK transitions FALSE→TRUE.
+pub fn r_trig(instance: &mut [u8]) -> Result<(), Trap> {
+    let clk = read_i32(instance, R_TRIG_CLK) != 0;
+    let m = read_i32(instance, R_TRIG_M) != 0;
+
+    let q = clk && !m;
+
+    write_i32(instance, R_TRIG_Q, i32::from(q));
+    write_i32(instance, R_TRIG_M, i32::from(clk));
+
+    Ok(())
+}
+
+// =============================================================================
+// F_TRIG (Falling Edge Detector)
+// =============================================================================
+
+/// Field indices for F_TRIG instances.
+const F_TRIG_CLK: usize = 0;
+const F_TRIG_Q: usize = 1;
+const F_TRIG_M: usize = 2; // hidden: previous CLK value
+
+/// Total fields per F_TRIG instance (including hidden).
+pub const F_TRIG_INSTANCE_FIELDS: usize = 3;
+
+/// Falling edge detector: Q is TRUE for one scan when CLK transitions TRUE→FALSE.
+pub fn f_trig(instance: &mut [u8]) -> Result<(), Trap> {
+    let clk = read_i32(instance, F_TRIG_CLK) != 0;
+    let m = read_i32(instance, F_TRIG_M) != 0;
+
+    let q = !clk && m;
+
+    write_i32(instance, F_TRIG_Q, i32::from(q));
+    write_i32(instance, F_TRIG_M, i32::from(clk));
+
+    Ok(())
+}
