@@ -2,8 +2,8 @@
 //!
 //! See section 3.
 use crate::common::{
-    AddressAssignment, ConstantKind, EnumeratedValue, IntegerLiteral, SignedInteger, Subrange,
-    TypeName,
+    AddressAssignment, ConstantKind, EnumeratedValue, Integer, IntegerLiteral, SignedInteger,
+    Subrange, TypeName,
 };
 use crate::core::{Id, Located, SourceSpan};
 use std::fmt;
@@ -43,6 +43,9 @@ impl From<SymbolicVariableKind> for Variable {
             SymbolicVariableKind::Structured(structured) => {
                 Variable::Symbolic(SymbolicVariableKind::Structured(structured))
             }
+            SymbolicVariableKind::BitAccess(bit_access) => {
+                Variable::Symbolic(SymbolicVariableKind::BitAccess(bit_access))
+            }
         }
     }
 }
@@ -61,6 +64,7 @@ pub enum SymbolicVariableKind {
     Named(NamedVariable),
     Array(ArrayVariable),
     Structured(StructuredVariable),
+    BitAccess(BitAccessVariable),
 }
 
 impl fmt::Display for SymbolicVariableKind {
@@ -70,6 +74,9 @@ impl fmt::Display for SymbolicVariableKind {
             SymbolicVariableKind::Array(array) => f.write_fmt(format_args!("{array}")),
             SymbolicVariableKind::Structured(structured) => {
                 f.write_fmt(format_args!("{structured}"))
+            }
+            SymbolicVariableKind::BitAccess(bit_access) => {
+                f.write_fmt(format_args!("{bit_access}"))
             }
         }
     }
@@ -81,6 +88,7 @@ impl Located for SymbolicVariableKind {
             SymbolicVariableKind::Named(named) => named.span(),
             SymbolicVariableKind::Array(array) => array.span(),
             SymbolicVariableKind::Structured(structured) => structured.span(),
+            SymbolicVariableKind::BitAccess(bit_access) => bit_access.span(),
         }
     }
 }
@@ -162,6 +170,29 @@ impl fmt::Display for StructuredVariable {
 impl Located for StructuredVariable {
     fn span(&self) -> SourceSpan {
         SourceSpan::join2(self.record.as_ref(), &self.field)
+    }
+}
+
+/// Bit access on an integer-typed variable.
+///
+/// See section B.1.4.2.
+#[derive(Debug, PartialEq, Clone, Recurse)]
+pub struct BitAccessVariable {
+    /// The variable being bit-accessed.
+    pub variable: Box<SymbolicVariableKind>,
+    /// The bit index (unsigned integer).
+    pub index: Integer,
+}
+
+impl fmt::Display for BitAccessVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}", self.variable, self.index.value)
+    }
+}
+
+impl Located for BitAccessVariable {
+    fn span(&self) -> SourceSpan {
+        SourceSpan::join2(self.variable.as_ref(), &self.index)
     }
 }
 

@@ -106,8 +106,9 @@ fn flatten_statements(mut items: Vec<StatementsOrEmpty>) -> Vec<StmtKind> {
 }
 
 enum Element {
-    StructSelector(Id),
-    ArraySelector(Vec<Expr>),
+    Struct(Id),
+    Array(Vec<Expr>),
+    Bit(Integer),
 }
 
 enum InstanceInitKind {
@@ -699,26 +700,30 @@ parser! {
     //rule symbolic_variable() -> SymbolicVariableKind =
     //  multi_element_variable()
     //  / name:variable_name() { SymbolicVariableKind::Named(NamedVariable{name}) }
-    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) id:identifier() { Element::StructSelector(id) } / sub:subscript_list() {Element::ArraySelector(sub)})* {
+    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) n:integer() { Element::Bit(n) } / tok(TokenType::Period) id:identifier() { Element::Struct(id) } / sub:subscript_list() {Element::Array(sub)})* {
       // Start by assuming that the top is just a named variable
       let mut head = SymbolicVariableKind::Named(NamedVariable { name });
 
-      // Then consume additional items to
+      // Then consume additional items
       for elem in elements {
         match elem {
-            Element::StructSelector(st) => {
-              let cur = SymbolicVariableKind::Structured(StructuredVariable{
+            Element::Struct(st) => {
+              head = SymbolicVariableKind::Structured(StructuredVariable{
                 record: Box::new(head),
                 field: st,
               });
-              head = cur;
             },
-            Element::ArraySelector(arr) => {
-              let cur = SymbolicVariableKind::Array(ArrayVariable{
+            Element::Array(arr) => {
+              head = SymbolicVariableKind::Array(ArrayVariable{
                   subscripted_variable: Box::new(head),
                   subscripts: arr
                 });
-              head = cur;
+            },
+            Element::Bit(idx) => {
+              head = SymbolicVariableKind::BitAccess(BitAccessVariable{
+                variable: Box::new(head),
+                index: idx,
+              });
             },
         }
       }
