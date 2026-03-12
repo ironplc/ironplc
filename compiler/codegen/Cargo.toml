@@ -11,6 +11,7 @@ repository.workspace = true
 ironplc-dsl = { path = "../dsl", version = "0.173.0" }
 ironplc-container = { path = "../container", version = "0.173.0" }
 ironplc-problems = { path = "../problems", version = "0.173.0" }
+ironplc-analyzer = { path = "../analyzer", version = "0.173.0" }
 
 [dev-dependencies]
 ironplc-analyzer = { path = "../analyzer", version = "0.173.0" }

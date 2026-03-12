@@ -16,8 +16,8 @@ PROGRAM main
   y := MIN(x, 10.0);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // y := MIN(x, 10.0): LOAD_VAR_F32 var:0, LOAD_CONST_F32 pool:0, BUILTIN MIN_F32, STORE_VAR_F32 var:1
@@ -44,8 +44,8 @@ PROGRAM main
   y := MIN(x, 10.0);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
