@@ -2,11 +2,8 @@
 
 mod common;
 
-use common::{parse_and_run, VmBuffers};
+use common::{parse, parse_and_run, VmBuffers};
 use ironplc_codegen::compile;
-use ironplc_dsl::core::FileId;
-use ironplc_parser::options::ParseOptions;
-use ironplc_parser::parse_program;
 use ironplc_vm::Vm;
 
 #[test]
@@ -133,8 +130,8 @@ PROGRAM main
   count := count - 1;
 END_PROGRAM
 ";
-    let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = Vm::new()
         .load(

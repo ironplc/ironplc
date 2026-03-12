@@ -17,8 +17,8 @@ PROGRAM main
   y := x MOD 3;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     assert_eq!(container.header.num_variables, 2);
     assert_eq!(container.constant_pool.get_i32(0).unwrap(), 10);
@@ -52,8 +52,8 @@ PROGRAM main
   x := 100 MOD 7 MOD 3;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     // Should have 3 constants: 100, 7, 3
     assert_eq!(container.constant_pool.len(), 3);

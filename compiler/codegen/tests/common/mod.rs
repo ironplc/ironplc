@@ -2,6 +2,7 @@
 
 #![allow(dead_code)]
 
+use ironplc_analyzer::SemanticContext;
 use ironplc_codegen::compile;
 use ironplc_container::Container;
 use ironplc_dsl::common::Library;
@@ -16,10 +17,10 @@ pub use ironplc_vm::VmBuffers;
 ///
 /// The analyzer populates `Expr.resolved_type` and resolves type aliases in
 /// variable declarations, which codegen requires.
-pub fn parse(source: &str) -> Library {
+pub fn parse(source: &str) -> (Library, SemanticContext) {
     let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
-    let (analyzed, _ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
-    analyzed
+    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
+    (analyzed, ctx)
 }
 
 /// Parses, analyzes, compiles, and runs one scan cycle.
@@ -32,8 +33,8 @@ pub fn parse_and_run(source: &str) -> (Container, VmBuffers) {
 /// Parses, analyzes, compiles, and runs one scan cycle, returning `Err` on VM trap.
 /// Use this to test that certain programs produce runtime traps.
 pub fn parse_and_try_run(source: &str) -> Result<(Container, VmBuffers), FaultContext> {
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs)?;
@@ -47,8 +48,8 @@ pub fn parse_and_try_run(source: &str) -> Result<(Container, VmBuffers), FaultCo
 /// The closure receives a mutable VM reference so it can write variables,
 /// run multiple rounds, and read back results.
 pub fn parse_and_run_rounds(source: &str, f: impl FnOnce(&mut ironplc_vm::VmRunning<'_>)) {
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = load_and_start(&container, &mut bufs).unwrap();
     f(&mut vm);

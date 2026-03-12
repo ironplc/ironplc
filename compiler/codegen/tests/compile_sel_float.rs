@@ -15,8 +15,8 @@ PROGRAM main
   y := SEL(0, 10.0, 20.0);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     // y := SEL(0, 10.0, 20.0):
     //   LOAD_CONST_I32 pool:0 (0)    -- G is always i32
@@ -49,8 +49,8 @@ PROGRAM main
   y := SEL(1, 10.0, 20.0);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(

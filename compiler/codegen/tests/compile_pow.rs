@@ -17,8 +17,8 @@ PROGRAM main
   y := x ** 10;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     assert_eq!(container.header.num_variables, 2);
     assert_eq!(container.constant_pool.get_i32(0).unwrap(), 2);
@@ -52,8 +52,8 @@ PROGRAM main
   x := 2 ** 3 ** 2;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     // Should have 3 constants: 2, 3, 2 (but 2 is deduplicated)
     assert_eq!(container.constant_pool.len(), 2);

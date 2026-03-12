@@ -112,17 +112,18 @@ pub fn compile(paths: &[PathBuf], output: &Path, suppress_output: bool) -> Resul
     }
 
     // Run type resolution to populate Expr.resolved_type
-    let (analyzed, _context) =
+    let (analyzed, context) =
         ironplc_analyzer::stages::resolve_types(&[&combined]).map_err(|errs| {
             handle_diagnostics(&errs, Some(&project), suppress_output);
             String::from("Error during type resolution")
         })?;
 
     // Generate bytecode
-    let container = ironplc_codegen::compile(&analyzed).map_err(|err| {
-        handle_diagnostics(&[err], Some(&project), suppress_output);
-        String::from("Error during code generation")
-    })?;
+    let container = ironplc_codegen::compile(&analyzed, context.functions(), context.types())
+        .map_err(|err| {
+            handle_diagnostics(&[err], Some(&project), suppress_output);
+            String::from("Error during code generation")
+        })?;
 
     // Write the container to the output file
     let mut out_file =

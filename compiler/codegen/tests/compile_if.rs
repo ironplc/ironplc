@@ -18,8 +18,8 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     // x=var:0, y=var:1
     // Bytecode layout:
@@ -60,8 +60,8 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     // Bytecode layout:
     //   0: LOAD_VAR_I32 var:0
@@ -109,8 +109,8 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     // Bytecode layout:
     //   0: LOAD_VAR_I32 var:0

@@ -52,6 +52,8 @@ use ironplc_dsl::textual::{
 };
 use ironplc_problems::Problem;
 
+use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
+
 use crate::emit::Emitter;
 
 /// The native operation width used for arithmetic and comparisons.
@@ -118,7 +120,11 @@ struct StringVarInfo {
 ///
 /// Returns an error if no program is found or if the program contains
 /// unsupported constructs.
-pub fn compile(library: &Library) -> Result<Container, Diagnostic> {
+pub fn compile(
+    library: &Library,
+    _functions: &FunctionEnvironment,
+    _types: &TypeEnvironment,
+) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
     compile_program(program)
 }
@@ -3052,14 +3058,16 @@ mod tests {
     use ironplc_parser::options::ParseOptions;
     use ironplc_parser::parse_program;
 
+    use ironplc_analyzer::SemanticContext;
+
     /// Helper to parse and analyze an IEC 61131-3 program string into a Library.
     ///
     /// Runs the analyzer's type resolution pass so that `Expr.resolved_type` is
     /// populated, which codegen requires for control flow and bitwise operations.
-    fn parse(source: &str) -> Library {
+    fn parse(source: &str) -> (Library, SemanticContext) {
         let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
-        let (analyzed, _ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
-        analyzed
+        let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
+        (analyzed, ctx)
     }
 
     #[test]
@@ -3072,8 +3080,8 @@ PROGRAM main
   x := 10;
 END_PROGRAM
 ";
-        let library = parse(source);
-        let container = compile(&library).unwrap();
+        let (library, context) = parse(source);
+        let container = compile(&library, context.functions(), context.types()).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.header.num_functions, 2);
@@ -3097,8 +3105,8 @@ FUNCTION_BLOCK MyBlock
   END_VAR
 END_FUNCTION_BLOCK
 ";
-        let library = parse(source);
-        let result = compile(&library);
+        let (library, context) = parse(source);
+        let result = compile(&library, context.functions(), context.types());
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -3114,8 +3122,8 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-        let library = parse(source);
-        let container = compile(&library).unwrap();
+        let (library, context) = parse(source);
+        let container = compile(&library, context.functions(), context.types()).unwrap();
 
         // Should have two functions (init + scan), both just RET_VOID
         assert_eq!(container.header.num_functions, 2);
@@ -3137,8 +3145,8 @@ PROGRAM main
   y := 10;
 END_PROGRAM
 ";
-        let library = parse(source);
-        let container = compile(&library).unwrap();
+        let (library, context) = parse(source);
+        let container = compile(&library, context.functions(), context.types()).unwrap();
 
         // Should only have one constant (10 is deduplicated)
         assert_eq!(container.constant_pool.len(), 1);
@@ -3156,8 +3164,8 @@ PROGRAM main
   y := x;
 END_PROGRAM
 ";
-        let library = parse(source);
-        let container = compile(&library).unwrap();
+        let (library, context) = parse(source);
+        let container = compile(&library, context.functions(), context.types()).unwrap();
 
         assert_eq!(container.header.num_variables, 2);
         assert_eq!(container.header.num_functions, 2);
@@ -3189,8 +3197,8 @@ PROGRAM main
   x := -5;
 END_PROGRAM
 ";
-        let library = parse(source);
-        let container = compile(&library).unwrap();
+        let (library, context) = parse(source);
+        let container = compile(&library, context.functions(), context.types()).unwrap();
 
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), -5);
 
@@ -3211,8 +3219,8 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-        let library = parse(source);
-        let result = compile(&library);
+        let (library, context) = parse(source);
+        let result = compile(&library, context.functions(), context.types());
 
         assert!(result.is_ok());
     }
@@ -3228,8 +3236,8 @@ PROGRAM main
   EXIT;
 END_PROGRAM
 ";
-        let library = parse(source);
-        let result = compile(&library);
+        let (library, context) = parse(source);
+        let result = compile(&library, context.functions(), context.types());
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -3249,8 +3257,8 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-        let library = parse(source);
-        let result = compile(&library);
+        let (library, context) = parse(source);
+        let result = compile(&library, context.functions(), context.types());
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -3267,8 +3275,8 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-        let library = parse(source);
-        let container = compile(&library).unwrap();
+        let (library, context) = parse(source);
+        let container = compile(&library, context.functions(), context.types()).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), 42);
@@ -3284,8 +3292,8 @@ PROGRAM main
   x := DWORD#16#FF;
 END_PROGRAM
 ";
-        let library = parse(source);
-        let container = compile(&library).unwrap();
+        let (library, context) = parse(source);
+        let container = compile(&library, context.functions(), context.types()).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), 255);

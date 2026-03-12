@@ -16,8 +16,8 @@ PROGRAM main
   y := x AND BYTE#16#0F;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     // y := x AND BYTE#16#0F:
     //   LOAD_VAR_I32 var:0
@@ -51,8 +51,8 @@ PROGRAM main
   y := NOT x;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     // y := NOT x:
     //   LOAD_VAR_I32 var:0
@@ -86,8 +86,8 @@ PROGRAM main
   y := x > 0 AND x < 10;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     // The AND here is in a comparison context (DINT is signed)
     // so it should still produce BOOL_AND (0x54), not BIT_AND_32.
