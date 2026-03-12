@@ -405,6 +405,25 @@ impl Emitter {
         self.bytecode.extend_from_slice(&type_id.to_le_bytes());
     }
 
+    /// Emits CALL with a function ID and variable offset.
+    /// Pops `num_params` arguments and pushes one return value.
+    /// `var_offset` is the absolute variable table index where the
+    /// function's parameters start.
+    pub fn emit_call(&mut self, function_id: u16, num_params: u16, var_offset: u16) {
+        self.bytecode.push(opcode::CALL);
+        self.bytecode.extend_from_slice(&function_id.to_le_bytes());
+        self.bytecode.extend_from_slice(&var_offset.to_le_bytes());
+        if num_params > 0 {
+            self.pop_stack(num_params);
+        }
+        self.push_stack(1);
+    }
+
+    /// Emits RET (return with value on stack).
+    pub fn emit_ret(&mut self) {
+        self.bytecode.push(opcode::RET);
+    }
+
     /// Emits RET_VOID.
     pub fn emit_ret_void(&mut self) {
         self.bytecode.push(opcode::RET_VOID);
@@ -978,6 +997,40 @@ mod tests {
         em.bind_label(label);
 
         assert_eq!(em.max_stack_depth(), 1);
+    }
+
+    #[test]
+    fn emitter_when_call_then_correct_bytecode() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0); // arg 1
+        em.emit_load_const_i32(1); // arg 2
+        em.emit_call(2, 2, 5); // CALL function 2, 2 params, var_offset=5
+
+        // LOAD_CONST pool:0, LOAD_CONST pool:1, CALL func:2 var_offset:5
+        assert_eq!(
+            em.bytecode(),
+            &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0xB3, 0x02, 0x00, 0x05, 0x00]
+        );
+    }
+
+    #[test]
+    fn emitter_when_call_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0); // stack: 1
+        em.emit_load_const_i32(1); // stack: 2
+        em.emit_call(2, 2, 5); // pop 2 args, push 1 result = stack: 1
+        em.emit_store_var_i32(0); // stack: 0
+
+        assert_eq!(em.max_stack_depth(), 2);
+    }
+
+    #[test]
+    fn emitter_when_ret_then_correct_bytecode() {
+        let mut em = Emitter::new();
+        em.emit_load_var_i32(0);
+        em.emit_ret();
+
+        assert_eq!(em.bytecode(), &[0x10, 0x00, 0x00, 0xB4]);
     }
 
     #[test]

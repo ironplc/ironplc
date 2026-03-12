@@ -730,6 +730,47 @@ fn execute(
                 let func_id = read_u16_le(bytecode, &mut pc);
                 builtin::dispatch(func_id, stack)?;
             }
+            opcode::CALL => {
+                let func_id = read_u16_le(bytecode, &mut pc);
+                let var_offset = read_u16_le(bytecode, &mut pc);
+                let func = container
+                    .code
+                    .get_function(func_id)
+                    .ok_or(Trap::InvalidFunctionId(func_id))?;
+                let func_bytecode = container
+                    .code
+                    .get_function_bytecode(func_id)
+                    .ok_or(Trap::InvalidFunctionId(func_id))?;
+
+                let func_scope = VariableScope {
+                    shared_globals_size: 0,
+                    instance_offset: var_offset,
+                    instance_count: func.num_locals,
+                };
+
+                // Pop arguments from stack into function's parameter slots (reverse order).
+                for i in (0..func.num_params).rev() {
+                    let val = stack.pop()?;
+                    variables.store(var_offset + i, val)?;
+                }
+
+                // Recursively execute the function body.
+                execute(
+                    func_bytecode,
+                    container,
+                    stack,
+                    variables,
+                    data_region,
+                    temp_buf,
+                    max_temp_buf_bytes,
+                    &func_scope,
+                    current_time_us,
+                )?;
+            }
+            opcode::RET => {
+                // Return value is already on the stack; just return from execute().
+                return Ok(());
+            }
             // --- String opcodes ---
             //
             // Strings are variable-length and can't fit in the fixed-width
@@ -1606,8 +1647,8 @@ mod tests {
             builder = builder.add_i32_constant(c);
         }
         builder
-            .add_function(0, &[0xB5], 0, num_vars) // init: RET_VOID
-            .add_function(1, bytecode, 16, num_vars) // scan: test bytecode
+            .add_function(0, &[0xB5], 0, num_vars, 0) // init: RET_VOID
+            .add_function(1, bytecode, 16, num_vars, 0) // scan: test bytecode
             .init_function_id(0)
             .entry_function_id(1)
             .build()
@@ -1639,8 +1680,8 @@ mod tests {
             .num_variables(2)
             .add_i32_constant(10)
             .add_i32_constant(32)
-            .add_function(0, &[0xB5], 0, 2) // init: RET_VOID
-            .add_function(1, &bytecode, 2, 2) // scan: program body
+            .add_function(0, &[0xB5], 0, 2, 0) // init: RET_VOID
+            .add_function(1, &bytecode, 2, 2, 0) // scan: program body
             .init_function_id(0)
             .entry_function_id(1)
             .build()
@@ -1800,8 +1841,8 @@ mod tests {
             .num_variables(0)
             .add_i32_constant(1)
             .add_i32_constant(2)
-            .add_function(0, &[0xB5], 0, 0) // init: RET_VOID
-            .add_function(1, &bytecode, 1, 0) // scan: triggers overflow
+            .add_function(0, &[0xB5], 0, 0, 0) // init: RET_VOID
+            .add_function(1, &bytecode, 1, 0, 0) // scan: triggers overflow
             .init_function_id(0)
             .entry_function_id(1)
             .build();
@@ -1925,6 +1966,61 @@ mod tests {
     }
 
     // Phase 1, Step 1.2: Execute edge-case tests
+
+    #[test]
+    fn execute_when_call_user_function_then_returns_value() {
+        // Layout: var[0] = result (program), var[1] = A, var[2] = B, var[3] = return slot
+        // Function 0 (init): RET_VOID
+        // Function 1 (scan): push 3, push 7, CALL func 2 var_offset=1, store result, RET_VOID
+        // Function 2 (add):  load A, load B, ADD, store return, load return, RET
+        //   num_params=2, num_locals=3 (A, B, return_slot)
+        #[rustfmt::skip]
+        let scan_bytecode: Vec<u8> = vec![
+            0x01, 0x00, 0x00,        // LOAD_CONST_I32 pool[0] (3)
+            0x01, 0x01, 0x00,        // LOAD_CONST_I32 pool[1] (7)
+            0xB3, 0x02, 0x00, 0x01, 0x00,  // CALL function 2, var_offset=1
+            0x18, 0x00, 0x00,        // STORE_VAR_I32 var[0] (result)
+            0xB5,                    // RET_VOID
+        ];
+        #[rustfmt::skip]
+        let func_bytecode: Vec<u8> = vec![
+            0x10, 0x01, 0x00,  // LOAD_VAR_I32 var[1] (A - absolute index)
+            0x10, 0x02, 0x00,  // LOAD_VAR_I32 var[2] (B - absolute index)
+            0x30,              // ADD_I32
+            0x18, 0x03, 0x00,  // STORE_VAR_I32 var[3] (return slot - absolute index)
+            0x10, 0x03, 0x00,  // LOAD_VAR_I32 var[3]
+            0xB4,              // RET
+        ];
+
+        let c = ContainerBuilder::new()
+            .num_variables(4) // 1 program var + 3 function vars
+            .add_i32_constant(3)
+            .add_i32_constant(7)
+            .add_function(0, &[0xB5], 0, 1, 0) // init
+            .add_function(1, &scan_bytecode, 2, 1, 0) // scan
+            .add_function(2, &func_bytecode, 2, 3, 2) // add (num_params=2)
+            .init_function_id(0)
+            .entry_function_id(1)
+            .build();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new()
+            .load(
+                &c,
+                &mut b.stack,
+                &mut b.vars,
+                &mut b.data_region,
+                &mut b.temp_buf,
+                &mut b.tasks,
+                &mut b.programs,
+                &mut b.ready,
+            )
+            .start()
+            .unwrap();
+        vm.run_round(0).unwrap();
+
+        // result should be 3 + 7 = 10
+        assert_eq!(vm.read_variable(0).unwrap(), 10);
+    }
 
     #[test]
     fn execute_when_empty_bytecode_then_ok() {

@@ -198,11 +198,11 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
     // Function 0: init, Function 1: scan
     let init_stack = init_emitter.max_stack_depth();
     let init_bytecode = init_emitter.bytecode();
-    builder = builder.add_function(0, init_bytecode, init_stack, num_locals);
+    builder = builder.add_function(0, init_bytecode, init_stack, num_locals, 0);
 
     let scan_stack = scan_emitter.max_stack_depth();
     let scan_bytecode = scan_emitter.bytecode();
-    builder = builder.add_function(1, scan_bytecode, scan_stack, num_locals);
+    builder = builder.add_function(1, scan_bytecode, scan_stack, num_locals, 0);
 
     builder = builder.init_function_id(0).entry_function_id(1);
 
