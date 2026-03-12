@@ -296,7 +296,7 @@ fn compile_inner(source: &str) -> CompileResult {
         };
     }
 
-    let container = match codegen_compile(&library) {
+    let container = match codegen_compile(&library, context.functions(), context.types()) {
         Ok(c) => c,
         Err(diag) => {
             return CompileResult {

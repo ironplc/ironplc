@@ -20,8 +20,8 @@ PROGRAM main
   timer(IN := TRUE, PT := T#5s, Q => result);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -47,8 +47,8 @@ PROGRAM main
   timer(IN := TRUE, PT := T#5s, Q => result);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -73,8 +73,8 @@ PROGRAM main
   timer(IN := TRUE, PT := T#5s, Q => result);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -103,8 +103,8 @@ PROGRAM main
   timer(IN := TRUE, PT := T#10s, ET => elapsed);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -136,8 +136,8 @@ PROGRAM main
   timer(IN := enable, PT := T#5s, Q => result, ET => elapsed);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -182,8 +182,8 @@ PROGRAM main
   timer(IN := TRUE, PT := T#5s, Q => result);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -216,8 +216,8 @@ PROGRAM main
   timer2(IN := enable, PT := T#7s, Q => q2);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();

@@ -229,8 +229,8 @@ PROGRAM main
   x := 99;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = Vm::new()
         .load(
@@ -267,8 +267,8 @@ PROGRAM main
   x := x + 1;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = Vm::new()
         .load(
