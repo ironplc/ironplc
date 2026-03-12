@@ -2,6 +2,9 @@
 //!
 //! These tests verify the complete pipeline: parse IEC 61131-3 source with
 //! a TON function block instance, compile to bytecode, and execute on the VM.
+//!
+//! TIME values are 32-bit signed integers in milliseconds.
+//! The VM cycle_time is in microseconds; timer intrinsics convert to ms internally.
 
 mod common;
 
@@ -32,6 +35,31 @@ END_PROGRAM
         "TIME variable should have type_name TIME, got {}",
         elapsed_entry.type_name
     );
+}
+
+#[test]
+fn end_to_end_when_time_variable_then_value_is_i32_milliseconds() {
+    let source = "
+PROGRAM main
+  VAR
+    elapsed : TIME;
+  END_VAR
+  elapsed := T#5s;
+END_PROGRAM
+";
+    let library = parse(source);
+    let container = compile(&library).unwrap();
+    let mut bufs = VmBuffers::from_container(&container);
+    {
+        let mut vm = load_and_start(&container, &mut bufs).unwrap();
+        vm.run_round(0).unwrap();
+        // T#5s = 5000 milliseconds as i32
+        assert_eq!(
+            vm.read_variable(0).unwrap(),
+            5000,
+            "TIME value should be 5000 ms"
+        );
+    }
 }
 
 #[test]
@@ -74,7 +102,7 @@ END_PROGRAM
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
-        // Round 1 at t=0: IN goes TRUE, starts timing
+        // Round 1 at t=0us: IN goes TRUE, starts timing
         vm.run_round(0).unwrap();
         assert_eq!(
             vm.read_variable(1).unwrap(),
@@ -82,7 +110,7 @@ END_PROGRAM
             "Q should be FALSE before PT elapsed"
         );
 
-        // Round 2 at t=2s: still before PT (5s)
+        // Round 2 at t=2s (2_000_000 us): still before PT (5s = 5000 ms)
         vm.run_round(2_000_000).unwrap();
         assert_eq!(
             vm.read_variable(1).unwrap(),
@@ -112,7 +140,7 @@ END_PROGRAM
         // Round 1 at t=0: IN goes TRUE, starts timing
         vm.run_round(0).unwrap();
 
-        // Round 2 at t=6s: past PT (5s), Q should be TRUE
+        // Round 2 at t=6s: past PT (5s = 5000 ms), Q should be TRUE
         vm.run_round(6_000_000).unwrap();
         assert_eq!(
             vm.read_variable(1).unwrap(),
@@ -142,20 +170,18 @@ END_PROGRAM
         // Round 1 at t=0: IN goes TRUE, starts timing
         vm.run_round(0).unwrap();
 
-        // Round 2 at t=3s: ET should be 3s = 3_000_000 us
+        // Round 2 at t=3s: ET should be 3000 ms (i32)
         vm.run_round(3_000_000).unwrap();
         assert_eq!(
-            vm.read_variable_i64(1).unwrap(),
-            3_000_000,
-            "ET should be 3s in microseconds"
+            vm.read_variable(1).unwrap(),
+            3000,
+            "ET should be 3000 ms (3 seconds)"
         );
     }
 }
 
 #[test]
 fn end_to_end_when_ton_in_reset_then_timer_restarts() {
-    // IN goes TRUE, then FALSE (reset), then TRUE again.
-    // The timer should restart from the second TRUE, not the first.
     let source = "
 PROGRAM main
   VAR
@@ -191,7 +217,7 @@ END_PROGRAM
             "Q should be FALSE after reset"
         );
         assert_eq!(
-            vm.read_variable_i64(3).unwrap(),
+            vm.read_variable(3).unwrap(),
             0,
             "ET should be 0 after reset"
         );
@@ -243,7 +269,7 @@ END_PROGRAM
         // Round 1 at t=0: IN goes TRUE, starts timing
         vm.run_round(0).unwrap();
 
-        // Round 2 at exactly t=5s: ET == PT, Q should be TRUE
+        // Round 2 at exactly t=5s: ET == PT (5000 ms), Q should be TRUE
         vm.run_round(5_000_000).unwrap();
         assert_eq!(
             vm.read_variable(1).unwrap(),

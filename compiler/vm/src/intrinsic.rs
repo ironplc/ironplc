@@ -55,9 +55,13 @@ pub const TIMER_INSTANCE_FIELDS: usize = 6;
 /// - When IN rises (FALSE->TRUE): start timing, ET=0, Q=FALSE
 /// - While IN is TRUE: ET increments up to PT. When ET >= PT, Q becomes TRUE.
 /// - When IN falls (TRUE->FALSE): Q=FALSE, ET=0, stop timing.
+///
+/// PT and ET are i32 milliseconds. The hidden start_time is i64 microseconds
+/// (matching cycle_time). Elapsed time is converted from microseconds to
+/// milliseconds for comparison with PT and assignment to ET.
 pub fn ton(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
     let in_val = read_i32(instance, TIMER_IN) != 0;
-    let pt = read_i64(instance, TIMER_PT);
+    let pt = read_i32(instance, TIMER_PT);
     let running = read_i32(instance, TIMER_RUNNING) != 0;
 
     if in_val {
@@ -65,14 +69,14 @@ pub fn ton(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
             // Rising edge: start timing
             write_i64(instance, TIMER_START_TIME, cycle_time);
             write_i32(instance, TIMER_RUNNING, 1);
-            write_i64(instance, TIMER_ET, 0);
+            write_i32(instance, TIMER_ET, 0);
             write_i32(instance, TIMER_Q, 0);
         } else {
             // Timing in progress
             let start_time = read_i64(instance, TIMER_START_TIME);
-            let elapsed = cycle_time - start_time;
-            let et = if elapsed > pt { pt } else { elapsed };
-            write_i64(instance, TIMER_ET, et);
+            let elapsed_ms = ((cycle_time - start_time) / 1000) as i32;
+            let et = if elapsed_ms > pt { pt } else { elapsed_ms };
+            write_i32(instance, TIMER_ET, et);
             if et >= pt {
                 write_i32(instance, TIMER_Q, 1);
             }
@@ -80,7 +84,7 @@ pub fn ton(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
     } else {
         // IN is FALSE: reset
         write_i32(instance, TIMER_Q, 0);
-        write_i64(instance, TIMER_ET, 0);
+        write_i32(instance, TIMER_ET, 0);
         write_i32(instance, TIMER_RUNNING, 0);
     }
     Ok(())
@@ -97,29 +101,31 @@ pub fn ton(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
 /// - When IN falls (TRUE->FALSE): start timing, ET=0, Q=TRUE.
 /// - While IN is FALSE and timing: ET increments up to PT. When ET >= PT, Q becomes FALSE.
 /// - If IN returns to TRUE while timing: reset.
+///
+/// PT and ET are i32 milliseconds. The hidden start_time is i64 microseconds.
 pub fn tof(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
     let in_val = read_i32(instance, TIMER_IN) != 0;
-    let pt = read_i64(instance, TIMER_PT);
+    let pt = read_i32(instance, TIMER_PT);
     let running = read_i32(instance, TIMER_RUNNING) != 0;
 
     if in_val {
         // IN is TRUE: Q=TRUE, ET=0, stop any timing
         write_i32(instance, TIMER_Q, 1);
-        write_i64(instance, TIMER_ET, 0);
+        write_i32(instance, TIMER_ET, 0);
         write_i32(instance, TIMER_RUNNING, 0);
     } else if !running {
         // Falling edge: start timing
         write_i64(instance, TIMER_START_TIME, cycle_time);
         write_i32(instance, TIMER_RUNNING, 1);
-        write_i64(instance, TIMER_ET, 0);
+        write_i32(instance, TIMER_ET, 0);
         // Q stays TRUE during timing
         write_i32(instance, TIMER_Q, 1);
     } else {
         // Timing in progress (IN is FALSE)
         let start_time = read_i64(instance, TIMER_START_TIME);
-        let elapsed = cycle_time - start_time;
-        let et = if elapsed > pt { pt } else { elapsed };
-        write_i64(instance, TIMER_ET, et);
+        let elapsed_ms = ((cycle_time - start_time) / 1000) as i32;
+        let et = if elapsed_ms > pt { pt } else { elapsed_ms };
+        write_i32(instance, TIMER_ET, et);
         if et >= pt {
             write_i32(instance, TIMER_Q, 0);
         }
@@ -137,17 +143,19 @@ pub fn tof(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
 /// - When IN rises (FALSE->TRUE) and not already pulsing: Q=TRUE, start timing, ET=0.
 /// - While pulsing: ET increments up to PT. When ET >= PT, Q becomes FALSE, pulse ends.
 /// - Changes to IN during the pulse are ignored; the pulse always runs for full duration PT.
+///
+/// PT and ET are i32 milliseconds. The hidden start_time is i64 microseconds.
 pub fn tp(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
     let in_val = read_i32(instance, TIMER_IN) != 0;
-    let pt = read_i64(instance, TIMER_PT);
+    let pt = read_i32(instance, TIMER_PT);
     let running = read_i32(instance, TIMER_RUNNING) != 0;
 
     if running {
         // Pulse in progress — ignore IN changes
         let start_time = read_i64(instance, TIMER_START_TIME);
-        let elapsed = cycle_time - start_time;
-        let et = if elapsed > pt { pt } else { elapsed };
-        write_i64(instance, TIMER_ET, et);
+        let elapsed_ms = ((cycle_time - start_time) / 1000) as i32;
+        let et = if elapsed_ms > pt { pt } else { elapsed_ms };
+        write_i32(instance, TIMER_ET, et);
         if et >= pt {
             // Pulse complete
             write_i32(instance, TIMER_Q, 0);
@@ -157,7 +165,7 @@ pub fn tp(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
         // Rising edge: start pulse
         write_i64(instance, TIMER_START_TIME, cycle_time);
         write_i32(instance, TIMER_RUNNING, 1);
-        write_i64(instance, TIMER_ET, 0);
+        write_i32(instance, TIMER_ET, 0);
         write_i32(instance, TIMER_Q, 1);
     }
     // else: not running and IN is FALSE — no action, Q stays as-is

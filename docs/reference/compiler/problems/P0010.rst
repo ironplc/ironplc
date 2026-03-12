@@ -1,0 +1,31 @@
+=====
+P0010
+=====
+
+.. problem-summary:: P0010
+
+This error occurs when an IEC 61131-3:2013 feature is used without
+enabling the 2013 standard.
+
+Example
+-------
+
+The following code will generate error P0010:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       duration : LTIME;
+   END_VAR
+   END_PROGRAM
+
+The code uses :code:`LTIME`, which is an IEC 61131-3:2013 data type and is
+not available in the default mode.
+
+To fix this error, enable IEC 61131-3:2013 support with the ``--std`` command line
+option when running the compiler:
+
+.. code-block:: bash
+
+   ironplcc check --std=iec-61131-3:2013 myprogram.st

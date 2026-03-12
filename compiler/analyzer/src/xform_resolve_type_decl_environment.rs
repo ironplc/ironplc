@@ -98,7 +98,7 @@ impl TypeEnvironment {
                 | IntermediateType::UInt { .. }
                 | IntermediateType::Real { .. }
                 | IntermediateType::Bytes { .. }
-                | IntermediateType::Time
+                | IntermediateType::Time { .. }
                 | IntermediateType::Date
                 | IntermediateType::String { .. } => {
                     Err(Diagnostic::internal_error(file!(), line!()))
@@ -599,7 +599,7 @@ END_TYPE
         let my_time_type = env.get(&TypeName::from("MY_TIME")).unwrap();
         assert!(matches!(
             &my_time_type.representation,
-            IntermediateType::Time
+            IntermediateType::Time { .. }
         ));
     }
 

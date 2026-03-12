@@ -34,6 +34,7 @@ pub mod iec_type_tag {
     pub const STRING: u8 = 15;
     pub const WSTRING: u8 = 16;
     pub const TIME: u8 = 17;
+    pub const LTIME: u8 = 18;
     pub const OTHER: u8 = 255;
 }
 

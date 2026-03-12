@@ -8,7 +8,7 @@ Duration value representing an interval of time.
    :widths: 30 70
 
    * - **Size**
-     - 64 bits (microsecond resolution)
+     - 32 bits (millisecond resolution)
    * - **Default**
      - ``T#0s``
    * - **IEC 61131-3**
