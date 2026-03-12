@@ -1,0 +1,50 @@
+=====
+P4024
+=====
+
+.. problem-summary:: P4024
+
+This error occurs when a function call provides the same named argument more than once.
+
+Example
+-------
+
+The following code will generate error P4024:
+
+.. code-block::
+
+   FUNCTION MY_ADD : INT
+   VAR_INPUT
+       A : INT;
+       B : INT;
+   END_VAR
+       MY_ADD := A + B;
+   END_FUNCTION
+
+   PROGRAM main
+   VAR
+       result : INT;
+   END_VAR
+       result := MY_ADD(A := 1, A := 2);  (* Error: 'A' is specified twice *)
+   END_PROGRAM
+
+The named argument ``A`` appears twice in the function call, which is ambiguous.
+
+To fix this error, provide each named argument exactly once:
+
+.. code-block::
+
+   FUNCTION MY_ADD : INT
+   VAR_INPUT
+       A : INT;
+       B : INT;
+   END_VAR
+       MY_ADD := A + B;
+   END_FUNCTION
+
+   PROGRAM main
+   VAR
+       result : INT;
+   END_VAR
+       result := MY_ADD(A := 1, B := 2);  (* Correct: Each parameter specified once *)
+   END_PROGRAM

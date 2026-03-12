@@ -22,9 +22,10 @@ use crate::{
     semantic_context::SemanticContext,
     symbol_environment::SymbolEnvironment,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
-    type_table, xform_resolve_expr_types, xform_resolve_late_bound_expr_kind,
-    xform_resolve_late_bound_type_initializer, xform_resolve_symbol_and_function_environment,
-    xform_resolve_type_aliases, xform_resolve_type_decl_environment, xform_toposort_declarations,
+    type_table, xform_named_to_positional_args, xform_resolve_expr_types,
+    xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
+    xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
+    xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
@@ -118,6 +119,16 @@ pub fn resolve_types(sources: &[&Library]) -> Result<(Library, SemanticContext),
         &mut symbol_environment,
         &mut function_environment,
     ) {
+        Ok(result) => library = result,
+        Err(errs) => {
+            diagnostics.extend(errs);
+            library = fallback;
+        }
+    }
+
+    // Recoverable: convert named function call arguments to positional.
+    let fallback = library.clone();
+    match xform_named_to_positional_args::apply(library, &function_environment) {
         Ok(result) => library = result,
         Err(errs) => {
             diagnostics.extend(errs);
