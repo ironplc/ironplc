@@ -11,6 +11,8 @@
 //! Extensible functions (like MUX) are skipped because they have variable
 //! parameter counts that don't map cleanly to a fixed positional order.
 
+use std::collections::HashMap;
+
 use ironplc_dsl::common::Library;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
@@ -78,57 +80,53 @@ impl Fold<Diagnostic> for NamedToPositionalResolver<'_> {
             return Function::recurse_fold(node, self);
         }
 
-        // Collect named inputs and output assignments separately
-        let mut named_inputs: Vec<NamedInput> = vec![];
+        // Pass 1: Build a HashMap from named inputs, detecting duplicates
+        // and undeclared parameter names. Collect output assignments separately.
+        let mut named_map: HashMap<String, NamedInput> = HashMap::new();
         let mut outputs: Vec<ParamAssignmentKind> = vec![];
 
         for param in node.param_assignment {
             match param {
-                ParamAssignmentKind::NamedInput(ni) => named_inputs.push(ni),
+                ParamAssignmentKind::NamedInput(ni) => {
+                    let lower = ni.name.lower_case().to_string();
+
+                    // Check that the name matches a declared input parameter
+                    let is_declared = signature
+                        .parameters
+                        .iter()
+                        .any(|p| p.is_input && *p.name.lower_case() == lower);
+                    if !is_declared {
+                        self.errors.push(Diagnostic::problem(
+                            Problem::FunctionCallNamedArgUndeclared,
+                            Label::span(ni.name.span.clone(), "Undeclared parameter"),
+                        ));
+                    }
+
+                    // Check for duplicates
+                    match named_map.entry(lower) {
+                        std::collections::hash_map::Entry::Occupied(_) => {
+                            self.errors.push(Diagnostic::problem(
+                                Problem::FunctionCallDuplicateNamedArg,
+                                Label::span(ni.name.span.clone(), "Duplicate argument"),
+                            ));
+                        }
+                        std::collections::hash_map::Entry::Vacant(entry) => {
+                            entry.insert(ni);
+                        }
+                    }
+                }
                 ParamAssignmentKind::Output(_) => outputs.push(param),
                 ParamAssignmentKind::PositionalInput(_) => {
-                    // Already checked above — should not happen
+                    // Already rejected above — should not reach here
                     outputs.push(param);
                 }
             }
         }
 
-        // Check for duplicate named arguments
-        let mut seen_names: Vec<String> = vec![];
-        for ni in &named_inputs {
-            let lower = ni.name.lower_case().to_string();
-            if seen_names.contains(&lower) {
-                self.errors.push(Diagnostic::problem(
-                    Problem::FunctionCallDuplicateNamedArg,
-                    Label::span(ni.name.span.clone(), "Duplicate argument"),
-                ));
-            } else {
-                seen_names.push(lower);
-            }
-        }
-
-        // Get input parameters in declaration order
-        let input_params: Vec<_> = signature.parameters.iter().filter(|p| p.is_input).collect();
-
-        // Validate all named args match a declared parameter
-        for ni in &named_inputs {
-            let lower = ni.name.lower_case().to_string();
-            let found = input_params
-                .iter()
-                .any(|p| *p.name.lower_case() == lower);
-            if !found {
-                self.errors.push(Diagnostic::problem(
-                    Problem::FunctionCallNamedArgUndeclared,
-                    Label::span(ni.name.span.clone(), "Undeclared parameter"),
-                ));
-            }
-        }
-
-        // If we had errors, don't rewrite — return as-is
         if !self.errors.is_empty() {
-            // Reconstruct the original node
-            let mut param_assignment: Vec<ParamAssignmentKind> = named_inputs
-                .into_iter()
+            // Reconstruct the original node without rewriting
+            let mut param_assignment: Vec<ParamAssignmentKind> = named_map
+                .into_values()
                 .map(ParamAssignmentKind::NamedInput)
                 .collect();
             param_assignment.extend(outputs);
@@ -138,17 +136,16 @@ impl Fold<Diagnostic> for NamedToPositionalResolver<'_> {
             });
         }
 
-        // Rewrite: for each input parameter in declaration order, find the
-        // matching named input and convert to positional
+        // Pass 2: Walk declared input parameters in order, plucking from the
+        // HashMap to produce positional arguments in declaration order.
         let mut positional_args: Vec<ParamAssignmentKind> = vec![];
-        for param in &input_params {
+        for param in &signature.parameters {
+            if !param.is_input {
+                continue;
+            }
             let lower = param.name.lower_case().to_string();
-            if let Some(ni) = named_inputs
-                .iter()
-                .find(|ni| *ni.name.lower_case() == lower)
-            {
-                // Fold the expression inside the named input
-                let folded_expr = self.fold_expr(ni.expr.clone())?;
+            if let Some(ni) = named_map.remove(&lower) {
+                let folded_expr = self.fold_expr(ni.expr)?;
                 positional_args.push(ParamAssignmentKind::PositionalInput(PositionalInput {
                     expr: folded_expr,
                 }));
@@ -157,7 +154,6 @@ impl Fold<Diagnostic> for NamedToPositionalResolver<'_> {
             // leave it out (arg count validation happens elsewhere)
         }
 
-        // Append output assignments
         positional_args.extend(outputs);
 
         Ok(Function {
