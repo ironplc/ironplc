@@ -34,7 +34,7 @@ const isEmbed = params.get("embed") === "true";
 
 const STEP_INTERVAL_MS = 100;
 const RENDER_INTERVAL_MS = 500;
-const HISTORY_MAX = 50;
+const HISTORY_WINDOW_MS = 5000;
 let valueHistory = new Map();
 
 // --- uPlot sparkline options ---
@@ -50,7 +50,7 @@ function makeSparkOpts(stepped) {
     cursor: { show: false },
     select: { show: false },
     legend: { show: false },
-    scales: { x: { time: false } },
+    scales: { x: { time: false, range: [0, HISTORY_WINDOW_MS / 1000] } },
     axes: [{ show: false }, { show: false }],
     series: [
       {},
@@ -407,6 +407,8 @@ function parseTimeValue(value) {
 }
 
 function accumulateHistory(variables) {
+  const now = performance.now();
+  const cutoff = now - HISTORY_WINDOW_MS;
   for (const v of variables) {
     const numVal = parseNumericValue(v.value, v.type_name);
     if (numVal !== null) {
@@ -415,8 +417,9 @@ function accumulateHistory(variables) {
         hist = [];
         valueHistory.set(v.index, hist);
       }
-      hist.push(numVal);
-      if (hist.length > HISTORY_MAX) {
+      hist.push({ t: now, v: numVal });
+      // Drop entries older than the window
+      while (hist.length > 0 && hist[0].t < cutoff) {
         hist.shift();
       }
     }
@@ -445,14 +448,17 @@ function renderVariables(variables) {
   variablesPanel.innerHTML = html;
 
   // Create uPlot sparklines in the empty cells
+  const now = performance.now();
+  const windowStart = now - HISTORY_WINDOW_MS;
   for (const v of variables) {
     const hist = valueHistory.get(v.index);
     if (hist && hist.length >= 2) {
       const cell = variablesPanel.querySelector(`[data-var-idx="${v.index}"]`);
       if (cell) {
-        const xs = hist.map((_, i) => i);
+        const xs = hist.map(e => (e.t - windowStart) / 1000);
+        const ys = hist.map(e => e.v);
         const opts = v.type_name.toUpperCase() === "BOOL" ? boolSparkOpts : sparkOpts;
-        new uPlot(opts, [xs, [...hist]], cell);
+        new uPlot(opts, [xs, ys], cell);
       }
     }
   }
