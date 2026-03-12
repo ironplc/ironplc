@@ -1268,6 +1268,13 @@ END_PROGRAM
         assert!(r2.ok, "step(41) failed: {:?}", r2.error);
         let done_var = r2.variables.iter().find(|v| v.name == "done").unwrap();
         assert_eq!(done_var.value, "TRUE");
+
+        // Verify TIME variable displays correct type name
+        let elapsed_var = r2.variables.iter().find(|v| v.name == "elapsed").unwrap();
+        assert_eq!(
+            elapsed_var.type_name, "TIME",
+            "TIME variable should display as TIME, not TIME_OF_DAY"
+        );
     }
 
     #[test]
