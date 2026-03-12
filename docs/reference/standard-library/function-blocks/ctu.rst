@@ -10,9 +10,9 @@ preset value ``PV``.
    :widths: 30 70
 
    * - **IEC 61131-3**
-     - Section 2.5.2.3.4
+     - Section 2.5.2.3.3
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Inputs
 ------
@@ -58,20 +58,27 @@ On each rising edge of ``CU``, the counter value ``CV`` is incremented by one.
 When ``R`` is ``TRUE``, ``CV`` is reset to zero. The output ``Q`` is ``TRUE``
 when ``CV`` is greater than or equal to the preset value ``PV``.
 
+Typed variants ``CTU_DINT``, ``CTU_LINT``, ``CTU_UDINT``, and ``CTU_ULINT``
+use the corresponding integer type for ``PV`` and ``CV``.
+
 Example
 -------
 
-.. code-block::
+This example counts up with ``CU`` held ``TRUE``. After the first scan, ``CV``
+is 1 which equals ``PV``, so ``done`` becomes ``TRUE``.
 
-   VAR
-     counter1 : CTU;
-     count_pulse : BOOL;
-     reset : BOOL;
-     done : BOOL;
-   END_VAR
+.. playground::
 
-   counter1(CU := count_pulse, R := reset, PV := 10);
-   done := counter1.Q;
+   PROGRAM main
+      VAR
+         counter : CTU;
+         done : BOOL;
+         count : INT;
+      END_VAR
+
+      counter(CU := TRUE, R := FALSE, PV := 1, Q => done, CV => count);
+      (* After first scan: count = 1, done = TRUE *)
+   END_PROGRAM
 
 See Also
 --------

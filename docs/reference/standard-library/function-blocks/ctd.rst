@@ -9,9 +9,9 @@ Count-down counter. Decrements the counter value ``CV`` on each rising edge of
    :widths: 30 70
 
    * - **IEC 61131-3**
-     - Section 2.5.2.3.4
+     - Section 2.5.2.3.3
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Inputs
 ------
@@ -57,20 +57,27 @@ On each rising edge of ``CD``, the counter value ``CV`` is decremented by one.
 When ``LD`` is ``TRUE``, the preset value ``PV`` is loaded into ``CV``. The
 output ``Q`` is ``TRUE`` when ``CV`` is less than or equal to zero.
 
+Typed variants ``CTD_DINT``, ``CTD_LINT``, ``CTD_UDINT``, and ``CTD_ULINT``
+use the corresponding integer type for ``PV`` and ``CV``.
+
 Example
 -------
 
-.. code-block::
+This example loads the preset value into the counter. After loading, ``CV`` is
+3 which is above zero, so ``expired`` is ``FALSE``.
 
-   VAR
-     counter1 : CTD;
-     count_pulse : BOOL;
-     load : BOOL;
-     done : BOOL;
-   END_VAR
+.. playground::
 
-   counter1(CD := count_pulse, LD := load, PV := 10);
-   done := counter1.Q;
+   PROGRAM main
+      VAR
+         counter : CTD;
+         expired : BOOL;
+         count : INT;
+      END_VAR
+
+      counter(CD := FALSE, LD := TRUE, PV := 3, Q => expired, CV => count);
+      (* After first scan: count = 3, expired = FALSE *)
+   END_PROGRAM
 
 See Also
 --------
