@@ -11,7 +11,7 @@ input ``CLK`` transitions from ``TRUE`` to ``FALSE``.
    * - **IEC 61131-3**
      - Section 2.5.2.3.2
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Inputs
 ------
@@ -52,16 +52,20 @@ for one scan cycle. On all subsequent scans where ``CLK`` remains ``FALSE``,
 Example
 -------
 
-.. code-block::
+This example shows that no falling edge is detected when ``CLK`` starts
+``FALSE`` (no transition occurred — the default was already ``FALSE``).
 
-   VAR
-     edge1 : F_TRIG;
-     button : BOOL;
-     released : BOOL;
-   END_VAR
+.. playground::
 
-   edge1(CLK := button);
-   released := edge1.Q;
+   PROGRAM main
+      VAR
+         edge1 : F_TRIG;
+         detected : BOOL;
+      END_VAR
+
+      edge1(CLK := FALSE, Q => detected);
+      (* detected is FALSE because CLK did not transition from TRUE to FALSE *)
+   END_PROGRAM
 
 See Also
 --------

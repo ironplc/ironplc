@@ -1528,6 +1528,24 @@ fn execute(
                         let slice = &mut data_region[instance_start..instance_end];
                         crate::intrinsic::rs(slice)?;
                     }
+                    opcode::fb_type::R_TRIG => {
+                        let instance_size = crate::intrinsic::R_TRIG_INSTANCE_FIELDS * 8;
+                        let instance_end = instance_start + instance_size;
+                        if instance_end > data_region.len() {
+                            return Err(Trap::DataRegionOutOfBounds(instance_start as u16));
+                        }
+                        let slice = &mut data_region[instance_start..instance_end];
+                        crate::intrinsic::r_trig(slice)?;
+                    }
+                    opcode::fb_type::F_TRIG => {
+                        let instance_size = crate::intrinsic::F_TRIG_INSTANCE_FIELDS * 8;
+                        let instance_end = instance_start + instance_size;
+                        if instance_end > data_region.len() {
+                            return Err(Trap::DataRegionOutOfBounds(instance_start as u16));
+                        }
+                        let slice = &mut data_region[instance_start..instance_end];
+                        crate::intrinsic::f_trig(slice)?;
+                    }
                     _ => return Err(Trap::InvalidFbTypeId(type_id)),
                 }
             }
