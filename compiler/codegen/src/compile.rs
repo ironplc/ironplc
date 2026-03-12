@@ -505,6 +505,7 @@ fn resolve_iec_type_tag(name: &Id) -> u8 {
         "dword" => iec_type_tag::DWORD,
         "lword" => iec_type_tag::LWORD,
         "time" => iec_type_tag::TIME,
+        "ltime" => iec_type_tag::LTIME,
         _ => iec_type_tag::OTHER,
     }
 }
@@ -660,6 +661,11 @@ fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
             storage_bits: 64,
         }),
         "time" => Some(VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Signed,
+            storage_bits: 32,
+        }),
+        "ltime" => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Signed,
             storage_bits: 64,
@@ -969,7 +975,7 @@ fn compile_fb_call(
 fn fb_field_op_type(field_name: &str) -> OpType {
     match field_name {
         "in" | "q" => (OpWidth::W32, Signedness::Signed),
-        "pt" | "et" => (OpWidth::W64, Signedness::Signed),
+        "pt" | "et" => (OpWidth::W32, Signedness::Signed),
         _ => DEFAULT_OP_TYPE,
     }
 }
@@ -2751,9 +2757,9 @@ fn compile_constant(
         }
         ConstantKind::CharacterString(_) => Err(Diagnostic::todo(file!(), line!())),
         ConstantKind::Duration(lit) => {
-            let microseconds = lit.interval.whole_microseconds() as i64;
-            let pool_index = ctx.add_i64_constant(microseconds);
-            emitter.emit_load_const_i64(pool_index);
+            let milliseconds = lit.interval.whole_milliseconds() as i32;
+            let pool_index = ctx.add_i32_constant(milliseconds);
+            emitter.emit_load_const_i32(pool_index);
             Ok(())
         }
         ConstantKind::TimeOfDay(_) => Err(Diagnostic::todo(file!(), line!())),

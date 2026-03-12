@@ -2,6 +2,9 @@
 //!
 //! These tests verify the complete pipeline: parse IEC 61131-3 source with
 //! a TP function block instance, compile to bytecode, and execute on the VM.
+//!
+//! TIME values are 32-bit signed integers in milliseconds.
+//! The VM cycle_time is in microseconds; timer intrinsics convert to ms internally.
 
 mod common;
 
@@ -112,12 +115,12 @@ END_PROGRAM
         // Round 1 at t=0: pulse starts
         vm.run_round(0).unwrap();
 
-        // Round 2 at t=3s: ET should be 3s = 3_000_000 us
+        // Round 2 at t=3s: ET should be 3000 ms (3 seconds)
         vm.run_round(3_000_000).unwrap();
         assert_eq!(
-            vm.read_variable_i64(1).unwrap(),
-            3_000_000,
-            "ET should be 3s in microseconds"
+            vm.read_variable(1).unwrap(),
+            3000,
+            "ET should be 3000 ms (3 seconds)"
         );
     }
 }
@@ -164,9 +167,9 @@ END_PROGRAM
             "Q should be FALSE after pulse expired"
         );
         assert_eq!(
-            vm.read_variable_i64(3).unwrap(),
-            5_000_000,
-            "ET should be clamped to PT"
+            vm.read_variable(3).unwrap(),
+            5000,
+            "ET should be clamped to PT (5000 ms)"
         );
     }
 }

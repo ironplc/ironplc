@@ -2,6 +2,9 @@
 //!
 //! These tests verify the complete pipeline: parse IEC 61131-3 source with
 //! a TOF function block instance, compile to bytecode, and execute on the VM.
+//!
+//! TIME values are 32-bit signed integers in milliseconds.
+//! The VM cycle_time is in microseconds; timer intrinsics convert to ms internally.
 
 mod common;
 
@@ -135,13 +138,13 @@ END_PROGRAM
         vm.write_variable(1, 0).unwrap();
         vm.run_round(1_000_000).unwrap();
 
-        // Round 3 at t=4s: ET should be 3s = 3_000_000 us
+        // Round 3 at t=4s: ET should be 3000 ms (3 seconds)
         // elapsed is var[2] (timer=var[0], enable=var[1], elapsed=var[2])
         vm.run_round(4_000_000).unwrap();
         assert_eq!(
-            vm.read_variable_i64(2).unwrap(),
-            3_000_000,
-            "ET should be 3s in microseconds"
+            vm.read_variable(2).unwrap(),
+            3000,
+            "ET should be 3000 ms (3 seconds)"
         );
     }
 }
@@ -187,7 +190,7 @@ END_PROGRAM
         vm.run_round(4_000_000).unwrap();
         assert_eq!(vm.read_variable(2).unwrap(), 1, "Q should be TRUE");
         assert_eq!(
-            vm.read_variable_i64(3).unwrap(),
+            vm.read_variable(3).unwrap(),
             0,
             "ET should be 0 after reset"
         );

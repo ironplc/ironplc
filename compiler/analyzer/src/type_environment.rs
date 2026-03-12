@@ -33,7 +33,7 @@ pub enum UsageContext {
     General,
 }
 
-static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 23] = [
+static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 24] = [
     // signed_integer_type_name
     (
         "sint",
@@ -99,12 +99,34 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 23] = [
     ),
     // time_type_name — TIME must appear before TIME_OF_DAY so that
     // resolve_elementary_type_name() finds the canonical name first.
-    ("time", IntermediateType::Time),
+    (
+        "time",
+        IntermediateType::Time {
+            size: ByteSized::B32,
+        },
+    ),
+    // LTIME is 64-bit (milliseconds) — IEC 61131-3 Edition 3 (2013)
+    (
+        "ltime",
+        IntermediateType::Time {
+            size: ByteSized::B64,
+        },
+    ),
     // date_type_name — DATE must appear before DATE_AND_TIME for the
     // same reason.
     ("date", IntermediateType::Date),
-    ("time_of_day", IntermediateType::Time),
-    ("tod", IntermediateType::Time),
+    (
+        "time_of_day",
+        IntermediateType::Time {
+            size: ByteSized::B32,
+        },
+    ),
+    (
+        "tod",
+        IntermediateType::Time {
+            size: ByteSized::B32,
+        },
+    ),
     ("date_and_time", IntermediateType::Date),
     ("dt", IntermediateType::Date),
     // bit_string_type_name
@@ -210,7 +232,7 @@ impl TypeEnvironment {
 
     /// Resolves a type name to its canonical elementary type name.
     ///
-    /// Looks up the type, then scans the 23 elementary types to find one with
+    /// Looks up the type, then scans the 24 elementary types to find one with
     /// a matching `IntermediateType`. For aliases like `MyByte → BYTE`, returns
     /// `Some(TypeName::from("BYTE"))`. For complex types, returns `None`.
     pub fn resolve_elementary_type_name(&self, type_name: &TypeName) -> Option<TypeName> {
@@ -462,7 +484,10 @@ mod tests {
         }
         .is_primitive());
         assert!(IntermediateType::String { max_len: Some(10) }.is_primitive());
-        assert!(IntermediateType::Time.is_primitive());
+        assert!(IntermediateType::Time {
+            size: ByteSized::B32
+        }
+        .is_primitive());
         assert!(IntermediateType::Date.is_primitive());
 
         // Test non-primitive types

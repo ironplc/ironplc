@@ -81,7 +81,7 @@ fn is_compatible(constant: &ConstantKind, target: &IntermediateType) -> bool {
             )
         }
         IntermediateType::String { .. } => matches!(constant, ConstantKind::CharacterString(_)),
-        IntermediateType::Time => matches!(constant, ConstantKind::Duration(_)),
+        IntermediateType::Time { .. } => matches!(constant, ConstantKind::Duration(_)),
         IntermediateType::Date => {
             matches!(
                 constant,

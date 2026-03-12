@@ -159,8 +159,8 @@ pub fn single_function_container_i32_f64(
 ///   var[2] = Q output (read by test)
 ///   var[3] = ET output (read by test)
 /// Constant layout:
-///   constant[0] = PT value (i64 microseconds)
-pub fn timer_test_container(pt_us: i64, fb_type_id: u16) -> Container {
+///   constant[0] = PT value (i32 milliseconds)
+pub fn timer_test_container(pt_ms: i32, fb_type_id: u16) -> Container {
     use ironplc_container::opcode;
 
     let type_id_bytes = fb_type_id.to_le_bytes();
@@ -169,13 +169,13 @@ pub fn timer_test_container(pt_us: i64, fb_type_id: u16) -> Container {
         opcode::FB_LOAD_INSTANCE, 0x00, 0x00,              // push fb_ref from var[0]
         opcode::LOAD_VAR_I32,     0x01, 0x00,              // push IN from var[1]
         opcode::FB_STORE_PARAM,   0x00,                     // store to FB.IN (field 0)
-        opcode::LOAD_CONST_I64,   0x00, 0x00,              // push PT constant
+        opcode::LOAD_CONST_I32,   0x00, 0x00,              // push PT constant (i32 ms)
         opcode::FB_STORE_PARAM,   0x01,                     // store to FB.PT (field 1)
         opcode::FB_CALL,          type_id_bytes[0], type_id_bytes[1], // call FB
         opcode::FB_LOAD_PARAM,    0x02,                     // load FB.Q (field 2)
         opcode::STORE_VAR_I32,    0x02, 0x00,               // store Q to var[2]
         opcode::FB_LOAD_PARAM,    0x03,                     // load FB.ET (field 3)
-        opcode::STORE_VAR_I64,    0x03, 0x00,               // store ET to var[3]
+        opcode::STORE_VAR_I32,    0x03, 0x00,               // store ET to var[3]
         opcode::POP,                                        // discard fb_ref
         opcode::RET_VOID,
     ];
@@ -184,7 +184,7 @@ pub fn timer_test_container(pt_us: i64, fb_type_id: u16) -> Container {
     ContainerBuilder::new()
         .num_variables(4)
         .data_region_bytes(48) // 6 fields * 8 bytes
-        .add_i64_constant(pt_us)
+        .add_i32_constant(pt_ms)
         .add_function(0, &init_bytecode, 0, 4)
         .add_function(1, &bytecode, 16, 4)
         .init_function_id(0)
