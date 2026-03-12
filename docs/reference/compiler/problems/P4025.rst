@@ -1,0 +1,45 @@
+=====
+P4025
+=====
+
+.. problem-summary:: P4025
+
+This error occurs when a bit access index on a variable exceeds the number of bits available in the variable's declared type.
+
+Each integer and bit string type has a fixed number of bits:
+
+- ``SINT``, ``USINT``, ``BYTE``: 8 bits (valid indices 0..7)
+- ``INT``, ``UINT``, ``WORD``: 16 bits (valid indices 0..15)
+- ``DINT``, ``UDINT``, ``DWORD``: 32 bits (valid indices 0..31)
+- ``LINT``, ``ULINT``, ``LWORD``: 64 bits (valid indices 0..63)
+
+Example
+-------
+
+The following code will generate error P4025:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB1
+       VAR
+           myByte : BYTE;
+           myBool : BOOL;
+       END_VAR
+
+       myBool := myByte.8;  (* Error: BYTE has only 8 bits, valid range is 0..7 *)
+   END_FUNCTION_BLOCK
+
+The variable ``myByte`` is declared as ``BYTE`` which has 8 bits (indices 0 through 7). Accessing bit 8 is out of range.
+
+To fix this error, use an index within the valid range or use a wider type:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB1
+       VAR
+           myWord : WORD;
+           myBool : BOOL;
+       END_VAR
+
+       myBool := myWord.8;  (* Correct: WORD has 16 bits, valid range is 0..15 *)
+   END_FUNCTION_BLOCK
