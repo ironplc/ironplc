@@ -59,16 +59,21 @@ the pulse have no effect; the pulse always runs for the full duration ``PT``.
 Example
 -------
 
-.. code-block::
+This example triggers a 1-second pulse. On the first scan ``IN`` is ``TRUE``,
+so the pulse starts and ``active`` becomes ``TRUE``.
 
-   VAR
-     pulse1 : TP;
-     trigger : BOOL;
-     output : BOOL;
-   END_VAR
+.. playground::
 
-   pulse1(IN := trigger, PT := T#1s);
-   output := pulse1.Q;
+   PROGRAM main
+      VAR
+         pulse : TP;
+         active : BOOL;
+         elapsed : TIME;
+      END_VAR
+
+      pulse(IN := TRUE, PT := T#1s, Q => active, ET => elapsed);
+      (* After first scan: active = TRUE, pulse is running *)
+   END_PROGRAM
 
 See Also
 --------
