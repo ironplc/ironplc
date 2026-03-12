@@ -17,8 +17,8 @@ PROGRAM main
   y := MUX(k, 100, 200, 300);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // BUILTIN MUX_I64_BASE+3 = 0x0423

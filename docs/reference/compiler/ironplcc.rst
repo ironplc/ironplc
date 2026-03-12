@@ -85,6 +85,11 @@ Options
 ``-l`` *FILE*, ``--log-file`` *FILE*
    Write log output to the specified file instead of the terminal.
 
+``--std-iec-61131-3`` *VERSION*
+   Select the IEC 61131-3 standard version to compile against. Without this
+   option, only Edition 2 features are accepted. Available values: ``2013``.
+   Applies to the ``check``, ``compile``, and ``echo`` commands.
+
 Examples
 ========
 
@@ -117,6 +122,12 @@ Examples
    .. code-block:: shell
 
       ironplcc echo main.st
+
+6. Check a source file using IEC 61131-3:2013 features:
+
+   .. code-block:: shell
+
+      ironplcc check --std-iec-61131-3=2013 main.st
 
 See Also
 ========

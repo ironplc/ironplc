@@ -17,8 +17,8 @@ PROGRAM main
   y := LIMIT(0.0, x, 10.0);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     // x := 5.0: LOAD_CONST_F32 pool:0, STORE_VAR_F32 var:0
     // y := LIMIT(0.0, x, 10.0): LOAD_CONST_F32 pool:1, LOAD_VAR_F32 var:0,
@@ -52,8 +52,8 @@ PROGRAM main
   y := LIMIT(0.0, x, 10.0);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
