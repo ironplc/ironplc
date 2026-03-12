@@ -2,12 +2,15 @@
    :align: center
 
 IronPLC is an open-source toolchain for checking and compiling IEC 61131-3
-programs. It integrates into Visual Studio Code to provide auto-completion,
-syntax highlighting, and real-time error checking as you type. It also
-includes a command-line compiler and an early-stage runtime.
+programs. It implements many parts of the IEC 61131-3 standard and is working
+toward full Structured Text support — key features still missing include arrays
+and structures. It integrates into Visual Studio Code to provide
+auto-completion, syntax highlighting, and real-time error checking as you type.
+It also includes a command-line compiler and an early-stage runtime.
 
 IronPLC reads Structured Text, PLCopen XML (Beremiz), and TwinCAT 3 source
 files, so you can use it alongside your existing PLC development environment.
+Try it out in the `IronPLC Playground <https://playground.ironplc.com>`_.
 
 The long-term vision is to become a full development environment for
 building IEC 61131-3 based control systems on off-the-shelf embedded
