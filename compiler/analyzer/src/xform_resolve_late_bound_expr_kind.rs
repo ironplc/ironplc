@@ -146,6 +146,12 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                         // declaration which isn't available here. Default to None.
                         self.current_type = VariableType::None;
                     }
+                    SymbolicVariableKind::BitAccess(_ba) => {
+                        // Assignment to a bit access like w.0 := value
+                        // Determining the type requires looking up the variable
+                        // declaration which isn't available here. Default to None.
+                        self.current_type = VariableType::None;
+                    }
                 }
             }
         }

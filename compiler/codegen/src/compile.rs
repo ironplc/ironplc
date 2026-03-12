@@ -2813,6 +2813,11 @@ fn resolve_variable(ctx: &CompileContext, variable: &Variable) -> Result<u16, Di
                 file!(),
                 line!(),
             )),
+            SymbolicVariableKind::BitAccess(bit_access) => Err(Diagnostic::todo_with_span(
+                bit_access.span(),
+                file!(),
+                line!(),
+            )),
         },
         Variable::Direct(direct) => Err(Diagnostic::todo_with_span(
             direct.position.clone(),
