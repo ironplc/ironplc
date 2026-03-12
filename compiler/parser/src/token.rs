@@ -327,6 +327,8 @@ pub enum TokenType {
     Lreal,
     #[token("TIME", ignore(case))]
     Time,
+    #[token("LTIME", ignore(case))]
+    Ltime,
     #[token("DATE", ignore(case))]
     Date,
     #[token("TIME_OF_DAY", ignore(case))]
@@ -525,6 +527,7 @@ impl TokenType {
             TokenType::Real => "'REAL'",
             TokenType::Lreal => "'LREAL'",
             TokenType::Time => "'TIME'",
+            TokenType::Ltime => "'LTIME'",
             TokenType::Date => "'DATE' | 'D'",
             TokenType::TimeOfDay => "'TIME_OF_DAY' | 'TOD'",
             TokenType::DateAndTime => "'DATE_AND_TIME' | 'DT'",

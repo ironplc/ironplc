@@ -1,0 +1,50 @@
+=====
+P4023
+=====
+
+.. problem-summary:: P4023
+
+This error occurs when a function call uses a named argument that does not match any declared input parameter of the function.
+
+Example
+-------
+
+The following code will generate error P4023:
+
+.. code-block::
+
+   FUNCTION MY_ADD : INT
+   VAR_INPUT
+       A : INT;
+       B : INT;
+   END_VAR
+       MY_ADD := A + B;
+   END_FUNCTION
+
+   PROGRAM main
+   VAR
+       result : INT;
+   END_VAR
+       result := MY_ADD(X := 1, B := 2);  (* Error: 'X' is not a declared parameter *)
+   END_PROGRAM
+
+The named argument ``X`` does not match any input parameter of ``MY_ADD``, which declares ``A`` and ``B``.
+
+To fix this error, use a parameter name that matches one of the function's declared input parameters:
+
+.. code-block::
+
+   FUNCTION MY_ADD : INT
+   VAR_INPUT
+       A : INT;
+       B : INT;
+   END_VAR
+       MY_ADD := A + B;
+   END_FUNCTION
+
+   PROGRAM main
+   VAR
+       result : INT;
+   END_VAR
+       result := MY_ADD(A := 1, B := 2);  (* Correct: Both names match declared parameters *)
+   END_PROGRAM
