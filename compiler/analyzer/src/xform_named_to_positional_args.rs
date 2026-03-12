@@ -44,65 +44,16 @@ struct NamedToPositionalResolver<'a> {
 
 impl Fold<Diagnostic> for NamedToPositionalResolver<'_> {
     fn fold_function(&mut self, node: Function) -> Result<Function, Diagnostic> {
-        // Check if there are any named inputs
-        let has_named = node
-            .param_assignment
-            .iter()
-            .any(|p| matches!(p, ParamAssignmentKind::NamedInput(_)));
-
-        if !has_named {
-            // All positional or empty — recurse normally
-            return Function::recurse_fold(node, self);
-        }
-
-        // Check for mixed positional and named inputs
-        let has_positional = node
-            .param_assignment
-            .iter()
-            .any(|p| matches!(p, ParamAssignmentKind::PositionalInput(_)));
-
-        if has_positional {
-            self.errors.push(Diagnostic::problem(
-                Problem::FunctionCallMixedArgTypes,
-                Label::span(node.name.span.clone(), "Function call"),
-            ));
-            return Function::recurse_fold(node, self);
-        }
-
-        // Look up the function signature
-        let Some(signature) = self.function_environment.get(&node.name) else {
-            // Function not found — skip rewriting, let later validation report the error
-            return Function::recurse_fold(node, self);
-        };
-
-        // Skip extensible functions (variable parameter counts)
-        if signature.is_extensible {
-            return Function::recurse_fold(node, self);
-        }
-
-        // Pass 1: Build a HashMap from named inputs, detecting duplicates
-        // and undeclared parameter names. Collect output assignments separately.
+        // Partition arguments: named inputs go into a HashMap, everything else
+        // into outputs. Detect duplicates and mixed positional/named on the fly.
         let mut named_map: HashMap<String, NamedInput> = HashMap::new();
         let mut outputs: Vec<ParamAssignmentKind> = vec![];
+        let mut has_positional = false;
 
         for param in node.param_assignment {
             match param {
                 ParamAssignmentKind::NamedInput(ni) => {
                     let lower = ni.name.lower_case().to_string();
-
-                    // Check that the name matches a declared input parameter
-                    let is_declared = signature
-                        .parameters
-                        .iter()
-                        .any(|p| p.is_input && *p.name.lower_case() == lower);
-                    if !is_declared {
-                        self.errors.push(Diagnostic::problem(
-                            Problem::FunctionCallNamedArgUndeclared,
-                            Label::span(ni.name.span.clone(), "Undeclared parameter"),
-                        ));
-                    }
-
-                    // Check for duplicates
                     match named_map.entry(lower) {
                         std::collections::hash_map::Entry::Occupied(_) => {
                             self.errors.push(Diagnostic::problem(
@@ -115,16 +66,28 @@ impl Fold<Diagnostic> for NamedToPositionalResolver<'_> {
                         }
                     }
                 }
-                ParamAssignmentKind::Output(_) => outputs.push(param),
                 ParamAssignmentKind::PositionalInput(_) => {
-                    // Already rejected above — should not reach here
+                    has_positional = true;
                     outputs.push(param);
                 }
+                ParamAssignmentKind::Output(_) => outputs.push(param),
             }
         }
 
-        if !self.errors.is_empty() {
-            // Reconstruct the original node without rewriting
+        // Nothing to rewrite if there are no named inputs
+        if named_map.is_empty() {
+            return Ok(Function {
+                name: node.name,
+                param_assignment: outputs,
+            });
+        }
+
+        // Reject mixing positional and named arguments
+        if has_positional {
+            self.errors.push(Diagnostic::problem(
+                Problem::FunctionCallMixedArgTypes,
+                Label::span(node.name.span.clone(), "Function call"),
+            ));
             let mut param_assignment: Vec<ParamAssignmentKind> = named_map
                 .into_values()
                 .map(ParamAssignmentKind::NamedInput)
@@ -136,8 +99,48 @@ impl Fold<Diagnostic> for NamedToPositionalResolver<'_> {
             });
         }
 
-        // Pass 2: Walk declared input parameters in order, plucking from the
-        // HashMap to produce positional arguments in declaration order.
+        // If we already have duplicate errors, don't attempt rewriting
+        if !self.errors.is_empty() {
+            let mut param_assignment: Vec<ParamAssignmentKind> = named_map
+                .into_values()
+                .map(ParamAssignmentKind::NamedInput)
+                .collect();
+            param_assignment.extend(outputs);
+            return Ok(Function {
+                name: node.name,
+                param_assignment,
+            });
+        }
+
+        // Look up the function signature
+        let Some(signature) = self.function_environment.get(&node.name) else {
+            // Function not found — skip rewriting, let later validation report
+            let mut param_assignment: Vec<ParamAssignmentKind> = named_map
+                .into_values()
+                .map(ParamAssignmentKind::NamedInput)
+                .collect();
+            param_assignment.extend(outputs);
+            return Ok(Function {
+                name: node.name,
+                param_assignment,
+            });
+        };
+
+        // Skip extensible functions (variable parameter counts)
+        if signature.is_extensible {
+            let mut param_assignment: Vec<ParamAssignmentKind> = named_map
+                .into_values()
+                .map(ParamAssignmentKind::NamedInput)
+                .collect();
+            param_assignment.extend(outputs);
+            return Ok(Function {
+                name: node.name,
+                param_assignment,
+            });
+        }
+
+        // Rewrite: walk declared input parameters in order, plucking from
+        // the HashMap to produce positional arguments in declaration order.
         let mut positional_args: Vec<ParamAssignmentKind> = vec![];
         for param in &signature.parameters {
             if !param.is_input {
@@ -150,8 +153,14 @@ impl Fold<Diagnostic> for NamedToPositionalResolver<'_> {
                     expr: folded_expr,
                 }));
             }
-            // If no matching named input, the parameter was not provided —
-            // leave it out (arg count validation happens elsewhere)
+        }
+
+        // Anything left in the map is an undeclared parameter name
+        for ni in named_map.into_values() {
+            self.errors.push(Diagnostic::problem(
+                Problem::FunctionCallNamedArgUndeclared,
+                Label::span(ni.name.span.clone(), "Undeclared parameter"),
+            ));
         }
 
         positional_args.extend(outputs);
