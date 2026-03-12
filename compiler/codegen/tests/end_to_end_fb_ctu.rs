@@ -5,76 +5,10 @@
 
 mod common;
 
-use common::{parse, VmBuffers};
-use ironplc_codegen::compile;
-use ironplc_vm::test_support::load_and_start;
+use common::parse_and_run;
+use common::parse_and_run_rounds;
 
-#[test]
-fn end_to_end_when_ctu_not_triggered_then_q_is_false() {
-    let source = "
-PROGRAM main
-  VAR
-    counter : CTU;
-    result : BOOL;
-  END_VAR
-  counter(CU := FALSE, R := FALSE, PV := 3, Q => result);
-END_PROGRAM
-";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
-        vm.run_round(0).unwrap();
-    }
-    assert_eq!(
-        bufs.vars[1].as_i32(),
-        0,
-        "Q should be FALSE when CU is FALSE"
-    );
-}
-
-#[test]
-fn end_to_end_when_ctu_counts_to_pv_then_q_is_true() {
-    let source = "
-PROGRAM main
-  VAR
-    counter : CTU;
-    pulse : BOOL;
-    result : BOOL;
-    count : INT;
-  END_VAR
-  counter(CU := pulse, R := FALSE, PV := 3, Q => result, CV => count);
-END_PROGRAM
-";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
-
-        // 3 rising edges: pulse FALSE->TRUE for each
-        for i in 0..3 {
-            // pulse = TRUE
-            vm.write_variable(1, 1).unwrap();
-            vm.run_round(i * 2).unwrap();
-            // pulse = FALSE
-            vm.write_variable(1, 0).unwrap();
-            vm.run_round(i * 2 + 1).unwrap();
-        }
-
-        assert_eq!(
-            vm.read_variable(2).unwrap(),
-            1,
-            "Q should be TRUE after 3 counts"
-        );
-        assert_eq!(vm.read_variable(3).unwrap(), 3, "CV should be 3");
-    }
-}
-
-#[test]
-fn end_to_end_when_ctu_reset_then_cv_is_zero() {
-    let source = "
+const CTU_PROGRAM: &str = "
 PROGRAM main
   VAR
     counter : CTU;
@@ -83,24 +17,47 @@ PROGRAM main
     result : BOOL;
     count : INT;
   END_VAR
-  counter(CU := pulse, R := reset, PV := 5, Q => result, CV => count);
+  counter(CU := pulse, R := reset, PV := 3, Q => result, CV => count);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
-        // Count up twice
-        vm.write_variable(1, 1).unwrap();
-        vm.run_round(0).unwrap();
-        vm.write_variable(1, 0).unwrap();
-        vm.run_round(1).unwrap();
-        vm.write_variable(1, 1).unwrap();
-        vm.run_round(2).unwrap();
-        vm.write_variable(1, 0).unwrap();
-        vm.run_round(3).unwrap();
+/// Generates `n` rising edges on variable `var_idx` (pulse TRUE then FALSE).
+fn pulse_n(vm: &mut ironplc_vm::VmRunning<'_>, var_idx: u16, n: u64) {
+    for i in 0..n {
+        vm.write_variable(var_idx, 1).unwrap();
+        vm.run_round(i * 2).unwrap();
+        vm.write_variable(var_idx, 0).unwrap();
+        vm.run_round(i * 2 + 1).unwrap();
+    }
+}
+
+#[test]
+fn end_to_end_when_ctu_not_triggered_then_q_is_false() {
+    let (_container, bufs) = parse_and_run(CTU_PROGRAM);
+    assert_eq!(
+        bufs.vars[3].as_i32(),
+        0,
+        "Q should be FALSE when CU is FALSE"
+    );
+}
+
+#[test]
+fn end_to_end_when_ctu_counts_to_pv_then_q_is_true() {
+    parse_and_run_rounds(CTU_PROGRAM, |vm| {
+        pulse_n(vm, 1, 3);
+        assert_eq!(
+            vm.read_variable(3).unwrap(),
+            1,
+            "Q should be TRUE after 3 counts"
+        );
+        assert_eq!(vm.read_variable(4).unwrap(), 3, "CV should be 3");
+    });
+}
+
+#[test]
+fn end_to_end_when_ctu_reset_then_cv_is_zero() {
+    parse_and_run_rounds(CTU_PROGRAM, |vm| {
+        pulse_n(vm, 1, 2);
         assert_eq!(
             vm.read_variable(4).unwrap(),
             2,
@@ -120,41 +77,20 @@ END_PROGRAM
             0,
             "Q should be FALSE after reset"
         );
-    }
+    });
 }
 
 #[test]
 fn end_to_end_when_ctu_below_pv_then_q_is_false() {
-    let source = "
-PROGRAM main
-  VAR
-    counter : CTU;
-    pulse : BOOL;
-    result : BOOL;
-  END_VAR
-  counter(CU := pulse, R := FALSE, PV := 5, Q => result);
-END_PROGRAM
-";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
-
-        // Count up twice (below PV=5)
-        vm.write_variable(1, 1).unwrap();
-        vm.run_round(0).unwrap();
-        vm.write_variable(1, 0).unwrap();
-        vm.run_round(1).unwrap();
-        vm.write_variable(1, 1).unwrap();
-        vm.run_round(2).unwrap();
-
+    parse_and_run_rounds(CTU_PROGRAM, |vm| {
+        pulse_n(vm, 1, 2);
+        // PV=3, CV=2 => Q should be FALSE
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(3).unwrap(),
             0,
             "Q should be FALSE when CV < PV"
         );
-    }
+    });
 }
 
 #[test]
@@ -169,13 +105,9 @@ PROGRAM main
   counter(CU := TRUE, R := FALSE, PV := 1, Q => result, CV => count);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
+    parse_and_run_rounds(source, |vm| {
         vm.run_round(0).unwrap();
         assert_eq!(vm.read_variable(1).unwrap(), 1, "Q should be TRUE");
         assert_eq!(vm.read_variable(2).unwrap(), 1, "CV should be 1");
-    }
+    });
 }
