@@ -165,6 +165,58 @@ pub fn tp(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
 }
 
 // =============================================================================
+// Bistable Function Blocks (IEC 61131-3 Section 2.5.2.3.1)
+// =============================================================================
+
+// --- SR (Set-Reset, Set dominant) field layout ---
+const SR_S1: usize = 0;
+const SR_R: usize = 1;
+const SR_Q1: usize = 2;
+
+/// Number of fields for an SR FB instance.
+pub const SR_INSTANCE_FIELDS: usize = 3;
+
+/// Executes one scan of the SR (set-reset, set dominant) intrinsic.
+///
+/// # SR behavior (IEC 61131-3 section 2.5.2.3.1):
+/// Q1 := S1 OR (NOT R AND Q1)
+/// Set (S1) dominates: if both S1 and R are TRUE, Q1 is TRUE.
+pub fn sr(instance: &mut [u8]) -> Result<(), Trap> {
+    let s1 = read_i32(instance, SR_S1) != 0;
+    let r = read_i32(instance, SR_R) != 0;
+    let q1 = read_i32(instance, SR_Q1) != 0;
+
+    let new_q1 = s1 || (!r && q1);
+    write_i32(instance, SR_Q1, i32::from(new_q1));
+
+    Ok(())
+}
+
+// --- RS (Reset-Set, Reset dominant) field layout ---
+const RS_S: usize = 0;
+const RS_R1: usize = 1;
+const RS_Q1: usize = 2;
+
+/// Number of fields for an RS FB instance.
+pub const RS_INSTANCE_FIELDS: usize = 3;
+
+/// Executes one scan of the RS (reset-set, reset dominant) intrinsic.
+///
+/// # RS behavior (IEC 61131-3 section 2.5.2.3.1):
+/// Q1 := NOT R1 AND (S OR Q1)
+/// Reset (R1) dominates: if both S and R1 are TRUE, Q1 is FALSE.
+pub fn rs(instance: &mut [u8]) -> Result<(), Trap> {
+    let s = read_i32(instance, RS_S) != 0;
+    let r1 = read_i32(instance, RS_R1) != 0;
+    let q1 = read_i32(instance, RS_Q1) != 0;
+
+    let new_q1 = !r1 && (s || q1);
+    write_i32(instance, RS_Q1, i32::from(new_q1));
+
+    Ok(())
+}
+
+// =============================================================================
 // Counter Function Blocks (IEC 61131-3 Section 2.5.2.3.3)
 // =============================================================================
 

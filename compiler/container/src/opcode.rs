@@ -856,4 +856,8 @@ pub mod fb_type {
     pub const CTD: u16 = 0x0021;
     /// CTUD (count up/down counter).
     pub const CTUD: u16 = 0x0022;
+    /// SR (set-reset bistable, set dominant).
+    pub const SR: u16 = 0x0030;
+    /// RS (reset-set bistable, reset dominant).
+    pub const RS: u16 = 0x0031;
 }
