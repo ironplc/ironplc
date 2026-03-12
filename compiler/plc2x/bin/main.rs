@@ -26,6 +26,14 @@ struct Args {
     action: Action,
 }
 
+/// IEC 61131-3 standard version to compile against.
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum StdVersion {
+    /// IEC 61131-3:2013 — enables Edition 3 features such as LTIME.
+    #[value(name = "iec-61131-3:2013")]
+    Iec6113132013,
+}
+
 /// Shared arguments for commands that operate on source files.
 #[derive(clap::Args, Debug)]
 struct FileArgs {
@@ -33,9 +41,10 @@ struct FileArgs {
     /// add all files in the given directory.
     files: Vec<PathBuf>,
 
-    /// Enable IEC 61131-3 Edition 3 (2013) features such as LTIME.
-    #[arg(long)]
-    edition_3: bool,
+    /// Select the IEC 61131-3 standard version to compile against.
+    /// Without this flag, only Edition 2 features are accepted.
+    #[arg(long = "std")]
+    std_version: Option<StdVersion>,
 }
 
 #[derive(clap::Subcommand, Debug)]

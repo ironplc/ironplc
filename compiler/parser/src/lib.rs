@@ -7,7 +7,7 @@ pub mod options;
 mod parser;
 mod preprocessor;
 mod rule_token_no_c_style_comment;
-mod rule_token_no_edition_3;
+mod rule_token_no_std_2013;
 mod vars;
 mod xform_assign_file_id;
 mod xform_tokens;
@@ -60,7 +60,7 @@ pub fn tokenize_program(
 fn check_tokens(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnostic>> {
     let rules: Vec<fn(&[Token], &ParseOptions) -> Result<(), Vec<Diagnostic>>> = vec![
         rule_token_no_c_style_comment::apply,
-        rule_token_no_edition_3::apply,
+        rule_token_no_std_2013::apply,
     ];
 
     let mut errors = vec![];

@@ -4,8 +4,8 @@ P0010
 
 .. problem-summary:: P0010
 
-This error occurs when an IEC 61131-3 Edition 3 (2013) feature is used without
-enabling Edition 3 support.
+This error occurs when an IEC 61131-3:2013 feature is used without
+enabling the 2013 standard.
 
 Example
 -------
@@ -20,12 +20,12 @@ The following code will generate error P0010:
    END_VAR
    END_PROGRAM
 
-The code uses :code:`LTIME`, which is an IEC 61131-3 Edition 3 data type and is
-not available in the default Edition 2 mode.
+The code uses :code:`LTIME`, which is an IEC 61131-3:2013 data type and is
+not available in the default mode.
 
-To fix this error, enable Edition 3 support with the ``--edition-3`` command line
+To fix this error, enable IEC 61131-3:2013 support with the ``--std`` command line
 option when running the compiler:
 
 .. code-block:: bash
 
-   ironplcc check --edition-3 myprogram.st
+   ironplcc check --std=iec-61131-3:2013 myprogram.st

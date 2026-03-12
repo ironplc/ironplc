@@ -6,7 +6,7 @@ use crate::{
 };
 
 pub fn apply(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnostic>> {
-    if options.allow_edition_3 {
+    if options.allow_iec_61131_3_2013 {
         return Ok(());
     }
 
@@ -15,8 +15,11 @@ pub fn apply(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnos
     for tok in tokens {
         if tok.token_type == TokenType::Ltime {
             errors.push(Diagnostic::problem(
-                ironplc_problems::Problem::Edition3Feature,
-                Label::span(tok.span.clone(), "LTIME requires --edition-3 flag"),
+                ironplc_problems::Problem::Std2013Feature,
+                Label::span(
+                    tok.span.clone(),
+                    "LTIME requires --std=iec-61131-3:2013 flag",
+                ),
             ));
         }
     }
@@ -33,7 +36,7 @@ mod test {
 
     use crate::{
         options::ParseOptions,
-        rule_token_no_edition_3::apply,
+        rule_token_no_std_2013::apply,
         token::{Token, TokenType},
     };
 
@@ -50,7 +53,7 @@ mod test {
         let result = apply(
             &tokens,
             &ParseOptions {
-                allow_edition_3: false,
+                allow_iec_61131_3_2013: false,
                 ..ParseOptions::default()
             },
         );
@@ -70,7 +73,7 @@ mod test {
         let result = apply(
             &tokens,
             &ParseOptions {
-                allow_edition_3: true,
+                allow_iec_61131_3_2013: true,
                 ..ParseOptions::default()
             },
         );
