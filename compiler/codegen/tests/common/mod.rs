@@ -41,3 +41,15 @@ pub fn parse_and_try_run(source: &str) -> Result<(Container, VmBuffers), FaultCo
     }
     Ok((container, bufs))
 }
+
+/// Parses, analyzes, compiles, and runs a multi-round test scenario.
+///
+/// The closure receives a mutable VM reference so it can write variables,
+/// run multiple rounds, and read back results.
+pub fn parse_and_run_rounds(source: &str, f: impl FnOnce(&mut ironplc_vm::VmRunning<'_>)) {
+    let library = parse(source);
+    let container = compile(&library).unwrap();
+    let mut bufs = VmBuffers::from_container(&container);
+    let mut vm = load_and_start(&container, &mut bufs).unwrap();
+    f(&mut vm);
+}
