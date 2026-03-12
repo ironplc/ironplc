@@ -22,7 +22,7 @@ Timers
      - Supported
    * - :doc:`TP <tp>`
      - Pulse timer
-     - Not yet supported
+     - Supported
 
 Counters
 --------
@@ -36,13 +36,13 @@ Counters
      - Status
    * - :doc:`CTU <ctu>`
      - Count up
-     - Not yet supported
+     - Supported
    * - :doc:`CTD <ctd>`
      - Count down
-     - Not yet supported
+     - Supported
    * - :doc:`CTUD <ctud>`
      - Count up/down
-     - Not yet supported
+     - Supported
 
 Edge Detection
 --------------
@@ -73,10 +73,10 @@ Bistable
      - Status
    * - :doc:`SR <sr>`
      - Set-dominant flip-flop
-     - Not yet supported
+     - Supported
    * - :doc:`RS <rs>`
      - Reset-dominant flip-flop
-     - Not yet supported
+     - Supported
 
 .. toctree::
    :maxdepth: 1

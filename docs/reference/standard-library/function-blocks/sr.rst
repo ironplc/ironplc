@@ -12,7 +12,7 @@ priority: if both ``S1`` and ``R`` are ``TRUE``, the output ``Q1`` is
    * - **IEC 61131-3**
      - Section 2.5.2.3.1
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Inputs
 ------
@@ -48,25 +48,27 @@ Outputs
 Behavior
 --------
 
-The output ``Q1`` is set to ``TRUE`` when ``S1`` is ``TRUE``, and reset to
-``FALSE`` when ``R`` is ``TRUE``. Because the set input is dominant, if both
-``S1`` and ``R`` are ``TRUE`` simultaneously, the output ``Q1`` is ``TRUE``.
-The output retains its value between scans.
+The output is computed as ``Q1 := S1 OR (NOT R AND Q1)``. When ``S1`` is
+``TRUE``, the output is set regardless of ``R``. When only ``R`` is ``TRUE``,
+the output is cleared. The output retains its value between scans (latching).
 
 Example
 -------
 
-.. code-block::
+This example shows that set dominates: both ``S1`` and ``R`` are ``TRUE``, yet
+``output`` is ``TRUE``.
 
-   VAR
-     latch1 : SR;
-     set_signal : BOOL;
-     reset_signal : BOOL;
-     output : BOOL;
-   END_VAR
+.. playground::
 
-   latch1(S1 := set_signal, R := reset_signal);
-   output := latch1.Q1;
+   PROGRAM main
+      VAR
+         latch : SR;
+         output : BOOL;
+      END_VAR
+
+      latch(S1 := TRUE, R := TRUE, Q1 => output);
+      (* output is TRUE because set dominates *)
+   END_PROGRAM
 
 See Also
 --------
