@@ -17,8 +17,8 @@ PROGRAM main
   y := x = 5;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     assert_eq!(container.header.num_variables, 2);
     assert_eq!(container.constant_pool.get_i32(0).unwrap(), 10);
@@ -54,8 +54,8 @@ PROGRAM main
   y := x <> 5;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
@@ -84,8 +84,8 @@ PROGRAM main
   y := x < 5;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
@@ -114,8 +114,8 @@ PROGRAM main
   y := x <= 5;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
@@ -144,8 +144,8 @@ PROGRAM main
   y := x > 5;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
@@ -174,8 +174,8 @@ PROGRAM main
   y := x >= 5;
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(

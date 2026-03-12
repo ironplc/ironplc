@@ -18,7 +18,7 @@ pub fn apply(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnos
                 ironplc_problems::Problem::Std2013Feature,
                 Label::span(
                     tok.span.clone(),
-                    "LTIME requires --std=iec-61131-3:2013 flag",
+                    "LTIME requires --std-iec-61131-3=2013 flag",
                 ),
             ));
         }

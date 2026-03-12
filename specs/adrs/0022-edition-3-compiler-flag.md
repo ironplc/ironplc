@@ -113,3 +113,12 @@ ADR-0021 defines TIME as 32-bit and LTIME as 64-bit with millisecond precision. 
 ### Future IEC 61131-3:2013 Features
 
 When additional IEC 61131-3:2013 features are implemented (e.g., LWORD, WSTRING, LREAL if not already present), they should be gated by the same `allow_iec_61131_3_2013` flag and checked in the same `rule_token_no_std_2013.rs` validation rule. This keeps the feature gate centralized and consistent.
+
+### Amendment: Flag Renamed (2026-03-12)
+
+The flag was renamed from `--std=iec-61131-3:2013` to `--std-iec-61131-3=2013`. The flag **name** now identifies the standard (`--std-iec-61131-3`) and the **value** is the publication year (`2013`).
+
+Rationale:
+* **Unambiguous values** — Using the publication year (`2013`) avoids confusion with the edition number coinciding with the part number (edition 3 of part 3).
+* **Multi-standard support** — Embedding the standard name in the flag allows future standards (e.g., `--std-iec-61499=...`) to coexist as independent flags, enabling simultaneous multi-spec support without comma-separated values or repeated `--std` flags.
+* **Cross-shell compatibility** — The `--flag=value` syntax is standard POSIX long-option convention and works across Linux, macOS, and Windows shells.

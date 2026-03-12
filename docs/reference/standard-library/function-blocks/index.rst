@@ -56,10 +56,10 @@ Edge Detection
      - Status
    * - :doc:`R_TRIG <r-trig>`
      - Rising edge detection
-     - Not yet supported
+     - Supported
    * - :doc:`F_TRIG <f-trig>`
      - Falling edge detection
-     - Not yet supported
+     - Supported
 
 Bistable
 --------

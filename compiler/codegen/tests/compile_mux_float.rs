@@ -15,8 +15,8 @@ PROGRAM main
   y := MUX(0, 1.0, 2.0, 3.0);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // K=0 is an integer constant (i32), IN values are f32
@@ -39,8 +39,8 @@ PROGRAM main
   y := MUX(1, 1.0, 2.0);
 END_PROGRAM
 ";
-    let library = parse(source);
-    let container = compile(&library).unwrap();
+    let (library, context) = parse(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // BUILTIN MUX_F64_BASE+2 = 0x0462

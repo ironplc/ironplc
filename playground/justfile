@@ -7,7 +7,10 @@ setup:
 # Build the wasm package and assemble the deployable site into _build/
 compile:
   mkdir -p _build/pkg
+  npm install
   wasm-pack build ../compiler/playground --target web --out-dir ../../playground/_build/pkg --no-typescript
+  cp node_modules/uplot/dist/uPlot.esm.js _build/
+  cp node_modules/uplot/dist/uPlot.min.css _build/
   cp index.html app.js worker.js style.css _build/
 
 # Build everything (CI entry point)
