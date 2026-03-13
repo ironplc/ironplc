@@ -409,12 +409,25 @@ impl Emitter {
     /// Pops `num_params` arguments and pushes one return value.
     /// `var_offset` is the absolute variable table index where the
     /// function's parameters start.
-    pub fn emit_call(&mut self, function_id: u16, num_params: u16, var_offset: u16) {
+    pub fn emit_call(
+        &mut self,
+        function_id: u16,
+        num_params: u16,
+        var_offset: u16,
+        callee_max_stack: u16,
+    ) {
         self.bytecode.push(opcode::CALL);
         self.bytecode.extend_from_slice(&function_id.to_le_bytes());
         self.bytecode.extend_from_slice(&var_offset.to_le_bytes());
         if num_params > 0 {
             self.pop_stack(num_params);
+        }
+        // Account for the callee's stack usage on the shared stack.
+        // The callee will use up to callee_max_stack slots on top of the
+        // current depth, then leave exactly one return value.
+        if callee_max_stack > 0 {
+            self.push_stack(callee_max_stack);
+            self.pop_stack(callee_max_stack);
         }
         self.push_stack(1);
     }
@@ -1004,7 +1017,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0); // arg 1
         em.emit_load_const_i32(1); // arg 2
-        em.emit_call(2, 2, 5); // CALL function 2, 2 params, var_offset=5
+        em.emit_call(2, 2, 5, 0); // CALL function 2, 2 params, var_offset=5
 
         // LOAD_CONST pool:0, LOAD_CONST pool:1, CALL func:2 var_offset:5
         assert_eq!(
@@ -1018,7 +1031,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0); // stack: 1
         em.emit_load_const_i32(1); // stack: 2
-        em.emit_call(2, 2, 5); // pop 2 args, push 1 result = stack: 1
+        em.emit_call(2, 2, 5, 0); // pop 2 args, push 1 result = stack: 1
         em.emit_store_var_i32(0); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
