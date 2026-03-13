@@ -58,6 +58,7 @@ P4021,ExitOutsideLoop,EXIT statement is not inside a loop
 P4022,InitializerTypeMismatch,Variable initializer type is incompatible with declared type
 P4023,FunctionCallNamedArgUndeclared,Function call has named argument that does not match any declared input parameter
 P4024,FunctionCallDuplicateNamedArg,Function call has duplicate named argument
+P4025,BitAccessOutOfRange,Bit access index is out of range for the variable type
 P6001,CannotCanonicalizePath,Unable to canonicalize the path
 P6002,CannotReadMetadata,Unable to read metadata for the path
 P6003,CannotReadDirectory,Unable to read directory
