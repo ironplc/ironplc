@@ -4,8 +4,12 @@ use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
 use ironplc_parser::{options::ParseOptions, parse_program};
 
 /// Parse Structured Text (.st, .iec) files
-pub fn parse(content: &str, file_id: &FileId) -> Result<Library, Diagnostic> {
-    parse_program(content, file_id, &ParseOptions::default())
+pub fn parse(
+    content: &str,
+    file_id: &FileId,
+    parse_options: &ParseOptions,
+) -> Result<Library, Diagnostic> {
+    parse_program(content, file_id, parse_options)
 }
 
 #[cfg(test)]
@@ -24,7 +28,7 @@ END_VAR
 END_PROGRAM
 "#;
         let file_id = FileId::from_string("test.st");
-        let result = parse(content, &file_id);
+        let result = parse(content, &file_id, &ParseOptions::default());
 
         assert!(result.is_ok());
         let library = result.unwrap();
@@ -35,7 +39,7 @@ END_PROGRAM
     fn parse_invalid_syntax() {
         let content = "INVALID SYNTAX";
         let file_id = FileId::from_string("test.st");
-        let result = parse(content, &file_id);
+        let result = parse(content, &file_id, &ParseOptions::default());
 
         assert!(result.is_err());
     }
