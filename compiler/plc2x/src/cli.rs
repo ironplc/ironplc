@@ -23,12 +23,17 @@ use std::{
 };
 
 use ironplc_dsl::common::Library;
+use ironplc_parser::options::ParseOptions;
 
 use crate::project::{FileBackedProject, Project};
 
 // Checks specified files.
-pub fn check(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
-    let mut project = create_project(paths, suppress_output)?;
+pub fn check(
+    paths: &[PathBuf],
+    parse_options: ParseOptions,
+    suppress_output: bool,
+) -> Result<(), String> {
+    let mut project = create_project(paths, parse_options, suppress_output)?;
 
     // Analyze the set
     if let Err(err) = project.semantic() {
@@ -40,8 +45,12 @@ pub fn check(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
     Ok(())
 }
 
-pub fn echo(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
-    let mut project = create_project(paths, suppress_output)?;
+pub fn echo(
+    paths: &[PathBuf],
+    parse_options: ParseOptions,
+    suppress_output: bool,
+) -> Result<(), String> {
+    let mut project = create_project(paths, parse_options, suppress_output)?;
 
     // Collect the results and output after because getting the results may change
     // the project itself
@@ -80,8 +89,12 @@ pub fn echo(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
     }
 }
 
-pub fn tokenize(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> {
-    let project = create_project(paths, suppress_output)?;
+pub fn tokenize(
+    paths: &[PathBuf],
+    parse_options: ParseOptions,
+    suppress_output: bool,
+) -> Result<(), String> {
+    let project = create_project(paths, parse_options, suppress_output)?;
 
     for src in project.sources() {
         crate::tokenizer::tokenize_source(src, &project, suppress_output, &handle_diagnostics)?;
@@ -94,8 +107,13 @@ pub fn tokenize(paths: &[PathBuf], suppress_output: bool) -> Result<(), String> 
 ///
 /// Parses the source files, runs type resolution to populate expression types,
 /// and generates bytecode.
-pub fn compile(paths: &[PathBuf], output: &Path, suppress_output: bool) -> Result<(), String> {
-    let mut project = create_project(paths, suppress_output)?;
+pub fn compile(
+    paths: &[PathBuf],
+    output: &Path,
+    parse_options: ParseOptions,
+    suppress_output: bool,
+) -> Result<(), String> {
+    let mut project = create_project(paths, parse_options, suppress_output)?;
 
     // Parse all sources and merge into a single library
     let mut combined = Library::new();
@@ -135,7 +153,11 @@ pub fn compile(paths: &[PathBuf], output: &Path, suppress_output: bool) -> Resul
     Ok(())
 }
 
-fn create_project(paths: &[PathBuf], suppress_output: bool) -> Result<FileBackedProject, String> {
+fn create_project(
+    paths: &[PathBuf],
+    parse_options: ParseOptions,
+    suppress_output: bool,
+) -> Result<FileBackedProject, String> {
     trace!("Reading paths {paths:?}");
     let mut files: Vec<PathBuf> = vec![];
     let mut had_error = false;
@@ -155,7 +177,7 @@ fn create_project(paths: &[PathBuf], suppress_output: bool) -> Result<FileBacked
     }
 
     // Create the project
-    let mut project = FileBackedProject::new();
+    let mut project = FileBackedProject::with_options(parse_options);
     let mut errors: Vec<Diagnostic> = vec![];
 
     for file_path in files {
@@ -311,54 +333,56 @@ fn diagnostic(problem: Problem, path: &Path, message: String) -> Vec<Diagnostic>
 mod tests {
     use ironplc_test::shared_resource_path;
 
+    use ironplc_parser::options::ParseOptions;
+
     use crate::{cli::check, cli::compile, cli::echo, cli::tokenize, test_helpers::resource_path};
 
     #[test]
     fn check_first_steps_when_invalid_syntax_then_error() {
         let paths = vec![shared_resource_path("first_steps_semantic_error.st")];
-        let result = check(&paths, true);
+        let result = check(&paths, ParseOptions::default(), true);
         assert!(result.is_err())
     }
 
     #[test]
     fn check_first_steps_when_valid_syntax_then_ok() {
         let paths = vec![shared_resource_path("first_steps.st")];
-        let result = check(&paths, true);
+        let result = check(&paths, ParseOptions::default(), true);
         assert!(result.is_ok())
     }
 
     #[test]
     fn check_first_steps_dir_when_valid_syntax_then_ok() {
         let paths = vec![resource_path("set")];
-        let result = check(&paths, true);
+        let result = check(&paths, ParseOptions::default(), true);
         assert!(result.is_ok())
     }
 
     #[test]
     fn echo_first_steps_when_invalid_syntax_then_error() {
         let paths = vec![shared_resource_path("first_steps_syntax_error.st")];
-        let result = check(&paths, true);
+        let result = check(&paths, ParseOptions::default(), true);
         assert!(result.is_err())
     }
 
     #[test]
     fn echo_first_steps_when_valid_syntax_then_ok() {
         let paths = vec![shared_resource_path("first_steps.st")];
-        let result = echo(&paths, true);
+        let result = echo(&paths, ParseOptions::default(), true);
         assert!(result.is_ok())
     }
 
     #[test]
     fn tokenize_first_steps_when_valid_syntax_then_ok() {
         let paths = vec![shared_resource_path("first_steps.st")];
-        let result = echo(&paths, true);
+        let result = echo(&paths, ParseOptions::default(), true);
         assert!(result.is_ok())
     }
 
     #[test]
     fn tokenize_xml_when_valid_syntax_then_ok() {
         let paths = vec![resource_path("simple.xml")];
-        let result = tokenize(&paths, true);
+        let result = tokenize(&paths, ParseOptions::default(), true);
         assert!(result.is_ok())
     }
 
@@ -366,7 +390,7 @@ mod tests {
     fn compile_when_steel_thread_then_creates_output() {
         let paths = vec![shared_resource_path("steel_thread.st")];
         let output = tempfile::NamedTempFile::new().unwrap();
-        let result = compile(&paths, output.path(), true);
+        let result = compile(&paths, output.path(), ParseOptions::default(), true);
         assert!(result.is_ok());
         assert!(output.path().metadata().unwrap().len() > 0);
     }
@@ -375,7 +399,7 @@ mod tests {
     fn compile_when_syntax_error_then_error() {
         let paths = vec![shared_resource_path("first_steps_syntax_error.st")];
         let output = tempfile::NamedTempFile::new().unwrap();
-        let result = compile(&paths, output.path(), true);
+        let result = compile(&paths, output.path(), ParseOptions::default(), true);
         assert!(result.is_err());
     }
 
@@ -383,7 +407,7 @@ mod tests {
     fn compile_when_output_is_valid_container_then_roundtrips() {
         let paths = vec![shared_resource_path("steel_thread.st")];
         let output = tempfile::NamedTempFile::new().unwrap();
-        compile(&paths, output.path(), true).unwrap();
+        compile(&paths, output.path(), ParseOptions::default(), true).unwrap();
 
         // Verify the output is a valid container by reading it back
         let mut file = std::fs::File::open(output.path()).unwrap();

@@ -2,11 +2,10 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
+use ironplc_parser::options::ParseOptions;
 use ironplcc::cli;
 use ironplcc::logger;
 use ironplcc::lsp;
-use ironplcc::lsp_project::LspProject;
-use ironplcc::project::FileBackedProject;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -29,6 +28,9 @@ struct Args {
 /// IEC 61131-3 standard version to compile against.
 #[derive(clap::ValueEnum, Clone, Debug)]
 enum StdVersion {
+    /// IEC 61131-3:2003 — Edition 2 (default).
+    #[value(name = "2003")]
+    Iec6113132003,
     /// IEC 61131-3:2013 — enables Edition 3 features such as LTIME.
     #[value(name = "2013")]
     Iec6113132013,
@@ -43,8 +45,20 @@ struct FileArgs {
 
     /// Select the IEC 61131-3 standard version to compile against.
     /// Without this flag, only Edition 2 features are accepted.
-    #[arg(long = "std-iec-61131-3")]
-    std_version: Option<StdVersion>,
+    #[arg(long = "std-iec-61131-3", default_value = "2003")]
+    std_version: StdVersion,
+}
+
+impl FileArgs {
+    fn parse_options(&self) -> ParseOptions {
+        match self.std_version {
+            StdVersion::Iec6113132003 => ParseOptions::default(),
+            StdVersion::Iec6113132013 => ParseOptions {
+                allow_iec_61131_3_2013: true,
+                ..Default::default()
+            },
+        }
+    }
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -84,8 +98,8 @@ enum Action {
     /// The tokenize acton is primarily for diagnostics to understand the internal
     /// structure of the parsed files.
     Tokenize {
-        /// Files to tokenize.
-        files: Vec<PathBuf>,
+        #[command(flatten)]
+        file_args: FileArgs,
     },
     /// Run in Language Server Protocol mode to integrate with development tools.
     Lsp {
@@ -103,14 +117,17 @@ pub fn main() -> Result<(), String> {
     logger::configure(args.verbose, args.log_file)?;
 
     match args.action {
-        Action::Lsp { stdio: _ } => {
-            let proj = LspProject::new(Box::<FileBackedProject>::default());
-            lsp::start(proj)
+        Action::Lsp { stdio: _ } => lsp::start(),
+        Action::Check { file_args } => {
+            cli::check(&file_args.files, file_args.parse_options(), false)
         }
-        Action::Check { file_args } => cli::check(&file_args.files, false),
-        Action::Compile { file_args, output } => cli::compile(&file_args.files, &output, false),
-        Action::Echo { file_args } => cli::echo(&file_args.files, false),
-        Action::Tokenize { files } => cli::tokenize(&files, false),
+        Action::Compile { file_args, output } => {
+            cli::compile(&file_args.files, &output, file_args.parse_options(), false)
+        }
+        Action::Echo { file_args } => cli::echo(&file_args.files, file_args.parse_options(), false),
+        Action::Tokenize { file_args } => {
+            cli::tokenize(&file_args.files, file_args.parse_options(), false)
+        }
         Action::Version => {
             println!("ironplcc version {VERSION}");
             Ok(())

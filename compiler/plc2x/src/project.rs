@@ -57,6 +57,8 @@ pub trait Project {
 pub struct FileBackedProject {
     /// The underlying source project
     source_project: SourceProject,
+    /// Parse options for this project
+    parse_options: ParseOptions,
     /// Cached semantic context from the last successful analysis
     semantic_context: Option<SemanticContext>,
 }
@@ -71,6 +73,15 @@ impl FileBackedProject {
     pub fn new() -> Self {
         FileBackedProject {
             source_project: SourceProject::new(),
+            parse_options: ParseOptions::default(),
+            semantic_context: None,
+        }
+    }
+
+    pub fn with_options(parse_options: ParseOptions) -> Self {
+        FileBackedProject {
+            source_project: SourceProject::with_options(parse_options),
+            parse_options,
             semantic_context: None,
         }
     }
@@ -108,7 +119,7 @@ impl Project for FileBackedProject {
         let source = self.source_project.get_source(file_id);
 
         match source {
-            Some(src) => tokenize_program(src.as_string(), file_id, &ParseOptions::default(), 0, 0),
+            Some(src) => tokenize_program(src.as_string(), file_id, &self.parse_options, 0, 0),
             None => (
                 vec![],
                 vec![Diagnostic::problem(

@@ -2,6 +2,7 @@
 //! as Visual Studio Code.
 
 use crossbeam_channel::{Receiver, Sender};
+use ironplc_parser::options::ParseOptions;
 use log::{debug, trace};
 use lsp_server::{Connection, ExtractError, Message, RequestId};
 use lsp_types::{
@@ -17,19 +18,50 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::str::FromStr;
 
 use crate::lsp_project::{LspProject, TOKEN_TYPE_LEGEND};
+use crate::project::FileBackedProject;
 
-/// Start the LSP server with the specified project as the context.
-pub fn start(project: LspProject) -> Result<(), String> {
+/// Start the LSP server.
+///
+/// The project is constructed after receiving `initializationOptions` from the
+/// client so that parse options (e.g. the IEC 61131-3 standard version) can be
+/// applied.
+pub fn start() -> Result<(), String> {
     let (connection, io_threads) = Connection::stdio();
-    let result = start_with_connection(connection, project);
+    let result = start_with_connection(connection, None);
 
     io_threads.join().map_err(|e| e.to_string())?;
 
     result
 }
 
+/// Extract parse options from LSP initialization options.
+fn extract_parse_options(initialize_params: &InitializeParams) -> ParseOptions {
+    if let Some(ref opts) = initialize_params.initialization_options {
+        let std_version = opts.get("std61131Version").and_then(|v| v.as_str());
+        match std_version {
+            Some("2013") => {
+                debug!("Enabling IEC 61131-3:2013 features from initializationOptions");
+                ParseOptions {
+                    allow_iec_61131_3_2013: true,
+                    ..Default::default()
+                }
+            }
+            _ => ParseOptions::default(),
+        }
+    } else {
+        ParseOptions::default()
+    }
+}
+
 /// Start the LSP server using the connection for communication.
-fn start_with_connection(connection: Connection, project: LspProject) -> Result<(), String> {
+///
+/// When `project_override` is `None`, the project is constructed from
+/// `initializationOptions` received from the client. When `Some`, the
+/// provided project is used directly (for testing).
+fn start_with_connection(
+    connection: Connection,
+    project_override: Option<LspProject>,
+) -> Result<(), String> {
     // Declare what capabilities this server supports
     let server_capabilities =
         serde_json::to_value(LspServer::server_capabilities()).map_err(|e| e.to_string())?;
@@ -42,6 +74,16 @@ fn start_with_connection(connection: Connection, project: LspProject) -> Result<
     // Configure a project based on the initialize params
     let initialize_params: InitializeParams =
         serde_json::from_value(initialize_params).map_err(|e| e.to_string())?;
+
+    // Build the project — use override if provided, otherwise construct from
+    // initializationOptions
+    let project = match project_override {
+        Some(project) => project,
+        None => {
+            let parse_options = extract_parse_options(&initialize_params);
+            LspProject::new(Box::new(FileBackedProject::with_options(parse_options)))
+        }
+    };
 
     let mut server = LspServer::new(&connection.sender, project);
 
@@ -382,7 +424,7 @@ mod test {
             let (server_connection, client_connection) = Connection::memory();
 
             let server_thread = std::thread::spawn(|| {
-                start_with_connection(server_connection, project).unwrap();
+                start_with_connection(server_connection, Some(project)).unwrap();
             });
 
             let mut server = Self {
@@ -562,5 +604,134 @@ mod test {
 
         assert_eq!(result["header"]["numFunctions"], 1);
         assert_eq!(result["constants"][0]["value"], "42");
+    }
+
+    #[test]
+    fn extract_parse_options_when_2013_then_enables_edition_3() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(serde_json::json!({"std61131Version": "2013"})),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_parse_options(&params);
+        assert!(options.allow_iec_61131_3_2013);
+    }
+
+    #[test]
+    fn extract_parse_options_when_2003_then_uses_default() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(serde_json::json!({"std61131Version": "2003"})),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_parse_options(&params);
+        assert!(!options.allow_iec_61131_3_2013);
+    }
+
+    #[test]
+    fn extract_parse_options_when_no_options_then_uses_default() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: None,
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_parse_options(&params);
+        assert!(!options.allow_iec_61131_3_2013);
+    }
+
+    #[test]
+    fn lsp_when_2013_options_then_accepts_ltime() {
+        use ironplc_parser::options::ParseOptions;
+
+        let parse_options = ParseOptions {
+            allow_iec_61131_3_2013: true,
+            ..Default::default()
+        };
+        let proj = Box::new(FileBackedProject::with_options(parse_options));
+        let mut server = TestServer::new(proj);
+
+        // Send a document with LTIME literal (Edition 3 feature)
+        server.send_notification::<notification::DidChangeTextDocument>(
+            DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: Uri::from_str("file://example.net/test.st").unwrap(),
+                    version: 1,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: String::from("PROGRAM Main\nVAR\nx : LTIME;\nEND_VAR\nEND_PROGRAM"),
+                }],
+            },
+        );
+
+        let diagnostics = server.receive_notification::<PublishDiagnosticsParams>();
+        // LTIME should be accepted with 2013 options — no parse errors
+        assert!(
+            diagnostics.diagnostics.is_empty(),
+            "Expected no diagnostics for LTIME with 2013 options, got: {:?}",
+            diagnostics.diagnostics
+        );
+    }
+
+    #[test]
+    fn lsp_when_default_options_then_rejects_ltime() {
+        let proj = Box::new(FileBackedProject::default());
+        let mut server = TestServer::new(proj);
+
+        // Send a document with LTIME literal (Edition 3 feature)
+        server.send_notification::<notification::DidChangeTextDocument>(
+            DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: Uri::from_str("file://example.net/test.st").unwrap(),
+                    version: 1,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: String::from("PROGRAM Main\nVAR\nx : LTIME;\nEND_VAR\nEND_PROGRAM"),
+                }],
+            },
+        );
+
+        let diagnostics = server.receive_notification::<PublishDiagnosticsParams>();
+        // LTIME should be rejected with default (2003) options
+        assert!(
+            !diagnostics.diagnostics.is_empty(),
+            "Expected diagnostics for LTIME with default options"
+        );
     }
 }
