@@ -19,6 +19,7 @@ use ironplc_codegen::compile as codegen_compile;
 use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
+use ironplc_parser::options::ParseOptions;
 use ironplc_sources::{parse_source, FileType};
 use ironplc_vm::{Slot, Vm, VmBuffers};
 use serde::{Deserialize, Serialize};
@@ -226,7 +227,12 @@ pub fn compile(source: &str) -> String {
 
 fn compile_inner(source: &str) -> CompileResult {
     let file_type = FileType::from_content(source);
-    let library = match parse_source(file_type, source, &FileId::default()) {
+    let library = match parse_source(
+        file_type,
+        source,
+        &FileId::default(),
+        &ParseOptions::default(),
+    ) {
         Ok(lib) => lib,
         Err(diag) => {
             return CompileResult {
