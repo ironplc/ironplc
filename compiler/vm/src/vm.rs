@@ -754,6 +754,9 @@ fn execute(
                     variables.store(var_offset + i, val)?;
                 }
 
+                // TODO: Replace Rust-recursive execute() with an iterative dispatch
+                // loop that manages its own return-address stack, so call depth is
+                // controlled by the VM rather than Rust's thread stack.
                 // Recursively execute the function body.
                 execute(
                     func_bytecode,
