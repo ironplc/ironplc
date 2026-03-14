@@ -131,6 +131,14 @@ pub const JMP_IF_NOT: u8 = 0xB2;
 /// Stack effect depends on the specific function.
 pub const BUILTIN: u8 = 0xC4;
 
+/// Call function by index. Pops arguments, executes function body,
+/// pushes return value.
+/// Operand: u16 function_id (little-endian).
+pub const CALL: u8 = 0xB3;
+
+/// Return from function with a value on the stack.
+pub const RET: u8 = 0xB4;
+
 /// Return from the current function (void return).
 pub const RET_VOID: u8 = 0xB5;
 

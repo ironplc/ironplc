@@ -43,7 +43,7 @@ fn write_steel_thread_container(path: &Path) {
         .num_variables(2)
         .add_i32_constant(10)
         .add_i32_constant(32)
-        .add_function(0, &bytecode, 2, 2)
+        .add_function(0, &bytecode, 2, 2, 0)
         .build();
 
     let mut buf = Vec::new();
@@ -184,7 +184,7 @@ fn write_divide_by_zero_container(path: &Path) {
         .num_variables(0)
         .add_i32_constant(10)
         .add_i32_constant(0)
-        .add_function(0, &bytecode, 2, 0)
+        .add_function(0, &bytecode, 2, 0, 0)
         .build();
 
     let mut buf = Vec::new();

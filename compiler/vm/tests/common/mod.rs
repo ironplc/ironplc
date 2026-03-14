@@ -16,8 +16,8 @@ pub fn single_function_container(bytecode: &[u8], num_vars: u16, constants: &[i3
         builder = builder.add_i32_constant(c);
     }
     builder
-        .add_function(0, &[0xB5], 0, num_vars) // init: RET_VOID
-        .add_function(1, bytecode, 16, num_vars) // scan: test bytecode
+        .add_function(0, &[0xB5], 0, num_vars, 0) // init: RET_VOID
+        .add_function(1, bytecode, 16, num_vars, 0) // scan: test bytecode
         .init_function_id(0)
         .entry_function_id(1)
         .build()
@@ -35,8 +35,8 @@ pub fn single_function_container_f32(
         builder = builder.add_f32_constant(c);
     }
     builder
-        .add_function(0, &[0xB5], 0, num_vars)
-        .add_function(1, bytecode, 16, num_vars)
+        .add_function(0, &[0xB5], 0, num_vars, 0)
+        .add_function(1, bytecode, 16, num_vars, 0)
         .init_function_id(0)
         .entry_function_id(1)
         .build()
@@ -54,8 +54,8 @@ pub fn single_function_container_f64(
         builder = builder.add_f64_constant(c);
     }
     builder
-        .add_function(0, &[0xB5], 0, num_vars)
-        .add_function(1, bytecode, 16, num_vars)
+        .add_function(0, &[0xB5], 0, num_vars, 0)
+        .add_function(1, bytecode, 16, num_vars, 0)
         .init_function_id(0)
         .entry_function_id(1)
         .build()
@@ -73,8 +73,8 @@ pub fn single_function_container_i64(
         builder = builder.add_i64_constant(c);
     }
     builder
-        .add_function(0, &[0xB5], 0, num_vars)
-        .add_function(1, bytecode, 16, num_vars)
+        .add_function(0, &[0xB5], 0, num_vars, 0)
+        .add_function(1, bytecode, 16, num_vars, 0)
         .init_function_id(0)
         .entry_function_id(1)
         .build()
@@ -96,8 +96,8 @@ pub fn single_function_container_i32_i64(
         builder = builder.add_i64_constant(c);
     }
     builder
-        .add_function(0, &[0xB5], 0, num_vars)
-        .add_function(1, bytecode, 16, num_vars)
+        .add_function(0, &[0xB5], 0, num_vars, 0)
+        .add_function(1, bytecode, 16, num_vars, 0)
         .init_function_id(0)
         .entry_function_id(1)
         .build()
@@ -119,8 +119,8 @@ pub fn single_function_container_i32_f32(
         builder = builder.add_f32_constant(c);
     }
     builder
-        .add_function(0, &[0xB5], 0, num_vars)
-        .add_function(1, bytecode, 16, num_vars)
+        .add_function(0, &[0xB5], 0, num_vars, 0)
+        .add_function(1, bytecode, 16, num_vars, 0)
         .init_function_id(0)
         .entry_function_id(1)
         .build()
@@ -142,8 +142,8 @@ pub fn single_function_container_i32_f64(
         builder = builder.add_f64_constant(c);
     }
     builder
-        .add_function(0, &[0xB5], 0, num_vars)
-        .add_function(1, bytecode, 16, num_vars)
+        .add_function(0, &[0xB5], 0, num_vars, 0)
+        .add_function(1, bytecode, 16, num_vars, 0)
         .init_function_id(0)
         .entry_function_id(1)
         .build()
@@ -185,8 +185,8 @@ pub fn timer_test_container(pt_ms: i32, fb_type_id: u16) -> Container {
         .num_variables(4)
         .data_region_bytes(48) // 6 fields * 8 bytes
         .add_i32_constant(pt_ms)
-        .add_function(0, &init_bytecode, 0, 4)
-        .add_function(1, &bytecode, 16, 4)
+        .add_function(0, &init_bytecode, 0, 4, 0)
+        .add_function(1, &bytecode, 16, 4, 0)
         .init_function_id(0)
         .entry_function_id(1)
         .build()

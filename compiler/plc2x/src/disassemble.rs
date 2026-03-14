@@ -607,7 +607,7 @@ mod tests {
             .num_variables(2)
             .add_i32_constant(10)
             .add_i32_constant(32)
-            .add_function(0, &bytecode, 2, 2)
+            .add_function(0, &bytecode, 2, 2, 0)
             .build();
 
         // Round-trip through serialization to fill in offsets

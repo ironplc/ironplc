@@ -141,7 +141,7 @@ mod tests {
             .num_variables(2)
             .add_i32_constant(10)
             .add_i32_constant(32)
-            .add_function(0, &bytecode, 2, 2)
+            .add_function(0, &bytecode, 2, 2, 0)
             .build();
 
         let mut buf = Vec::new();
@@ -186,7 +186,7 @@ mod tests {
         let container = ContainerBuilder::new()
             .num_variables(1)
             .add_i32_constant(42)
-            .add_function(0, &bytecode, 1, 1)
+            .add_function(0, &bytecode, 1, 1, 0)
             .add_var_name(VarNameEntry {
                 var_index: 0,
                 function_id: function_id::GLOBAL_SCOPE,
