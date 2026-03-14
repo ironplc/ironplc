@@ -400,6 +400,8 @@ pub trait Visitor<E> {
     dispatch!(ArrayVariable);
 
     dispatch!(StructuredVariable);
+
+    dispatch!(BitAccessVariable);
 }
 
 #[cfg(test)]

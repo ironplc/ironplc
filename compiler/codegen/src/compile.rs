@@ -903,6 +903,8 @@ fn resolve_fb_type(name: &str) -> Option<(u16, usize, HashMap<String, u8>)> {
         }
         "SR" => Some((opcode::fb_type::SR, 3, sr_fb_fields())),
         "RS" => Some((opcode::fb_type::RS, 3, rs_fb_fields())),
+        "R_TRIG" => Some((opcode::fb_type::R_TRIG, 3, edge_trig_fb_fields())),
+        "F_TRIG" => Some((opcode::fb_type::F_TRIG, 3, edge_trig_fb_fields())),
         _ => None,
     }
 }
@@ -972,6 +974,15 @@ fn rs_fb_fields() -> HashMap<String, u8> {
     fields.insert("s".to_string(), 0);
     fields.insert("r1".to_string(), 1);
     fields.insert("q1".to_string(), 2);
+    fields
+}
+
+/// Returns the field map for edge trigger FBs (R_TRIG, F_TRIG).
+/// Field 2 is hidden (M / previous CLK) and not included.
+fn edge_trig_fb_fields() -> HashMap<String, u8> {
+    let mut fields = HashMap::new();
+    fields.insert("clk".to_string(), 0);
+    fields.insert("q".to_string(), 1);
     fields
 }
 
@@ -3070,6 +3081,11 @@ fn resolve_variable(ctx: &CompileContext, variable: &Variable) -> Result<u16, Di
             }
             SymbolicVariableKind::Structured(structured) => Err(Diagnostic::todo_with_span(
                 structured.span(),
+                file!(),
+                line!(),
+            )),
+            SymbolicVariableKind::BitAccess(bit_access) => Err(Diagnostic::todo_with_span(
+                bit_access.span(),
                 file!(),
                 line!(),
             )),

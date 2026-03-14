@@ -868,4 +868,8 @@ pub mod fb_type {
     pub const SR: u16 = 0x0030;
     /// RS (reset-set bistable, reset dominant).
     pub const RS: u16 = 0x0031;
+    /// R_TRIG (rising edge detector).
+    pub const R_TRIG: u16 = 0x0040;
+    /// F_TRIG (falling edge detector).
+    pub const F_TRIG: u16 = 0x0041;
 }

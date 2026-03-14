@@ -3,7 +3,7 @@
   "displayName": "IronPLC",
   "publisher": "ironplc",
   "description": "IronPLC is the beginning of a development environment for IEC 61131-3.",
-  "version": "0.173.0",
+  "version": "0.174.0",
   "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0",
@@ -75,6 +75,19 @@
           "type": "string",
           "default": "",
           "editPresentation": "singlelineText"
+        },
+        "ironplc.std61131Version": {
+          "markdownDescription": "IEC 61131-3 standard version. Edition 3 (2013) enables features such as `LTIME`.",
+          "type": "string",
+          "default": "2003",
+          "enum": [
+            "2003",
+            "2013"
+          ],
+          "enumDescriptions": [
+            "2003 (2nd)",
+            "2013 (3rd)"
+          ]
         }
       }
     },

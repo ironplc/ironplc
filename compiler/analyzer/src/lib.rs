@@ -7,6 +7,7 @@ extern crate ironplc_parser;
 mod function_environment;
 mod intermediate_type;
 mod result;
+mod rule_bit_access_range;
 mod rule_decl_struct_element_unique_names;
 mod rule_decl_subrange_limits;
 mod rule_enumeration_values_unique;
