@@ -199,3 +199,21 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i32(), 5);
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
+
+#[test]
+fn end_to_end_when_if_literal_expr_gt_literal_false_then_skips_body() {
+    let source = "
+PROGRAM main
+  VAR
+    y : DINT;
+  END_VAR
+  IF 2 * 4 > 8 THEN
+    y := 1;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // 2 * 4 = 8, and 8 > 8 is false
+    assert_eq!(bufs.vars[0].as_i32(), 0);
+}
