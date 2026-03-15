@@ -4,7 +4,7 @@ use crate::header::{FileHeader, HEADER_SIZE};
 use crate::task_type::TaskType;
 
 /// Size of a single function directory entry in bytes.
-const FUNC_ENTRY_SIZE: usize = 14;
+const FUNC_ENTRY_SIZE: usize = 16;
 
 /// Size of the task table header in bytes (num_tasks + num_programs + shared_globals_size).
 const TASK_TABLE_HEADER_SIZE: usize = 6;
@@ -344,7 +344,7 @@ mod tests {
             .num_variables(2)
             .add_i32_constant(10)
             .add_i32_constant(32)
-            .add_function(0, &bytecode, 2, 2)
+            .add_function(0, &bytecode, 2, 2, 0)
             .build();
         let mut buf = Vec::new();
         container.write_to(&mut buf).unwrap();

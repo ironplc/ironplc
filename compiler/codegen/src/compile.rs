@@ -41,8 +41,8 @@ use ironplc_container::debug_section::{
 };
 use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES};
 use ironplc_dsl::common::{
-    Boolean, ConstantKind, FunctionBlockBodyKind, InitialValueAssignmentKind, Library,
-    LibraryElementKind, ProgramDeclaration, SignedInteger, VarDecl, VariableType,
+    Boolean, ConstantKind, FunctionBlockBodyKind, FunctionDeclaration, InitialValueAssignmentKind,
+    Library, LibraryElementKind, ProgramDeclaration, SignedInteger, VarDecl, VariableType,
 };
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -122,11 +122,25 @@ struct StringVarInfo {
 /// unsupported constructs.
 pub fn compile(
     library: &Library,
-    _functions: &FunctionEnvironment,
+    functions: &FunctionEnvironment,
     _types: &TypeEnvironment,
 ) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
-    compile_program(program)
+
+    // Collect user-defined function declarations from the library.
+    let func_decls: Vec<&FunctionDeclaration> = library
+        .elements
+        .iter()
+        .filter_map(|e| {
+            if let LibraryElementKind::FunctionDeclaration(f) = e {
+                Some(f)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    compile_program_with_functions(program, &func_decls, functions)
 }
 
 /// Finds the first PROGRAM declaration in the library.
@@ -145,18 +159,50 @@ fn find_program(library: &Library) -> Result<&ProgramDeclaration, Diagnostic> {
     ))
 }
 
-/// Compiles a single PROGRAM into a container.
+/// Holds the compiled bytecode and metadata for a user-defined function.
+struct CompiledFunction {
+    function_id: u16,
+    bytecode: Vec<u8>,
+    max_stack_depth: u16,
+    num_locals: u16,
+    num_params: u16,
+    name: String,
+}
+
+/// Compiles a PROGRAM and its user-defined functions into a container.
 ///
-/// Always emits two functions:
+/// Always emits at least two functions:
 /// - Function 0: init (load constants + store variables, called once by VM)
 /// - Function 1: scan (program body, called every scan cycle)
+/// - Functions 2+: user-defined functions
 ///
 /// When no initial values exist, the init function is a single RET_VOID.
-fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic> {
+fn compile_program_with_functions(
+    program: &ProgramDeclaration,
+    func_decls: &[&FunctionDeclaration],
+    functions: &FunctionEnvironment,
+) -> Result<Container, Diagnostic> {
     let mut ctx = CompileContext::new();
 
-    // Assign variable indices for all declared variables.
+    // Assign variable indices for all declared program variables.
     assign_variables(&mut ctx, &program.variables)?;
+    let program_var_count = ctx.variables.len() as u16;
+
+    // Compile user-defined functions. Each function gets a unique function ID
+    // (starting at 2) and its variables are allocated after the program's.
+    let mut compiled_functions = Vec::new();
+    let mut next_function_id: u16 = 2;
+    let mut var_offset = program_var_count;
+
+    for func_decl in func_decls {
+        let compiled =
+            compile_user_function(func_decl, next_function_id, var_offset, &mut ctx, functions)?;
+        var_offset += compiled.num_locals;
+        next_function_id += 1;
+        compiled_functions.push(compiled);
+    }
+
+    let total_variables = var_offset;
 
     // Emit bytecode for variable initial values into the init emitter.
     let mut init_emitter = Emitter::new();
@@ -169,10 +215,7 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
     scan_emitter.emit_ret_void();
 
     // Build the container.
-    let num_variables = ctx.variables.len() as u16;
-    let num_locals = num_variables;
-
-    let mut builder = ContainerBuilder::new().num_variables(num_variables);
+    let mut builder = ContainerBuilder::new().num_variables(total_variables);
 
     // Configure data region for STRING variables.
     if ctx.data_region_offset > 0 {
@@ -198,11 +241,22 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
     // Function 0: init, Function 1: scan
     let init_stack = init_emitter.max_stack_depth();
     let init_bytecode = init_emitter.bytecode();
-    builder = builder.add_function(0, init_bytecode, init_stack, num_locals);
+    builder = builder.add_function(0, init_bytecode, init_stack, program_var_count, 0);
 
     let scan_stack = scan_emitter.max_stack_depth();
     let scan_bytecode = scan_emitter.bytecode();
-    builder = builder.add_function(1, scan_bytecode, scan_stack, num_locals);
+    builder = builder.add_function(1, scan_bytecode, scan_stack, program_var_count, 0);
+
+    // Add user-defined functions.
+    for compiled in &compiled_functions {
+        builder = builder.add_function(
+            compiled.function_id,
+            &compiled.bytecode,
+            compiled.max_stack_depth,
+            compiled.num_locals,
+            compiled.num_params,
+        );
+    }
 
     builder = builder.init_function_id(0).entry_function_id(1);
 
@@ -217,11 +271,165 @@ fn compile_program(program: &ProgramDeclaration) -> Result<Container, Diagnostic
             function_id: 1,
             name: program_name,
         });
+
+    for compiled in &compiled_functions {
+        builder = builder.add_func_name(FuncNameEntry {
+            function_id: compiled.function_id,
+            name: compiled.name.clone(),
+        });
+    }
     for entry in ctx.debug_var_names {
         builder = builder.add_var_name(entry);
     }
 
     Ok(builder.build())
+}
+
+/// Compiles a single user-defined function body.
+///
+/// Saves and restores the context's variable mappings so that function-local
+/// variables don't interfere with the program's namespace.
+///
+/// Variable layout within the function's region (starting at `var_offset`):
+/// - Input parameters (in declaration order)
+/// - Local variables (VAR)
+/// - Return value variable (named same as function)
+fn compile_user_function(
+    func_decl: &FunctionDeclaration,
+    function_id: u16,
+    var_offset: u16,
+    ctx: &mut CompileContext,
+    functions: &FunctionEnvironment,
+) -> Result<CompiledFunction, Diagnostic> {
+    // Save the program's variable mappings.
+    let saved_variables = std::mem::take(&mut ctx.variables);
+    let saved_var_types = std::mem::take(&mut ctx.var_types);
+
+    // Assign variable slots for the function's parameters and locals,
+    // starting at var_offset. Input parameters come first (declaration order),
+    // then local variables.
+    let mut current_index = var_offset;
+    let mut num_params: u16 = 0;
+
+    // First pass: input parameters (must come first for CALL arg passing).
+    for decl in &func_decl.variables {
+        if decl.var_type != VariableType::Input {
+            continue;
+        }
+        if let Some(id) = decl.identifier.symbolic_id() {
+            ctx.variables.insert(id.clone(), current_index);
+            if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
+                if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
+                    ctx.var_types.insert(id.clone(), type_info);
+                }
+            }
+            current_index += 1;
+            num_params += 1;
+        }
+    }
+
+    // Second pass: local variables (VAR).
+    for decl in &func_decl.variables {
+        if decl.var_type != VariableType::Var {
+            continue;
+        }
+        if let Some(id) = decl.identifier.symbolic_id() {
+            ctx.variables.insert(id.clone(), current_index);
+            if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
+                if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
+                    ctx.var_types.insert(id.clone(), type_info);
+                }
+            }
+            current_index += 1;
+        }
+    }
+
+    // Assign the return variable (named same as the function).
+    let return_var_index = current_index;
+    let return_id = func_decl.name.clone();
+    ctx.variables.insert(return_id.clone(), return_var_index);
+    if let Some(type_info) = resolve_type_name(&func_decl.return_type.name) {
+        ctx.var_types.insert(return_id, type_info);
+    }
+    current_index += 1;
+
+    let num_locals = current_index - var_offset;
+
+    // Determine return type's OpType.
+    let return_op_type = resolve_type_name(&func_decl.return_type.name)
+        .map(|info| (info.op_width, info.signedness))
+        .unwrap_or(DEFAULT_OP_TYPE);
+
+    // Compile the function body.
+    let mut func_emitter = Emitter::new();
+    let body = ironplc_dsl::textual::Statements {
+        body: func_decl.body.clone(),
+    };
+    compile_statements(&mut func_emitter, ctx, &body)?;
+
+    // Load the return value and emit RET.
+    emit_load_var(&mut func_emitter, return_var_index, return_op_type);
+    func_emitter.emit_ret();
+
+    let max_stack_depth = func_emitter.max_stack_depth();
+    let bytecode = func_emitter.bytecode().to_vec();
+
+    // Record function metadata for use at call sites.
+    let func_name = func_decl.name.lower_case();
+
+    // Also record parameter OpTypes from the function signature for call-site compilation.
+    let param_op_types: Vec<OpType> = if let Some(sig) = functions.get(&func_decl.name) {
+        sig.parameters
+            .iter()
+            .filter(|p| p.is_input)
+            .map(|p| {
+                resolve_type_name(&p.param_type.name)
+                    .map(|info| (info.op_width, info.signedness))
+                    .unwrap_or(DEFAULT_OP_TYPE)
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    ctx.user_functions.insert(
+        func_name.to_string(),
+        UserFunctionInfo {
+            function_id,
+            var_offset,
+            num_params,
+            param_op_types,
+            max_stack_depth,
+        },
+    );
+
+    // Restore the program's variable mappings.
+    ctx.variables = saved_variables;
+    ctx.var_types = saved_var_types;
+
+    Ok(CompiledFunction {
+        function_id,
+        bytecode,
+        max_stack_depth,
+        num_locals,
+        num_params,
+        name: func_name.to_string(),
+    })
+}
+
+/// Metadata for a compiled user-defined function.
+#[derive(Clone)]
+struct UserFunctionInfo {
+    /// The function ID assigned in the container.
+    function_id: u16,
+    /// The absolute variable table offset where this function's parameters start.
+    var_offset: u16,
+    /// Number of input parameters.
+    num_params: u16,
+    /// OpTypes for each input parameter, in declaration order.
+    param_op_types: Vec<OpType>,
+    /// Maximum stack depth used by this function's body.
+    max_stack_depth: u16,
 }
 
 /// Tracks state during compilation of a single program.
@@ -259,6 +467,8 @@ struct CompileContext {
     num_temp_bufs: u16,
     /// Debug info: variable name entries collected during assign_variables.
     debug_var_names: Vec<VarNameEntry>,
+    /// Maps user-defined function name (lowercase) to compilation metadata.
+    user_functions: HashMap<String, UserFunctionInfo>,
 }
 
 impl CompileContext {
@@ -274,6 +484,7 @@ impl CompileContext {
             max_string_capacity: 0,
             num_temp_bufs: 0,
             debug_var_names: Vec::new(),
+            user_functions: HashMap::new(),
         }
     }
 
@@ -1697,13 +1908,56 @@ fn compile_function_call(
         "mid" => compile_mid(emitter, ctx, func),
         "concat" => compile_concat(emitter, ctx, func),
         _ => {
-            if let Some((source, target)) = parse_type_conversion(name) {
+            // Check user-defined functions first.
+            if let Some(func_info) = ctx.user_functions.get(name.as_str()).cloned() {
+                compile_user_function_call(emitter, ctx, func, &func_info)
+            } else if let Some((source, target)) = parse_type_conversion(name) {
                 compile_type_conversion(emitter, ctx, func, source, target)
             } else {
                 compile_generic_builtin(emitter, ctx, func, op_type)
             }
         }
     }
+}
+
+/// Compiles a call to a user-defined function.
+///
+/// Compiles each positional argument using the parameter's declared OpType,
+/// then emits a CALL instruction. The CALL opcode pops arguments, stores them
+/// into the function's variable slots, executes the function, and pushes
+/// the return value onto the stack.
+fn compile_user_function_call(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    func_info: &UserFunctionInfo,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    // Compile each argument with the corresponding parameter's OpType.
+    for (i, arg) in args.iter().enumerate() {
+        let arg_op_type = func_info
+            .param_op_types
+            .get(i)
+            .copied()
+            .unwrap_or(DEFAULT_OP_TYPE);
+        compile_expr(emitter, ctx, arg, arg_op_type)?;
+    }
+
+    emitter.emit_call(
+        func_info.function_id,
+        func_info.num_params,
+        func_info.var_offset,
+        func_info.max_stack_depth,
+    );
+    Ok(())
 }
 
 /// Compiles a generic builtin function call via `lookup_builtin`.
