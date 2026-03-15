@@ -1,6 +1,6 @@
 # Function Local Re-initialization via Init Template Section
 
-status: proposed
+status: accepted
 date: 2026-03-15
 
 ## Context and Problem Statement
@@ -40,17 +40,17 @@ How should the VM ensure function locals are re-initialized on each call?
 
 ## Decision Outcome
 
-Chosen option: "Option A — Init template section", because it is the fastest at runtime (a single memcpy vs. bytecode dispatch per local), supports non-zero initial values without any bytecode overhead, and cleanly separates initialization data from executable code. The container format change is backward-compatible (old containers have zeros in the new header fields, causing the VM to skip the memcpy).
+Chosen option: "Option B — Bytecode prologue", because it reuses the existing `emit_initial_values()` / `compile_constant()` codegen path with zero risk of divergence between two constant-evaluation code paths. The prologue adds ~7-10 bytes of bytecode per local variable, but for typical IEC 61131-3 functions (5-20 locals) this overhead is negligible compared to scan cycle execution time. No container format changes are required, keeping the implementation simple and backward-compatible by default.
 
 ### Consequences
 
-* Good, because re-initialization is a single bulk copy — O(n) in the number of locals with no bytecode dispatch overhead
-* Good, because non-zero initial values (`VAR x : DINT := 42;`) are handled identically to zero-initialized locals, with no additional bytecode in the function body
-* Good, because the container format change is backward-compatible: old containers have `init_template_offset=0`, `init_template_size=0` (from the previously-zeroed reserved region), so the VM skips the memcpy
-* Good, because it cleanly separates "what values locals should have" (data) from "what the function does" (code)
-* Bad, because it requires a new container section and 8 bytes of header space from the reserved region
-* Bad, because it introduces a second code path for computing initial values: `compute_initial_slot_value()` in codegen must produce identical Slot representations to what the existing `compile_constant()` + `emit_truncation()` would produce at runtime, creating a risk of divergence
-* Neutral, because functions with no locals (or only parameters) have an empty template entry (template_size=0) and the CALL handler skips the memcpy — no overhead for parameter-only functions
+* Good, because no container format changes — all initialization is in the function's bytecode
+* Good, because reuses the existing `compile_constant()` + `emit_truncation()` codegen path identically, with zero risk of divergence
+* Good, because no VM changes — the CALL handler is unchanged; the prologue is just bytecode the function executes
+* Good, because simpler overall — no new section, no new parsing logic in Container or ContainerRef
+* Bad, because every function call interprets multiple bytecode instructions per local (LOAD_CONST + optional TRUNC + STORE_VAR = 7-10 bytes per local), which is slower than a memcpy
+* Bad, because function bytecode size increases by ~7-10 bytes per local variable, even when the initial value is zero
+* Neutral, because for functions with no non-parameter locals, the prologue is empty (only the return variable zero-init), adding minimal overhead
 
 ## Pros and Cons of the Options
 
