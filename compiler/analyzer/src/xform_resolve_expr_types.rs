@@ -93,10 +93,16 @@ impl ExprTypeResolver<'_> {
 
     fn resolve_const_type(&self, constant: &ConstantKind) -> Option<TypeName> {
         match constant {
-            ConstantKind::IntegerLiteral(lit) => lit.data_type.as_ref().map(|itn| {
-                let elem: ElementaryTypeName = itn.clone().into();
-                elem.into()
-            }),
+            ConstantKind::IntegerLiteral(lit) => Some(
+                lit.data_type
+                    .as_ref()
+                    .map(|itn| {
+                        let elem: ElementaryTypeName = itn.clone().into();
+                        let tn: TypeName = elem.into();
+                        tn
+                    })
+                    .unwrap_or_else(|| TypeName::from("DINT")),
+            ),
             ConstantKind::RealLiteral(lit) => Some(
                 lit.data_type
                     .as_ref()
@@ -134,7 +140,7 @@ impl ExprTypeResolver<'_> {
             }
             Variable::Symbolic(SymbolicVariableKind::Array(_)) => None,
             Variable::Symbolic(SymbolicVariableKind::Structured(_)) => None,
-            Variable::Symbolic(SymbolicVariableKind::BitAccess(_)) => None,
+            Variable::Symbolic(SymbolicVariableKind::BitAccess(_)) => Some(TypeName::from("BOOL")),
             Variable::Direct(_) => None,
         }
     }
@@ -695,6 +701,22 @@ END_FUNCTION_BLOCK";
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
         assert_type_eq(&types[0], "STRING");
+    }
+
+    #[test]
+    fn apply_when_untyped_integer_literal_then_resolves_dint() {
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    y : DINT;
+END_VAR
+    y := 42;
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "DINT");
     }
 
     #[test]
