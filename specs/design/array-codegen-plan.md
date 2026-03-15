@@ -18,9 +18,17 @@ Add code generation and VM support for arrays of primitive types. This document 
 
 4. **Safety-critical note**: The flat runtime bounds check guarantees memory safety but does not catch all logically invalid multi-dimensional indices (e.g., `matrix[0, 5]` on `ARRAY[1..3, 1..4]` may access a valid but semantically wrong element — see ADR-0023 case 3). For safety-critical applications, per-dimension runtime checks should be added as a follow-up. This does not block the initial implementation since memory safety is guaranteed.
 
+5. **Runtime index arithmetic overflow**: For variable subscripts, the emitted i32 arithmetic `(subscript - lower_bound) * stride` can overflow if the runtime subscript is far outside the valid range (e.g., `i32::MAX`). The 32768-element limit bounds strides to at most 32768, so intermediate overflow requires subscripts far outside valid bounds. The VM's flat bounds check catches most overflowed results. In the rare case where wrapped arithmetic lands in `[0, total_elements)`, the access hits a valid-but-wrong element — the same semantic (not memory-safety) gap as ADR-0023 case 3. This is acceptable for the initial implementation.
+
+6. **`data_offset` stored as `i32` in variable slots**: The slot stores `data_offset` via `LOAD_CONST_I32`, limiting effective addressing to `i32::MAX` (2 GiB). The codegen must assert `data_region_offset <= i32::MAX as u32` during allocation to fail fast instead of silently wrapping. With the 32768-element limit this is practically unreachable, but the assertion makes the invariant explicit.
+
 ---
 
-## Pre-work PR: Preserve Per-Dimension Bounds in `IntermediateType::Array`
+## Pre-work PRs
+
+Four independent, zero-risk refactoring PRs that land before any array feature code. Each is independently reviewable and introduces no new behavior.
+
+### Pre-work PR 0a: Preserve Per-Dimension Bounds in `IntermediateType::Array`
 
 **Goal**: Replace the flat `size: Option<u32>` in `IntermediateType::Array` with per-dimension bounds so the codegen can recover lower/upper bounds for each dimension when resolving named array types (e.g., `TYPE MY_ARRAY : ARRAY[1..3, 1..4] OF INT; END_TYPE`).
 
@@ -180,6 +188,118 @@ SpecificationKind::Named(type_name) => {
 }
 ```
 
+### Pre-work PR 0b: Widen `data_region_offset` to `u32`
+
+**Goal**: Change `data_region_offset: u16` to `u32` in `CompileContext`. Arrays can easily exceed 64KB (`ARRAY[1..1000] OF DINT` = 8000 bytes), and the header's `data_region_bytes` field is already `u32`.
+
+**File**: `compiler/codegen/src/compile.rs`
+
+Changes:
+1. `CompileContext.data_region_offset: u16` → `u32`
+2. `StringVarInfo.data_offset: u16` → `u32`
+3. `FbInstanceInfo.data_offset: u16` → `u32` (currently defined as `u16` at line ~420)
+4. Update all `checked_add` call sites (STRING allocation at line 618, FB allocation at line 646, function-local string allocation at line 2404) to use `u32` arithmetic
+5. Update `emit_str_store_var()` call sites that pass `data_offset` — the emitter takes `u16`, so this may require widening the emitter parameter too, or asserting the offset fits in `u16` for strings specifically
+
+Add a `data_region_offset <= i32::MAX as u32` assertion at the point where `data_region_offset` is stored into a variable slot via `LOAD_CONST_I32` (see Key Design Decision 6).
+
+Pure refactoring — no behavioral change for any program that compiles today.
+
+### Pre-work PR 0c: Thread `TypeEnvironment` Through Compile Chain
+
+**Goal**: Make `TypeEnvironment` available to `assign_variables()` and `emit_initial_values()` where it will be needed for named array type resolution.
+
+**File**: `compiler/codegen/src/compile.rs`
+
+The call chain is:
+```
+compile(_types: &TypeEnvironment)          // line 126 — already receives it, unused
+  → compile_program_with_functions(...)    // line 143 — does NOT receive it
+      → assign_variables(ctx, decls)       // line 188 — does NOT receive it
+      → emit_initial_values(emitter, ctx, decls)  // line 209 — does NOT receive it
+```
+
+Changes (4 function signatures):
+1. `compile()`: rename `_types` to `types`, pass to `compile_program_with_functions()`
+2. `compile_program_with_functions()`: add `types: &TypeEnvironment` parameter, pass to `assign_variables()` and `emit_initial_values()`
+3. `assign_variables()`: add `_types: &TypeEnvironment` parameter (unused until Step 5)
+4. `emit_initial_values()`: add `_types: &TypeEnvironment` parameter (unused until Step 6)
+
+Pure plumbing — no behavioral change.
+
+### Pre-work PR 0d: Create `compile_array.rs` Module
+
+**Goal**: Establish a separate module for array codegen to avoid further bloating `compile.rs` (already 3725 lines, well over the 1000-line module limit).
+
+**File**: New file `compiler/codegen/src/compile_array.rs`
+
+This PR creates the module with only the type definitions and the `ResolvedAccess` enum (see Step 4a revised). No logic yet — just the structural scaffolding that later steps populate.
+
+```rust
+//! Array code generation support.
+//!
+//! Handles array variable registration, index computation, and
+//! array read/write compilation. Separated from compile.rs to
+//! keep module sizes within the 1000-line guideline.
+
+use std::collections::HashMap;
+use ironplc_dsl::core::Id;
+use ironplc_dsl::textual::{ArrayVariable, Expr, Variable, SymbolicVariableKind};
+use crate::emit::Emitter;
+
+// Re-export from compile.rs what's needed (or use pub(crate) on types there).
+
+/// Normalized array specification, independent of AST representation.
+/// Both inline (`ARRAY[1..3, 1..4] OF INT`) and named type paths
+/// convert to this form before registration.
+pub(crate) struct ArraySpec {
+    /// Per-dimension bounds as (lower, upper) inclusive pairs.
+    pub dimensions: Vec<(i32, i32)>,
+    /// Element type name (e.g., "INT", "DINT").
+    pub element_type_name: Id,
+}
+
+/// Metadata for a single dimension of an array, used for index computation.
+pub(crate) struct DimensionInfo {
+    pub lower_bound: i32,
+    pub size: u32,
+    pub stride: u32,
+}
+
+/// Metadata for an array variable, stored in CompileContext.
+pub(crate) struct ArrayVarInfo {
+    pub var_index: u16,
+    pub desc_index: u16,
+    pub data_offset: u32,
+    pub element_var_type_info: super::VarTypeInfo,
+    pub total_elements: u32,
+    pub dimensions: Vec<DimensionInfo>,
+}
+
+/// The resolved target of a variable access.
+///
+/// This enum decouples variable resolution from code emission.
+/// Each dispatch site (compile_expr, compile_statement) matches
+/// on the variant and calls the appropriate emission logic.
+///
+/// Designed for extensibility: when struct access is implemented,
+/// add a `StructField` variant and extend `resolve_access()`.
+/// The dispatch sites gain a new match arm without changing shape.
+pub(crate) enum ResolvedAccess<'a> {
+    /// Simple named variable — use LOAD_VAR/STORE_VAR.
+    Scalar { var_index: u16 },
+    /// Array element — compute flat index, use LOAD_ARRAY/STORE_ARRAY.
+    ArrayElement {
+        info: &'a ArrayVarInfo,
+        subscripts: Vec<&'a Expr>,
+    },
+    // Future variants:
+    // StructField { base: ..., field_offset: ..., field_type: ... },
+}
+```
+
+Add `mod compile_array;` to `lib.rs` (or to `compile.rs` as a submodule). The broader split of `compile.rs` into multiple modules (expressions, statements, builtins) is a separate effort tracked outside this plan.
+
 ---
 
 ## Step 1: Opcode Constants
@@ -290,30 +410,15 @@ The builder appends the descriptor to `TypeSection.array_descriptors` and return
 
 ## Step 4: Array Tracking in Codegen
 
-**File**: `compiler/codegen/src/compile.rs`
+**File**: `compiler/codegen/src/compile_array.rs` (new module from Pre-work PR 0d)
 
-### 4a: New types
+### 4a: Types (already scaffolded in Pre-work PR 0d)
 
-```rust
-/// Metadata for a single dimension of an array, used for index computation.
-struct DimensionInfo {
-    lower_bound: i32,  // IEC declared lower bound (e.g., 1, -5, 0)
-    size: u32,         // number of elements in this dimension (upper - lower + 1)
-    stride: u32,       // product of all subsequent dimension sizes
-}
-
-/// Metadata for an array variable, stored in CompileContext.
-struct ArrayVarInfo {
-    var_index: u16,           // slot table index (slot holds data_offset)
-    desc_index: u16,          // index into the container's array descriptor table
-    data_offset: u32,         // byte offset in data region where elements start
-    element_var_type_info: VarTypeInfo,  // element's VarTypeInfo for truncation
-    total_elements: u32,      // total flattened element count
-    dimensions: Vec<DimensionInfo>,  // per-dimension bounds and strides
-}
-```
+`ArraySpec`, `DimensionInfo`, `ArrayVarInfo`, and `ResolvedAccess` are defined in `compile_array.rs`. See Pre-work PR 0d for definitions.
 
 ### 4b: Add to `CompileContext`
+
+**File**: `compiler/codegen/src/compile.rs`
 
 ```rust
 struct CompileContext {
@@ -324,57 +429,156 @@ struct CompileContext {
 
 Initialize `array_vars: HashMap::new()` in `CompileContext::new()`.
 
-### 4c: Widen `data_region_offset` to `u32`
+### 4c: Widen `data_region_offset` to `u32` (done in Pre-work PR 0b)
 
-The existing `data_region_offset: u16` in `CompileContext` must be widened to `u32`. Arrays can easily exceed 64KB: `ARRAY[1..1000] OF DINT` = 8000 bytes, and a few such arrays would overflow `u16`. The header's `data_region_bytes` field is already `u32`, so the container supports this. The codegen is the only place that needs widening.
+Already completed in Pre-work PR 0b.
 
-Change `data_region_offset: u16` to `data_region_offset: u32` in `CompileContext`. Update all existing code that uses it (STRING allocation, FB allocation) to use `u32` arithmetic. The `checked_add` calls remain but now operate on `u32`.
+### 4d: Thread `TypeEnvironment` through (done in Pre-work PR 0c)
 
-**Impact on existing code**: `StringVarInfo.data_offset` and `FbInstanceInfo.data_offset` should also be widened to `u32`. The emitter's `LOAD_CONST_I32` for storing data offsets into variable slots already takes `i32`, which holds values up to 2^31 — sufficient.
+Already completed in Pre-work PR 0c.
 
-### 4d: Thread `TypeEnvironment` through
+### 4e: Implement `resolve_access()`
 
-The `compile()` function receives `_types: &TypeEnvironment` but ignores it. Change to `types: &TypeEnvironment` and pass it to `assign_variables()` and other functions that need array type resolution. This is needed to resolve user-defined array type names (e.g., `TYPE MY_ARRAY : ARRAY[1..10] OF INT; END_TYPE`).
+**File**: `compiler/codegen/src/compile_array.rs`
+
+Add the function that resolves a `Variable` AST node into a `ResolvedAccess`:
+
+```rust
+/// Resolves a variable reference into its access kind.
+///
+/// For named variables, returns Scalar with the variable table index.
+/// For array variables, walks the ArrayVariable chain to collect
+/// all subscripts and resolve the base variable's ArrayVarInfo.
+///
+/// This function is the single dispatch point for variable access
+/// resolution. When struct access is added, extend the match in
+/// this function and add a new ResolvedAccess variant — the call
+/// sites in compile_expr and compile_statement stay unchanged.
+pub(crate) fn resolve_access<'a>(
+    ctx: &'a CompileContext,
+    variable: &'a Variable,
+) -> Result<ResolvedAccess<'a>, Diagnostic> {
+    match variable {
+        Variable::Symbolic(SymbolicVariableKind::Array(array_var)) => {
+            // Walk the chain collecting subscript groups innermost-first,
+            // then reverse. For nested arrays arr[i][j], the AST is:
+            //   ArrayVariable {
+            //       subscripted_variable: Array(ArrayVariable {
+            //           subscripted_variable: Named(Id("arr")),
+            //           subscripts: [i],
+            //       }),
+            //       subscripts: [j],
+            //   }
+            // We collect: [[j], [i]], reverse to [[i], [j]], flatten to [i, j].
+            let mut levels: Vec<&[Expr]> = Vec::new();
+            let mut current = array_var;
+            loop {
+                levels.push(&current.subscripts);
+                match current.subscripted_variable.as_ref() {
+                    SymbolicVariableKind::Array(inner) => {
+                        current = inner;
+                    }
+                    SymbolicVariableKind::Named(named) => {
+                        levels.reverse();
+                        let all_subscripts: Vec<&Expr> =
+                            levels.into_iter().flatten().collect();
+                        let info = ctx.array_vars.get(&named.name)
+                            .ok_or_else(|| Diagnostic::todo_with_span(
+                                named.name.span(), file!(), line!()
+                            ))?;
+                        return Ok(ResolvedAccess::ArrayElement {
+                            info,
+                            subscripts: all_subscripts,
+                        });
+                    }
+                    other => {
+                        return Err(Diagnostic::todo_with_span(
+                            other.span(), file!(), line!()
+                        ));
+                    }
+                }
+            }
+        }
+        _ => {
+            // Fall through to existing resolve_variable() for scalars.
+            let var_index = resolve_variable(ctx, variable)?;
+            Ok(ResolvedAccess::Scalar { var_index })
+        }
+    }
+}
+```
+
+This replaces the plan's original `as_array_access()` and `resolve_array_access()` pair with a single function that returns a discriminated union. The dispatch sites in `compile_expr` and `compile_statement` match on the enum instead of doing ad-hoc `if let` checks. When struct access is added later, a `StructField` variant is added to `ResolvedAccess` and `resolve_access()` is extended — the dispatch sites gain a match arm without changing shape.
 
 ---
 
 ## Step 5: Handle `InitialValueAssignmentKind::Array` in `assign_variables()`
 
-**File**: `compiler/codegen/src/compile.rs`, function `assign_variables()`
+**File**: `compiler/codegen/src/compile_array.rs` (registration logic) and `compiler/codegen/src/compile.rs` (call site in `assign_variables()`)
 
 Currently, the `match` on `decl.initializer` handles `Simple`, `String`, `FunctionBlock`, etc. The `Array` case falls through to the catch-all `_ => (...)` with no special handling. Add an explicit case.
 
-### 5a: Extract array subranges into a helper
+### 5a: Normalize to `ArraySpec`, then register
 
-Since both `SpecificationKind::Inline` and `SpecificationKind::Named` need the same processing once the subranges are resolved, extract the core logic into a helper:
+Both `SpecificationKind::Inline` and `SpecificationKind::Named` are converted to `ArraySpec` first, then a single `register_array_variable` function handles all registration logic. This avoids duplicating the core logic across two code paths.
+
+**File**: `compiler/codegen/src/compile_array.rs`
 
 ```rust
-/// Processes resolved array subranges and registers the array in the compile context.
-/// `builder` is the ContainerBuilder, used to register the array descriptor
-/// and obtain its index.
-fn register_array_variable(
+/// Converts an inline array specification (from the AST) to a normalized ArraySpec.
+pub(crate) fn array_spec_from_inline(
+    subranges: &ArraySubranges,
+    span: &SourceSpan,
+) -> Result<ArraySpec, Diagnostic> {
+    let dimensions: Vec<(i32, i32)> = subranges.ranges.iter()
+        .map(|range| {
+            let lower = signed_integer_to_i32(&range.start)?;
+            let upper = signed_integer_to_i32(&range.end)?;
+            Ok((lower, upper))
+        })
+        .collect::<Result<Vec<_>, Diagnostic>>()?;
+    Ok(ArraySpec {
+        dimensions,
+        element_type_name: Id::from(subranges.type_name.to_string()),
+    })
+}
+
+/// Converts a named array type (from the TypeEnvironment) to a normalized ArraySpec.
+pub(crate) fn array_spec_from_named(
+    element_type: &IntermediateType,
+    dimensions: &[ArrayDimension],
+) -> Result<ArraySpec, Diagnostic> {
+    let dims: Vec<(i32, i32)> = dimensions.iter()
+        .map(|d| (d.lower, d.upper))
+        .collect();
+    let element_type_name = intermediate_type_to_name(element_type)?;
+    Ok(ArraySpec {
+        dimensions: dims,
+        element_type_name,
+    })
+}
+
+/// Registers an array variable from a normalized ArraySpec.
+/// Single code path for both inline and named array types.
+pub(crate) fn register_array_variable(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
     id: &Id,
     var_index: u16,
-    subranges: &ArraySubranges,
-    initial_values: &[ArrayInitialElementKind],
+    spec: &ArraySpec,
     span: &SourceSpan,
 ) -> Result<(u8, String), Diagnostic> {
     // 1. Resolve element type
-    let element_type_name = &subranges.type_name;
-    let element_vti = resolve_type_name(&Id::from(element_type_name.to_string()))
+    let element_vti = resolve_type_name(&spec.element_type_name)
         .ok_or_else(|| Diagnostic::problem(
             Problem::NotImplemented,
             Label::span(span.clone(), "Unsupported array element type"),
         ))?;
 
-    // 2. Extract dimension info from subranges
+    // 2. Build DimensionInfo from normalized bounds
     let mut dimensions: Vec<DimensionInfo> = Vec::new();
     let mut total_elements: u32 = 1;
-    for range in &subranges.ranges {
-        let lower = signed_integer_to_i32(&range.start)?;
-        let upper = signed_integer_to_i32(&range.end)?;
+    for &(lower, upper) in &spec.dimensions {
         let size = (upper as i64 - lower as i64 + 1) as u32;
         dimensions.push(DimensionInfo { lower_bound: lower, size, stride: 0 });
         total_elements = total_elements.checked_mul(size).ok_or_else(|| {
@@ -385,7 +589,7 @@ fn register_array_variable(
         })?;
     }
 
-    // 3. Validate total_elements fits in the container descriptor (i16 upper_bound)
+    // 3. Validate element limit (i32 safety for flat-index arithmetic)
     if total_elements > 32768 {
         return Err(Diagnostic::problem(
             Problem::NotImplemented,
@@ -394,7 +598,6 @@ fn register_array_variable(
     }
 
     // 4. Compute strides (reverse pass)
-    // stride[last] = 1, stride[k] = stride[k+1] * size[k+1]
     let n = dimensions.len();
     if n > 0 {
         dimensions[n - 1].stride = 1;
@@ -403,9 +606,9 @@ fn register_array_variable(
         }
     }
 
-    // 5. Allocate data region space (u32 arithmetic — no overflow for valid arrays)
+    // 5. Allocate data region space
     let data_offset = ctx.data_region_offset;
-    let total_bytes = total_elements * 8;  // 8 bytes per element, u32 arithmetic
+    let total_bytes = total_elements * 8;
     ctx.data_region_offset = ctx.data_region_offset
         .checked_add(total_bytes)
         .ok_or_else(|| Diagnostic::problem(
@@ -413,11 +616,19 @@ fn register_array_variable(
             Label::span(span.clone(), "Data region overflow"),
         ))?;
 
-    // 6. Register descriptor in the container and get its index
+    // 6. Assert data_offset fits in i32 (stored in slot via LOAD_CONST_I32)
+    if data_offset > i32::MAX as u32 {
+        return Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span.clone(), "Data region exceeds 2 GiB limit"),
+        ));
+    }
+
+    // 7. Register descriptor in the container and get its index
     let element_type_byte = var_type_info_to_type_byte(&element_vti);
     let desc_index = builder.add_array_descriptor(element_type_byte, total_elements);
 
-    // 7. Store in context
+    // 8. Store in context
     ctx.array_vars.insert(id.clone(), ArrayVarInfo {
         var_index,
         desc_index,
@@ -428,27 +639,22 @@ fn register_array_variable(
     });
 
     let type_tag = iec_type_tag::OTHER;
-    let type_name_str = format!("ARRAY OF {}", element_type_name.to_string().to_uppercase());
+    let type_name_str = format!("ARRAY OF {}", spec.element_type_name.to_string().to_uppercase());
     Ok((type_tag, type_name_str))
 }
 ```
 
 ### 5b: Handle inline and named array specifications
 
+**File**: `compiler/codegen/src/compile.rs`, in `assign_variables()`
+
 ```rust
 InitialValueAssignmentKind::Array(array_init) => {
-    match &array_init.spec {
+    let spec = match &array_init.spec {
         SpecificationKind::Inline(array_subranges) => {
-            let (tag, name) = register_array_variable(
-                ctx, builder, &id, index, array_subranges,
-                &array_init.initial_values,
-                &decl.identifier.span(),
-            )?;
-            (tag, name)
+            array_spec_from_inline(array_subranges, &decl.identifier.span())?
         }
         SpecificationKind::Named(type_name) => {
-            // Named array type: look up in TypeEnvironment to get the
-            // IntermediateType::Array with per-dimension bounds (from pre-work PR).
             let array_type = types.resolve_array_type(type_name)
                 .ok_or_else(|| Diagnostic::problem(
                     Problem::NotImplemented,
@@ -457,24 +663,21 @@ InitialValueAssignmentKind::Array(array_init) => {
             let IntermediateType::Array { element_type, dimensions } = array_type else {
                 unreachable!("resolve_array_type guarantees Array variant");
             };
-            // Build synthetic ArraySubranges from the IntermediateType dimensions.
-            // Alternatively, refactor register_array_variable to accept
-            // &[ArrayDimension] + element_type_name directly, avoiding the
-            // need to reconstruct ArraySubranges.
-            let (tag, name) = register_array_variable_from_intermediate(
-                ctx, builder, &id, index, element_type, dimensions,
-                &array_init.initial_values,
-                &type_name.span(),
-            )?;
-            (tag, name)
+            array_spec_from_named(element_type, dimensions)?
         }
-    }
+    };
+    let (tag, name) = register_array_variable(
+        ctx, builder, &id, index, &spec, &decl.identifier.span(),
+    )?;
+    (tag, name)
 }
 ```
 
-The inline path uses `register_array_variable` (takes `&ArraySubranges` from the AST). The named path uses `register_array_variable_from_intermediate` (takes `&IntermediateType` + `&[ArrayDimension]` from the type environment). Both converge on the same internal logic: extract per-dimension bounds → compute strides → allocate data region → register descriptor. Factor the shared logic into a common inner function to avoid duplication.
+Both paths normalize to `ArraySpec` first, then call the single `register_array_variable` function. No code duplication.
 
 ### 5c: Helper function `var_type_info_to_type_byte`
+
+**File**: `compiler/codegen/src/compile_array.rs`
 
 Maps from VarTypeInfo to the element type byte:
 
@@ -495,7 +698,7 @@ The design uses the existing `signed_integer_to_i32()` function (line 1407 in `c
 
 ## Step 6: Array Initialization in `emit_initial_values()`
 
-**File**: `compiler/codegen/src/compile.rs`
+**Files**: `compiler/codegen/src/compile_array.rs` (helper) and `compiler/codegen/src/compile.rs` (call site in `emit_initial_values()`)
 
 In `emit_initial_values()`, the `Array` case currently falls through to the catch-all `_ => {}` which silently does nothing. Replace it with explicit handling.
 
@@ -563,76 +766,19 @@ STORE_ARRAY var_index, desc_index
 
 ## Step 7: Compile Array Access (the `todo!()` replacement)
 
-**File**: `compiler/codegen/src/compile.rs`
+**Files**: `compiler/codegen/src/compile_array.rs` (helpers) and `compiler/codegen/src/compile.rs` (dispatch sites)
 
 The `todo!()` is in `resolve_variable()` at line 3079 inside the `SymbolicVariableKind::Array` match arm. Array access cannot go through `resolve_variable()` because it returns a `u16` index — arrays need index computation code emitted, not just a variable index.
 
-Instead, array access must be intercepted **before** `resolve_variable()` is called, in the two places that handle variable references:
+Instead, the dispatch sites in `compile_expr` and `compile_statement` call `resolve_access()` (from Step 4e) and match on the `ResolvedAccess` enum. The `resolve_variable()` function's `Array` arm remains as a fallback error — it should never be reached for well-formed programs since `resolve_access()` handles arrays before `resolve_variable()` is called.
 
-1. **Expression context** (`compile_expr`, line 1745): Currently calls `resolve_variable()` then `emit_load_var()`. Must check for array first.
-2. **Assignment context** (`compile_statement` / `StmtKind::Assignment`, line 1085): Currently calls `resolve_variable()` then `emit_store_var()`. Must check for array first.
+### 7a: `resolve_access()` (already implemented in Step 4e)
 
-### 7a: Add helper to check if a variable is an array access
+The `resolve_access()` function in `compile_array.rs` replaces the plan's original `as_array_access()` + `resolve_array_access()` pair. See Step 4e for the implementation.
 
-```rust
-/// If the variable is an array access, returns the ArrayVariable.
-/// Returns None for non-array variables.
-fn as_array_access(variable: &Variable) -> Option<&ArrayVariable> {
-    match variable {
-        Variable::Symbolic(SymbolicVariableKind::Array(array)) => Some(array),
-        _ => None,
-    }
-}
-```
+### 7b: Emit index computation
 
-### 7b: Resolve array variable info
-
-Add a helper function that walks the `ArrayVariable` chain to collect subscripts and resolve the base variable:
-
-```rust
-fn resolve_array_access(
-    array_var: &ArrayVariable,
-    ctx: &CompileContext,
-) -> Result<(Vec<&Expr>, &ArrayVarInfo), Diagnostic> {
-    // Walk the chain collecting subscript groups innermost-first, then reverse.
-    // For nested arrays arr[i][j], the AST is:
-    //   ArrayVariable {
-    //       subscripted_variable: Array(ArrayVariable {
-    //           subscripted_variable: Named(Id("arr")),
-    //           subscripts: [i],
-    //       }),
-    //       subscripts: [j],
-    //   }
-    // We collect: [[j], [i]], reverse to [[i], [j]], flatten to [i, j].
-    let mut levels: Vec<&[Expr]> = Vec::new();
-    let mut current = array_var;
-    loop {
-        levels.push(&current.subscripts);
-        match current.subscripted_variable.as_ref() {
-            SymbolicVariableKind::Array(inner) => {
-                current = inner;
-            }
-            SymbolicVariableKind::Named(named) => {
-                levels.reverse();
-                let all_subscripts: Vec<&Expr> =
-                    levels.into_iter().flatten().collect();
-                let info = ctx.array_vars.get(&named.name)
-                    .ok_or_else(|| Diagnostic::todo_with_span(
-                        named.name.span(), file!(), line!()
-                    ))?;
-                return Ok((all_subscripts, info));
-            }
-            other => {
-                return Err(Diagnostic::todo_with_span(
-                    other.span(), file!(), line!()
-                ));
-            }
-        }
-    }
-}
-```
-
-### 7c: Emit index computation
+**File**: `compiler/codegen/src/compile_array.rs`
 
 Add a helper function `emit_flat_index` that computes the 0-based flat index:
 
@@ -739,39 +885,55 @@ fn try_extract_integer_literal(expr: &Expr) -> Option<i32> {
 
 A general constant-folding pass (evaluating `2+1`, `N-1` where N is a constant, etc.) would benefit many areas of the compiler beyond arrays. It is explicitly deferred and is not needed for correctness — non-literal subscripts simply take the runtime index computation path.
 
-### 7d: Array read (in expression context)
+### 7c: Array read (in expression context)
 
-In `compile_expr()`, change the `ExprKind::Variable` arm (line 1745-1749):
+**File**: `compiler/codegen/src/compile.rs`
+
+In `compile_variable_read()`, replace the default arm that calls `resolve_variable()` with a call to `resolve_access()` and match on the result:
 
 ```rust
-ExprKind::Variable(variable) => {
-    // Check for array access first — arrays need index computation,
-    // not a simple variable load.
-    if let Some(array_var) = as_array_access(variable) {
-        let (subscripts, info) = resolve_array_access(array_var, ctx)?;
-        emit_flat_index(emitter, ctx, &subscripts, &info.dimensions, &expr.span())?;
-        emitter.emit_load_array(info.var_index, info.desc_index);
-
-        // No truncation on load — matches the scalar load path
-        // (compile_variable_read does not truncate). The value was
-        // already truncated at store time; upper bits are zero.
-        return Ok(());
+_ => {
+    match resolve_access(ctx, variable)? {
+        ResolvedAccess::Scalar { var_index } => {
+            emit_load_var(emitter, var_index, op_type);
+        }
+        ResolvedAccess::ArrayElement { info, subscripts } => {
+            emit_flat_index(emitter, ctx, &subscripts, &info.dimensions, &variable.span())?;
+            emitter.emit_load_array(info.var_index, info.desc_index);
+            // No truncation on load — matches the scalar load path.
+            // The value was already truncated at store time; upper bits are zero.
+        }
     }
-    let var_index = resolve_variable(ctx, variable)?;
-    emit_load_var(emitter, var_index, op_type);
     Ok(())
 }
 ```
 
-### 7e: Array write (in assignment context)
+The `BitAccess` arm above this remains unchanged. The key change is that `resolve_variable()` is no longer called directly — `resolve_access()` handles both scalars and arrays through the `ResolvedAccess` enum. When struct access is added, a new match arm appears here.
 
-In `compile_statement()`, in the `StmtKind::Assignment` arm (line 1085), add an array check before the existing string and scalar paths:
+### 7d: Array write (in assignment context)
+
+**File**: `compiler/codegen/src/compile.rs`
+
+In `compile_statement()`, in the `StmtKind::Assignment` arm (line 1085), after the existing bit-access and string checks, replace the `resolve_variable()` call with `resolve_access()`:
 
 ```rust
-StmtKind::Assignment(assignment) => {
-    // Check for array target first.
-    if let Some(array_var) = as_array_access(&assignment.target) {
-        let (subscripts, info) = resolve_array_access(array_var, ctx)?;
+// ... existing bit access check (unchanged) ...
+// ... existing string check (unchanged) ...
+
+// Resolve the target variable using resolve_access().
+match resolve_access(ctx, &assignment.target)? {
+    ResolvedAccess::Scalar { var_index } => {
+        let type_info = target_name.and_then(|name| ctx.var_type_info(name));
+        let op_type = type_info
+            .map(|ti| (ti.op_width, ti.signedness))
+            .unwrap_or(DEFAULT_OP_TYPE);
+        compile_expr(emitter, ctx, &assignment.value, op_type)?;
+        if let Some(ti) = type_info {
+            emit_truncation(emitter, ti);
+        }
+        emit_store_var(emitter, var_index, op_type);
+    }
+    ResolvedAccess::ArrayElement { info, subscripts } => {
         let element_op_type = (info.element_var_type_info.op_width,
                                info.element_var_type_info.signedness);
 
@@ -788,14 +950,13 @@ StmtKind::Assignment(assignment) => {
         // Stack now has: [..., value, index]
         // STORE_ARRAY pops both: index (TOS) then value.
         emitter.emit_store_array(info.var_index, info.desc_index);
-        return Ok(());
     }
-
-    // ... existing string and scalar assignment code ...
 }
 ```
 
 **Stack order**: `STORE_ARRAY` spec says `[value, I32] → []` — I32 (index) is on top, value is below. The code above pushes value first (via `compile_expr`), then index (via `emit_flat_index`). The VM pops index first (TOS), then value. This matches.
+
+When struct access is added, a new `ResolvedAccess::StructField` arm appears here alongside the existing scalar and array arms.
 
 ---
 
@@ -1025,28 +1186,42 @@ Add these verification rules for documentation purposes (verifier implementation
 ## Implementation Order
 
 ```
-Pre-work: IntermediateType change  ← no dependencies, lands first
-Step 1: Opcode constants           ← no dependencies
-Step 2: Emitter methods            ← depends on Step 1
-Step 3: Container descriptors      ← depends on Step 1
-Step 4: CompileContext types        ← no dependencies (just struct definitions)
-Step 5: assign_variables()         ← depends on Steps 3, 4, Pre-work
-Step 6: emit_initial_values()      ← depends on Steps 2, 5
-Step 7: Compile array access       ← depends on Steps 2, 5
-Step 8: VM implementation          ← depends on Steps 1, 3
-Step 9: Tests                      ← depends on everything above
-Step 10: Verifier spec             ← can be done anytime
+Pre-work 0a: IntermediateType change   ← no dependencies, lands first
+Pre-work 0b: Widen data_region_offset  ← no dependencies
+Pre-work 0c: Thread TypeEnvironment    ← no dependencies
+Pre-work 0d: Create compile_array.rs   ← no dependencies
+Step 1: Opcode constants               ← no dependencies
+Step 2: Emitter methods                ← depends on Step 1
+Step 3: Container descriptors          ← depends on Step 1
+Step 4: CompileContext + resolve_access ← depends on Pre-work 0d
+Step 5: assign_variables()             ← depends on Steps 3, 4, Pre-work 0a/0b/0c
+Step 6: emit_initial_values()          ← depends on Steps 2, 5
+Step 7: Compile array access           ← depends on Steps 2, 4, 5
+Step 8: VM implementation              ← depends on Steps 1, 3
+Step 9: Tests                          ← depends on everything above
+Step 10: Verifier spec                 ← can be done anytime
 ```
 
-Steps 1-4 can be done as a single commit (foundational types). Steps 5-7 form the codegen commit. Step 8 is the VM commit. Step 9 spans all commits.
+### Recommended PR structure
 
-Recommended PR structure:
-1. **PR 0**: Pre-work (IntermediateType per-dimension bounds — analyzer-only, self-contained)
-2. **PR 1**: Steps 1-4 + Step 8 (container + VM — the "bottom half")
-3. **PR 2**: Steps 5-7 + Step 9 (codegen + tests — the "top half")
-4. **PR 3**: Step 10 (verifier spec — documentation only)
+Each PR is independently reviewable. Pre-work PRs are pure refactoring with zero feature risk.
 
-Or Steps 1-9 as a single PR after PR 0 if preferred.
+| PR | Content | Scope | Dependencies |
+|----|---------|-------|-------------|
+| **PR 0a** | Pre-work: `IntermediateType` per-dimension bounds + fix `size_in_bytes()` u8 truncation (P0a-P0f) | Analyzer only | None |
+| **PR 0b** | Pre-work: Widen `data_region_offset` to `u32` + `StringVarInfo.data_offset` + `FbInstanceInfo.data_offset` | Codegen refactoring | None |
+| **PR 0c** | Pre-work: Thread `TypeEnvironment` through compile chain (4 function signatures) | Codegen plumbing | None |
+| **PR 0d** | Pre-work: Create `compile_array.rs` with type stubs (`ArraySpec`, `DimensionInfo`, `ArrayVarInfo`, `ResolvedAccess`) | Structural scaffolding | None |
+| **PR 1** | Container layer: opcodes + emitter + descriptors + builder (Steps 1-3) | Container + codegen crate | None |
+| **PR 2** | VM: trap type + descriptor loading + LOAD/STORE_ARRAY handlers + VM tests (Step 8) | VM crate | PR 1 |
+| **PR 3** | Codegen: `CompileContext.array_vars` + `resolve_access()` + variable registration in `assign_variables()` (Steps 4-5) | Codegen | PRs 0a-0d, 1 |
+| **PR 4** | Codegen: array initialization in `emit_initial_values()` + init tests (Step 6) | Codegen | PR 3 |
+| **PR 5** | Codegen: array access compilation + end-to-end tests (Step 7 + Step 9) | Codegen + integration | PRs 2, 4 |
+| **PR 6** | Verifier spec update (Step 10) | Docs only | None |
+
+PRs 0a-0d can be reviewed and merged in any order (or in parallel). PRs 1 and 2 build the "bottom half" (container format + VM). PRs 3-5 build the "top half" (codegen) incrementally. PR 6 is documentation-only.
+
+**Problem code verification**: Before starting PR 1, verify that `P2027` (compiler) and `V4005` (VM) are unallocated in `compiler/problems/resources/problem-codes.csv` and `compiler/vm/resources/problem-codes.csv` respectively.
 
 ---
 
@@ -1058,7 +1233,8 @@ Or Steps 1-9 as a single PR after PR 0 if preferred.
 | `compiler/container/src/type_section.rs` | Add `ArrayDescriptor` struct, extend `TypeSection` serialization |
 | `compiler/container/src/builder.rs` | Add `add_array_descriptor()` method |
 | `compiler/codegen/src/emit.rs` | Add `emit_load_array(var_index, desc_index)`, `emit_store_array(var_index, desc_index)` |
-| `compiler/codegen/src/compile.rs` | Widen `data_region_offset` to `u32`, add `ArrayVarInfo`, `DimensionInfo`, changes to `assign_variables()`, `emit_initial_values()`, `compile_expr()`, `compile_statement()`, thread `TypeEnvironment` |
+| `compiler/codegen/src/compile_array.rs` | **New file**: `ArraySpec`, `DimensionInfo`, `ArrayVarInfo`, `ResolvedAccess`, `resolve_access()`, `register_array_variable()`, `emit_flat_index()`, constant folding helpers |
+| `compiler/codegen/src/compile.rs` | Widen `data_region_offset` to `u32`, add `array_vars` to `CompileContext`, thread `TypeEnvironment`, update `assign_variables()`, `emit_initial_values()`, `compile_variable_read()`, `compile_statement()` dispatch sites |
 | `compiler/problems/resources/problem-codes.csv` | Add `P2027,ArrayIndexOutOfBounds` |
 | `docs/compiler/problems/P2027.rst` | Document the compile-time array index out of bounds diagnostic |
 | `compiler/vm/src/error.rs` | Add `ArrayIndexOutOfBounds` trap variant |
@@ -1073,3 +1249,9 @@ Or Steps 1-9 as a single PR after PR 0 if preferred.
 2. **Mixed constant/variable subscripts**: `matrix[2, j]` has one constant and one variable subscript. The current design treats all subscripts as variable when any one is variable (simpler). An optimization to evaluate constant subscripts at compile time and emit `LOAD_CONST (2-1)` instead of `LOAD_VAR, SUB` can be added later but is not required for correctness.
 
 3. **`DataRegionOutOfBounds` trap payload is `u16`**: With arrays, data region byte offsets can exceed 65535 (e.g., `ARRAY[1..32768] OF INT` = 262,144 bytes). The `DataRegionOutOfBounds(u16)` trap truncates the offset in error messages. This is a pre-existing issue that only affects the defense-in-depth path (which should never fire for well-compiled programs). Not a safety issue — noted as a known limitation.
+
+4. **Problem codes must be verified**: `P2027` and `V4005` are assumed unallocated. Check against `compiler/problems/resources/problem-codes.csv` and `compiler/vm/resources/problem-codes.csv` before implementation.
+
+5. **`compile.rs` size**: At 3725 lines, `compile.rs` is already 3.7x over the 1000-line module guideline. Array codegen goes in the new `compile_array.rs` module (Pre-work PR 0d) to avoid further growth. A broader split of `compile.rs` into expression/statement/builtin modules is a separate effort that should not be mixed with array feature work.
+
+6. **Scalability to struct access**: The `ResolvedAccess` enum (Step 4e) is designed to extend to struct field access. When structs are implemented, add a `StructField` variant and extend `resolve_access()`. The dispatch sites in `compile_variable_read()` and `compile_statement()` gain new match arms without changing shape. The per-type info hashmaps in `CompileContext` (`string_vars`, `fb_instances`, `array_vars`) scale linearly; consider consolidating into a `VariableMetadata` enum when the fourth complex type is added.
