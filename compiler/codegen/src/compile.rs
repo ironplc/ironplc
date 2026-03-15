@@ -47,8 +47,8 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    CaseSelectionKind, CompareOp, Expr, ExprKind, FbCall, Function, Operator, ParamAssignmentKind,
-    Statements, StmtKind, SymbolicVariableKind, UnaryOp, Variable,
+    BitAccessVariable, CaseSelectionKind, CompareOp, Expr, ExprKind, FbCall, Function, Operator,
+    ParamAssignmentKind, Statements, StmtKind, SymbolicVariableKind, UnaryOp, Variable,
 };
 use ironplc_problems::Problem;
 
@@ -1083,6 +1083,11 @@ fn compile_statement(
 ) -> Result<(), Diagnostic> {
     match stmt {
         StmtKind::Assignment(assignment) => {
+            // Check if the target is a bit access variable (read-modify-write).
+            if let Some(bit_access) = extract_bit_access_target(&assignment.target) {
+                return compile_bit_access_assignment(emitter, ctx, bit_access, &assignment.value);
+            }
+
             // Look up the target variable's type info.
             let target_name = resolve_variable_name(&assignment.target);
 
@@ -3169,6 +3174,90 @@ fn resolve_variable_name(variable: &Variable) -> Option<&Id> {
         Variable::Symbolic(SymbolicVariableKind::Named(named)) => Some(&named.name),
         _ => None,
     }
+}
+
+/// Extracts a `BitAccessVariable` from an assignment target, if it is a bit access.
+fn extract_bit_access_target(variable: &Variable) -> Option<&BitAccessVariable> {
+    match variable {
+        Variable::Symbolic(SymbolicVariableKind::BitAccess(bit_access)) => Some(bit_access),
+        _ => None,
+    }
+}
+
+/// Compiles a bit access assignment using read-modify-write.
+///
+/// `target.N := value` is compiled as:
+///   1. Load the base variable
+///   2. AND with clear mask (~(1 << N)) to clear the target bit
+///   3. Compile the RHS value
+///   4. AND with 1 to ensure it's 0 or 1
+///   5. Left-shift by N
+///   6. OR with the cleared variable to set the bit
+///   7. Store back to the base variable
+fn compile_bit_access_assignment(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    bit_access: &BitAccessVariable,
+    value: &Expr,
+) -> Result<(), Diagnostic> {
+    let base_name = resolve_symbolic_variable_name(&bit_access.variable)?;
+    let var_index = ctx.var_index(base_name)?;
+    let base_op_type = ctx.var_op_type(base_name);
+    let bit_index = bit_access.index.value as u32;
+
+    match base_op_type.0 {
+        OpWidth::W64 => {
+            let clear_mask = !(1i64 << bit_index);
+            let clear_pool = ctx.add_i64_constant(clear_mask);
+
+            // Load base var and clear the target bit.
+            emit_load_var(emitter, var_index, base_op_type);
+            emitter.emit_load_const_i64(clear_pool);
+            emitter.emit_bit_and_64();
+
+            // Compile the RHS, mask to 1 bit, shift into position.
+            compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
+            let one_pool = ctx.add_i32_constant(1);
+            emitter.emit_load_const_i32(one_pool);
+            emitter.emit_bit_and_32();
+            // Widen to 64-bit before shifting.
+            emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
+            let shift_pool = ctx.add_i32_constant(bit_index as i32);
+            emitter.emit_load_const_i32(shift_pool);
+            emitter.emit_builtin(opcode::builtin::SHL_I64);
+
+            // OR the shifted bit into the cleared variable.
+            emitter.emit_bit_or_64();
+        }
+        _ => {
+            let clear_mask = !(1i32 << bit_index);
+            let clear_pool = ctx.add_i32_constant(clear_mask);
+
+            // Load base var and clear the target bit.
+            emit_load_var(emitter, var_index, base_op_type);
+            emitter.emit_load_const_i32(clear_pool);
+            emitter.emit_bit_and_32();
+
+            // Compile the RHS, mask to 1 bit, shift into position.
+            compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
+            let one_pool = ctx.add_i32_constant(1);
+            emitter.emit_load_const_i32(one_pool);
+            emitter.emit_bit_and_32();
+            let shift_pool = ctx.add_i32_constant(bit_index as i32);
+            emitter.emit_load_const_i32(shift_pool);
+            emitter.emit_builtin(opcode::builtin::SHL_I32);
+
+            // OR the shifted bit into the cleared variable.
+            emitter.emit_bit_or_32();
+        }
+    }
+
+    // Truncate if needed and store back.
+    if let Some(ti) = ctx.var_type_info(base_name) {
+        emit_truncation(emitter, ti);
+    }
+    emit_store_var(emitter, var_index, base_op_type);
+    Ok(())
 }
 
 /// Converts a `SignedInteger` AST node to an `i64` value.
