@@ -1743,9 +1743,7 @@ fn compile_expr(
     match &expr.kind {
         ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
         ExprKind::Variable(variable) => {
-            let var_index = resolve_variable(ctx, variable)?;
-            emit_load_var(emitter, var_index, op_type);
-            Ok(())
+            compile_variable_read(emitter, ctx, variable, op_type)
         }
         ExprKind::BinaryOp(binary) => {
             compile_expr(emitter, ctx, &binary.left, op_type)?;
@@ -3067,6 +3065,75 @@ fn compile_constant(
                 }
             }
             Ok(())
+        }
+    }
+}
+
+/// Compiles a variable read expression, handling bit access.
+///
+/// For simple named variables, loads the variable value onto the stack.
+/// For bit access (e.g., `a.0`), loads the base variable, shifts right
+/// by the bit index, and masks with 1 to extract the single bit as a
+/// BOOL (0 or 1).
+fn compile_variable_read(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    variable: &Variable,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    match variable {
+        Variable::Symbolic(SymbolicVariableKind::BitAccess(bit_access)) => {
+            let base_name = resolve_symbolic_variable_name(&bit_access.variable)?;
+            let base_index = ctx.var_index(base_name)?;
+            let base_op_type = ctx.var_op_type(base_name);
+            let bit_index = bit_access.index.value;
+
+            // Load the base variable
+            emit_load_var(emitter, base_index, base_op_type);
+
+            // Load the bit index and shift right
+            match base_op_type.0 {
+                OpWidth::W64 => {
+                    let pool_index = ctx.add_i64_constant(bit_index as i64);
+                    emitter.emit_load_const_i64(pool_index);
+                    emitter.emit_builtin(opcode::builtin::SHR_I64);
+                    // AND with 1 to isolate the bit
+                    let one_index = ctx.add_i64_constant(1);
+                    emitter.emit_load_const_i64(one_index);
+                    emitter.emit_bit_and_64();
+                }
+                _ => {
+                    let pool_index = ctx.add_i32_constant(bit_index as i32);
+                    emitter.emit_load_const_i32(pool_index);
+                    emitter.emit_builtin(opcode::builtin::SHR_I32);
+                    // AND with 1 to isolate the bit
+                    let one_index = ctx.add_i32_constant(1);
+                    emitter.emit_load_const_i32(one_index);
+                    emitter.emit_bit_and_32();
+                }
+            }
+            Ok(())
+        }
+        _ => {
+            let var_index = resolve_variable(ctx, variable)?;
+            emit_load_var(emitter, var_index, op_type);
+            Ok(())
+        }
+    }
+}
+
+/// Resolves the name of the innermost named variable from a symbolic variable kind.
+fn resolve_symbolic_variable_name(kind: &SymbolicVariableKind) -> Result<&Id, Diagnostic> {
+    match kind {
+        SymbolicVariableKind::Named(named) => Ok(&named.name),
+        SymbolicVariableKind::BitAccess(bit_access) => {
+            resolve_symbolic_variable_name(&bit_access.variable)
+        }
+        SymbolicVariableKind::Array(array) => {
+            resolve_symbolic_variable_name(&array.subscripted_variable)
+        }
+        SymbolicVariableKind::Structured(structured) => {
+            resolve_symbolic_variable_name(&structured.record)
         }
     }
 }
