@@ -123,3 +123,90 @@ END_PROGRAM
     // FOO assigns 8, then shifts right by 1: 8 >> 1 = 4
     assert_eq!(bufs.vars[0].as_i32(), 4);
 }
+
+#[test]
+fn end_to_end_when_function_called_twice_then_locals_reinitialized() {
+    // The motivating example from ADR-0024: a function with a local variable
+    // that has an initial value must re-initialize on every call.
+    let source = "
+FUNCTION accumulate : DINT
+  VAR_INPUT a : DINT; END_VAR
+  VAR counter : DINT := 10; END_VAR
+  counter := counter + a;
+  accumulate := counter;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    r1 : DINT;
+    r2 : DINT;
+  END_VAR
+  r1 := accumulate(5);
+  r2 := accumulate(3);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // First call: counter starts at 10, adds 5 → 15
+    assert_eq!(bufs.vars[0].as_i32(), 15);
+    // Second call: counter must restart at 10 (not 15), adds 3 → 13
+    assert_eq!(bufs.vars[1].as_i32(), 13);
+}
+
+#[test]
+fn end_to_end_when_function_called_twice_then_zero_default_locals_reinitialized() {
+    // A function with a local variable that has no explicit initializer
+    // must be zero-initialized on every call.
+    let source = "
+FUNCTION sum_via_local : DINT
+  VAR_INPUT x : DINT; END_VAR
+  VAR accum : DINT; END_VAR
+  accum := accum + x;
+  sum_via_local := accum;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    r1 : DINT;
+    r2 : DINT;
+  END_VAR
+  r1 := sum_via_local(7);
+  r2 := sum_via_local(3);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // First call: accum starts at 0, adds 7 → 7
+    assert_eq!(bufs.vars[0].as_i32(), 7);
+    // Second call: accum must restart at 0 (not 7), adds 3 → 3
+    assert_eq!(bufs.vars[1].as_i32(), 3);
+}
+
+#[test]
+fn end_to_end_when_function_called_twice_then_return_value_reinitialized() {
+    // The return variable must also be zero-initialized on every call.
+    // If it retained its value, the second call would see the first call's result.
+    let source = "
+FUNCTION conditional_set : DINT
+  VAR_INPUT flag : DINT; END_VAR
+  IF flag > 0 THEN
+    conditional_set := 42;
+  END_IF;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    r1 : DINT;
+    r2 : DINT;
+  END_VAR
+  r1 := conditional_set(1);
+  r2 := conditional_set(0);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // First call: flag > 0, so return 42
+    assert_eq!(bufs.vars[0].as_i32(), 42);
+    // Second call: flag = 0, so return value stays at default (0), not stale 42
+    assert_eq!(bufs.vars[1].as_i32(), 0);
+}

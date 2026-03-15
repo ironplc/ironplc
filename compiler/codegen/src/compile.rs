@@ -362,6 +362,19 @@ fn compile_user_function(
 
     // Compile the function body.
     let mut func_emitter = Emitter::new();
+
+    // Emit initialization prologue: IEC 61131-3 functions are stateless, so
+    // local variables must be re-initialized on every call. The flat variable
+    // table (ADR-0021) retains stale values between calls, so the prologue
+    // resets non-parameter locals to their declared initial values (or zero).
+    emit_function_local_prologue(
+        &mut func_emitter,
+        ctx,
+        func_decl,
+        return_var_index,
+        return_op_type,
+    )?;
+
     let body = ironplc_dsl::textual::Statements {
         body: func_decl.body.clone(),
     };
@@ -789,6 +802,85 @@ fn emit_initial_values(
         }
     }
     Ok(())
+}
+
+/// Emits a bytecode prologue that re-initializes a function's non-parameter
+/// local variables and return variable on every call. IEC 61131-3 requires
+/// functions to be stateless (locals must not retain values between calls).
+///
+/// For locals with a declared initial value, emits the same LOAD_CONST +
+/// TRUNC + STORE_VAR sequence that `emit_initial_values()` uses. For locals
+/// without an initializer and for the return variable, emits a zero-store.
+fn emit_function_local_prologue(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func_decl: &FunctionDeclaration,
+    return_var_index: u16,
+    return_op_type: OpType,
+) -> Result<(), Diagnostic> {
+    // Re-initialize VAR locals (not Input parameters).
+    for decl in &func_decl.variables {
+        if decl.var_type != VariableType::Var {
+            continue;
+        }
+        if let Some(id) = decl.identifier.symbolic_id() {
+            let var_index = ctx.var_index(id)?;
+            let type_info = ctx.var_type_info(id);
+            let op_type = type_info
+                .map(|ti| (ti.op_width, ti.signedness))
+                .unwrap_or(DEFAULT_OP_TYPE);
+
+            match &decl.initializer {
+                InitialValueAssignmentKind::Simple(simple) => {
+                    if let Some(constant) = &simple.initial_value {
+                        // Has an explicit initial value: emit LOAD_CONST + TRUNC + STORE.
+                        compile_constant(emitter, ctx, constant, op_type)?;
+                        if let Some(ti) = type_info {
+                            emit_truncation(emitter, ti);
+                        }
+                    } else {
+                        // No initializer: zero-fill.
+                        emit_zero_const(emitter, ctx, op_type);
+                    }
+                    emit_store_var(emitter, var_index, op_type);
+                }
+                _ => {
+                    // Other initializer kinds (String, FunctionBlock, etc.)
+                    // are not expected in function locals; zero-fill as default.
+                    emit_zero_const(emitter, ctx, op_type);
+                    emit_store_var(emitter, var_index, op_type);
+                }
+            }
+        }
+    }
+
+    // Zero-initialize the return variable.
+    emit_zero_const(emitter, ctx, return_op_type);
+    emit_store_var(emitter, return_var_index, return_op_type);
+
+    Ok(())
+}
+
+/// Emits a LOAD_CONST instruction that pushes a zero value of the given type.
+fn emit_zero_const(emitter: &mut Emitter, ctx: &mut CompileContext, op_type: OpType) {
+    match op_type.0 {
+        OpWidth::W32 => {
+            let pool_index = ctx.add_i32_constant(0);
+            emitter.emit_load_const_i32(pool_index);
+        }
+        OpWidth::W64 => {
+            let pool_index = ctx.add_i64_constant(0);
+            emitter.emit_load_const_i64(pool_index);
+        }
+        OpWidth::F32 => {
+            let pool_index = ctx.add_f32_constant(0.0);
+            emitter.emit_load_const_f32(pool_index);
+        }
+        OpWidth::F64 => {
+            let pool_index = ctx.add_f64_constant(0.0);
+            emitter.emit_load_const_f64(pool_index);
+        }
+    }
 }
 
 /// Maps an IEC 61131-3 type name to its `VarTypeInfo`.
