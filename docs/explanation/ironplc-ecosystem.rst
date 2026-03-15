@@ -35,6 +35,19 @@ it provides:
   and real-time error checking as you type.
 - **A runtime** (:program:`ironplcvm`) that can execute compiled programs.
 
+Try it now — this program increments a counter on every scan cycle:
+
+.. playground::
+
+   PROGRAM main
+      VAR
+         Counter : INT := 0;
+      END_VAR
+
+      Counter := Counter + 1;
+
+   END_PROGRAM
+
 IronPLC reads several source formats:
 
 - **Structured Text** (:file:`.st` files) — the native text format
