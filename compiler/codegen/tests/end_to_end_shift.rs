@@ -220,3 +220,22 @@ END_PROGRAM
     let (_c, bufs) = parse_and_run(source);
     assert_eq!(bufs.vars[1].as_i32(), bufs.vars[0].as_i32());
 }
+
+// --- Nested function calls ---
+
+#[test]
+fn end_to_end_when_shr_with_abs_then_computes_correctly() {
+    let source = "
+PROGRAM main
+  VAR
+    a : DINT;
+    result : DINT;
+  END_VAR
+  a := -8;
+  result := SHR(ABS(a), 1);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), -8);
+    assert_eq!(bufs.vars[1].as_i32(), 4);
+}
