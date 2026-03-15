@@ -201,10 +201,11 @@ The column field is populated when available but may be zero. Stepping and break
 | 0 | var_index | u16 | Variable table index |
 | 2 | function_id | u16 | Owning function ID (0xFFFF = global scope) |
 | 4 | var_section | u8 | IEC 61131-3 variable section (see encoding below) |
-| 5 | name_length | u8 | Length of variable name in bytes |
-| 6 | name | [u8; name_length] | UTF-8 variable name |
-| 6+N | type_name_length | u8 | Length of type name in bytes |
-| 7+N | type_name | [u8; type_name_length] | UTF-8 type name (e.g., "DINT", "REAL", "TON") |
+| 5 | iec_type_tag | u8 | IEC 61131-3 type tag for value interpretation (see [ADR-0019](../adrs/0019-type-encoding-in-debug-variable-names.md)) |
+| 6 | name_length | u8 | Length of variable name in bytes |
+| 7 | name | [u8; name_length] | UTF-8 variable name |
+| 7+N | type_name_length | u8 | Length of type name in bytes |
+| 8+N | type_name | [u8; type_name_length] | UTF-8 type name (e.g., "DINT", "REAL", "TON") |
 
 **var_section encoding:**
 
@@ -651,7 +652,7 @@ impl DebugState {
                     type_name: entry.type_name.clone(),
                     var_section: entry.var_section,
                     index: entry.var_index,
-                    value: format_value(slot, &entry.type_name),
+                    value: format_value(slot, entry.iec_type_tag),
                 })
             })
             .collect()
@@ -668,7 +669,7 @@ impl DebugState {
 }
 ```
 
-**Type-aware formatting.** The `VarNameEntry.type_name` field provides the source-level type name (e.g., "DINT", "REAL", "BOOL"). The `format_value()` function uses this to render slot values correctly:
+**Type-aware formatting.** The `VarNameEntry.iec_type_tag` field provides the numeric IEC type tag (see [ADR-0019](../adrs/0019-type-encoding-in-debug-variable-names.md)). The `format_value()` function matches on this tag to render slot values correctly — no string parsing needed:
 
 | type_name | Formatting |
 |-----------|-----------|
@@ -923,7 +924,7 @@ These are optional enhancements that can be added after the core debugger works.
 |-------|-------|---------|
 | `vm` | new `debug.rs` | `DebugState`, `BreakpointTable`, `StepMode`, `PauseReason`, `ExecuteResult` types |
 | `vm` | `vm.rs` | Add `debug: Option<DebugState>` to `VmRunning`; add `run_round_debug()` method; wire debug state into execute |
-| `vm` | `vm.rs` (execute fn) | Add `debug: Option<&mut DebugState>` parameter; add debug check at instruction dispatch |
+| `vm` | `vm.rs` (execute fn) | Add `debug: Option<&mut DebugState>` parameter; add debug check at instruction dispatch; increment/decrement `current_call_depth` on CALL/RET instructions for step-over/step-out support |
 | `vm` | `lib.rs` | Export debug types |
 
 **Tests:**

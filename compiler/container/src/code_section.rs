@@ -5,7 +5,7 @@ use std::vec::Vec;
 use crate::ContainerError;
 
 /// Size of a single function directory entry in bytes.
-const FUNC_ENTRY_SIZE: usize = 14;
+const FUNC_ENTRY_SIZE: usize = 16;
 
 /// A function entry in the code section directory.
 #[derive(Clone, Debug)]
@@ -15,6 +15,7 @@ pub struct FuncEntry {
     pub bytecode_length: u32,
     pub max_stack_depth: u16,
     pub num_locals: u16,
+    pub num_params: u16,
 }
 
 /// The code section of a bytecode container.
@@ -30,6 +31,11 @@ impl CodeSection {
     /// Format: function_directory + bytecode_bodies
     pub fn section_size(&self) -> u32 {
         (self.functions.len() * FUNC_ENTRY_SIZE + self.bytecode.len()) as u32
+    }
+
+    /// Returns the FuncEntry for the given function ID, if it exists.
+    pub fn get_function(&self, function_id: u16) -> Option<&FuncEntry> {
+        self.functions.get(function_id as usize)
     }
 
     /// Returns the bytecode slice for the given function ID.
@@ -51,6 +57,7 @@ impl CodeSection {
             w.write_all(&func.bytecode_length.to_le_bytes())?;
             w.write_all(&func.max_stack_depth.to_le_bytes())?;
             w.write_all(&func.num_locals.to_le_bytes())?;
+            w.write_all(&func.num_params.to_le_bytes())?;
         }
         w.write_all(&self.bytecode)?;
         Ok(())
@@ -89,6 +96,7 @@ impl CodeSection {
                 ]),
                 max_stack_depth: u16::from_le_bytes([entry_buf[10], entry_buf[11]]),
                 num_locals: u16::from_le_bytes([entry_buf[12], entry_buf[13]]),
+                num_params: u16::from_le_bytes([entry_buf[14], entry_buf[15]]),
             });
         }
 
@@ -119,6 +127,7 @@ mod tests {
                 bytecode_length: bytecode.len() as u32,
                 max_stack_depth: 2,
                 num_locals: 1,
+                num_params: 0,
             }],
             bytecode,
         };
@@ -146,6 +155,7 @@ mod tests {
                 bytecode_length: 0,
                 max_stack_depth: 0,
                 num_locals: 0,
+                num_params: 0,
             }],
             bytecode: vec![],
         };

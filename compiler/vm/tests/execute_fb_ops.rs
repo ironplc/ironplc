@@ -19,8 +19,8 @@ fn fb_container(
         builder = builder.add_i64_constant(c);
     }
     builder
-        .add_function(0, &init_bytecode, 0, num_vars)
-        .add_function(1, bytecode, 16, num_vars)
+        .add_function(0, &init_bytecode, 0, num_vars, 0)
+        .add_function(1, bytecode, 16, num_vars, 0)
         .init_function_id(0)
         .entry_function_id(1)
         .build()

@@ -126,6 +126,7 @@ impl ContainerBuilder {
         bytecode: &[u8],
         max_stack_depth: u16,
         num_locals: u16,
+        num_params: u16,
     ) -> Self {
         let offset = self.bytecode.len() as u32;
         self.functions.push(FuncEntry {
@@ -134,6 +135,7 @@ impl ContainerBuilder {
             bytecode_length: bytecode.len() as u32,
             max_stack_depth,
             num_locals,
+            num_params,
         });
         self.bytecode.extend_from_slice(bytecode);
 
@@ -291,7 +293,7 @@ mod tests {
             .num_variables(2)
             .add_i32_constant(10)
             .add_i32_constant(32)
-            .add_function(0, &bytecode, 2, 2)
+            .add_function(0, &bytecode, 2, 2, 0)
             .build();
 
         assert_eq!(container.header.num_variables, 2);

@@ -32,8 +32,8 @@ fn counter_container() -> ironplc_container::Container {
     ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(1)
-        .add_function(0, &[0xB5], 0, 1) // init: RET_VOID
-        .add_function(1, &bytecode, 2, 1) // scan: counter
+        .add_function(0, &[0xB5], 0, 1, 0) // init: RET_VOID
+        .add_function(1, &bytecode, 2, 1, 0) // scan: counter
         .init_function_id(0)
         .entry_function_id(1)
         .build()
@@ -97,9 +97,9 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
     let c = ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(1)
-        .add_function(0, &[0xB5], 0, 1) // init: RET_VOID
-        .add_function(1, &counter_bytecode, 2, 1) // scan: counter
-        .add_function(2, &fault_bytecode, 1, 0) // scan: fault
+        .add_function(0, &[0xB5], 0, 1, 0) // init: RET_VOID
+        .add_function(1, &counter_bytecode, 2, 1, 0) // scan: counter
+        .add_function(2, &fault_bytecode, 1, 0, 0) // scan: fault
         .add_task(freewheeling_task(0, 0, 0))
         .add_program_instance(program_instance(0, 0, 1, 0, 1))
         .add_program_instance(program_instance(1, 0, 2, 0, 1))
@@ -133,8 +133,8 @@ fn scenario_when_variables_read_after_fault_then_accessible() {
     let c = ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(42)
-        .add_function(0, &[0xB5], 0, 1) // init: RET_VOID
-        .add_function(1, &bytecode, 1, 1) // scan: stores then faults
+        .add_function(0, &[0xB5], 0, 1, 0) // init: RET_VOID
+        .add_function(1, &bytecode, 1, 1, 0) // scan: stores then faults
         .init_function_id(0)
         .entry_function_id(1)
         .build();
@@ -216,9 +216,9 @@ fn scenario_when_two_freewheeling_tasks_then_both_execute() {
         .num_variables(4)
         .add_i32_constant(10)
         .add_i32_constant(20)
-        .add_function(0, &[0xB5], 0, 0) // init: RET_VOID
-        .add_function(1, &fn0_bytecode, 1, 2) // scan: task 0
-        .add_function(2, &fn1_bytecode, 1, 2) // scan: task 1
+        .add_function(0, &[0xB5], 0, 0, 0) // init: RET_VOID
+        .add_function(1, &fn0_bytecode, 1, 2, 0) // scan: task 0
+        .add_function(2, &fn1_bytecode, 1, 2, 0) // scan: task 1
         .add_task(freewheeling_task(0, 0, 0))
         .add_task(freewheeling_task(1, 1, 0))
         .add_program_instance(program_instance(0, 0, 1, 0, 2))
@@ -262,9 +262,9 @@ fn scenario_when_tasks_share_global_then_communication_works() {
         .num_variables(4)
         .shared_globals_size(1)
         .add_i32_constant(99)
-        .add_function(0, &[0xB5], 0, 0) // init: RET_VOID
-        .add_function(1, &fn0_bytecode, 1, 1) // scan: task 0
-        .add_function(2, &fn1_bytecode, 1, 2) // scan: task 1
+        .add_function(0, &[0xB5], 0, 0, 0) // init: RET_VOID
+        .add_function(1, &fn0_bytecode, 1, 1, 0) // scan: task 0
+        .add_function(2, &fn1_bytecode, 1, 2, 0) // scan: task 1
         .add_task(freewheeling_task(0, 0, 0))
         .add_task(freewheeling_task(1, 1, 0))
         .add_program_instance(program_instance(0, 0, 1, 1, 1)) // task 0: private [1,2)
@@ -294,8 +294,8 @@ fn scenario_when_scope_violation_then_trap() {
 
     let c = ContainerBuilder::new()
         .num_variables(4)
-        .add_function(0, &[0xB5], 0, 0) // init: RET_VOID
-        .add_function(1, &bytecode, 1, 2) // scan: scope violation
+        .add_function(0, &[0xB5], 0, 0, 0) // init: RET_VOID
+        .add_function(1, &bytecode, 1, 2, 0) // scan: scope violation
         .add_task(freewheeling_task(0, 0, 0))
         .add_program_instance(program_instance(0, 0, 1, 2, 2)) // scope [2, 4)
         .build();
