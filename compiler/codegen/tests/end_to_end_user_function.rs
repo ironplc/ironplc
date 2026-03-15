@@ -99,3 +99,27 @@ END_PROGRAM
 
     assert_eq!(bufs.vars[0].as_i32(), 32);
 }
+
+#[test]
+fn end_to_end_when_user_function_assigns_return_var_then_uses_in_builtin_then_correct() {
+    let source = "
+FUNCTION FOO : INT
+  VAR_INPUT
+    A : INT;
+  END_VAR
+  FOO := 8;
+  FOO := SHR(FOO, 1);
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : INT;
+  END_VAR
+  result := FOO(A := 5);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // FOO assigns 8, then shifts right by 1: 8 >> 1 = 4
+    assert_eq!(bufs.vars[0].as_i32(), 4);
+}
