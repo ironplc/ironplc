@@ -84,6 +84,25 @@ END_PROGRAM`,
   is_moderate := NOT is_hot AND NOT is_cold;
 END_PROGRAM`,
   },
+  {
+    name: "Sine Wave",
+    code: `PROGRAM main
+  VAR
+    angle : REAL;
+    wave : REAL;
+    output : INT;
+  END_VAR
+
+  (* Generate a sine wave. In real PLCs this is
+     used for motion profiles, test signal
+     generation, and vibration compensation. *)
+  angle := angle + 0.1;
+  wave := SIN(angle);
+
+  (* Scale to 0-100 range for an analog output *)
+  output := REAL_TO_INT(wave * 50.0 + 50.0);
+END_PROGRAM`,
+  },
 ];
 
 // --- State ---
