@@ -238,7 +238,7 @@ impl Emitter {
 
     /// Emits STR_INIT with data_offset and max_length operands.
     /// Initializes a STRING variable's header in the data region.
-    pub fn emit_str_init(&mut self, data_offset: u16, max_length: u16) {
+    pub fn emit_str_init(&mut self, data_offset: u32, max_length: u16) {
         self.bytecode.push(opcode::STR_INIT);
         self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
         self.bytecode.extend_from_slice(&max_length.to_le_bytes());
@@ -255,7 +255,7 @@ impl Emitter {
 
     /// Emits STR_STORE_VAR with a data_offset operand.
     /// Pops buf_idx from the stack and copies the temp buffer contents to the data region.
-    pub fn emit_str_store_var(&mut self, data_offset: u16) {
+    pub fn emit_str_store_var(&mut self, data_offset: u32) {
         self.bytecode.push(opcode::STR_STORE_VAR);
         self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
         self.pop_stack(1);
@@ -264,7 +264,7 @@ impl Emitter {
     /// Emits STR_LOAD_VAR with a data_offset operand.
     /// Copies a string from the data region into a temp buffer and pushes buf_idx.
     #[allow(dead_code)]
-    pub fn emit_str_load_var(&mut self, data_offset: u16) {
+    pub fn emit_str_load_var(&mut self, data_offset: u32) {
         self.bytecode.push(opcode::STR_LOAD_VAR);
         self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
         self.push_stack(1);
@@ -273,7 +273,7 @@ impl Emitter {
     /// Emits LEN_STR with a data_offset operand.
     /// Reads the current length of a STRING variable from the data region
     /// and pushes the result as an i32.
-    pub fn emit_len_str(&mut self, data_offset: u16) {
+    pub fn emit_len_str(&mut self, data_offset: u32) {
         self.bytecode.push(opcode::LEN_STR);
         self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
         self.push_stack(1);
@@ -282,7 +282,7 @@ impl Emitter {
     /// Emits FIND_STR with two data_offset operands.
     /// Finds the first occurrence of IN2 within IN1 and pushes the
     /// 1-based position as an i32 (0 if not found).
-    pub fn emit_find_str(&mut self, in1_data_offset: u16, in2_data_offset: u16) {
+    pub fn emit_find_str(&mut self, in1_data_offset: u32, in2_data_offset: u32) {
         self.bytecode.push(opcode::FIND_STR);
         self.bytecode
             .extend_from_slice(&in1_data_offset.to_le_bytes());
@@ -294,7 +294,7 @@ impl Emitter {
     /// Emits REPLACE_STR with two data_offset operands.
     /// Pops P (i32) then L (i32) from stack, replaces L characters at
     /// position P in IN1 with IN2, and pushes the result buf_idx.
-    pub fn emit_replace_str(&mut self, in1_data_offset: u16, in2_data_offset: u16) {
+    pub fn emit_replace_str(&mut self, in1_data_offset: u32, in2_data_offset: u32) {
         self.bytecode.push(opcode::REPLACE_STR);
         self.bytecode
             .extend_from_slice(&in1_data_offset.to_le_bytes());
@@ -307,7 +307,7 @@ impl Emitter {
     /// Emits INSERT_STR with two data_offset operands.
     /// Pops P (i32) from stack, inserts IN2 into IN1 after position P,
     /// and pushes the result buf_idx.
-    pub fn emit_insert_str(&mut self, in1_data_offset: u16, in2_data_offset: u16) {
+    pub fn emit_insert_str(&mut self, in1_data_offset: u32, in2_data_offset: u32) {
         self.bytecode.push(opcode::INSERT_STR);
         self.bytecode
             .extend_from_slice(&in1_data_offset.to_le_bytes());
@@ -319,7 +319,7 @@ impl Emitter {
     /// Emits DELETE_STR with a data_offset operand.
     /// Pops P (i32) then L (i32) from stack, deletes L characters from
     /// IN1 starting at position P, and pushes the result buf_idx.
-    pub fn emit_delete_str(&mut self, in1_data_offset: u16) {
+    pub fn emit_delete_str(&mut self, in1_data_offset: u32) {
         self.bytecode.push(opcode::DELETE_STR);
         self.bytecode
             .extend_from_slice(&in1_data_offset.to_le_bytes());
@@ -330,7 +330,7 @@ impl Emitter {
     /// Emits LEFT_STR with a data_offset operand.
     /// Pops L (i32) from stack, returns the leftmost L characters of IN,
     /// and pushes the result buf_idx.
-    pub fn emit_left_str(&mut self, in_data_offset: u16) {
+    pub fn emit_left_str(&mut self, in_data_offset: u32) {
         self.bytecode.push(opcode::LEFT_STR);
         self.bytecode
             .extend_from_slice(&in_data_offset.to_le_bytes());
@@ -340,7 +340,7 @@ impl Emitter {
     /// Emits RIGHT_STR with a data_offset operand.
     /// Pops L (i32) from stack, returns the rightmost L characters of IN,
     /// and pushes the result buf_idx.
-    pub fn emit_right_str(&mut self, in_data_offset: u16) {
+    pub fn emit_right_str(&mut self, in_data_offset: u32) {
         self.bytecode.push(opcode::RIGHT_STR);
         self.bytecode
             .extend_from_slice(&in_data_offset.to_le_bytes());
@@ -350,7 +350,7 @@ impl Emitter {
     /// Emits MID_STR with a data_offset operand.
     /// Pops P (i32) then L (i32) from stack, returns L characters from
     /// IN starting at position P, and pushes the result buf_idx.
-    pub fn emit_mid_str(&mut self, in_data_offset: u16) {
+    pub fn emit_mid_str(&mut self, in_data_offset: u32) {
         self.bytecode.push(opcode::MID_STR);
         self.bytecode
             .extend_from_slice(&in_data_offset.to_le_bytes());
@@ -360,7 +360,7 @@ impl Emitter {
 
     /// Emits CONCAT_STR with two data_offset operands.
     /// Concatenates IN1 and IN2, pushes the result buf_idx.
-    pub fn emit_concat_str(&mut self, in1_data_offset: u16, in2_data_offset: u16) {
+    pub fn emit_concat_str(&mut self, in1_data_offset: u32, in2_data_offset: u32) {
         self.bytecode.push(opcode::CONCAT_STR);
         self.bytecode
             .extend_from_slice(&in1_data_offset.to_le_bytes());

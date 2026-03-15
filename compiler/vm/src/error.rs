@@ -13,7 +13,7 @@ pub enum Trap {
     WatchdogTimeout(u16),
     NegativeExponent,
     InvalidBuiltinFunction(u16),
-    DataRegionOutOfBounds(u16),
+    DataRegionOutOfBounds(u32),
     TempBufferExhausted,
     InvalidFbTypeId(u16),
 }
