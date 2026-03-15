@@ -82,6 +82,26 @@ wiring), the buzzer turns on (TRUE).
 
 .. tip::
 
+   You can experiment with the boolean logic in the playground — a
+   simplified version without hardware addresses. The playground does
+   not support directly represented variables (``AT %IX1``), but it is a
+   quick way to try the logic.
+
+   .. playground-link::
+      :text: Open in Playground
+
+      PROGRAM main
+         VAR
+            Button : BOOL;
+            Buzzer : BOOL;
+         END_VAR
+
+         Buzzer := NOT Button;
+
+      END_PROGRAM
+
+.. tip::
+
    For a complete explanation of the addressing format (``%IX``, ``%QX``,
    ``%MW``, etc.), see :doc:`/explanation/variables-and-io`.
 

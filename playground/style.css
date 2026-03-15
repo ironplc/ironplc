@@ -97,6 +97,20 @@ main {
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
+#examples-select {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+#examples-select:hover {
+  border-color: var(--accent);
+}
+
 .toolbar label {
   font-size: 0.875rem;
   color: var(--text-muted);
@@ -282,7 +296,8 @@ footer {
 
 body.embed header,
 body.embed footer,
-body.embed #pause-btn {
+body.embed #pause-btn,
+body.embed #examples-select {
   display: none;
 }
 

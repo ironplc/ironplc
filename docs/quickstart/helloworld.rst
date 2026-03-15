@@ -75,6 +75,25 @@ We will add that in :doc:`configuring`.
 
 .. tip::
 
+   Want to see this program run? Click Start to watch ``Counter`` increment
+   on every scan cycle — no installation needed. The playground runs a
+   subset of what IronPLC supports; for the full experience, continue with
+   the tutorial.
+
+   .. playground-link::
+      :text: Open in Playground
+
+      PROGRAM main
+         VAR
+            Counter : INT := 0;
+         END_VAR
+
+         Counter := Counter + 1;
+
+      END_PROGRAM
+
+.. tip::
+
    For a deeper look at Structured Text syntax, see
    :doc:`/explanation/structured-text-basics`.
 

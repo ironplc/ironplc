@@ -31,6 +31,17 @@ pub fn apply(
     resolver.fold_library(lib).map_err(|e| vec![e])
 }
 
+/// Returns true if the type name is an IEC 61131-3 generic type category.
+///
+/// These are abstract types used in stdlib function signatures that must be
+/// resolved to concrete types based on the actual arguments.
+fn is_generic_type(tn: &TypeName) -> bool {
+    matches!(
+        tn.name.lower_case().as_str(),
+        "any" | "any_num" | "any_real" | "any_int" | "any_bit" | "any_string"
+    )
+}
+
 struct ExprTypeResolver<'a> {
     /// Maps variable names to their declared TypeName within the current POU scope.
     var_types: HashMap<Id, TypeName>,
@@ -81,10 +92,20 @@ impl ExprTypeResolver<'_> {
             ExprKind::BinaryOp(op) => op.left.resolved_type.clone(),
             ExprKind::UnaryOp(op) => op.term.resolved_type.clone(),
             ExprKind::Compare(_) => Some(TypeName::from("BOOL")),
-            ExprKind::Function(f) => self
-                .function_environment
-                .get(&f.name)
-                .and_then(|sig| sig.return_type.clone()),
+            ExprKind::Function(f) => {
+                let sig = self.function_environment.get(&f.name)?;
+                let return_type = sig.return_type.clone()?;
+                if is_generic_type(&return_type) {
+                    // Generic return type: infer concrete type from first argument
+                    f.param_assignment.iter().find_map(|p| match p {
+                        ParamAssignmentKind::PositionalInput(pos) => pos.expr.resolved_type.clone(),
+                        ParamAssignmentKind::NamedInput(named) => named.expr.resolved_type.clone(),
+                        _ => None,
+                    })
+                } else {
+                    Some(return_type)
+                }
+            }
             ExprKind::EnumeratedValue(ev) => ev.type_name.clone(),
             ExprKind::Expression(inner) => inner.resolved_type.clone(),
             ExprKind::LateBound(_) => None,
@@ -408,8 +429,27 @@ END_FUNCTION_BLOCK";
         let result = run_pass(program);
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
-        // ABS returns the same type as input; the stdlib registers it with a return type
-        assert!(types[0].is_some());
+        // ABS has generic return type ANY_NUM; should resolve to concrete input type
+        assert_type_eq(&types[0], "INT");
+    }
+
+    #[test]
+    fn apply_when_nested_function_call_then_resolves_concrete_type() {
+        let program = "
+PROGRAM test
+  VAR
+    a : DINT;
+    result : DINT;
+  END_VAR
+    result := SHR(ABS(a), 1);
+END_PROGRAM";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        // SHR has generic return type ANY_BIT; ABS(a) resolves to DINT,
+        // so the outer SHR should also resolve to DINT
+        assert_type_eq(&types[0], "DINT");
     }
 
     /// Collects resolved_type from every Expr node in the tree.
