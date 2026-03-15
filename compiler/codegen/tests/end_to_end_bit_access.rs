@@ -105,3 +105,27 @@ END_PROGRAM
     // 0x8000 bit 15 is 1 → TRUE
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
+
+#[test]
+fn end_to_end_when_function_with_dint_bit_access_then_correct() {
+    let source = "
+FUNCTION FOO : INT
+  VAR_INPUT
+    A : DINT;
+  END_VAR
+  IF A.0 THEN
+    FOO := 1;
+  END_IF;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : INT;
+  END_VAR
+  result := FOO(A := 5);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    // 5 = 0b101, bit 0 is 1 → TRUE, so FOO returns 1
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+}
