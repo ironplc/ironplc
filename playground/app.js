@@ -10,6 +10,81 @@ const cyclesDisplay = document.getElementById("cycles-display");
 const status = document.getElementById("status");
 const variablesPanel = document.getElementById("variables-panel");
 const diagnosticsPanel = document.getElementById("diagnostics-panel");
+const examplesSelect = document.getElementById("examples-select");
+
+// --- Example programs ---
+
+const EXAMPLES = [
+  {
+    name: "Counter",
+    code: `PROGRAM main
+  VAR
+    count : INT;
+    doubled : INT;
+  END_VAR
+
+  (* Click Start to begin running. The program
+     runs one scan cycle per interval. Variables
+     keep their values between cycles, so count
+     increases each time. *)
+  count := count + 1;
+  doubled := count * 2;
+END_PROGRAM`,
+  },
+  {
+    name: "Boolean Logic",
+    code: `PROGRAM main
+  VAR
+    sensor_a : BOOL := TRUE;
+    sensor_b : BOOL := FALSE;
+    and_result : BOOL;
+    or_result : BOOL;
+    not_result : BOOL;
+  END_VAR
+
+  and_result := sensor_a AND sensor_b;
+  or_result := sensor_a OR sensor_b;
+  not_result := NOT sensor_a;
+END_PROGRAM`,
+  },
+  {
+    name: "Arithmetic",
+    code: `PROGRAM main
+  VAR
+    a : INT := 10;
+    b : INT := 3;
+    sum : INT;
+    diff : INT;
+    product : INT;
+    quotient : INT;
+    remainder : INT;
+  END_VAR
+
+  sum := a + b;
+  diff := a - b;
+  product := a * b;
+  quotient := a / b;
+  remainder := a MOD b;
+END_PROGRAM`,
+  },
+  {
+    name: "Comparison",
+    code: `PROGRAM main
+  VAR
+    temperature : INT;
+    is_hot : BOOL;
+    is_cold : BOOL;
+    is_moderate : BOOL;
+  END_VAR
+
+  temperature := temperature + 1;
+
+  is_hot := temperature > 30;
+  is_cold := temperature < 10;
+  is_moderate := NOT is_hot AND NOT is_cold;
+END_PROGRAM`,
+  },
+];
 
 // --- State ---
 
@@ -70,6 +145,31 @@ if (isEmbed) {
   document.body.classList.add("embed");
   intervalInput.disabled = true;
 }
+
+// --- Populate examples dropdown ---
+
+for (const example of EXAMPLES) {
+  const option = document.createElement("option");
+  option.value = example.name;
+  option.textContent = example.name;
+  examplesSelect.appendChild(option);
+}
+
+examplesSelect.addEventListener("change", () => {
+  const selected = EXAMPLES.find(e => e.name === examplesSelect.value);
+  if (!selected) return;
+
+  if (isRunning) {
+    stopExecution();
+    postCommand("reset");
+    status.textContent = "Ready";
+  }
+
+  editor.value = selected.code;
+
+  // Reset the dropdown to show "Examples" label
+  examplesSelect.selectedIndex = 0;
+});
 
 // Pre-load code from URL parameters
 if (params.has("code")) {

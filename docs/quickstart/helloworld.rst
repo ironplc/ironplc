@@ -75,6 +75,14 @@ We will add that in :doc:`configuring`.
 
 .. tip::
 
+   Want to see this program run? Open it in the
+   `IronPLC Playground <https://playground.ironplc.com/?code=UFJPR1JBTSBtYWluCiAgIFZBUgogICAgICBDb3VudGVyIDogSU5UIDo9IDA7CiAgIEVORF9WQVIKCiAgIENvdW50ZXIgOj0gQ291bnRlciArIDE7CgpFTkRfUFJPR1JBTQ%3D%3D>`_
+   and click Start to watch ``Counter`` increment on every scan cycle — no
+   installation needed. The playground runs a subset of what IronPLC
+   supports; for the full experience, continue with the tutorial.
+
+.. tip::
+
    For a deeper look at Structured Text syntax, see
    :doc:`/explanation/structured-text-basics`.
 
