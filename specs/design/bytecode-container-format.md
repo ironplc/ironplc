@@ -156,17 +156,16 @@ Variable indices are compiler-assigned. The compiler must produce deterministic 
 
 ### Array Descriptors
 
-Each array descriptor defines the element type and bounds for one array variable.
+Each array descriptor defines the element type and total element count for one array variable. The compiler normalizes all array indices to 0-based before emitting `LOAD_ARRAY`/`STORE_ARRAY`, so the descriptor stores a flat element count rather than per-dimension bounds. Original IEC 61131-3 bounds are preserved in the debug section.
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | element_type | u8 | Element type (same encoding as VarEntry.var_type) |
 | 1 | reserved | u8 | Reserved; must be zero |
-| 2 | lower_bound | i16 | Array lower bound (IEC 61131-3 arrays can have arbitrary lower bounds) |
-| 4 | upper_bound | i16 | Array upper bound (inclusive) |
+| 2 | total_elements | u32 | Total number of elements across all dimensions |
 | 6 | element_extra | u16 | For STRING/WSTRING elements: max length. For FB elements: fb_type_id. |
 
-The verifier checks that every LOAD_ARRAY/STORE_ARRAY `type` byte matches the array's `element_type`.
+The verifier checks that every LOAD_ARRAY/STORE_ARRAY descriptor index references a valid array descriptor and that the descriptor's `element_type` is valid.
 
 ### FB Type Descriptors
 
@@ -526,8 +525,8 @@ layout_hash = SHA-256(
             field_type (u8) || field_extra (u16, LE) ||
     num_arrays (u16, LE) ||
     for each array descriptor in index order:
-        element_type (u8) || lower_bound (i16, LE) ||
-        upper_bound (i16, LE) || element_extra (u16, LE)
+        element_type (u8) || total_elements (u32, LE) ||
+        element_extra (u16, LE)
 )
 ```
 
