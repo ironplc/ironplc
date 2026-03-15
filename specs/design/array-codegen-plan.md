@@ -10,7 +10,7 @@ Add code generation and VM support for arrays of primitive types. This document 
 
 ### Key Design Decisions
 
-1. **Element size**: 8 bytes (slot-sized) per element in the data region. Matches FB field storage. Future optimization to pack elements deferred.
+1. **Element size**: 8 bytes (slot-sized) per element in the data region. Matches FB field storage. Future optimization to pack elements deferred. Note: this is particularly wasteful for BOOL arrays (`ARRAY[1..1000] OF BOOL` = 8000 bytes vs. 1000 bytes packed). Packed element storage is especially important for embedded targets and should be prioritized as a follow-up.
 
 2. **Always 0-based descriptors**: The compiler normalizes all subscripts to 0-based flat indices before emitting `LOAD_ARRAY`/`STORE_ARRAY`. Descriptors always store `lower_bound=0, upper_bound=total_elements-1`. Original IEC bounds live in the debug section.
 
@@ -79,7 +79,13 @@ impl IntermediateType {
             IntermediateType::Array { dimensions, .. } if !dimensions.is_empty() => {
                 let mut total: u32 = 1;
                 for dim in dimensions {
-                    let dim_size = (dim.upper as i64 - dim.lower as i64 + 1) as u32;
+                    // Guard: if lower > upper, this dimension is invalid.
+                    // The analyzer validates this, but defense-in-depth.
+                    let span = dim.upper as i64 - dim.lower as i64 + 1;
+                    if span <= 0 {
+                        return None;
+                    }
+                    let dim_size = span as u32;
                     total = total.checked_mul(dim_size)?;
                 }
                 Some(total)
@@ -188,7 +194,7 @@ SpecificationKind::Named(type_name) => {
 }
 ```
 
-### Pre-work PR 0b: Widen `data_region_offset` to `u32`
+### Pre-work PR 0b: Widen `data_region_offset` to `u32` and `DataRegionOutOfBounds` to `u32`
 
 **Goal**: Change `data_region_offset: u16` to `u32` in `CompileContext`. Arrays can easily exceed 64KB (`ARRAY[1..1000] OF DINT` = 8000 bytes), and the header's `data_region_bytes` field is already `u32`.
 
@@ -202,6 +208,8 @@ Changes:
 5. Update `emit_str_store_var()` call sites that pass `data_offset` — the emitter takes `u16`, so this may require widening the emitter parameter too, or asserting the offset fits in `u16` for strings specifically
 
 Add a `data_region_offset <= i32::MAX as u32` assertion at the point where `data_region_offset` is stored into a variable slot via `LOAD_CONST_I32` (see Key Design Decision 6).
+
+**Also in this PR**: Widen `Trap::DataRegionOutOfBounds(u16)` to `DataRegionOutOfBounds(u32)` in `compiler/vm/src/error.rs`. With arrays, data region byte offsets can exceed 65535 (e.g., `ARRAY[1..32768] OF INT` = 262,144 bytes). The current `u16` payload truncates offsets in error messages, making defense-in-depth errors misleading. Update the `Display` impl and all `Trap::DataRegionOutOfBounds(offset as u16)` call sites in `vm.rs` to pass the full `u32` offset. This is a one-line type change + mechanical call-site updates.
 
 Pure refactoring — no behavioral change for any program that compiles today.
 
@@ -404,7 +412,9 @@ Add method:
 pub fn add_array_descriptor(&mut self, element_type: u8, total_elements: u32) -> u16
 ```
 
-The builder appends the descriptor to `TypeSection.array_descriptors` and returns the descriptor's index (its position in the Vec). The codegen stores this index in `ArrayVarInfo.desc_index` and emits it into `LOAD_ARRAY`/`STORE_ARRAY` opcodes. No var_index is needed — the mapping from opcode to descriptor is carried by the opcode itself.
+The builder deduplicates descriptors: if an identical `(element_type, total_elements)` pair already exists, return the existing index instead of appending a duplicate. Use a `HashMap<(u8, u32), u16>` as a dedup cache inside the builder. This is a trivial optimization that avoids creating 100 identical descriptors when 100 variables all declare `ARRAY[1..10] OF INT`, reducing container size and load-time parsing with zero runtime cost.
+
+The codegen stores this index in `ArrayVarInfo.desc_index` and emits it into `LOAD_ARRAY`/`STORE_ARRAY` opcodes. No var_index is needed — the mapping from opcode to descriptor is carried by the opcode itself.
 
 ---
 
@@ -693,6 +703,8 @@ Maps from VarTypeInfo to the element type byte:
 ### 5d: Use existing `signed_integer_to_i32` helper
 
 The design uses the existing `signed_integer_to_i32()` function (line 1407 in `compile.rs`) which already handles the `u128` value field with `is_neg` flag and emits proper `ConstantOverflow` diagnostics on range errors. No new helper is needed.
+
+**Visibility change**: Since `signed_integer_to_i32()` is currently private to `compile.rs` and `array_spec_from_inline()` lives in `compile_array.rs`, this function must be changed to `pub(crate)`. Alternatively, `array_spec_from_inline()` can be called from `compile.rs` where `signed_integer_to_i32()` is already in scope — choose whichever keeps the module boundary cleaner.
 
 ---
 
@@ -1030,7 +1042,7 @@ LOAD_ARRAY => {
 
     // Bounds-check data region access (defense-in-depth)
     if byte_offset + 8 > data_region.len() {
-        return Err(Trap::DataRegionOutOfBounds(byte_offset as u16));
+        return Err(Trap::DataRegionOutOfBounds(byte_offset as u32));
     }
 
     // Read 8 bytes and push as Slot
@@ -1072,7 +1084,7 @@ STORE_ARRAY => {
     let data_offset = variables.load(var_index)?.as_i32() as u32 as usize;
     let byte_offset = data_offset + (index as usize) * 8;
     if byte_offset + 8 > data_region.len() {
-        return Err(Trap::DataRegionOutOfBounds(byte_offset as u16));
+        return Err(Trap::DataRegionOutOfBounds(byte_offset as u32));
     }
 
     // Write value to data region as 8 bytes
@@ -1106,6 +1118,18 @@ Use existing test infrastructure to compile ST programs and inspect generated by
 | `array_sint_no_truncation_on_load` | `VAR arr: ARRAY[1..3] OF SINT; END_VAR x := arr[1];` | Emits LOAD_ARRAY only (no TRUNC — matches scalar load path; truncation happens at store time) |
 | `array_sint_truncation_on_store` | `VAR arr: ARRAY[1..3] OF SINT; END_VAR arr[1] := 42;` | Emits TRUNC_I8 before STORE_ARRAY |
 | `array_named_type` | `TYPE MY_ARR : ARRAY[1..5] OF INT; END_TYPE VAR arr : MY_ARR; END_VAR x := arr[3];` | Named type path resolves dimensions from TypeEnvironment |
+
+### Codegen negative tests (compile-time rejection)
+
+These tests verify that invalid array programs produce clear compile-time diagnostics, not panics or silent misbehavior.
+
+| Test name | ST program | Expected error |
+|-----------|-----------|----------------|
+| `array_when_exceeds_element_limit_then_error` | `VAR arr: ARRAY[1..32769] OF INT; END_VAR` | "Array exceeds maximum 32768 elements" |
+| `array_when_dimension_mismatch_then_error` | `VAR matrix: ARRAY[1..3, 1..4] OF INT; END_VAR x := matrix[1];` | "Wrong number of array subscripts" |
+| `array_when_constant_oob_below_then_error` | `VAR arr: ARRAY[1..10] OF INT; END_VAR x := arr[0];` | Compile-time "Array index out of bounds" (P2027) |
+| `array_when_single_element_then_works` | `VAR arr: ARRAY[1..1] OF INT; END_VAR arr[1] := 42; x := arr[1];` | Compiles successfully (degenerate but valid) |
+| `array_when_multidim_exceeds_limit_then_error` | `VAR matrix: ARRAY[1..200, 1..200] OF INT; END_VAR` | "Array exceeds maximum 32768 elements" (40000 > 32768) |
 
 ### Flat index i32 safety test
 
@@ -1145,7 +1169,7 @@ Build containers programmatically using `ContainerBuilder`, execute, check resul
 
 ### Integration tests
 
-End-to-end ST programs compiled and run:
+End-to-end ST programs compiled and run. Verify results by reading the variable table after execution — the test harness calls `vm.variable_table().load(var_index)` on the `sum` variable and asserts the expected value. Follow the pattern used by existing integration tests (e.g., FB integration tests in `compiler/vm/tests/`).
 
 ```iec
 PROGRAM ArrayTest
@@ -1163,9 +1187,10 @@ END_VAR
     FOR i := 1 TO 5 DO
         sum := sum + arr[i];
     END_FOR;
-    (* sum should be 150 *)
 END_PROGRAM
 ```
+
+**Assertion**: After execution, read `sum` from the variable table and assert `sum.as_i32() == 150`.
 
 ---
 
@@ -1186,10 +1211,10 @@ Add these verification rules for documentation purposes (verifier implementation
 ## Implementation Order
 
 ```
-Pre-work 0a: IntermediateType change   ← no dependencies, lands first
-Pre-work 0b: Widen data_region_offset  ← no dependencies
-Pre-work 0c: Thread TypeEnvironment    ← no dependencies
-Pre-work 0d: Create compile_array.rs   ← no dependencies
+Pre-work 0a: IntermediateType change   ← no dependencies, lands FIRST (high blast radius across analyzer)
+Pre-work 0b: Widen data_region_offset + DataRegionOutOfBounds(u32) ← merge after 0a to avoid rebase churn
+Pre-work 0c: Thread TypeEnvironment    ← merge after 0a to avoid rebase churn
+Pre-work 0d: Create compile_array.rs   ← merge after 0a to avoid rebase churn
 Step 1: Opcode constants               ← no dependencies
 Step 2: Emitter methods                ← depends on Step 1
 Step 3: Container descriptors          ← depends on Step 1
@@ -1209,9 +1234,9 @@ Each PR is independently reviewable. Pre-work PRs are pure refactoring with zero
 | PR | Content | Scope | Dependencies |
 |----|---------|-------|-------------|
 | **PR 0a** | Pre-work: `IntermediateType` per-dimension bounds + fix `size_in_bytes()` u8 truncation (P0a-P0f) | Analyzer only | None |
-| **PR 0b** | Pre-work: Widen `data_region_offset` to `u32` + `StringVarInfo.data_offset` + `FbInstanceInfo.data_offset` | Codegen refactoring | None |
-| **PR 0c** | Pre-work: Thread `TypeEnvironment` through compile chain (4 function signatures) | Codegen plumbing | None |
-| **PR 0d** | Pre-work: Create `compile_array.rs` with type stubs (`ArraySpec`, `DimensionInfo`, `ArrayVarInfo`, `ResolvedAccess`) | Structural scaffolding | None |
+| **PR 0b** | Pre-work: Widen `data_region_offset` to `u32` + `StringVarInfo.data_offset` + `FbInstanceInfo.data_offset` + `Trap::DataRegionOutOfBounds` to `u32` | Codegen + VM refactoring | PR 0a (merge order) |
+| **PR 0c** | Pre-work: Thread `TypeEnvironment` through compile chain (4 function signatures) | Codegen plumbing | PR 0a (merge order) |
+| **PR 0d** | Pre-work: Create `compile_array.rs` with type stubs (`ArraySpec`, `DimensionInfo`, `ArrayVarInfo`, `ResolvedAccess`) | Structural scaffolding | PR 0a (merge order) |
 | **PR 1** | Container layer: opcodes + emitter + descriptors + builder (Steps 1-3) | Container + codegen crate | None |
 | **PR 2** | VM: trap type + descriptor loading + LOAD/STORE_ARRAY handlers + VM tests (Step 8) | VM crate | PR 1 |
 | **PR 3** | Codegen: `CompileContext.array_vars` + `resolve_access()` + variable registration in `assign_variables()` (Steps 4-5) | Codegen | PRs 0a-0d, 1 |
@@ -1219,7 +1244,7 @@ Each PR is independently reviewable. Pre-work PRs are pure refactoring with zero
 | **PR 5** | Codegen: array access compilation + end-to-end tests (Step 7 + Step 9) | Codegen + integration | PRs 2, 4 |
 | **PR 6** | Verifier spec update (Step 10) | Docs only | None |
 
-PRs 0a-0d can be reviewed and merged in any order (or in parallel). PRs 1 and 2 build the "bottom half" (container format + VM). PRs 3-5 build the "top half" (codegen) incrementally. PR 6 is documentation-only.
+**PR 0a should merge first** — it touches the `IntermediateType::Array` variant across 10+ files in the analyzer, so any concurrent analyzer changes would cause merge conflicts. PRs 0b-0d are independent of 0a and can be reviewed in parallel, but should merge after 0a to avoid rebase churn. PRs 1 and 2 build the "bottom half" (container format + VM). PRs 3-5 build the "top half" (codegen) incrementally. PR 6 is documentation-only.
 
 **Problem code verification**: Before starting PR 1, verify that `P2027` (compiler) and `V4005` (VM) are unallocated in `compiler/problems/resources/problem-codes.csv` and `compiler/vm/resources/problem-codes.csv` respectively.
 
@@ -1237,7 +1262,7 @@ PRs 0a-0d can be reviewed and merged in any order (or in parallel). PRs 1 and 2 
 | `compiler/codegen/src/compile.rs` | Widen `data_region_offset` to `u32`, add `array_vars` to `CompileContext`, thread `TypeEnvironment`, update `assign_variables()`, `emit_initial_values()`, `compile_variable_read()`, `compile_statement()` dispatch sites |
 | `compiler/problems/resources/problem-codes.csv` | Add `P2027,ArrayIndexOutOfBounds` |
 | `docs/compiler/problems/P2027.rst` | Document the compile-time array index out of bounds diagnostic |
-| `compiler/vm/src/error.rs` | Add `ArrayIndexOutOfBounds` trap variant |
+| `compiler/vm/src/error.rs` | Add `ArrayIndexOutOfBounds` trap variant; widen `DataRegionOutOfBounds` from `u16` to `u32` (Pre-work PR 0b) |
 | `compiler/vm/resources/problem-codes.csv` | Add `V4005` |
 | `compiler/vm/src/vm.rs` | Add LOAD_ARRAY and STORE_ARRAY handlers, array descriptor loading |
 | `specs/design/bytecode-verifier-rules.md` | Add array verification rules |
@@ -1248,10 +1273,10 @@ PRs 0a-0d can be reviewed and merged in any order (or in parallel). PRs 1 and 2 
 
 2. **Mixed constant/variable subscripts**: `matrix[2, j]` has one constant and one variable subscript. The current design treats all subscripts as variable when any one is variable (simpler). An optimization to evaluate constant subscripts at compile time and emit `LOAD_CONST (2-1)` instead of `LOAD_VAR, SUB` can be added later but is not required for correctness.
 
-3. **`DataRegionOutOfBounds` trap payload is `u16`**: With arrays, data region byte offsets can exceed 65535 (e.g., `ARRAY[1..32768] OF INT` = 262,144 bytes). The `DataRegionOutOfBounds(u16)` trap truncates the offset in error messages. This is a pre-existing issue that only affects the defense-in-depth path (which should never fire for well-compiled programs). Not a safety issue — noted as a known limitation.
+3. **`DataRegionOutOfBounds` trap payload widened to `u32`**: Pre-work PR 0b widens `Trap::DataRegionOutOfBounds` from `u16` to `u32` so that array data region offsets (which can exceed 65535) are reported accurately in error messages.
 
 4. **Problem codes must be verified**: `P2027` and `V4005` are assumed unallocated. Check against `compiler/problems/resources/problem-codes.csv` and `compiler/vm/resources/problem-codes.csv` before implementation.
 
 5. **`compile.rs` size**: At 3725 lines, `compile.rs` is already 3.7x over the 1000-line module guideline. Array codegen goes in the new `compile_array.rs` module (Pre-work PR 0d) to avoid further growth. A broader split of `compile.rs` into expression/statement/builtin modules is a separate effort that should not be mixed with array feature work.
 
-6. **Scalability to struct access**: The `ResolvedAccess` enum (Step 4e) is designed to extend to struct field access. When structs are implemented, add a `StructField` variant and extend `resolve_access()`. The dispatch sites in `compile_variable_read()` and `compile_statement()` gain new match arms without changing shape. The per-type info hashmaps in `CompileContext` (`string_vars`, `fb_instances`, `array_vars`) scale linearly; consider consolidating into a `VariableMetadata` enum when the fourth complex type is added.
+6. **Scalability to struct access**: The `ResolvedAccess` enum (Step 4e) is designed to extend to struct field access. When structs are implemented, add a `StructField` variant and extend `resolve_access()`. The dispatch sites in `compile_variable_read()` and `compile_statement()` gain new match arms without changing shape. The per-type info hashmaps in `CompileContext` (`string_vars`, `fb_instances`, `array_vars`) scale linearly; consolidate into a `VariableMetadata` enum *before* adding struct field access (not after) to avoid accumulating a fourth parallel HashMap.
