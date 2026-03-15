@@ -89,11 +89,12 @@ The `iec_type_tag` drives bit interpretation (how to read the raw `u64` slot val
 | 14 | LWORD | `raw as u64` | `16#XXXXXXXXXXXXXXXX` hex |
 | 15 | STRING | data region | deferred |
 | 16 | WSTRING | data region | deferred |
-| 17 | TIME | `raw as i64` (microseconds) | `T#...` |
-| 18 | DATE | reserved | deferred |
-| 19 | TIME_OF_DAY | reserved | deferred |
-| 20 | DATE_AND_TIME | reserved | deferred |
-| 21–254 | — | reserved | — |
+| 17 | TIME | `raw as i32` (milliseconds) | `T#...` |
+| 18 | LTIME | `raw as i64` (milliseconds) | `T#...` |
+| 19 | DATE | reserved | deferred |
+| 20 | TIME_OF_DAY | reserved | deferred |
+| 21 | DATE_AND_TIME | reserved | deferred |
+| 22–254 | — | reserved | — |
 | 255 | OTHER | fallback | display type_name + raw decimal |
 
 For user-defined types (ENUM, subrange), the `iec_type_tag` is set to the **underlying primitive type** (e.g., tag 2 for `INT`-based enum), and `type_name` carries the user-defined name (e.g., `"TrafficLight"`). This means the value can always be displayed correctly using just the tag, even without understanding the derived type's definition.
