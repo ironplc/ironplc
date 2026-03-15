@@ -130,7 +130,7 @@ Each site that destructures `IntermediateType::Array { element_type, size }` mus
 
 | File | Line(s) | Change |
 |------|---------|--------|
-| `intermediate_type.rs` | 228-231 (`size_in_bytes`) | Call `self.array_total_elements()` instead of reading `size` directly. **Also fix the pre-existing `u8` truncation bug**: the current code does `elem_size.saturating_mul(array_size as u8)` which truncates arrays with >255 elements. Change the return type or computation to handle larger arrays correctly. |
+| `intermediate_type.rs` | 190, 228-231 (`size_in_bytes`) | **Widen return type from `Option<u8>` to `Option<u32>`**. The current `u8` return type truncates any type larger than 255 bytes — arrays routinely exceed this (`ARRAY[1..100] OF INT` = 400 bytes). Change the method signature to `pub fn size_in_bytes(&self) -> Option<u32>`. In the Array arm, replace `elem_size.saturating_mul(array_size as u8)` with `(elem_size as u32).checked_mul(self.array_total_elements()?)`. In the Structure/FunctionBlock arms, the computation already uses `u32` internally — just remove the `> u8::MAX` guard and return `Some(total_size)` directly. For primitive type arms (Bool, Int, UInt, Real, Bytes, Time, Date), change `Some(N)` to `Some(N as u32)` or `Some(size.as_bytes() as u32)`. **Callers to update**: (1) `type_attributes.rs:44` — `size_bytes()` currently does `.map(|s| s as u32)`, simplify to just forward the `Option<u32>` directly. (2) `type_attributes.rs:107` — same change. (3) `rule_bit_access_range.rs:88` — currently does `u128::from(bytes) * 8`, change to `bytes as u128 * 8`. (4) `intermediates/structure.rs:38` — currently does `.unwrap_or(0) as u32`, change to `.unwrap_or(0)`. (5) `intermediates/stdlib_function_block.rs:68` — same as (4). All callers already widen to `u32`; this change eliminates the lossy narrowing. |
 | `intermediate_type.rs` | 296 (`alignment_bytes`) | No change needed — already uses `{ element_type, .. }` |
 | `intermediate_type.rs` | 335-338 (`has_explicit_size`) | Change `size.is_some()` to `!dimensions.is_empty()` |
 | `intermediate_type.rs` | 147 (`is_array`) | No change needed — already uses `{ .. }` |
@@ -496,6 +496,10 @@ pub(crate) fn resolve_access<'a>(
                             .ok_or_else(|| Diagnostic::todo_with_span(
                                 named.name.span(), file!(), line!()
                             ))?;
+                        // Note: subscript count vs. dimension count is validated
+                        // later in emit_flat_index(), not here. This keeps resolution
+                        // simple and avoids duplicating the check. The error message
+                        // will reference the emit site, not the resolution site.
                         return Ok(ResolvedAccess::ArrayElement {
                             info,
                             subscripts: all_subscripts,
@@ -566,6 +570,33 @@ pub(crate) fn array_spec_from_named(
         dimensions: dims,
         element_type_name,
     })
+}
+
+/// Maps an IntermediateType to the IEC 61131-3 type name (as an Id) that
+/// `resolve_type_name()` in compile.rs can look up. Only primitive types
+/// are supported (arrays of complex types are out of scope).
+fn intermediate_type_to_name(ty: &IntermediateType) -> Result<Id, Diagnostic> {
+    let name = match ty {
+        IntermediateType::Bool => "BOOL",
+        IntermediateType::Int { size: ByteSized::B8 } => "SINT",
+        IntermediateType::Int { size: ByteSized::B16 } => "INT",
+        IntermediateType::Int { size: ByteSized::B32 } => "DINT",
+        IntermediateType::Int { size: ByteSized::B64 } => "LINT",
+        IntermediateType::UInt { size: ByteSized::B8 } => "USINT",
+        IntermediateType::UInt { size: ByteSized::B16 } => "UINT",
+        IntermediateType::UInt { size: ByteSized::B32 } => "UDINT",
+        IntermediateType::UInt { size: ByteSized::B64 } => "ULINT",
+        IntermediateType::Bytes { size: ByteSized::B8 } => "BYTE",
+        IntermediateType::Bytes { size: ByteSized::B16 } => "WORD",
+        IntermediateType::Bytes { size: ByteSized::B32 } => "DWORD",
+        IntermediateType::Bytes { size: ByteSized::B64 } => "LWORD",
+        IntermediateType::Real { size: ByteSized::B32 } => "REAL",
+        IntermediateType::Real { size: ByteSized::B64 } => "LREAL",
+        IntermediateType::Time { size: ByteSized::B32 } => "TIME",
+        IntermediateType::Time { size: ByteSized::B64 } => "LTIME",
+        _ => return Err(Diagnostic::todo(file!(), line!())),
+    };
+    Ok(Id::from(name))
 }
 
 /// Registers an array variable from a normalized ArraySpec.
@@ -740,18 +771,26 @@ fn flatten_array_initial_values(
             }
             ArrayInitialElementKind::Repeated(repeated) => {
                 let count = repeated.size.value as usize;
-                match repeated.init.as_ref() {
+                // Note: `repeated.init` is `Box<Option<ArrayInitialElementKind>>`,
+                // so deref the Box first, then match on the Option.
+                match repeated.init.as_ref().as_ref() {
                     Some(inner) => {
                         // Recursively flatten the inner element
-                        let inner_values = flatten_array_initial_values(&[inner.clone()])?;
+                        let inner_values = flatten_array_initial_values(
+                            &[inner.clone()]
+                        )?;
                         for _ in 0..count {
                             result.extend_from_slice(&inner_values);
                         }
                     }
                     None => {
-                        // Repeated with no value means zero-fill; use integer 0
+                        // Repeated with no value means zero-fill; use integer 0.
+                        // Construct via ConstantKind::integer_literal("0").unwrap()
+                        // (defined in common.rs:37 — parses "0" into a SignedInteger).
+                        let zero = ConstantKind::integer_literal("0")
+                            .expect("literal '0' is always valid");
                         for _ in 0..count {
-                            result.push(ConstantKind::integer_zero());
+                            result.push(zero.clone());
                         }
                     }
                 }
@@ -877,17 +916,33 @@ fn try_constant_flat_index(
 /// This is NOT a constant-folding evaluator; it only matches direct literals
 /// like `3` or `-5`. Expressions like `2+1` produce None and take the
 /// runtime path, which is correct but not optimally efficient.
+///
+/// Handles two representations of negative constants:
+/// 1. `IntegerLiteral` with `is_neg=true` (parser-level negation, e.g., `ARRAY[-5..5]`)
+/// 2. `UnaryOp::Neg` wrapping a positive literal (expression-level negation, e.g., `-i`)
 fn try_extract_integer_literal(expr: &Expr) -> Option<i32> {
     match &expr.kind {
         ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-            i32::try_from(lit.value.value).ok()
+            // IntegerLiteral.value is a SignedInteger with is_neg flag.
+            // Use signed_integer_to_i32 logic: negate if is_neg is set.
+            let unsigned = i32::try_from(lit.value.value).ok()?;
+            if lit.value.is_neg {
+                unsigned.checked_neg()
+            } else {
+                Some(unsigned)
+            }
         }
         ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => {
-            // Handle negative literals: -(3) → -3
+            // Handle expression-level negation: -(3) → -3
             match &unary.operand.kind {
                 ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
                     let val = i32::try_from(lit.value.value).ok()?;
-                    val.checked_neg()
+                    if lit.value.is_neg {
+                        // Double negation: -(-3) → 3
+                        Some(val)
+                    } else {
+                        val.checked_neg()
+                    }
                 }
                 _ => None,
             }
@@ -1250,7 +1305,7 @@ Each PR is independently reviewable. Pre-work PRs are pure refactoring with zero
 | **PR 0b** | Pre-work: Widen `data_region_offset` to `u32` + `StringVarInfo.data_offset` + `FbInstanceInfo.data_offset` + `Trap::DataRegionOutOfBounds` to `u32` | Codegen + VM refactoring | PR 0a (merge order) |
 | **PR 0c** | Pre-work: Thread `TypeEnvironment` through compile chain (4 function signatures) | Codegen plumbing | PR 0a (merge order) |
 | **PR 0d** | Pre-work: Create `compile_array.rs` with type stubs (`ArraySpec`, `DimensionInfo`, `ArrayVarInfo`, `ResolvedAccess`) | Structural scaffolding | PR 0a (merge order) |
-| **PR 1** | Container layer: opcodes + emitter + descriptors + builder (Steps 1-3) | Container + codegen crate | None |
+| **PR 1** | Container layer: opcodes + emitter + descriptors + builder (Steps 1-3) + update `bytecode-container-format.md` array descriptor layout (lines 157-167) to reflect `total_elements: u32` instead of `lower_bound/upper_bound` pair | Container + codegen crate + spec | None |
 | **PR 2** | VM: trap type + descriptor loading + LOAD/STORE_ARRAY handlers + VM tests (Step 8) | VM crate | PR 1 |
 | **PR 3** | Codegen: `CompileContext.array_vars` + `resolve_access()` + variable registration in `assign_variables()` (Steps 4-5) | Codegen | PRs 0a-0d, 1 |
 | **PR 4** | Codegen: array initialization in `emit_initial_values()` + init tests (Step 6) | Codegen | PR 3 |
@@ -1278,7 +1333,9 @@ Each PR is independently reviewable. Pre-work PRs are pure refactoring with zero
 | `compiler/vm/src/error.rs` | Add `ArrayIndexOutOfBounds` trap variant; widen `DataRegionOutOfBounds` from `u16` to `u32` (Pre-work PR 0b) |
 | `compiler/vm/resources/problem-codes.csv` | Add `V4005` |
 | `compiler/vm/src/vm.rs` | Add LOAD_ARRAY and STORE_ARRAY handlers, array descriptor loading |
+| `specs/design/bytecode-container-format.md` | Update array descriptor layout (lines 157-167) to reflect `total_elements: u32` format (PR 1) |
 | `specs/design/bytecode-verifier-rules.md` | Add array verification rules |
+| `compiler/analyzer/src/intermediate_type.rs` | Widen `size_in_bytes()` return type from `Option<u8>` to `Option<u32>` (Pre-work PR 0a) |
 
 ## Risks and Open Questions
 
@@ -1288,7 +1345,7 @@ Each PR is independently reviewable. Pre-work PRs are pure refactoring with zero
 
 3. **`DataRegionOutOfBounds` trap payload widened to `u32`**: Pre-work PR 0b widens `Trap::DataRegionOutOfBounds` from `u16` to `u32` so that array data region offsets (which can exceed 65535) are reported accurately in error messages.
 
-4. **Problem codes must be verified**: `P2027` and `V4005` are assumed unallocated. Check against `compiler/problems/resources/problem-codes.csv` and `compiler/vm/resources/problem-codes.csv` before implementation.
+4. **Problem codes verified**: `P2027` is unallocated (last allocated is P2026) in `compiler/problems/resources/problem-codes.csv`. `V4005` is unallocated (codes jump from V4003 to V9001) in `compiler/vm/resources/problem-codes.csv`. Verified 2026-03-15.
 
 5. **`compile.rs` size**: At 3725 lines, `compile.rs` is already 3.7x over the 1000-line module guideline. Array codegen goes in the new `compile_array.rs` module (Pre-work PR 0d) to avoid further growth. A broader split of `compile.rs` into expression/statement/builtin modules is a separate effort that should not be mixed with array feature work.
 
