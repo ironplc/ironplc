@@ -82,11 +82,23 @@ wiring), the buzzer turns on (TRUE).
 
 .. tip::
 
-   You can experiment with the boolean logic in the
-   `IronPLC Playground <https://playground.ironplc.com/?code=UFJPR1JBTSBtYWluCiAgIFZBUgogICAgICBCdXR0b24gOiBCT09MOwogICAgICBCdXp6ZXIgOiBCT09MOwogICBFTkRfVkFSCgogICBCdXp6ZXIgOj0gTk9UIEJ1dHRvbjsKCkVORF9QUk9HUkFN>`_
-   — a simplified version without hardware addresses. The playground does
+   You can experiment with the boolean logic in the playground — a
+   simplified version without hardware addresses. The playground does
    not support directly represented variables (``AT %IX1``), but it is a
    quick way to try the logic.
+
+   .. playground-link::
+      :text: Open in Playground
+
+      PROGRAM main
+         VAR
+            Button : BOOL;
+            Buzzer : BOOL;
+         END_VAR
+
+         Buzzer := NOT Button;
+
+      END_PROGRAM
 
 .. tip::
 
