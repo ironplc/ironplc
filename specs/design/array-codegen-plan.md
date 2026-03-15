@@ -18,7 +18,7 @@ Add code generation and VM support for arrays of primitive types. This document 
 
 4. **Safety-critical note**: The flat runtime bounds check guarantees memory safety but does not catch all logically invalid multi-dimensional indices (e.g., `matrix[0, 5]` on `ARRAY[1..3, 1..4]` may access a valid but semantically wrong element — see ADR-0023 case 3). For safety-critical applications, per-dimension runtime checks should be added as a follow-up. This does not block the initial implementation since memory safety is guaranteed.
 
-5. **Runtime index arithmetic overflow**: For variable subscripts, the emitted i32 arithmetic `(subscript - lower_bound) * stride` can overflow if the runtime subscript is far outside the valid range (e.g., `i32::MAX`). The 32768-element limit bounds strides to at most 32768, so intermediate overflow requires subscripts far outside valid bounds. The VM's flat bounds check catches most overflowed results. In the rare case where wrapped arithmetic lands in `[0, total_elements)`, the access hits a valid-but-wrong element — the same semantic (not memory-safety) gap as ADR-0023 case 3. This is acceptable for the initial implementation.
+5. **Runtime index arithmetic uses i64 to prevent overflow**: For variable subscripts, the flat index computation `(subscript - lower_bound) * stride` is emitted using i64 arithmetic (`SUB_I64`, `MUL_I64`, `ADD_I64`) instead of i32. Since subscripts are i32 (sign-extended to i64 in the Slot representation), lower bounds are bounded i32 constants, and strides are at most 32768, no intermediate i64 value can overflow. The VM's `LOAD_ARRAY`/`STORE_ARRAY` handlers read the flat index as i64 via `as_i64()` and bounds-check against `total_elements` before narrowing — no truncation risk. Constants (lower bounds and strides) are emitted via `LOAD_CONST_I64`. This costs 6 extra bytes per constant (i64 vs i32) but eliminates all overflow concerns with zero architectural complexity.
 
 6. **`data_offset` stored as `i32` in variable slots**: The slot stores `data_offset` via `LOAD_CONST_I32`, limiting effective addressing to `i32::MAX` (2 GiB). The codegen must assert `data_region_offset <= i32::MAX as u32` during allocation to fail fast instead of silently wrapping. With the 32768-element limit this is practically unreachable, but the assertion makes the invariant explicit.
 
@@ -817,30 +817,32 @@ fn emit_flat_index(
         return Ok(());
     }
 
-    // Variable case: emit runtime computation.
-    // Emit: (s_0 - l_0) * stride_0 + (s_1 - l_1) * stride_1 + ...
-    let op_type = (OpWidth::W32, Signedness::Signed);
+    // Variable case: emit runtime computation using i64 arithmetic to prevent overflow.
+    // The subscript expression is compiled as i32 but lives in a 64-bit Slot (sign-extended).
+    // SUB_I64/MUL_I64/ADD_I64 read the full i64 value, so no explicit widening is needed.
+    // Emit: (s_0 - l_0) * stride_0 + (s_1 - l_1) * stride_1 + ... (all in i64)
+    let subscript_op_type = (OpWidth::W32, Signedness::Signed);
     for (k, (subscript, dim)) in subscripts.iter().zip(dimensions.iter()).enumerate() {
-        compile_expr(emitter, ctx, subscript, op_type)?;
+        compile_expr(emitter, ctx, subscript, subscript_op_type)?;
         if dim.lower_bound != 0 {
-            let lb_const = ctx.add_i32_constant(dim.lower_bound);
-            emitter.emit_load_const_i32(lb_const);
-            emitter.emit_sub_i32();
+            let lb_const = ctx.add_i64_constant(dim.lower_bound as i64);
+            emitter.emit_load_const_i64(lb_const);
+            emitter.emit_sub_i64();
         }
         if dim.stride != 1 {
-            let stride_const = ctx.add_i32_constant(dim.stride as i32);
-            emitter.emit_load_const_i32(stride_const);
-            emitter.emit_mul_i32();
+            let stride_const = ctx.add_i64_constant(dim.stride as i64);
+            emitter.emit_load_const_i64(stride_const);
+            emitter.emit_mul_i64();
         }
         if k > 0 {
-            emitter.emit_add_i32();  // accumulate into running sum
+            emitter.emit_add_i64();  // accumulate into running sum
         }
     }
     Ok(())
 }
 ```
 
-After this sequence, the stack has exactly one I32: the 0-based flat index.
+After this sequence, the stack has exactly one value: the 0-based flat index as i64 in the Slot. The VM's `LOAD_ARRAY`/`STORE_ARRAY` handlers read it via `as_i64()` and bounds-check the full i64 value before narrowing (see Step 8c/8d).
 
 **Constant index helper**:
 
@@ -1016,20 +1018,27 @@ LOAD_ARRAY => {
     let var_index = read_u16_le(bytecode, &mut pc);
     let desc_index = read_u16_le(bytecode, &mut pc);
     let index_slot = stack.pop()?;
-    let index = index_slot.as_i32();
+
+    // Read index as i64 to catch overflow from i64 flat-index arithmetic.
+    // The codegen emits i64 arithmetic (SUB_I64, MUL_I64, ADD_I64) to prevent
+    // intermediate overflow. Reading as i64 here ensures no truncation before
+    // the bounds check — a huge out-of-range i64 value is caught, not silently
+    // truncated to an in-bounds i32.
+    let index_i64 = index_slot.as_i64();
 
     // Look up array descriptor by index (O(1) Vec access)
     let desc = array_descriptors.get(desc_index as usize)
         .ok_or(Trap::InvalidVariable(var_index))?;
 
-    // Bounds check: 0 <= index < total_elements
-    if index < 0 || (index as u32) >= desc.total_elements {
+    // Bounds check: 0 <= index < total_elements (checked in i64 before narrowing)
+    if index_i64 < 0 || index_i64 >= desc.total_elements as i64 {
         return Err(Trap::ArrayIndexOutOfBounds {
             var_index,
-            index,
+            index: index_i64 as i32,  // truncate for error message only
             total_elements: desc.total_elements,
         });
     }
+    let index = index_i64 as u32;  // safe: checked above, value is in [0, 32768)
 
     // Check variable scope access (defense-in-depth)
     scope.check_access(var_index)?;
@@ -1038,7 +1047,7 @@ LOAD_ARRAY => {
     let data_offset = variables.load(var_index)?.as_i32() as u32 as usize;
 
     // Compute byte offset into data region
-    let byte_offset = data_offset + (index as usize) * 8;
+    let byte_offset = data_offset + index as usize * 8;
 
     // Bounds-check data region access (defense-in-depth)
     if byte_offset + 8 > data_region.len() {
@@ -1066,23 +1075,24 @@ STORE_ARRAY => {
     let index_slot = stack.pop()?;  // TOS = index
     let value_slot = stack.pop()?;  // second = value
 
-    // Same bounds check as LOAD_ARRAY
-    let index = index_slot.as_i32();
+    // Same i64 bounds check as LOAD_ARRAY
+    let index_i64 = index_slot.as_i64();
     let desc = array_descriptors.get(desc_index as usize)
         .ok_or(Trap::InvalidVariable(var_index))?;
-    if index < 0 || (index as u32) >= desc.total_elements {
+    if index_i64 < 0 || index_i64 >= desc.total_elements as i64 {
         return Err(Trap::ArrayIndexOutOfBounds {
             var_index,
-            index,
+            index: index_i64 as i32,
             total_elements: desc.total_elements,
         });
     }
+    let index = index_i64 as u32;  // safe: checked above
 
     // Check variable scope access (defense-in-depth)
     scope.check_access(var_index)?;
 
     let data_offset = variables.load(var_index)?.as_i32() as u32 as usize;
-    let byte_offset = data_offset + (index as usize) * 8;
+    let byte_offset = data_offset + index as usize * 8;
     if byte_offset + 8 > data_region.len() {
         return Err(Trap::DataRegionOutOfBounds(byte_offset as u32));
     }
@@ -1107,10 +1117,10 @@ Use existing test infrastructure to compile ST programs and inspect generated by
 |-----------|-----------|----------|
 | `array_1d_constant_index_load` | `VAR arr: ARRAY[1..5] OF INT; END_VAR x := arr[3];` | Emits `LOAD_CONST 2, LOAD_ARRAY` (0-based: 3-1=2) |
 | `array_1d_constant_index_store` | `arr[3] := 42;` | Emits `LOAD_CONST 42, LOAD_CONST 2, STORE_ARRAY` |
-| `array_1d_variable_index_load` | `x := arr[i];` | Emits `LOAD_VAR i, LOAD_CONST 1, SUB_I32, LOAD_ARRAY` |
-| `array_1d_variable_index_store` | `arr[i] := 42;` | Emits `LOAD_CONST 42, LOAD_VAR i, LOAD_CONST 1, SUB_I32, STORE_ARRAY` |
+| `array_1d_variable_index_load` | `x := arr[i];` | Emits `LOAD_VAR i, LOAD_CONST_I64 1, SUB_I64, LOAD_ARRAY` |
+| `array_1d_variable_index_store` | `arr[i] := 42;` | Emits `LOAD_CONST 42, LOAD_VAR i, LOAD_CONST_I64 1, SUB_I64, STORE_ARRAY` |
 | `array_multidim_constant_index` | `matrix[2,3]` where `ARRAY[1..3,1..4]` | Flat index = (2-1)*4+(3-1) = 6 |
-| `array_multidim_variable_index` | `matrix[i,j]` | Emits SUB, MUL, SUB, ADD sequence |
+| `array_multidim_variable_index` | `matrix[i,j]` | Emits SUB_I64, MUL_I64, SUB_I64, ADD_I64 sequence |
 | `array_nonzero_lower_bound` | `ARRAY[-5..5] OF INT`, access `arr[0]` | 0-based index = 0-(-5) = 5 |
 | `array_constant_oob_error` | `arr[11]` on `ARRAY[1..10]` | Compile-time diagnostic error |
 | `array_initialization` | `ARRAY[1..3] OF INT := [10, 20, 30]` | Emits STORE_ARRAY for each element |
@@ -1131,26 +1141,27 @@ These tests verify that invalid array programs produce clear compile-time diagno
 | `array_when_single_element_then_works` | `VAR arr: ARRAY[1..1] OF INT; END_VAR arr[1] := 42; x := arr[1];` | Compiles successfully (degenerate but valid) |
 | `array_when_multidim_exceeds_limit_then_error` | `VAR matrix: ARRAY[1..200, 1..200] OF INT; END_VAR` | "Array exceeds maximum 32768 elements" (40000 > 32768) |
 
-### Flat index i32 safety test
+### Flat index i64 safety test
 
-Add a unit test in `compiler/codegen/tests/` that validates the i32 overflow invariant:
+Add a unit test in `compiler/codegen/tests/` that validates the i64 overflow invariant:
 
 ```rust
 #[test]
-fn flat_index_arithmetic_when_max_array_then_fits_i32() {
-    // With the 32768-element limit (i16 upper_bound max = 32767):
-    // Worst case: subscript = 32767, lower_bound = 0, stride = 32768
-    // Intermediate value: 32767 * 32768 = 1,073,709,056
-    // i32::MAX = 2,147,483,647 — fits with margin.
-    let max_subscript: i32 = 32767;
-    let max_stride: i32 = 32768;
-    let result = max_subscript.checked_mul(max_stride);
-    assert!(result.is_some(), "flat index must fit in i32");
-    assert!(result.unwrap() <= i32::MAX);
+fn flat_index_arithmetic_when_worst_case_subscript_then_fits_i64() {
+    // Worst case: subscript = i32::MAX, lower_bound = i32::MIN, stride = 32768.
+    // Intermediate value: (i32::MAX - i32::MIN) as i64 * 32768
+    //                   = 4_294_967_295 * 32768
+    //                   = 140_737_488_289_792
+    // i64::MAX = 9_223_372_036_854_775_807 — fits with massive margin.
+    let max_range: i64 = i32::MAX as i64 - i32::MIN as i64;
+    let max_stride: i64 = 32768;
+    let result = max_range.checked_mul(max_stride);
+    assert!(result.is_some(), "flat index must fit in i64");
+    assert!(result.unwrap() <= i64::MAX);
 }
 ```
 
-This test protects the invariant: if someone raises the 32768-element limit, this test fails and forces review of the i32 arithmetic.
+This test protects the invariant: even with the most extreme possible i32 subscript values and maximum stride, the i64 flat index computation cannot overflow. The VM's i64 bounds check then catches any out-of-range result before narrowing to u32.
 
 ### VM tests
 
@@ -1203,8 +1214,10 @@ Add these verification rules for documentation purposes (verifier implementation
 1. `LOAD_ARRAY`/`STORE_ARRAY` operand `desc_index` must be a valid index into the array descriptor table
 2. The descriptor's `element_type` must be a valid type byte (0-5)
 3. When VarEntry is implemented: `var_index` must have `is_array` flag set and `VarEntry.extra` must equal `desc_index`
-4. Stack must have I32 on top when `LOAD_ARRAY`/`STORE_ARRAY` execute
+4. Stack must have an integer value on top when `LOAD_ARRAY`/`STORE_ARRAY` execute (i64 from flat-index arithmetic or i32 from constant index)
 5. For `STORE_ARRAY`, the value below the index must be compatible with the descriptor's `element_type`
+6. **Data region bounds**: For each array variable, verify at load time that `data_offset + total_elements * 8 <= data_region_bytes`. This ensures the array's data region allocation is fully contained within the allocated data region — the runtime `scope.check_access(var_index)` only validates access to the variable slot holding `data_offset`, not the data region bytes themselves. Without this check, a malformed container could reference data region bytes belonging to another program instance.
+7. **No data region overlap** (multi-program): When multiple programs share a data region, verify that each program's array data allocations `[data_offset, data_offset + total_elements * 8)` do not overlap with other programs' allocations (arrays, strings, FB instances). This prevents one program's array write from corrupting another program's data.
 
 ---
 
@@ -1269,7 +1282,7 @@ Each PR is independently reviewable. Pre-work PRs are pure refactoring with zero
 
 ## Risks and Open Questions
 
-1. **Codegen enforces 32768-element limit**: The container format supports u32 `total_elements`, but the codegen limits arrays to 32768 elements to keep flat-index arithmetic within i32 range. `ARRAY[1..200, 1..200]` = 40000 elements will produce a compile-time error. To raise this limit, widen the index computation to i64 and update the i32 safety test (Step 9).
+1. **Codegen enforces 32768-element limit**: The container format supports u32 `total_elements`, but the codegen limits arrays to 32768 elements for the initial implementation. `ARRAY[1..200, 1..200]` = 40000 elements will produce a compile-time error. Since the flat-index arithmetic uses i64 (which has massive headroom), this limit can be raised in the future by simply increasing the constant — no arithmetic changes needed.
 
 2. **Mixed constant/variable subscripts**: `matrix[2, j]` has one constant and one variable subscript. The current design treats all subscripts as variable when any one is variable (simpler). An optimization to evaluate constant subscripts at compile time and emit `LOAD_CONST (2-1)` instead of `LOAD_VAR, SUB` can be added later but is not required for correctness.
 
