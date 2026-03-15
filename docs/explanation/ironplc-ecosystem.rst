@@ -33,9 +33,7 @@ it provides:
   other problems before you ever download code to a PLC.
 - **A VS Code extension** that provides auto-completion, syntax highlighting
   and real-time error checking as you type.
-- **A runtime** (:program:`ironplcvm`) that can execute simple compiled
-  programs. The runtime is in early development and supports only a limited
-  subset of the language.
+- **A runtime** (:program:`ironplcvm`) that can execute compiled programs.
 
 IronPLC reads several source formats:
 
@@ -47,24 +45,6 @@ IronPLC reads several source formats:
 
 This means you can point IronPLC at an existing project from Beremiz or
 TwinCAT and get a second opinion on your code without changing your workflow.
-
---------------------------------------
-What IronPLC Does Not Do (Yet)
---------------------------------------
-
-IronPLC is a young project. Some things it cannot do today:
-
-- **Run on real PLC hardware.** The runtime currently targets a virtual
-  machine, not physical I/O.
-- **Support the full IEC 61131-3 language.** Many features are parsed and
-  checked but code generation covers only a small subset.
-- **Replace your existing IDE.** IronPLC is a complement to your existing
-  tools, not a replacement.
-
-The long-term vision is to become a full development environment for building
-IEC 61131-3 based control systems that run on off-the-shelf embedded
-computers (sometimes called SoftPLCs). That goal is ambitious, and
-contributions are welcome.
 
 --------------------------------------
 How IronPLC Relates to Other Tools
@@ -88,6 +68,5 @@ How IronPLC Relates to Other Tools
      - A widely used commercial PLC IDE. IronPLC does not currently read
        Codesys project files, but Codesys can export to PLCopen XML.
    * - **OpenPLC**
-     - An open-source PLC runtime. IronPLC and OpenPLC have different goals:
-       OpenPLC focuses on running programs on hardware, while IronPLC focuses
-       on checking and compiling code.
+     - An open-source PLC runtime. IronPLC and OpenPLC share the goal of
+       making PLC development more accessible through open-source tools.
