@@ -123,7 +123,7 @@ struct StringVarInfo {
 pub fn compile(
     library: &Library,
     functions: &FunctionEnvironment,
-    _types: &TypeEnvironment,
+    types: &TypeEnvironment,
 ) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
 
@@ -140,7 +140,7 @@ pub fn compile(
         })
         .collect();
 
-    compile_program_with_functions(program, &func_decls, functions)
+    compile_program_with_functions(program, &func_decls, functions, types)
 }
 
 /// Finds the first PROGRAM declaration in the library.
@@ -181,11 +181,12 @@ fn compile_program_with_functions(
     program: &ProgramDeclaration,
     func_decls: &[&FunctionDeclaration],
     functions: &FunctionEnvironment,
+    types: &TypeEnvironment,
 ) -> Result<Container, Diagnostic> {
     let mut ctx = CompileContext::new();
 
     // Assign variable indices for all declared program variables.
-    assign_variables(&mut ctx, &program.variables)?;
+    assign_variables(&mut ctx, &program.variables, types)?;
     let program_var_count = ctx.variables.len() as u16;
 
     // Compile user-defined functions. Each function gets a unique function ID
@@ -206,7 +207,7 @@ fn compile_program_with_functions(
 
     // Emit bytecode for variable initial values into the init emitter.
     let mut init_emitter = Emitter::new();
-    emit_initial_values(&mut init_emitter, &mut ctx, &program.variables)?;
+    emit_initial_values(&mut init_emitter, &mut ctx, &program.variables, types)?;
     init_emitter.emit_ret_void();
 
     // Compile the program body into the scan emitter.
@@ -602,7 +603,11 @@ impl CompileContext {
 }
 
 /// Assigns variable table indices and type info for all variable declarations.
-fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Result<(), Diagnostic> {
+fn assign_variables(
+    ctx: &mut CompileContext,
+    declarations: &[VarDecl],
+    _types: &TypeEnvironment,
+) -> Result<(), Diagnostic> {
     for decl in declarations {
         if let Some(id) = decl.identifier.symbolic_id() {
             let index = ctx.variables.len() as u16;
@@ -745,6 +750,7 @@ fn emit_initial_values(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     declarations: &[VarDecl],
+    _types: &TypeEnvironment,
 ) -> Result<(), Diagnostic> {
     for decl in declarations {
         if let Some(id) = decl.identifier.symbolic_id() {
