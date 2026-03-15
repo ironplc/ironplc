@@ -20,6 +20,168 @@ Add code generation and VM support for arrays of primitive types. This document 
 
 ---
 
+## Pre-work PR: Preserve Per-Dimension Bounds in `IntermediateType::Array`
+
+**Goal**: Replace the flat `size: Option<u32>` in `IntermediateType::Array` with per-dimension bounds so the codegen can recover lower/upper bounds for each dimension when resolving named array types (e.g., `TYPE MY_ARRAY : ARRAY[1..3, 1..4] OF INT; END_TYPE`).
+
+This is a standalone, prerequisite change that lands before the main array codegen work.
+
+### P0a: Add `ArrayDimension` struct
+
+**File**: `compiler/analyzer/src/intermediate_type.rs`
+
+```rust
+/// Bounds for a single dimension of an array type.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArrayDimension {
+    /// Lower bound (inclusive), e.g., 1 in ARRAY[1..10]
+    pub lower: i32,
+    /// Upper bound (inclusive), e.g., 10 in ARRAY[1..10]
+    pub upper: i32,
+}
+```
+
+### P0b: Update `IntermediateType::Array`
+
+**File**: `compiler/analyzer/src/intermediate_type.rs`
+
+Change:
+```rust
+Array {
+    element_type: Box<IntermediateType>,
+    size: Option<u32>,
+}
+```
+
+To:
+```rust
+Array {
+    element_type: Box<IntermediateType>,
+    dimensions: Vec<ArrayDimension>,
+}
+```
+
+Add a derived method:
+```rust
+impl IntermediateType {
+    /// Returns the total number of elements across all dimensions,
+    /// or None if dimensions is empty.
+    pub fn array_total_elements(&self) -> Option<u32> {
+        match self {
+            IntermediateType::Array { dimensions, .. } if !dimensions.is_empty() => {
+                let mut total: u32 = 1;
+                for dim in dimensions {
+                    let dim_size = (dim.upper as i64 - dim.lower as i64 + 1) as u32;
+                    total = total.checked_mul(dim_size)?;
+                }
+                Some(total)
+            }
+            _ => None,
+        }
+    }
+}
+```
+
+### P0c: Update construction site
+
+**File**: `compiler/analyzer/src/intermediates/array.rs`
+
+The `try_from` function currently calls `calculate_array_size()` to get a flat `u32` and stores it as `size: Some(total_size)`. Change it to build a `Vec<ArrayDimension>` from the subranges:
+
+```rust
+// Replace: let total_size = calculate_array_size(&array_subranges.ranges)?;
+// With:
+let dimensions: Vec<ArrayDimension> = array_subranges.ranges.iter()
+    .map(|range| {
+        let lower = signed_integer_to_i32(&range.start)?;
+        let upper = signed_integer_to_i32(&range.end)?;
+        Ok(ArrayDimension { lower, upper })
+    })
+    .collect::<Result<Vec<_>, Diagnostic>>()?;
+
+// Then construct:
+IntermediateType::Array {
+    element_type: Box::new(element_type.representation.clone()),
+    dimensions,
+}
+```
+
+Keep `validate_array_bounds()` as-is — it already validates min <= max per dimension.
+
+The `calculate_array_size()` function can be removed (total size is derived via `array_total_elements()`). Alternatively, keep it as a validation step to check for overflow early.
+
+### P0d: Update all match sites
+
+Each site that destructures `IntermediateType::Array { element_type, size }` must be updated. The changes are mechanical:
+
+| File | Line(s) | Change |
+|------|---------|--------|
+| `intermediate_type.rs` | 228-231 (`size_in_bytes`) | Call `self.array_total_elements()` instead of reading `size` directly. **Also fix the pre-existing `u8` truncation bug**: the current code does `elem_size.saturating_mul(array_size as u8)` which truncates arrays with >255 elements. Change the return type or computation to handle larger arrays correctly. |
+| `intermediate_type.rs` | 296 (`alignment_bytes`) | No change needed — already uses `{ element_type, .. }` |
+| `intermediate_type.rs` | 335-338 (`has_explicit_size`) | Change `size.is_some()` to `!dimensions.is_empty()` |
+| `intermediate_type.rs` | 147 (`is_array`) | No change needed — already uses `{ .. }` |
+| `rule_bit_access_range.rs` | 132-135 | Change `size: None` to `dimensions: vec![]` |
+| `rule_bit_access_range.rs` | 163 | Change `{ element_type, .. }` — already uses wildcard, no change |
+| `type_category.rs` | 34 | No change needed — already uses `{ .. }` |
+| `xform_resolve_type_decl_environment.rs` | 73-76 | Update pattern match to use `dimensions` |
+| `intermediates/structure.rs` | 733, 768 | Update test assertions to check `dimensions` instead of `size` |
+| `plc2x/src/lsp_project.rs` | 221 | No change needed — already uses `{ .. }` |
+
+### P0e: Update tests
+
+All test sites that construct `IntermediateType::Array { element_type, size: Some(N) }` must change to `IntermediateType::Array { element_type, dimensions: vec![ArrayDimension { lower: 0, upper: N-1 }] }` (or use the original bounds if the test represents a specific declaration).
+
+Sites that use `size: None` (dynamic/unknown-size arrays) change to `dimensions: vec![]`.
+
+Key test files:
+- `intermediate_type.rs` — tests at lines 608, 617, 686, 724, 730, 811, 958
+- `intermediates/array.rs` — tests at lines 384, 406, 523
+- `intermediates/structure.rs` — tests at lines 705, 733, 768, 802, 1276, 1578
+- `type_environment.rs` — test at line 501
+- `type_category.rs` — test at line 93
+
+### P0f: Add `TypeEnvironment` accessor for codegen
+
+**File**: `compiler/analyzer/src/type_environment.rs`
+
+Add a method that the codegen can use to resolve a named array type to its dimensions and element type:
+
+```rust
+impl TypeEnvironment {
+    /// Returns the array dimensions and element type for a named array type.
+    /// Returns None if the type is not found or is not an array.
+    pub fn resolve_array_type(&self, type_name: &TypeName) -> Option<&IntermediateType> {
+        let attrs = self.get(type_name)?;
+        match &attrs.representation {
+            it @ IntermediateType::Array { .. } => Some(it),
+            _ => None,
+        }
+    }
+}
+```
+
+The codegen (Step 5b) can then extract `dimensions` and `element_type` directly from the returned `IntermediateType::Array`, instead of needing to recover subranges from the AST.
+
+### Impact on codegen plan
+
+With this pre-work in place, Step 5b's named-type path simplifies. Instead of `types.resolve_array_type(type_name)` returning an opaque object with `.spec_as_subranges()`, it returns `&IntermediateType::Array { element_type, dimensions }`, and `register_array_variable` can extract `DimensionInfo` directly from `dimensions`:
+
+```rust
+SpecificationKind::Named(type_name) => {
+    let array_type = types.resolve_array_type(type_name)
+        .ok_or_else(|| Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(type_name.span(), "Unknown array type"),
+        ))?;
+    let IntermediateType::Array { element_type, dimensions } = array_type else {
+        unreachable!("resolve_array_type guarantees Array variant");
+    };
+    // Convert ArrayDimension to DimensionInfo and register...
+}
+```
+
+---
+
 ## Step 1: Opcode Constants
 
 **File**: `compiler/container/src/opcode.rs`
@@ -33,17 +195,11 @@ pub const STORE_ARRAY: u8 = 0x25;
 
 These opcodes have:
 - Operand 1: `u16` (little-endian) — variable table index of the array variable
-- Operand 2: `u8` — element type byte
+- Operand 2: `u16` (little-endian) — array descriptor index into the type section's descriptor table
 
-Element type bytes (from instruction set spec):
-| Byte | Type |
-|------|------|
-| 0 | I32 |
-| 1 | U32 |
-| 2 | I64 |
-| 3 | U64 |
-| 4 | F32 |
-| 5 | F64 |
+The descriptor index allows the VM to look up bounds and element type via a direct `Vec` index (O(1)) without requiring VarEntry to be implemented. The element type byte (I32=0, U32=1, I64=2, U64=3, F32=4, F64=5) lives in the `ArrayDescriptor`, not in the opcode. The verifier reads it from the descriptor.
+
+Each instruction is 5 bytes: 1 opcode + 2 var_index + 2 desc_index.
 
 Stack effects:
 - `LOAD_ARRAY`: pops 1 (index), pushes 1 (value) → net 0
@@ -55,18 +211,18 @@ Stack effects:
 
 **File**: `compiler/codegen/src/emit.rs`
 
-Add two methods. These do NOT fit the existing macros because they have both a `u16` and a `u8` operand.
+Add two methods. Both have two `u16` operands (var_index and desc_index).
 
-**`emit_load_array(var_index: u16, type_byte: u8)`**:
+**`emit_load_array(var_index: u16, desc_index: u16)`**:
 - Emit `LOAD_ARRAY` opcode byte
 - Emit `var_index` as 2 LE bytes
-- Emit `type_byte` as 1 byte
+- Emit `desc_index` as 2 LE bytes
 - Stack effect: pop 1 (the index is already on the stack), push 1 (the loaded value). Net: 0. The simplest implementation: call `self.pop_stack(1)` then `self.push_stack(1)`, or just no stack change.
 
-**`emit_store_array(var_index: u16, type_byte: u8)`**:
+**`emit_store_array(var_index: u16, desc_index: u16)`**:
 - Emit `STORE_ARRAY` opcode byte
 - Emit `var_index` as 2 LE bytes
-- Emit `type_byte` as 1 byte
+- Emit `desc_index` as 2 LE bytes
 - Stack effect: pop 2 (value and index). Call `self.pop_stack(2)`.
 
 ---
@@ -81,21 +237,21 @@ Array descriptors tell the VM the bounds and element type for runtime checking.
 
 ```
 pub struct ArrayDescriptor {
-    pub element_type: u8,    // same encoding as element type byte in opcodes
-    pub total_elements: u16, // number of elements (upper_bound + 1, max 32768)
+    pub element_type: u8,     // same encoding as element type byte (I32=0, U32=1, etc.)
+    pub total_elements: u32,  // number of elements
 }
 ```
 
-On disk, each descriptor is 8 bytes per the container format spec (`bytecode-container-format.md:157-167`):
+On disk, each descriptor is 8 bytes:
 ```
-[element_type: u8] [reserved: u8 = 0] [lower_bound: i16 LE = 0] [upper_bound: i16 LE = total_elements - 1] [element_extra: u16 LE = 0]
+[element_type: u8] [reserved: u8 = 0] [total_elements: u32 LE] [element_extra: u16 LE = 0]
 ```
 
-The on-disk format retains `lower_bound` (always 0) and `upper_bound` (always `total_elements - 1`) per the spec. The in-memory `ArrayDescriptor` struct stores only `total_elements` for convenience; serialization writes `lower_bound=0, upper_bound=total_elements-1`, and deserialization computes `total_elements = upper_bound + 1` (after verifying `lower_bound == 0`).
+Since the plan uses always-0-based descriptors (lower_bound is always 0), the on-disk format stores `total_elements` as a single `u32` rather than separate `lower_bound: i16` + `upper_bound: i16`. This uses the same 8 bytes but supports up to 2^32 elements in the container format. The container format spec (`bytecode-container-format.md:157-167`) should be updated to reflect this layout.
 
 `element_extra` is reserved for future use (e.g., for arrays of strings, it would hold the max string length; for arrays of structs, it would hold a type descriptor index).
 
-**Limit**: `upper_bound` is `i16`, so max value is 32767, giving a maximum of 32768 elements per array. This is sufficient for typical PLC programs but should be documented as a known limit.
+**Codegen limit**: The codegen enforces a maximum of 32768 elements per array to keep flat-index arithmetic within i32 range (see the i32 safety test in Step 9). This is a codegen-enforced limit, not a container format limit — the on-disk `u32` field supports raising this ceiling in the future without a format change.
 
 ### 3b: Extend `TypeSection`
 
@@ -107,17 +263,17 @@ This follows the type section serialization order defined in the container forma
 
 **Do NOT add a header field for array descriptor count.** The count lives in the type section body, not in the header. The header's `num_fb_types` field is the only type-section count in the header. The array count follows the same pattern as function signatures — stored inline in the type section.
 
-### 3c: Link variables to descriptors via VarEntry
+### 3c: Descriptor index in opcodes (no VarEntry dependency)
 
 Per the container format spec (`bytecode-container-format.md:151-153`), each `VarEntry` has:
 - `flags: u8` — bit 0 is `is_array`
 - `extra: u16` — for arrays, this holds the array descriptor index
 
-When the variable table (VarEntry section) is implemented in the type section, array variables must have `flags` bit 0 set and `extra` pointing to their descriptor index. This is how the VM and verifier link a `LOAD_ARRAY`/`STORE_ARRAY` variable index to its bounds.
+The VarEntry section is not yet implemented in `type_section.rs`. Rather than introducing a temporary workaround (e.g., a var_index→descriptor HashMap in the VM), the descriptor index is encoded directly in the `LOAD_ARRAY`/`STORE_ARRAY` opcodes as the second `u16` operand. The codegen assigns descriptor indices sequentially and emits them into the bytecode. The VM loads the descriptor table as a `Vec<ArrayDescriptor>` and indexes directly — O(1) per array access, no HashMap, no temporary serialization format.
 
-**Current state**: The VarEntry section is not yet implemented in `type_section.rs`. For this initial implementation, the VM builds the var_index → descriptor mapping from the array descriptors at load time using a simpler approach: descriptors are stored in order, and the codegen passes the descriptor index through the `ContainerBuilder`. The builder stores a `Vec<(u16, ArrayDescriptor)>` mapping var_index to descriptor. At load time, the VM iterates the descriptors and builds a `HashMap<u16, ArrayDescriptor>`.
+This costs 1 extra byte per array opcode (u16 vs u8 for the second operand) but eliminates runtime lookup overhead in the VM dispatch loop and keeps the type section serialization spec-compliant.
 
-**Future**: When the VarEntry section is implemented, migrate to using `VarEntry.flags` and `VarEntry.extra` per the spec. This is a container-internal change that doesn't affect the codegen or VM opcode semantics.
+**Future**: When VarEntry is implemented, the desc_index operand becomes redundant (VarEntry.extra already carries it), but it remains valid and costs nothing to keep. No migration needed.
 
 ### 3d: Update `ContainerBuilder`
 
@@ -125,10 +281,10 @@ When the variable table (VarEntry section) is implemented in the type section, a
 
 Add method:
 ```
-pub fn add_array_descriptor(mut self, var_index: u16, element_type: u8, total_elements: u16) -> Self
+pub fn add_array_descriptor(&mut self, element_type: u8, total_elements: u32) -> u16
 ```
 
-The builder stores descriptors in a `Vec<(u16, ArrayDescriptor)>`. During `build()`, it serializes them into the type section after FB type descriptors. The descriptor index is implicitly the position in the Vec.
+The builder appends the descriptor to `TypeSection.array_descriptors` and returns the descriptor's index (its position in the Vec). The codegen stores this index in `ArrayVarInfo.desc_index` and emits it into `LOAD_ARRAY`/`STORE_ARRAY` opcodes. No var_index is needed — the mapping from opcode to descriptor is carried by the opcode itself.
 
 ---
 
@@ -149,8 +305,8 @@ struct DimensionInfo {
 /// Metadata for an array variable, stored in CompileContext.
 struct ArrayVarInfo {
     var_index: u16,           // slot table index (slot holds data_offset)
+    desc_index: u16,          // index into the container's array descriptor table
     data_offset: u32,         // byte offset in data region where elements start
-    element_type_byte: u8,    // type byte for LOAD_ARRAY/STORE_ARRAY
     element_var_type_info: VarTypeInfo,  // element's VarTypeInfo for truncation
     total_elements: u32,      // total flattened element count
     dimensions: Vec<DimensionInfo>,  // per-dimension bounds and strides
@@ -194,8 +350,11 @@ Since both `SpecificationKind::Inline` and `SpecificationKind::Named` need the s
 
 ```rust
 /// Processes resolved array subranges and registers the array in the compile context.
+/// `builder` is the ContainerBuilder, used to register the array descriptor
+/// and obtain its index.
 fn register_array_variable(
     ctx: &mut CompileContext,
+    builder: &mut ContainerBuilder,
     id: &Id,
     var_index: u16,
     subranges: &ArraySubranges,
@@ -254,14 +413,15 @@ fn register_array_variable(
             Label::span(span.clone(), "Data region overflow"),
         ))?;
 
-    // 6. Determine element type byte
+    // 6. Register descriptor in the container and get its index
     let element_type_byte = var_type_info_to_type_byte(&element_vti);
+    let desc_index = builder.add_array_descriptor(element_type_byte, total_elements);
 
     // 7. Store in context
     ctx.array_vars.insert(id.clone(), ArrayVarInfo {
         var_index,
+        desc_index,
         data_offset,
-        element_type_byte,
         element_var_type_info: element_vti,
         total_elements,
         dimensions,
@@ -275,12 +435,12 @@ fn register_array_variable(
 
 ### 5b: Handle inline and named array specifications
 
-```
+```rust
 InitialValueAssignmentKind::Array(array_init) => {
     match &array_init.spec {
         SpecificationKind::Inline(array_subranges) => {
             let (tag, name) = register_array_variable(
-                ctx, &id, index, array_subranges,
+                ctx, builder, &id, index, array_subranges,
                 &array_init.initial_values,
                 &decl.identifier.span(),
             )?;
@@ -288,14 +448,21 @@ InitialValueAssignmentKind::Array(array_init) => {
         }
         SpecificationKind::Named(type_name) => {
             // Named array type: look up in TypeEnvironment to get the
-            // ArrayDeclaration, then extract its subranges.
-            let resolved = types.resolve_array_type(type_name)
+            // IntermediateType::Array with per-dimension bounds (from pre-work PR).
+            let array_type = types.resolve_array_type(type_name)
                 .ok_or_else(|| Diagnostic::problem(
                     Problem::NotImplemented,
                     Label::span(type_name.span(), "Unknown array type"),
                 ))?;
-            let (tag, name) = register_array_variable(
-                ctx, &id, index, &resolved.spec_as_subranges(),
+            let IntermediateType::Array { element_type, dimensions } = array_type else {
+                unreachable!("resolve_array_type guarantees Array variant");
+            };
+            // Build synthetic ArraySubranges from the IntermediateType dimensions.
+            // Alternatively, refactor register_array_variable to accept
+            // &[ArrayDimension] + element_type_name directly, avoiding the
+            // need to reconstruct ArraySubranges.
+            let (tag, name) = register_array_variable_from_intermediate(
+                ctx, builder, &id, index, element_type, dimensions,
                 &array_init.initial_values,
                 &type_name.span(),
             )?;
@@ -305,7 +472,7 @@ InitialValueAssignmentKind::Array(array_init) => {
 }
 ```
 
-**Note**: The `TypeEnvironment` may need a new method `resolve_array_type()` that looks up a type name and returns the `ArraySubranges` if the type is an array type. Check what methods `TypeEnvironment` already provides and add one if needed. The key is to extract the subranges (dimensions and element type) from the type definition.
+The inline path uses `register_array_variable` (takes `&ArraySubranges` from the AST). The named path uses `register_array_variable_from_intermediate` (takes `&IntermediateType` + `&[ArrayDimension]` from the type environment). Both converge on the same internal logic: extract per-dimension bounds → compute strides → allocate data region → register descriptor. Factor the shared logic into a common inner function to avoid duplication.
 
 ### 5c: Helper function `var_type_info_to_type_byte`
 
@@ -387,7 +554,7 @@ For each flattened initial value at flat index `i`:
 ```
 LOAD_CONST <initial_value>   // push value (width matches element type)
 LOAD_CONST_I32 <i>           // push 0-based flat index
-STORE_ARRAY var_index, type_byte
+STORE_ARRAY var_index, desc_index
 ```
 
 **Note**: Initialization uses `STORE_ARRAY` with constant indices, which means the VM will bounds-check during init. This is correct and safe.
@@ -427,7 +594,7 @@ fn resolve_array_access(
     array_var: &ArrayVariable,
     ctx: &CompileContext,
 ) -> Result<(Vec<&Expr>, &ArrayVarInfo), Diagnostic> {
-    // Walk the chain collecting subscripts in dimension order.
+    // Walk the chain collecting subscript groups innermost-first, then reverse.
     // For nested arrays arr[i][j], the AST is:
     //   ArrayVariable {
     //       subscripted_variable: Array(ArrayVariable {
@@ -436,25 +603,19 @@ fn resolve_array_access(
     //       }),
     //       subscripts: [j],
     //   }
-    // We collect subscripts outermost-first: [i, j].
-    let mut all_subscripts: Vec<&Expr> = Vec::new();
+    // We collect: [[j], [i]], reverse to [[i], [j]], flatten to [i, j].
+    let mut levels: Vec<&[Expr]> = Vec::new();
     let mut current = array_var;
     loop {
-        // Prepend this level's subscripts (they are the outer dimensions)
-        // We'll reverse at the end.
-        let insertion_point = all_subscripts.len();
-        for sub in &current.subscripts {
-            all_subscripts.push(sub);
-        }
-        // Rotate the newly added subscripts to the front
-        all_subscripts[..insertion_point + current.subscripts.len()]
-            .rotate_right(current.subscripts.len());
-
+        levels.push(&current.subscripts);
         match current.subscripted_variable.as_ref() {
             SymbolicVariableKind::Array(inner) => {
                 current = inner;
             }
             SymbolicVariableKind::Named(named) => {
+                levels.reverse();
+                let all_subscripts: Vec<&Expr> =
+                    levels.into_iter().flatten().collect();
                 let info = ctx.array_vars.get(&named.name)
                     .ok_or_else(|| Diagnostic::todo_with_span(
                         named.name.span(), file!(), line!()
@@ -490,7 +651,7 @@ fn emit_flat_index(
         ));
     }
 
-    // Check if all subscripts are constant expressions.
+    // Check if all subscripts are integer literals.
     // If so, compute flat index at compile time with per-dimension bounds checking.
     if let Some(flat_index) = try_constant_flat_index(subscripts, dimensions, span)? {
         let const_index = ctx.add_i32_constant(flat_index);
@@ -533,15 +694,15 @@ fn try_constant_flat_index(
 ) -> Result<Option<i32>, Diagnostic> {
     let mut flat_index: i32 = 0;
     for (subscript, dim) in subscripts.iter().zip(dimensions.iter()) {
-        let value = match evaluate_constant_i32(subscript) {
+        let value = match try_extract_integer_literal(subscript) {
             Some(v) => v,
-            None => return Ok(None),  // not all constant — use runtime path
+            None => return Ok(None),  // not a literal — use runtime path
         };
         // Per-dimension bounds check at compile time
         let upper = dim.lower_bound + dim.size as i32 - 1;
         if value < dim.lower_bound || value > upper {
             return Err(Diagnostic::problem(
-                Problem::ArrayIndexOutOfBounds,  // or appropriate problem code
+                Problem::ArrayIndexOutOfBounds,  // P2027
                 Label::span(span.clone(), "Array index out of bounds"),
             ));
         }
@@ -549,7 +710,34 @@ fn try_constant_flat_index(
     }
     Ok(Some(flat_index))
 }
+
+/// Extracts an i32 value from an expression if it is a literal integer.
+/// Returns None for any non-literal expression (variables, arithmetic, etc.)
+/// — those fall through to the runtime index computation path.
+/// This is NOT a constant-folding evaluator; it only matches direct literals
+/// like `3` or `-5`. Expressions like `2+1` produce None and take the
+/// runtime path, which is correct but not optimally efficient.
+fn try_extract_integer_literal(expr: &Expr) -> Option<i32> {
+    match &expr.kind {
+        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
+            i32::try_from(lit.value.value).ok()
+        }
+        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => {
+            // Handle negative literals: -(3) → -3
+            match &unary.operand.kind {
+                ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
+                    let val = i32::try_from(lit.value.value).ok()?;
+                    val.checked_neg()
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
 ```
+
+A general constant-folding pass (evaluating `2+1`, `N-1` where N is a constant, etc.) would benefit many areas of the compiler beyond arrays. It is explicitly deferred and is not needed for correctness — non-literal subscripts simply take the runtime index computation path.
 
 ### 7d: Array read (in expression context)
 
@@ -562,15 +750,11 @@ ExprKind::Variable(variable) => {
     if let Some(array_var) = as_array_access(variable) {
         let (subscripts, info) = resolve_array_access(array_var, ctx)?;
         emit_flat_index(emitter, ctx, &subscripts, &info.dimensions, &expr.span())?;
-        emitter.emit_load_array(info.var_index, info.element_type_byte);
+        emitter.emit_load_array(info.var_index, info.desc_index);
 
-        // Truncate for sub-32-bit types. LOAD_ARRAY always pushes a full
-        // slot (I32 or I64). For SINT (8-bit signed), BOOL (1-bit), BYTE
-        // (8-bit unsigned), etc., the value in the data region was stored
-        // truncated, so the upper bits are already zero. However, to match
-        // the scalar load path and ensure sign-extension for signed sub-32
-        // types, apply the same truncation as emit_truncation().
-        emit_truncation(emitter, info.element_var_type_info);
+        // No truncation on load — matches the scalar load path
+        // (compile_variable_read does not truncate). The value was
+        // already truncated at store time; upper bits are zero.
         return Ok(());
     }
     let var_index = resolve_variable(ctx, variable)?;
@@ -603,7 +787,7 @@ StmtKind::Assignment(assignment) => {
 
         // Stack now has: [..., value, index]
         // STORE_ARRAY pops both: index (TOS) then value.
-        emitter.emit_store_array(info.var_index, info.element_type_byte);
+        emitter.emit_store_array(info.var_index, info.desc_index);
         return Ok(());
     }
 
@@ -623,10 +807,10 @@ StmtKind::Assignment(assignment) => {
 
 Add to the `Trap` enum:
 ```
-ArrayIndexOutOfBounds { var_index: u16, index: i32, upper_bound: i16 }
+ArrayIndexOutOfBounds { var_index: u16, index: i32, total_elements: u32 }
 ```
 
-Implement `Display` to show: `"array index out of bounds: index {index} for array variable {var_index} with bounds [0..{upper_bound}]"`.
+Implement `Display` to show: `"array index out of bounds: index {index} for array variable {var_index} with {total_elements} elements"`.
 
 **File**: `compiler/vm/resources/problem-codes.csv`
 
@@ -636,24 +820,19 @@ Add: `V4005,ArrayIndexOutOfBounds,Array index out of bounds,true`
 
 **File**: `compiler/vm/src/vm.rs` (or a new `compiler/vm/src/array.rs` if the file is already large)
 
-At container load time, parse the array descriptor section from the type section and build a lookup:
+At container load time, parse the array descriptor section from the type section into a `Vec<ArrayDescriptor>`:
 
 ```rust
 struct ArrayDescriptor {
-    upper_bound: i16,  // total_elements - 1
-    element_type: u8,
+    total_elements: u32,  // from on-disk u32 field
+    element_type: u8,     // for verifier validation (not used by VM at runtime)
 }
 
 // In the VM's loaded state:
-array_descriptors: HashMap<u16, ArrayDescriptor>  // var_index → descriptor
+array_descriptors: Vec<ArrayDescriptor>  // indexed by desc_index from opcodes
 ```
 
-The VM reads descriptors from the type section. Since the VarEntry section is not yet implemented, the VM needs the var_index→descriptor mapping. Two options:
-
-1. **ContainerBuilder embeds var_index**: The builder writes a mapping table (separate from the spec's descriptor format) that the VM reads. This is a temporary approach until VarEntry is implemented.
-2. **Codegen passes the mapping out-of-band**: The codegen stores the mapping in the container's constant pool or a custom section.
-
-**Recommended**: Option 1 — extend the type section serialization to write `var_index: u16` before each array descriptor. This is a temporary 2-byte prefix per descriptor that will be removed when VarEntry is implemented. Document this as a temporary deviation.
+The VM reads descriptors from the type section in index order. The codegen emits descriptor indices into `LOAD_ARRAY`/`STORE_ARRAY` opcodes, so the VM uses the index as a direct `Vec` offset — O(1) lookup with no hashing. This is the same pattern as the constant pool (`Vec` indexed by pool index from opcodes).
 
 ### 8c: LOAD_ARRAY handler
 
@@ -662,26 +841,28 @@ In the VM's opcode dispatch loop, add after existing handlers. The VM uses `Slot
 ```
 LOAD_ARRAY => {
     let var_index = read_u16_le(bytecode, &mut pc);
-    let type_byte = bytecode[pc];
-    pc += 1;
+    let desc_index = read_u16_le(bytecode, &mut pc);
     let index_slot = stack.pop()?;
     let index = index_slot.as_i32();
 
-    // Look up array descriptor
-    let desc = array_descriptors.get(&var_index)
+    // Look up array descriptor by index (O(1) Vec access)
+    let desc = array_descriptors.get(desc_index as usize)
         .ok_or(Trap::InvalidVariable(var_index))?;
 
-    // Bounds check: 0 <= index <= upper_bound
-    if index < 0 || index > desc.upper_bound as i32 {
+    // Bounds check: 0 <= index < total_elements
+    if index < 0 || (index as u32) >= desc.total_elements {
         return Err(Trap::ArrayIndexOutOfBounds {
             var_index,
             index,
-            upper_bound: desc.upper_bound,
+            total_elements: desc.total_elements,
         });
     }
 
+    // Check variable scope access (defense-in-depth)
+    scope.check_access(var_index)?;
+
     // Read data_offset from the variable's slot
-    let data_offset = variables.load(scope.resolve(var_index))?.as_i32() as u32 as usize;
+    let data_offset = variables.load(var_index)?.as_i32() as u32 as usize;
 
     // Compute byte offset into data region
     let byte_offset = data_offset + (index as usize) * 8;
@@ -699,7 +880,7 @@ LOAD_ARRAY => {
 }
 ```
 
-**Note on type_byte**: The VM reads the `type_byte` operand (for verifier validation) but pushes the raw 8-byte value as a `Slot` regardless of type. The `Slot` type is a uniform 8-byte value — type interpretation happens at the consumer (the next opcode). This matches how FB_LOAD_PARAM works. The `type_byte` is validated by the verifier, not used by the VM at runtime.
+**Note on element_type**: The `element_type` byte lives in the `ArrayDescriptor`, not in the opcode. The VM does not use it at runtime — it pushes the raw 8-byte value as a `Slot` regardless of type. Type interpretation happens at the consumer (the next opcode). This matches how `FB_LOAD_PARAM` works. The verifier validates `element_type` at load time.
 
 ### 8d: STORE_ARRAY handler
 
@@ -708,24 +889,26 @@ Symmetric to LOAD_ARRAY. Stack has `[..., value, index]`:
 ```
 STORE_ARRAY => {
     let var_index = read_u16_le(bytecode, &mut pc);
-    let type_byte = bytecode[pc];
-    pc += 1;
+    let desc_index = read_u16_le(bytecode, &mut pc);
     let index_slot = stack.pop()?;  // TOS = index
     let value_slot = stack.pop()?;  // second = value
 
     // Same bounds check as LOAD_ARRAY
     let index = index_slot.as_i32();
-    let desc = array_descriptors.get(&var_index)
+    let desc = array_descriptors.get(desc_index as usize)
         .ok_or(Trap::InvalidVariable(var_index))?;
-    if index < 0 || index > desc.upper_bound as i32 {
+    if index < 0 || (index as u32) >= desc.total_elements {
         return Err(Trap::ArrayIndexOutOfBounds {
             var_index,
             index,
-            upper_bound: desc.upper_bound,
+            total_elements: desc.total_elements,
         });
     }
 
-    let data_offset = variables.load(scope.resolve(var_index))?.as_i32() as u32 as usize;
+    // Check variable scope access (defense-in-depth)
+    scope.check_access(var_index)?;
+
+    let data_offset = variables.load(var_index)?.as_i32() as u32 as usize;
     let byte_offset = data_offset + (index as usize) * 8;
     if byte_offset + 8 > data_region.len() {
         return Err(Trap::DataRegionOutOfBounds(byte_offset as u16));
@@ -759,7 +942,30 @@ Use existing test infrastructure to compile ST programs and inspect generated by
 | `array_constant_oob_error` | `arr[11]` on `ARRAY[1..10]` | Compile-time diagnostic error |
 | `array_initialization` | `ARRAY[1..3] OF INT := [10, 20, 30]` | Emits STORE_ARRAY for each element |
 | `array_initialization_repeated` | `ARRAY[1..6] OF INT := [3(10), 3(20)]` | Emits 6 STORE_ARRAY calls |
-| `array_sint_truncation` | `VAR arr: ARRAY[1..3] OF SINT; END_VAR x := arr[1];` | Emits LOAD_ARRAY + TRUNC_I8 |
+| `array_sint_no_truncation_on_load` | `VAR arr: ARRAY[1..3] OF SINT; END_VAR x := arr[1];` | Emits LOAD_ARRAY only (no TRUNC — matches scalar load path; truncation happens at store time) |
+| `array_sint_truncation_on_store` | `VAR arr: ARRAY[1..3] OF SINT; END_VAR arr[1] := 42;` | Emits TRUNC_I8 before STORE_ARRAY |
+| `array_named_type` | `TYPE MY_ARR : ARRAY[1..5] OF INT; END_TYPE VAR arr : MY_ARR; END_VAR x := arr[3];` | Named type path resolves dimensions from TypeEnvironment |
+
+### Flat index i32 safety test
+
+Add a unit test in `compiler/codegen/tests/` that validates the i32 overflow invariant:
+
+```rust
+#[test]
+fn flat_index_arithmetic_when_max_array_then_fits_i32() {
+    // With the 32768-element limit (i16 upper_bound max = 32767):
+    // Worst case: subscript = 32767, lower_bound = 0, stride = 32768
+    // Intermediate value: 32767 * 32768 = 1,073,709,056
+    // i32::MAX = 2,147,483,647 — fits with margin.
+    let max_subscript: i32 = 32767;
+    let max_stride: i32 = 32768;
+    let result = max_subscript.checked_mul(max_stride);
+    assert!(result.is_some(), "flat index must fit in i32");
+    assert!(result.unwrap() <= i32::MAX);
+}
+```
+
+This test protects the invariant: if someone raises the 32768-element limit, this test fails and forces review of the i32 arithmetic.
 
 ### VM tests
 
@@ -808,21 +1014,23 @@ END_PROGRAM
 
 Add these verification rules for documentation purposes (verifier implementation is a separate task):
 
-1. `LOAD_ARRAY`/`STORE_ARRAY` operand `var_index` must have a corresponding array descriptor (via VarEntry `is_array` flag when implemented, or via descriptor lookup for now)
-2. The `type_byte` operand must match the descriptor's `element_type`
-3. Stack must have I32 on top when `LOAD_ARRAY`/`STORE_ARRAY` execute
-4. For `STORE_ARRAY`, the value below the index must be compatible with the element type
+1. `LOAD_ARRAY`/`STORE_ARRAY` operand `desc_index` must be a valid index into the array descriptor table
+2. The descriptor's `element_type` must be a valid type byte (0-5)
+3. When VarEntry is implemented: `var_index` must have `is_array` flag set and `VarEntry.extra` must equal `desc_index`
+4. Stack must have I32 on top when `LOAD_ARRAY`/`STORE_ARRAY` execute
+5. For `STORE_ARRAY`, the value below the index must be compatible with the descriptor's `element_type`
 
 ---
 
 ## Implementation Order
 
 ```
+Pre-work: IntermediateType change  ← no dependencies, lands first
 Step 1: Opcode constants           ← no dependencies
 Step 2: Emitter methods            ← depends on Step 1
 Step 3: Container descriptors      ← depends on Step 1
 Step 4: CompileContext types        ← no dependencies (just struct definitions)
-Step 5: assign_variables()         ← depends on Steps 3, 4
+Step 5: assign_variables()         ← depends on Steps 3, 4, Pre-work
 Step 6: emit_initial_values()      ← depends on Steps 2, 5
 Step 7: Compile array access       ← depends on Steps 2, 5
 Step 8: VM implementation          ← depends on Steps 1, 3
@@ -833,11 +1041,12 @@ Step 10: Verifier spec             ← can be done anytime
 Steps 1-4 can be done as a single commit (foundational types). Steps 5-7 form the codegen commit. Step 8 is the VM commit. Step 9 spans all commits.
 
 Recommended PR structure:
-1. **PR 1**: Steps 1-4 + Step 8 (container + VM — the "bottom half")
-2. **PR 2**: Steps 5-7 + Step 9 (codegen + tests — the "top half")
-3. **PR 3**: Step 10 (verifier spec — documentation only)
+1. **PR 0**: Pre-work (IntermediateType per-dimension bounds — analyzer-only, self-contained)
+2. **PR 1**: Steps 1-4 + Step 8 (container + VM — the "bottom half")
+3. **PR 2**: Steps 5-7 + Step 9 (codegen + tests — the "top half")
+4. **PR 3**: Step 10 (verifier spec — documentation only)
 
-Or as a single PR if preferred.
+Or Steps 1-9 as a single PR after PR 0 if preferred.
 
 ---
 
@@ -848,8 +1057,10 @@ Or as a single PR if preferred.
 | `compiler/container/src/opcode.rs` | Add `LOAD_ARRAY`, `STORE_ARRAY` constants |
 | `compiler/container/src/type_section.rs` | Add `ArrayDescriptor` struct, extend `TypeSection` serialization |
 | `compiler/container/src/builder.rs` | Add `add_array_descriptor()` method |
-| `compiler/codegen/src/emit.rs` | Add `emit_load_array()`, `emit_store_array()` |
+| `compiler/codegen/src/emit.rs` | Add `emit_load_array(var_index, desc_index)`, `emit_store_array(var_index, desc_index)` |
 | `compiler/codegen/src/compile.rs` | Widen `data_region_offset` to `u32`, add `ArrayVarInfo`, `DimensionInfo`, changes to `assign_variables()`, `emit_initial_values()`, `compile_expr()`, `compile_statement()`, thread `TypeEnvironment` |
+| `compiler/problems/resources/problem-codes.csv` | Add `P2027,ArrayIndexOutOfBounds` |
+| `docs/compiler/problems/P2027.rst` | Document the compile-time array index out of bounds diagnostic |
 | `compiler/vm/src/error.rs` | Add `ArrayIndexOutOfBounds` trap variant |
 | `compiler/vm/resources/problem-codes.csv` | Add `V4005` |
 | `compiler/vm/src/vm.rs` | Add LOAD_ARRAY and STORE_ARRAY handlers, array descriptor loading |
@@ -857,10 +1068,8 @@ Or as a single PR if preferred.
 
 ## Risks and Open Questions
 
-1. **`upper_bound` is `i16`**: Maximum 32768 elements per array. `ARRAY[1..100, 1..100]` is 10000 elements (OK). `ARRAY[1..200, 1..200]` is 40000 elements (exceeds i16 limit, will produce a compile-time error). If large arrays are needed, the container format spec's descriptor field must be widened.
+1. **Codegen enforces 32768-element limit**: The container format supports u32 `total_elements`, but the codegen limits arrays to 32768 elements to keep flat-index arithmetic within i32 range. `ARRAY[1..200, 1..200]` = 40000 elements will produce a compile-time error. To raise this limit, widen the index computation to i64 and update the i32 safety test (Step 9).
 
-2. **Named array types**: The `SpecificationKind::Named` path requires `TypeEnvironment` to resolve the type name to its `ArraySubranges`. Check what methods `TypeEnvironment` provides — it may need a new accessor. If it can't be resolved at compile time, emit a diagnostic rather than silently failing.
+2. **Mixed constant/variable subscripts**: `matrix[2, j]` has one constant and one variable subscript. The current design treats all subscripts as variable when any one is variable (simpler). An optimization to evaluate constant subscripts at compile time and emit `LOAD_CONST (2-1)` instead of `LOAD_VAR, SUB` can be added later but is not required for correctness.
 
-3. **Mixed constant/variable subscripts**: `matrix[2, j]` has one constant and one variable subscript. The current design treats all subscripts as variable when any one is variable (simpler). An optimization to evaluate constant subscripts at compile time and emit `LOAD_CONST (2-1)` instead of `LOAD_VAR, SUB` can be added later but is not required for correctness.
-
-4. **Temporary var_index-in-descriptor**: The var_index prefix on array descriptors in the type section is a temporary measure until the VarEntry section is implemented. Track this as tech debt and remove it when VarEntry is added.
+3. **`DataRegionOutOfBounds` trap payload is `u16`**: With arrays, data region byte offsets can exceed 65535 (e.g., `ARRAY[1..32768] OF INT` = 262,144 bytes). The `DataRegionOutOfBounds(u16)` trap truncates the offset in error messages. This is a pre-existing issue that only affects the defense-in-depth path (which should never fire for well-compiled programs). Not a safety issue — noted as a known limitation.
