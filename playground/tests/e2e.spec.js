@@ -253,6 +253,49 @@ END_PROGRAM
     await page.click('[data-testid="stop-btn"]');
   });
 
+  test("examples_when_selected_then_changes_editor_content", async ({ page }) => {
+    const editor = page.locator('[data-testid="editor"]');
+    const select = page.locator('[data-testid="examples-select"]');
+
+    // Select "Boolean Logic" example
+    await select.selectOption("Boolean Logic");
+    const content = await editor.inputValue();
+    expect(content).toContain("sensor_a");
+    expect(content).toContain("AND");
+
+    // Dropdown should reset to show "Examples" label
+    await expect(select).toHaveValue("");
+  });
+
+  test("examples_when_selected_while_running_then_stops_execution", async ({ page }) => {
+    const editor = page.locator('[data-testid="editor"]');
+    const select = page.locator('[data-testid="examples-select"]');
+
+    await page.click('[data-testid="start-btn"]');
+
+    // Wait for running
+    const variablesPanel = page.locator('[data-testid="variables-panel"]');
+    await expect(variablesPanel).not.toContainText("Start a program", { timeout: 10000 });
+
+    // Select a different example while running
+    await select.selectOption("Arithmetic");
+
+    // Should stop and be ready to start again
+    await expect(page.locator('[data-testid="start-btn"]')).toBeEnabled();
+    const content = await editor.inputValue();
+    expect(content).toContain("product");
+    expect(content).toContain("MOD");
+  });
+
+  test("examples_when_embed_mode_then_hidden", async ({ page }) => {
+    await page.goto("/?embed=true");
+    await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
+      timeout: 15000,
+    });
+
+    await expect(page.locator('[data-testid="examples-select"]')).toBeHidden();
+  });
+
   test("embed_when_loaded_then_shows_start_and_stop_only", async ({ page }) => {
     await page.goto("/?embed=true");
     await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
