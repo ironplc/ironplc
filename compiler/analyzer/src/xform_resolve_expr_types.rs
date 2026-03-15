@@ -31,6 +31,17 @@ pub fn apply(
     resolver.fold_library(lib).map_err(|e| vec![e])
 }
 
+/// Returns true if the type name is an IEC 61131-3 generic type category.
+///
+/// These are abstract types used in stdlib function signatures that must be
+/// resolved to concrete types based on the actual arguments.
+fn is_generic_type(tn: &TypeName) -> bool {
+    matches!(
+        tn.name.lower_case().as_str(),
+        "any" | "any_num" | "any_real" | "any_int" | "any_bit" | "any_string"
+    )
+}
+
 struct ExprTypeResolver<'a> {
     /// Maps variable names to their declared TypeName within the current POU scope.
     var_types: HashMap<Id, TypeName>,
@@ -84,7 +95,7 @@ impl ExprTypeResolver<'_> {
             ExprKind::Function(f) => {
                 let sig = self.function_environment.get(&f.name)?;
                 let return_type = sig.return_type.clone()?;
-                if return_type.name.lower_case().starts_with("any_") {
+                if is_generic_type(&return_type) {
                     // Generic return type: infer concrete type from first argument
                     f.param_assignment.iter().find_map(|p| match p {
                         ParamAssignmentKind::PositionalInput(pos) => pos.expr.resolved_type.clone(),
