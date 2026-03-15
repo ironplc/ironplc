@@ -173,6 +173,15 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         node: FunctionDeclaration,
     ) -> Result<FunctionDeclaration, Diagnostic> {
         node.variables.iter().for_each(|v| self.insert(v));
+        // Register the implicit return variable (function name = return type)
+        // so that references like `FOO := SHR(FOO, 1)` inside FUNCTION FOO
+        // can resolve the type of the FOO variable.
+        let resolved_return_type = self
+            .type_environment
+            .resolve_elementary_type_name(&node.return_type)
+            .unwrap_or_else(|| node.return_type.clone());
+        self.var_types
+            .insert(node.name.clone(), resolved_return_type);
         let result = node.recurse_fold(self);
         self.var_types.clear();
         result
@@ -757,6 +766,35 @@ END_FUNCTION_BLOCK";
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
         assert_type_eq(&types[0], "DINT");
+    }
+
+    #[test]
+    fn apply_when_function_return_var_used_in_builtin_then_resolves_type() {
+        let program = "
+FUNCTION FOO : INT
+  VAR_INPUT
+    A : INT;
+  END_VAR
+  FOO := 8;
+  FOO := SHR(FOO, 1);
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : INT;
+  END_VAR
+  result := FOO(A := 5);
+END_PROGRAM";
+
+        let result = run_pass(program);
+        let all_types = collect_all_expr_types(&result);
+        // Every expression node should have a resolved type (no None values)
+        for (i, t) in all_types.iter().enumerate() {
+            assert!(
+                t.is_some(),
+                "Expression node {i} should have a resolved type, got None"
+            );
+        }
     }
 
     #[test]
