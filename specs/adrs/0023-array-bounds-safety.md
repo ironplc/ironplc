@@ -47,10 +47,10 @@ If any subscript is out of bounds, the compiler emits a diagnostic error. The pr
 
 **Variable subscripts** — When any subscript is a runtime expression, the compiler:
 
-1. Emits code to compute the 0-based flat index: `flat_index = Σ (subscript_k - lower_bound_k) × stride_k`
+1. Emits code to compute the 0-based flat index using i64 arithmetic: `flat_index = Σ (subscript_k - lower_bound_k) × stride_k`. Using i64 prevents intermediate overflow — subscripts are i32 (sign-extended to i64 in the Slot), and strides are bounded, so no i64 intermediate can overflow.
 2. Emits `LOAD_ARRAY` / `STORE_ARRAY` with the flat index on the stack
 
-The VM checks the flat index against `[0, total_elements)`. If the check fails, execution traps with `ArrayIndexOutOfBounds`.
+The VM reads the flat index as i64 and checks it against `[0, total_elements)` before narrowing to u32. If the check fails, execution traps with `ArrayIndexOutOfBounds`.
 
 **Always 0-based descriptors** — The compiler normalizes all array indices to 0-based before emitting `LOAD_ARRAY` / `STORE_ARRAY`. Array descriptors in the container always store `lower_bound = 0` and `upper_bound = total_elements - 1`. Original IEC 61131-3 bounds are preserved in the debug section for error reporting. This simplifies the VM to a single unsigned comparison: `index < total_elements`.
 
@@ -59,9 +59,7 @@ The VM checks the flat index against `[0, total_elements)`. If the check fails, 
 The flat bounds check prevents any access outside the array's allocated data region. Consider the potential failure modes:
 
 1. **Subscript too large in one dimension**: increases the flat index beyond `total_elements`, caught by `index < total_elements`
-2. **Subscript too small (below lower bound)**: the expression `(subscript - lower_bound)` produces a negative value. Since the stack uses signed I32 arithmetic, the negative intermediate may wrap or remain negative. Either way:
-   - If the final flat index is negative (as I32), it fails the unsigned comparison `index < total_elements`
-   - If intermediate arithmetic wraps to a large positive value, it exceeds `total_elements`
+2. **Subscript too small (below lower bound)**: the expression `(subscript - lower_bound)` produces a negative i64 value. Since the arithmetic uses i64, there is no wrapping — the negative intermediate is preserved exactly. The VM's i64 bounds check (`index_i64 < 0`) catches it.
 3. **Invalid dimension combination that lands in-bounds**: For example, in `ARRAY[1..3, 1..4]`, accessing `[0, 5]` computes `(0-1)*4 + (5-1) = 0`, which is in-bounds but semantically wrong. This is a logical error, not a memory safety issue — it reads a valid array element (the first one). The flat check guarantees memory safety but not semantic correctness for per-dimension bounds.
 
 Per-dimension runtime checks could catch case (3) and provide better error messages, but they are not required for memory safety. They can be added as a future enhancement by emitting compiler-generated comparison + trap instructions before the flat index computation.
