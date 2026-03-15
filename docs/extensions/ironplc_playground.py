@@ -1,6 +1,6 @@
 """
 Sphinx extension that provides directives for embedding the IronPLC Playground
-as an iframe on documentation pages.
+as an iframe on documentation pages and for generating playground links.
 
 ``.. playground::`` embeds the code as-is (no scaffolding)::
 
@@ -20,11 +20,27 @@ as an iframe on documentation pages.
 
        result := ABS(-42);
 
-Options (both directives):
+``.. playground-link::`` generates a hyperlink to open the code in the
+playground (no iframe)::
+
+    .. playground-link::
+       :text: Open in Playground
+
+       PROGRAM main
+           VAR
+               x : INT;
+           END_VAR
+           x := 42;
+       END_PROGRAM
+
+Options (both embed directives):
     :height:  Iframe height (default auto-calculated from line count).
 
 Options (playground-with-program only):
     :vars:    Variable declarations for scaffold mode (semicolon-separated).
+
+Options (playground-link only):
+    :text:    Link text (default "Try this in the IronPLC Playground").
 """
 
 from base64 import b64encode
@@ -72,8 +88,12 @@ def _auto_height(code_lines, scaffold=False, vars_decl=""):
     return f"{max(_MIN_HEIGHT_PX, height)}px"
 
 
-def _build_iframe(code, height, scaffold=False, vars_decl=""):
-    params = ["embed=true"]
+def _build_playground_url(code, scaffold=False, vars_decl="", embed=False):
+    """Build a playground URL with encoded parameters."""
+    params = []
+
+    if embed:
+        params.append("embed=true")
 
     if scaffold:
         params.append("scaffold=true")
@@ -83,7 +103,11 @@ def _build_iframe(code, height, scaffold=False, vars_decl=""):
     if vars_decl:
         params.append("vars=" + quote(b64encode(vars_decl.encode()).decode(), safe=""))
 
-    src = PLAYGROUND_URL + "?" + "&".join(params)
+    return PLAYGROUND_URL + "?" + "&".join(params)
+
+
+def _build_iframe(code, height, scaffold=False, vars_decl=""):
+    src = _build_playground_url(code, scaffold=scaffold, vars_decl=vars_decl, embed=True)
 
     raw_html = (
         f'<iframe src="{src}" '
@@ -127,7 +151,30 @@ class PlaygroundWithProgramDirective(Directive):
         return [_build_iframe(code, height, scaffold=True, vars_decl=vars_decl)]
 
 
+_DEFAULT_LINK_TEXT = "Try this in the IronPLC Playground"
+
+
+class PlaygroundLinkDirective(Directive):
+    """Generate a hyperlink that opens the code in the playground."""
+
+    has_content = True
+    option_spec = {
+        "text": directives.unchanged,
+    }
+
+    def run(self):
+        code = "\n".join(self.content)
+        link_text = self.options.get("text", _DEFAULT_LINK_TEXT)
+        href = _build_playground_url(code)
+
+        ref_node = nodes.reference("", link_text, refuri=href, internal=False)
+        ref_node["classes"].append("playground-link")
+        paragraph = nodes.paragraph("", "", ref_node)
+        return [paragraph]
+
+
 def setup(app):
     app.add_directive("playground", PlaygroundDirective)
     app.add_directive("playground-with-program", PlaygroundWithProgramDirective)
-    return {"version": "0.2", "parallel_read_safe": True}
+    app.add_directive("playground-link", PlaygroundLinkDirective)
+    return {"version": "0.3", "parallel_read_safe": True}
