@@ -1742,9 +1742,7 @@ fn compile_expr(
 ) -> Result<(), Diagnostic> {
     match &expr.kind {
         ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
-        ExprKind::Variable(variable) => {
-            compile_variable_read(emitter, ctx, variable, op_type)
-        }
+        ExprKind::Variable(variable) => compile_variable_read(emitter, ctx, variable, op_type),
         ExprKind::BinaryOp(binary) => {
             compile_expr(emitter, ctx, &binary.left, op_type)?;
             compile_expr(emitter, ctx, &binary.right, op_type)?;
