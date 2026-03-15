@@ -108,7 +108,7 @@ const DEFAULT_STRING_MAX_LENGTH: u16 = 254;
 /// Metadata for a STRING variable allocated in the data region.
 struct StringVarInfo {
     /// Byte offset into the data region where this string starts.
-    data_offset: u16,
+    data_offset: u32,
     /// Maximum number of characters this string can hold.
     max_length: u16,
 }
@@ -220,7 +220,7 @@ fn compile_program_with_functions(
 
     // Configure data region for STRING variables.
     if ctx.data_region_offset > 0 {
-        builder = builder.data_region_bytes(ctx.data_region_offset as u32);
+        builder = builder.data_region_bytes(ctx.data_region_offset);
         if ctx.num_temp_bufs > 0 {
             builder = builder
                 .num_temp_bufs(ctx.num_temp_bufs)
@@ -454,7 +454,7 @@ struct FbInstanceInfo {
     /// Type ID for FB_CALL dispatch.
     type_id: u16,
     /// Data region byte offset where this instance's fields start.
-    data_offset: u16,
+    data_offset: u32,
     /// Maps field name (lowercase) to field index.
     field_indices: HashMap<String, u8>,
 }
@@ -474,7 +474,7 @@ struct CompileContext {
     /// Maps FB instance variable identifiers to their metadata.
     fb_instances: HashMap<Id, FbInstanceInfo>,
     /// Next available byte offset in the data region.
-    data_region_offset: u16,
+    data_region_offset: u32,
     /// Maximum string capacity across all STRING variables (for temp buffer sizing).
     max_string_capacity: u16,
     /// Number of temp buffers needed (one per string load in the init function).
@@ -632,7 +632,7 @@ fn assign_variables(
 
                     // Allocate space in the data region: [max_length: u16][cur_length: u16][data]
                     let data_offset = ctx.data_region_offset;
-                    let total_bytes = STRING_HEADER_BYTES as u16 + max_length;
+                    let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
                     ctx.data_region_offset = ctx
                         .data_region_offset
                         .checked_add(total_bytes)
@@ -659,7 +659,7 @@ fn assign_variables(
                 InitialValueAssignmentKind::FunctionBlock(fb_init) => {
                     let fb_name = fb_init.type_name.to_string().to_uppercase();
                     if let Some((type_id, num_fields, field_map)) = resolve_fb_type(&fb_name) {
-                        let instance_size = num_fields as u16 * 8;
+                        let instance_size = num_fields as u32 * 8;
                         let data_offset = ctx.data_region_offset;
                         ctx.data_region_offset = ctx
                             .data_region_offset
@@ -2484,7 +2484,7 @@ fn resolve_string_arg(
     ctx: &mut CompileContext,
     arg: &Expr,
     func_span: &ironplc_dsl::core::SourceSpan,
-) -> Result<u16, Diagnostic> {
+) -> Result<u32, Diagnostic> {
     match &arg.kind {
         ExprKind::Variable(variable) => {
             let var_name = resolve_variable_name(variable)
@@ -2500,7 +2500,7 @@ fn resolve_string_arg(
             let bytes: Vec<u8> = lit.value.iter().map(|&ch| ch as u8).collect();
             let max_length = DEFAULT_STRING_MAX_LENGTH;
             let data_offset = ctx.data_region_offset;
-            let total_bytes = STRING_HEADER_BYTES as u16 + max_length;
+            let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
             ctx.data_region_offset = ctx
                 .data_region_offset
                 .checked_add(total_bytes)
