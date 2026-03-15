@@ -755,4 +755,27 @@ END_VAR
 END_FUNCTION_BLOCK",
         );
     }
+
+    // --- Bit access in FUNCTION (not FUNCTION_BLOCK) ---
+
+    #[test]
+    fn apply_when_function_dint_bit_access_then_ok() {
+        assert_bit_access_ok(
+            "FUNCTION FOO : INT
+VAR_INPUT
+    A : DINT;
+END_VAR
+    IF A.0 THEN
+        FOO := 1;
+    END_IF;
+END_FUNCTION
+
+PROGRAM test_bit_func
+VAR
+    result : INT;
+END_VAR
+    result := FOO(A := 5);
+END_PROGRAM",
+        );
+    }
 }
