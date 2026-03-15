@@ -159,3 +159,43 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i32(), -5);
     assert_eq!(bufs.vars[1].as_i32(), 3);
 }
+
+#[test]
+fn end_to_end_when_if_literal_gt_var_true_then_executes_body() {
+    let source = "
+PROGRAM main
+  VAR
+    n : DINT;
+    y : DINT;
+  END_VAR
+  IF 2 > n THEN
+    y := 1;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // n defaults to 0, so 2 > 0 is true
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_if_literal_gt_var_false_then_skips_body() {
+    let source = "
+PROGRAM main
+  VAR
+    n : DINT;
+    y : DINT;
+  END_VAR
+  n := 5;
+  IF 2 > n THEN
+    y := 1;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // n is 5, so 2 > 5 is false
+    assert_eq!(bufs.vars[0].as_i32(), 5);
+    assert_eq!(bufs.vars[1].as_i32(), 0);
+}
