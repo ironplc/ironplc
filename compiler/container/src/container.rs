@@ -6,16 +6,18 @@ use crate::constant_pool::ConstantPool;
 use crate::debug_section::DebugSection;
 use crate::header::{FileHeader, HEADER_SIZE};
 use crate::task_table::TaskTable;
+use crate::type_section::TypeSection;
 use crate::ContainerError;
 
 /// A complete bytecode container: header + task table + constant pool + code section
-/// + optional debug section.
+/// + optional type section + optional debug section.
 #[derive(Clone, Debug)]
 pub struct Container {
     pub header: FileHeader,
     pub task_table: TaskTable,
     pub constant_pool: ConstantPool,
     pub code: CodeSection,
+    pub type_section: Option<TypeSection>,
     pub debug_section: Option<DebugSection>,
 }
 
@@ -41,10 +43,19 @@ impl Container {
         header.code_section_size = code_section_size;
         header.num_functions = self.code.functions.len() as u16;
 
+        let mut next_offset = code_section_offset + code_section_size;
+
+        if let Some(type_sec) = &self.type_section {
+            header.type_section_offset = next_offset;
+            let type_section_size = type_sec.section_size();
+            header.type_section_size = type_section_size;
+            header.flags |= 0x04; // bit 2: type section present
+            next_offset += type_section_size;
+        }
+
         if let Some(debug) = &self.debug_section {
-            let debug_section_offset = code_section_offset + code_section_size;
+            header.debug_section_offset = next_offset;
             let debug_section_size = debug.section_size();
-            header.debug_section_offset = debug_section_offset;
             header.debug_section_size = debug_section_size;
             header.flags |= 0x02; // bit 1: debug section present
         }
@@ -53,6 +64,10 @@ impl Container {
         self.task_table.write_to(w)?;
         self.constant_pool.write_to(w)?;
         self.code.write_to(w)?;
+
+        if let Some(type_sec) = &self.type_section {
+            type_sec.write_to(w)?;
+        }
 
         if let Some(debug) = &self.debug_section {
             debug.write_to(w)?;
@@ -89,6 +104,19 @@ impl Container {
             header.code_section_size,
         )?;
 
+        // Parse type section if present.
+        let type_section = if header.type_section_size > 0 {
+            let type_start = (header.type_section_offset - base) as usize;
+            let type_end = type_start + header.type_section_size as usize;
+            if type_end <= rest.len() {
+                TypeSection::read_from(&mut Cursor::new(&rest[type_start..type_end])).ok()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         // Parse debug section if present (non-fatal on error).
         let debug_section = if header.debug_section_size > 0 {
             let debug_start = (header.debug_section_offset - base) as usize;
@@ -107,6 +135,7 @@ impl Container {
             task_table,
             constant_pool,
             code,
+            type_section,
             debug_section,
         })
     }
@@ -216,5 +245,80 @@ mod tests {
         assert_eq!(debug.var_names[0].iec_type_tag, iec_type_tag::DINT);
         assert_eq!(debug.func_names.len(), 1);
         assert_eq!(debug.func_names[0].name, "MAIN");
+    }
+
+    #[test]
+    fn container_write_read_when_type_section_with_arrays_then_roundtrips() {
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]
+            0x18, 0x00, 0x00,       // STORE_VAR_I32  var[0]
+            0xB5,                   // RET_VOID
+        ];
+
+        let mut builder = ContainerBuilder::new()
+            .num_variables(1)
+            .add_i32_constant(42);
+        let desc_idx = builder.add_array_descriptor(0, 10); // I32, 10 elements
+        assert_eq!(desc_idx, 0);
+        let container = builder.add_function(0, &bytecode, 1, 1, 0).build();
+
+        let mut buf = Vec::new();
+        container.write_to(&mut buf).unwrap();
+
+        let decoded = Container::read_from(&mut Cursor::new(&buf)).unwrap();
+
+        // Verify type section flag is set.
+        assert_eq!(decoded.header.flags & 0x04, 0x04);
+
+        let ts = decoded.type_section.unwrap();
+        assert!(ts.fb_types.is_empty());
+        assert_eq!(ts.array_descriptors.len(), 1);
+        assert_eq!(ts.array_descriptors[0].element_type, 0);
+        assert_eq!(ts.array_descriptors[0].total_elements, 10);
+        assert_eq!(ts.array_descriptors[0].element_extra, 0);
+    }
+
+    #[test]
+    fn container_write_read_when_type_and_debug_sections_then_both_roundtrip() {
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]
+            0x18, 0x00, 0x00,       // STORE_VAR_I32  var[0]
+            0xB5,                   // RET_VOID
+        ];
+
+        let mut builder = ContainerBuilder::new()
+            .num_variables(1)
+            .add_i32_constant(42);
+        builder.add_array_descriptor(2, 50); // I64, 50 elements
+        let container = builder
+            .add_function(0, &bytecode, 1, 1, 0)
+            .add_var_name(VarNameEntry {
+                var_index: 0,
+                function_id: function_id::GLOBAL_SCOPE,
+                var_section: var_section::VAR,
+                iec_type_tag: iec_type_tag::DINT,
+                name: "arr".into(),
+                type_name: "ARRAY OF INT".into(),
+            })
+            .build();
+
+        let mut buf = Vec::new();
+        container.write_to(&mut buf).unwrap();
+
+        let decoded = Container::read_from(&mut Cursor::new(&buf)).unwrap();
+
+        // Both sections present.
+        assert_eq!(decoded.header.flags & 0x04, 0x04); // type section
+        assert_eq!(decoded.header.flags & 0x02, 0x02); // debug section
+
+        let ts = decoded.type_section.unwrap();
+        assert_eq!(ts.array_descriptors.len(), 1);
+        assert_eq!(ts.array_descriptors[0].total_elements, 50);
+
+        let debug = decoded.debug_section.unwrap();
+        assert_eq!(debug.var_names.len(), 1);
+        assert_eq!(debug.var_names[0].name, "arr");
     }
 }
