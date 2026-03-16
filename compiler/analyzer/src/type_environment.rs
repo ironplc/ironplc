@@ -858,7 +858,10 @@ mod tests {
                     element_type: Box::new(IntermediateType::Int {
                         size: ByteSized::B16,
                     }),
-                    dimensions: vec![ArrayDimension { lower: 1, upper: 10 }],
+                    dimensions: vec![ArrayDimension {
+                        lower: 1,
+                        upper: 10,
+                    }],
                 },
             ),
         )
