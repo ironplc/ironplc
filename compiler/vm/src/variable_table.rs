@@ -72,6 +72,7 @@ impl<'a> VariableTable<'a> {
     /// consecutive variable slots starting at `start`.
     ///
     /// The template is a sequence of u64 little-endian values (8 bytes per slot).
+    #[allow(dead_code)]
     pub fn copy_template(&mut self, start: u16, template: &[u8]) -> Result<(), Trap> {
         let num_slots = template.len() / 8;
         for i in 0..num_slots {
