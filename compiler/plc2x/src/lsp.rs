@@ -38,7 +38,12 @@ pub fn start() -> Result<(), String> {
 fn extract_parse_options(initialize_params: &InitializeParams) -> ParseOptions {
     if let Some(ref opts) = initialize_params.initialization_options {
         let std_version = opts.get("std61131Version").and_then(|v| v.as_str());
-        match std_version {
+        let allow_missing_semicolon = opts
+            .get("allowMissingSemicolon")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let mut options = match std_version {
             Some("2013") => {
                 debug!("Enabling IEC 61131-3:2013 features from initializationOptions");
                 ParseOptions {
@@ -47,7 +52,9 @@ fn extract_parse_options(initialize_params: &InitializeParams) -> ParseOptions {
                 }
             }
             _ => ParseOptions::default(),
-        }
+        };
+        options.allow_missing_semicolon = allow_missing_semicolon;
+        options
     } else {
         ParseOptions::default()
     }
@@ -670,6 +677,28 @@ mod test {
 
         let options = super::extract_parse_options(&params);
         assert!(!options.allow_iec_61131_3_2013);
+    }
+
+    #[test]
+    fn extract_parse_options_when_allow_missing_semicolon_then_enables_flag() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(serde_json::json!({"allowMissingSemicolon": true})),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_parse_options(&params);
+        assert!(options.allow_missing_semicolon);
     }
 
     #[test]
