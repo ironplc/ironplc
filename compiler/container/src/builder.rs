@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::vec;
 use std::vec::Vec;
 
@@ -9,6 +10,7 @@ use crate::debug_section::{DebugSection, FuncNameEntry, VarNameEntry};
 use crate::header::FileHeader;
 use crate::task_table::{ProgramInstanceEntry, TaskEntry, TaskTable, NO_SINGLE_VAR};
 use crate::task_type::TaskType;
+use crate::type_section::{ArrayDescriptor, FbTypeDescriptor, TypeSection};
 
 /// Fluent builder for constructing a [`Container`].
 pub struct ContainerBuilder {
@@ -25,6 +27,9 @@ pub struct ContainerBuilder {
     shared_globals_size: u16,
     init_function_id: u16,
     entry_function_id: u16,
+    fb_types: Vec<FbTypeDescriptor>,
+    array_descriptors: Vec<ArrayDescriptor>,
+    array_descriptor_cache: HashMap<(u8, u32), u16>,
     debug_var_names: Vec<VarNameEntry>,
     debug_func_names: Vec<FuncNameEntry>,
 }
@@ -45,6 +50,9 @@ impl ContainerBuilder {
             shared_globals_size: 0,
             init_function_id: 0,
             entry_function_id: 0,
+            fb_types: Vec::new(),
+            array_descriptors: Vec::new(),
+            array_descriptor_cache: HashMap::new(),
             debug_var_names: Vec::new(),
             debug_func_names: Vec::new(),
         }
@@ -187,6 +195,30 @@ impl ContainerBuilder {
         self
     }
 
+    /// Adds an FB type descriptor to the type section.
+    pub fn add_fb_type(mut self, desc: FbTypeDescriptor) -> Self {
+        self.fb_types.push(desc);
+        self
+    }
+
+    /// Adds an array descriptor to the type section, deduplicating
+    /// identical `(element_type, total_elements)` pairs.
+    ///
+    /// Returns the descriptor index (for use in `LOAD_ARRAY`/`STORE_ARRAY` opcodes).
+    pub fn add_array_descriptor(&mut self, element_type: u8, total_elements: u32) -> u16 {
+        let key = (element_type, total_elements);
+        if let Some(&index) = self.array_descriptor_cache.get(&key) {
+            return index;
+        }
+        let index = self.array_descriptors.len() as u16;
+        self.array_descriptors.push(ArrayDescriptor {
+            element_type,
+            total_elements,
+        });
+        self.array_descriptor_cache.insert(key, index);
+        index
+    }
+
     /// Builds the container, computing header fields from the added data.
     ///
     /// If no tasks have been added, synthesizes a default freewheeling task
@@ -196,6 +228,16 @@ impl ContainerBuilder {
         let code = CodeSection {
             functions: self.functions,
             bytecode: self.bytecode,
+        };
+
+        // Build type section if there are any type descriptors.
+        let type_section = if !self.fb_types.is_empty() || !self.array_descriptors.is_empty() {
+            Some(TypeSection {
+                fb_types: self.fb_types,
+                array_descriptors: self.array_descriptors,
+            })
+        } else {
+            None
         };
 
         let task_table = if self.tasks.is_empty() {
@@ -257,6 +299,7 @@ impl ContainerBuilder {
         Container {
             header,
             task_table,
+            type_section,
             constant_pool,
             code,
             debug_section,
@@ -332,5 +375,40 @@ mod tests {
             container.code.get_function_bytecode(0).unwrap(),
             bytecode.as_slice()
         );
+
+        // No type section when no FB types or array descriptors added
+        assert!(container.type_section.is_none());
+    }
+
+    #[test]
+    fn builder_add_array_descriptor_when_unique_then_assigns_sequential_indices() {
+        let mut builder = ContainerBuilder::new();
+        let idx0 = builder.add_array_descriptor(0, 10); // I32, 10 elements
+        let idx1 = builder.add_array_descriptor(5, 100); // F64, 100 elements
+        assert_eq!(idx0, 0);
+        assert_eq!(idx1, 1);
+
+        let container = builder.num_variables(0).build();
+        let ts = container.type_section.unwrap();
+        assert_eq!(ts.array_descriptors.len(), 2);
+        assert_eq!(ts.array_descriptors[0].element_type, 0);
+        assert_eq!(ts.array_descriptors[0].total_elements, 10);
+        assert_eq!(ts.array_descriptors[1].element_type, 5);
+        assert_eq!(ts.array_descriptors[1].total_elements, 100);
+    }
+
+    #[test]
+    fn builder_add_array_descriptor_when_duplicate_then_returns_same_index() {
+        let mut builder = ContainerBuilder::new();
+        let idx0 = builder.add_array_descriptor(0, 10);
+        let idx1 = builder.add_array_descriptor(0, 10); // identical
+        let idx2 = builder.add_array_descriptor(0, 20); // different size
+        assert_eq!(idx0, 0);
+        assert_eq!(idx1, 0); // deduplicated
+        assert_eq!(idx2, 1); // new
+
+        let container = builder.num_variables(0).build();
+        let ts = container.type_section.unwrap();
+        assert_eq!(ts.array_descriptors.len(), 2);
     }
 }

@@ -13,9 +13,14 @@ pub enum Trap {
     WatchdogTimeout(u16),
     NegativeExponent,
     InvalidBuiltinFunction(u16),
-    DataRegionOutOfBounds(u16),
+    DataRegionOutOfBounds(u32),
     TempBufferExhausted,
     InvalidFbTypeId(u16),
+    ArrayIndexOutOfBounds {
+        var_index: u16,
+        index: i32,
+        total_elements: u32,
+    },
 }
 
 // v_code() and exit_code() are generated from resources/problem-codes.csv
@@ -42,6 +47,16 @@ impl fmt::Display for Trap {
             Trap::TempBufferExhausted => write!(f, "temporary buffer pool exhausted"),
             Trap::InvalidFbTypeId(id) => {
                 write!(f, "invalid FB type ID: 0x{id:04X}")
+            }
+            Trap::ArrayIndexOutOfBounds {
+                var_index,
+                index,
+                total_elements,
+            } => {
+                write!(
+                    f,
+                    "array index out of bounds: index {index} for array variable {var_index} with {total_elements} elements"
+                )
             }
         }
     }
@@ -108,6 +123,19 @@ mod tests {
     }
 
     #[test]
+    fn v_code_when_array_index_out_of_bounds_then_v4005() {
+        assert_eq!(
+            Trap::ArrayIndexOutOfBounds {
+                var_index: 0,
+                index: 10,
+                total_elements: 5,
+            }
+            .v_code(),
+            "V4005"
+        );
+    }
+
+    #[test]
     fn v_code_when_invalid_fb_type_id_then_v9010() {
         assert_eq!(Trap::InvalidFbTypeId(0x0010).v_code(), "V9010");
     }
@@ -117,6 +145,15 @@ mod tests {
         assert_eq!(Trap::DivideByZero.exit_code(), 1);
         assert_eq!(Trap::NegativeExponent.exit_code(), 1);
         assert_eq!(Trap::WatchdogTimeout(0).exit_code(), 1);
+        assert_eq!(
+            Trap::ArrayIndexOutOfBounds {
+                var_index: 0,
+                index: 0,
+                total_elements: 0,
+            }
+            .exit_code(),
+            1
+        );
     }
 
     #[test]

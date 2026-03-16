@@ -85,7 +85,7 @@ impl RuleBitAccessRange<'_> {
         };
 
         let bit_width = match resolved_type.size_in_bytes() {
-            Some(bytes) => u128::from(bytes) * 8,
+            Some(bytes) => bytes as u128 * 8,
             None => return,
         };
 
@@ -131,7 +131,7 @@ fn resolve_initializer_type(
                 let element_type = type_env.get(&subranges.type_name)?.representation.clone();
                 Some(IntermediateType::Array {
                     element_type: Box::new(element_type),
-                    size: None,
+                    dimensions: vec![],
                 })
             }
         },

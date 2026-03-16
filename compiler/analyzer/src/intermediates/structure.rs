@@ -35,7 +35,7 @@ pub fn try_from(
         let field_alignment = field_type.alignment_bytes() as u32;
         let aligned_offset = align_offset(current_offset, field_alignment);
         // Use 0 for unknown sizes - the structure's overall size_in_bytes() will return None
-        let field_size = field_type.size_in_bytes().unwrap_or(0) as u32;
+        let field_size = field_type.size_in_bytes().unwrap_or(0);
 
         // Create the field
         let field = IntermediateStructField {
@@ -730,8 +730,10 @@ END_TYPE
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("data"));
-        if let IntermediateType::Array { size, .. } = &fields[0].field_type {
-            assert_eq!(*size, Some(12)); // 3 * 4 = 12
+        if let IntermediateType::Array { dimensions, .. } = &fields[0].field_type {
+            assert_eq!(dimensions.len(), 2);
+            // Total elements: (3-1+1) * (4-1+1) = 3 * 4 = 12
+            assert_eq!(fields[0].field_type.array_total_elements(), Some(12));
         } else {
             panic!("Expected Array type");
         }
@@ -765,9 +767,14 @@ END_TYPE
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("vertices"));
-        if let IntermediateType::Array { element_type, size } = &fields[0].field_type {
+        if let IntermediateType::Array {
+            element_type,
+            dimensions,
+        } = &fields[0].field_type
+        {
             assert!(element_type.is_structure());
-            assert_eq!(*size, Some(4));
+            assert_eq!(dimensions.len(), 1);
+            assert_eq!(fields[0].field_type.array_total_elements(), Some(4));
         } else {
             panic!("Expected Array type");
         }

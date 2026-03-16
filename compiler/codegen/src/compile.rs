@@ -42,7 +42,8 @@ use ironplc_container::debug_section::{
 use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES};
 use ironplc_dsl::common::{
     Boolean, ConstantKind, FunctionBlockBodyKind, FunctionDeclaration, InitialValueAssignmentKind,
-    Library, LibraryElementKind, ProgramDeclaration, SignedInteger, VarDecl, VariableType,
+    Library, LibraryElementKind, ProgramDeclaration, SignedInteger, SpecificationKind, VarDecl,
+    VariableType,
 };
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -52,13 +53,14 @@ use ironplc_dsl::textual::{
 };
 use ironplc_problems::Problem;
 
+use ironplc_analyzer::intermediate_type::IntermediateType;
 use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
 use crate::emit::Emitter;
 
 /// The native operation width used for arithmetic and comparisons.
 #[derive(Clone, Copy, PartialEq)]
-enum OpWidth {
+pub(crate) enum OpWidth {
     /// 32-bit integer operations (for SINT, INT, DINT, USINT, UINT, UDINT).
     W32,
     /// 64-bit integer operations (for LINT, ULINT).
@@ -71,20 +73,20 @@ enum OpWidth {
 
 /// Whether a type uses signed or unsigned semantics for division and comparison.
 #[derive(Clone, Copy, PartialEq)]
-enum Signedness {
+pub(crate) enum Signedness {
     Signed,
     Unsigned,
 }
 
 /// Type information for a variable, used to select the correct opcodes.
 #[derive(Clone, Copy)]
-struct VarTypeInfo {
+pub(crate) struct VarTypeInfo {
     /// The native operation width (i32 or i64).
-    op_width: OpWidth,
+    pub(crate) op_width: OpWidth,
     /// Whether signed or unsigned opcodes are used for division/comparison.
-    signedness: Signedness,
+    pub(crate) signedness: Signedness,
     /// The declared storage width in bits (8, 16, 32, or 64).
-    storage_bits: u8,
+    pub(crate) storage_bits: u8,
 }
 
 /// Shorthand for the operation type tuple used during expression compilation.
@@ -108,7 +110,7 @@ const DEFAULT_STRING_MAX_LENGTH: u16 = 254;
 /// Metadata for a STRING variable allocated in the data region.
 struct StringVarInfo {
     /// Byte offset into the data region where this string starts.
-    data_offset: u16,
+    data_offset: u32,
     /// Maximum number of characters this string can hold.
     max_length: u16,
 }
@@ -123,7 +125,7 @@ struct StringVarInfo {
 pub fn compile(
     library: &Library,
     functions: &FunctionEnvironment,
-    _types: &TypeEnvironment,
+    types: &TypeEnvironment,
 ) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
 
@@ -140,7 +142,7 @@ pub fn compile(
         })
         .collect();
 
-    compile_program_with_functions(program, &func_decls, functions)
+    compile_program_with_functions(program, &func_decls, functions, types)
 }
 
 /// Finds the first PROGRAM declaration in the library.
@@ -181,11 +183,13 @@ fn compile_program_with_functions(
     program: &ProgramDeclaration,
     func_decls: &[&FunctionDeclaration],
     functions: &FunctionEnvironment,
+    types: &TypeEnvironment,
 ) -> Result<Container, Diagnostic> {
     let mut ctx = CompileContext::new();
+    let mut builder = ContainerBuilder::new();
 
     // Assign variable indices for all declared program variables.
-    assign_variables(&mut ctx, &program.variables)?;
+    assign_variables(&mut ctx, &mut builder, &program.variables, types)?;
     let program_var_count = ctx.variables.len() as u16;
 
     // Compile user-defined functions. Each function gets a unique function ID
@@ -206,7 +210,7 @@ fn compile_program_with_functions(
 
     // Emit bytecode for variable initial values into the init emitter.
     let mut init_emitter = Emitter::new();
-    emit_initial_values(&mut init_emitter, &mut ctx, &program.variables)?;
+    emit_initial_values(&mut init_emitter, &mut ctx, &program.variables, types)?;
     init_emitter.emit_ret_void();
 
     // Compile the program body into the scan emitter.
@@ -215,11 +219,11 @@ fn compile_program_with_functions(
     scan_emitter.emit_ret_void();
 
     // Build the container.
-    let mut builder = ContainerBuilder::new().num_variables(total_variables);
+    builder = builder.num_variables(total_variables);
 
     // Configure data region for STRING variables.
     if ctx.data_region_offset > 0 {
-        builder = builder.data_region_bytes(ctx.data_region_offset as u32);
+        builder = builder.data_region_bytes(ctx.data_region_offset);
         if ctx.num_temp_bufs > 0 {
             builder = builder
                 .num_temp_bufs(ctx.num_temp_bufs)
@@ -362,6 +366,19 @@ fn compile_user_function(
 
     // Compile the function body.
     let mut func_emitter = Emitter::new();
+
+    // Emit initialization prologue: IEC 61131-3 functions are stateless, so
+    // local variables must be re-initialized on every call. The flat variable
+    // table (ADR-0021) retains stale values between calls, so the prologue
+    // resets non-parameter locals to their declared initial values (or zero).
+    emit_function_local_prologue(
+        &mut func_emitter,
+        ctx,
+        func_decl,
+        return_var_index,
+        return_op_type,
+    )?;
+
     let body = ironplc_dsl::textual::Statements {
         body: func_decl.body.clone(),
     };
@@ -440,12 +457,12 @@ struct FbInstanceInfo {
     /// Type ID for FB_CALL dispatch.
     type_id: u16,
     /// Data region byte offset where this instance's fields start.
-    data_offset: u16,
+    data_offset: u32,
     /// Maps field name (lowercase) to field index.
     field_indices: HashMap<String, u8>,
 }
 
-struct CompileContext {
+pub(crate) struct CompileContext {
     /// Maps variable identifiers to their variable table indices.
     variables: HashMap<Id, u16>,
     /// Maps variable identifiers to their type information.
@@ -459,8 +476,10 @@ struct CompileContext {
     string_vars: HashMap<Id, StringVarInfo>,
     /// Maps FB instance variable identifiers to their metadata.
     fb_instances: HashMap<Id, FbInstanceInfo>,
+    /// Maps array variable identifiers to their metadata.
+    pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
     /// Next available byte offset in the data region.
-    data_region_offset: u16,
+    pub(crate) data_region_offset: u32,
     /// Maximum string capacity across all STRING variables (for temp buffer sizing).
     max_string_capacity: u16,
     /// Number of temp buffers needed (one per string load in the init function).
@@ -480,6 +499,7 @@ impl CompileContext {
             loop_exit_labels: Vec::new(),
             string_vars: HashMap::new(),
             fb_instances: HashMap::new(),
+            array_vars: HashMap::new(),
             data_region_offset: 0,
             max_string_capacity: 0,
             num_temp_bufs: 0,
@@ -589,7 +609,12 @@ impl CompileContext {
 }
 
 /// Assigns variable table indices and type info for all variable declarations.
-fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Result<(), Diagnostic> {
+fn assign_variables(
+    ctx: &mut CompileContext,
+    builder: &mut ContainerBuilder,
+    declarations: &[VarDecl],
+    types: &TypeEnvironment,
+) -> Result<(), Diagnostic> {
     for decl in declarations {
         if let Some(id) = decl.identifier.symbolic_id() {
             let index = ctx.variables.len() as u16;
@@ -614,7 +639,7 @@ fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Resul
 
                     // Allocate space in the data region: [max_length: u16][cur_length: u16][data]
                     let data_offset = ctx.data_region_offset;
-                    let total_bytes = STRING_HEADER_BYTES as u16 + max_length;
+                    let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
                     ctx.data_region_offset = ctx
                         .data_region_offset
                         .checked_add(total_bytes)
@@ -641,7 +666,7 @@ fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Resul
                 InitialValueAssignmentKind::FunctionBlock(fb_init) => {
                     let fb_name = fb_init.type_name.to_string().to_uppercase();
                     if let Some((type_id, num_fields, field_map)) = resolve_fb_type(&fb_name) {
-                        let instance_size = num_fields as u16 * 8;
+                        let instance_size = num_fields as u32 * 8;
                         let data_offset = ctx.data_region_offset;
                         ctx.data_region_offset = ctx
                             .data_region_offset
@@ -665,7 +690,42 @@ fn assign_variables(ctx: &mut CompileContext, declarations: &[VarDecl]) -> Resul
                     }
                     (iec_type_tag::OTHER, fb_name)
                 }
-                // Other initializer kinds (EnumeratedType, Array, etc.)
+                InitialValueAssignmentKind::Array(array_init) => {
+                    let spec = match &array_init.spec {
+                        SpecificationKind::Inline(array_subranges) => {
+                            crate::compile_array::array_spec_from_inline(
+                                array_subranges,
+                                &decl.identifier.span(),
+                            )?
+                        }
+                        SpecificationKind::Named(type_name) => {
+                            let array_type =
+                                types.resolve_array_type(type_name).ok_or_else(|| {
+                                    Diagnostic::problem(
+                                        Problem::NotImplemented,
+                                        Label::span(type_name.span(), "Unknown array type"),
+                                    )
+                                })?;
+                            let IntermediateType::Array {
+                                element_type,
+                                dimensions,
+                            } = array_type
+                            else {
+                                unreachable!("resolve_array_type guarantees Array variant");
+                            };
+                            crate::compile_array::array_spec_from_named(element_type, dimensions)?
+                        }
+                    };
+                    crate::compile_array::register_array_variable(
+                        ctx,
+                        builder,
+                        id,
+                        index,
+                        &spec,
+                        &decl.identifier.span(),
+                    )?
+                }
+                // Other initializer kinds (EnumeratedType, etc.)
                 // do not yet have type info tracked in codegen.
                 _ => (iec_type_tag::OTHER, String::new()),
             };
@@ -732,6 +792,7 @@ fn emit_initial_values(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     declarations: &[VarDecl],
+    _types: &TypeEnvironment,
 ) -> Result<(), Diagnostic> {
     for decl in declarations {
         if let Some(id) = decl.identifier.symbolic_id() {
@@ -791,10 +852,89 @@ fn emit_initial_values(
     Ok(())
 }
 
+/// Emits a bytecode prologue that re-initializes a function's non-parameter
+/// local variables and return variable on every call. IEC 61131-3 requires
+/// functions to be stateless (locals must not retain values between calls).
+///
+/// For locals with a declared initial value, emits the same LOAD_CONST +
+/// TRUNC + STORE_VAR sequence that `emit_initial_values()` uses. For locals
+/// without an initializer and for the return variable, emits a zero-store.
+fn emit_function_local_prologue(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func_decl: &FunctionDeclaration,
+    return_var_index: u16,
+    return_op_type: OpType,
+) -> Result<(), Diagnostic> {
+    // Re-initialize VAR locals (not Input parameters).
+    for decl in &func_decl.variables {
+        if decl.var_type != VariableType::Var {
+            continue;
+        }
+        if let Some(id) = decl.identifier.symbolic_id() {
+            let var_index = ctx.var_index(id)?;
+            let type_info = ctx.var_type_info(id);
+            let op_type = type_info
+                .map(|ti| (ti.op_width, ti.signedness))
+                .unwrap_or(DEFAULT_OP_TYPE);
+
+            match &decl.initializer {
+                InitialValueAssignmentKind::Simple(simple) => {
+                    if let Some(constant) = &simple.initial_value {
+                        // Has an explicit initial value: emit LOAD_CONST + TRUNC + STORE.
+                        compile_constant(emitter, ctx, constant, op_type)?;
+                        if let Some(ti) = type_info {
+                            emit_truncation(emitter, ti);
+                        }
+                    } else {
+                        // No initializer: zero-fill.
+                        emit_zero_const(emitter, ctx, op_type);
+                    }
+                    emit_store_var(emitter, var_index, op_type);
+                }
+                _ => {
+                    // Other initializer kinds (String, FunctionBlock, etc.)
+                    // are not expected in function locals; zero-fill as default.
+                    emit_zero_const(emitter, ctx, op_type);
+                    emit_store_var(emitter, var_index, op_type);
+                }
+            }
+        }
+    }
+
+    // Zero-initialize the return variable.
+    emit_zero_const(emitter, ctx, return_op_type);
+    emit_store_var(emitter, return_var_index, return_op_type);
+
+    Ok(())
+}
+
+/// Emits a LOAD_CONST instruction that pushes a zero value of the given type.
+fn emit_zero_const(emitter: &mut Emitter, ctx: &mut CompileContext, op_type: OpType) {
+    match op_type.0 {
+        OpWidth::W32 => {
+            let pool_index = ctx.add_i32_constant(0);
+            emitter.emit_load_const_i32(pool_index);
+        }
+        OpWidth::W64 => {
+            let pool_index = ctx.add_i64_constant(0);
+            emitter.emit_load_const_i64(pool_index);
+        }
+        OpWidth::F32 => {
+            let pool_index = ctx.add_f32_constant(0.0);
+            emitter.emit_load_const_f32(pool_index);
+        }
+        OpWidth::F64 => {
+            let pool_index = ctx.add_f64_constant(0.0);
+            emitter.emit_load_const_f64(pool_index);
+        }
+    }
+}
+
 /// Maps an IEC 61131-3 type name to its `VarTypeInfo`.
 ///
 /// Returns `None` for unrecognized type names (e.g., user-defined types).
-fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
+pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
     match name.lower_case().as_str() {
         "sint" => Some(VarTypeInfo {
             op_width: OpWidth::W32,
@@ -1409,7 +1549,7 @@ fn compile_case_selector(
 }
 
 /// Converts a `SignedInteger` AST node to an `i32` value.
-fn signed_integer_to_i32(si: &SignedInteger) -> Result<i32, Diagnostic> {
+pub(crate) fn signed_integer_to_i32(si: &SignedInteger) -> Result<i32, Diagnostic> {
     if si.is_neg {
         let unsigned = si.value.value as i128;
         let signed = -unsigned;
@@ -2386,7 +2526,7 @@ fn resolve_string_arg(
     ctx: &mut CompileContext,
     arg: &Expr,
     func_span: &ironplc_dsl::core::SourceSpan,
-) -> Result<u16, Diagnostic> {
+) -> Result<u32, Diagnostic> {
     match &arg.kind {
         ExprKind::Variable(variable) => {
             let var_name = resolve_variable_name(variable)
@@ -2402,7 +2542,7 @@ fn resolve_string_arg(
             let bytes: Vec<u8> = lit.value.iter().map(|&ch| ch as u8).collect();
             let max_length = DEFAULT_STRING_MAX_LENGTH;
             let data_offset = ctx.data_region_offset;
-            let total_bytes = STRING_HEADER_BYTES as u16 + max_length;
+            let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
             ctx.data_region_offset = ctx
                 .data_region_offset
                 .checked_add(total_bytes)
@@ -3142,7 +3282,10 @@ fn resolve_symbolic_variable_name(kind: &SymbolicVariableKind) -> Result<&Id, Di
 }
 
 /// Resolves a variable reference to its variable table index.
-fn resolve_variable(ctx: &CompileContext, variable: &Variable) -> Result<u16, Diagnostic> {
+pub(crate) fn resolve_variable(
+    ctx: &CompileContext,
+    variable: &Variable,
+) -> Result<u16, Diagnostic> {
     match variable {
         Variable::Symbolic(symbolic) => match symbolic {
             SymbolicVariableKind::Named(named) => ctx.var_index(&named.name),

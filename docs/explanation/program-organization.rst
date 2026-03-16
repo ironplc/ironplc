@@ -39,7 +39,7 @@ Programs
 A :code:`PROGRAM` is the basic unit of control logic. It declares variables
 and contains statements that execute on every scan:
 
-.. code-block::
+.. playground::
 
    PROGRAM main
       VAR
@@ -141,15 +141,14 @@ Putting It All Together
 
 Here is a complete, minimal application showing all the layers:
 
-.. code-block::
+.. playground::
 
    PROGRAM main
       VAR
-         Button AT %IX1: BOOL;
-         Buzzer AT %QX1: BOOL;
+         Counter : INT := 0;
       END_VAR
 
-      Buzzer := NOT Button;
+      Counter := Counter + 1;
 
    END_PROGRAM
 
@@ -165,7 +164,7 @@ Reading from the bottom up:
 1. The **configuration** named ``config`` defines one resource.
 2. The **resource** named ``res`` defines one task and one program instance.
 3. The **task** named ``plc_task`` runs every 100 ms.
-4. The **program** named ``main`` reads a button input and controls a buzzer.
+4. The **program** named ``main`` increments a counter on each scan.
 
 For a step-by-step guide to building this up from scratch, see the
 :doc:`/quickstart/index`.
