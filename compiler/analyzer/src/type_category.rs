@@ -44,7 +44,7 @@ impl TypeCategory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intermediate_type::{ByteSized, IntermediateType};
+    use crate::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};
 
     #[test]
     fn type_category_classification() {
@@ -92,7 +92,7 @@ mod tests {
         assert_eq!(
             TypeCategory::for_type(&IntermediateType::Array {
                 element_type: Box::new(IntermediateType::Bool),
-                size: Some(10)
+                dimensions: vec![ArrayDimension { lower: 0, upper: 9 }]
             }),
             TypeCategory::Derived
         );

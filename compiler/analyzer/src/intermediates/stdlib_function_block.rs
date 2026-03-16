@@ -65,7 +65,7 @@ fn build_field(
     };
 
     // Calculate size
-    let size = field_type.size_in_bytes().unwrap_or(0) as u32;
+    let size = field_type.size_in_bytes().unwrap_or(0);
 
     let field = IntermediateStructField {
         name: Id::from(name),
