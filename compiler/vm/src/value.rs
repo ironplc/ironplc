@@ -3,7 +3,6 @@
 /// I32 values are sign-extended into the slot so that negative values
 /// roundtrip correctly: `v as i64 as u64`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[repr(transparent)]
 pub struct Slot(u64);
 
 impl Slot {

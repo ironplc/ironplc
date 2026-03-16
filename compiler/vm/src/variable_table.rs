@@ -71,25 +71,28 @@ impl<'a> VariableTable<'a> {
     /// Copies pre-computed Slot values from a template byte slice into
     /// consecutive variable slots starting at `start`.
     ///
-    /// The template is a sequence of raw Slot bytes (8 bytes per slot).
-    /// Uses a single memcopy for performance. This is sound because `Slot`
-    /// is `#[repr(transparent)]` over `u64`.
+    /// The template is a sequence of u64 little-endian values (8 bytes per slot).
     pub fn copy_template(&mut self, start: u16, template: &[u8]) -> Result<(), Trap> {
         let num_slots = template.len() / 8;
-        if num_slots == 0 {
-            return Ok(());
+        for i in 0..num_slots {
+            let offset = i * 8;
+            let raw = u64::from_le_bytes([
+                template[offset],
+                template[offset + 1],
+                template[offset + 2],
+                template[offset + 3],
+                template[offset + 4],
+                template[offset + 5],
+                template[offset + 6],
+                template[offset + 7],
+            ]);
+            let idx = start + i as u16;
+            let slot = self
+                .slots
+                .get_mut(idx as usize)
+                .ok_or(Trap::InvalidVariableIndex(idx))?;
+            *slot = Slot::from_u64(raw);
         }
-        let start_idx = start as usize;
-        let end_idx = start_idx + num_slots;
-        let dest = self
-            .slots
-            .get_mut(start_idx..end_idx)
-            .ok_or(Trap::InvalidVariableIndex(start + num_slots as u16 - 1))?;
-        // Safety: Slot is #[repr(transparent)] over u64, so &mut [Slot]
-        // has the same layout as &mut [u64], which is just bytes.
-        let dest_bytes: &mut [u8] =
-            unsafe { core::slice::from_raw_parts_mut(dest.as_mut_ptr() as *mut u8, num_slots * 8) };
-        dest_bytes.copy_from_slice(&template[..num_slots * 8]);
         Ok(())
     }
 }
