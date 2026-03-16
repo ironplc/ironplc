@@ -228,6 +228,20 @@ pub const MID_STR: u8 = 0xEA;
 /// Pushes buf_idx (i32).
 pub const CONCAT_STR: u8 = 0xEB;
 
+// --- Array opcodes ---
+
+/// Load a value from an array element.
+/// Operand 1: u16 variable table index (little-endian).
+/// Operand 2: u16 array descriptor index (little-endian).
+/// Pops 1 (flat index), pushes 1 (element value). Net stack: 0.
+pub const LOAD_ARRAY: u8 = 0x24;
+
+/// Store a value to an array element.
+/// Operand 1: u16 variable table index (little-endian).
+/// Operand 2: u16 array descriptor index (little-endian).
+/// Pops 2 (value, flat index). Net stack: -2.
+pub const STORE_ARRAY: u8 = 0x25;
+
 // --- Truncation opcodes ---
 
 /// Truncate i32 to i8 range, then sign-extend back to i32.
