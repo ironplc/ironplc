@@ -1,0 +1,43 @@
+=====
+V4005
+=====
+
+.. problem-summary:: V4005
+
+The program attempted to access an array element with an index that is outside
+the valid range. The index must be between the declared lower and upper bounds
+of the array.
+
+Example
+-------
+
+The following code will generate error V4005:
+
+.. code-block::
+
+   PROGRAM Main
+   VAR
+       values : ARRAY[1..5] OF INT;
+       result : INT;
+   END_VAR
+   result := values[6];  (* Error: index 6 is out of bounds for ARRAY[1..5] *)
+   END_PROGRAM
+
+The array ``values`` has valid indices 1 through 5, but index 6 is outside
+that range.
+
+To fix this error, ensure the index is within the declared bounds of the array:
+
+.. playground::
+
+   PROGRAM Main
+   VAR
+       values : ARRAY[1..5] OF INT;
+       i : INT;
+       result : INT;
+   END_VAR
+   i := 3;
+   IF i >= 1 AND i <= 5 THEN
+       result := values[i];
+   END_IF;
+   END_PROGRAM
