@@ -78,7 +78,7 @@ enum Signedness {
 
 /// Type information for a variable, used to select the correct opcodes.
 #[derive(Clone, Copy)]
-struct VarTypeInfo {
+pub(crate) struct VarTypeInfo {
     /// The native operation width (i32 or i64).
     op_width: OpWidth,
     /// Whether signed or unsigned opcodes are used for division/comparison.

@@ -187,6 +187,28 @@ impl Emitter {
     emit_unaryop!(emit_trunc_i16, opcode::TRUNC_I16);
     emit_unaryop!(emit_trunc_u16, opcode::TRUNC_U16);
 
+    /// Emits LOAD_ARRAY with var_index and desc_index operands.
+    /// Pops 1 (flat index already on stack), pushes 1 (element value). Net: 0.
+    #[allow(dead_code)]
+    pub fn emit_load_array(&mut self, var_index: u16, desc_index: u16) {
+        self.bytecode.push(opcode::LOAD_ARRAY);
+        self.bytecode.extend_from_slice(&var_index.to_le_bytes());
+        self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
+        // Pop index, push value = no net change
+        self.pop_stack(1);
+        self.push_stack(1);
+    }
+
+    /// Emits STORE_ARRAY with var_index and desc_index operands.
+    /// Pops 2 (value and flat index). Net: -2.
+    #[allow(dead_code)]
+    pub fn emit_store_array(&mut self, var_index: u16, desc_index: u16) {
+        self.bytecode.push(opcode::STORE_ARRAY);
+        self.bytecode.extend_from_slice(&var_index.to_le_bytes());
+        self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
+        self.pop_stack(2);
+    }
+
     /// Emits BUILTIN with a function ID.
     /// All builtins pop `arg_count` values and push one result.
     /// The arg count is looked up from `opcode::builtin::arg_count()`.
@@ -1057,5 +1079,52 @@ mod tests {
 
         // JMP offset should be 3 (skip over the LOAD_CONST_I32 which is 3 bytes)
         assert_eq!(em.bytecode(), &[0xB0, 0x03, 0x00, 0x01, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn emitter_when_load_array_then_correct_bytecode() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0); // push flat index
+        em.emit_load_array(3, 7); // var_index=3, desc_index=7
+
+        // LOAD_CONST pool:0, LOAD_ARRAY var:3 desc:7
+        assert_eq!(
+            em.bytecode(),
+            &[0x01, 0x00, 0x00, 0x24, 0x03, 0x00, 0x07, 0x00]
+        );
+    }
+
+    #[test]
+    fn emitter_when_load_array_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0); // stack: 1 (flat index)
+        em.emit_load_array(3, 7); // stack: 1 (pop index, push value)
+        em.emit_store_var_i32(0); // stack: 0
+
+        assert_eq!(em.max_stack_depth(), 1);
+    }
+
+    #[test]
+    fn emitter_when_store_array_then_correct_bytecode() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0); // push value
+        em.emit_load_const_i32(1); // push flat index
+        em.emit_store_array(5, 2); // var_index=5, desc_index=2
+
+        // LOAD_CONST pool:0, LOAD_CONST pool:1, STORE_ARRAY var:5 desc:2
+        assert_eq!(
+            em.bytecode(),
+            &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x25, 0x05, 0x00, 0x02, 0x00]
+        );
+    }
+
+    #[test]
+    fn emitter_when_store_array_then_tracks_stack_depth() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0); // stack: 1 (value)
+        em.emit_load_const_i32(1); // stack: 2 (flat index)
+        em.emit_store_array(5, 2); // stack: 0 (pops 2)
+
+        assert_eq!(em.max_stack_depth(), 2);
     }
 }
