@@ -210,3 +210,33 @@ END_PROGRAM
     // Second call: flag = 0, so return value stays at default (0), not stale 42
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
+
+#[test]
+fn end_to_end_when_user_function_calls_another_user_function_then_correct() {
+    let source = "
+FUNCTION INNER : DINT
+  VAR_INPUT
+    X : DINT;
+  END_VAR
+  INNER := X * 2;
+END_FUNCTION
+
+FUNCTION OUTER : DINT
+  VAR_INPUT
+    Y : DINT;
+  END_VAR
+  OUTER := INNER(X := Y);
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := OUTER(Y := 3);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // OUTER(3) calls INNER(3), which returns 3 * 2 = 6
+    assert_eq!(bufs.vars[0].as_i32(), 6);
+}

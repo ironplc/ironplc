@@ -404,6 +404,24 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         res
     }
 
+    fn visit_function(
+        &mut self,
+        node: &ironplc_dsl::textual::Function,
+    ) -> Result<Self::Value, Diagnostic> {
+        // A function call creates a dependency: the current POU depends on the
+        // called function. Add an edge so the called function is ordered first.
+        match &self.current_from {
+            Some(from) => {
+                let from = self.declarations.add_node(from);
+                let to = self.declarations.add_node(&node.name);
+                self.declarations.graph.add_edge(to, from, ());
+            }
+            None => return Err(Diagnostic::todo(file!(), line!())),
+        }
+
+        node.recurse_visit(self)
+    }
+
     fn visit_function_block_initial_value_assignment(
         &mut self,
         init: &FunctionBlockInitialValueAssignment,
@@ -686,6 +704,51 @@ END_TYPE";
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::StructureInitialization);
         assert_eq!(decl.type_name, TypeName::from("INIT_STRUCT"));
+    }
+
+    #[test]
+    fn apply_when_function_calls_another_function_then_callee_ordered_first() {
+        let program = "
+        FUNCTION INNER : REAL
+        VAR_INPUT
+            X : REAL;
+        END_VAR
+            INNER := X * 2.0;
+        END_FUNCTION
+
+        FUNCTION OUTER : REAL
+        VAR_INPUT
+            Y : REAL;
+        END_VAR
+            OUTER := INNER(X := Y);
+        END_FUNCTION
+
+        PROGRAM main
+        VAR
+            result : REAL;
+        END_VAR
+            result := OUTER(Y := 3.0);
+        END_PROGRAM";
+
+        let library = parse_only(program);
+        let library = apply(library).unwrap();
+
+        // INNER must come before OUTER (callee before caller), both before main.
+        // Collect just the function declarations in order.
+        let func_names: Vec<&Id> = library
+            .elements
+            .iter()
+            .filter_map(|e| {
+                if let LibraryElementKind::FunctionDeclaration(f) = e {
+                    Some(&f.name)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(func_names.len(), 2);
+        assert_eq!(func_names[0], &Id::from("INNER"));
+        assert_eq!(func_names[1], &Id::from("OUTER"));
     }
 
     #[test]
