@@ -277,6 +277,8 @@ impl Slot {
     pub fn as_var_index(&self) -> Result<u16, Trap> {
         if self.is_null_ref() {
             Err(Trap::NullDereference)
+        } else if self.0 > u16::MAX as u64 {
+            Err(Trap::InvalidVariableIndex)
         } else {
             Ok(self.0 as u16)
         }
@@ -284,23 +286,25 @@ impl Slot {
 }
 ```
 
+The range check (`self.0 > u16::MAX`) is a defense-in-depth measure. The compile-time type system prevents non-reference values from reaching `as_var_index()`, but a codegen bug could produce an out-of-range index. Without this check, `self.0 as u16` would silently truncate, causing access to the **wrong variable** with no error. The range check converts this into a clean trap using the existing `Trap::InvalidVariableIndex`.
+
 ### Opcode Handlers — `compiler/vm/src/vm.rs`
 
 **`LOAD_INDIRECT`**:
 1. Pop slot from stack
-2. Call `as_var_index()` — traps if null sentinel
+2. Call `as_var_index()` — traps if null sentinel or out-of-range index
 3. `scope.check_access(index)` — bounds check (existing mechanism)
 4. `variables.load(index)` — load value (existing mechanism)
 5. Push value onto stack
 
 **`STORE_INDIRECT`**:
 1. Pop ref slot from stack
-2. Call `as_var_index()` — traps if null sentinel
+2. Call `as_var_index()` — traps if null sentinel or out-of-range index
 3. Pop value slot from stack
 4. `scope.check_access(index)` — bounds check
 5. `variables.store(index, value)` — store value
 
-Both follow the exact same safety pattern as existing `LOAD_VAR`/`STORE_VAR` (scope check + variable table access), plus the null check.
+Both follow the exact same safety pattern as existing `LOAD_VAR`/`STORE_VAR` (scope check + variable table access), plus the null and range checks.
 
 ## Dialect Compatibility
 
