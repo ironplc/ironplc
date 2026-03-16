@@ -243,6 +243,18 @@ impl TypeEnvironment {
             .map(|(name, _)| TypeName::from(name))
     }
 
+    /// Returns the intermediate type for a named array type.
+    ///
+    /// Returns `Some` with the `IntermediateType::Array` if the type is found
+    /// and is an array type, or `None` if the type is not found or is not an array.
+    pub fn resolve_array_type(&self, type_name: &TypeName) -> Option<&IntermediateType> {
+        let attrs = self.get(type_name)?;
+        match &attrs.representation {
+            it @ IntermediateType::Array { .. } => Some(it),
+            _ => None,
+        }
+    }
+
     /// An iterator for all types in the environment
     pub fn iter(
         &self,
@@ -422,7 +434,7 @@ pub use crate::type_attributes::TypeAttributes;
 mod tests {
     use super::*;
     use crate::{
-        intermediate_type::{ByteSized, IntermediateType},
+        intermediate_type::{ArrayDimension, ByteSized, IntermediateType},
         type_attributes::TypeAttributes,
         type_category::TypeCategory,
     };
@@ -502,7 +514,10 @@ mod tests {
             element_type: Box::new(IntermediateType::Int {
                 size: ByteSized::B16
             }),
-            size: Some(10)
+            dimensions: vec![ArrayDimension {
+                lower: 1,
+                upper: 10
+            }]
         }
         .is_primitive());
 
@@ -830,6 +845,56 @@ mod tests {
         assert!(env
             .validate_type_usage(&TypeName::from("MY_FB"), &UsageContext::FunctionReturn)
             .is_err());
+    }
+
+    #[test]
+    fn resolve_array_type_when_array_then_returns_type() {
+        let mut env = TypeEnvironment::new();
+        env.insert_type(
+            &TypeName::from("MY_ARRAY"),
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::Array {
+                    element_type: Box::new(IntermediateType::Int {
+                        size: ByteSized::B16,
+                    }),
+                    dimensions: vec![ArrayDimension {
+                        lower: 1,
+                        upper: 10,
+                    }],
+                },
+            ),
+        )
+        .unwrap();
+
+        let result = env.resolve_array_type(&TypeName::from("MY_ARRAY"));
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), IntermediateType::Array { .. }));
+    }
+
+    #[test]
+    fn resolve_array_type_when_not_array_then_returns_none() {
+        let mut env = TypeEnvironment::new();
+        env.insert_type(
+            &TypeName::from("MY_INT"),
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::Int {
+                    size: ByteSized::B16,
+                },
+            ),
+        )
+        .unwrap();
+
+        assert!(env.resolve_array_type(&TypeName::from("MY_INT")).is_none());
+    }
+
+    #[test]
+    fn resolve_array_type_when_not_found_then_returns_none() {
+        let env = TypeEnvironment::new();
+        assert!(env
+            .resolve_array_type(&TypeName::from("NONEXISTENT"))
+            .is_none());
     }
 
     #[test]

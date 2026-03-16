@@ -41,7 +41,7 @@ impl TypeAttributes {
     /// Returns `None` if the size cannot be determined (e.g., dynamic arrays,
     /// variable-length strings, or types with unknown field sizes).
     pub fn size_bytes(&self) -> Option<u32> {
-        self.representation.size_in_bytes().map(|s| s as u32)
+        self.representation.size_in_bytes()
     }
 
     /// Gets the alignment requirement in bytes for this type (delegates to IntermediateType)
@@ -102,10 +102,7 @@ mod tests {
         );
 
         // Test that convenience methods return the same values as IntermediateType methods
-        assert_eq!(
-            attrs.size_bytes(),
-            attrs.representation.size_in_bytes().map(|s| s as u32)
-        );
+        assert_eq!(attrs.size_bytes(), attrs.representation.size_in_bytes());
         assert_eq!(
             attrs.alignment_bytes(),
             attrs.representation.alignment_bytes() as u32

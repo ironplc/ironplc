@@ -70,14 +70,13 @@ impl TypeEnvironment {
                         },
                     ))
                 }
-                IntermediateType::Array {
-                    element_type: _,
-                    size: _,
-                } => Ok(DataTypeDeclarationKind::Array(ArrayDeclaration {
-                    type_name: node.data_type_name,
-                    spec: SpecificationKind::Named(node.base_type_name),
-                    init: vec![],
-                })),
+                IntermediateType::Array { .. } => {
+                    Ok(DataTypeDeclarationKind::Array(ArrayDeclaration {
+                        type_name: node.data_type_name,
+                        spec: SpecificationKind::Named(node.base_type_name),
+                        init: vec![],
+                    }))
+                }
                 IntermediateType::Subrange { .. } => {
                     Ok(DataTypeDeclarationKind::Subrange(SubrangeDeclaration {
                         type_name: node.data_type_name,
