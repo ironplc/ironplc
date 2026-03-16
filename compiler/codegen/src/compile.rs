@@ -42,7 +42,8 @@ use ironplc_container::debug_section::{
 use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES};
 use ironplc_dsl::common::{
     Boolean, ConstantKind, FunctionBlockBodyKind, FunctionDeclaration, InitialValueAssignmentKind,
-    Library, LibraryElementKind, ProgramDeclaration, SignedInteger, VarDecl, VariableType,
+    Library, LibraryElementKind, ProgramDeclaration, SignedInteger, SpecificationKind, VarDecl,
+    VariableType,
 };
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -52,13 +53,14 @@ use ironplc_dsl::textual::{
 };
 use ironplc_problems::Problem;
 
+use ironplc_analyzer::intermediate_type::IntermediateType;
 use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
 use crate::emit::Emitter;
 
 /// The native operation width used for arithmetic and comparisons.
 #[derive(Clone, Copy, PartialEq)]
-enum OpWidth {
+pub(crate) enum OpWidth {
     /// 32-bit integer operations (for SINT, INT, DINT, USINT, UINT, UDINT).
     W32,
     /// 64-bit integer operations (for LINT, ULINT).
@@ -71,7 +73,7 @@ enum OpWidth {
 
 /// Whether a type uses signed or unsigned semantics for division and comparison.
 #[derive(Clone, Copy, PartialEq)]
-enum Signedness {
+pub(crate) enum Signedness {
     Signed,
     Unsigned,
 }
@@ -80,11 +82,11 @@ enum Signedness {
 #[derive(Clone, Copy)]
 pub(crate) struct VarTypeInfo {
     /// The native operation width (i32 or i64).
-    op_width: OpWidth,
+    pub(crate) op_width: OpWidth,
     /// Whether signed or unsigned opcodes are used for division/comparison.
-    signedness: Signedness,
+    pub(crate) signedness: Signedness,
     /// The declared storage width in bits (8, 16, 32, or 64).
-    storage_bits: u8,
+    pub(crate) storage_bits: u8,
 }
 
 /// Shorthand for the operation type tuple used during expression compilation.
@@ -184,9 +186,10 @@ fn compile_program_with_functions(
     types: &TypeEnvironment,
 ) -> Result<Container, Diagnostic> {
     let mut ctx = CompileContext::new();
+    let mut builder = ContainerBuilder::new();
 
     // Assign variable indices for all declared program variables.
-    assign_variables(&mut ctx, &program.variables, types)?;
+    assign_variables(&mut ctx, &mut builder, &program.variables, types)?;
     let program_var_count = ctx.variables.len() as u16;
 
     // Compile user-defined functions. Each function gets a unique function ID
@@ -216,7 +219,7 @@ fn compile_program_with_functions(
     scan_emitter.emit_ret_void();
 
     // Build the container.
-    let mut builder = ContainerBuilder::new().num_variables(total_variables);
+    builder = builder.num_variables(total_variables);
 
     // Configure data region for STRING variables.
     if ctx.data_region_offset > 0 {
@@ -459,7 +462,7 @@ struct FbInstanceInfo {
     field_indices: HashMap<String, u8>,
 }
 
-struct CompileContext {
+pub(crate) struct CompileContext {
     /// Maps variable identifiers to their variable table indices.
     variables: HashMap<Id, u16>,
     /// Maps variable identifiers to their type information.
@@ -473,8 +476,10 @@ struct CompileContext {
     string_vars: HashMap<Id, StringVarInfo>,
     /// Maps FB instance variable identifiers to their metadata.
     fb_instances: HashMap<Id, FbInstanceInfo>,
+    /// Maps array variable identifiers to their metadata.
+    pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
     /// Next available byte offset in the data region.
-    data_region_offset: u32,
+    pub(crate) data_region_offset: u32,
     /// Maximum string capacity across all STRING variables (for temp buffer sizing).
     max_string_capacity: u16,
     /// Number of temp buffers needed (one per string load in the init function).
@@ -494,6 +499,7 @@ impl CompileContext {
             loop_exit_labels: Vec::new(),
             string_vars: HashMap::new(),
             fb_instances: HashMap::new(),
+            array_vars: HashMap::new(),
             data_region_offset: 0,
             max_string_capacity: 0,
             num_temp_bufs: 0,
@@ -605,8 +611,9 @@ impl CompileContext {
 /// Assigns variable table indices and type info for all variable declarations.
 fn assign_variables(
     ctx: &mut CompileContext,
+    builder: &mut ContainerBuilder,
     declarations: &[VarDecl],
-    _types: &TypeEnvironment,
+    types: &TypeEnvironment,
 ) -> Result<(), Diagnostic> {
     for decl in declarations {
         if let Some(id) = decl.identifier.symbolic_id() {
@@ -683,7 +690,42 @@ fn assign_variables(
                     }
                     (iec_type_tag::OTHER, fb_name)
                 }
-                // Other initializer kinds (EnumeratedType, Array, etc.)
+                InitialValueAssignmentKind::Array(array_init) => {
+                    let spec = match &array_init.spec {
+                        SpecificationKind::Inline(array_subranges) => {
+                            crate::compile_array::array_spec_from_inline(
+                                array_subranges,
+                                &decl.identifier.span(),
+                            )?
+                        }
+                        SpecificationKind::Named(type_name) => {
+                            let array_type =
+                                types.resolve_array_type(type_name).ok_or_else(|| {
+                                    Diagnostic::problem(
+                                        Problem::NotImplemented,
+                                        Label::span(type_name.span(), "Unknown array type"),
+                                    )
+                                })?;
+                            let IntermediateType::Array {
+                                element_type,
+                                dimensions,
+                            } = array_type
+                            else {
+                                unreachable!("resolve_array_type guarantees Array variant");
+                            };
+                            crate::compile_array::array_spec_from_named(element_type, dimensions)?
+                        }
+                    };
+                    crate::compile_array::register_array_variable(
+                        ctx,
+                        builder,
+                        id,
+                        index,
+                        &spec,
+                        &decl.identifier.span(),
+                    )?
+                }
+                // Other initializer kinds (EnumeratedType, etc.)
                 // do not yet have type info tracked in codegen.
                 _ => (iec_type_tag::OTHER, String::new()),
             };
@@ -892,7 +934,7 @@ fn emit_zero_const(emitter: &mut Emitter, ctx: &mut CompileContext, op_type: OpT
 /// Maps an IEC 61131-3 type name to its `VarTypeInfo`.
 ///
 /// Returns `None` for unrecognized type names (e.g., user-defined types).
-fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
+pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
     match name.lower_case().as_str() {
         "sint" => Some(VarTypeInfo {
             op_width: OpWidth::W32,
@@ -1507,7 +1549,7 @@ fn compile_case_selector(
 }
 
 /// Converts a `SignedInteger` AST node to an `i32` value.
-fn signed_integer_to_i32(si: &SignedInteger) -> Result<i32, Diagnostic> {
+pub(crate) fn signed_integer_to_i32(si: &SignedInteger) -> Result<i32, Diagnostic> {
     if si.is_neg {
         let unsigned = si.value.value as i128;
         let signed = -unsigned;
@@ -3240,7 +3282,10 @@ fn resolve_symbolic_variable_name(kind: &SymbolicVariableKind) -> Result<&Id, Di
 }
 
 /// Resolves a variable reference to its variable table index.
-fn resolve_variable(ctx: &CompileContext, variable: &Variable) -> Result<u16, Diagnostic> {
+pub(crate) fn resolve_variable(
+    ctx: &CompileContext,
+    variable: &Variable,
+) -> Result<u16, Diagnostic> {
     match variable {
         Variable::Symbolic(symbolic) => match symbolic {
             SymbolicVariableKind::Named(named) => ctx.var_index(&named.name),
