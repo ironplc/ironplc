@@ -49,4 +49,4 @@ pub use debug_section::{DebugSection, FuncNameEntry, VarNameEntry};
 #[cfg(feature = "std")]
 pub use task_table::{ProgramInstanceEntry, TaskEntry, TaskTable};
 #[cfg(feature = "std")]
-pub use type_section::{FbTypeDescriptor, FieldEntry, FieldType, TypeSection};
+pub use type_section::{ArrayDescriptor, FbTypeDescriptor, FieldEntry, FieldType, TypeSection};
