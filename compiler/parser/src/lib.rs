@@ -46,7 +46,7 @@ pub fn tokenize_program(
     let source = preprocess(source);
     let (tokens, mut errors) = tokenize(&source, file_id, line_offset, col_offset);
 
-    let tokens = insert_keyword_statement_terminators(tokens, file_id);
+    let tokens = insert_keyword_statement_terminators(tokens, file_id, options);
     let result = check_tokens(&tokens, options);
     match result {
         Ok(_) => {}

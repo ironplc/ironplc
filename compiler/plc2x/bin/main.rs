@@ -47,17 +47,23 @@ struct FileArgs {
     /// Without this flag, only Edition 2 features are accepted.
     #[arg(long = "std-iec-61131-3", default_value = "2003")]
     std_version: StdVersion,
+
+    /// Allow missing semicolons after keyword statements like END_IF and END_STRUCT.
+    #[arg(long)]
+    allow_missing_semicolon: bool,
 }
 
 impl FileArgs {
     fn parse_options(&self) -> ParseOptions {
-        match self.std_version {
+        let mut options = match self.std_version {
             StdVersion::Iec6113132003 => ParseOptions::default(),
             StdVersion::Iec6113132013 => ParseOptions {
                 allow_iec_61131_3_2013: true,
                 ..Default::default()
             },
-        }
+        };
+        options.allow_missing_semicolon = self.allow_missing_semicolon;
+        options
     }
 }
 
