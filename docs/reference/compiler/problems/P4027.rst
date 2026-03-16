@@ -1,0 +1,38 @@
+=====
+P4027
+=====
+
+.. problem-summary:: P4027
+
+This error occurs when a function's return type does not match the type of the variable
+being assigned to. IronPLC requires exact type matching for function return values.
+
+Example
+-------
+
+The following code will generate error P4027:
+
+.. code-block::
+
+   FUNCTION GET_VALUE : REAL
+   VAR_INPUT
+       A : REAL;
+   END_VAR
+       GET_VALUE := A;
+   END_FUNCTION
+
+   PROGRAM main
+   VAR
+       result : INT;
+       x : REAL;
+   END_VAR
+       result := GET_VALUE(x);  (* Error: REAL return assigned to INT variable *)
+   END_PROGRAM
+
+The function ``GET_VALUE`` returns ``REAL``, but ``result`` is ``INT``.
+
+To fix this error, use an explicit type conversion:
+
+.. code-block::
+
+   result := REAL_TO_INT(GET_VALUE(x));

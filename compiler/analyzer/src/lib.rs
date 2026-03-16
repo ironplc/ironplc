@@ -13,6 +13,7 @@ mod rule_decl_subrange_limits;
 mod rule_enumeration_values_unique;
 mod rule_function_block_invocation;
 mod rule_function_call_declared;
+mod rule_function_call_type_check;
 mod rule_pou_hierarchy;
 mod rule_program_task_definition_exists;
 mod rule_stdlib_type_redefinition;
