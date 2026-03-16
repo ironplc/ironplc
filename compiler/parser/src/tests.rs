@@ -116,7 +116,12 @@ mod test {
 
     #[test]
     fn parse_if_then_ok() {
-        let res: Result<Library, Diagnostic> = parse_resource("if.st");
+        let source = ironplc_test::read_shared_resource("if.st");
+        let options = ParseOptions {
+            allow_missing_semicolon: true,
+            ..Default::default()
+        };
+        let res = parse_program(&source, &FileId::default(), &options);
         assert!(res.is_ok())
     }
 
@@ -924,5 +929,70 @@ END_VAR
     result := counter.OUT;
 END_FUNCTION_BLOCK",
         );
+    }
+
+    #[test]
+    fn parse_when_struct_without_trailing_semicolon_and_flag_enabled_then_ok() {
+        let source = "TYPE MY_POINT :
+STRUCT
+    X : REAL;
+    Y : REAL;
+END_STRUCT
+END_TYPE
+
+PROGRAM main
+VAR
+    pt : MY_POINT;
+END_VAR
+    pt.X := 1.0;
+    pt.Y := 2.0;
+END_PROGRAM";
+
+        let options = ParseOptions {
+            allow_missing_semicolon: true,
+            ..Default::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_struct_without_trailing_semicolon_and_flag_disabled_then_err() {
+        let source = "TYPE MY_POINT :
+STRUCT
+    X : REAL;
+    Y : REAL;
+END_STRUCT
+END_TYPE
+
+PROGRAM main
+VAR
+    pt : MY_POINT;
+END_VAR
+    pt.X := 1.0;
+    pt.Y := 2.0;
+END_PROGRAM";
+
+        let result = parse_program(source, &FileId::default(), &ParseOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_when_end_if_without_semicolon_and_flag_enabled_then_ok() {
+        let source = "PROGRAM main
+VAR
+    x : BOOL;
+END_VAR
+    IF x THEN
+        x := FALSE;
+    END_IF
+END_PROGRAM";
+
+        let options = ParseOptions {
+            allow_missing_semicolon: true,
+            ..Default::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
     }
 }
