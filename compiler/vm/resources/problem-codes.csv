@@ -2,6 +2,7 @@ Code,Name,Message,HasData
 V4001,DivideByZero,Divide by zero during program execution,false
 V4002,NegativeExponent,Negative exponent in arithmetic operation,false
 V4003,WatchdogTimeout,Task exceeded its watchdog time limit,true
+V4005,ArrayIndexOutOfBounds,Array index out of bounds,struct
 V9001,StackOverflow,VM operand stack overflow,false
 V9002,StackUnderflow,VM operand stack underflow,false
 V9003,InvalidInstruction,Unknown bytecode instruction,true
