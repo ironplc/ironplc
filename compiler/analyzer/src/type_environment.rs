@@ -434,7 +434,7 @@ pub use crate::type_attributes::TypeAttributes;
 mod tests {
     use super::*;
     use crate::{
-        intermediate_type::{ByteSized, IntermediateType},
+        intermediate_type::{ArrayDimension, ByteSized, IntermediateType},
         type_attributes::TypeAttributes,
         type_category::TypeCategory,
     };
@@ -514,7 +514,10 @@ mod tests {
             element_type: Box::new(IntermediateType::Int {
                 size: ByteSized::B16
             }),
-            size: Some(10)
+            dimensions: vec![ArrayDimension {
+                lower: 1,
+                upper: 10
+            }]
         }
         .is_primitive());
 

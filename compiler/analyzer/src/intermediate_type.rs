@@ -10,6 +10,15 @@
 
 use ironplc_dsl::core::Id;
 
+/// Bounds for a single dimension of an array type.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArrayDimension {
+    /// Lower bound (inclusive), e.g., 1 in ARRAY[1..10]
+    pub lower: i32,
+    /// Upper bound (inclusive), e.g., 10 in ARRAY[1..10]
+    pub upper: i32,
+}
+
 /// Represents the size of a data type in bits, aligned to common byte boundaries.
 /// Used for memory layout and type checking of numeric and bit-based types.
 #[derive(Debug, Clone, PartialEq)]
@@ -84,12 +93,12 @@ pub enum IntermediateType {
         /// Ordered list of fields in the structure
         fields: Vec<IntermediateStructField>,
     },
-    /// Array type with element type and optional fixed size
+    /// Array type with element type and per-dimension bounds.
     Array {
         /// Type of elements in the array
         element_type: Box<IntermediateType>,
-        /// Fixed size if known at compile-time, None for dynamic arrays
-        size: Option<u32>,
+        /// Per-dimension bounds. Empty for dynamic/unknown-size arrays.
+        dimensions: Vec<ArrayDimension>,
     },
     /// Subrange type with base type and bounds
     Subrange {
@@ -172,6 +181,28 @@ impl IntermediateType {
         )
     }
 
+    /// Returns the total number of elements across all dimensions,
+    /// or None if dimensions is empty.
+    pub fn array_total_elements(&self) -> Option<u32> {
+        match self {
+            IntermediateType::Array { dimensions, .. } if !dimensions.is_empty() => {
+                let mut total: u32 = 1;
+                for dim in dimensions {
+                    // Guard: if lower > upper, this dimension is invalid.
+                    // The analyzer validates this, but defense-in-depth.
+                    let span = dim.upper as i64 - dim.lower as i64 + 1;
+                    if span <= 0 {
+                        return None;
+                    }
+                    let dim_size = span as u32;
+                    total = total.checked_mul(dim_size)?;
+                }
+                Some(total)
+            }
+            _ => None,
+        }
+    }
+
     /// Returns if the type is an integer type (signed or unsigned).
     pub fn is_integer(&self) -> bool {
         matches!(
@@ -187,17 +218,17 @@ impl IntermediateType {
     ///
     /// Note: IEC 61131-3 doesn't support truly dynamically sized objects at runtime,
     /// but some types require compile-time analysis to determine their final size.
-    pub fn size_in_bytes(&self) -> Option<u8> {
+    pub fn size_in_bytes(&self) -> Option<u32> {
         match self {
             IntermediateType::Bool => Some(1),
             IntermediateType::Int { size } | IntermediateType::UInt { size } => {
-                Some(size.as_bytes())
+                Some(size.as_bytes() as u32)
             }
-            IntermediateType::Real { size } => Some(size.as_bytes()),
-            IntermediateType::Bytes { size } => Some(size.as_bytes()),
-            IntermediateType::Time { size } => Some(size.as_bytes()),
+            IntermediateType::Real { size } => Some(size.as_bytes() as u32),
+            IntermediateType::Bytes { size } => Some(size.as_bytes() as u32),
+            IntermediateType::Time { size } => Some(size.as_bytes() as u32),
             IntermediateType::Date => Some(8), // 64-bit date representation
-            IntermediateType::String { max_len } => max_len.map(|len| len as u8),
+            IntermediateType::String { max_len } => max_len.map(|len| len as u32),
             IntermediateType::Subrange { base_type, .. } => base_type.size_in_bytes(),
             IntermediateType::Enumeration { underlying_type } => underlying_type.size_in_bytes(),
             IntermediateType::Structure { fields } => {
@@ -209,26 +240,19 @@ impl IntermediateType {
                 // Fields are guaranteed to be in offset order, so we just use the last one
                 let last_field = fields.last().unwrap(); // Safe: checked not empty above
                 let last_field_size = last_field.field_type.size_in_bytes()?;
-                let size_after_last_field = last_field.offset + last_field_size as u32;
+                let size_after_last_field = last_field.offset + last_field_size;
 
                 // Pad to structure alignment
                 let alignment = self.alignment_bytes() as u32;
 
                 // Calculate padding needed to align to structure boundary
                 let padding = (alignment - (size_after_last_field % alignment)) % alignment;
-                let total_size = size_after_last_field.saturating_add(padding);
-
-                // If size exceeds u8::MAX, return None to indicate complex size calculation needed
-                if total_size > u8::MAX as u32 {
-                    return None;
-                }
-
-                Some(total_size as u8)
+                Some(size_after_last_field.saturating_add(padding))
             }
-            IntermediateType::Array { element_type, size } => {
-                let array_size = (*size)?;
+            IntermediateType::Array { element_type, .. } => {
+                let total_elements = self.array_total_elements()?;
                 let elem_size = element_type.size_in_bytes()?;
-                Some(elem_size.saturating_mul(array_size as u8))
+                (elem_size).checked_mul(total_elements)
             }
             IntermediateType::FunctionBlock { fields, .. } => {
                 // Function blocks follow the same memory layout rules as structures
@@ -240,21 +264,14 @@ impl IntermediateType {
                 // Fields are guaranteed to be in offset order, so we just use the last one
                 let last_field = fields.last().unwrap(); // Safe: checked not empty above
                 let last_field_size = last_field.field_type.size_in_bytes()?;
-                let size_after_last_field = last_field.offset + last_field_size as u32;
+                let size_after_last_field = last_field.offset + last_field_size;
 
                 // Pad to function block alignment
                 let alignment = self.alignment_bytes() as u32;
 
                 // Calculate padding needed to align to function block boundary
                 let padding = (alignment - (size_after_last_field % alignment)) % alignment;
-                let total_size = size_after_last_field.saturating_add(padding);
-
-                // If size exceeds u8::MAX, return None to indicate complex size calculation needed
-                if total_size > u8::MAX as u32 {
-                    return None;
-                }
-
-                Some(total_size as u8)
+                Some(size_after_last_field.saturating_add(padding))
             }
             IntermediateType::Function { .. } => {
                 // Functions don't have memory layout in the traditional sense
@@ -332,9 +349,12 @@ impl IntermediateType {
                 underlying_type.has_explicit_size()
             }
             IntermediateType::Structure { .. } => true, // Structures always have explicit size in IEC 61131-3
-            IntermediateType::Array { element_type, size } => {
+            IntermediateType::Array {
+                element_type,
+                dimensions,
+            } => {
                 // Array has explicit size if it has known dimensions and elements have explicit size
-                size.is_some() && element_type.has_explicit_size()
+                !dimensions.is_empty() && element_type.has_explicit_size()
             }
             IntermediateType::FunctionBlock { .. } => true, // Function block instances have explicit size
             IntermediateType::Function { .. } => true, // Functions have explicit size (no variable size)
@@ -524,7 +544,7 @@ pub struct IntermediateFunctionParameter {
 
 #[cfg(test)]
 mod tests {
-    use crate::intermediate_type::{ByteSized, IntermediateType};
+    use crate::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};
 
     #[test]
     fn intermediate_type_size_in_bytes_returns_bytes() {
@@ -609,16 +629,16 @@ mod tests {
             element_type: Box::new(IntermediateType::Int {
                 size: ByteSized::B32,
             }),
-            size: Some(5),
+            dimensions: vec![ArrayDimension { lower: 1, upper: 5 }],
         };
         assert_eq!(array.size_in_bytes(), Some(20)); // 4 bytes * 5 elements
 
-        // Test dynamic array
+        // Test dynamic array (empty dimensions)
         let dynamic_array = IntermediateType::Array {
             element_type: Box::new(IntermediateType::Int {
                 size: ByteSized::B32,
             }),
-            size: None,
+            dimensions: vec![],
         };
         assert_eq!(dynamic_array.size_in_bytes(), None);
     }
@@ -687,7 +707,7 @@ mod tests {
             element_type: Box::new(IntermediateType::Real {
                 size: ByteSized::B64,
             }),
-            size: Some(3),
+            dimensions: vec![ArrayDimension { lower: 1, upper: 3 }],
         };
         assert_eq!(array.alignment_bytes(), 8);
     }
@@ -723,13 +743,13 @@ mod tests {
         // Test arrays
         let fixed_array = IntermediateType::Array {
             element_type: Box::new(IntermediateType::Bool),
-            size: Some(10),
+            dimensions: vec![ArrayDimension { lower: 0, upper: 9 }],
         };
         assert!(fixed_array.has_explicit_size());
 
         let dynamic_array = IntermediateType::Array {
             element_type: Box::new(IntermediateType::Bool),
-            size: None,
+            dimensions: vec![],
         };
         assert!(!dynamic_array.has_explicit_size());
     }
@@ -810,7 +830,7 @@ mod tests {
 
         let array_type = IntermediateType::Array {
             element_type: Box::new(IntermediateType::Bool),
-            size: Some(10),
+            dimensions: vec![ArrayDimension { lower: 0, upper: 9 }],
         };
         assert_eq!(array_type.get_field_offset(&field_id), None);
     }
@@ -959,7 +979,10 @@ mod tests {
             element_type: Box::new(IntermediateType::Int {
                 size: ByteSized::B16,
             }),
-            size: Some(10),
+            dimensions: vec![ArrayDimension {
+                lower: 1,
+                upper: 10,
+            }],
         };
         let result = array_type.validate_bounds(0, 9, &TypeName::from("TEST"));
         assert!(result.is_err());
@@ -1275,7 +1298,7 @@ mod tests {
                 name: Id::from("dynamic_array"),
                 field_type: IntermediateType::Array {
                     element_type: Box::new(IntermediateType::Bool),
-                    size: None, // Dynamic size
+                    dimensions: vec![], // Dynamic size
                 },
                 offset: 4,
                 var_type: None,
@@ -1577,7 +1600,7 @@ mod tests {
                 name: Id::from("buffer"),
                 field_type: IntermediateType::Array {
                     element_type: Box::new(IntermediateType::Bool),
-                    size: None, // Dynamic size
+                    dimensions: vec![], // Dynamic size
                 },
                 offset: 4,
                 var_type: None,
