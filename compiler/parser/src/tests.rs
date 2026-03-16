@@ -265,6 +265,80 @@ END_FUNCTION";
     }
 
     #[test]
+    fn parse_program_when_real_scientific_no_decimal_then_ok() {
+        let program = "
+FUNCTION fun:DWORD
+
+VAR
+    InputsNumber : REAL := 2E-3;
+END_VAR
+
+fun := InputsNumber;
+
+END_FUNCTION";
+        let res = parse_text(program);
+
+        let expected = new_library(LibraryElementKind::FunctionDeclaration(
+            FunctionDeclaration {
+                name: Id::from("fun"),
+                return_type: TypeName::from("DWORD"),
+                variables: vec![VarDecl {
+                    identifier: VariableIdentifier::new_symbol("InputsNumber"),
+                    var_type: VariableType::Var,
+                    qualifier: DeclarationQualifier::Unspecified,
+                    initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
+                        type_name: TypeName::from("REAL"),
+                        initial_value: Some(ConstantKind::RealLiteral(RealLiteral {
+                            value: 0.002,
+                            data_type: None,
+                        })),
+                    }),
+                }],
+                edge_variables: vec![],
+                body: vec![StmtKind::simple_assignment("fun", "InputsNumber")],
+            },
+        ));
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn parse_program_when_real_scientific_positive_exponent_then_ok() {
+        let program = "
+FUNCTION fun:DWORD
+
+VAR
+    InputsNumber : REAL := 1.5E+2;
+END_VAR
+
+fun := InputsNumber;
+
+END_FUNCTION";
+        let res = parse_text(program);
+
+        let expected = new_library(LibraryElementKind::FunctionDeclaration(
+            FunctionDeclaration {
+                name: Id::from("fun"),
+                return_type: TypeName::from("DWORD"),
+                variables: vec![VarDecl {
+                    identifier: VariableIdentifier::new_symbol("InputsNumber"),
+                    var_type: VariableType::Var,
+                    qualifier: DeclarationQualifier::Unspecified,
+                    initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
+                        type_name: TypeName::from("REAL"),
+                        initial_value: Some(ConstantKind::RealLiteral(RealLiteral {
+                            value: 150.0,
+                            data_type: None,
+                        })),
+                    }),
+                }],
+                edge_variables: vec![],
+                body: vec![StmtKind::simple_assignment("fun", "InputsNumber")],
+            },
+        ));
+        assert_eq!(res, expected);
+    }
+
+    #[test]
     fn parse_program_when_fixed_point_duration_then_ok() {
         let program = "
 FUNCTION fun:TIME
