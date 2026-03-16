@@ -454,10 +454,9 @@ pub struct RealLiteral {
 
 impl RealLiteral {
     pub fn try_parse(a: &str, tn: Option<RealTypeName>) -> Result<Self, &'static str> {
-        let (r, remainder): (Vec<_>, Vec<_>) = a
-            .chars()
-            .filter(|c| *c != '_')
-            .partition(|c| c.is_ascii_digit() || *c == '.' || *c == 'E' || *c == 'e' || *c == '-');
+        let (r, remainder): (Vec<_>, Vec<_>) = a.chars().filter(|c| *c != '_').partition(|c| {
+            c.is_ascii_digit() || *c == '.' || *c == 'E' || *c == 'e' || *c == '+' || *c == '-'
+        });
         if !remainder.is_empty() {
             return Err("Non-real characters");
         }
@@ -2332,6 +2331,24 @@ mod tests {
             data_type: None,
         };
         assert_ne!(rl1, rl3);
+    }
+
+    #[test]
+    fn try_parse_when_scientific_no_decimal_then_ok() {
+        let result = RealLiteral::try_parse("2E-3", None).unwrap();
+        assert_eq!(result.value, 0.002);
+    }
+
+    #[test]
+    fn try_parse_when_scientific_positive_exponent_then_ok() {
+        let result = RealLiteral::try_parse("1.5E+2", None).unwrap();
+        assert_eq!(result.value, 150.0);
+    }
+
+    #[test]
+    fn try_parse_when_scientific_no_sign_no_decimal_then_ok() {
+        let result = RealLiteral::try_parse("2E3", None).unwrap();
+        assert_eq!(result.value, 2000.0);
     }
 
     #[test]

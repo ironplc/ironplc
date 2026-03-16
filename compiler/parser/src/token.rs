@@ -123,7 +123,7 @@ pub enum TokenType {
     #[regex(r"2#[0-1][0-1_]*")]
     BinDigits,
     // Omit the -/+ prefix so that real does not consume the sign (just like digits)
-    #[regex(r"(?:[0-9][0-9_]*)(?:\.[0-9_]+)(?:[eE][+-]?[0-9_]+)", priority = 1)]
+    #[regex(r"(?:[0-9][0-9_]*)(?:\.[0-9_]+)?(?:[eE][+-]?[0-9_]+)", priority = 1)]
     FloatingPoint,
     // Same as fixed point but without the exponential. This enables us to support
     // time values as fixed point that do not have the
@@ -812,5 +812,26 @@ mod lexer_tests {
         let mut lex = TokenType::lexer("TIME;");
         let tok = lex.next().unwrap().unwrap();
         assert_eq!(tok, TokenType::Time);
+    }
+
+    #[test]
+    fn tokenize_when_scientific_no_decimal_then_produces_floating_point() {
+        let mut lex = TokenType::lexer("2E-3");
+        let tok = lex.next().unwrap().unwrap();
+        assert_eq!(tok, TokenType::FloatingPoint);
+    }
+
+    #[test]
+    fn tokenize_when_scientific_positive_exponent_then_produces_floating_point() {
+        let mut lex = TokenType::lexer("1.5E+2");
+        let tok = lex.next().unwrap().unwrap();
+        assert_eq!(tok, TokenType::FloatingPoint);
+    }
+
+    #[test]
+    fn tokenize_when_scientific_no_sign_no_decimal_then_produces_floating_point() {
+        let mut lex = TokenType::lexer("2E3");
+        let tok = lex.next().unwrap().unwrap();
+        assert_eq!(tok, TokenType::FloatingPoint);
     }
 }
