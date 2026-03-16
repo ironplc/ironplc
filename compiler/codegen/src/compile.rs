@@ -538,7 +538,7 @@ impl CompileContext {
     }
 
     /// Adds an i32 constant to the pool and returns its index.
-    fn add_i32_constant(&mut self, value: i32) -> u16 {
+    pub(crate) fn add_i32_constant(&mut self, value: i32) -> u16 {
         for (i, existing) in self.constants.iter().enumerate() {
             if let PoolConstant::I32(v) = existing {
                 if *v == value {
@@ -580,7 +580,7 @@ impl CompileContext {
     }
 
     /// Adds an i64 constant to the pool and returns its index.
-    fn add_i64_constant(&mut self, value: i64) -> u16 {
+    pub(crate) fn add_i64_constant(&mut self, value: i64) -> u16 {
         for (i, existing) in self.constants.iter().enumerate() {
             if let PoolConstant::I64(v) = existing {
                 if *v == value {
@@ -843,7 +843,35 @@ fn emit_initial_values(
                         emitter.emit_store_var_i32(var_index);
                     }
                 }
-                // Other initializer kinds (EnumeratedType, Array, etc.)
+                InitialValueAssignmentKind::Array(array_init) => {
+                    if let Some(array_info) = ctx.array_vars.get(id) {
+                        let data_offset = array_info.data_offset;
+                        let var_index = array_info.var_index;
+                        let desc_index = array_info.desc_index;
+                        let element_vti = array_info.element_var_type_info;
+
+                        // Store data_offset into the variable slot (like FB instances).
+                        let offset_const = ctx.add_i32_constant(data_offset as i32);
+                        emitter.emit_load_const_i32(offset_const);
+                        emitter.emit_store_var_i32(var_index);
+
+                        // Emit STORE_ARRAY for each initial value.
+                        if !array_init.initial_values.is_empty() {
+                            let values = crate::compile_array::flatten_array_initial_values(
+                                &array_init.initial_values,
+                            )?;
+                            let element_op_type = (element_vti.op_width, element_vti.signedness);
+                            for (i, value) in values.iter().enumerate() {
+                                compile_constant(emitter, ctx, value, element_op_type)?;
+                                emit_truncation(emitter, element_vti);
+                                let idx_const = ctx.add_i32_constant(i as i32);
+                                emitter.emit_load_const_i32(idx_const);
+                                emitter.emit_store_array(var_index, desc_index);
+                            }
+                        }
+                    }
+                }
+                // Other initializer kinds (EnumeratedType, etc.)
                 // do not yet support initial values in codegen.
                 _ => {}
             }
@@ -1241,22 +1269,52 @@ fn compile_statement(
                 compile_expr(emitter, ctx, &assignment.value, op_type)?;
                 emitter.emit_str_store_var(data_offset);
             } else {
-                let var_index = resolve_variable(ctx, &assignment.target)?;
-                let type_info = target_name.and_then(|name| ctx.var_type_info(name));
-                let op_type = type_info
-                    .map(|ti| (ti.op_width, ti.signedness))
-                    .unwrap_or(DEFAULT_OP_TYPE);
+                match crate::compile_array::resolve_access(ctx, &assignment.target)? {
+                    crate::compile_array::ResolvedAccess::Scalar { var_index } => {
+                        let type_info = target_name.and_then(|name| ctx.var_type_info(name));
+                        let op_type = type_info
+                            .map(|ti| (ti.op_width, ti.signedness))
+                            .unwrap_or(DEFAULT_OP_TYPE);
+                        compile_expr(emitter, ctx, &assignment.value, op_type)?;
+                        if let Some(ti) = type_info {
+                            emit_truncation(emitter, ti);
+                        }
+                        emit_store_var(emitter, var_index, op_type);
+                    }
+                    crate::compile_array::ResolvedAccess::ArrayElement { info, subscripts } => {
+                        // Copy scalar fields from info (borrows ctx) before using ctx mutably.
+                        let element_vti = info.element_var_type_info;
+                        let arr_var_index = info.var_index;
+                        let arr_desc_index = info.desc_index;
+                        let dim_info: Vec<_> = info
+                            .dimensions
+                            .iter()
+                            .map(|d| crate::compile_array::DimensionInfo {
+                                lower_bound: d.lower_bound,
+                                size: d.size,
+                                stride: d.stride,
+                            })
+                            .collect();
+                        // info is no longer used; subscripts borrows from AST, not ctx.
+                        let element_op_type = (element_vti.op_width, element_vti.signedness);
+                        let target_span = variable_span(&assignment.target);
 
-                // Compile the right-hand side expression at the target's operation width.
-                compile_expr(emitter, ctx, &assignment.value, op_type)?;
-
-                // Truncate if the storage width is narrower than the operation width.
-                if let Some(ti) = type_info {
-                    emit_truncation(emitter, ti);
+                        // 1. Compile the RHS value.
+                        compile_expr(emitter, ctx, &assignment.value, element_op_type)?;
+                        // 2. Truncate for sub-32-bit types.
+                        emit_truncation(emitter, element_vti);
+                        // 3. Compute the flat index.
+                        crate::compile_array::emit_flat_index(
+                            emitter,
+                            ctx,
+                            &subscripts,
+                            &dim_info,
+                            &target_span,
+                        )?;
+                        // Stack: [..., value, index]. STORE_ARRAY pops both.
+                        emitter.emit_store_array(arr_var_index, arr_desc_index);
+                    }
                 }
-
-                // Store into the target variable.
-                emit_store_var(emitter, var_index, op_type);
             }
             Ok(())
         }
@@ -1879,7 +1937,7 @@ fn lookup_builtin(name: &str, op_width: OpWidth, signedness: Signedness) -> Opti
 ///
 /// The `op_type` determines which width (i32/i64) and signedness to use
 /// for arithmetic, comparison, and load/store instructions.
-fn compile_expr(
+pub(crate) fn compile_expr(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     expr: &Expr,
@@ -3258,8 +3316,33 @@ fn compile_variable_read(
             Ok(())
         }
         _ => {
-            let var_index = resolve_variable(ctx, variable)?;
-            emit_load_var(emitter, var_index, op_type);
+            match crate::compile_array::resolve_access(ctx, variable)? {
+                crate::compile_array::ResolvedAccess::Scalar { var_index } => {
+                    emit_load_var(emitter, var_index, op_type);
+                }
+                crate::compile_array::ResolvedAccess::ArrayElement { info, subscripts } => {
+                    let arr_var_index = info.var_index;
+                    let arr_desc_index = info.desc_index;
+                    let dim_info: Vec<_> = info
+                        .dimensions
+                        .iter()
+                        .map(|d| crate::compile_array::DimensionInfo {
+                            lower_bound: d.lower_bound,
+                            size: d.size,
+                            stride: d.stride,
+                        })
+                        .collect();
+                    let span = variable_span(variable);
+                    crate::compile_array::emit_flat_index(
+                        emitter,
+                        ctx,
+                        &subscripts,
+                        &dim_info,
+                        &span,
+                    )?;
+                    emitter.emit_load_array(arr_var_index, arr_desc_index);
+                }
+            }
             Ok(())
         }
     }
@@ -3316,6 +3399,14 @@ fn resolve_variable_name(variable: &Variable) -> Option<&Id> {
     match variable {
         Variable::Symbolic(SymbolicVariableKind::Named(named)) => Some(&named.name),
         _ => None,
+    }
+}
+
+/// Extracts a SourceSpan from a Variable for diagnostic messages.
+fn variable_span(variable: &Variable) -> ironplc_dsl::core::SourceSpan {
+    match variable {
+        Variable::Symbolic(kind) => kind.span(),
+        Variable::Direct(addr) => addr.position.clone(),
     }
 }
 
