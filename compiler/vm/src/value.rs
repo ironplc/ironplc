@@ -46,6 +46,11 @@ impl Slot {
         f64::from_bits(self.0)
     }
 
+    /// Creates a slot from a raw 64-bit value.
+    pub fn from_u64(v: u64) -> Self {
+        Slot(v)
+    }
+
     /// Returns the raw 64-bit representation of this slot.
     pub fn as_u64(self) -> u64 {
         self.0
@@ -106,5 +111,26 @@ mod tests {
     fn slot_from_f64_when_negative_then_roundtrips() {
         let slot = Slot::from_f64(-1.23e10);
         assert_eq!(slot.as_f64(), -1.23e10_f64);
+    }
+
+    #[test]
+    fn slot_from_u64_when_i32_roundtrip_then_matches() {
+        let original = Slot::from_i32(-42);
+        let raw = original.as_u64();
+        let restored = Slot::from_u64(raw);
+        assert_eq!(restored.as_i32(), -42);
+    }
+
+    #[test]
+    fn slot_from_u64_when_f32_roundtrip_then_matches() {
+        let original = Slot::from_f32(3.14);
+        let raw = original.as_u64();
+        let restored = Slot::from_u64(raw);
+        assert_eq!(restored.as_f32(), 3.14_f32);
+    }
+
+    #[test]
+    fn slot_from_u64_when_zero_then_default() {
+        assert_eq!(Slot::from_u64(0), Slot::default());
     }
 }
