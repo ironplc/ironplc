@@ -531,4 +531,57 @@ END_FUNCTION_BLOCK";
 
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn apply_when_bit_string_conversion_called_then_ok() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    b : BYTE;
+    w : WORD;
+    d : DWORD;
+    l : LWORD;
+END_VAR
+    w := BYTE_TO_WORD(b);
+    d := BYTE_TO_DWORD(b);
+    l := BYTE_TO_LWORD(b);
+    b := WORD_TO_BYTE(w);
+    d := WORD_TO_DWORD(w);
+    l := WORD_TO_LWORD(w);
+    b := DWORD_TO_BYTE(d);
+    w := DWORD_TO_WORD(d);
+    l := DWORD_TO_LWORD(d);
+    b := LWORD_TO_BYTE(l);
+    w := LWORD_TO_WORD(l);
+    d := LWORD_TO_DWORD(l);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_shl_with_byte_to_word_conversion_then_ok() {
+        let program = "
+FUNCTION MY_SHIFT : WORD
+VAR_INPUT
+    B : BYTE;
+END_VAR
+    MY_SHIFT := SHL(BYTE_TO_WORD(B), 8);
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : WORD;
+END_VAR
+    result := MY_SHIFT(B := BYTE#16#AB);
+END_PROGRAM";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_ok());
+    }
 }
