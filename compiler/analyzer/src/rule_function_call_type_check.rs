@@ -172,11 +172,23 @@ impl Visitor<Diagnostic> for RuleFunctionCallTypeCheck<'_> {
             // Check each positional argument type against the parameter type
             let input_params: Vec<_> = signature.parameters.iter().filter(|p| p.is_input).collect();
 
+            // Emit NotImplemented for output arguments on user-defined functions.
+            for p in &node.param_assignment {
+                if let ParamAssignmentKind::Output(_) = p {
+                    self.diagnostics.push(Diagnostic::problem(
+                        Problem::NotImplemented,
+                        Label::span(node.name.span(), "Function call with output argument"),
+                    ));
+                }
+            }
+
             let positional_args: Vec<_> = node
                 .param_assignment
                 .iter()
                 .filter_map(|p| match p {
                     ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+                    // NamedInput is already converted to PositionalInput by
+                    // xform_named_to_positional_args; Output is handled above.
                     _ => None,
                 })
                 .collect();
