@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.175.0">
+<meta name="ironplc-version" content="0.176.0">
 </head>
   <body>
     
@@ -452,6 +452,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4023.html">P4023</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4024.html">P4024</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4025.html">P4025</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4026.html">P4026</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4027.html">P4027</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -476,6 +478,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4001.html">V4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4002.html">V4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4003.html">V4003</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4005.html">V4005</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V6003.html">V6003</a></li>
@@ -586,11 +589,10 @@ programs for correctness. It catches syntax errors, type mismatches, and
 other problems before you ever download code to a PLC.</p></li>
 <li><p><strong>A VS Code extension</strong> that provides auto-completion, syntax highlighting
 and real-time error checking as you type.</p></li>
-<li><p><strong>A runtime</strong> (<strong class="program">ironplcvm</strong>) that can execute simple compiled
-programs. The runtime is in early development and supports only a limited
-subset of the language.</p></li>
+<li><p><strong>A runtime</strong> (<strong class="program">ironplcvm</strong>) that can execute compiled programs.</p></li>
 </ul>
-<p>IronPLC reads several source formats:</p>
+<p>Try it now — this program increments a counter on every scan cycle:</p>
+<iframe src="https://playground.ironplc.com/?embed=true&code=UFJPR1JBTSBtYWluCiAgIFZBUgogICAgICBDb3VudGVyIDogSU5UIDo9IDA7CiAgIEVORF9WQVIKCiAgIENvdW50ZXIgOj0gQ291bnRlciArIDE7CgpFTkRfUFJPR1JBTQ%3D%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:329px;border:1px solid #3e3e5e;border-radius:4px;"></iframe><p>IronPLC reads several source formats:</p>
 <ul class="simple">
 <li><p><strong>Structured Text</strong> (<code class="file docutils literal notranslate"><span class="pre">.st</span></code> files) — the native text format</p></li>
 <li><p><strong>PLCopen XML</strong> (<code class="file docutils literal notranslate"><span class="pre">.xml</span></code>, <code class="file docutils literal notranslate"><span class="pre">plc.xml</span></code>) — used by Beremiz and other
@@ -600,22 +602,6 @@ Beckhoff TwinCAT 3</p></li>
 </ul>
 <p>This means you can point IronPLC at an existing project from Beremiz or
 TwinCAT and get a second opinion on your code without changing your workflow.</p>
-</section>
-<section id="what-ironplc-does-not-do-yet">
-<h2>What IronPLC Does Not Do (Yet)<a class="headerlink" href="#what-ironplc-does-not-do-yet" title="Link to this heading">¶</a></h2>
-<p>IronPLC is a young project. Some things it cannot do today:</p>
-<ul class="simple">
-<li><p><strong>Run on real PLC hardware.</strong> The runtime currently targets a virtual
-machine, not physical I/O.</p></li>
-<li><p><strong>Support the full IEC 61131-3 language.</strong> Many features are parsed and
-checked but code generation covers only a small subset.</p></li>
-<li><p><strong>Replace your existing IDE.</strong> IronPLC is a complement to your existing
-tools, not a replacement.</p></li>
-</ul>
-<p>The long-term vision is to become a full development environment for building
-IEC 61131-3 based control systems that run on off-the-shelf embedded
-computers (sometimes called SoftPLCs). That goal is ambitious, and
-contributions are welcome.</p>
 </section>
 <section id="how-ironplc-relates-to-other-tools">
 <h2>How IronPLC Relates to Other Tools<a class="headerlink" href="#how-ironplc-relates-to-other-tools" title="Link to this heading">¶</a></h2>
@@ -646,9 +632,8 @@ additional checking. See
 Codesys project files, but Codesys can export to PLCopen XML.</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>OpenPLC</strong></p></td>
-<td><p>An open-source PLC runtime. IronPLC and OpenPLC have different goals:
-OpenPLC focuses on running programs on hardware, while IronPLC focuses
-on checking and compiling code.</p></td>
+<td><p>An open-source PLC runtime. IronPLC and OpenPLC share the goal of
+making PLC development more accessible through open-source tools.</p></td>
 </tr>
 </tbody>
 </table>
@@ -722,7 +707,6 @@ on checking and compiling code.</p></td>
 <li><a class="reference internal" href="#">IronPLC and the IEC 61131-3 Ecosystem</a><ul>
 <li><a class="reference internal" href="#the-traditional-plc-workflow">The Traditional PLC Workflow</a></li>
 <li><a class="reference internal" href="#what-ironplc-does-today">What IronPLC Does Today</a></li>
-<li><a class="reference internal" href="#what-ironplc-does-not-do-yet">What IronPLC Does Not Do (Yet)</a></li>
 <li><a class="reference internal" href="#how-ironplc-relates-to-other-tools">How IronPLC Relates to Other Tools</a></li>
 </ul>
 </li>
