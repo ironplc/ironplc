@@ -28,6 +28,7 @@
 //! ```
 
 mod compile;
+mod compile_array;
 mod emit;
 
 pub use compile::compile;
