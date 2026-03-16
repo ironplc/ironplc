@@ -11,6 +11,7 @@ struct VCodeDef {
     code: String,
     name: String,
     has_data: bool,
+    is_struct: bool,
 }
 
 fn generate_trap_codes() -> Result<(), Box<dyn Error>> {
@@ -35,14 +36,16 @@ fn generate_trap_codes() -> Result<(), Box<dyn Error>> {
             .get(1)
             .ok_or_else(|| format!("Record {record:?} is not valid at column 1"))?
             .to_string();
-        let has_data = record
+        let has_data_str = record
             .get(3)
-            .ok_or_else(|| format!("Record {record:?} is not valid at column 3"))?
-            == "true";
+            .ok_or_else(|| format!("Record {record:?} is not valid at column 3"))?;
+        let is_struct = has_data_str == "struct";
+        let has_data = has_data_str == "true" || is_struct;
         defs.push(VCodeDef {
             code,
             name,
             has_data,
+            is_struct,
         });
     }
 
@@ -63,7 +66,13 @@ fn generate_trap_codes() -> Result<(), Box<dyn Error>> {
     out.write_all(b"    pub fn v_code(&self) -> &'static str {\n")?;
     out.write_all(b"        match self {\n")?;
     for def in &defs {
-        let pattern = if def.has_data { "(..)" } else { "" };
+        let pattern = if def.is_struct {
+            " { .. }"
+        } else if def.has_data {
+            "(..)"
+        } else {
+            ""
+        };
         out.write_all(
             format!(
                 "            Trap::{}{} => \"{}\",\n",
@@ -90,7 +99,13 @@ fn generate_trap_codes() -> Result<(), Box<dyn Error>> {
         } else {
             panic!("Unexpected V-code prefix for trap: {}", def.code);
         };
-        let pattern = if def.has_data { "(..)" } else { "" };
+        let pattern = if def.is_struct {
+            " { .. }"
+        } else if def.has_data {
+            "(..)"
+        } else {
+            ""
+        };
         out.write_all(
             format!(
                 "            Trap::{}{} => {exit_code},\n",

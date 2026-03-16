@@ -1593,6 +1593,83 @@ fn execute(
                     _ => return Err(Trap::InvalidFbTypeId(type_id)),
                 }
             }
+            // --- Array opcodes ---
+            opcode::LOAD_ARRAY => {
+                let var_index = read_u16_le(bytecode, &mut pc);
+                let desc_index = read_u16_le(bytecode, &mut pc);
+                let index_slot = stack.pop()?;
+
+                // Read index as i64 to catch overflow from i64 flat-index arithmetic.
+                let index_i64 = index_slot.as_i64();
+
+                // Look up array descriptor by index (O(1) Vec access)
+                let total_elements = container
+                    .type_section
+                    .as_ref()
+                    .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
+                    .map(|d| d.total_elements)
+                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
+
+                // Bounds check: 0 <= index < total_elements
+                if index_i64 < 0 || index_i64 >= total_elements as i64 {
+                    return Err(Trap::ArrayIndexOutOfBounds {
+                        var_index,
+                        index: index_i64 as i32,
+                        total_elements,
+                    });
+                }
+                let index = index_i64 as u32;
+
+                scope.check_access(var_index)?;
+
+                let data_offset = variables.load(var_index)?.as_i32() as u32 as usize;
+                let byte_offset = data_offset + index as usize * 8;
+
+                if byte_offset + 8 > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(byte_offset as u32));
+                }
+
+                let mut buf = [0u8; 8];
+                buf.copy_from_slice(&data_region[byte_offset..byte_offset + 8]);
+                let raw = i64::from_le_bytes(buf);
+                stack.push(Slot::from_i64(raw))?;
+            }
+            opcode::STORE_ARRAY => {
+                let var_index = read_u16_le(bytecode, &mut pc);
+                let desc_index = read_u16_le(bytecode, &mut pc);
+                let index_slot = stack.pop()?;
+                let value_slot = stack.pop()?;
+
+                let index_i64 = index_slot.as_i64();
+
+                let total_elements = container
+                    .type_section
+                    .as_ref()
+                    .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
+                    .map(|d| d.total_elements)
+                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
+
+                if index_i64 < 0 || index_i64 >= total_elements as i64 {
+                    return Err(Trap::ArrayIndexOutOfBounds {
+                        var_index,
+                        index: index_i64 as i32,
+                        total_elements,
+                    });
+                }
+                let index = index_i64 as u32;
+
+                scope.check_access(var_index)?;
+
+                let data_offset = variables.load(var_index)?.as_i32() as u32 as usize;
+                let byte_offset = data_offset + index as usize * 8;
+
+                if byte_offset + 8 > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(byte_offset as u32));
+                }
+
+                data_region[byte_offset..byte_offset + 8]
+                    .copy_from_slice(&value_slot.as_i64().to_le_bytes());
+            }
             opcode::RET_VOID => {
                 return Ok(());
             }
