@@ -309,6 +309,8 @@ impl Slot {
     pub fn as_var_index(&self) -> Result<u16, Trap> {
         if self.is_null_ref() {
             Err(Trap::NullDereference)
+        } else if self.0 > u16::MAX as u64 {
+            Err(Trap::InvalidVariableIndex)
         } else {
             Ok(self.0 as u16)
         }
