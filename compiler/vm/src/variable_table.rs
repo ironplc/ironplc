@@ -67,6 +67,34 @@ impl<'a> VariableTable<'a> {
         *slot = value;
         Ok(())
     }
+
+    /// Copies pre-computed Slot values from a template byte slice into
+    /// consecutive variable slots starting at `start`.
+    ///
+    /// The template is a sequence of u64 little-endian values (8 bytes per slot).
+    pub fn copy_template(&mut self, start: u16, template: &[u8]) -> Result<(), Trap> {
+        let num_slots = template.len() / 8;
+        for i in 0..num_slots {
+            let offset = i * 8;
+            let raw = u64::from_le_bytes([
+                template[offset],
+                template[offset + 1],
+                template[offset + 2],
+                template[offset + 3],
+                template[offset + 4],
+                template[offset + 5],
+                template[offset + 6],
+                template[offset + 7],
+            ]);
+            let idx = start + i as u16;
+            let slot = self
+                .slots
+                .get_mut(idx as usize)
+                .ok_or(Trap::InvalidVariableIndex(idx))?;
+            *slot = Slot::from_u64(raw);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -157,5 +185,38 @@ mod tests {
         for i in 0..10 {
             assert!(scope.check_access(i).is_ok());
         }
+    }
+
+    #[test]
+    fn variable_table_copy_template_when_valid_then_sets_slots() {
+        let mut buf = [Slot::default(); 5];
+        let mut table = VariableTable::new(&mut buf);
+
+        let mut template = Vec::new();
+        template.extend_from_slice(&42u64.to_le_bytes());
+        template.extend_from_slice(&(-1i32 as i64 as u64).to_le_bytes());
+        table.copy_template(2, &template).unwrap();
+
+        assert_eq!(table.load(2).unwrap(), Slot::from_u64(42));
+        assert_eq!(table.load(3).unwrap().as_i32(), -1);
+        // Slots before and after remain unchanged
+        assert_eq!(table.load(0).unwrap().as_i32(), 0);
+        assert_eq!(table.load(4).unwrap().as_i32(), 0);
+    }
+
+    #[test]
+    fn variable_table_copy_template_when_out_of_bounds_then_error() {
+        let mut buf = [Slot::default(); 2];
+        let mut table = VariableTable::new(&mut buf);
+        let template = 42u64.to_le_bytes();
+        assert!(table.copy_template(2, &template).is_err());
+    }
+
+    #[test]
+    fn variable_table_copy_template_when_empty_then_noop() {
+        let mut buf = [Slot::default(); 3];
+        let mut table = VariableTable::new(&mut buf);
+        table.copy_template(0, &[]).unwrap();
+        assert_eq!(table.load(0).unwrap().as_i32(), 0);
     }
 }
