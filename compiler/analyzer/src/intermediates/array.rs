@@ -3,7 +3,7 @@
 //! This module handles creating array types from array specifications,
 //! including validation of array bounds and element types.
 
-use crate::intermediate_type::IntermediateType;
+use crate::intermediate_type::{ArrayDimension, IntermediateType};
 use crate::type_environment::{TypeAttributes, TypeEnvironment};
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Located;
@@ -40,14 +40,22 @@ pub fn try_from(
             // Validate array bounds
             validate_array_bounds(&array_subranges.ranges, node_name)?;
 
-            // Calculate total array size
-            let total_size = calculate_array_size(&array_subranges.ranges)?;
+            // Build per-dimension bounds
+            let dimensions: Vec<ArrayDimension> = array_subranges
+                .ranges
+                .iter()
+                .map(|range| {
+                    let lower = signed_integer_to_i32(&range.start)?;
+                    let upper = signed_integer_to_i32(&range.end)?;
+                    Ok(ArrayDimension { lower, upper })
+                })
+                .collect::<Result<Vec<_>, Diagnostic>>()?;
 
             Ok(IntermediateResult::Type(TypeAttributes::new(
                 node_name.span(),
                 IntermediateType::Array {
                     element_type: Box::new(element_type.representation.clone()),
-                    size: Some(total_size),
+                    dimensions,
                 },
             )))
         }
@@ -63,6 +71,29 @@ pub fn try_from(
 
             Ok(IntermediateResult::Alias(base_type_name.clone()))
         }
+    }
+}
+
+/// Converts a SignedInteger to an i32 value.
+fn signed_integer_to_i32(si: &SignedInteger) -> Result<i32, Diagnostic> {
+    let magnitude = si.value.value;
+    if si.is_neg {
+        let neg = -(magnitude as i128);
+        if neg < i32::MIN as i128 {
+            return Err(Diagnostic::problem(
+                Problem::ArrayDimensionInvalid,
+                Label::span(si.value.span(), "Value out of i32 range"),
+            ));
+        }
+        Ok(neg as i32)
+    } else {
+        if magnitude > i32::MAX as u128 {
+            return Err(Diagnostic::problem(
+                Problem::ArrayDimensionInvalid,
+                Label::span(si.value.span(), "Value out of i32 range"),
+            ));
+        }
+        Ok(magnitude as i32)
     }
 }
 
@@ -115,42 +146,6 @@ pub fn validate_array_bounds(ranges: &[Subrange], type_name: &TypeName) -> Resul
     }
 
     Ok(())
-}
-
-/// Calculates the total size of an array from its subranges
-fn calculate_array_size(ranges: &[Subrange]) -> Result<u32, Diagnostic> {
-    let mut total_size: u64 = 1;
-
-    for range in ranges {
-        let min_value = if range.start.is_neg {
-            -(range.start.value.value as i128)
-        } else {
-            range.start.value.value as i128
-        };
-        let max_value = if range.end.is_neg {
-            -(range.end.value.value as i128)
-        } else {
-            range.end.value.value as i128
-        };
-
-        let dimension_size = (max_value - min_value + 1) as u64;
-        total_size = total_size.checked_mul(dimension_size).ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::ArraySizeOverflow,
-                Label::span(range.start.value.span(), "Array dimension"),
-            )
-        })?;
-
-        // Check if total size exceeds u32::MAX
-        if total_size > u32::MAX as u64 {
-            return Err(Diagnostic::problem(
-                Problem::ArraySizeOverflow,
-                Label::span(range.start.value.span(), "Array dimension"),
-            ));
-        }
-    }
-
-    Ok(total_size as u32)
 }
 
 #[cfg(test)]
@@ -256,93 +251,48 @@ mod tests {
     }
 
     #[test]
-    fn calculate_array_size_with_single_dimension_then_correct_size() {
-        let ranges = vec![Subrange {
-            start: SignedInteger {
-                value: Integer {
-                    span: SourceSpan::default(),
-                    value: 1,
-                },
-                is_neg: false,
-            },
-            end: SignedInteger {
-                value: Integer {
-                    span: SourceSpan::default(),
-                    value: 10,
-                },
-                is_neg: false,
-            },
-        }];
-
-        let result = calculate_array_size(&ranges);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 10);
+    fn array_total_elements_with_single_dimension_then_correct_size() {
+        let array = IntermediateType::Array {
+            element_type: Box::new(IntermediateType::Int {
+                size: ByteSized::B16,
+            }),
+            dimensions: vec![ArrayDimension {
+                lower: 1,
+                upper: 10,
+            }],
+        };
+        assert_eq!(array.array_total_elements(), Some(10));
     }
 
     #[test]
-    fn calculate_array_size_with_multiple_dimensions_then_correct_size() {
-        let ranges = vec![
-            Subrange {
-                start: SignedInteger {
-                    value: Integer {
-                        span: SourceSpan::default(),
-                        value: 1,
-                    },
-                    is_neg: false,
+    fn array_total_elements_with_multiple_dimensions_then_correct_size() {
+        let array = IntermediateType::Array {
+            element_type: Box::new(IntermediateType::Int {
+                size: ByteSized::B16,
+            }),
+            dimensions: vec![
+                ArrayDimension {
+                    lower: 1,
+                    upper: 10,
                 },
-                end: SignedInteger {
-                    value: Integer {
-                        span: SourceSpan::default(),
-                        value: 10,
-                    },
-                    is_neg: false,
-                },
-            },
-            Subrange {
-                start: SignedInteger {
-                    value: Integer {
-                        span: SourceSpan::default(),
-                        value: 1,
-                    },
-                    is_neg: false,
-                },
-                end: SignedInteger {
-                    value: Integer {
-                        span: SourceSpan::default(),
-                        value: 5,
-                    },
-                    is_neg: false,
-                },
-            },
-        ];
-
-        let result = calculate_array_size(&ranges);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 50); // 10 * 5
+                ArrayDimension { lower: 1, upper: 5 },
+            ],
+        };
+        assert_eq!(array.array_total_elements(), Some(50)); // 10 * 5
     }
 
     #[test]
-    fn calculate_array_size_with_negative_ranges_then_correct_size() {
-        let ranges = vec![Subrange {
-            start: SignedInteger {
-                value: Integer {
-                    span: SourceSpan::default(),
-                    value: 5,
-                },
-                is_neg: true, // -5
-            },
-            end: SignedInteger {
-                value: Integer {
-                    span: SourceSpan::default(),
-                    value: 5,
-                },
-                is_neg: false, // 5
-            },
-        }];
-
-        let result = calculate_array_size(&ranges);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 11); // -5 to 5 inclusive = 11 elements
+    fn array_total_elements_with_negative_ranges_then_correct_size() {
+        let array = IntermediateType::Array {
+            element_type: Box::new(IntermediateType::Int {
+                size: ByteSized::B16,
+            }),
+            dimensions: vec![ArrayDimension {
+                lower: -5,
+                upper: 5,
+            }],
+        };
+        assert_eq!(array.array_total_elements(), Some(11)); // -5 to 5 inclusive = 11 elements
     }
 
     #[test]
@@ -381,14 +331,20 @@ mod tests {
             _ => unreachable!("Expected Type result"),
         };
 
-        if let IntermediateType::Array { element_type, size } = attrs.representation {
+        if let IntermediateType::Array {
+            element_type,
+            dimensions,
+        } = attrs.representation
+        {
             assert_eq!(
                 *element_type,
                 IntermediateType::Int {
                     size: ByteSized::B16
                 }
             );
-            assert_eq!(size, Some(10));
+            assert_eq!(dimensions.len(), 1);
+            assert_eq!(dimensions[0].lower, 1);
+            assert_eq!(dimensions[0].upper, 10);
         } else {
             unreachable!("Expected Array type");
         }
@@ -407,7 +363,10 @@ mod tests {
                     element_type: Box::new(IntermediateType::Int {
                         size: ByteSized::B16,
                     }),
-                    size: Some(10),
+                    dimensions: vec![ArrayDimension {
+                        lower: 1,
+                        upper: 10,
+                    }],
                 },
             ),
         )
@@ -520,9 +479,20 @@ mod tests {
             _ => unreachable!("Expected Type result"),
         };
 
-        if let IntermediateType::Array { element_type, size } = attrs.representation {
+        // Check total elements before destructuring
+        assert_eq!(attrs.representation.array_total_elements(), Some(12)); // 3 * 4
+
+        if let IntermediateType::Array {
+            element_type,
+            dimensions,
+        } = attrs.representation
+        {
             assert_eq!(*element_type, IntermediateType::Bool);
-            assert_eq!(size, Some(12)); // 3 * 4 = 12
+            assert_eq!(dimensions.len(), 2);
+            assert_eq!(dimensions[0].lower, 1);
+            assert_eq!(dimensions[0].upper, 3);
+            assert_eq!(dimensions[1].lower, 1);
+            assert_eq!(dimensions[1].upper, 4);
         } else {
             unreachable!("Expected Array type");
         }
