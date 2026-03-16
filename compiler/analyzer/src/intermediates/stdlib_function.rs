@@ -56,6 +56,9 @@ const ALL_INT_TYPES: &[&str] = &[
     "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT",
 ];
 
+/// Bit string type names (excluding BOOL) for conversion functions.
+const BIT_STRING_TYPES: &[&str] = &["BYTE", "WORD", "DWORD", "LWORD"];
+
 /// Generates all integer-to-integer conversion functions.
 ///
 /// Creates functions like INT_TO_DINT, DINT_TO_INT, SINT_TO_LINT, etc.
@@ -180,6 +183,87 @@ fn get_int_to_bool_conversions() -> Vec<FunctionSignature> {
         .iter()
         .map(|source| build_conversion_function(source, "BOOL"))
         .collect()
+}
+
+// =============================================================================
+// Bit String Type Conversion Functions (IEC 61131-3 Section 2.5.1.5)
+// =============================================================================
+
+/// Generates bit-string-to-bit-string conversion functions.
+///
+/// Creates functions like BYTE_TO_WORD, WORD_TO_DWORD, DWORD_TO_LWORD, etc.
+fn get_bit_string_to_bit_string_conversions() -> Vec<FunctionSignature> {
+    let mut functions = Vec::new();
+
+    for source_name in BIT_STRING_TYPES {
+        for target_name in BIT_STRING_TYPES {
+            if source_name != target_name {
+                functions.push(build_conversion_function(source_name, target_name));
+            }
+        }
+    }
+
+    functions
+}
+
+/// Generates bit-string-to-integer conversion functions.
+///
+/// Creates functions like BYTE_TO_INT, WORD_TO_DINT, DWORD_TO_LINT, etc.
+fn get_bit_string_to_int_conversions() -> Vec<FunctionSignature> {
+    let mut functions = Vec::new();
+
+    for source_name in BIT_STRING_TYPES {
+        for target_name in ALL_INT_TYPES {
+            functions.push(build_conversion_function(source_name, target_name));
+        }
+    }
+
+    functions
+}
+
+/// Generates integer-to-bit-string conversion functions.
+///
+/// Creates functions like INT_TO_BYTE, DINT_TO_WORD, LINT_TO_DWORD, etc.
+fn get_int_to_bit_string_conversions() -> Vec<FunctionSignature> {
+    let mut functions = Vec::new();
+
+    for source_name in ALL_INT_TYPES {
+        for target_name in BIT_STRING_TYPES {
+            functions.push(build_conversion_function(source_name, target_name));
+        }
+    }
+
+    functions
+}
+
+/// Generates BOOL-to-bit-string and bit-string-to-BOOL conversion functions.
+///
+/// Creates functions like BOOL_TO_BYTE, BYTE_TO_BOOL, etc.
+fn get_bool_bit_string_conversions() -> Vec<FunctionSignature> {
+    let mut functions = Vec::new();
+
+    for bit_type in BIT_STRING_TYPES {
+        functions.push(build_conversion_function("BOOL", bit_type));
+        functions.push(build_conversion_function(bit_type, "BOOL"));
+    }
+
+    functions
+}
+
+/// Generates bit-string-to-real and real-to-bit-string conversion functions.
+///
+/// Creates functions like BYTE_TO_REAL, REAL_TO_BYTE, etc.
+fn get_bit_string_real_conversions() -> Vec<FunctionSignature> {
+    let mut functions = Vec::new();
+
+    for bit_type in BIT_STRING_TYPES {
+        for real_type in REAL_TYPES {
+            functions.push(build_conversion_function(bit_type, real_type));
+            functions.push(build_conversion_function(real_type, bit_type));
+        }
+    }
+
+    functions
 }
 
 // =============================================================================
@@ -645,6 +729,13 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     functions.extend(get_bool_to_int_conversions());
     functions.extend(get_int_to_bool_conversions());
 
+    // Bit string type conversion functions
+    functions.extend(get_bit_string_to_bit_string_conversions());
+    functions.extend(get_bit_string_to_int_conversions());
+    functions.extend(get_int_to_bit_string_conversions());
+    functions.extend(get_bool_bit_string_conversions());
+    functions.extend(get_bit_string_real_conversions());
+
     // Numeric functions
     functions.extend(get_numeric_functions());
 
@@ -692,6 +783,11 @@ mod tests {
         // Real-to-real: 2 × 1 = 2
         // Bool-to-int: 8 (BOOL to SINT/INT/DINT/LINT/USINT/UINT/UDINT/ULINT)
         // Int-to-bool: 8 (SINT/INT/DINT/LINT/USINT/UINT/UDINT/ULINT to BOOL)
+        // Bit-string-to-bit-string: 4 × 3 = 12
+        // Bit-string-to-int: 4 × 8 = 32
+        // Int-to-bit-string: 8 × 4 = 32
+        // Bool-to/from-bit-string: 4 × 2 = 8
+        // Bit-string-to/from-real: 4 × 2 × 2 = 16
         // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT, SEL, LN, LOG, EXP, SIN, COS, TAN, ASIN, ACOS, ATAN = 15
         // Truncation function: TRUNC = 1
         // BCD conversion functions: BCD_TO_INT, INT_TO_BCD = 2
@@ -702,8 +798,8 @@ mod tests {
         // Assignment function: MOVE = 1
         // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
         // String functions: LEN, FIND, REPLACE, INSERT, DELETE, LEFT, RIGHT, MID, CONCAT = 9
-        // Total: 56 + 16 + 16 + 2 + 8 + 8 + 15 + 1 + 2 + 5 + 6 + 4 + 1 + 1 + 4 + 9 = 154
-        assert_eq!(functions.len(), 154);
+        // Total: 56 + 16 + 16 + 2 + 8 + 8 + 12 + 32 + 32 + 8 + 16 + 15 + 1 + 2 + 5 + 6 + 4 + 1 + 1 + 4 + 9 = 254
+        assert_eq!(functions.len(), 254);
     }
 
     #[test]
@@ -1006,6 +1102,71 @@ mod tests {
         assert_eq!(int_to_bool.parameters[0].param_type, TypeName::from("INT"));
         assert_eq!(int_to_bool.return_type, Some(TypeName::from("BOOL")));
         assert!(int_to_bool.is_stdlib());
+    }
+
+    #[test]
+    fn get_bit_string_to_bit_string_conversions_when_called_then_contains_expected() {
+        let functions = get_bit_string_to_bit_string_conversions();
+
+        assert_eq!(functions.len(), 12);
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "BYTE_TO_WORD"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "WORD_TO_BYTE"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "DWORD_TO_LWORD"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "LWORD_TO_BYTE"));
+    }
+
+    #[test]
+    fn get_bit_string_to_bit_string_conversions_when_called_then_has_correct_signature() {
+        let functions = get_bit_string_to_bit_string_conversions();
+        let byte_to_word = functions
+            .iter()
+            .find(|f| f.name.original() == "BYTE_TO_WORD")
+            .unwrap();
+
+        assert_eq!(byte_to_word.input_parameter_count(), 1);
+        assert_eq!(byte_to_word.parameters[0].name.original(), "IN");
+        assert_eq!(
+            byte_to_word.parameters[0].param_type,
+            TypeName::from("BYTE")
+        );
+        assert_eq!(byte_to_word.return_type, Some(TypeName::from("WORD")));
+        assert!(byte_to_word.is_stdlib());
+    }
+
+    #[test]
+    fn get_bit_string_to_int_conversions_when_called_then_contains_expected() {
+        let functions = get_bit_string_to_int_conversions();
+
+        assert_eq!(functions.len(), 32);
+        assert!(functions.iter().any(|f| f.name.original() == "BYTE_TO_INT"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "WORD_TO_DINT"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "DWORD_TO_UINT"));
+    }
+
+    #[test]
+    fn get_int_to_bit_string_conversions_when_called_then_contains_expected() {
+        let functions = get_int_to_bit_string_conversions();
+
+        assert_eq!(functions.len(), 32);
+        assert!(functions.iter().any(|f| f.name.original() == "INT_TO_BYTE"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "DINT_TO_WORD"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name.original() == "UINT_TO_DWORD"));
     }
 
     #[test]
