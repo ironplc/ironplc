@@ -1,0 +1,38 @@
+=====
+P4026
+=====
+
+.. problem-summary:: P4026
+
+This error occurs when a function call passes an argument whose type does not match the
+declared parameter type. IronPLC requires exact type matching for user-defined function arguments.
+
+Example
+-------
+
+The following code will generate error P4026:
+
+.. code-block::
+
+   FUNCTION DOUBLE_REAL : REAL
+   VAR_INPUT
+       A : REAL;
+   END_VAR
+       DOUBLE_REAL := A + A;
+   END_FUNCTION
+
+   PROGRAM main
+   VAR
+       result : REAL;
+       x : INT;
+   END_VAR
+       result := DOUBLE_REAL(x);  (* Error: INT argument for REAL parameter *)
+   END_PROGRAM
+
+The variable ``x`` is ``INT``, but parameter ``A`` expects ``REAL``.
+
+To fix this error, use an explicit type conversion:
+
+.. code-block::
+
+   result := DOUBLE_REAL(INT_TO_REAL(x));
