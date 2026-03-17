@@ -4,15 +4,17 @@
 //! array read/write compilation. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::common::{ArrayInitialElementKind, ConstantKind};
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, SymbolicVariableKind, Variable};
+use ironplc_dsl::textual::{Expr, ExprKind, SymbolicVariableKind, UnaryOp, Variable};
 use ironplc_problems::Problem;
 
 use ironplc_analyzer::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};
 use ironplc_container::ContainerBuilder;
 
-use super::compile::{CompileContext, VarTypeInfo};
+use super::compile::{compile_expr, CompileContext, OpWidth, Signedness, VarTypeInfo};
+use crate::emit::Emitter;
 
 /// Normalized array specification, independent of AST representation.
 /// Both inline (`ARRAY[1..3, 1..4] OF INT`) and named type paths
@@ -52,14 +54,13 @@ pub(crate) struct ArrayVarInfo {
 /// Designed for extensibility: when struct access is implemented,
 /// add a `StructField` variant and extend `resolve_access()`.
 /// The dispatch sites gain a new match arm without changing shape.
-#[allow(dead_code)]
-pub(crate) enum ResolvedAccess<'a> {
+pub(crate) enum ResolvedAccess<'ctx, 'ast> {
     /// Simple named variable — use LOAD_VAR/STORE_VAR.
     Scalar { var_index: u16 },
     /// Array element — compute flat index, use LOAD_ARRAY/STORE_ARRAY.
     ArrayElement {
-        info: &'a ArrayVarInfo,
-        subscripts: Vec<&'a Expr>,
+        info: &'ctx ArrayVarInfo,
+        subscripts: Vec<&'ast Expr>,
     },
 }
 
@@ -69,15 +70,13 @@ pub(crate) enum ResolvedAccess<'a> {
 /// For array variables, walks the ArrayVariable chain to collect
 /// all subscripts and resolve the base variable's ArrayVarInfo.
 ///
-/// This function is the single dispatch point for variable access
-/// resolution. When struct access is added, extend the match in
-/// this function and add a new ResolvedAccess variant — the call
-/// sites in compile_expr and compile_statement stay unchanged.
-#[allow(dead_code)]
-pub(crate) fn resolve_access<'a>(
-    ctx: &'a CompileContext,
-    variable: &'a Variable,
-) -> Result<ResolvedAccess<'a>, Diagnostic> {
+/// Two lifetimes separate the context borrow (`'ctx` for `info`) from the
+/// AST borrow (`'ast` for `subscripts`). This allows callers to drop `info`
+/// and then use `ctx` mutably while still holding `subscripts`.
+pub(crate) fn resolve_access<'ctx, 'ast>(
+    ctx: &'ctx CompileContext,
+    variable: &'ast Variable,
+) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
     match variable {
         Variable::Symbolic(SymbolicVariableKind::Array(array_var)) => {
             // Walk the chain collecting subscript groups innermost-first,
@@ -335,4 +334,142 @@ pub(crate) fn register_array_variable(
         spec.element_type_name.to_string().to_uppercase()
     );
     Ok((type_tag, type_name_str))
+}
+
+/// Recursively walks the `ArrayInitialElementKind` tree and produces
+/// a flat `Vec<ConstantKind>` of initial values in element order.
+pub(crate) fn flatten_array_initial_values(
+    elements: &[ArrayInitialElementKind],
+) -> Result<Vec<ConstantKind>, Diagnostic> {
+    let mut result = Vec::new();
+    for elem in elements {
+        match elem {
+            ArrayInitialElementKind::Constant(value) => {
+                result.push(value.clone());
+            }
+            ArrayInitialElementKind::EnumValue(_) => {
+                return Err(Diagnostic::todo(file!(), line!()));
+            }
+            ArrayInitialElementKind::Repeated(repeated) => {
+                let count = repeated.size.value as usize;
+                match repeated.init.as_ref().as_ref() {
+                    Some(inner) => {
+                        let inner_values =
+                            flatten_array_initial_values(std::slice::from_ref(inner))?;
+                        for _ in 0..count {
+                            result.extend_from_slice(&inner_values);
+                        }
+                    }
+                    None => {
+                        let zero = ConstantKind::integer_literal("0")
+                            .expect("literal '0' is always valid");
+                        for _ in 0..count {
+                            result.push(zero.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(result)
+}
+
+/// Emits bytecode to compute the 0-based flat index from subscript expressions.
+///
+/// For constant subscripts, computes the flat index at compile time.
+/// For variable subscripts, emits i64 arithmetic:
+///   `(s_0 - l_0) * stride_0 + (s_1 - l_1) * stride_1 + ...`
+pub(crate) fn emit_flat_index(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    subscripts: &[&Expr],
+    dimensions: &[DimensionInfo],
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    if subscripts.len() != dimensions.len() {
+        return Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span.clone(), "Wrong number of array subscripts"),
+        ));
+    }
+
+    // Try compile-time constant folding for all-literal subscripts.
+    if let Some(flat_index) = try_constant_flat_index(subscripts, dimensions, span)? {
+        let const_index = ctx.add_i32_constant(flat_index);
+        emitter.emit_load_const_i32(const_index);
+        return Ok(());
+    }
+
+    // Variable case: emit runtime computation using i64 arithmetic.
+    let subscript_op_type = (OpWidth::W32, Signedness::Signed);
+    for (k, (subscript, dim)) in subscripts.iter().zip(dimensions.iter()).enumerate() {
+        compile_expr(emitter, ctx, subscript, subscript_op_type)?;
+        if dim.lower_bound != 0 {
+            let lb_const = ctx.add_i64_constant(dim.lower_bound as i64);
+            emitter.emit_load_const_i64(lb_const);
+            emitter.emit_sub_i64();
+        }
+        if dim.stride != 1 {
+            let stride_const = ctx.add_i64_constant(dim.stride as i64);
+            emitter.emit_load_const_i64(stride_const);
+            emitter.emit_mul_i64();
+        }
+        if k > 0 {
+            emitter.emit_add_i64();
+        }
+    }
+    Ok(())
+}
+
+/// Tries to compute the flat index at compile time when all subscripts are literals.
+/// Returns `None` if any subscript is not a literal (fall through to runtime).
+/// Returns `Err` if a literal subscript is out of bounds.
+fn try_constant_flat_index(
+    subscripts: &[&Expr],
+    dimensions: &[DimensionInfo],
+    span: &SourceSpan,
+) -> Result<Option<i32>, Diagnostic> {
+    let mut flat_index: i32 = 0;
+    for (subscript, dim) in subscripts.iter().zip(dimensions.iter()) {
+        let value = match try_extract_integer_literal(subscript) {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+        let upper = dim.lower_bound + dim.size as i32 - 1;
+        if value < dim.lower_bound || value > upper {
+            return Err(Diagnostic::problem(
+                Problem::ArrayIndexOutOfBounds,
+                Label::span(span.clone(), "Array index out of bounds"),
+            ));
+        }
+        flat_index += (value - dim.lower_bound) * dim.stride as i32;
+    }
+    Ok(Some(flat_index))
+}
+
+/// Extracts an i32 value from an expression if it is a literal integer.
+/// Returns `None` for any non-literal expression.
+fn try_extract_integer_literal(expr: &Expr) -> Option<i32> {
+    match &expr.kind {
+        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
+            let unsigned = i32::try_from(lit.value.value.value).ok()?;
+            if lit.value.is_neg {
+                unsigned.checked_neg()
+            } else {
+                Some(unsigned)
+            }
+        }
+        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => match &unary.term.kind {
+            ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
+                let val = i32::try_from(lit.value.value.value).ok()?;
+                if lit.value.is_neg {
+                    Some(val)
+                } else {
+                    val.checked_neg()
+                }
+            }
+            _ => None,
+        },
+        _ => None,
+    }
 }
