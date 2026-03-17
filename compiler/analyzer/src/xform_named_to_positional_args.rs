@@ -71,19 +71,17 @@ impl Fold<Diagnostic> for NamedToPositionalResolver<'_> {
 
         for param in node.param_assignment {
             match param {
-                ParamAssignmentKind::NamedInput(ni) => {
-                    match named_map.entry(ni.name.clone()) {
-                        std::collections::hash_map::Entry::Occupied(_) => {
-                            self.errors.push(Diagnostic::problem(
-                                Problem::FunctionCallDuplicateNamedArg,
-                                Label::span(ni.name.span.clone(), "Duplicate argument"),
-                            ));
-                        }
-                        std::collections::hash_map::Entry::Vacant(entry) => {
-                            entry.insert(ni);
-                        }
+                ParamAssignmentKind::NamedInput(ni) => match named_map.entry(ni.name.clone()) {
+                    std::collections::hash_map::Entry::Occupied(_) => {
+                        self.errors.push(Diagnostic::problem(
+                            Problem::FunctionCallDuplicateNamedArg,
+                            Label::span(ni.name.span.clone(), "Duplicate argument"),
+                        ));
                     }
-                }
+                    std::collections::hash_map::Entry::Vacant(entry) => {
+                        entry.insert(ni);
+                    }
+                },
                 ParamAssignmentKind::Output(_) => outputs.push(param),
                 ParamAssignmentKind::PositionalInput(_) => {
                     unreachable!("positional inputs already handled above")

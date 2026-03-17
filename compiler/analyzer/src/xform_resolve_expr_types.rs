@@ -36,10 +36,15 @@ pub fn apply(
 /// These are abstract types used in stdlib function signatures that must be
 /// resolved to concrete types based on the actual arguments.
 fn is_generic_type(tn: &TypeName) -> bool {
-    const GENERIC_TYPES: &[&str] = &["ANY", "ANY_NUM", "ANY_REAL", "ANY_INT", "ANY_BIT", "ANY_STRING"];
-    GENERIC_TYPES
-        .iter()
-        .any(|name| TypeName::from(name) == *tn)
+    const GENERIC_TYPES: &[&str] = &[
+        "ANY",
+        "ANY_NUM",
+        "ANY_REAL",
+        "ANY_INT",
+        "ANY_BIT",
+        "ANY_STRING",
+    ];
+    GENERIC_TYPES.iter().any(|name| TypeName::from(name) == *tn)
 }
 
 struct ExprTypeResolver<'a> {
