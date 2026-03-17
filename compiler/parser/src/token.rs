@@ -329,6 +329,15 @@ pub enum TokenType {
     Time,
     #[token("LTIME", ignore(case))]
     Ltime,
+
+    // IEC 61131-3 Edition 3 (2013) reference types
+    #[token("REF_TO", ignore(case))]
+    RefTo,
+    #[token("REF", ignore(case))]
+    Ref,
+    #[token("NULL", ignore(case))]
+    Null,
+
     #[token("DATE", ignore(case))]
     Date,
     #[token("TIME_OF_DAY", ignore(case))]
@@ -528,6 +537,9 @@ impl TokenType {
             TokenType::Lreal => "'LREAL'",
             TokenType::Time => "'TIME'",
             TokenType::Ltime => "'LTIME'",
+            TokenType::RefTo => "'REF_TO'",
+            TokenType::Ref => "'REF'",
+            TokenType::Null => "'NULL'",
             TokenType::Date => "'DATE' | 'D'",
             TokenType::TimeOfDay => "'TIME_OF_DAY' | 'TOD'",
             TokenType::DateAndTime => "'DATE_AND_TIME' | 'DT'",
@@ -728,6 +740,10 @@ mod tests {
             (Real, "REAL"),
             (Lreal, "LREAL"),
             (Time, "TIME"),
+            (Ltime, "LTIME"),
+            (RefTo, "REF_TO"),
+            (Ref, "REF"),
+            (Null, "NULL"),
             (Date, "DATE"),
             (TimeOfDay, "TIME_OF_DAY"),
             (DateAndTime, "DATE_AND_TIME"),
@@ -833,5 +849,50 @@ mod lexer_tests {
         let mut lex = TokenType::lexer("2E3");
         let tok = lex.next().unwrap().unwrap();
         assert_eq!(tok, TokenType::FloatingPoint);
+    }
+
+    #[test]
+    fn tokenize_when_ref_to_then_produces_single_ref_to_token() {
+        let mut lex = TokenType::lexer("REF_TO");
+        let tok = lex.next().unwrap().unwrap();
+        assert_eq!(tok, TokenType::RefTo);
+        assert!(lex.next().is_none());
+    }
+
+    #[test]
+    fn tokenize_when_ref_to_lowercase_then_produces_ref_to_token() {
+        let mut lex = TokenType::lexer("ref_to");
+        let tok = lex.next().unwrap().unwrap();
+        assert_eq!(tok, TokenType::RefTo);
+    }
+
+    #[test]
+    fn tokenize_when_ref_alone_then_produces_ref_token() {
+        let mut lex = TokenType::lexer("REF");
+        let tok = lex.next().unwrap().unwrap();
+        assert_eq!(tok, TokenType::Ref);
+    }
+
+    #[test]
+    fn tokenize_when_ref_paren_then_produces_ref_and_left_paren() {
+        let mut lex = TokenType::lexer("REF(");
+        let tok1 = lex.next().unwrap().unwrap();
+        let tok2 = lex.next().unwrap().unwrap();
+        assert_eq!(tok1, TokenType::Ref);
+        assert_eq!(tok2, TokenType::LeftParen);
+    }
+
+    #[test]
+    fn tokenize_when_null_then_produces_null_token() {
+        let mut lex = TokenType::lexer("NULL");
+        let tok = lex.next().unwrap().unwrap();
+        assert_eq!(tok, TokenType::Null);
+    }
+
+    #[test]
+    fn tokenize_when_null_lowercase_then_produces_null_token() {
+        let mut lex = TokenType::lexer("null");
+        let tok = lex.next().unwrap().unwrap();
+        assert_eq!(tok, TokenType::Null);
     }
 }
