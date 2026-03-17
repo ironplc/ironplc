@@ -45,6 +45,7 @@ enum VariableType {
     Subrange,
     Structure,
     Array,
+    Reference,
     /// Late resolved type with the type name for lookup in type environment
     LateResolvedType(TypeName),
 }
@@ -69,6 +70,7 @@ impl DeclarationResolver<'_> {
             InitialValueAssignmentKind::Subrange(_) => VariableType::Subrange,
             InitialValueAssignmentKind::Structure(_) => VariableType::Structure,
             InitialValueAssignmentKind::Array(_) => VariableType::Array,
+            InitialValueAssignmentKind::Reference(_) => VariableType::Reference,
             InitialValueAssignmentKind::LateResolvedType(type_name) => {
                 VariableType::LateResolvedType(type_name.clone())
             }
@@ -195,6 +197,14 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
             ExprKind::Function(node) => {
                 node.recurse_fold(self).map(|v| Ok(ExprKind::Function(v)))?
             }
+            ExprKind::Ref(node) => node
+                .recurse_fold(self)
+                .map(|v| Ok(ExprKind::Ref(Box::new(v))))?,
+            ExprKind::Deref(node) => {
+                let folded = self.fold_expr(*node)?;
+                Ok(ExprKind::Deref(Box::new(folded)))
+            }
+            ExprKind::Null(span) => Ok(ExprKind::Null(span)),
             ExprKind::LateBound(node) => match self.current_type {
                 VariableType::None => {
                     // When no type information is available, assume a variable reference
@@ -240,6 +250,9 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                     )))
                 }
                 VariableType::Array => Ok(ExprKind::Variable(Variable::Symbolic(
+                    SymbolicVariableKind::Named(NamedVariable { name: node.value }),
+                ))),
+                VariableType::Reference => Ok(ExprKind::Variable(Variable::Symbolic(
                     SymbolicVariableKind::Named(NamedVariable { name: node.value }),
                 ))),
                 VariableType::LateResolvedType(ref type_name) => {

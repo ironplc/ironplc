@@ -1069,4 +1069,261 @@ END_PROGRAM";
         let result = parse_program(source, &FileId::default(), &options);
         assert!(result.is_ok());
     }
+
+    fn parse_text_edition3(source: &str) -> Library {
+        let options = ParseOptions {
+            allow_iec_61131_3_2013: true,
+            ..ParseOptions::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+        result.unwrap()
+    }
+
+    #[test]
+    fn parse_when_ref_to_int_type_decl_then_ok() {
+        let lib = parse_text_edition3("TYPE IntRef : REF_TO INT; END_TYPE");
+        assert_eq!(lib.elements.len(), 1);
+        match &lib.elements[0] {
+            LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Reference(decl)) => {
+                assert_eq!(decl.type_name.to_string(), "IntRef");
+                assert_eq!(decl.referenced_type_name.to_string(), "INT");
+            }
+            other => panic!("Expected Reference type declaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_ref_to_var_decl_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    x : REF_TO INT;
+END_VAR
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => {
+                assert_eq!(prog.variables.len(), 1);
+                assert!(matches!(
+                    &prog.variables[0].initializer,
+                    InitialValueAssignmentKind::Reference(_)
+                ));
+            }
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_ref_to_var_decl_with_null_init_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    x : REF_TO INT := NULL;
+END_VAR
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => match &prog.variables[0].initializer {
+                InitialValueAssignmentKind::Reference(ref_init) => {
+                    assert!(matches!(
+                        ref_init.initial_value,
+                        Some(dsl::common::ReferenceInitialValue::Null(_))
+                    ));
+                }
+                other => panic!("Expected Reference initializer, got {:?}", other),
+            },
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_ref_to_var_decl_with_ref_init_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    counter : INT;
+    x : REF_TO INT := REF(counter);
+END_VAR
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => match &prog.variables[1].initializer {
+                InitialValueAssignmentKind::Reference(ref_init) => {
+                    assert!(matches!(
+                        ref_init.initial_value,
+                        Some(dsl::common::ReferenceInitialValue::Ref(_))
+                    ));
+                }
+                other => panic!("Expected Reference initializer, got {:?}", other),
+            },
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_ref_operator_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    counter : INT;
+    x : REF_TO INT;
+END_VAR
+    x := REF(counter);
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => match &prog.body {
+                FunctionBlockBodyKind::Statements(s) => assert!(!s.body.is_empty()),
+                _ => panic!("expected statements"),
+            },
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_deref_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    myRef : REF_TO INT;
+    value : INT;
+END_VAR
+    value := myRef^;
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => {
+                let stmts = match &prog.body {
+                    FunctionBlockBodyKind::Statements(s) => &s.body,
+                    _ => panic!("expected statements"),
+                };
+                assert_eq!(stmts.len(), 1);
+            }
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_deref_assign_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    myRef : REF_TO INT;
+END_VAR
+    myRef^ := 42;
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => {
+                let stmts = match &prog.body {
+                    FunctionBlockBodyKind::Statements(s) => &s.body,
+                    _ => panic!("expected statements"),
+                };
+                assert_eq!(stmts.len(), 1);
+                match &stmts[0] {
+                    StmtKind::Assignment(assignment) => {
+                        assert!(assignment.deref);
+                    }
+                    other => panic!("Expected Assignment, got {:?}", other),
+                }
+            }
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_null_literal_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    myRef : REF_TO INT;
+END_VAR
+    myRef := NULL;
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => {
+                let stmts = match &prog.body {
+                    FunctionBlockBodyKind::Statements(s) => &s.body,
+                    _ => panic!("expected statements"),
+                };
+                assert_eq!(stmts.len(), 1);
+            }
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_null_comparison_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    myRef : REF_TO INT;
+    x : INT;
+END_VAR
+    IF myRef <> NULL THEN
+        x := 1;
+    END_IF;
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => {
+                let stmts = match &prog.body {
+                    FunctionBlockBodyKind::Statements(s) => &s.body,
+                    _ => panic!("expected statements"),
+                };
+                assert_eq!(stmts.len(), 1);
+            }
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_xor_still_works_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    a : BOOL;
+    b : BOOL;
+    result : BOOL;
+END_VAR
+    result := a XOR b;
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => {
+                let stmts = match &prog.body {
+                    FunctionBlockBodyKind::Statements(s) => &s.body,
+                    _ => panic!("expected statements"),
+                };
+                assert_eq!(stmts.len(), 1);
+            }
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_deref_then_xor_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    myRef : REF_TO BOOL;
+    b : BOOL;
+    result : BOOL;
+END_VAR
+    result := myRef^ XOR b;
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => {
+                let stmts = match &prog.body {
+                    FunctionBlockBodyKind::Statements(s) => &s.body,
+                    _ => panic!("expected statements"),
+                };
+                assert_eq!(stmts.len(), 1);
+            }
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
 }

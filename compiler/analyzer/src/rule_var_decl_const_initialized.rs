@@ -145,6 +145,17 @@ impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
                         );
                     }
                 }
+                InitialValueAssignmentKind::Reference(ref_init) => {
+                    if ref_init.initial_value.is_none() {
+                        self.diagnostics.push(
+                            Diagnostic::problem(
+                                Problem::ConstantMustHaveInitializer,
+                                Label::span(node.span(), "Variable declaration"),
+                            )
+                            .with_context("variable", &node.identifier.to_string()),
+                        );
+                    }
+                }
                 InitialValueAssignmentKind::LateResolvedType(_) => {
                     return Err(Diagnostic::internal_error(file!(), line!()))
                 }

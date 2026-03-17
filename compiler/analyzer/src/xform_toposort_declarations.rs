@@ -116,6 +116,12 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
                             DataTypeDeclarationKind::String(decl),
                         );
                     }
+                    DataTypeDeclarationKind::Reference(decl) => {
+                        types_by_name.insert(
+                            decl.type_name.name.clone(),
+                            DataTypeDeclarationKind::Reference(decl),
+                        );
+                    }
                     DataTypeDeclarationKind::LateBound(decl) => {
                         types_by_name.insert(
                             decl.data_type_name.name.clone(),
@@ -465,6 +471,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::Array(_) => {}
+                    InitialValueAssignmentKind::Reference(_) => {}
                     InitialValueAssignmentKind::LateResolvedType(lrt) => {
                         // We only care about these because these may be references to a function block
                         let from = self.declarations.add_node(from);
