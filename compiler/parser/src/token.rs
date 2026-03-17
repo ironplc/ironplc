@@ -418,6 +418,8 @@ pub enum TokenType {
     Mod,
     #[token("**")]
     Power,
+    #[token("^")]
+    Caret,
     #[token("NOT")]
     Not,
 
@@ -576,6 +578,7 @@ impl TokenType {
             TokenType::Minus => "'-'",
             TokenType::Mod => "'MOD'",
             TokenType::Power => "'**'",
+            TokenType::Caret => "'^'",
             TokenType::Not => "'NOT'",
             TokenType::Assignment => "':='",
             TokenType::RightArrow => "'=>'",
@@ -780,6 +783,7 @@ mod tests {
             (Minus, "-"),
             (Mod, "MOD"),
             (Power, "**"),
+            (Caret, "^"),
             (Not, "NOT"),
             (Assignment, ":="),
             (RightArrow, "=>"),
@@ -894,5 +898,12 @@ mod lexer_tests {
         let mut lex = TokenType::lexer("null");
         let tok = lex.next().unwrap().unwrap();
         assert_eq!(tok, TokenType::Null);
+    }
+
+    #[test]
+    fn tokenize_when_caret_then_produces_caret_token() {
+        let mut lex = TokenType::lexer("^");
+        let tok = lex.next().unwrap().unwrap();
+        assert_eq!(tok, TokenType::Caret);
     }
 }

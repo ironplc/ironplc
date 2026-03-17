@@ -121,6 +121,7 @@ fn field_has_default(
             // No explicit initializers - check if the nested type has all defaults
             nested_structure_has_all_defaults(&struct_init.type_name, type_environment)
         }
+        InitialValueAssignmentKind::Reference(ref_init) => ref_init.initial_value.is_some(),
         InitialValueAssignmentKind::Array(array_init) => {
             // Array has a default if it has initial values (non-empty vec)
             !array_init.initial_values.is_empty()

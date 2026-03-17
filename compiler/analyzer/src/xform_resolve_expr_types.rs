@@ -74,6 +74,7 @@ impl ExprTypeResolver<'_> {
                 SpecificationKind::Named(tn) => tn.clone(),
                 SpecificationKind::Inline(_) => return,
             },
+            InitialValueAssignmentKind::Reference(_) => return,
             InitialValueAssignmentKind::LateResolvedType(tn) => tn.clone(),
         };
 
@@ -114,6 +115,9 @@ impl ExprTypeResolver<'_> {
             ExprKind::EnumeratedValue(ev) => ev.type_name.clone(),
             ExprKind::Expression(inner) => inner.resolved_type.clone(),
             ExprKind::LateBound(_) => None,
+            ExprKind::Ref(_) => None,
+            ExprKind::Deref(_) => None,
+            ExprKind::Null(_) => None,
         }
     }
 

@@ -434,6 +434,12 @@ parser! {
       / structure_type_declaration__with_constant()
       / enumerated:enumerated_type_declaration__with_value() { DataTypeDeclarationKind::Enumeration(enumerated) }
       / simple:simple_type_declaration__with_constant() { DataTypeDeclarationKind::Simple(simple )}
+      / type_name:type_name() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ referenced:non_generic_type_name() {
+        DataTypeDeclarationKind::Reference(ReferenceDeclaration {
+          type_name,
+          referenced_type_name: referenced,
+        })
+      }
       // The remaining are structure, enumerated and simple without an initializer
       // These all have the general form of
       //    `identifier : identifier`
@@ -779,7 +785,7 @@ parser! {
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    rule var_init_decl() -> Vec<UntypedVarDecl> = structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() /  fb_name_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
+    rule var_init_decl() -> Vec<UntypedVarDecl> = structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() /  fb_name_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
     rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(a:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
@@ -826,6 +832,20 @@ parser! {
     }
     rule fb_name_list() -> Vec<Id> = commasep_oneplus(<fb_name()>)
     rule fb_name() -> Id = i:identifier() { i }
+    rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ ref_type:non_generic_type_name() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
+      names.into_iter().map(|name| {
+        UntypedVarDecl {
+          name,
+          initializer: InitialValueAssignmentKind::Reference(ReferenceInitializer {
+            referenced_type_name: ref_type.clone(),
+            initial_value: init.clone(),
+          }),
+        }
+      }).collect()
+    }
+    rule ref_initial_value() -> ReferenceInitialValue =
+      t:tok(TokenType::Null) { ReferenceInitialValue::Null(t.span.clone()) }
+      / tok(TokenType::Ref) _ tok(TokenType::LeftParen) _ v:variable() _ tok(TokenType::RightParen) { ReferenceInitialValue::Ref(v) }
     pub rule output_declarations() -> Vec<VarDecl> = tok(TokenType::VarOutput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::flat_map(declarations, VariableType::Output, qualifier)
     }
@@ -1384,11 +1404,15 @@ parser! {
       tok(TokenType::LeftParen) _ e:expression() _ tok(TokenType::RightParen) { ExprKind::Expression(Box::new(Expr::new(e))) }
       f:function_expression() { f }
     }
-    rule unary_expression() -> ExprKind = unary:unary_operator()? _ expr:primary_expression() {
-      if let Some(op) = unary {
-        return ExprKind::unary(op, expr);
+    rule unary_expression() -> ExprKind = unary:unary_operator()? _ expr:primary_expression() carets:(tok(TokenType::Caret))* {
+      let mut result = expr;
+      for _ in &carets {
+        result = ExprKind::Deref(Box::new(Expr::new(result)));
       }
-      expr
+      if let Some(op) = unary {
+        return ExprKind::unary(op, result);
+      }
+      result
     }
     rule unary_operator() -> UnaryOp = tok(TokenType::Minus) {UnaryOp::Neg} / tok(TokenType::Not) {UnaryOp::Not}
     rule primary_expression() -> ExprKind
@@ -1396,6 +1420,12 @@ parser! {
           ExprKind::Const(constant)
         }
       // TODO enumerated value
+      / tok(TokenType::Ref) _ tok(TokenType::LeftParen) _ v:variable() _ tok(TokenType::RightParen) {
+          ExprKind::Ref(Box::new(v))
+        }
+      / t:tok(TokenType::Null) {
+          ExprKind::Null(t.span.clone())
+        }
       / function:function_expression() {
           function
         }
@@ -1423,7 +1453,15 @@ parser! {
     rule statement() -> StmtKind = assignment_statement() / selection_statement() / iteration_statement() / subprogram_control_statement()
 
     // B.3.2.1 Assignment statements
-    pub rule assignment_statement() -> StmtKind = var:variable() _ tok(TokenType::Assignment) _ expr:expression() { StmtKind::assignment(var, expr) }
+    pub rule assignment_statement() -> StmtKind =
+      var:variable() _ tok(TokenType::Caret) _ tok(TokenType::Assignment) _ expr:expression() {
+        StmtKind::Assignment(Assignment {
+          target: var,
+          deref: true,
+          value: Expr::new(expr),
+        })
+      }
+      / var:variable() _ tok(TokenType::Assignment) _ expr:expression() { StmtKind::assignment(var, expr) }
 
     // B.3.2.2 Subprogram control statements
     rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb } / tok(TokenType::Return) { StmtKind::Return }
