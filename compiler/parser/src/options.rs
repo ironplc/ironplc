@@ -7,4 +7,5 @@
 pub struct ParseOptions {
     pub allow_c_style_comments: bool,
     pub allow_iec_61131_3_2013: bool,
+    pub allow_missing_semicolon: bool,
 }
