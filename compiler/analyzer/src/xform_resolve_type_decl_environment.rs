@@ -207,6 +207,9 @@ impl Fold<Diagnostic> for TypeEnvironment {
                     }
                 }
             }
+            InitialValueAssignmentKind::Reference(_) => {
+                // Reference types are not resolved through simple declarations
+            }
             InitialValueAssignmentKind::LateResolvedType(_type_name) => {
                 return Err(Diagnostic::internal_error(file!(), line!()));
             }

@@ -111,6 +111,7 @@ impl Visitor<Diagnostic> for ScopedTable<'_, TypeName, TypeDefinitionKind> {
                 &node.type_name,
                 TypeDefinitionKind::String(node.width.clone(), node.length.clone()),
             ),
+            DataTypeDeclarationKind::Reference(_) => Ok(()),
             DataTypeDeclarationKind::LateBound(_) => Ok(()),
         }
     }

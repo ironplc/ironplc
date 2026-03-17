@@ -318,6 +318,9 @@ pub enum ExprKind {
     Variable(Variable),
     Function(Function),
     LateBound(LateBound),
+    Ref(Box<Variable>),
+    Deref(Box<Expr>),
+    Null(SourceSpan),
 }
 
 impl ExprKind {
@@ -389,6 +392,9 @@ impl fmt::Display for ExprKind {
                 write!(f, ")")
             }
             ExprKind::LateBound(late) => write!(f, "{}", late.value),
+            ExprKind::Ref(var) => write!(f, "REF({var})"),
+            ExprKind::Deref(expr) => write!(f, "{expr}^"),
+            ExprKind::Null(_) => write!(f, "NULL"),
         }
     }
 }
@@ -626,6 +632,7 @@ impl StmtKind {
     pub fn assignment(target: Variable, value: ExprKind) -> StmtKind {
         StmtKind::Assignment(Assignment {
             target,
+            deref: false,
             value: Expr::new(value),
         })
     }
@@ -633,6 +640,7 @@ impl StmtKind {
     pub fn simple_assignment(target: &str, src: &str) -> StmtKind {
         StmtKind::Assignment(Assignment {
             target: Variable::named(target),
+            deref: false,
             value: Expr::new(ExprKind::LateBound(LateBound {
                 value: Id::from(src),
             })),
@@ -648,6 +656,7 @@ impl StmtKind {
         }));
         StmtKind::Assignment(Assignment {
             target: Variable::named(target),
+            deref: false,
             value: Expr::new(ExprKind::Variable(variable)),
         })
     }
@@ -659,6 +668,8 @@ impl StmtKind {
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub struct Assignment {
     pub target: Variable,
+    #[recurse(ignore)]
+    pub deref: bool,
     pub value: Expr,
 }
 

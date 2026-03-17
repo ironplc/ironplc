@@ -2221,6 +2221,9 @@ pub(crate) fn compile_expr(
             line!(),
         )),
         ExprKind::Function(func) => compile_function_call(emitter, ctx, func, op_type),
+        ExprKind::Ref(_) | ExprKind::Deref(_) | ExprKind::Null(_) => {
+            Err(Diagnostic::todo(file!(), line!()))
+        }
     }
 }
 

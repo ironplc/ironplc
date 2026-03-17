@@ -1040,6 +1040,8 @@ pub enum DataTypeDeclarationKind {
     Structure(StructureDeclaration),
     StructureInitialization(StructureInitializationDeclaration),
     String(StringDeclaration),
+    /// Reference type declaration (REF_TO).
+    Reference(ReferenceDeclaration),
     /// Data declaration that is ambiguous at parse time and must be
     /// resolved to a data type declaration after parsing all types.
     LateBound(LateBoundDeclaration),
@@ -1066,6 +1068,15 @@ impl Located for LateBoundDeclaration {
     fn span(&self) -> SourceSpan {
         SourceSpan::join2(&self.data_type_name, &self.base_type_name)
     }
+}
+
+/// Reference type declaration (REF_TO).
+///
+/// See IEC 61131-3 Edition 3, section 2.3.3.1.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub struct ReferenceDeclaration {
+    pub type_name: TypeName,
+    pub referenced_type_name: TypeName,
 }
 
 /// See section 2.3.3.1.
@@ -1684,6 +1695,7 @@ impl VarDecl {
                     SpecificationKind::Inline(_) => TypeReference::Inline,
                 }
             }
+            InitialValueAssignmentKind::Reference(_) => TypeReference::Inline,
             InitialValueAssignmentKind::LateResolvedType(type_name) => {
                 TypeReference::Named(type_name.clone())
             }
@@ -1942,6 +1954,8 @@ pub enum InitialValueAssignmentKind {
     Subrange(SubrangeSpecificationKind),
     Structure(StructureInitializationDeclaration),
     Array(ArrayInitialValueAssignment),
+    /// Reference type initializer (REF_TO).
+    Reference(ReferenceInitializer),
     /// Type that is ambiguous until have discovered type
     /// definitions. Value is the name of the type.
     LateResolvedType(TypeName),
@@ -1997,6 +2011,24 @@ pub enum StructInitialValueAssignmentKind {
 pub struct EnumeratedInitialValueAssignment {
     pub type_name: TypeName,
     pub initial_value: Option<EnumeratedValue>,
+}
+
+/// Initial value for a reference variable.
+///
+/// See IEC 61131-3 Edition 3, section 2.4.3.2.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub enum ReferenceInitialValue {
+    Null(SourceSpan),
+    Ref(Variable),
+}
+
+/// Initializer for a reference variable declaration (REF_TO).
+///
+/// See IEC 61131-3 Edition 3, section 2.4.3.2.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub struct ReferenceInitializer {
+    pub referenced_type_name: TypeName,
+    pub initial_value: Option<ReferenceInitialValue>,
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]

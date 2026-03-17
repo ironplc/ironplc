@@ -201,6 +201,10 @@ pub trait Visitor<E> {
     // 2.3.3.1
     dispatch!(StringDeclaration);
 
+    dispatch!(ReferenceDeclaration);
+    dispatch!(ReferenceInitializer);
+    dispatch!(ReferenceInitialValue);
+
     dispatch!(ArraySpecificationKind);
 
     dispatch!(ArraySubranges);

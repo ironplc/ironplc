@@ -270,6 +270,13 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
             ironplc_dsl::common::DataTypeDeclarationKind::StructureInitialization(_) => {
                 // Skip structure initializations for now
             }
+            ironplc_dsl::common::DataTypeDeclarationKind::Reference(decl) => {
+                self.symbol_env.insert(
+                    &decl.type_name.name,
+                    SymbolKind::Type,
+                    &ScopeKind::Global,
+                )?;
+            }
         }
         node.recurse_visit(self)
     }
