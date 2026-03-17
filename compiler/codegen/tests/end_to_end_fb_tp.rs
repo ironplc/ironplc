@@ -24,7 +24,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -51,7 +57,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -77,7 +89,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -107,7 +125,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -140,7 +164,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -186,7 +216,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -220,7 +256,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();

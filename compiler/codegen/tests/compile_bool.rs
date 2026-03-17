@@ -18,7 +18,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     assert_eq!(container.header.num_variables, 2);
 
@@ -61,7 +67,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
@@ -95,7 +107,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
@@ -129,7 +147,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
     // y := NOT x: LOAD_VAR_I32 var:0, BOOL_NOT, STORE_VAR_I32 var:1
@@ -159,7 +183,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     // y := TRUE: LOAD_TRUE, STORE_VAR_I32 var:0
     // RET_VOID
@@ -185,7 +215,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     // y := FALSE: LOAD_FALSE, STORE_VAR_I32 var:0
     // RET_VOID

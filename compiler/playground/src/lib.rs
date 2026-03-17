@@ -15,7 +15,7 @@ use std::io::Cursor;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use ironplc_analyzer::stages::analyze;
-use ironplc_codegen::compile_reachable as codegen_compile;
+use ironplc_codegen::compile as codegen_compile;
 use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
@@ -296,7 +296,7 @@ fn compile_inner(source: &str) -> CompileResult {
         &library,
         context.functions(),
         context.types(),
-        Some(context.reachable()),
+        context.reachable(),
     ) {
         Ok(c) => c,
         Err(diag) => {

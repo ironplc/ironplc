@@ -138,11 +138,11 @@ pub fn compile(
 
     // Generate bytecode, skipping user-defined functions not reachable from
     // the PROGRAM root to reduce container size.
-    let container = ironplc_codegen::compile_reachable(
+    let container = ironplc_codegen::compile(
         &analyzed,
         context.functions(),
         context.types(),
-        Some(context.reachable()),
+        context.reachable(),
     )
     .map_err(|err| {
         handle_diagnostics(&[err], Some(&project), suppress_output);

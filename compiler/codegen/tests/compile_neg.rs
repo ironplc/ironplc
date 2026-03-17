@@ -18,7 +18,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     assert_eq!(container.header.num_variables, 2);
     assert_eq!(container.constant_pool.get_i32(0).unwrap(), 10);
@@ -51,7 +57,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     // Constant folding: -5 is stored directly in the pool, no NEG_I32 opcode
     assert_eq!(container.constant_pool.get_i32(0).unwrap(), -5);

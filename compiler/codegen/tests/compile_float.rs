@@ -16,7 +16,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     assert_eq!(container.header.num_variables, 1);
 
@@ -45,7 +51,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     assert_eq!(container.header.num_variables, 2);
 
@@ -84,7 +96,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     // Verify that the bytecode contains GT_F32 (0x84)
     let bytecode = container.code.get_function_bytecode(1).unwrap();

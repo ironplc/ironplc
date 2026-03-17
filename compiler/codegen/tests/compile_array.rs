@@ -17,7 +17,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     // x := arr[3] with 1-based lower bound => flat index = 3 - 1 = 2
     // Bytecode should contain: LOAD_CONST_I32 (flat index 2), LOAD_ARRAY var:0 desc:0
@@ -48,7 +54,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // Find the STORE_ARRAY opcode
@@ -77,7 +89,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // Should contain LOAD_VAR for i, LOAD_CONST_I64 (lower bound 1), SUB_I64, LOAD_ARRAY
@@ -97,7 +115,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert!(bytecode.contains(&0x39), "SUB_I64 not found in bytecode");
@@ -121,7 +145,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     let load_array_pos = bytecode
@@ -148,7 +178,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     let load_array_pos = bytecode
@@ -174,7 +210,12 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let result = compile(&library, context.functions(), context.types());
+    let result = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    );
     assert!(
         result.is_err(),
         "Expected compile-time error for out-of-bounds index"
@@ -193,7 +234,12 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let result = compile(&library, context.functions(), context.types());
+    let result = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    );
     assert!(
         result.is_err(),
         "Expected compile-time error for out-of-bounds index"
@@ -211,7 +257,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // Should contain TRUNC_I8 (0x20) before STORE_ARRAY (0x25)
@@ -241,7 +293,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // LOAD_ARRAY should appear but TRUNC_I8 should NOT appear between
@@ -266,7 +324,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     // The init function should emit 3 STORE_ARRAY instructions for the 3 initial values
     let init_bytecode = container.code.get_function_bytecode(0).unwrap();
@@ -287,7 +351,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     let init_bytecode = container.code.get_function_bytecode(0).unwrap();
     let store_count = init_bytecode.iter().filter(|&&b| b == 0x25).count();
@@ -310,7 +380,12 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let result = compile(&library, context.functions(), context.types());
+    let result = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    );
     assert!(
         result.is_ok(),
         "Degenerate single-element array should compile"

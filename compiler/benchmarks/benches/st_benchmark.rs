@@ -27,7 +27,13 @@ fn compile_st(source: &str) -> Container {
         !context.has_diagnostics(),
         "Benchmark source has semantic diagnostics"
     );
-    compile(&analyzed, context.functions(), context.types()).unwrap()
+    compile(
+        &analyzed,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap()
 }
 
 /// Runs one benchmark iteration: creates `VmBuffers`, applies `$setup`,

@@ -31,4 +31,4 @@ mod compile;
 mod compile_array;
 mod emit;
 
-pub use compile::{compile, compile_reachable};
+pub use compile::compile;

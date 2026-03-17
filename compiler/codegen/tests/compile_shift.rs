@@ -18,7 +18,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     assert_eq!(container.header.num_variables, 2);
 
@@ -55,7 +61,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // Verify the ROL on BYTE emits ROL_U8 (0x0350), not ROL_I32
@@ -88,7 +100,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // Verify the ROR on WORD emits ROR_U16 (0x0353)
@@ -121,7 +139,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // DWORD is 32-bit so no TRUNC needed

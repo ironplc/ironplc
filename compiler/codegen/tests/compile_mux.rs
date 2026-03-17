@@ -16,7 +16,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     assert_eq!(container.header.num_variables, 1);
     assert_eq!(container.constant_pool.get_i32(0).unwrap(), 1);
@@ -58,7 +64,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // BUILTIN MUX_I32_BASE+2 = 0x0402
@@ -88,7 +100,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     assert_eq!(container.header.num_variables, 2);
     // k := 2 uses pool:0

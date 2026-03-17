@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 use ironplc_analyzer::SemanticContext;
-use ironplc_codegen::compile_reachable;
+use ironplc_codegen::compile;
 use ironplc_container::Container;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
@@ -44,11 +44,11 @@ pub fn parse_and_run(source: &str) -> (Container, VmBuffers) {
 /// Like [`parse_and_run`], but enables IEC 61131-3 Edition 3 (2013) features.
 pub fn parse_and_run_edition3(source: &str) -> (Container, VmBuffers) {
     let (library, context) = parse_edition3(source);
-    let container = compile_reachable(
+    let container = compile(
         &library,
         context.functions(),
         context.types(),
-        Some(context.reachable()),
+        context.reachable(),
     )
     .unwrap();
     let mut bufs = VmBuffers::from_container(&container);
@@ -64,11 +64,11 @@ pub fn parse_and_run_edition3(source: &str) -> (Container, VmBuffers) {
 /// Use this to test that certain programs produce runtime traps.
 pub fn parse_and_try_run(source: &str) -> Result<(Container, VmBuffers), FaultContext> {
     let (library, context) = parse(source);
-    let container = compile_reachable(
+    let container = compile(
         &library,
         context.functions(),
         context.types(),
-        Some(context.reachable()),
+        context.reachable(),
     )
     .unwrap();
     let mut bufs = VmBuffers::from_container(&container);
@@ -85,11 +85,11 @@ pub fn parse_and_try_run(source: &str) -> Result<(Container, VmBuffers), FaultCo
 /// run multiple rounds, and read back results.
 pub fn parse_and_run_rounds(source: &str, f: impl FnOnce(&mut ironplc_vm::VmRunning<'_>)) {
     let (library, context) = parse(source);
-    let container = compile_reachable(
+    let container = compile(
         &library,
         context.functions(),
         context.types(),
-        Some(context.reachable()),
+        context.reachable(),
     )
     .unwrap();
     let mut bufs = VmBuffers::from_container(&container);

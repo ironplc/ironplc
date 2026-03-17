@@ -118,7 +118,8 @@ struct StringVarInfo {
 /// Compiles a library into a bytecode container.
 ///
 /// Finds the first PROGRAM declaration in the library and compiles it
-/// into a container suitable for execution by the VM.
+/// into a container suitable for execution by the VM. Only includes
+/// user-defined functions whose names appear in `reachable`.
 ///
 /// Returns an error if no program is found or if the program contains
 /// unsupported constructs.
@@ -126,32 +127,18 @@ pub fn compile(
     library: &Library,
     functions: &FunctionEnvironment,
     types: &TypeEnvironment,
-) -> Result<Container, Diagnostic> {
-    compile_reachable(library, functions, types, None)
-}
-
-/// Like [`compile`], but only includes user-defined functions whose names
-/// appear in `reachable`. When `reachable` is `None`, all functions are
-/// compiled (same behaviour as [`compile`]).
-pub fn compile_reachable(
-    library: &Library,
-    functions: &FunctionEnvironment,
-    types: &TypeEnvironment,
-    reachable: Option<&HashSet<Id>>,
+    reachable: &HashSet<Id>,
 ) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
 
     // Collect user-defined function declarations from the library,
-    // filtering to only reachable functions when a reachable set is provided.
+    // filtering to only reachable functions.
     let func_decls: Vec<&FunctionDeclaration> = library
         .elements
         .iter()
         .filter_map(|e| {
             if let LibraryElementKind::FunctionDeclaration(f) = e {
-                match reachable {
-                    Some(set) => set.contains(&f.name).then_some(f),
-                    None => Some(f),
-                }
+                reachable.contains(&f.name).then_some(f)
             } else {
                 None
             }
@@ -3764,7 +3751,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, context.functions(), context.types()).unwrap();
+        let container = compile(
+            &library,
+            context.functions(),
+            context.types(),
+            context.reachable(),
+        )
+        .unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.header.num_functions, 2);
@@ -3789,7 +3782,12 @@ FUNCTION_BLOCK MyBlock
 END_FUNCTION_BLOCK
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, context.functions(), context.types());
+        let result = compile(
+            &library,
+            context.functions(),
+            context.types(),
+            context.reachable(),
+        );
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -3806,7 +3804,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, context.functions(), context.types()).unwrap();
+        let container = compile(
+            &library,
+            context.functions(),
+            context.types(),
+            context.reachable(),
+        )
+        .unwrap();
 
         // Should have two functions (init + scan), both just RET_VOID
         assert_eq!(container.header.num_functions, 2);
@@ -3829,7 +3833,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, context.functions(), context.types()).unwrap();
+        let container = compile(
+            &library,
+            context.functions(),
+            context.types(),
+            context.reachable(),
+        )
+        .unwrap();
 
         // Should only have one constant (10 is deduplicated)
         assert_eq!(container.constant_pool.len(), 1);
@@ -3848,7 +3858,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, context.functions(), context.types()).unwrap();
+        let container = compile(
+            &library,
+            context.functions(),
+            context.types(),
+            context.reachable(),
+        )
+        .unwrap();
 
         assert_eq!(container.header.num_variables, 2);
         assert_eq!(container.header.num_functions, 2);
@@ -3881,7 +3897,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, context.functions(), context.types()).unwrap();
+        let container = compile(
+            &library,
+            context.functions(),
+            context.types(),
+            context.reachable(),
+        )
+        .unwrap();
 
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), -5);
 
@@ -3903,7 +3925,12 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, context.functions(), context.types());
+        let result = compile(
+            &library,
+            context.functions(),
+            context.types(),
+            context.reachable(),
+        );
 
         assert!(result.is_ok());
     }
@@ -3920,7 +3947,12 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, context.functions(), context.types());
+        let result = compile(
+            &library,
+            context.functions(),
+            context.types(),
+            context.reachable(),
+        );
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -3941,7 +3973,12 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, context.functions(), context.types());
+        let result = compile(
+            &library,
+            context.functions(),
+            context.types(),
+            context.reachable(),
+        );
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -3959,7 +3996,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, context.functions(), context.types()).unwrap();
+        let container = compile(
+            &library,
+            context.functions(),
+            context.types(),
+            context.reachable(),
+        )
+        .unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), 42);
@@ -3976,7 +4019,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, context.functions(), context.types()).unwrap();
+        let container = compile(
+            &library,
+            context.functions(),
+            context.types(),
+            context.reachable(),
+        )
+        .unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), 255);

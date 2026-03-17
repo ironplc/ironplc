@@ -18,7 +18,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     // x := 9.0: LOAD_CONST_F32 pool:0, STORE_VAR_F32 var:0
     // y := SQRT(x): LOAD_VAR_F32 var:0, BUILTIN SQRT_F32, STORE_VAR_F32 var:1
@@ -50,7 +56,13 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = compile(
+        &library,
+        context.functions(),
+        context.types(),
+        context.reachable(),
+    )
+    .unwrap();
 
     // x := 9.0: LOAD_CONST_F64 pool:0, STORE_VAR_F64 var:0
     // y := SQRT(x): LOAD_VAR_F64 var:0, BUILTIN SQRT_F64, STORE_VAR_F64 var:1
