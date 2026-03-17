@@ -92,11 +92,18 @@ Add to `InitialValueAssignmentKind`:
 Reference(ReferenceInitializer),
 ```
 
-Add new struct:
+Add new enum and struct:
 ```rust
+/// Initial value for a REF_TO variable declaration.
+/// Separate from ConstantKind because NULL is not a general-purpose constant.
+pub enum ReferenceInitialValue {
+    Null(SourceSpan),         // := NULL
+    Ref(Variable),            // := REF(var)
+}
+
 pub struct ReferenceInitializer {
     pub referenced_type_name: TypeName,
-    pub initial_value: Option<ConstantKind>,  // NULL or other ref expression
+    pub initial_value: Option<ReferenceInitialValue>,
 }
 ```
 
@@ -121,10 +128,25 @@ Add visit/fold methods for new AST nodes following the existing derive macro pat
 
 **File**: `compiler/parser/src/parser.rs`
 
-- **Type specifier rule**: Add `RefTo type_spec` production
+- **Type specifier rule**: Add `RefTo type_spec` production for `REF_TO INT`, etc. This is a recursive production so `REF_TO REF_TO INT` parses syntactically (rejected later by the semantic analyzer — see P2036).
 - **Primary expression**: Add `Ref LeftParen variable RightParen` for `REF(var)`
 - **Primary expression**: Add `Null` as a constant/literal expression
-- **Postfix expression**: After parsing a primary expression, check for `Xor`/`^` in postfix position. If the caret follows a variable or function call expression (not in infix position between two operands), wrap in `Deref`
+- **Postfix dereference**: Modify the base-case rule that the `precedence!` macro calls (the rule producing primary/unary expressions) to add a postfix caret loop *after* parsing the primary expression but *before* returning to the precedence macro for infix operators:
+
+```rust
+rule primary_with_deref() -> ExprKind =
+    base:primary_expression()
+    carets:(tok(TokenType::Xor))*
+    {
+        let mut expr = base;
+        for _ in carets {
+            expr = ExprKind::Deref(Box::new(Expr::new(expr)));
+        }
+        expr
+    }
+```
+
+This gives dereference the highest binding power (tighter than any infix operator). The `precedence!` macro's XOR level (`x:(@) _ tok(TokenType::Xor) _ y:@`) is unaffected because the postfix carets are consumed before the precedence macro sees them. The loop (`*`) handles future multi-level dereference even though `p^^` is currently rejected by the semantic analyzer.
 
 ### Step 2.5: Parser tests
 
@@ -133,14 +155,16 @@ Add visit/fold methods for new AST nodes following the existing derive macro pat
 Tests to add:
 - `parse_when_ref_to_int_type_decl_then_ok` — `TYPE IntRef : REF_TO INT; END_TYPE`
 - `parse_when_ref_to_var_decl_then_ok` — `VAR x : REF_TO INT; END_VAR`
-- `parse_when_ref_to_nested_then_ok` — `REF_TO REF_TO INT`
-- `parse_when_ref_to_array_then_ok` — `REF_TO ARRAY[1..10] OF INT`
+- `parse_when_ref_to_nested_then_ok` — `REF_TO REF_TO INT` (parses syntactically; rejected in semantic analysis)
+- `parse_when_ref_to_array_type_then_ok` — `REF_TO ARRAY[1..10] OF INT` (ref to an array type)
 - `parse_when_ref_operator_then_ok` — `x := REF(counter);`
 - `parse_when_deref_then_ok` — `value := myRef^;`
 - `parse_when_deref_assign_then_ok` — `myRef^ := 42;`
 - `parse_when_null_literal_then_ok` — `myRef := NULL;`
+- `parse_when_null_init_then_ok` — `VAR x : REF_TO INT := NULL; END_VAR`
 - `parse_when_null_comparison_then_ok` — `IF myRef <> NULL THEN ... END_IF;`
 - `parse_when_caret_xor_then_ok` — `result := a ^ b;` (verify XOR still works)
+- `parse_when_deref_then_xor_then_ok` — `result := myRef^ XOR b;` (dereference + XOR in same expression)
 
 ### Step 2.6: Verification
 
@@ -191,24 +215,28 @@ Handle `InitialValueAssignmentKind::Reference` and `DataTypeDeclarationKind::Ref
 **File**: `compiler/analyzer/src/xform_resolve_expr_types.rs`
 
 - `ExprKind::Ref(var)`: resolve to `IntermediateType::Reference { target_type: typeof(var) }`
-- `ExprKind::Deref(expr)`: resolve to the target type of the reference (unwrap one level)
-- `ExprKind::Null`: resolve to a special null reference type compatible with any `REF_TO`
+- `ExprKind::Deref(expr)`: resolve to the target type of the reference (unwrap one level). If the inner expression is not a reference type, this is a type error caught by rule P2031.
+- `ExprKind::Null`: resolve to `IntermediateType::Reference { target_type: Box::new(IntermediateType::Bool) }` as a placeholder. NULL's actual type compatibility is handled contextually by the semantic rules — the placeholder type is never used for dereference (dereferencing NULL traps at runtime). See the design document's "NULL Type Resolution Strategy" section for the full rationale.
 
 ### Step 3.4: Semantic rules
 
 **New file**: `compiler/analyzer/src/rule_ref_to.rs`
 
-Implement the following validation rules (each with a new problem code):
+Implement the following validation rules:
 
-| Rule | Test name (BDD) |
-|------|-----------------|
-| REF operand must be a variable | `ref_when_operand_is_constant_then_error` |
-| No REF of VAR_TEMP | `ref_when_operand_is_var_temp_then_error` |
-| Deref requires reference type | `deref_when_type_is_not_reference_then_error` |
-| Reference type compatibility | `assign_when_ref_types_incompatible_then_error` |
-| No arithmetic on references | `arithmetic_when_operand_is_reference_then_error` |
-| NULL only for reference types | `null_when_assigned_to_non_reference_then_error` |
-| Only = and <> on references | `compare_when_ordering_on_reference_then_error` |
+| Rule | Problem code | Test name (BDD) |
+|------|-------------|-----------------|
+| REF operand must be a simple variable | P2028 | `ref_when_operand_is_constant_then_error` |
+| No REF of ephemeral variables (VAR_TEMP in FUNCTION; VAR_INPUT/VAR_OUTPUT in FUNCTION) | P2029 | `ref_when_operand_is_var_temp_then_error`, `ref_when_operand_is_function_var_input_then_error`, `ref_when_operand_is_fb_var_input_then_ok` |
+| No REF of array elements | P2030 | `ref_when_operand_is_array_element_then_error` |
+| Deref requires reference type | P2031 | `deref_when_type_is_not_reference_then_error`, `deref_when_type_is_reference_then_ok` |
+| Reference type compatibility | P2032 | `assign_when_ref_types_incompatible_then_error`, `assign_when_ref_types_match_then_ok` |
+| No arithmetic on references | P2033 | `arithmetic_when_operand_is_reference_then_error` |
+| NULL only for reference types | P2034 | `null_when_assigned_to_non_reference_then_error`, `null_when_assigned_to_reference_then_ok` |
+| Only = and <> on references | P2035 | `compare_when_ordering_on_reference_then_error`, `compare_when_equality_on_reference_then_ok` |
+| No nested REF_TO | P2036 | `ref_to_when_nested_then_error`, `ref_to_when_single_level_then_ok` |
+
+Note on P2029: `VAR_INPUT` and `VAR_OUTPUT` in a `FUNCTION` (not `FUNCTION_BLOCK`) are stack-allocated and destroyed when the function returns, making references to them dangling. The same variables in a `FUNCTION_BLOCK` are persistent (the FB instance lives in the variable table) and therefore safe to reference.
 
 ### Step 3.5: Wire in the new rule
 
@@ -220,9 +248,29 @@ Add `rule_ref_to::apply` to the semantic validation pipeline.
 
 **File**: `compiler/problems/resources/problem-codes.csv`
 
-Add ~6 new P-codes for the semantic rules above. Choose numbers based on the existing range.
+Add the following P-codes (continuing from existing P2027):
 
-**Files**: `docs/compiler/problems/P####.rst` (one per problem code)
+```csv
+P2028,RefOperandNotVariable,REF() operand must be a simple variable
+P2029,RefOfEphemeralVariable,REF() of stack-allocated variable (VAR_TEMP or FUNCTION VAR_INPUT/VAR_OUTPUT) would create a dangling reference
+P2030,RefOfArrayElement,REF() of array element is not supported
+P2031,DerefRequiresReferenceType,Dereference operator (^) requires a REF_TO type
+P2032,ReferenceTypeMismatch,Reference type mismatch in assignment
+P2033,ArithmeticOnReference,Arithmetic operations are not allowed on reference types
+P2034,NullRequiresReferenceType,NULL can only be assigned to a REF_TO type
+P2035,OrderingOnReference,Ordering comparison on reference types (only = and <> are allowed)
+P2036,NestedRefToNotSupported,Nested REF_TO (multi-level indirection) is not supported
+```
+
+**File**: `compiler/vm/resources/problem-codes.csv`
+
+Add the NullDereference trap code:
+
+```csv
+V4004,NullDereference,Null reference dereference during program execution,false
+```
+
+**Files**: `docs/compiler/problems/P2028.rst` through `docs/compiler/problems/P2036.rst` (one per problem code)
 
 Each problem code documentation file includes:
 - Description of when the error occurs
@@ -266,14 +314,43 @@ All other operations reuse existing opcodes:
 
 **File**: `compiler/codegen/src/compile.rs`
 
-Handle new expression kinds in the expression compiler:
+#### Expression compilation (new arms in `compile_expr` match)
+
+Add match arms for the three new `ExprKind` variants:
 
 - `ExprKind::Ref(var)`: Resolve variable index at compile time, emit `LOAD_CONST_I64 index`
 - `ExprKind::Null`: Emit `LOAD_CONST_I64 u64::MAX`
-- `ExprKind::Deref(expr)` as r-value: Compile inner expression, emit `LOAD_INDIRECT`
-- `ExprKind::Deref(expr)` as l-value (assignment target): Compile value, compile ref expression, emit `STORE_INDIRECT`
-- Reference variable load/store: Use `LOAD_VAR_I64` / `STORE_VAR_I64` (refs are I64 slots)
-- Null comparison: Compile ref, emit `LOAD_CONST_I64 u64::MAX`, emit `EQ_I64` or `NE_I64`
+- `ExprKind::Deref(expr)` (r-value): Compile inner expression, emit `LOAD_INDIRECT`
+
+#### Reference variable type info
+
+Register reference variables with `VarTypeInfo { op_width: W64, signedness: Unsigned, storage_bits: 64 }` so the existing `emit_load_var()` / `emit_store_var()` helpers select `LOAD_VAR_I64` / `STORE_VAR_I64` without changes.
+
+#### Default initialization of reference variables
+
+In the variable initialization phase (where the codegen emits initial values for all declared variables), add a branch for reference-type variables:
+
+- If no explicit initializer or `:= NULL`: emit `LOAD_CONST_I64 u64::MAX` + `STORE_VAR_I64 ref_slot`
+- If `:= REF(var)`: emit `LOAD_CONST_I64 var_index` + `STORE_VAR_I64 ref_slot`
+
+**This is critical for safety.** The variable table initializes all slots to `Slot(0)`, which is a valid variable index. Without explicit null initialization, an uninitialized `REF_TO` variable would silently point to variable 0 instead of trapping on dereference.
+
+#### L-value dereference (assignment through a reference)
+
+Add a new code path at the top of the `StmtKind::Assignment` handler, before `resolve_variable_name()`:
+
+1. Check if the assignment target is a `Deref` expression
+2. If so:
+   a. Compile the value expression (pushes value)
+   b. Compile the inner expression of the `Deref` (pushes the reference index)
+   c. Emit `STORE_INDIRECT` (pops ref, pops value, stores value at the referenced variable)
+3. Return early — skip the normal assignment flow
+
+This must come before the existing assignment logic because `resolve_variable_name()` cannot handle `Deref` targets (they don't resolve to a static variable index).
+
+#### Null comparison
+
+Null comparison: Compile ref, emit `LOAD_CONST_I64 u64::MAX`, emit `EQ_I64` or `NE_I64`. This reuses existing comparison opcodes.
 
 ### Step 4.3: Emitter
 
@@ -296,7 +373,18 @@ Add emit methods for `LOAD_INDIRECT` and `STORE_INDIRECT` with correct stack dep
 
 **File**: `compiler/vm/src/error.rs`
 
-Add `Trap::NullDereference` variant with a V-code (e.g., `V4004`). User-facing error (exit code 1), not internal error.
+Add `Trap::NullDereference` variant with V-code `V4004`. User-facing error (exit code 1), not internal error. Add the Display impl arm:
+
+```rust
+Trap::NullDereference => write!(f, "null reference dereference"),
+```
+
+**File**: `compiler/vm/resources/problem-codes.csv`
+
+Add entry:
+```csv
+V4004,NullDereference,Null reference dereference during program execution,false
+```
 
 ### Step 5.2: Slot helpers
 
@@ -308,15 +396,21 @@ impl Slot {
     pub fn is_null_ref(&self) -> bool { self.0 == u64::MAX }
     pub fn as_var_index(&self) -> Result<u16, Trap> {
         if self.is_null_ref() {
+            // User program error: dereferencing an uninitialized or NULL reference
             Err(Trap::NullDereference)
         } else if self.0 > u16::MAX as u64 {
-            Err(Trap::InvalidVariableIndex)
+            // Internal error: codegen produced an out-of-range index (compiler bug)
+            Err(Trap::InvalidVariableIndex(self.0 as u16))
         } else {
             Ok(self.0 as u16)
         }
     }
 }
 ```
+
+The two failure modes have different severity:
+- `NullDereference` (V4004, exit code 1) — user program error
+- `InvalidVariableIndex` (V9005, exit code 3) — internal compiler error, should never occur
 
 ### Step 5.3: Opcode handlers
 
@@ -366,15 +460,29 @@ opcode::STORE_INDIRECT => {
 | `compile_ref.rs` | Bytecode assertions for REF_TO expressions |
 | `end_to_end_ref.rs` | Parse → compile → VM run → verify values through references |
 | `end_to_end_null_deref.rs` | Parse → compile → VM run → verify null deref produces trap |
+| `end_to_end_ref_default_init.rs` | Verify uninitialized REF_TO variable traps on dereference (default null initialization) |
+| `end_to_end_ref_lvalue_deref.rs` | `ref^ := value` assignment through reference, verify value written to referenced variable |
+| `end_to_end_ref_aliasing.rs` | Two references to same variable — write through one, read through the other |
+
+### Semantic analysis tests — `compiler/analyzer/tests/` or inline
+
+| Test | Contents |
+|------|----------|
+| `ref_when_operand_is_function_var_input_then_error` | `REF()` of VAR_INPUT in FUNCTION is rejected (P2029) |
+| `ref_when_operand_is_fb_var_input_then_ok` | `REF()` of VAR_INPUT in FUNCTION_BLOCK is allowed |
+| `ref_when_operand_is_array_element_then_error` | `REF(arr[3])` is rejected (P2030) |
+| `ref_to_when_nested_then_error` | `REF_TO REF_TO INT` is rejected (P2036) |
+| `deref_assign_when_target_is_deref_then_ok` | `ref^ := 42` compiles successfully |
 
 ### Integration test
 
 Write an OSCAT-representative test program that exercises:
-- `REF_TO` variable declarations
+- `REF_TO` variable declarations (with and without `:= NULL` initializer)
 - `REF()` operator to create references
-- `^` dereference for reading and writing
-- `NULL` checks
+- `^` dereference for reading and writing (including l-value `ref^ := value`)
+- `NULL` checks (`IF ref <> NULL THEN ... END_IF`)
 - Passing references as function block parameters
+- Default initialization behavior (uninitialized ref traps on dereference)
 
 ---
 
@@ -384,23 +492,24 @@ Write an OSCAT-representative test program that exercises:
 |-------|------|--------|
 | 1 | `compiler/parser/src/token.rs` | Add RefTo, Ref, Null tokens |
 | 1 | `compiler/parser/src/rule_token_no_std_2013.rs` | Gate new tokens behind Edition 3 flag |
-| 2 | `compiler/dsl/src/common.rs` | Reference type/initializer variants |
+| 2 | `compiler/dsl/src/common.rs` | Reference type/initializer variants, ReferenceInitialValue enum |
 | 2 | `compiler/dsl/src/textual.rs` | Ref, Deref, Null expression kinds |
 | 2 | `compiler/dsl/src/visitor.rs` | Visit methods for new nodes |
 | 2 | `compiler/dsl/src/fold.rs` | Fold methods for new nodes |
-| 2 | `compiler/parser/src/parser.rs` | Grammar rules for REF_TO syntax |
+| 2 | `compiler/parser/src/parser.rs` | Grammar rules for REF_TO syntax, postfix caret loop |
 | 3 | `compiler/analyzer/src/intermediate_type.rs` | Reference variant |
-| 3 | `compiler/analyzer/src/rule_ref_to.rs` | **New** — semantic rules |
+| 3 | `compiler/analyzer/src/rule_ref_to.rs` | **New** — 9 semantic rules (P2028-P2036) |
 | 3 | `compiler/analyzer/src/stages.rs` | Wire in new rule |
 | 3 | `compiler/analyzer/src/type_environment.rs` | Reference type resolution |
-| 3 | `compiler/analyzer/src/xform_resolve_expr_types.rs` | Expression type resolution |
-| 3 | `compiler/problems/resources/problem-codes.csv` | ~6 new P-codes |
-| 3 | `docs/compiler/problems/P####.rst` | Problem documentation |
-| 4 | `compiler/container/src/opcode.rs` | 2 new opcodes |
-| 4 | `compiler/codegen/src/compile.rs` | Reference compilation |
+| 3 | `compiler/analyzer/src/xform_resolve_expr_types.rs` | Expression type resolution (Ref, Deref, Null) |
+| 3 | `compiler/problems/resources/problem-codes.csv` | 9 new P-codes (P2028-P2036) |
+| 3 | `docs/compiler/problems/P2028.rst` through `P2036.rst` | Problem documentation |
+| 4 | `compiler/container/src/opcode.rs` | 2 new opcodes (LOAD_INDIRECT, STORE_INDIRECT) |
+| 4 | `compiler/codegen/src/compile.rs` | Reference compilation, l-value deref path, default null init |
 | 4 | `compiler/codegen/src/emit.rs` | 2 new opcode emitters |
-| 5 | `compiler/vm/src/error.rs` | NullDereference trap |
-| 5 | `compiler/vm/src/value.rs` | Null ref helpers |
+| 5 | `compiler/vm/src/error.rs` | NullDereference trap variant |
+| 5 | `compiler/vm/resources/problem-codes.csv` | V4004 NullDereference |
+| 5 | `compiler/vm/src/value.rs` | Null ref helpers (null_ref, is_null_ref, as_var_index) |
 | 5 | `compiler/vm/src/vm.rs` | 2 new opcode handlers |
 
 ## Pre-PR Verification
