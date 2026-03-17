@@ -46,7 +46,7 @@ use std::collections::HashMap;
 
 use ironplc_dsl::{
     common::*,
-    core::Located,
+    core::{Id, Located},
     diagnostic::{Diagnostic, Label},
     textual::*,
     visitor::Visitor,
@@ -74,8 +74,8 @@ pub fn apply(lib: &Library, context: &SemanticContext) -> SemanticResult {
 struct RuleFunctionCallTypeCheck<'a> {
     context: &'a SemanticContext,
     diagnostics: Vec<Diagnostic>,
-    /// Maps variable name (lowercase) to declared type for the current scope.
-    var_types: HashMap<String, TypeName>,
+    /// Maps variable name to declared type for the current scope.
+    var_types: HashMap<Id, TypeName>,
 }
 
 impl RuleFunctionCallTypeCheck<'_> {
@@ -88,12 +88,9 @@ impl RuleFunctionCallTypeCheck<'_> {
                     return;
                 }
                 if let Variable::Symbolic(SymbolicVariableKind::Named(ref nv)) = target {
-                    let target_key = nv.name.lower_case().to_string();
-                    if let Some(target_type) = self.var_types.get(&target_key) {
+                    if let Some(target_type) = self.var_types.get(&nv.name) {
                         if let Some(ref return_type) = value.resolved_type {
-                            let target_lower = target_type.to_string().to_lowercase();
-                            let return_lower = return_type.to_string().to_lowercase();
-                            if target_lower != return_lower {
+                            if target_type != return_type {
                                 self.diagnostics.push(
                                     Diagnostic::problem(
                                         Problem::FunctionCallReturnTypeMismatch,
@@ -148,8 +145,7 @@ impl Visitor<Diagnostic> for RuleFunctionCallTypeCheck<'_> {
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         if let VariableIdentifier::Symbol(ref id) = node.identifier {
             if let TypeReference::Named(ref type_name) = node.type_name() {
-                self.var_types
-                    .insert(id.lower_case().to_string(), type_name.clone());
+                self.var_types.insert(id.clone(), type_name.clone());
             }
         }
         node.recurse_visit(self)
@@ -200,10 +196,7 @@ impl Visitor<Diagnostic> for RuleFunctionCallTypeCheck<'_> {
                 let param = &input_params[i];
 
                 if let Some(ref arg_type) = arg_expr.resolved_type {
-                    let param_type_lower = param.param_type.to_string().to_lowercase();
-                    let arg_type_lower = arg_type.to_string().to_lowercase();
-
-                    if param_type_lower != arg_type_lower {
+                    if param.param_type != *arg_type {
                         self.diagnostics.push(
                             Diagnostic::problem(
                                 Problem::FunctionCallArgTypeMismatch,
