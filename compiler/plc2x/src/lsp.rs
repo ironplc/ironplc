@@ -737,11 +737,11 @@ mod test {
     }
 
     #[test]
-    fn lsp_when_default_options_then_rejects_ltime() {
+    fn lsp_when_default_options_then_demotes_ltime_to_identifier() {
         let proj = Box::new(FileBackedProject::default());
         let mut server = TestServer::new(proj);
 
-        // Send a document with LTIME literal (Edition 3 feature)
+        // Send a document with LTIME used as an identifier (Edition 3 keyword demoted)
         server.send_notification::<notification::DidChangeTextDocument>(
             DidChangeTextDocumentParams {
                 text_document: VersionedTextDocumentIdentifier {
@@ -757,10 +757,11 @@ mod test {
         );
 
         let diagnostics = server.receive_notification::<PublishDiagnosticsParams>();
-        // LTIME should be rejected with default (2003) options
+        // LTIME should be demoted to an identifier with default (2003) options,
+        // so no tokenization-level diagnostics are produced
         assert!(
-            !diagnostics.diagnostics.is_empty(),
-            "Expected diagnostics for LTIME with default options"
+            diagnostics.diagnostics.is_empty(),
+            "Expected no diagnostics for LTIME with default options (demoted to identifier)"
         );
     }
 }
