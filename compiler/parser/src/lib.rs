@@ -7,9 +7,9 @@ pub mod options;
 mod parser;
 mod preprocessor;
 mod rule_token_no_c_style_comment;
-mod rule_token_no_std_2013;
 mod vars;
 mod xform_assign_file_id;
+mod xform_demote_edition3_keywords;
 mod xform_tokens;
 
 use crate::parser::{parse_library, parse_statements};
@@ -46,7 +46,8 @@ pub fn tokenize_program(
     let source = preprocess(source);
     let (tokens, mut errors) = tokenize(&source, file_id, line_offset, col_offset);
 
-    let tokens = insert_keyword_statement_terminators(tokens, file_id, options);
+    let mut tokens = insert_keyword_statement_terminators(tokens, file_id, options);
+    xform_demote_edition3_keywords::apply(&mut tokens, options);
     let result = check_tokens(&tokens, options);
     match result {
         Ok(_) => {}
@@ -58,10 +59,8 @@ pub fn tokenize_program(
 
 #[allow(clippy::type_complexity)]
 fn check_tokens(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnostic>> {
-    let rules: Vec<fn(&[Token], &ParseOptions) -> Result<(), Vec<Diagnostic>>> = vec![
-        rule_token_no_c_style_comment::apply,
-        rule_token_no_std_2013::apply,
-    ];
+    let rules: Vec<fn(&[Token], &ParseOptions) -> Result<(), Vec<Diagnostic>>> =
+        vec![rule_token_no_c_style_comment::apply];
 
     let mut errors = vec![];
     for rule in rules {
