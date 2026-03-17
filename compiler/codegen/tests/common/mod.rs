@@ -23,10 +23,34 @@ pub fn parse(source: &str) -> (Library, SemanticContext) {
     (analyzed, ctx)
 }
 
+/// Like [`parse`], but enables IEC 61131-3 Edition 3 (2013) features such as LTIME.
+pub fn parse_edition3(source: &str) -> (Library, SemanticContext) {
+    let options = ParseOptions {
+        allow_iec_61131_3_2013: true,
+        ..ParseOptions::default()
+    };
+    let library = parse_program(source, &FileId::default(), &options).unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
+    (analyzed, ctx)
+}
+
 /// Parses, analyzes, compiles, and runs one scan cycle.
 /// Returns the container and buffers so callers can inspect variable values.
 pub fn parse_and_run(source: &str) -> (Container, VmBuffers) {
     let (container, bufs) = parse_and_try_run(source).expect("VM execution trapped unexpectedly");
+    (container, bufs)
+}
+
+/// Like [`parse_and_run`], but enables IEC 61131-3 Edition 3 (2013) features.
+pub fn parse_and_run_edition3(source: &str) -> (Container, VmBuffers) {
+    let (library, context) = parse_edition3(source);
+    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let mut bufs = VmBuffers::from_container(&container);
+    {
+        let mut vm =
+            load_and_start(&container, &mut bufs).expect("VM execution trapped unexpectedly");
+        vm.run_round(0).expect("VM round trapped unexpectedly");
+    }
     (container, bufs)
 }
 
