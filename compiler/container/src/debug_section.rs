@@ -35,6 +35,12 @@ pub mod iec_type_tag {
     pub const WSTRING: u8 = 16;
     pub const TIME: u8 = 17;
     pub const LTIME: u8 = 18;
+    pub const DATE: u8 = 19;
+    pub const LDATE: u8 = 20;
+    pub const TIME_OF_DAY: u8 = 21;
+    pub const LTOD: u8 = 22;
+    pub const DATE_AND_TIME: u8 = 23;
+    pub const LDT: u8 = 24;
     pub const OTHER: u8 = 255;
 }
 

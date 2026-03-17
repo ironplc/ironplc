@@ -26,7 +26,9 @@ impl TypeCategory {
             | IntermediateType::Real { .. }
             | IntermediateType::Bytes { .. }
             | IntermediateType::Time { .. }
-            | IntermediateType::Date
+            | IntermediateType::Date { .. }
+            | IntermediateType::TimeOfDay { .. }
+            | IntermediateType::DateAndTime { .. }
             | IntermediateType::String { .. } => TypeCategory::Elementary,
             IntermediateType::Structure { .. } | IntermediateType::Enumeration { .. } => {
                 TypeCategory::UserDefined
