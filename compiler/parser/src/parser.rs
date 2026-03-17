@@ -337,7 +337,7 @@ parser! {
     // dt_sep defines case insensitive separators between parts of duration
     rule dt_sep(val: &str) -> &'input Token = [t if t.token_type == TokenType::Identifier && t.text.as_str() == val]
 
-    pub rule duration() -> DurationLiteral = start:position!() (tok(TokenType::Time) / dt_sep("T") / dt_sep("t")) tok(TokenType::Hash) s:(tok(TokenType::Minus))? i:interval() end:position!() {
+    pub rule duration() -> DurationLiteral = start:position!() (tok(TokenType::Time) / tok(TokenType::Ltime) / dt_sep("T") / dt_sep("t")) tok(TokenType::Hash) s:(tok(TokenType::Minus))? i:interval() end:position!() {
       let span = SourceSpan::range(start, end);
       let interval = match s {
         Some(sign) => i.interval * -1,

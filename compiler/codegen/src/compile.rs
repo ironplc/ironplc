@@ -3163,9 +3163,18 @@ fn compile_constant(
         }
         ConstantKind::CharacterString(_) => Err(Diagnostic::todo(file!(), line!())),
         ConstantKind::Duration(lit) => {
-            let milliseconds = lit.interval.whole_milliseconds() as i32;
-            let pool_index = ctx.add_i32_constant(milliseconds);
-            emitter.emit_load_const_i32(pool_index);
+            match op_type.0 {
+                OpWidth::W64 => {
+                    let milliseconds = lit.interval.whole_milliseconds() as i64;
+                    let pool_index = ctx.add_i64_constant(milliseconds);
+                    emitter.emit_load_const_i64(pool_index);
+                }
+                _ => {
+                    let milliseconds = lit.interval.whole_milliseconds() as i32;
+                    let pool_index = ctx.add_i32_constant(milliseconds);
+                    emitter.emit_load_const_i32(pool_index);
+                }
+            }
             Ok(())
         }
         ConstantKind::TimeOfDay(_) => Err(Diagnostic::todo(file!(), line!())),
