@@ -90,7 +90,9 @@ pub fn resolve_types(sources: &[&Library]) -> Result<(Library, SemanticContext),
     let mut symbol_environment = SymbolEnvironment::new();
 
     // Hard failure: declaration ordering is required for all subsequent transforms.
-    let mut library = xform_toposort_declarations::apply(library)?;
+    // Also computes the set of declarations reachable from PROGRAM roots,
+    // which codegen uses to skip unused functions.
+    let (mut library, reachable) = xform_toposort_declarations::apply(library)?;
 
     // Recoverable: Fold-based transforms consume the Library on error, so clone
     // before each one. On failure, fall back to the pre-transform clone.
@@ -164,8 +166,12 @@ pub fn resolve_types(sources: &[&Library]) -> Result<(Library, SemanticContext),
     debug!("Symbol Environment:");
     debug!("{symbol_environment:?}");
 
-    let mut context =
-        SemanticContext::new(type_environment, function_environment, symbol_environment);
+    let mut context = SemanticContext::new(
+        type_environment,
+        function_environment,
+        symbol_environment,
+        reachable,
+    );
     context.add_diagnostics(diagnostics);
 
     Ok((library, context))
