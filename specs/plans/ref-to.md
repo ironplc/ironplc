@@ -36,7 +36,11 @@ Verify logos longest-match behavior: `REF_TO` must lex as a single `RefTo` token
 
 **New file**: `compiler/parser/src/xform_demote_edition3_keywords.rs`
 
-When `allow_iec_61131_3_2013` is `false`, demote `RefTo`, `Ref`, and `Null` keyword tokens to `Identifier` tokens. This allows them to be used as regular variable and type names in Edition 2 programs. When the flag is `true`, the tokens are left as keywords and the parser interprets them as REF_TO syntax.
+**Delete file**: `compiler/parser/src/rule_token_no_std_2013.rs`
+
+When `allow_iec_61131_3_2013` is `false`, demote all Edition 3 keyword tokens — `Ltime`, `RefTo`, `Ref`, and `Null` — to `Identifier` tokens. This allows them to be used as regular variable and type names in Edition 2 programs. When the flag is `true`, the tokens are left as keywords and the parser interprets them as Edition 3 syntax.
+
+This replaces the existing `rule_token_no_std_2013.rs` rejection approach. The old file rejected Edition 3 tokens with an error; the new file silently demotes them to identifiers.
 
 ```rust
 pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
@@ -45,7 +49,7 @@ pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
     }
     for tok in tokens.iter_mut() {
         match tok.token_type {
-            TokenType::RefTo | TokenType::Ref | TokenType::Null => {
+            TokenType::Ltime | TokenType::RefTo | TokenType::Ref | TokenType::Null => {
                 tok.token_type = TokenType::Identifier;
             }
             _ => {}
@@ -54,22 +58,23 @@ pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
 }
 ```
 
-Wire this into the token processing pipeline (e.g., `compiler/parser/src/lib.rs`), after tokenization but before `rule_token_no_std_2013` and before parsing. The existing `Ltime` rejection rule in `rule_token_no_std_2013.rs` is unchanged — this demotion transform is separate.
-
-Do **not** add `RefTo`/`Ref`/`Null` to `rule_token_no_std_2013.rs`. The demotion approach replaces the rejection approach for these tokens.
+Wire this into the token processing pipeline (`compiler/parser/src/lib.rs`), after tokenization but before parsing. Remove the `rule_token_no_std_2013` call from the pipeline — it is replaced by this transform.
 
 Add tests:
+- `apply_when_ltime_and_not_edition3_then_demoted_to_identifier`
+- `apply_when_ltime_and_edition3_then_stays_keyword`
 - `apply_when_ref_to_and_not_edition3_then_demoted_to_identifier`
 - `apply_when_ref_to_and_edition3_then_stays_keyword`
 - Same pattern for `Ref` and `Null`
 - `apply_when_null_as_var_name_and_not_edition3_then_ok` — verify `VAR NULL : INT; END_VAR` parses successfully in Edition 2 mode
+- `apply_when_ltime_as_var_name_and_not_edition3_then_ok` — verify `VAR LTIME : INT; END_VAR` parses successfully in Edition 2 mode
 
 ### Step 1.3: Verification
 
-- All existing tests pass
+- All existing tests pass (update any tests that relied on the old rejection behavior)
 - New tokens are lexed correctly
-- Without Edition 3 flag: `REF_TO`, `REF`, `NULL` are treated as identifiers (can be variable names)
-- With Edition 3 flag: `REF_TO`, `REF`, `NULL` are keywords (parsed as reference syntax)
+- Without Edition 3 flag: `LTIME`, `REF_TO`, `REF`, `NULL` are treated as identifiers (can be variable names)
+- With Edition 3 flag: `LTIME`, `REF_TO`, `REF`, `NULL` are keywords (parsed as Edition 3 syntax)
 
 ---
 
@@ -496,7 +501,8 @@ Write an OSCAT-representative test program that exercises:
 | Phase | File | Change |
 |-------|------|--------|
 | 1 | `compiler/parser/src/token.rs` | Add RefTo, Ref, Null tokens |
-| 1 | `compiler/parser/src/xform_demote_edition3_keywords.rs` | **New** — demote RefTo/Ref/Null to Identifier without Edition 3 flag |
+| 1 | `compiler/parser/src/xform_demote_edition3_keywords.rs` | **New** — demote Ltime/RefTo/Ref/Null to Identifier without Edition 3 flag |
+| 1 | `compiler/parser/src/rule_token_no_std_2013.rs` | **Delete** — replaced by xform_demote_edition3_keywords.rs |
 | 2 | `compiler/dsl/src/common.rs` | Reference type/initializer variants, ReferenceInitialValue enum |
 | 2 | `compiler/dsl/src/textual.rs` | Ref, Deref, Null expression kinds |
 | 2 | `compiler/dsl/src/visitor.rs` | Visit methods for new nodes |

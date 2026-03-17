@@ -113,11 +113,9 @@ This is standard IEC 61131-3 Edition 3 behavior. Dereference binds tighter than 
 
 ### Edition 3 Gating — Keyword Demotion
 
-Unlike the LTIME pattern (which rejects the token with an error), `RefTo`, `Ref`, and `Null` use **keyword demotion**: when `allow_iec_61131_3_2013` is `false`, a post-tokenization transform downgrades these keyword tokens to `Identifier` tokens. This allows them to be used as regular variable names in Edition 2 programs.
+All Edition 3 keyword tokens — `Ltime`, `RefTo`, `Ref`, and `Null` — use **keyword demotion**: when `allow_iec_61131_3_2013` is `false`, a post-tokenization transform downgrades these keyword tokens to `Identifier` tokens. This allows them to be used as regular variable names in Edition 2 programs. Without the Edition 3 flag, these are just identifiers; with the flag, they become keywords.
 
-**Why demotion instead of rejection:** `NULL`, `REF`, and `REF_TO` are plausible identifier names in existing PLC programs. Rejecting them with an error ("requires Edition 3 flag") would break Edition 2 programs that use these names. Demotion makes them transparent — they're just identifiers unless the user opts into Edition 3.
-
-**File**: `compiler/parser/src/xform_demote_edition3_keywords.rs` (new file)
+**File**: `compiler/parser/src/xform_demote_edition3_keywords.rs` (new file, replaces the existing `rule_token_no_std_2013.rs`)
 
 ```rust
 pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
@@ -126,7 +124,7 @@ pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
     }
     for tok in tokens.iter_mut() {
         match tok.token_type {
-            TokenType::RefTo | TokenType::Ref | TokenType::Null => {
+            TokenType::Ltime | TokenType::RefTo | TokenType::Ref | TokenType::Null => {
                 tok.token_type = TokenType::Identifier;
             }
             _ => {}
@@ -135,7 +133,7 @@ pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
 }
 ```
 
-This transform runs after tokenization but before parsing and before the existing `rule_token_no_std_2013` validation. The existing `Ltime` rejection rule is unchanged — `LTIME` is an unusual identifier name and the error-on-use approach is acceptable for it.
+This transform runs after tokenization but before parsing. It replaces the existing `rule_token_no_std_2013.rs` rejection rule — instead of rejecting Edition 3 tokens with an error, they are silently demoted to identifiers. The old `rule_token_no_std_2013.rs` file should be deleted.
 
 The `Xor`/`^` token does NOT need gating — it already exists for XOR in Edition 2. Only its interpretation as dereference (in postfix position) is Edition 3.
 
