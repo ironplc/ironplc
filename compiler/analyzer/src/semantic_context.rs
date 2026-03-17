@@ -10,9 +10,12 @@
 //! - Makes it easy to add new environments without changing function signatures
 //! - Provides a clear "this is everything you need" abstraction
 
+use std::collections::HashSet;
+
 use crate::function_environment::{FunctionEnvironment, FunctionEnvironmentBuilder};
 use crate::symbol_environment::SymbolEnvironment;
 use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
+use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
 
 /// Contains all environments needed for semantic analysis.
@@ -35,6 +38,9 @@ pub struct SemanticContext {
     /// but validation rules find errors, the diagnostics are stored here so that the
     /// context remains available for LSP features.
     diagnostics: Vec<Diagnostic>,
+    /// Declarations transitively reachable from PROGRAM roots. Codegen uses
+    /// this to skip compiling unused user-defined functions.
+    reachable: HashSet<Id>,
 }
 
 impl SemanticContext {
@@ -43,12 +49,14 @@ impl SemanticContext {
         types: TypeEnvironment,
         functions: FunctionEnvironment,
         symbols: SymbolEnvironment,
+        reachable: HashSet<Id>,
     ) -> Self {
         Self {
             types,
             functions,
             symbols,
             diagnostics: Vec::new(),
+            reachable,
         }
     }
 
@@ -80,6 +88,11 @@ impl SemanticContext {
     /// Provides read-only access to the symbol environment.
     pub fn symbols(&self) -> &SymbolEnvironment {
         &self.symbols
+    }
+
+    /// Returns the set of declarations reachable from PROGRAM roots.
+    pub fn reachable(&self) -> &HashSet<Id> {
+        &self.reachable
     }
 
     /// Provides mutable access to the type environment.
@@ -141,7 +154,12 @@ impl SemanticContextBuilder {
         let functions = self.function_builder.build();
         let symbols = SymbolEnvironment::new();
 
-        Ok(SemanticContext::new(types, functions, symbols))
+        Ok(SemanticContext::new(
+            types,
+            functions,
+            symbols,
+            HashSet::new(),
+        ))
     }
 }
 
@@ -162,7 +180,7 @@ mod tests {
         let functions = FunctionEnvironmentBuilder::new().build();
         let symbols = SymbolEnvironment::new();
 
-        let ctx = SemanticContext::new(types, functions, symbols);
+        let ctx = SemanticContext::new(types, functions, symbols, HashSet::new());
 
         // Just verify we can access each environment
         let _ = ctx.types();

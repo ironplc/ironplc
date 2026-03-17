@@ -34,7 +34,7 @@
 //! After arithmetic at native width, narrow types (SINT, INT, USINT, UINT)
 //! are truncated back to their declared range before storing.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ironplc_container::debug_section::{
     function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry,
@@ -127,15 +127,31 @@ pub fn compile(
     functions: &FunctionEnvironment,
     types: &TypeEnvironment,
 ) -> Result<Container, Diagnostic> {
+    compile_reachable(library, functions, types, None)
+}
+
+/// Like [`compile`], but only includes user-defined functions whose names
+/// appear in `reachable`. When `reachable` is `None`, all functions are
+/// compiled (same behaviour as [`compile`]).
+pub fn compile_reachable(
+    library: &Library,
+    functions: &FunctionEnvironment,
+    types: &TypeEnvironment,
+    reachable: Option<&HashSet<Id>>,
+) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
 
-    // Collect user-defined function declarations from the library.
+    // Collect user-defined function declarations from the library,
+    // filtering to only reachable functions when a reachable set is provided.
     let func_decls: Vec<&FunctionDeclaration> = library
         .elements
         .iter()
         .filter_map(|e| {
             if let LibraryElementKind::FunctionDeclaration(f) = e {
-                Some(f)
+                match reachable {
+                    Some(set) => set.contains(&f.name).then_some(f),
+                    None => Some(f),
+                }
             } else {
                 None
             }

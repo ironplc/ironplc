@@ -136,12 +136,18 @@ pub fn compile(
             String::from("Error during type resolution")
         })?;
 
-    // Generate bytecode
-    let container = ironplc_codegen::compile(&analyzed, context.functions(), context.types())
-        .map_err(|err| {
-            handle_diagnostics(&[err], Some(&project), suppress_output);
-            String::from("Error during code generation")
-        })?;
+    // Generate bytecode, skipping user-defined functions not reachable from
+    // the PROGRAM root to reduce container size.
+    let container = ironplc_codegen::compile_reachable(
+        &analyzed,
+        context.functions(),
+        context.types(),
+        Some(context.reachable()),
+    )
+    .map_err(|err| {
+        handle_diagnostics(&[err], Some(&project), suppress_output);
+        String::from("Error during code generation")
+    })?;
 
     // Write the container to the output file
     let mut out_file =

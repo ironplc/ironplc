@@ -240,3 +240,73 @@ END_PROGRAM
     // OUTER(3) calls INNER(3), which returns 3 * 2 = 6
     assert_eq!(bufs.vars[0].as_i32(), 6);
 }
+
+#[test]
+fn end_to_end_when_unused_function_defined_then_result_unchanged() {
+    // Without the unused function, the program computes OUTER(A:=3.0, B:=1.0)
+    // which calls INNER(X:=3.0), returning 3.0 * 2.0 = 6.0, then adds 1.0 = 7.0.
+    let source_without_unused = "
+FUNCTION INNER : REAL
+  VAR_INPUT
+    X : REAL;
+  END_VAR
+  INNER := X * 2.0;
+END_FUNCTION
+
+FUNCTION OUTER : REAL
+  VAR_INPUT
+    A : REAL;
+    B : REAL;
+  END_VAR
+  OUTER := INNER(X := A) + B;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : REAL;
+  END_VAR
+  result := OUTER(A := 3.0, B := 1.0);
+END_PROGRAM
+";
+
+    // The same program but with an unused function that references an
+    // undefined function. The compiler should tree-shake UNUSED_FUNC
+    // so that it never reaches analysis or codegen.
+    let source_with_unused = "
+FUNCTION INNER : REAL
+  VAR_INPUT
+    X : REAL;
+  END_VAR
+  INNER := X * 2.0;
+END_FUNCTION
+
+FUNCTION UNUSED_FUNC : REAL
+  VAR_INPUT
+    X : REAL;
+  END_VAR
+  UNUSED_FUNC := X + 42.0;
+END_FUNCTION
+
+FUNCTION OUTER : REAL
+  VAR_INPUT
+    A : REAL;
+    B : REAL;
+  END_VAR
+  OUTER := INNER(X := A) + B;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : REAL;
+  END_VAR
+  result := OUTER(A := 3.0, B := 1.0);
+END_PROGRAM
+";
+
+    let (_c1, bufs1) = parse_and_run(source_without_unused);
+    let (_c2, bufs2) = parse_and_run(source_with_unused);
+
+    // Both should produce 7.0
+    assert_eq!(bufs1.vars[0].as_f32(), 7.0);
+    assert_eq!(bufs2.vars[0].as_f32(), 7.0);
+}

@@ -47,10 +47,11 @@ use petgraph::{
     algo::toposort,
     dot::{Config, Dot},
     stable_graph::{NodeIndex, StableDiGraph},
+    Direction,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 
-pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
+pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
     // Walk to build a graph of types, POUs and their relationships
     let mut data_type_visitor = RuleGraphReferenceableElements::new();
     data_type_visitor.walk(&lib).map_err(|e| vec![e])?;
@@ -63,6 +64,12 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
         .map_err(|err| vec![err])?;
 
     debug!("Sorted identifiers {sorted_ids:?}");
+
+    // Compute the set of declarations reachable from PROGRAM roots.
+    // This allows downstream passes (e.g. codegen) to skip unused functions.
+    let reachable = data_type_visitor
+        .declarations
+        .reachable_from(&data_type_visitor.program_nodes);
 
     // Split based on the type so that we put all of the data type declarations
     // at the beginning.
@@ -160,7 +167,7 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
     }));
     elements.extend(sorted_ids.iter().filter_map(|id| elems_by_name.remove(id)));
 
-    Ok(Library { elements })
+    Ok((Library { elements }, reachable))
 }
 
 struct DeclarationsGraph {
@@ -205,6 +212,32 @@ impl DeclarationsGraph {
         index
     }
 
+    /// Computes the set of `Id`s reachable from the given root nodes by
+    /// following edges in the *incoming* direction (callee -> caller edges
+    /// mean incoming neighbors of a caller are its callees).
+    fn reachable_from(&self, roots: &[NodeIndex]) -> HashSet<Id> {
+        let mut visited: HashSet<NodeIndex> = HashSet::new();
+        let mut queue: VecDeque<NodeIndex> = VecDeque::new();
+
+        for &root in roots {
+            queue.push_back(root);
+        }
+
+        while let Some(node) = queue.pop_front() {
+            if !visited.insert(node) {
+                continue;
+            }
+            for neighbor in self.graph.neighbors_directed(node, Direction::Incoming) {
+                queue.push_back(neighbor);
+            }
+        }
+
+        visited
+            .into_iter()
+            .filter_map(|idx| self.index_to_id.get(&idx).cloned())
+            .collect()
+    }
+
     fn sorted_ids(&self) -> Result<Vec<Id>, Diagnostic> {
         let sorted_nodes = toposort(&self.graph, None).map_err(|err| {
             let id_in_cycle = self.index_to_id.get(&err.node_id());
@@ -240,12 +273,16 @@ struct RuleGraphReferenceableElements {
     // Represents the context while visiting. Tracks the name of the current
     // POU.
     current_from: Option<Id>,
+    // Graph node indices for PROGRAM declarations, used as roots for
+    // reachability analysis.
+    program_nodes: Vec<NodeIndex>,
 }
 impl RuleGraphReferenceableElements {
     fn new() -> Self {
         Self {
             declarations: DeclarationsGraph::new(),
             current_from: None,
+            program_nodes: Vec::new(),
         }
     }
 }
@@ -387,7 +424,8 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         node: &ProgramDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.name.clone());
-        self.declarations.add_node(&node.name);
+        let idx = self.declarations.add_node(&node.name);
+        self.program_nodes.push(idx);
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -522,7 +560,7 @@ mod tests {
         END_FUNCTION_BLOCK";
 
         let library = parse_only(program);
-        let library = apply(library).unwrap();
+        let (library, _reachable) = apply(library).unwrap();
 
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
@@ -542,7 +580,7 @@ LEVEL : (CRITICAL) := CRITICAL;
 END_TYPE";
 
         let library = parse_only(program);
-        let library = apply(library).unwrap();
+        let (library, _reachable) = apply(library).unwrap();
 
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
@@ -564,7 +602,7 @@ TYPE_NAME : STRING(5);
 END_TYPE";
 
         let library = parse_only(program);
-        let library = apply(library).unwrap();
+        let (library, _reachable) = apply(library).unwrap();
 
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
@@ -586,7 +624,7 @@ TYPE_NAME : INT (1..128);
 END_TYPE";
 
         let library = parse_only(program);
-        let library = apply(library).unwrap();
+        let (library, _reachable) = apply(library).unwrap();
 
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
@@ -608,7 +646,7 @@ COLOR : (RED, GREEN, BLUE);
 END_TYPE";
 
         let library = parse_only(program);
-        let library = apply(library).unwrap();
+        let (library, _reachable) = apply(library).unwrap();
 
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
@@ -630,7 +668,7 @@ DEFAULT_1 : INT := 1;
 END_TYPE";
 
         let library = parse_only(program);
-        let library = apply(library).unwrap();
+        let (library, _reachable) = apply(library).unwrap();
 
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
@@ -661,7 +699,7 @@ ENUM_TYPE : (A, B, C);
 END_TYPE";
 
         let library = parse_only(program);
-        let library = apply(library).unwrap();
+        let (library, _reachable) = apply(library).unwrap();
 
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
@@ -693,7 +731,7 @@ END_STRUCT;
 END_TYPE";
 
         let library = parse_only(program);
-        let library = apply(library).unwrap();
+        let (library, _reachable) = apply(library).unwrap();
 
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
@@ -731,7 +769,7 @@ END_TYPE";
         END_PROGRAM";
 
         let library = parse_only(program);
-        let library = apply(library).unwrap();
+        let (library, _reachable) = apply(library).unwrap();
 
         // INNER must come before OUTER (callee before caller), both before main.
         // Collect just the function declarations in order.
@@ -764,7 +802,7 @@ TYPE
 END_TYPE";
 
         let library = parse_only(program);
-        let library = apply(library).unwrap();
+        let (library, _reachable) = apply(library).unwrap();
 
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
@@ -791,7 +829,7 @@ TYPE subrange_element_type :
 END_TYPE";
 
         let library = parse_only(program);
-        let library = apply(library).unwrap();
+        let (library, _reachable) = apply(library).unwrap();
 
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
@@ -802,5 +840,37 @@ END_TYPE";
         let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
         let decl = cast!(decl, DataTypeDeclarationKind::Array);
         assert_eq!(decl.type_name, TypeName::from("array_container"));
+    }
+
+    #[test]
+    fn apply_when_unused_function_then_not_in_reachable_set() {
+        let program = "
+        FUNCTION INNER : REAL
+        VAR_INPUT X : REAL; END_VAR
+            INNER := X * 2.0;
+        END_FUNCTION
+
+        FUNCTION UNUSED : REAL
+        VAR_INPUT X : REAL; END_VAR
+            UNUSED := X;
+        END_FUNCTION
+
+        FUNCTION OUTER : REAL
+        VAR_INPUT A : REAL; END_VAR
+            OUTER := INNER(X := A);
+        END_FUNCTION
+
+        PROGRAM main
+        VAR result : REAL; END_VAR
+            result := OUTER(A := 3.0);
+        END_PROGRAM";
+
+        let library = parse_only(program);
+        let (_library, reachable) = apply(library).unwrap();
+
+        assert!(reachable.contains(&Id::from("main")));
+        assert!(reachable.contains(&Id::from("OUTER")));
+        assert!(reachable.contains(&Id::from("INNER")));
+        assert!(!reachable.contains(&Id::from("UNUSED")));
     }
 }
