@@ -111,19 +111,37 @@ The `^` caret for dereference does **not** need a new token. It already exists a
 
 This is standard IEC 61131-3 Edition 3 behavior. Dereference binds tighter than any binary operator.
 
-### Edition 3 Gating — `compiler/parser/src/rule_token_no_std_2013.rs`
+### Edition 3 Gating — Keyword Demotion
 
-Add `RefTo`, `Ref`, and `Null` to the existing validation rule alongside `Ltime`. When `allow_iec_61131_3_2013` is `false`, these tokens are rejected with a diagnostic:
+Unlike the LTIME pattern (which rejects the token with an error), `RefTo`, `Ref`, and `Null` use **keyword demotion**: when `allow_iec_61131_3_2013` is `false`, a post-tokenization transform downgrades these keyword tokens to `Identifier` tokens. This allows them to be used as regular variable names in Edition 2 programs.
 
+**Why demotion instead of rejection:** `NULL`, `REF`, and `REF_TO` are plausible identifier names in existing PLC programs. Rejecting them with an error ("requires Edition 3 flag") would break Edition 2 programs that use these names. Demotion makes them transparent — they're just identifiers unless the user opts into Edition 3.
+
+**File**: `compiler/parser/src/xform_demote_edition3_keywords.rs` (new file)
+
+```rust
+pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
+    if options.allow_iec_61131_3_2013 {
+        return; // Edition 3 enabled — keep as keywords
+    }
+    for tok in tokens.iter_mut() {
+        match tok.token_type {
+            TokenType::RefTo | TokenType::Ref | TokenType::Null => {
+                tok.token_type = TokenType::Identifier;
+            }
+            _ => {}
+        }
+    }
+}
 ```
-REF_TO requires --std-iec-61131-3=2013 flag
-```
+
+This transform runs after tokenization but before parsing and before the existing `rule_token_no_std_2013` validation. The existing `Ltime` rejection rule is unchanged — `LTIME` is an unusual identifier name and the error-on-use approach is acceptable for it.
 
 The `Xor`/`^` token does NOT need gating — it already exists for XOR in Edition 2. Only its interpretation as dereference (in postfix position) is Edition 3.
 
 ### Logos Longest-Match Behavior
 
-`REF_TO` is a compound keyword containing `REF`. Logos uses longest-match, so `REF_TO` is lexed as a single `RefTo` token, not `Ref` + identifier `_TO`. Similarly, `REF(` produces `Ref` + `LeftParen`, and `REF_TO_SOMETHING` (if someone tried it as an identifier) would need verification.
+`REF_TO` is a compound keyword containing `REF`. Logos uses longest-match, so `REF_TO` is lexed as a single `RefTo` token, not `Ref` + identifier `_TO`. In Edition 2 mode (no flag), the demotion transform converts `RefTo` to `Identifier` with text `"REF_TO"`, so it behaves like a normal identifier. Similarly, `REF(` produces `Ref` + `LeftParen` in Edition 3 mode, or `Identifier("REF")` + `LeftParen` in Edition 2 mode.
 
 ## Parser Grammar — `compiler/parser/src/parser.rs`
 
@@ -426,9 +444,9 @@ This is the correct trade-off for PLC safety: preventing null dereferences and o
 
 ## Keyword Collision Notes
 
-The new keywords `NULL` and `REF` may conflict with existing programs that use them as identifiers. Since these keywords are gated behind the Edition 3 flag (`--std-iec-61131-3=2013`), Edition 2 programs are unaffected. However, programs migrating to Edition 3 that use `NULL` or `REF` as variable or type names will need to rename those identifiers.
+The keyword demotion approach (see "Edition 3 Gating" above) eliminates collision concerns for Edition 2 programs: without the Edition 3 flag, `NULL`, `REF`, and `REF_TO` are demoted to identifiers and can be used freely as variable or type names.
 
-`REF_TO` is less likely to collide because the underscore makes it an unusual identifier, and logos longest-match ensures it is always lexed as a single token.
+Programs migrating to Edition 3 that use `NULL` or `REF` as identifiers will need to rename them, since enabling the `--std-iec-61131-3=2013` flag promotes these to keywords. This is an expected breaking change — the same tradeoff C compilers make when moving from `-std=c99` to `-std=c11` (e.g., `_Alignas` becoming a keyword).
 
 ## Dialect Compatibility
 

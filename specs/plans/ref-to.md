@@ -32,39 +32,44 @@ Update `TokenType::describe()` for each new variant:
 
 Verify logos longest-match behavior: `REF_TO` must lex as a single `RefTo` token, not `Ref` + identifier. Write a lexer test for this.
 
-### Step 1.2: Gate behind Edition 3 flag
+### Step 1.2: Keyword demotion for Edition 2 mode
 
-**File**: `compiler/parser/src/rule_token_no_std_2013.rs`
+**New file**: `compiler/parser/src/xform_demote_edition3_keywords.rs`
 
-Add `RefTo`, `Ref`, and `Null` to the existing token check alongside `Ltime`:
+When `allow_iec_61131_3_2013` is `false`, demote `RefTo`, `Ref`, and `Null` keyword tokens to `Identifier` tokens. This allows them to be used as regular variable and type names in Edition 2 programs. When the flag is `true`, the tokens are left as keywords and the parser interprets them as REF_TO syntax.
 
 ```rust
-if tok.token_type == TokenType::RefTo
-    || tok.token_type == TokenType::Ref
-    || tok.token_type == TokenType::Null
-{
-    errors.push(Diagnostic::problem(
-        ironplc_problems::Problem::Std2013Feature,
-        Label::span(
-            tok.span.clone(),
-            format!("{} requires --std-iec-61131-3=2013 flag",
-                tok.text.to_uppercase()),
-        ),
-    ));
+pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
+    if options.allow_iec_61131_3_2013 {
+        return;
+    }
+    for tok in tokens.iter_mut() {
+        match tok.token_type {
+            TokenType::RefTo | TokenType::Ref | TokenType::Null => {
+                tok.token_type = TokenType::Identifier;
+            }
+            _ => {}
+        }
+    }
 }
 ```
 
+Wire this into the token processing pipeline (e.g., `compiler/parser/src/lib.rs`), after tokenization but before `rule_token_no_std_2013` and before parsing. The existing `Ltime` rejection rule in `rule_token_no_std_2013.rs` is unchanged — this demotion transform is separate.
+
+Do **not** add `RefTo`/`Ref`/`Null` to `rule_token_no_std_2013.rs`. The demotion approach replaces the rejection approach for these tokens.
+
 Add tests:
-- `apply_when_has_ref_to_and_not_allowed_then_error`
-- `apply_when_has_ref_to_and_allowed_then_ok`
+- `apply_when_ref_to_and_not_edition3_then_demoted_to_identifier`
+- `apply_when_ref_to_and_edition3_then_stays_keyword`
 - Same pattern for `Ref` and `Null`
+- `apply_when_null_as_var_name_and_not_edition3_then_ok` — verify `VAR NULL : INT; END_VAR` parses successfully in Edition 2 mode
 
 ### Step 1.3: Verification
 
 - All existing tests pass
 - New tokens are lexed correctly
-- `REF_TO` is rejected without Edition 3 flag
-- `REF_TO` is accepted with Edition 3 flag
+- Without Edition 3 flag: `REF_TO`, `REF`, `NULL` are treated as identifiers (can be variable names)
+- With Edition 3 flag: `REF_TO`, `REF`, `NULL` are keywords (parsed as reference syntax)
 
 ---
 
@@ -491,7 +496,7 @@ Write an OSCAT-representative test program that exercises:
 | Phase | File | Change |
 |-------|------|--------|
 | 1 | `compiler/parser/src/token.rs` | Add RefTo, Ref, Null tokens |
-| 1 | `compiler/parser/src/rule_token_no_std_2013.rs` | Gate new tokens behind Edition 3 flag |
+| 1 | `compiler/parser/src/xform_demote_edition3_keywords.rs` | **New** — demote RefTo/Ref/Null to Identifier without Edition 3 flag |
 | 2 | `compiler/dsl/src/common.rs` | Reference type/initializer variants, ReferenceInitialValue enum |
 | 2 | `compiler/dsl/src/textual.rs` | Ref, Deref, Null expression kinds |
 | 2 | `compiler/dsl/src/visitor.rs` | Visit methods for new nodes |
