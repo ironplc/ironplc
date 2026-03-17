@@ -54,11 +54,6 @@ struct RuleInitializerTypeCompat<'a> {
 }
 
 /// Checks whether a constant literal is type-compatible with the target type.
-///
-/// Note: `IntermediateType::Date` represents DATE, TIME_OF_DAY, and
-/// DATE_AND_TIME because the intermediate type system does not distinguish
-/// them. We accept all three corresponding constant kinds for `Date` to
-/// avoid false positives.
 fn is_compatible(constant: &ConstantKind, target: &IntermediateType) -> bool {
     match target {
         IntermediateType::Bool => matches!(constant, ConstantKind::Boolean(_)),
@@ -82,12 +77,9 @@ fn is_compatible(constant: &ConstantKind, target: &IntermediateType) -> bool {
         }
         IntermediateType::String { .. } => matches!(constant, ConstantKind::CharacterString(_)),
         IntermediateType::Time { .. } => matches!(constant, ConstantKind::Duration(_)),
-        IntermediateType::Date => {
-            matches!(
-                constant,
-                ConstantKind::Date(_) | ConstantKind::TimeOfDay(_) | ConstantKind::DateAndTime(_)
-            )
-        }
+        IntermediateType::Date { .. } => matches!(constant, ConstantKind::Date(_)),
+        IntermediateType::TimeOfDay { .. } => matches!(constant, ConstantKind::TimeOfDay(_)),
+        IntermediateType::DateAndTime { .. } => matches!(constant, ConstantKind::DateAndTime(_)),
         IntermediateType::Subrange { base_type, .. } => is_compatible(constant, base_type),
         // Complex types (Enumeration, Structure, Array, FunctionBlock, Function)
         // use different InitialValueAssignmentKind variants, not Simple.
