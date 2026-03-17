@@ -310,3 +310,101 @@ END_PROGRAM
     assert_eq!(bufs1.vars[0].as_f32(), 7.0);
     assert_eq!(bufs2.vars[0].as_f32(), 7.0);
 }
+
+#[test]
+fn end_to_end_when_user_function_with_string_param_calls_len_then_returns_length() {
+    let source = "
+FUNCTION MY_LEN : INT
+VAR_INPUT
+    S : STRING;
+END_VAR
+    MY_LEN := LEN(S);
+END_FUNCTION
+PROGRAM main
+VAR
+    result : INT;
+END_VAR
+    result := MY_LEN(S := 'Hello');
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 5);
+}
+
+#[test]
+fn end_to_end_when_user_function_with_string_param_from_variable_then_correct() {
+    let source = "
+FUNCTION MY_LEN : INT
+VAR_INPUT
+    S : STRING;
+END_VAR
+    MY_LEN := LEN(S);
+END_FUNCTION
+PROGRAM main
+VAR
+    greeting : STRING := 'Hi there';
+    result : INT;
+END_VAR
+    result := MY_LEN(S := greeting);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // 'Hi there' has 8 characters.
+    assert_eq!(bufs.vars[1].as_i32(), 8);
+}
+
+#[test]
+fn end_to_end_when_user_function_with_string_and_scalar_params_then_correct() {
+    let source = "
+FUNCTION CHECK_LEN : INT
+VAR_INPUT
+    S : STRING;
+    expected : INT;
+END_VAR
+VAR
+    actual : INT;
+END_VAR
+    actual := LEN(S);
+    IF actual = expected THEN
+        CHECK_LEN := 1;
+    ELSE
+        CHECK_LEN := 0;
+    END_IF;
+END_FUNCTION
+PROGRAM main
+VAR
+    result : INT;
+END_VAR
+    result := CHECK_LEN(S := 'ABC', expected := 3);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_user_function_with_string_param_called_twice_then_both_correct() {
+    let source = "
+FUNCTION MY_LEN : INT
+VAR_INPUT
+    S : STRING;
+END_VAR
+    MY_LEN := LEN(S);
+END_FUNCTION
+PROGRAM main
+VAR
+    r1 : INT;
+    r2 : INT;
+END_VAR
+    r1 := MY_LEN(S := 'AB');
+    r2 := MY_LEN(S := 'ABCDE');
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 2);
+    assert_eq!(bufs.vars[1].as_i32(), 5);
+}
