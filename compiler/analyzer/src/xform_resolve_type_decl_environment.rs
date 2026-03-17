@@ -98,7 +98,9 @@ impl TypeEnvironment {
                 | IntermediateType::Real { .. }
                 | IntermediateType::Bytes { .. }
                 | IntermediateType::Time { .. }
-                | IntermediateType::Date
+                | IntermediateType::Date { .. }
+                | IntermediateType::TimeOfDay { .. }
+                | IntermediateType::DateAndTime { .. }
                 | IntermediateType::String { .. } => {
                     Err(Diagnostic::internal_error(file!(), line!()))
                 }

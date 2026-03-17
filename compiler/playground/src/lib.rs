@@ -15,7 +15,7 @@ use std::io::Cursor;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use ironplc_analyzer::stages::analyze;
-use ironplc_codegen::compile as codegen_compile;
+use ironplc_codegen::compile_reachable as codegen_compile;
 use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
@@ -151,6 +151,9 @@ fn format_variable_value(raw: u64, tag: u8) -> String {
         iec_type_tag::LWORD => format!("16#{:016X}", raw),
         iec_type_tag::TIME => format_time_value_ms(raw as i32),
         iec_type_tag::LTIME => format_time_value_ms(raw as i64),
+        iec_type_tag::DATE => format_date_value(raw as u32),
+        iec_type_tag::TIME_OF_DAY => format_tod_value(raw as u32),
+        iec_type_tag::DATE_AND_TIME => format_dt_value(raw),
         _ => format!("{}", raw as i32), // fallback
     }
 }
@@ -178,6 +181,58 @@ fn format_time_value_ms<T: Into<i64>>(ms: T) -> String {
             let formatted = format!("{total_s}");
             format!("{sign}T#{formatted}s")
         }
+    }
+}
+
+/// Formats a DATE value (stored as days since 0001-01-01) as D#YYYY-MM-DD.
+///
+/// Uses the inverse Julian day algorithm to convert the internal day count
+/// back into year/month/day components without requiring the `time` crate.
+fn format_date_value(days: u32) -> String {
+    // Convert days-since-epoch back to Julian day number.
+    const EPOCH_JULIAN_DAY: i64 = 1_721_426;
+    let j = EPOCH_JULIAN_DAY + days as i64;
+
+    // Richards' algorithm (Meeus, Astronomical Algorithms) for Julian day → calendar date.
+    let f = j + 1401 + ((4 * j + 274277) / 146097) * 3 / 4 - 38;
+    let e = 4 * f + 3;
+    let g = (e % 1461) / 4;
+    let h = 5 * g + 2;
+    let d = (h % 153) / 5 + 1;
+    let m = (h / 153 + 2) % 12 + 1;
+    let y = e / 1461 - 4716 + (12 + 2 - m) / 12;
+
+    format!("D#{y}-{m:02}-{d:02}")
+}
+
+/// Formats a TIME_OF_DAY value (stored as ms since midnight) as TOD#HH:MM:SS.mmm.
+fn format_tod_value(ms: u32) -> String {
+    let h = ms / 3_600_000;
+    let m = (ms % 3_600_000) / 60_000;
+    let s = (ms % 60_000) / 1_000;
+    let frac = ms % 1_000;
+    if frac == 0 {
+        format!("TOD#{h:02}:{m:02}:{s:02}")
+    } else {
+        format!("TOD#{h:02}:{m:02}:{s:02}.{frac:03}")
+    }
+}
+
+/// Formats a DATE_AND_TIME value (stored as ms since 0001-01-01 00:00:00) as DT#YYYY-MM-DD-HH:MM:SS.mmm.
+fn format_dt_value(ms: u64) -> String {
+    let total_days = (ms / 86_400_000) as u32;
+    let tod_ms = (ms % 86_400_000) as u32;
+    let date_part = format_date_value(total_days);
+    // Extract date portion (after "D#")
+    let date_str = &date_part[2..];
+    let h = tod_ms / 3_600_000;
+    let m = (tod_ms % 3_600_000) / 60_000;
+    let s = (tod_ms % 60_000) / 1_000;
+    let frac = tod_ms % 1_000;
+    if frac == 0 {
+        format!("DT#{date_str}-{h:02}:{m:02}:{s:02}")
+    } else {
+        format!("DT#{date_str}-{h:02}:{m:02}:{s:02}.{frac:03}")
     }
 }
 
@@ -292,7 +347,12 @@ fn compile_inner(source: &str) -> CompileResult {
         };
     }
 
-    let container = match codegen_compile(&library, context.functions(), context.types()) {
+    let container = match codegen_compile(
+        &library,
+        context.functions(),
+        context.types(),
+        Some(context.reachable()),
+    ) {
         Ok(c) => c,
         Err(diag) => {
             return CompileResult {

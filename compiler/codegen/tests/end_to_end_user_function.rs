@@ -240,3 +240,171 @@ END_PROGRAM
     // OUTER(3) calls INNER(3), which returns 3 * 2 = 6
     assert_eq!(bufs.vars[0].as_i32(), 6);
 }
+
+#[test]
+fn end_to_end_when_unused_function_defined_then_result_unchanged() {
+    // Without the unused function, the program computes OUTER(A:=3.0, B:=1.0)
+    // which calls INNER(X:=3.0), returning 3.0 * 2.0 = 6.0, then adds 1.0 = 7.0.
+    let source_without_unused = "
+FUNCTION INNER : REAL
+  VAR_INPUT
+    X : REAL;
+  END_VAR
+  INNER := X * 2.0;
+END_FUNCTION
+
+FUNCTION OUTER : REAL
+  VAR_INPUT
+    A : REAL;
+    B : REAL;
+  END_VAR
+  OUTER := INNER(X := A) + B;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : REAL;
+  END_VAR
+  result := OUTER(A := 3.0, B := 1.0);
+END_PROGRAM
+";
+
+    // The same program but with an unused function that references an
+    // undefined function. The compiler should tree-shake UNUSED_FUNC
+    // so that it never reaches analysis or codegen.
+    let source_with_unused = "
+FUNCTION INNER : REAL
+  VAR_INPUT
+    X : REAL;
+  END_VAR
+  INNER := X * 2.0;
+END_FUNCTION
+
+FUNCTION UNUSED_FUNC : REAL
+  VAR_INPUT
+    X : REAL;
+  END_VAR
+  UNUSED_FUNC := X + 42.0;
+END_FUNCTION
+
+FUNCTION OUTER : REAL
+  VAR_INPUT
+    A : REAL;
+    B : REAL;
+  END_VAR
+  OUTER := INNER(X := A) + B;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : REAL;
+  END_VAR
+  result := OUTER(A := 3.0, B := 1.0);
+END_PROGRAM
+";
+
+    let (_c1, bufs1) = parse_and_run(source_without_unused);
+    let (_c2, bufs2) = parse_and_run(source_with_unused);
+
+    // Both should produce 7.0
+    assert_eq!(bufs1.vars[0].as_f32(), 7.0);
+    assert_eq!(bufs2.vars[0].as_f32(), 7.0);
+}
+
+#[test]
+fn end_to_end_when_user_function_with_string_param_calls_len_then_returns_length() {
+    let source = "
+FUNCTION MY_LEN : INT
+VAR_INPUT
+    S : STRING;
+END_VAR
+    MY_LEN := LEN(S);
+END_FUNCTION
+PROGRAM main
+VAR
+    result : INT;
+END_VAR
+    result := MY_LEN(S := 'Hello');
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 5);
+}
+
+#[test]
+fn end_to_end_when_user_function_with_string_param_from_variable_then_correct() {
+    let source = "
+FUNCTION MY_LEN : INT
+VAR_INPUT
+    S : STRING;
+END_VAR
+    MY_LEN := LEN(S);
+END_FUNCTION
+PROGRAM main
+VAR
+    greeting : STRING := 'Hi there';
+    result : INT;
+END_VAR
+    result := MY_LEN(S := greeting);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // 'Hi there' has 8 characters.
+    assert_eq!(bufs.vars[1].as_i32(), 8);
+}
+
+#[test]
+fn end_to_end_when_user_function_with_string_and_scalar_params_then_correct() {
+    let source = "
+FUNCTION CHECK_LEN : INT
+VAR_INPUT
+    S : STRING;
+    expected : INT;
+END_VAR
+VAR
+    actual : INT;
+END_VAR
+    actual := LEN(S);
+    IF actual = expected THEN
+        CHECK_LEN := 1;
+    ELSE
+        CHECK_LEN := 0;
+    END_IF;
+END_FUNCTION
+PROGRAM main
+VAR
+    result : INT;
+END_VAR
+    result := CHECK_LEN(S := 'ABC', expected := 3);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_user_function_with_string_param_called_twice_then_both_correct() {
+    let source = "
+FUNCTION MY_LEN : INT
+VAR_INPUT
+    S : STRING;
+END_VAR
+    MY_LEN := LEN(S);
+END_FUNCTION
+PROGRAM main
+VAR
+    r1 : INT;
+    r2 : INT;
+END_VAR
+    r1 := MY_LEN(S := 'AB');
+    r2 := MY_LEN(S := 'ABCDE');
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[0].as_i32(), 2);
+    assert_eq!(bufs.vars[1].as_i32(), 5);
+}

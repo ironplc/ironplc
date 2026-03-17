@@ -77,8 +77,15 @@ pub enum IntermediateType {
     /// Time duration type with specified bit width.
     /// TIME is 32-bit (milliseconds), LTIME is 64-bit (milliseconds).
     Time { size: ByteSized },
-    /// Calendar date type
-    Date,
+    /// Calendar date type (DATE is 32-bit, LDATE is 64-bit).
+    /// Stored as unsigned days since 0001-01-01.
+    Date { size: ByteSized },
+    /// Time-of-day type (TIME_OF_DAY/TOD is 32-bit, LTOD is 64-bit).
+    /// Stored as unsigned milliseconds since midnight.
+    TimeOfDay { size: ByteSized },
+    /// Combined date-and-time type (DATE_AND_TIME/DT is 64-bit, LDT is 64-bit).
+    /// Stored as unsigned milliseconds since 0001-01-01 00:00:00.
+    DateAndTime { size: ByteSized },
 
     /// Variable-length string with optional maximum length
     String { max_len: Option<u128> },
@@ -137,7 +144,9 @@ impl IntermediateType {
                 | IntermediateType::Bytes { .. }
                 | IntermediateType::String { .. }
                 | IntermediateType::Time { .. }
-                | IntermediateType::Date
+                | IntermediateType::Date { .. }
+                | IntermediateType::TimeOfDay { .. }
+                | IntermediateType::DateAndTime { .. }
         )
     }
 
@@ -227,7 +236,9 @@ impl IntermediateType {
             IntermediateType::Real { size } => Some(size.as_bytes() as u32),
             IntermediateType::Bytes { size } => Some(size.as_bytes() as u32),
             IntermediateType::Time { size } => Some(size.as_bytes() as u32),
-            IntermediateType::Date => Some(8), // 64-bit date representation
+            IntermediateType::Date { size } => Some(size.as_bytes() as u32),
+            IntermediateType::TimeOfDay { size } => Some(size.as_bytes() as u32),
+            IntermediateType::DateAndTime { size } => Some(size.as_bytes() as u32),
             IntermediateType::String { max_len } => max_len.map(|len| len as u32),
             IntermediateType::Subrange { base_type, .. } => base_type.size_in_bytes(),
             IntermediateType::Enumeration { underlying_type } => underlying_type.size_in_bytes(),
@@ -289,7 +300,7 @@ impl IntermediateType {
     /// - 8-bit types (BOOL, SINT, USINT, BYTE): 1-byte alignment
     /// - 16-bit types (INT, UINT, WORD): 2-byte alignment  
     /// - 32-bit types (DINT, UDINT, REAL, DWORD): 4-byte alignment
-    /// - 64-bit types (LINT, ULINT, LREAL, LWORD, TIME, DATE): 8-byte alignment
+    /// - 64-bit types (LINT, ULINT, LREAL, LWORD, LTIME, LDATE, DT, LDT): 8-byte alignment
     pub fn alignment_bytes(&self) -> u8 {
         match self {
             IntermediateType::Bool => 1,
@@ -297,7 +308,9 @@ impl IntermediateType {
             IntermediateType::Real { size } => size.as_bytes(),
             IntermediateType::Bytes { size } => size.as_bytes(),
             IntermediateType::Time { size } => size.as_bytes(),
-            IntermediateType::Date => 8,          // 64-bit alignment
+            IntermediateType::Date { size } => size.as_bytes(),
+            IntermediateType::TimeOfDay { size } => size.as_bytes(),
+            IntermediateType::DateAndTime { size } => size.as_bytes(),
             IntermediateType::String { .. } => 1, // Strings are byte-aligned
             IntermediateType::Subrange { base_type, .. } => base_type.alignment_bytes(),
             IntermediateType::Enumeration { underlying_type } => underlying_type.alignment_bytes(),
@@ -342,7 +355,9 @@ impl IntermediateType {
             | IntermediateType::Real { .. }
             | IntermediateType::Bytes { .. }
             | IntermediateType::Time { .. }
-            | IntermediateType::Date => true,
+            | IntermediateType::Date { .. }
+            | IntermediateType::TimeOfDay { .. }
+            | IntermediateType::DateAndTime { .. } => true,
             IntermediateType::String { max_len } => max_len.is_some(),
             IntermediateType::Subrange { base_type, .. } => base_type.has_explicit_size(),
             IntermediateType::Enumeration { underlying_type } => {
@@ -594,7 +609,27 @@ mod tests {
             .size_in_bytes(),
             Some(8)
         );
-        assert_eq!(IntermediateType::Date.size_in_bytes(), Some(8));
+        assert_eq!(
+            IntermediateType::Date {
+                size: ByteSized::B32
+            }
+            .size_in_bytes(),
+            Some(4)
+        );
+        assert_eq!(
+            IntermediateType::TimeOfDay {
+                size: ByteSized::B32
+            }
+            .size_in_bytes(),
+            Some(4)
+        );
+        assert_eq!(
+            IntermediateType::DateAndTime {
+                size: ByteSized::B64
+            }
+            .size_in_bytes(),
+            Some(8)
+        );
 
         // Test string types
         assert_eq!(
@@ -684,7 +719,20 @@ mod tests {
             .alignment_bytes(),
             8
         );
-        assert_eq!(IntermediateType::Date.alignment_bytes(), 8);
+        assert_eq!(
+            IntermediateType::Date {
+                size: ByteSized::B32
+            }
+            .alignment_bytes(),
+            4
+        );
+        assert_eq!(
+            IntermediateType::DateAndTime {
+                size: ByteSized::B64
+            }
+            .alignment_bytes(),
+            8
+        );
 
         // Test string types (byte-aligned)
         assert_eq!(
@@ -724,7 +772,10 @@ mod tests {
             size: ByteSized::B32
         }
         .has_explicit_size());
-        assert!(IntermediateType::Date.has_explicit_size());
+        assert!(IntermediateType::Date {
+            size: ByteSized::B32
+        }
+        .has_explicit_size());
 
         // Test string types
         assert!(IntermediateType::String { max_len: Some(10) }.has_explicit_size());

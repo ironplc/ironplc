@@ -14,6 +14,7 @@
 use std::collections::HashMap;
 
 use ironplc_dsl::common::Library;
+use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::textual::*;
@@ -65,25 +66,22 @@ impl Fold<Diagnostic> for NamedToPositionalResolver<'_> {
 
         // 3. Build HashMap from named inputs, checking for duplicates.
         //    Collect output assignments separately.
-        let mut named_map: HashMap<String, NamedInput> = HashMap::new();
+        let mut named_map: HashMap<Id, NamedInput> = HashMap::new();
         let mut outputs: Vec<ParamAssignmentKind> = vec![];
 
         for param in node.param_assignment {
             match param {
-                ParamAssignmentKind::NamedInput(ni) => {
-                    let lower = ni.name.lower_case().to_string();
-                    match named_map.entry(lower) {
-                        std::collections::hash_map::Entry::Occupied(_) => {
-                            self.errors.push(Diagnostic::problem(
-                                Problem::FunctionCallDuplicateNamedArg,
-                                Label::span(ni.name.span.clone(), "Duplicate argument"),
-                            ));
-                        }
-                        std::collections::hash_map::Entry::Vacant(entry) => {
-                            entry.insert(ni);
-                        }
+                ParamAssignmentKind::NamedInput(ni) => match named_map.entry(ni.name.clone()) {
+                    std::collections::hash_map::Entry::Occupied(_) => {
+                        self.errors.push(Diagnostic::problem(
+                            Problem::FunctionCallDuplicateNamedArg,
+                            Label::span(ni.name.span.clone(), "Duplicate argument"),
+                        ));
                     }
-                }
+                    std::collections::hash_map::Entry::Vacant(entry) => {
+                        entry.insert(ni);
+                    }
+                },
                 ParamAssignmentKind::Output(_) => outputs.push(param),
                 ParamAssignmentKind::PositionalInput(_) => {
                     unreachable!("positional inputs already handled above")
@@ -119,8 +117,7 @@ impl Fold<Diagnostic> for NamedToPositionalResolver<'_> {
             if !param.is_input {
                 continue;
             }
-            let lower = param.name.lower_case().to_string();
-            if let Some(ni) = named_map.remove(&lower) {
+            if let Some(ni) = named_map.remove(&param.name) {
                 let folded_expr = self.fold_expr(ni.expr)?;
                 positional_args.push(ParamAssignmentKind::PositionalInput(PositionalInput {
                     expr: folded_expr,
@@ -412,14 +409,14 @@ END_PROGRAM
         use ironplc_dsl::visitor::Visitor;
 
         struct FunctionFinder {
-            target: String,
+            target: Id,
             found: Option<Function>,
         }
 
         impl Visitor<()> for FunctionFinder {
             type Value = ();
             fn visit_function(&mut self, node: &Function) -> Result<Self::Value, ()> {
-                if node.name.lower_case().to_string() == self.target.to_lowercase() {
+                if node.name == self.target {
                     self.found = Some(node.clone());
                 }
                 Ok(())
@@ -427,7 +424,7 @@ END_PROGRAM
         }
 
         let mut finder = FunctionFinder {
-            target: name.to_string(),
+            target: Id::from(name),
             found: None,
         };
         let _ = finder.walk(library);

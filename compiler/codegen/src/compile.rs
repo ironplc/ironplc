@@ -34,7 +34,7 @@
 //! After arithmetic at native width, narrow types (SINT, INT, USINT, UINT)
 //! are truncated back to their declared range before storing.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ironplc_container::debug_section::{
     function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry,
@@ -127,15 +127,31 @@ pub fn compile(
     functions: &FunctionEnvironment,
     types: &TypeEnvironment,
 ) -> Result<Container, Diagnostic> {
+    compile_reachable(library, functions, types, None)
+}
+
+/// Like [`compile`], but only includes user-defined functions whose names
+/// appear in `reachable`. When `reachable` is `None`, all functions are
+/// compiled (same behaviour as [`compile`]).
+pub fn compile_reachable(
+    library: &Library,
+    functions: &FunctionEnvironment,
+    types: &TypeEnvironment,
+    reachable: Option<&HashSet<Id>>,
+) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
 
-    // Collect user-defined function declarations from the library.
+    // Collect user-defined function declarations from the library,
+    // filtering to only reachable functions when a reachable set is provided.
     let func_decls: Vec<&FunctionDeclaration> = library
         .elements
         .iter()
         .filter_map(|e| {
             if let LibraryElementKind::FunctionDeclaration(f) = e {
-                Some(f)
+                match reachable {
+                    Some(set) => set.contains(&f.name).then_some(f),
+                    None => Some(f),
+                }
             } else {
                 None
             }
@@ -308,6 +324,7 @@ fn compile_user_function(
     // Save the program's variable mappings.
     let saved_variables = std::mem::take(&mut ctx.variables);
     let saved_var_types = std::mem::take(&mut ctx.var_types);
+    let saved_string_vars = std::mem::take(&mut ctx.string_vars);
 
     // Assign variable slots for the function's parameters and locals,
     // starting at var_offset. Input parameters come first (declaration order),
@@ -322,10 +339,44 @@ fn compile_user_function(
         }
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
-            if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-                if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
-                    ctx.var_types.insert(id.clone(), type_info);
+            match &decl.initializer {
+                InitialValueAssignmentKind::Simple(simple) => {
+                    if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
+                        ctx.var_types.insert(id.clone(), type_info);
+                    }
                 }
+                InitialValueAssignmentKind::String(string_init) => {
+                    let max_length = string_init
+                        .length
+                        .as_ref()
+                        .map(|len| len.value as u16)
+                        .unwrap_or(DEFAULT_STRING_MAX_LENGTH);
+
+                    let data_offset = ctx.data_region_offset;
+                    let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+                    ctx.data_region_offset = ctx
+                        .data_region_offset
+                        .checked_add(total_bytes)
+                        .ok_or_else(|| {
+                            Diagnostic::problem(
+                                Problem::NotImplemented,
+                                Label::span(string_init.span(), "Data region overflow"),
+                            )
+                        })?;
+
+                    if max_length > ctx.max_string_capacity {
+                        ctx.max_string_capacity = max_length;
+                    }
+
+                    ctx.string_vars.insert(
+                        id.clone(),
+                        StringVarInfo {
+                            data_offset,
+                            max_length,
+                        },
+                    );
+                }
+                _ => {}
             }
             current_index += 1;
             num_params += 1;
@@ -339,10 +390,44 @@ fn compile_user_function(
         }
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
-            if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-                if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
-                    ctx.var_types.insert(id.clone(), type_info);
+            match &decl.initializer {
+                InitialValueAssignmentKind::Simple(simple) => {
+                    if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
+                        ctx.var_types.insert(id.clone(), type_info);
+                    }
                 }
+                InitialValueAssignmentKind::String(string_init) => {
+                    let max_length = string_init
+                        .length
+                        .as_ref()
+                        .map(|len| len.value as u16)
+                        .unwrap_or(DEFAULT_STRING_MAX_LENGTH);
+
+                    let data_offset = ctx.data_region_offset;
+                    let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+                    ctx.data_region_offset = ctx
+                        .data_region_offset
+                        .checked_add(total_bytes)
+                        .ok_or_else(|| {
+                            Diagnostic::problem(
+                                Problem::NotImplemented,
+                                Label::span(string_init.span(), "Data region overflow"),
+                            )
+                        })?;
+
+                    if max_length > ctx.max_string_capacity {
+                        ctx.max_string_capacity = max_length;
+                    }
+
+                    ctx.string_vars.insert(
+                        id.clone(),
+                        StringVarInfo {
+                            data_offset,
+                            max_length,
+                        },
+                    );
+                }
+                _ => {}
             }
             current_index += 1;
         }
@@ -394,20 +479,52 @@ fn compile_user_function(
     // Record function metadata for use at call sites.
     let func_name = func_decl.name.lower_case();
 
-    // Also record parameter OpTypes from the function signature for call-site compilation.
-    let param_op_types: Vec<OpType> = if let Some(sig) = functions.get(&func_decl.name) {
-        sig.parameters
-            .iter()
-            .filter(|p| p.is_input)
-            .map(|p| {
-                resolve_type_name(&p.param_type.name)
-                    .map(|info| (info.op_width, info.signedness))
-                    .unwrap_or(DEFAULT_OP_TYPE)
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
+    // Record parameter OpTypes and STRING info from the function's declarations.
+    let mut param_op_types: Vec<OpType> = Vec::new();
+    let mut param_string_info: Vec<Option<StringParamInfo>> = Vec::new();
+    for decl in &func_decl.variables {
+        if decl.var_type != VariableType::Input {
+            continue;
+        }
+        match &decl.initializer {
+            InitialValueAssignmentKind::String(_) => {
+                param_op_types.push(DEFAULT_OP_TYPE);
+                if let Some(id) = decl.identifier.symbolic_id() {
+                    if let Some(info) = ctx.string_vars.get(id) {
+                        param_string_info.push(Some(StringParamInfo {
+                            data_offset: info.data_offset,
+                            max_length: info.max_length,
+                        }));
+                    } else {
+                        param_string_info.push(None);
+                    }
+                } else {
+                    param_string_info.push(None);
+                }
+            }
+            _ => {
+                if let Some(sig) = functions.get(&func_decl.name) {
+                    if let Some(param) = sig
+                        .parameters
+                        .iter()
+                        .filter(|p| p.is_input)
+                        .nth(param_op_types.len())
+                    {
+                        param_op_types.push(
+                            resolve_type_name(&param.param_type.name)
+                                .map(|info| (info.op_width, info.signedness))
+                                .unwrap_or(DEFAULT_OP_TYPE),
+                        );
+                    } else {
+                        param_op_types.push(DEFAULT_OP_TYPE);
+                    }
+                } else {
+                    param_op_types.push(DEFAULT_OP_TYPE);
+                }
+                param_string_info.push(None);
+            }
+        }
+    }
 
     ctx.user_functions.insert(
         func_name.to_string(),
@@ -416,6 +533,7 @@ fn compile_user_function(
             var_offset,
             num_params,
             param_op_types,
+            param_string_info,
             max_stack_depth,
         },
     );
@@ -423,6 +541,7 @@ fn compile_user_function(
     // Restore the program's variable mappings.
     ctx.variables = saved_variables;
     ctx.var_types = saved_var_types;
+    ctx.string_vars = saved_string_vars;
 
     Ok(CompiledFunction {
         function_id,
@@ -432,6 +551,18 @@ fn compile_user_function(
         num_params,
         name: func_name.to_string(),
     })
+}
+
+/// Metadata for a STRING parameter in a user-defined function.
+///
+/// Used at call sites to copy the caller's string data into the function's
+/// allocated data region space before executing the CALL instruction.
+#[derive(Clone)]
+struct StringParamInfo {
+    /// Byte offset in the data region where this parameter's string is stored.
+    data_offset: u32,
+    /// Maximum number of characters this parameter can hold.
+    max_length: u16,
 }
 
 /// Metadata for a compiled user-defined function.
@@ -445,6 +576,9 @@ struct UserFunctionInfo {
     num_params: u16,
     /// OpTypes for each input parameter, in declaration order.
     param_op_types: Vec<OpType>,
+    /// For each input parameter (in order), `Some(info)` if it is a STRING
+    /// parameter that needs copy-in at the call site, `None` for scalar params.
+    param_string_info: Vec<Option<StringParamInfo>>,
     /// Maximum stack depth used by this function's body.
     max_stack_depth: u16,
 }
@@ -777,6 +911,9 @@ fn resolve_iec_type_tag(name: &Id) -> u8 {
         "lword" => iec_type_tag::LWORD,
         "time" => iec_type_tag::TIME,
         "ltime" => iec_type_tag::LTIME,
+        "date" => iec_type_tag::DATE,
+        "time_of_day" | "tod" => iec_type_tag::TIME_OF_DAY,
+        "date_and_time" | "dt" => iec_type_tag::DATE_AND_TIME,
         _ => iec_type_tag::OTHER,
     }
 }
@@ -920,8 +1057,25 @@ fn emit_function_local_prologue(
                     }
                     emit_store_var(emitter, var_index, op_type);
                 }
+                InitialValueAssignmentKind::String(string_init) => {
+                    // Re-initialize STRING locals: emit STR_INIT to reset the
+                    // header, then optionally load the initial value.
+                    if let Some(info) = ctx.string_vars.get(id) {
+                        let data_offset = info.data_offset;
+                        let max_length = info.max_length;
+                        emitter.emit_str_init(data_offset, max_length);
+
+                        if let Some(chars) = &string_init.initial_value {
+                            let bytes: Vec<u8> = chars.iter().map(|&ch| ch as u8).collect();
+                            let pool_index = ctx.add_str_constant(bytes);
+                            ctx.num_temp_bufs += 1;
+                            emitter.emit_load_const_str(pool_index);
+                            emitter.emit_str_store_var(data_offset);
+                        }
+                    }
+                }
                 _ => {
-                    // Other initializer kinds (String, FunctionBlock, etc.)
+                    // Other initializer kinds (FunctionBlock, etc.)
                     // are not expected in function locals; zero-fill as default.
                     emit_zero_const(emitter, ctx, op_type);
                     emit_store_var(emitter, var_index, op_type);
@@ -1047,6 +1201,21 @@ pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
         "ltime" => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Signed,
+            storage_bits: 64,
+        }),
+        "date" => Some(VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Unsigned,
+            storage_bits: 32,
+        }),
+        "time_of_day" | "tod" => Some(VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Unsigned,
+            storage_bits: 32,
+        }),
+        "date_and_time" | "dt" => Some(VarTypeInfo {
+            op_width: OpWidth::W64,
+            signedness: Signedness::Unsigned,
             storage_bits: 64,
         }),
         _ => None,
@@ -2124,8 +2293,10 @@ fn compile_function_call(
 
 /// Compiles a call to a user-defined function.
 ///
-/// Compiles each positional argument using the parameter's declared OpType,
-/// then emits a CALL instruction. The CALL opcode pops arguments, stores them
+/// For STRING parameters, copies the caller's string data into the function's
+/// pre-allocated data region space before the CALL. For scalar parameters,
+/// compiles the argument expression normally. The CALL opcode pops scalar
+/// arguments (and dummy values for STRING params) from the stack, stores them
 /// into the function's variable slots, executes the function, and pushes
 /// the return value onto the stack.
 fn compile_user_function_call(
@@ -2144,13 +2315,29 @@ fn compile_user_function_call(
         .collect();
 
     // Compile each argument with the corresponding parameter's OpType.
+    // STRING parameters are copied into the function's data region before CALL;
+    // a dummy zero is pushed for the stack pop count.
     for (i, arg) in args.iter().enumerate() {
-        let arg_op_type = func_info
-            .param_op_types
-            .get(i)
-            .copied()
-            .unwrap_or(DEFAULT_OP_TYPE);
-        compile_expr(emitter, ctx, arg, arg_op_type)?;
+        if let Some(Some(str_info)) = func_info.param_string_info.get(i) {
+            // Copy the string argument into the function's parameter space.
+            // Initialize the destination header, then copy the string data.
+            emitter.emit_str_init(str_info.data_offset, str_info.max_length);
+            let src_offset = resolve_string_arg(emitter, ctx, arg, &func.name.span())?;
+            ctx.num_temp_bufs += 1;
+            emitter.emit_str_load_var(src_offset);
+            emitter.emit_str_store_var(str_info.data_offset);
+
+            // Push a dummy value for the CALL stack pop.
+            let zero_idx = ctx.add_i32_constant(0);
+            emitter.emit_load_const_i32(zero_idx);
+        } else {
+            let arg_op_type = func_info
+                .param_op_types
+                .get(i)
+                .copied()
+                .unwrap_or(DEFAULT_OP_TYPE);
+            compile_expr(emitter, ctx, arg, arg_op_type)?;
+        }
     }
 
     emitter.emit_call(
@@ -3238,9 +3425,40 @@ fn compile_constant(
             }
             Ok(())
         }
-        ConstantKind::TimeOfDay(_) => Err(Diagnostic::todo(file!(), line!())),
-        ConstantKind::Date(_) => Err(Diagnostic::todo(file!(), line!())),
-        ConstantKind::DateAndTime(_) => Err(Diagnostic::todo(file!(), line!())),
+        ConstantKind::TimeOfDay(lit) => {
+            let ms = lit.whole_milliseconds();
+            match op_type.0 {
+                OpWidth::W64 => {
+                    let pool_index = ctx.add_i64_constant(ms as i64);
+                    emitter.emit_load_const_i64(pool_index);
+                }
+                _ => {
+                    let pool_index = ctx.add_i32_constant(ms as i32);
+                    emitter.emit_load_const_i32(pool_index);
+                }
+            }
+            Ok(())
+        }
+        ConstantKind::Date(lit) => {
+            let days = lit.days_since_epoch();
+            match op_type.0 {
+                OpWidth::W64 => {
+                    let pool_index = ctx.add_i64_constant(days as i64);
+                    emitter.emit_load_const_i64(pool_index);
+                }
+                _ => {
+                    let pool_index = ctx.add_i32_constant(days as i32);
+                    emitter.emit_load_const_i32(pool_index);
+                }
+            }
+            Ok(())
+        }
+        ConstantKind::DateAndTime(lit) => {
+            let ms = lit.whole_milliseconds();
+            let pool_index = ctx.add_i64_constant(ms as i64);
+            emitter.emit_load_const_i64(pool_index);
+            Ok(())
+        }
         ConstantKind::BitStringLiteral(lit) => {
             let span = lit.value.span();
             match op_type {
