@@ -114,21 +114,36 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 24] = [
     ),
     // date_type_name — DATE must appear before DATE_AND_TIME for the
     // same reason.
-    ("date", IntermediateType::Date),
+    (
+        "date",
+        IntermediateType::Date {
+            size: ByteSized::B32,
+        },
+    ),
     (
         "time_of_day",
-        IntermediateType::Time {
+        IntermediateType::TimeOfDay {
             size: ByteSized::B32,
         },
     ),
     (
         "tod",
-        IntermediateType::Time {
+        IntermediateType::TimeOfDay {
             size: ByteSized::B32,
         },
     ),
-    ("date_and_time", IntermediateType::Date),
-    ("dt", IntermediateType::Date),
+    (
+        "date_and_time",
+        IntermediateType::DateAndTime {
+            size: ByteSized::B64,
+        },
+    ),
+    (
+        "dt",
+        IntermediateType::DateAndTime {
+            size: ByteSized::B64,
+        },
+    ),
     // bit_string_type_name
     ("bool", IntermediateType::Bool),
     (
@@ -500,7 +515,10 @@ mod tests {
             size: ByteSized::B32
         }
         .is_primitive());
-        assert!(IntermediateType::Date.is_primitive());
+        assert!(IntermediateType::Date {
+            size: ByteSized::B32
+        }
+        .is_primitive());
 
         // Test non-primitive types
         assert!(!IntermediateType::Enumeration {

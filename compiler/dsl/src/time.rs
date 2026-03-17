@@ -153,9 +153,18 @@ impl TimeOfDayLiteral {
         Self { value }
     }
 
-    /// Returns the hour, minute, second and millisecond from the literal.
+    /// Returns the hour, minute, second and microsecond from the literal.
     pub fn hmsm(&self) -> (u8, u8, u8, u32) {
         self.value.as_hms_micro()
+    }
+
+    /// Returns milliseconds since midnight as a u32.
+    ///
+    /// Maximum value is 86_399_999 (23:59:59.999).
+    /// Microsecond precision from the underlying Time is truncated to milliseconds.
+    pub fn whole_milliseconds(&self) -> u32 {
+        let (h, m, s, micro) = self.hmsm();
+        (h as u32) * 3_600_000 + (m as u32) * 60_000 + (s as u32) * 1_000 + micro / 1_000
     }
 }
 
@@ -183,6 +192,18 @@ impl DateLiteral {
         let month = self.value.month();
         let day = self.value.day();
         (year, month.into(), day)
+    }
+
+    /// Returns the number of days since the epoch 0001-01-01 as a u32.
+    ///
+    /// The IEC 61131-3 DATE type represents calendar dates. We use an
+    /// epoch of 0001-01-01 (Julian day 1721426) so that all valid dates
+    /// in the Gregorian/proleptic calendar produce non-negative values.
+    pub fn days_since_epoch(&self) -> u32 {
+        // Julian day of 0001-01-01
+        const EPOCH_JULIAN_DAY: i32 = 1_721_426;
+        let julian_day = self.value.to_julian_day();
+        (julian_day - EPOCH_JULIAN_DAY) as u32
     }
 }
 
@@ -212,9 +233,24 @@ impl DateAndTimeLiteral {
         (year, month.into(), day)
     }
 
-    /// Returns the hour, minute, second and millisecond from the literal.
+    /// Returns the hour, minute, second and microsecond from the literal.
     pub fn hmsm(&self) -> (u8, u8, u8, u32) {
         self.value.as_hms_micro()
+    }
+
+    /// Returns milliseconds since 0001-01-01 00:00:00 as a u64.
+    ///
+    /// Combines the date component (days since epoch) with the time-of-day
+    /// component (milliseconds since midnight) into a single u64 value.
+    pub fn whole_milliseconds(&self) -> u64 {
+        const EPOCH_JULIAN_DAY: i32 = 1_721_426;
+        let days = (self.value.date().to_julian_day() - EPOCH_JULIAN_DAY) as u64;
+        let (h, m, s, micro) = self.hmsm();
+        let tod_ms = (h as u64) * 3_600_000
+            + (m as u64) * 60_000
+            + (s as u64) * 1_000
+            + (micro as u64) / 1_000;
+        days * 86_400_000 + tod_ms
     }
 }
 
