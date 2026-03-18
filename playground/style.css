@@ -97,7 +97,8 @@ main {
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
-#examples-select {
+#examples-select,
+#edition-select {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
@@ -107,8 +108,23 @@ main {
   cursor: pointer;
 }
 
-#examples-select:hover {
+#examples-select:hover,
+#edition-select:hover {
   border-color: var(--accent);
+}
+
+.edition-badge {
+  display: none;
+  font-size: 0.75rem;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 0.15rem 0.5rem;
+  white-space: nowrap;
+}
+
+.edition-badge.visible {
+  display: inline-block;
 }
 
 .toolbar label {
@@ -297,7 +313,8 @@ footer {
 body.embed header,
 body.embed footer,
 body.embed #pause-btn,
-body.embed #examples-select {
+body.embed #examples-select,
+body.embed #edition-select {
   display: none;
 }
 

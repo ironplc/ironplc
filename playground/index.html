@@ -19,6 +19,11 @@
         <select id="examples-select" data-testid="examples-select" title="Load an example program">
           <option value="" disabled selected>Examples</option>
         </select>
+        <select id="edition-select" data-testid="edition-select" title="IEC 61131-3 edition">
+          <option value="2003" selected>Edition 2 (2003)</option>
+          <option value="2013">Edition 3 (2013)</option>
+        </select>
+        <span id="edition-badge" data-testid="edition-badge" class="edition-badge"></span>
         <button id="start-btn" disabled data-testid="start-btn" title="Compile and start running">&#x25B6;</button>
         <button id="stop-btn" disabled data-testid="stop-btn" title="Stop and reset">&#x25A0;</button>
         <button id="pause-btn" disabled data-testid="pause-btn" title="Pause/resume execution">&#x23F8;</button>

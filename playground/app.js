@@ -11,6 +11,8 @@ const status = document.getElementById("status");
 const variablesPanel = document.getElementById("variables-panel");
 const diagnosticsPanel = document.getElementById("diagnostics-panel");
 const examplesSelect = document.getElementById("examples-select");
+const editionSelect = document.getElementById("edition-select");
+const editionBadge = document.getElementById("edition-badge");
 
 // --- Example programs ---
 
@@ -164,6 +166,29 @@ if (isEmbed) {
   document.body.classList.add("embed");
   intervalInput.disabled = true;
 }
+
+// Set edition from URL parameter (used by embed/Sphinx directives)
+if (params.has("edition")) {
+  const editionParam = params.get("edition");
+  if (editionParam === "2013") {
+    editionSelect.value = "2013";
+    editionBadge.textContent = "IEC 61131-3:2013";
+    editionBadge.classList.add("visible");
+  }
+}
+
+function getEdition() {
+  return editionSelect.value;
+}
+
+// Stop execution when edition changes (same as source change)
+editionSelect.addEventListener("change", () => {
+  if (isRunning) {
+    stopExecution();
+    postCommand("reset");
+    status.textContent = "Edition changed \u2014 stopped. Click Start to recompile.";
+  }
+});
 
 // --- Populate examples dropdown ---
 
@@ -381,7 +406,8 @@ startBtn.addEventListener("click", async () => {
 
   status.textContent = "Compiling\u2026";
 
-  const loadMsg = await postCommand("load_program", { source, cycleTimeUs });
+  const edition = getEdition();
+  const loadMsg = await postCommand("load_program", { source, cycleTimeUs, edition });
 
   if (loadMsg.type === "error") {
     status.textContent = loadMsg.error;
