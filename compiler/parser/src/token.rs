@@ -346,6 +346,17 @@ pub enum TokenType {
     #[token("DATE_AND_TIME", ignore(case))]
     #[token("DT", ignore(case))]
     DateAndTime,
+
+    // IEC 61131-3 Edition 3 (2013) long date/time types
+    #[token("LDATE", ignore(case))]
+    Ldate,
+    #[token("LTIME_OF_DAY", ignore(case))]
+    #[token("LTOD", ignore(case))]
+    Ltod,
+    #[token("LDATE_AND_TIME", ignore(case))]
+    #[token("LDT", ignore(case))]
+    Ldt,
+
     #[token("STRING", ignore(case))]
     String,
     #[token("BYTE", ignore(case))]
@@ -545,6 +556,9 @@ impl TokenType {
             TokenType::Date => "'DATE' | 'D'",
             TokenType::TimeOfDay => "'TIME_OF_DAY' | 'TOD'",
             TokenType::DateAndTime => "'DATE_AND_TIME' | 'DT'",
+            TokenType::Ldate => "'LDATE'",
+            TokenType::Ltod => "'LTIME_OF_DAY' | 'LTOD'",
+            TokenType::Ldt => "'LDATE_AND_TIME' | 'LDT'",
             TokenType::String => "'STRING'",
             TokenType::Byte => "'BYTE'",
             TokenType::Word => "'WORD'",
