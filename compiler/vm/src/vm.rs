@@ -588,6 +588,31 @@ fn execute(
                 let slot = stack.pop()?;
                 variables.store(index, slot)?;
             }
+            // --- Indirect load/store (reference dereference) ---
+            opcode::LOAD_INDIRECT => {
+                let ref_slot = stack.pop()?;
+                if ref_slot.is_null_ref() {
+                    return Err(Trap::NullDereference);
+                }
+                let target_index = ref_slot
+                    .as_var_index()
+                    .ok_or(Trap::InvalidVariableIndex(u16::MAX))?;
+                scope.check_access(target_index)?;
+                let value = variables.load(target_index)?;
+                stack.push(value)?;
+            }
+            opcode::STORE_INDIRECT => {
+                let ref_slot = stack.pop()?;
+                if ref_slot.is_null_ref() {
+                    return Err(Trap::NullDereference);
+                }
+                let target_index = ref_slot
+                    .as_var_index()
+                    .ok_or(Trap::InvalidVariableIndex(u16::MAX))?;
+                scope.check_access(target_index)?;
+                let value = stack.pop()?;
+                variables.store(target_index, value)?;
+            }
             // --- Integer arithmetic (wrapping) ---
             opcode::ADD_I32 => binop!(stack, as_i32, from_i32, a, b, a.wrapping_add(b)),
             opcode::SUB_I32 => binop!(stack, as_i32, from_i32, a, b, a.wrapping_sub(b)),
