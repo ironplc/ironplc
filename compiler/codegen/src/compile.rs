@@ -41,9 +41,9 @@ use ironplc_container::debug_section::{
 };
 use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES};
 use ironplc_dsl::common::{
-    Boolean, ConstantKind, FunctionBlockBodyKind, FunctionDeclaration, InitialValueAssignmentKind,
-    Library, LibraryElementKind, ProgramDeclaration, SignedInteger, SpecificationKind, VarDecl,
-    VariableType,
+    Boolean, ConstantKind, ElementaryTypeName, FunctionBlockBodyKind, FunctionDeclaration,
+    InitialValueAssignmentKind, Library, LibraryElementKind, ProgramDeclaration, SignedInteger,
+    SpecificationKind, VarDecl, VariableType,
 };
 use ironplc_dsl::configuration::ConfigurationDeclaration;
 use ironplc_dsl::core::{FileId, Id, Located};
@@ -921,31 +921,35 @@ fn map_var_section(vt: &VariableType) -> u8 {
 
 /// Maps an IEC 61131-3 type name to its debug type tag.
 fn resolve_iec_type_tag(name: &Id) -> u8 {
-    match name.lower_case().as_str() {
-        "bool" => iec_type_tag::BOOL,
-        "sint" => iec_type_tag::SINT,
-        "int" => iec_type_tag::INT,
-        "dint" => iec_type_tag::DINT,
-        "lint" => iec_type_tag::LINT,
-        "usint" => iec_type_tag::USINT,
-        "uint" => iec_type_tag::UINT,
-        "udint" => iec_type_tag::UDINT,
-        "ulint" => iec_type_tag::ULINT,
-        "real" => iec_type_tag::REAL,
-        "lreal" => iec_type_tag::LREAL,
-        "byte" => iec_type_tag::BYTE,
-        "word" => iec_type_tag::WORD,
-        "dword" => iec_type_tag::DWORD,
-        "lword" => iec_type_tag::LWORD,
-        "time" => iec_type_tag::TIME,
-        "ltime" => iec_type_tag::LTIME,
-        "date" => iec_type_tag::DATE,
-        "ldate" => iec_type_tag::LDATE,
-        "time_of_day" | "tod" => iec_type_tag::TIME_OF_DAY,
-        "ltime_of_day" | "ltod" => iec_type_tag::LTOD,
-        "date_and_time" | "dt" => iec_type_tag::DATE_AND_TIME,
-        "ldate_and_time" | "ldt" => iec_type_tag::LDT,
-        _ => iec_type_tag::OTHER,
+    match ElementaryTypeName::try_from(name) {
+        Ok(elem) => match elem {
+            ElementaryTypeName::BOOL => iec_type_tag::BOOL,
+            ElementaryTypeName::SINT => iec_type_tag::SINT,
+            ElementaryTypeName::INT => iec_type_tag::INT,
+            ElementaryTypeName::DINT => iec_type_tag::DINT,
+            ElementaryTypeName::LINT => iec_type_tag::LINT,
+            ElementaryTypeName::USINT => iec_type_tag::USINT,
+            ElementaryTypeName::UINT => iec_type_tag::UINT,
+            ElementaryTypeName::UDINT => iec_type_tag::UDINT,
+            ElementaryTypeName::ULINT => iec_type_tag::ULINT,
+            ElementaryTypeName::REAL => iec_type_tag::REAL,
+            ElementaryTypeName::LREAL => iec_type_tag::LREAL,
+            ElementaryTypeName::BYTE => iec_type_tag::BYTE,
+            ElementaryTypeName::WORD => iec_type_tag::WORD,
+            ElementaryTypeName::DWORD => iec_type_tag::DWORD,
+            ElementaryTypeName::LWORD => iec_type_tag::LWORD,
+            ElementaryTypeName::STRING => iec_type_tag::STRING,
+            ElementaryTypeName::WSTRING => iec_type_tag::WSTRING,
+            ElementaryTypeName::TIME => iec_type_tag::TIME,
+            ElementaryTypeName::LTIME => iec_type_tag::LTIME,
+            ElementaryTypeName::DATE => iec_type_tag::DATE,
+            ElementaryTypeName::LDATE => iec_type_tag::LDATE,
+            ElementaryTypeName::TimeOfDay => iec_type_tag::TIME_OF_DAY,
+            ElementaryTypeName::LTimeOfDay => iec_type_tag::LTOD,
+            ElementaryTypeName::DateAndTime => iec_type_tag::DATE_AND_TIME,
+            ElementaryTypeName::LDateAndTime => iec_type_tag::LDT,
+        },
+        Err(()) => iec_type_tag::OTHER,
     }
 }
 
@@ -1146,125 +1150,128 @@ fn emit_zero_const(emitter: &mut Emitter, ctx: &mut CompileContext, op_type: OpT
 
 /// Maps an IEC 61131-3 type name to its `VarTypeInfo`.
 ///
-/// Returns `None` for unrecognized type names (e.g., user-defined types).
+/// Returns `None` for unrecognized type names (e.g., user-defined types)
+/// and for STRING/WSTRING which are handled separately.
 pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
-    match name.lower_case().as_str() {
-        "sint" => Some(VarTypeInfo {
+    let elem = ElementaryTypeName::try_from(name).ok()?;
+    match elem {
+        ElementaryTypeName::SINT => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Signed,
             storage_bits: 8,
         }),
-        "int" => Some(VarTypeInfo {
+        ElementaryTypeName::INT => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Signed,
             storage_bits: 16,
         }),
-        "dint" => Some(VarTypeInfo {
+        ElementaryTypeName::DINT => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Signed,
             storage_bits: 32,
         }),
-        "lint" => Some(VarTypeInfo {
+        ElementaryTypeName::LINT => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Signed,
             storage_bits: 64,
         }),
-        "usint" => Some(VarTypeInfo {
+        ElementaryTypeName::USINT => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 8,
         }),
-        "uint" => Some(VarTypeInfo {
+        ElementaryTypeName::UINT => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 16,
         }),
-        "udint" => Some(VarTypeInfo {
+        ElementaryTypeName::UDINT => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 32,
         }),
-        "ulint" => Some(VarTypeInfo {
+        ElementaryTypeName::ULINT => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Unsigned,
             storage_bits: 64,
         }),
-        "real" => Some(VarTypeInfo {
+        ElementaryTypeName::REAL => Some(VarTypeInfo {
             op_width: OpWidth::F32,
             signedness: Signedness::Signed,
             storage_bits: 32,
         }),
-        "lreal" => Some(VarTypeInfo {
+        ElementaryTypeName::LREAL => Some(VarTypeInfo {
             op_width: OpWidth::F64,
             signedness: Signedness::Signed,
             storage_bits: 64,
         }),
-        "bool" => Some(VarTypeInfo {
+        ElementaryTypeName::BOOL => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Signed,
             storage_bits: 1,
         }),
-        "byte" => Some(VarTypeInfo {
+        ElementaryTypeName::BYTE => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 8,
         }),
-        "word" => Some(VarTypeInfo {
+        ElementaryTypeName::WORD => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 16,
         }),
-        "dword" => Some(VarTypeInfo {
+        ElementaryTypeName::DWORD => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 32,
         }),
-        "lword" => Some(VarTypeInfo {
+        ElementaryTypeName::LWORD => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Unsigned,
             storage_bits: 64,
         }),
-        "time" => Some(VarTypeInfo {
+        ElementaryTypeName::TIME => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Signed,
             storage_bits: 32,
         }),
-        "ltime" => Some(VarTypeInfo {
+        ElementaryTypeName::LTIME => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Signed,
             storage_bits: 64,
         }),
-        "date" => Some(VarTypeInfo {
+        ElementaryTypeName::DATE => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 32,
         }),
-        "time_of_day" | "tod" => Some(VarTypeInfo {
+        ElementaryTypeName::TimeOfDay => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 32,
         }),
-        "date_and_time" | "dt" => Some(VarTypeInfo {
+        ElementaryTypeName::DateAndTime => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 32,
         }),
-        "ldate" => Some(VarTypeInfo {
+        ElementaryTypeName::LDATE => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Unsigned,
             storage_bits: 64,
         }),
-        "ltime_of_day" | "ltod" => Some(VarTypeInfo {
+        ElementaryTypeName::LTimeOfDay => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Unsigned,
             storage_bits: 64,
         }),
-        "ldate_and_time" | "ldt" => Some(VarTypeInfo {
+        ElementaryTypeName::LDateAndTime => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Unsigned,
             storage_bits: 64,
         }),
-        _ => None,
+        // STRING and WSTRING are handled separately in codegen
+        ElementaryTypeName::STRING | ElementaryTypeName::WSTRING => None,
     }
 }
 
@@ -1395,6 +1402,17 @@ fn op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
     let info =
         resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
     Ok((info.op_width, info.signedness))
+}
+
+/// Returns the operation type from an expression's resolved type, if available.
+///
+/// Unlike [`op_type`] this returns `None` instead of an error when the
+/// resolved type is missing or unrecognized, making it safe to use as a
+/// best-effort fallback.
+fn op_type_from_expr(expr: &Expr) -> Option<OpType> {
+    let resolved = expr.resolved_type.as_ref()?;
+    let info = resolve_type_name(&resolved.name)?;
+    Some((info.op_width, info.signedness))
 }
 
 /// Returns the storage bit width from an expression's resolved type annotation.
@@ -2246,18 +2264,27 @@ pub(crate) fn compile_expr(
         }
         ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner, op_type),
         ExprKind::Compare(compare) => {
-            compile_expr(emitter, ctx, &compare.left, op_type)?;
-            compile_expr(emitter, ctx, &compare.right, op_type)?;
+            // A comparison's result is BOOL, but its operands may be a different
+            // type (e.g. REAL for `in < 0.0`). Derive the operand type from the
+            // left operand's resolved type so that literals are compiled with the
+            // correct width. For boolean connectives (AND/OR/XOR), keep the
+            // incoming op_type since both sides are already BOOL.
+            let operand_op_type = match compare.op {
+                CompareOp::And | CompareOp::Or | CompareOp::Xor => op_type,
+                _ => op_type_from_expr(&compare.left).unwrap_or(op_type),
+            };
+            compile_expr(emitter, ctx, &compare.left, operand_op_type)?;
+            compile_expr(emitter, ctx, &compare.right, operand_op_type)?;
             match compare.op {
-                CompareOp::Eq => emit_eq(emitter, op_type),
-                CompareOp::Ne => emit_ne(emitter, op_type),
-                CompareOp::Lt => emit_lt(emitter, op_type),
-                CompareOp::Gt => emit_gt(emitter, op_type),
-                CompareOp::LtEq => emit_le(emitter, op_type),
-                CompareOp::GtEq => emit_ge(emitter, op_type),
-                CompareOp::And => emit_and(emitter, op_type),
-                CompareOp::Or => emit_or(emitter, op_type),
-                CompareOp::Xor => emit_xor(emitter, op_type),
+                CompareOp::Eq => emit_eq(emitter, operand_op_type),
+                CompareOp::Ne => emit_ne(emitter, operand_op_type),
+                CompareOp::Lt => emit_lt(emitter, operand_op_type),
+                CompareOp::Gt => emit_gt(emitter, operand_op_type),
+                CompareOp::LtEq => emit_le(emitter, operand_op_type),
+                CompareOp::GtEq => emit_ge(emitter, operand_op_type),
+                CompareOp::And => emit_and(emitter, operand_op_type),
+                CompareOp::Or => emit_or(emitter, operand_op_type),
+                CompareOp::Xor => emit_xor(emitter, operand_op_type),
             }
             Ok(())
         }
@@ -4239,5 +4266,34 @@ END_PROGRAM
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), 255);
+    }
+
+    #[test]
+    fn compile_when_user_function_with_real_comparison_then_produces_container() {
+        let source = "
+FUNCTION SIGN_R : BOOL
+VAR_INPUT
+    in : REAL;
+END_VAR
+    SIGN_R := in < 0.0;
+END_FUNCTION
+PROGRAM main
+VAR
+    result : BOOL;
+END_VAR
+    result := SIGN_R(in := 2.5);
+END_PROGRAM
+";
+        let (library, context) = parse(source);
+        let container = compile_reachable(
+            &library,
+            context.functions(),
+            context.types(),
+            Some(context.reachable()),
+        )
+        .unwrap();
+
+        // Should have 3 functions: init, scan, SIGN_R
+        assert_eq!(container.header.num_functions, 3);
     }
 }
