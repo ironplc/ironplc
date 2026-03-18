@@ -45,6 +45,7 @@ use ironplc_dsl::common::{
     Library, LibraryElementKind, ProgramDeclaration, SignedInteger, SpecificationKind, VarDecl,
     VariableType,
 };
+use ironplc_dsl::configuration::ConfigurationDeclaration;
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
@@ -140,6 +141,8 @@ pub fn compile_reachable(
     reachable: Option<&HashSet<Id>>,
 ) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
+    let config = find_configuration(library);
+    let global_vars: &[VarDecl] = config.map(|c| c.global_var.as_slice()).unwrap_or(&[]);
 
     // Collect user-defined function declarations from the library,
     // filtering to only reachable functions when a reachable set is provided.
@@ -158,7 +161,7 @@ pub fn compile_reachable(
         })
         .collect();
 
-    compile_program_with_functions(program, &func_decls, functions, types)
+    compile_program_with_functions(program, &func_decls, global_vars, functions, types)
 }
 
 /// Finds the first PROGRAM declaration in the library.
@@ -175,6 +178,17 @@ fn find_program(library: &Library) -> Result<&ProgramDeclaration, Diagnostic> {
             "Source does not contain a PROGRAM declaration",
         ),
     ))
+}
+
+/// Finds the first CONFIGURATION declaration in the library, if any.
+fn find_configuration(library: &Library) -> Option<&ConfigurationDeclaration> {
+    library.elements.iter().find_map(|e| {
+        if let LibraryElementKind::ConfigurationDeclaration(config) = e {
+            Some(config)
+        } else {
+            None
+        }
+    })
 }
 
 /// Holds the compiled bytecode and metadata for a user-defined function.
@@ -198,14 +212,27 @@ struct CompiledFunction {
 fn compile_program_with_functions(
     program: &ProgramDeclaration,
     func_decls: &[&FunctionDeclaration],
+    global_vars: &[VarDecl],
     functions: &FunctionEnvironment,
     types: &TypeEnvironment,
 ) -> Result<Container, Diagnostic> {
     let mut ctx = CompileContext::new();
     let mut builder = ContainerBuilder::new();
 
-    // Assign variable indices for all declared program variables.
-    assign_variables(&mut ctx, &mut builder, &program.variables, types)?;
+    // Assign global variable indices first (indices 0..G).
+    assign_variables(&mut ctx, &mut builder, global_vars, types)?;
+
+    // Collect program-local variables, skipping VAR_EXTERNAL declarations
+    // since they alias the corresponding global variables.
+    let local_vars: Vec<VarDecl> = program
+        .variables
+        .iter()
+        .filter(|v| v.var_type != VariableType::External)
+        .cloned()
+        .collect();
+
+    // Assign program-local variable indices (indices G..N).
+    assign_variables(&mut ctx, &mut builder, &local_vars, types)?;
     let program_var_count = ctx.variables.len() as u16;
 
     // Compile user-defined functions. Each function gets a unique function ID
@@ -226,7 +253,8 @@ fn compile_program_with_functions(
 
     // Emit bytecode for variable initial values into the init emitter.
     let mut init_emitter = Emitter::new();
-    emit_initial_values(&mut init_emitter, &mut ctx, &program.variables, types)?;
+    emit_initial_values(&mut init_emitter, &mut ctx, global_vars, types)?;
+    emit_initial_values(&mut init_emitter, &mut ctx, &local_vars, types)?;
     init_emitter.emit_ret_void();
 
     // Compile the program body into the scan emitter.
@@ -912,8 +940,11 @@ fn resolve_iec_type_tag(name: &Id) -> u8 {
         "time" => iec_type_tag::TIME,
         "ltime" => iec_type_tag::LTIME,
         "date" => iec_type_tag::DATE,
+        "ldate" => iec_type_tag::LDATE,
         "time_of_day" | "tod" => iec_type_tag::TIME_OF_DAY,
+        "ltime_of_day" | "ltod" => iec_type_tag::LTOD,
         "date_and_time" | "dt" => iec_type_tag::DATE_AND_TIME,
+        "ldate_and_time" | "ldt" => iec_type_tag::LDT,
         _ => iec_type_tag::OTHER,
     }
 }
@@ -1218,6 +1249,21 @@ pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
             signedness: Signedness::Unsigned,
             storage_bits: 32,
         }),
+        "ldate" => Some(VarTypeInfo {
+            op_width: OpWidth::W64,
+            signedness: Signedness::Unsigned,
+            storage_bits: 64,
+        }),
+        "ltime_of_day" | "ltod" => Some(VarTypeInfo {
+            op_width: OpWidth::W64,
+            signedness: Signedness::Unsigned,
+            storage_bits: 64,
+        }),
+        "ldate_and_time" | "ldt" => Some(VarTypeInfo {
+            op_width: OpWidth::W64,
+            signedness: Signedness::Unsigned,
+            storage_bits: 64,
+        }),
         _ => None,
     }
 }
@@ -1349,6 +1395,17 @@ fn op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
     let info =
         resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
     Ok((info.op_width, info.signedness))
+}
+
+/// Returns the operation type from an expression's resolved type, if available.
+///
+/// Unlike [`op_type`] this returns `None` instead of an error when the
+/// resolved type is missing or unrecognized, making it safe to use as a
+/// best-effort fallback.
+fn op_type_from_expr(expr: &Expr) -> Option<OpType> {
+    let resolved = expr.resolved_type.as_ref()?;
+    let info = resolve_type_name(&resolved.name)?;
+    Some((info.op_width, info.signedness))
 }
 
 /// Returns the storage bit width from an expression's resolved type annotation.
@@ -2200,18 +2257,27 @@ pub(crate) fn compile_expr(
         }
         ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner, op_type),
         ExprKind::Compare(compare) => {
-            compile_expr(emitter, ctx, &compare.left, op_type)?;
-            compile_expr(emitter, ctx, &compare.right, op_type)?;
+            // A comparison's result is BOOL, but its operands may be a different
+            // type (e.g. REAL for `in < 0.0`). Derive the operand type from the
+            // left operand's resolved type so that literals are compiled with the
+            // correct width. For boolean connectives (AND/OR/XOR), keep the
+            // incoming op_type since both sides are already BOOL.
+            let operand_op_type = match compare.op {
+                CompareOp::And | CompareOp::Or | CompareOp::Xor => op_type,
+                _ => op_type_from_expr(&compare.left).unwrap_or(op_type),
+            };
+            compile_expr(emitter, ctx, &compare.left, operand_op_type)?;
+            compile_expr(emitter, ctx, &compare.right, operand_op_type)?;
             match compare.op {
-                CompareOp::Eq => emit_eq(emitter, op_type),
-                CompareOp::Ne => emit_ne(emitter, op_type),
-                CompareOp::Lt => emit_lt(emitter, op_type),
-                CompareOp::Gt => emit_gt(emitter, op_type),
-                CompareOp::LtEq => emit_le(emitter, op_type),
-                CompareOp::GtEq => emit_ge(emitter, op_type),
-                CompareOp::And => emit_and(emitter, op_type),
-                CompareOp::Or => emit_or(emitter, op_type),
-                CompareOp::Xor => emit_xor(emitter, op_type),
+                CompareOp::Eq => emit_eq(emitter, operand_op_type),
+                CompareOp::Ne => emit_ne(emitter, operand_op_type),
+                CompareOp::Lt => emit_lt(emitter, operand_op_type),
+                CompareOp::Gt => emit_gt(emitter, operand_op_type),
+                CompareOp::LtEq => emit_le(emitter, operand_op_type),
+                CompareOp::GtEq => emit_ge(emitter, operand_op_type),
+                CompareOp::And => emit_and(emitter, operand_op_type),
+                CompareOp::Or => emit_or(emitter, operand_op_type),
+                CompareOp::Xor => emit_xor(emitter, operand_op_type),
             }
             Ok(())
         }
@@ -4193,5 +4259,34 @@ END_PROGRAM
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), 255);
+    }
+
+    #[test]
+    fn compile_when_user_function_with_real_comparison_then_produces_container() {
+        let source = "
+FUNCTION SIGN_R : BOOL
+VAR_INPUT
+    in : REAL;
+END_VAR
+    SIGN_R := in < 0.0;
+END_FUNCTION
+PROGRAM main
+VAR
+    result : BOOL;
+END_VAR
+    result := SIGN_R(in := 2.5);
+END_PROGRAM
+";
+        let (library, context) = parse(source);
+        let container = compile_reachable(
+            &library,
+            context.functions(),
+            context.types(),
+            Some(context.reachable()),
+        )
+        .unwrap();
+
+        // Should have 3 functions: init, scan, SIGN_R
+        assert_eq!(container.header.num_functions, 3);
     }
 }
