@@ -135,13 +135,13 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
     (
         "date_and_time",
         IntermediateType::DateAndTime {
-            size: ByteSized::B64,
+            size: ByteSized::B32,
         },
     ),
     (
         "dt",
         IntermediateType::DateAndTime {
-            size: ByteSized::B64,
+            size: ByteSized::B32,
         },
     ),
     // IEC 61131-3 Edition 3 (2013) long date/time types
