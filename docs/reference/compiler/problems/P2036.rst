@@ -1,0 +1,27 @@
+=====
+P2036
+=====
+
+.. problem-summary:: P2036
+
+This error occurs when a ``REF_TO`` type declaration references another ``REF_TO`` type, creating multi-level indirection. Nested references are not supported.
+
+Example
+-------
+
+The following code will generate error P2036:
+
+.. code-block::
+
+   TYPE
+       IntRef : REF_TO INT;
+       IntRefRef : REF_TO IntRef;  (* Error: nested REF_TO *)
+   END_TYPE
+
+To fix this error, use only a single level of indirection:
+
+.. code-block::
+
+   TYPE
+       IntRef : REF_TO INT;  (* Correct: single level of REF_TO *)
+   END_TYPE
