@@ -135,13 +135,13 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 24] = [
     (
         "date_and_time",
         IntermediateType::DateAndTime {
-            size: ByteSized::B64,
+            size: ByteSized::B32,
         },
     ),
     (
         "dt",
         IntermediateType::DateAndTime {
-            size: ByteSized::B64,
+            size: ByteSized::B32,
         },
     ),
     // bit_string_type_name

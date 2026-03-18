@@ -18,32 +18,36 @@ representation for these absolute datetime types.
 
 ## Decision
 
-Use **unsigned** integers for all three datetime types:
+Use **unsigned** integers matching the CODESYS/Beckhoff industry standard:
 
 | Type | Storage | Unit | Epoch | Range |
 |------|---------|------|-------|-------|
-| DATE | u32 | days since 0001-01-01 | Julian day 1721426 | ~11.7M years |
+| DATE | u32 | seconds since 1970-01-01 | Unix epoch | to 2106-02-07 |
 | TIME_OF_DAY | u32 | ms since midnight | midnight = 0 | 0 to 86,399,999 |
-| DATE_AND_TIME | u64 | ms since 0001-01-01 00:00:00 | same epoch | ~584M years |
+| DATE_AND_TIME | u32 | seconds since 1970-01-01 | Unix epoch | to 2106-02-07-06:28:15 |
+| LDATE | u64 | nanoseconds since 1970-01-01 | Unix epoch | to ~2554 |
+| LTOD | u64 | nanoseconds since midnight | midnight = 0 | 0 to 86,399,999,999,999 |
+| LDT | u64 | nanoseconds since 1970-01-01 | Unix epoch | to ~2554 |
 
 The codegen maps these types with `Signedness::Unsigned`, so the VM uses unsigned
 comparison opcodes (GT_U32, LT_U32, etc.) which are already implemented.
 
-### Epoch Choice
+### Industry Standard Alignment
 
-We use 0001-01-01 (Julian day 1721426) as the epoch rather than a Unix-style epoch
-(1970-01-01) because:
+We follow the CODESYS/Beckhoff representation rather than inventing our own because:
 
-1. IEC 61131-3 does not specify a minimum date, and PLC applications in historical
-   data processing may need dates before 1970.
-2. Using year 1 avoids negative offsets entirely, which aligns with unsigned storage.
-3. The u32 range for DATE (4+ billion days) far exceeds practical needs regardless
-   of epoch.
+1. DATE and DT use u32 seconds since 1970-01-01 (Unix epoch), which is the de facto
+   standard across PLC vendors.
+2. TOD uses u32 milliseconds since midnight, providing sub-second precision for
+   time-of-day operations.
+3. Long variants (LDATE, LTOD, LDT) use u64 nanoseconds, matching the IEC 61131-3
+   Third Edition pattern where L-prefixed types extend resolution to nanoseconds.
+4. This ensures compatibility with existing PLC programs and libraries.
 
 ### Why Unsigned (Not Signed Like TIME/LTIME)
 
 - **Durations can be negative** (T#5s - T#10s = T#-5s), so TIME/LTIME need signed storage.
-- **Absolute timestamps cannot be negative** - a date before the epoch 0001-01-01 or a
+- **Absolute timestamps cannot be negative** - a date before 1970-01-01 or a
   time-of-day before midnight has no meaning in IEC 61131-3.
 - Using unsigned doubles the positive range and prevents invalid negative values.
 
@@ -54,5 +58,5 @@ We use 0001-01-01 (Julian day 1721426) as the epoch rather than a Unix-style epo
 - The playground displays formatted values (D#YYYY-MM-DD, TOD#HH:MM:SS, DT#...).
 - IntermediateType now has three separate variants (Date, TimeOfDay, DateAndTime)
   instead of the single generic Date variant, enabling proper type checking.
-- Edition 3 long variants (LDATE, LTOD, LDT) can be added later with the same
-  representation but u64 storage.
+- Edition 3 long variants (LDATE, LTOD, LDT) use u64 nanoseconds with the same
+  Unix epoch, ready for when parser support is added.

@@ -4,16 +4,16 @@
 //! for datetime variables and literals. These types are IEC 61131-3
 //! Edition 2 features.
 //!
-//! - DATE: stored as u32 days since 0001-01-01
+//! - DATE: stored as u32 seconds since 1970-01-01 (industry standard)
 //! - TIME_OF_DAY (TOD): stored as u32 milliseconds since midnight
-//! - DATE_AND_TIME (DT): stored as u64 milliseconds since 0001-01-01 00:00:00
+//! - DATE_AND_TIME (DT): stored as u32 seconds since 1970-01-01
 
 mod common;
 
 use common::parse_and_run;
 
 #[test]
-fn end_to_end_when_date_assignment_then_value_is_days_since_epoch() {
+fn end_to_end_when_date_assignment_then_value_is_seconds_since_epoch() {
     let source = "
 PROGRAM main
   VAR
@@ -23,8 +23,8 @@ PROGRAM main
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source);
-    // 2024-01-01 is 738885 days after 0001-01-01
-    assert_eq!(bufs.vars[0].as_i32() as u32, 738885);
+    // 2024-01-01 is 19723 days after 1970-01-01 = 19723 * 86400 = 1704067200
+    assert_eq!(bufs.vars[0].as_i32() as u32, 1_704_067_200);
 }
 
 #[test]
@@ -43,7 +43,7 @@ END_PROGRAM
 }
 
 #[test]
-fn end_to_end_when_dt_assignment_then_value_is_milliseconds_since_epoch() {
+fn end_to_end_when_dt_assignment_then_value_is_seconds_since_epoch() {
     let source = "
 PROGRAM main
   VAR
@@ -53,8 +53,8 @@ PROGRAM main
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source);
-    // 738885 days * 86400000 ms/day + 45000000 ms = 63839709000000
-    assert_eq!(bufs.vars[0].as_i64() as u64, 63_839_709_000_000);
+    // 1704067200 (date) + 12*3600 + 30*60 = 1704067200 + 45000 = 1704112200
+    assert_eq!(bufs.vars[0].as_i32() as u32, 1_704_112_200);
 }
 
 #[test]

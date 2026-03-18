@@ -184,14 +184,15 @@ fn format_time_value_ms<T: Into<i64>>(ms: T) -> String {
     }
 }
 
-/// Formats a DATE value (stored as days since 0001-01-01) as D#YYYY-MM-DD.
+/// Formats a DATE value (stored as seconds since 1970-01-01) as D#YYYY-MM-DD.
 ///
-/// Uses the inverse Julian day algorithm to convert the internal day count
+/// Uses the inverse Julian day algorithm to convert the internal second count
 /// back into year/month/day components without requiring the `time` crate.
-fn format_date_value(days: u32) -> String {
-    // Convert days-since-epoch back to Julian day number.
-    const EPOCH_JULIAN_DAY: i64 = 1_721_426;
-    let j = EPOCH_JULIAN_DAY + days as i64;
+fn format_date_value(secs: u32) -> String {
+    // Convert seconds since 1970-01-01 to Julian day number.
+    const UNIX_EPOCH_JULIAN_DAY: i64 = 2_440_588; // 1970-01-01
+    let days = secs as i64 / 86_400;
+    let j = UNIX_EPOCH_JULIAN_DAY + days;
 
     // Richards' algorithm (Meeus, Astronomical Algorithms) for Julian day → calendar date.
     let f = j + 1401 + ((4 * j + 274277) / 146097) * 3 / 4 - 38;
@@ -218,22 +219,20 @@ fn format_tod_value(ms: u32) -> String {
     }
 }
 
-/// Formats a DATE_AND_TIME value (stored as ms since 0001-01-01 00:00:00) as DT#YYYY-MM-DD-HH:MM:SS.mmm.
-fn format_dt_value(ms: u64) -> String {
-    let total_days = (ms / 86_400_000) as u32;
-    let tod_ms = (ms % 86_400_000) as u32;
-    let date_part = format_date_value(total_days);
+/// Formats a DATE_AND_TIME value (stored as u32 seconds since 1970-01-01) as DT#YYYY-MM-DD-HH:MM:SS.
+///
+/// The raw u64 parameter is the zero-extended u32 value from the VM slot.
+fn format_dt_value(raw: u64) -> String {
+    let secs = raw as u32;
+    let date_secs = secs - (secs % 86_400);
+    let tod_secs = secs % 86_400;
+    let date_part = format_date_value(date_secs);
     // Extract date portion (after "D#")
     let date_str = &date_part[2..];
-    let h = tod_ms / 3_600_000;
-    let m = (tod_ms % 3_600_000) / 60_000;
-    let s = (tod_ms % 60_000) / 1_000;
-    let frac = tod_ms % 1_000;
-    if frac == 0 {
-        format!("DT#{date_str}-{h:02}:{m:02}:{s:02}")
-    } else {
-        format!("DT#{date_str}-{h:02}:{m:02}:{s:02}.{frac:03}")
-    }
+    let h = tod_secs / 3_600;
+    let m = (tod_secs % 3_600) / 60;
+    let s = tod_secs % 60;
+    format!("DT#{date_str}-{h:02}:{m:02}:{s:02}")
 }
 
 /// Result of compile-and-run (combines both).

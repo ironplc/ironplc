@@ -78,13 +78,13 @@ pub enum IntermediateType {
     /// TIME is 32-bit (milliseconds), LTIME is 64-bit (milliseconds).
     Time { size: ByteSized },
     /// Calendar date type (DATE is 32-bit, LDATE is 64-bit).
-    /// Stored as unsigned days since 0001-01-01.
+    /// Stored as unsigned seconds since 1970-01-01.
     Date { size: ByteSized },
     /// Time-of-day type (TIME_OF_DAY/TOD is 32-bit, LTOD is 64-bit).
-    /// Stored as unsigned milliseconds since midnight.
+    /// TOD: unsigned milliseconds since midnight. LTOD: unsigned nanoseconds.
     TimeOfDay { size: ByteSized },
-    /// Combined date-and-time type (DATE_AND_TIME/DT is 64-bit, LDT is 64-bit).
-    /// Stored as unsigned milliseconds since 0001-01-01 00:00:00.
+    /// Combined date-and-time type (DATE_AND_TIME/DT is 32-bit, LDT is 64-bit).
+    /// DT: unsigned seconds since 1970-01-01. LDT: unsigned nanoseconds since 1970-01-01.
     DateAndTime { size: ByteSized },
 
     /// Variable-length string with optional maximum length
