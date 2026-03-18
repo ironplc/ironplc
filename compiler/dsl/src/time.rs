@@ -194,16 +194,17 @@ impl DateLiteral {
         (year, month.into(), day)
     }
 
-    /// Returns the number of days since the epoch 0001-01-01 as a u32.
+    /// Returns seconds since the Unix epoch (1970-01-01) as a u32.
     ///
-    /// The IEC 61131-3 DATE type represents calendar dates. We use an
-    /// epoch of 0001-01-01 (Julian day 1721426) so that all valid dates
-    /// in the Gregorian/proleptic calendar produce non-negative values.
-    pub fn days_since_epoch(&self) -> u32 {
-        // Julian day of 0001-01-01
-        const EPOCH_JULIAN_DAY: i32 = 1_721_426;
+    /// The IEC 61131-3 DATE type is stored as a u32 count of seconds since
+    /// 1970-01-01, matching the CODESYS/Beckhoff industry standard. The
+    /// resolution is logically 1 day but the storage unit is seconds for
+    /// compatibility with DATE_AND_TIME.
+    pub fn seconds_since_epoch(&self) -> u32 {
+        const UNIX_EPOCH_JULIAN_DAY: i32 = 2_440_588; // 1970-01-01
         let julian_day = self.value.to_julian_day();
-        (julian_day - EPOCH_JULIAN_DAY) as u32
+        let days = (julian_day - UNIX_EPOCH_JULIAN_DAY) as u32;
+        days * 86_400
     }
 }
 
@@ -238,19 +239,17 @@ impl DateAndTimeLiteral {
         self.value.as_hms_micro()
     }
 
-    /// Returns milliseconds since 0001-01-01 00:00:00 as a u64.
+    /// Returns seconds since the Unix epoch (1970-01-01 00:00:00) as a u32.
     ///
-    /// Combines the date component (days since epoch) with the time-of-day
-    /// component (milliseconds since midnight) into a single u64 value.
-    pub fn whole_milliseconds(&self) -> u64 {
-        const EPOCH_JULIAN_DAY: i32 = 1_721_426;
-        let days = (self.value.date().to_julian_day() - EPOCH_JULIAN_DAY) as u64;
-        let (h, m, s, micro) = self.hmsm();
-        let tod_ms = (h as u64) * 3_600_000
-            + (m as u64) * 60_000
-            + (s as u64) * 1_000
-            + (micro as u64) / 1_000;
-        days * 86_400_000 + tod_ms
+    /// The IEC 61131-3 DATE_AND_TIME type is stored as a u32 count of seconds
+    /// since 1970-01-01, matching the CODESYS/Beckhoff industry standard.
+    /// Resolution is 1 second.
+    pub fn seconds_since_epoch(&self) -> u32 {
+        const UNIX_EPOCH_JULIAN_DAY: i32 = 2_440_588; // 1970-01-01
+        let days = (self.value.date().to_julian_day() - UNIX_EPOCH_JULIAN_DAY) as u32;
+        let (h, m, s, _micro) = self.hmsm();
+        let tod_secs = (h as u32) * 3_600 + (m as u32) * 60 + (s as u32);
+        days * 86_400 + tod_secs
     }
 }
 
