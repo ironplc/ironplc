@@ -368,14 +368,14 @@ parser! {
     rule milliseconds() -> DurationLiteral = ms:fixed_point() dt_sep("ms") { DurationLiteral::milliseconds(ms) }
 
     // 1.2.3.2 Time of day and date
-    rule time_of_day() -> TimeOfDayLiteral = tok(TokenType::TimeOfDay) tok(TokenType::Hash) d:daytime() { TimeOfDayLiteral::new(d) }
+    rule time_of_day() -> TimeOfDayLiteral = (tok(TokenType::TimeOfDay) / tok(TokenType::Ltod)) tok(TokenType::Hash) d:daytime() { TimeOfDayLiteral::new(d) }
     rule daytime() -> Time = h:day_hour() tok(TokenType::Colon) m:day_minute() tok(TokenType::Colon) s:day_second() {?
       Time::from_hms(h.try_into().map_err(|e| "hour")?, m.try_into().map_err(|e| "min")?, s.whole as u8).map_err(|e| "time")
     }
     rule day_hour() -> Integer = integer()
     rule day_minute() -> Integer = integer()
     rule day_second() -> FixedPoint = fixed_point()
-    rule date() -> DateLiteral = (tok(TokenType::Date) / dt_sep("D") / dt_sep("d")) tok(TokenType::Hash) d:date_literal() { DateLiteral::new(d) }
+    rule date() -> DateLiteral = (tok(TokenType::Date) / tok(TokenType::Ldate) / dt_sep("D") / dt_sep("d")) tok(TokenType::Hash) d:date_literal() { DateLiteral::new(d) }
     rule date_literal() -> Date = y:year() tok(TokenType::Minus) m:month() tok(TokenType::Minus) d:day() {?
       let y = y.value;
       let m = Month::try_from(<dsl::common::Integer as TryInto<u8>>::try_into(m).map_err(|e| "month")?).map_err(|e| "month")?;
@@ -385,7 +385,7 @@ parser! {
     rule year() -> Integer = i:integer() { i }
     rule month() -> Integer = i:integer() { i }
     rule day() -> Integer = i:integer() { i }
-    rule date_and_time() -> DateAndTimeLiteral = tok(TokenType::DateAndTime) tok(TokenType::Hash) d:date_literal() tok(TokenType::Minus) t:daytime() { DateAndTimeLiteral::new(PrimitiveDateTime::new(d, t)) }
+    rule date_and_time() -> DateAndTimeLiteral = (tok(TokenType::DateAndTime) / tok(TokenType::Ldt)) tok(TokenType::Hash) d:date_literal() tok(TokenType::Minus) t:daytime() { DateAndTimeLiteral::new(PrimitiveDateTime::new(d, t)) }
 
     // B.1.3 Data types
     // This should match generic_type_name, but that's unnecessary because
@@ -407,7 +407,7 @@ parser! {
     rule signed_integer_type_name() -> ElementaryTypeName = tok(TokenType::Sint) { ElementaryTypeName::SINT }  / tok(TokenType::Int) { ElementaryTypeName::INT } / tok(TokenType::Dint) { ElementaryTypeName::DINT } / tok(TokenType::Lint) { ElementaryTypeName::LINT }
     rule unsigned_integer_type_name() -> ElementaryTypeName = tok(TokenType::Usint) { ElementaryTypeName::USINT }  / tok(TokenType::Uint) { ElementaryTypeName::UINT } / tok(TokenType::Udint) { ElementaryTypeName::UDINT } / tok(TokenType::Ulint) { ElementaryTypeName::ULINT }
     rule real_type_name() -> ElementaryTypeName = tok(TokenType::Real) { ElementaryTypeName::REAL } / tok(TokenType::Lreal) { ElementaryTypeName::LREAL }
-    rule date_type_name() -> ElementaryTypeName = tok(TokenType::Date) { ElementaryTypeName::DATE } / tok(TokenType::TimeOfDay) { ElementaryTypeName::TimeOfDay } / tok(TokenType::DateAndTime) { ElementaryTypeName::DateAndTime }
+    rule date_type_name() -> ElementaryTypeName = tok(TokenType::Date) { ElementaryTypeName::DATE } / tok(TokenType::Ldate) { ElementaryTypeName::LDATE } / tok(TokenType::TimeOfDay) { ElementaryTypeName::TimeOfDay } / tok(TokenType::Ltod) { ElementaryTypeName::LTimeOfDay } / tok(TokenType::DateAndTime) { ElementaryTypeName::DateAndTime } / tok(TokenType::Ldt) { ElementaryTypeName::LDateAndTime }
     rule bit_string_type_name() -> ElementaryTypeName = tok(TokenType::Bool) { ElementaryTypeName::BOOL } / tok(TokenType::Byte) { ElementaryTypeName::BYTE } / tok(TokenType::Word) { ElementaryTypeName::WORD } / tok(TokenType::Dword) { ElementaryTypeName::DWORD } / tok(TokenType::Lword) { ElementaryTypeName::LWORD }
 
     // B.1.3.2 - Generic type names are implemented above in generic_type_name() rule

@@ -33,7 +33,7 @@ pub enum UsageContext {
     General,
 }
 
-static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 24] = [
+static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
     // signed_integer_type_name
     (
         "sint",
@@ -140,6 +140,37 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 24] = [
     ),
     (
         "dt",
+        IntermediateType::DateAndTime {
+            size: ByteSized::B64,
+        },
+    ),
+    // IEC 61131-3 Edition 3 (2013) long date/time types
+    (
+        "ldate",
+        IntermediateType::Date {
+            size: ByteSized::B64,
+        },
+    ),
+    (
+        "ltime_of_day",
+        IntermediateType::TimeOfDay {
+            size: ByteSized::B64,
+        },
+    ),
+    (
+        "ltod",
+        IntermediateType::TimeOfDay {
+            size: ByteSized::B64,
+        },
+    ),
+    (
+        "ldate_and_time",
+        IntermediateType::DateAndTime {
+            size: ByteSized::B64,
+        },
+    ),
+    (
+        "ldt",
         IntermediateType::DateAndTime {
             size: ByteSized::B64,
         },

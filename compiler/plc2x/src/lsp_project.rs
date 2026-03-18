@@ -432,6 +432,9 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::AnyBit => Some(KEYWORD_INDEX),
             TokenType::AnyString => Some(KEYWORD_INDEX),
             TokenType::AnyDate => Some(KEYWORD_INDEX),
+            TokenType::Ldate => Some(KEYWORD_INDEX),
+            TokenType::Ltod => Some(KEYWORD_INDEX),
+            TokenType::Ldt => Some(KEYWORD_INDEX),
         };
 
         token_type.map(|token_type| SemanticToken {
