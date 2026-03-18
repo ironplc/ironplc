@@ -940,8 +940,11 @@ fn resolve_iec_type_tag(name: &Id) -> u8 {
         "time" => iec_type_tag::TIME,
         "ltime" => iec_type_tag::LTIME,
         "date" => iec_type_tag::DATE,
+        "ldate" => iec_type_tag::LDATE,
         "time_of_day" | "tod" => iec_type_tag::TIME_OF_DAY,
+        "ltime_of_day" | "ltod" => iec_type_tag::LTOD,
         "date_and_time" | "dt" => iec_type_tag::DATE_AND_TIME,
+        "ldate_and_time" | "ldt" => iec_type_tag::LDT,
         _ => iec_type_tag::OTHER,
     }
 }
@@ -1245,6 +1248,21 @@ pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 32,
+        }),
+        "ldate" => Some(VarTypeInfo {
+            op_width: OpWidth::W64,
+            signedness: Signedness::Unsigned,
+            storage_bits: 64,
+        }),
+        "ltime_of_day" | "ltod" => Some(VarTypeInfo {
+            op_width: OpWidth::W64,
+            signedness: Signedness::Unsigned,
+            storage_bits: 64,
+        }),
+        "ldate_and_time" | "ldt" => Some(VarTypeInfo {
+            op_width: OpWidth::W64,
+            signedness: Signedness::Unsigned,
+            storage_bits: 64,
         }),
         _ => None,
     }
