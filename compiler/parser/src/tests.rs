@@ -1326,4 +1326,94 @@ END_PROGRAM",
             other => panic!("Expected ProgramDeclaration, got {:?}", other),
         }
     }
+
+    #[test]
+    fn parse_when_ldate_literal_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    d : LDATE;
+END_VAR
+    d := LDATE#2024-01-20;
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => {
+                assert_eq!(prog.variables.len(), 1);
+            }
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_ltod_literal_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    t : LTOD;
+END_VAR
+    t := LTOD#14:30:20;
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => {
+                assert_eq!(prog.variables.len(), 1);
+            }
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_ldt_literal_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    my_dt : LDT;
+END_VAR
+    my_dt := LDT#2024-01-20-15:30:22;
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => {
+                assert_eq!(prog.variables.len(), 1);
+            }
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_ltime_of_day_long_form_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    t : LTIME_OF_DAY;
+END_VAR
+    t := LTOD#10:00:00;
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => {
+                assert_eq!(prog.variables.len(), 1);
+            }
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_ldate_and_time_long_form_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    my_dt : LDATE_AND_TIME;
+END_VAR
+    my_dt := LDT#2024-01-20-15:30:22;
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => {
+                assert_eq!(prog.variables.len(), 1);
+            }
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
 }

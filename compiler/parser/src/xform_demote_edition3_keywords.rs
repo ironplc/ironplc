@@ -13,7 +13,13 @@ pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
     }
     for tok in tokens.iter_mut() {
         match tok.token_type {
-            TokenType::Ltime | TokenType::RefTo | TokenType::Ref | TokenType::Null => {
+            TokenType::Ltime
+            | TokenType::Ldate
+            | TokenType::Ltod
+            | TokenType::Ldt
+            | TokenType::RefTo
+            | TokenType::Ref
+            | TokenType::Null => {
                 tok.token_type = TokenType::Identifier;
             }
             _ => {}
@@ -113,6 +119,51 @@ mod tests {
         let mut tokens = vec![make_token(TokenType::Null, "NULL")];
         apply(&mut tokens, &opts_edition3());
         assert_eq!(tokens[0].token_type, TokenType::Null);
+    }
+
+    #[test]
+    fn apply_when_ldate_and_not_edition3_then_demoted_to_identifier() {
+        let mut tokens = vec![make_token(TokenType::Ldate, "LDATE")];
+        apply(&mut tokens, &opts_no_edition3());
+        assert_eq!(tokens[0].token_type, TokenType::Identifier);
+        assert_eq!(tokens[0].text, "LDATE");
+    }
+
+    #[test]
+    fn apply_when_ldate_and_edition3_then_stays_keyword() {
+        let mut tokens = vec![make_token(TokenType::Ldate, "LDATE")];
+        apply(&mut tokens, &opts_edition3());
+        assert_eq!(tokens[0].token_type, TokenType::Ldate);
+    }
+
+    #[test]
+    fn apply_when_ltod_and_not_edition3_then_demoted_to_identifier() {
+        let mut tokens = vec![make_token(TokenType::Ltod, "LTOD")];
+        apply(&mut tokens, &opts_no_edition3());
+        assert_eq!(tokens[0].token_type, TokenType::Identifier);
+        assert_eq!(tokens[0].text, "LTOD");
+    }
+
+    #[test]
+    fn apply_when_ltod_and_edition3_then_stays_keyword() {
+        let mut tokens = vec![make_token(TokenType::Ltod, "LTOD")];
+        apply(&mut tokens, &opts_edition3());
+        assert_eq!(tokens[0].token_type, TokenType::Ltod);
+    }
+
+    #[test]
+    fn apply_when_ldt_and_not_edition3_then_demoted_to_identifier() {
+        let mut tokens = vec![make_token(TokenType::Ldt, "LDT")];
+        apply(&mut tokens, &opts_no_edition3());
+        assert_eq!(tokens[0].token_type, TokenType::Identifier);
+        assert_eq!(tokens[0].text, "LDT");
+    }
+
+    #[test]
+    fn apply_when_ldt_and_edition3_then_stays_keyword() {
+        let mut tokens = vec![make_token(TokenType::Ldt, "LDT")];
+        apply(&mut tokens, &opts_edition3());
+        assert_eq!(tokens[0].token_type, TokenType::Ldt);
     }
 
     #[test]
