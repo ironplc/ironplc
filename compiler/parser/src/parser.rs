@@ -908,8 +908,13 @@ parser! {
       let qualifier = qualifier.unwrap_or(DeclarationQualifier::Unspecified);
       VarDeclarations::External(VarDeclarations::map(declarations, &qualifier))
     }
-    // TODO external_declaration_spec needs subrange_specification, array_specification(), structure_type_name and others
-    rule external_declaration_spec() -> InitialValueAssignmentKind = type_name:simple_specification() {
+    // TODO external_declaration_spec needs subrange_specification, structure_type_name and others
+    rule external_declaration_spec() -> InitialValueAssignmentKind = spec:array_specification() {
+      InitialValueAssignmentKind::Array(ArrayInitialValueAssignment {
+        spec,
+        initial_values: vec![],
+      })
+    } / type_name:simple_specification() {
       InitialValueAssignmentKind::Simple(SimpleInitializer {
         type_name,
         initial_value: None,
@@ -955,7 +960,7 @@ parser! {
       (vec![Id::from("")], None)
     }
     // TODO this is completely fabricated - it isn't correct.
-    rule located_var_spec_init() -> InitialValueAssignmentKind = simple:simple_spec_init() { simple }
+    rule located_var_spec_init() -> InitialValueAssignmentKind = arr:array_spec_init() { InitialValueAssignmentKind::Array(arr) } / simple:simple_spec_init() { simple }
     rule location() -> AddressAssignment = tok(TokenType::At) _ v:direct_variable() { v }
     rule global_var_list() -> Vec<Id> = names:global_var_name() ++ (_ tok(TokenType::Comma) _) { names }
     rule string_var_declaration() -> Vec<UntypedVarDecl> = single_byte_string_var_declaration() / double_byte_string_var_declaration()
