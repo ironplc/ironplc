@@ -1397,6 +1397,17 @@ fn op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
     Ok((info.op_width, info.signedness))
 }
 
+/// Returns the operation type from an expression's resolved type, if available.
+///
+/// Unlike [`op_type`] this returns `None` instead of an error when the
+/// resolved type is missing or unrecognized, making it safe to use as a
+/// best-effort fallback.
+fn op_type_from_expr(expr: &Expr) -> Option<OpType> {
+    let resolved = expr.resolved_type.as_ref()?;
+    let info = resolve_type_name(&resolved.name)?;
+    Some((info.op_width, info.signedness))
+}
+
 /// Returns the storage bit width from an expression's resolved type annotation.
 ///
 /// The analyzer must have populated `expr.resolved_type`. A missing or
@@ -2246,18 +2257,27 @@ pub(crate) fn compile_expr(
         }
         ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner, op_type),
         ExprKind::Compare(compare) => {
-            compile_expr(emitter, ctx, &compare.left, op_type)?;
-            compile_expr(emitter, ctx, &compare.right, op_type)?;
+            // A comparison's result is BOOL, but its operands may be a different
+            // type (e.g. REAL for `in < 0.0`). Derive the operand type from the
+            // left operand's resolved type so that literals are compiled with the
+            // correct width. For boolean connectives (AND/OR/XOR), keep the
+            // incoming op_type since both sides are already BOOL.
+            let operand_op_type = match compare.op {
+                CompareOp::And | CompareOp::Or | CompareOp::Xor => op_type,
+                _ => op_type_from_expr(&compare.left).unwrap_or(op_type),
+            };
+            compile_expr(emitter, ctx, &compare.left, operand_op_type)?;
+            compile_expr(emitter, ctx, &compare.right, operand_op_type)?;
             match compare.op {
-                CompareOp::Eq => emit_eq(emitter, op_type),
-                CompareOp::Ne => emit_ne(emitter, op_type),
-                CompareOp::Lt => emit_lt(emitter, op_type),
-                CompareOp::Gt => emit_gt(emitter, op_type),
-                CompareOp::LtEq => emit_le(emitter, op_type),
-                CompareOp::GtEq => emit_ge(emitter, op_type),
-                CompareOp::And => emit_and(emitter, op_type),
-                CompareOp::Or => emit_or(emitter, op_type),
-                CompareOp::Xor => emit_xor(emitter, op_type),
+                CompareOp::Eq => emit_eq(emitter, operand_op_type),
+                CompareOp::Ne => emit_ne(emitter, operand_op_type),
+                CompareOp::Lt => emit_lt(emitter, operand_op_type),
+                CompareOp::Gt => emit_gt(emitter, operand_op_type),
+                CompareOp::LtEq => emit_le(emitter, operand_op_type),
+                CompareOp::GtEq => emit_ge(emitter, operand_op_type),
+                CompareOp::And => emit_and(emitter, operand_op_type),
+                CompareOp::Or => emit_or(emitter, operand_op_type),
+                CompareOp::Xor => emit_xor(emitter, operand_op_type),
             }
             Ok(())
         }
@@ -4239,5 +4259,34 @@ END_PROGRAM
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), 255);
+    }
+
+    #[test]
+    fn compile_when_user_function_with_real_comparison_then_produces_container() {
+        let source = "
+FUNCTION SIGN_R : BOOL
+VAR_INPUT
+    in : REAL;
+END_VAR
+    SIGN_R := in < 0.0;
+END_FUNCTION
+PROGRAM main
+VAR
+    result : BOOL;
+END_VAR
+    result := SIGN_R(in := 2.5);
+END_PROGRAM
+";
+        let (library, context) = parse(source);
+        let container = compile_reachable(
+            &library,
+            context.functions(),
+            context.types(),
+            Some(context.reachable()),
+        )
+        .unwrap();
+
+        // Should have 3 functions: init, scan, SIGN_R
+        assert_eq!(container.header.num_functions, 3);
     }
 }

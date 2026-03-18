@@ -111,3 +111,43 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i32(), 3);
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
+
+#[test]
+fn end_to_end_when_real_lt_assigned_to_bool_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    x : REAL;
+    neg : BOOL;
+    pos : BOOL;
+  END_VAR
+  x := -2.5;
+  neg := x < 0.0;
+  x := 3.5;
+  pos := x < 0.0;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // -2.5 < 0.0 is TRUE (1)
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+    // 3.5 < 0.0 is FALSE (0)
+    assert_eq!(bufs.vars[2].as_i32(), 0);
+}
+
+#[test]
+fn end_to_end_when_real_gt_assigned_to_bool_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    x : REAL;
+    result : BOOL;
+  END_VAR
+  x := 1.5;
+  result := x > 0.0;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}
