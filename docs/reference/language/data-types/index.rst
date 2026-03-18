@@ -91,21 +91,37 @@ Elementary Types
      - Double-byte character string
      - Not yet supported
    * - :doc:`TIME <time>`
-     - 64 bits
+     - 32 bits
      - Duration
      - Supported
+   * - :doc:`LTIME <ltime>`
+     - 64 bits
+     - Duration (Edition 3)
+     - Supported
    * - :doc:`DATE <date>`
-     - —
+     - 32 bits
      - Calendar date
-     - Not yet supported
+     - Supported
+   * - :doc:`LDATE <ldate>`
+     - 64 bits
+     - Calendar date (Edition 3)
+     - Supported
    * - :doc:`TIME_OF_DAY <time-of-day>`
-     - —
+     - 32 bits
      - Time of day
-     - Not yet supported
+     - Supported
+   * - :doc:`LTIME_OF_DAY <ltime-of-day>`
+     - 64 bits
+     - Time of day (Edition 3)
+     - Supported
    * - :doc:`DATE_AND_TIME <date-and-time>`
-     - —
+     - 64 bits
      - Date and time of day
-     - Not yet supported
+     - Supported
+   * - :doc:`LDATE_AND_TIME <ldate-and-time>`
+     - 64 bits
+     - Date and time of day (Edition 3)
+     - Supported
 
 Derived Types
 -------------
@@ -152,9 +168,13 @@ Derived Types
    string
    wstring
    time
+   ltime
    date
+   ldate
    time-of-day
+   ltime-of-day
    date-and-time
+   ldate-and-time
    enumerated-types
    subrange-types
    array-types

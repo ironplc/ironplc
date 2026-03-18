@@ -41,6 +41,7 @@ seconds (``s``), milliseconds (``ms``), microseconds (``us``).
 See Also
 --------
 
+- :doc:`ltime` — 64-bit duration (Edition 3)
 - :doc:`/reference/standard-library/function-blocks/ton` — on-delay timer
 - :doc:`/reference/standard-library/function-blocks/tof` — off-delay timer
 - :doc:`/reference/standard-library/function-blocks/tp` — pulse timer
