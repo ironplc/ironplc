@@ -2269,15 +2269,15 @@ pub(crate) fn compile_expr(
             compile_expr(emitter, ctx, &compare.left, operand_op_type)?;
             compile_expr(emitter, ctx, &compare.right, operand_op_type)?;
             match compare.op {
-                CompareOp::Eq => emit_eq(emitter, op_type),
-                CompareOp::Ne => emit_ne(emitter, op_type),
-                CompareOp::Lt => emit_lt(emitter, op_type),
-                CompareOp::Gt => emit_gt(emitter, op_type),
-                CompareOp::LtEq => emit_le(emitter, op_type),
-                CompareOp::GtEq => emit_ge(emitter, op_type),
-                CompareOp::And => emit_and(emitter, op_type),
-                CompareOp::Or => emit_or(emitter, op_type),
-                CompareOp::Xor => emit_xor(emitter, op_type),
+                CompareOp::Eq => emit_eq(emitter, operand_op_type),
+                CompareOp::Ne => emit_ne(emitter, operand_op_type),
+                CompareOp::Lt => emit_lt(emitter, operand_op_type),
+                CompareOp::Gt => emit_gt(emitter, operand_op_type),
+                CompareOp::LtEq => emit_le(emitter, operand_op_type),
+                CompareOp::GtEq => emit_ge(emitter, operand_op_type),
+                CompareOp::And => emit_and(emitter, operand_op_type),
+                CompareOp::Or => emit_or(emitter, operand_op_type),
+                CompareOp::Xor => emit_xor(emitter, operand_op_type),
             }
             Ok(())
         }
