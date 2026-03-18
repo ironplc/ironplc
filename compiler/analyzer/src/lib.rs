@@ -16,6 +16,7 @@ mod rule_function_call_declared;
 mod rule_function_call_type_check;
 mod rule_pou_hierarchy;
 mod rule_program_task_definition_exists;
+mod rule_ref_to;
 mod rule_stdlib_type_redefinition;
 mod rule_task_names_unique;
 mod rule_unsupported_stdlib_type;

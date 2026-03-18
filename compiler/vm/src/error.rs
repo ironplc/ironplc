@@ -12,6 +12,7 @@ pub enum Trap {
     InvalidFunctionId(u16),
     WatchdogTimeout(u16),
     NegativeExponent,
+    NullDereference,
     InvalidBuiltinFunction(u16),
     DataRegionOutOfBounds(u32),
     TempBufferExhausted,
@@ -38,6 +39,7 @@ impl fmt::Display for Trap {
             Trap::InvalidFunctionId(id) => write!(f, "invalid function ID: {id}"),
             Trap::WatchdogTimeout(id) => write!(f, "watchdog timeout on task {id}"),
             Trap::NegativeExponent => write!(f, "negative exponent"),
+            Trap::NullDereference => write!(f, "null reference dereference"),
             Trap::InvalidBuiltinFunction(id) => {
                 write!(f, "invalid built-in function: 0x{id:04X}")
             }
@@ -123,6 +125,11 @@ mod tests {
     }
 
     #[test]
+    fn v_code_when_null_dereference_then_v4004() {
+        assert_eq!(Trap::NullDereference.v_code(), "V4004");
+    }
+
+    #[test]
     fn v_code_when_array_index_out_of_bounds_then_v4005() {
         assert_eq!(
             Trap::ArrayIndexOutOfBounds {
@@ -144,6 +151,7 @@ mod tests {
     fn exit_code_when_user_error_then_1() {
         assert_eq!(Trap::DivideByZero.exit_code(), 1);
         assert_eq!(Trap::NegativeExponent.exit_code(), 1);
+        assert_eq!(Trap::NullDereference.exit_code(), 1);
         assert_eq!(Trap::WatchdogTimeout(0).exit_code(), 1);
         assert_eq!(
             Trap::ArrayIndexOutOfBounds {
