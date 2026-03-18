@@ -45,6 +45,7 @@ use ironplc_dsl::common::{
     Library, LibraryElementKind, ProgramDeclaration, SignedInteger, SpecificationKind, VarDecl,
     VariableType,
 };
+use ironplc_dsl::configuration::ConfigurationDeclaration;
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
@@ -140,6 +141,8 @@ pub fn compile_reachable(
     reachable: Option<&HashSet<Id>>,
 ) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
+    let config = find_configuration(library);
+    let global_vars: &[VarDecl] = config.map(|c| c.global_var.as_slice()).unwrap_or(&[]);
 
     // Collect user-defined function declarations from the library,
     // filtering to only reachable functions when a reachable set is provided.
@@ -158,7 +161,7 @@ pub fn compile_reachable(
         })
         .collect();
 
-    compile_program_with_functions(program, &func_decls, functions, types)
+    compile_program_with_functions(program, &func_decls, global_vars, functions, types)
 }
 
 /// Finds the first PROGRAM declaration in the library.
@@ -175,6 +178,17 @@ fn find_program(library: &Library) -> Result<&ProgramDeclaration, Diagnostic> {
             "Source does not contain a PROGRAM declaration",
         ),
     ))
+}
+
+/// Finds the first CONFIGURATION declaration in the library, if any.
+fn find_configuration(library: &Library) -> Option<&ConfigurationDeclaration> {
+    library.elements.iter().find_map(|e| {
+        if let LibraryElementKind::ConfigurationDeclaration(config) = e {
+            Some(config)
+        } else {
+            None
+        }
+    })
 }
 
 /// Holds the compiled bytecode and metadata for a user-defined function.
@@ -198,14 +212,27 @@ struct CompiledFunction {
 fn compile_program_with_functions(
     program: &ProgramDeclaration,
     func_decls: &[&FunctionDeclaration],
+    global_vars: &[VarDecl],
     functions: &FunctionEnvironment,
     types: &TypeEnvironment,
 ) -> Result<Container, Diagnostic> {
     let mut ctx = CompileContext::new();
     let mut builder = ContainerBuilder::new();
 
-    // Assign variable indices for all declared program variables.
-    assign_variables(&mut ctx, &mut builder, &program.variables, types)?;
+    // Assign global variable indices first (indices 0..G).
+    assign_variables(&mut ctx, &mut builder, global_vars, types)?;
+
+    // Collect program-local variables, skipping VAR_EXTERNAL declarations
+    // since they alias the corresponding global variables.
+    let local_vars: Vec<VarDecl> = program
+        .variables
+        .iter()
+        .filter(|v| v.var_type != VariableType::External)
+        .cloned()
+        .collect();
+
+    // Assign program-local variable indices (indices G..N).
+    assign_variables(&mut ctx, &mut builder, &local_vars, types)?;
     let program_var_count = ctx.variables.len() as u16;
 
     // Compile user-defined functions. Each function gets a unique function ID
@@ -226,7 +253,8 @@ fn compile_program_with_functions(
 
     // Emit bytecode for variable initial values into the init emitter.
     let mut init_emitter = Emitter::new();
-    emit_initial_values(&mut init_emitter, &mut ctx, &program.variables, types)?;
+    emit_initial_values(&mut init_emitter, &mut ctx, global_vars, types)?;
+    emit_initial_values(&mut init_emitter, &mut ctx, &local_vars, types)?;
     init_emitter.emit_ret_void();
 
     // Compile the program body into the scan emitter.
