@@ -2,8 +2,7 @@
 
 mod common;
 
-use common::parse;
-use ironplc_codegen::compile;
+use common::parse_and_compile;
 
 #[test]
 fn compile_when_shl_byte_then_produces_shl_i32_builtin() {
@@ -17,8 +16,7 @@ PROGRAM main
   y := SHL(x, 4);
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     assert_eq!(container.header.num_variables, 2);
 
@@ -54,8 +52,7 @@ PROGRAM main
   y := ROL(x, 1);
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // Verify the ROL on BYTE emits ROL_U8 (0x0350), not ROL_I32
@@ -87,8 +84,7 @@ PROGRAM main
   y := ROR(x, 1);
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // Verify the ROR on WORD emits ROR_U16 (0x0353)
@@ -120,8 +116,7 @@ PROGRAM main
   y := SHL(x, 4);
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // DWORD is 32-bit so no TRUNC needed

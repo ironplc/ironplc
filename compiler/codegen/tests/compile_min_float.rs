@@ -2,8 +2,7 @@
 
 mod common;
 
-use common::parse;
-use ironplc_codegen::compile;
+use common::parse_and_compile;
 
 #[test]
 fn compile_when_min_real_then_produces_min_f32_bytecode() {
@@ -16,8 +15,7 @@ PROGRAM main
   y := MIN(x, 10.0);
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // y := MIN(x, 10.0): LOAD_VAR_F32 var:0, LOAD_CONST_F32 pool:0, BUILTIN MIN_F32, STORE_VAR_F32 var:1
@@ -44,8 +42,7 @@ PROGRAM main
   y := MIN(x, 10.0);
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(

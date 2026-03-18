@@ -2,8 +2,7 @@
 
 mod common;
 
-use common::parse;
-use ironplc_codegen::compile;
+use common::parse_and_compile;
 
 #[test]
 fn compile_when_exit_in_while_then_produces_jmp_to_end() {
@@ -17,8 +16,7 @@ PROGRAM main
   END_WHILE;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // Bytecode layout:
     //   0: LOAD_TRUE                    (condition: TRUE)
@@ -49,8 +47,7 @@ PROGRAM main
   x := 20;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // Bytecode layout:
     //   0: LOAD_CONST_I32 pool:0 (10)

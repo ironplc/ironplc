@@ -2,8 +2,7 @@
 
 mod common;
 
-use common::parse;
-use ironplc_codegen::compile;
+use common::parse_and_compile;
 
 #[test]
 fn compile_when_byte_and_then_produces_bit_and_32_bytecode() {
@@ -16,8 +15,7 @@ PROGRAM main
   y := x AND BYTE#16#0F;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // y := x AND BYTE#16#0F:
     //   LOAD_VAR_I32 var:0
@@ -51,8 +49,7 @@ PROGRAM main
   y := NOT x;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // y := NOT x:
     //   LOAD_VAR_I32 var:0
@@ -86,8 +83,7 @@ PROGRAM main
   y := x > 0 AND x < 10;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // The AND here is in a comparison context (DINT is signed)
     // so it should still produce BOOL_AND (0x54), not BIT_AND_32.

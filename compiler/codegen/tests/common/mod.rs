@@ -1,12 +1,14 @@
 //! Shared test helpers for codegen integration tests.
 
 #![allow(dead_code)]
+#![allow(clippy::result_large_err)]
 
 use ironplc_analyzer::SemanticContext;
-use ironplc_codegen::compile_reachable;
+use ironplc_codegen::compile;
 use ironplc_container::Container;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
+use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_parser::options::ParseOptions;
 use ironplc_parser::parse_program;
 use ironplc_vm::test_support::load_and_start;
@@ -34,6 +36,17 @@ pub fn parse_edition3(source: &str) -> (Library, SemanticContext) {
     (analyzed, ctx)
 }
 
+/// Parses, analyzes, and compiles an IEC 61131-3 source string into a Container.
+pub fn parse_and_compile(source: &str) -> Container {
+    try_parse_and_compile(source).unwrap()
+}
+
+/// Like [`parse_and_compile`], but returns the Result so callers can test error cases.
+pub fn try_parse_and_compile(source: &str) -> Result<Container, Diagnostic> {
+    let (library, context) = parse(source);
+    compile(&library, &context)
+}
+
 /// Parses, analyzes, compiles, and runs one scan cycle.
 /// Returns the container and buffers so callers can inspect variable values.
 pub fn parse_and_run(source: &str) -> (Container, VmBuffers) {
@@ -44,13 +57,7 @@ pub fn parse_and_run(source: &str) -> (Container, VmBuffers) {
 /// Like [`parse_and_run`], but enables IEC 61131-3 Edition 3 (2013) features.
 pub fn parse_and_run_edition3(source: &str) -> (Container, VmBuffers) {
     let (library, context) = parse_edition3(source);
-    let container = compile_reachable(
-        &library,
-        context.functions(),
-        context.types(),
-        Some(context.reachable()),
-    )
-    .unwrap();
+    let container = compile(&library, &context).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm =
@@ -64,13 +71,7 @@ pub fn parse_and_run_edition3(source: &str) -> (Container, VmBuffers) {
 /// Use this to test that certain programs produce runtime traps.
 pub fn parse_and_try_run(source: &str) -> Result<(Container, VmBuffers), FaultContext> {
     let (library, context) = parse(source);
-    let container = compile_reachable(
-        &library,
-        context.functions(),
-        context.types(),
-        Some(context.reachable()),
-    )
-    .unwrap();
+    let container = compile(&library, &context).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs)?;
@@ -85,13 +86,7 @@ pub fn parse_and_try_run(source: &str) -> Result<(Container, VmBuffers), FaultCo
 /// run multiple rounds, and read back results.
 pub fn parse_and_run_rounds(source: &str, f: impl FnOnce(&mut ironplc_vm::VmRunning<'_>)) {
     let (library, context) = parse(source);
-    let container = compile_reachable(
-        &library,
-        context.functions(),
-        context.types(),
-        Some(context.reachable()),
-    )
-    .unwrap();
+    let container = compile(&library, &context).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = load_and_start(&container, &mut bufs).unwrap();
     f(&mut vm);

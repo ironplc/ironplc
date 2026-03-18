@@ -2,8 +2,7 @@
 
 mod common;
 
-use common::{parse, parse_and_run, VmBuffers};
-use ironplc_codegen::compile;
+use common::{parse_and_compile, parse_and_run, VmBuffers};
 use ironplc_vm::Vm;
 
 #[test]
@@ -130,8 +129,7 @@ PROGRAM main
   count := count - 1;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = Vm::new()
         .load(

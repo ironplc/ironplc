@@ -2,8 +2,7 @@
 
 mod common;
 
-use common::parse;
-use ironplc_codegen::compile;
+use common::parse_and_compile;
 
 #[test]
 fn compile_when_add_expression_then_produces_add_bytecode() {
@@ -17,8 +16,7 @@ PROGRAM main
   y := x + 32;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     assert_eq!(container.header.num_variables, 2);
     assert_eq!(container.constant_pool.get_i32(0).unwrap(), 10);
@@ -52,8 +50,7 @@ PROGRAM main
   x := 1 + 2 + 3;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // Should have 3 constants: 1, 2, 3
     assert_eq!(container.constant_pool.len(), 3);
@@ -87,8 +84,7 @@ PROGRAM main
   x := 10 + 5 - 3;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // (10 + 5) - 3
     let bytecode = container.code.get_function_bytecode(1).unwrap();
@@ -116,8 +112,7 @@ PROGRAM main
   x := 2 + 3 * 4;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // Parser should respect operator precedence: 2 + (3 * 4)
     let bytecode = container.code.get_function_bytecode(1).unwrap();

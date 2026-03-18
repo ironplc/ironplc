@@ -24,11 +24,12 @@
 //!
 //! let source = "PROGRAM main VAR x : INT; END_VAR x := 42; END_PROGRAM";
 //! let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
-//! let container = compile(&library).unwrap();
+//! let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
+//! let container = compile(&analyzed, &ctx).unwrap();
 //! ```
 
 mod compile;
 mod compile_array;
 mod emit;
 
-pub use compile::{compile, compile_reachable};
+pub use compile::compile;
