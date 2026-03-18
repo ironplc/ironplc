@@ -685,7 +685,7 @@ impl fmt::Display for BitStringTypeName {
 /// Elementary type names.
 ///
 /// See section 2.3.1.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ElementaryTypeName {
     BOOL,
     SINT,
@@ -812,6 +812,40 @@ impl From<ElementaryTypeName> for TypeName {
             ElementaryTypeName::DWORD => TypeName::from("DWORD"),
             ElementaryTypeName::LWORD => TypeName::from("LWORD"),
             ElementaryTypeName::WSTRING => TypeName::from("WSTRING"),
+        }
+    }
+}
+
+impl TryFrom<&Id> for ElementaryTypeName {
+    type Error = ();
+    fn try_from(id: &Id) -> Result<Self, ()> {
+        match id.lower_case().as_str() {
+            "bool" => Ok(ElementaryTypeName::BOOL),
+            "sint" => Ok(ElementaryTypeName::SINT),
+            "int" => Ok(ElementaryTypeName::INT),
+            "dint" => Ok(ElementaryTypeName::DINT),
+            "lint" => Ok(ElementaryTypeName::LINT),
+            "usint" => Ok(ElementaryTypeName::USINT),
+            "uint" => Ok(ElementaryTypeName::UINT),
+            "udint" => Ok(ElementaryTypeName::UDINT),
+            "ulint" => Ok(ElementaryTypeName::ULINT),
+            "real" => Ok(ElementaryTypeName::REAL),
+            "lreal" => Ok(ElementaryTypeName::LREAL),
+            "time" => Ok(ElementaryTypeName::TIME),
+            "ltime" => Ok(ElementaryTypeName::LTIME),
+            "date" => Ok(ElementaryTypeName::DATE),
+            "ldate" => Ok(ElementaryTypeName::LDATE),
+            "time_of_day" | "tod" => Ok(ElementaryTypeName::TimeOfDay),
+            "ltime_of_day" | "ltod" => Ok(ElementaryTypeName::LTimeOfDay),
+            "date_and_time" | "dt" => Ok(ElementaryTypeName::DateAndTime),
+            "ldate_and_time" | "ldt" => Ok(ElementaryTypeName::LDateAndTime),
+            "string" => Ok(ElementaryTypeName::STRING),
+            "byte" => Ok(ElementaryTypeName::BYTE),
+            "word" => Ok(ElementaryTypeName::WORD),
+            "dword" => Ok(ElementaryTypeName::DWORD),
+            "lword" => Ok(ElementaryTypeName::LWORD),
+            "wstring" => Ok(ElementaryTypeName::WSTRING),
+            _ => Err(()),
         }
     }
 }
@@ -2601,5 +2635,74 @@ mod tests {
         assert_eq!(g1, g2);
         let g3 = GenericTypeName::AnyReal;
         assert_ne!(g1, g3);
+    }
+
+    #[test]
+    fn try_from_id_when_lowercase_sint_then_returns_sint() {
+        let id = Id::from("sint");
+        assert_eq!(
+            ElementaryTypeName::try_from(&id),
+            Ok(ElementaryTypeName::SINT)
+        );
+    }
+
+    #[test]
+    fn try_from_id_when_uppercase_bool_then_returns_bool() {
+        let id = Id::from("BOOL");
+        assert_eq!(
+            ElementaryTypeName::try_from(&id),
+            Ok(ElementaryTypeName::BOOL)
+        );
+    }
+
+    #[test]
+    fn try_from_id_when_mixed_case_int_then_returns_int() {
+        let id = Id::from("Int");
+        assert_eq!(
+            ElementaryTypeName::try_from(&id),
+            Ok(ElementaryTypeName::INT)
+        );
+    }
+
+    #[test]
+    fn try_from_id_when_tod_alias_then_returns_time_of_day() {
+        let id = Id::from("TOD");
+        assert_eq!(
+            ElementaryTypeName::try_from(&id),
+            Ok(ElementaryTypeName::TimeOfDay)
+        );
+    }
+
+    #[test]
+    fn try_from_id_when_dt_alias_then_returns_date_and_time() {
+        let id = Id::from("DT");
+        assert_eq!(
+            ElementaryTypeName::try_from(&id),
+            Ok(ElementaryTypeName::DateAndTime)
+        );
+    }
+
+    #[test]
+    fn try_from_id_when_ltod_alias_then_returns_ltime_of_day() {
+        let id = Id::from("LTOD");
+        assert_eq!(
+            ElementaryTypeName::try_from(&id),
+            Ok(ElementaryTypeName::LTimeOfDay)
+        );
+    }
+
+    #[test]
+    fn try_from_id_when_ldt_alias_then_returns_ldate_and_time() {
+        let id = Id::from("LDT");
+        assert_eq!(
+            ElementaryTypeName::try_from(&id),
+            Ok(ElementaryTypeName::LDateAndTime)
+        );
+    }
+
+    #[test]
+    fn try_from_id_when_unknown_name_then_returns_err() {
+        let id = Id::from("MY_CUSTOM_TYPE");
+        assert_eq!(ElementaryTypeName::try_from(&id), Err(()));
     }
 }
