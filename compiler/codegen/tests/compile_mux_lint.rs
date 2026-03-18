@@ -2,8 +2,7 @@
 
 mod common;
 
-use common::parse;
-use ironplc_codegen::compile;
+use common::parse_and_compile;
 
 #[test]
 fn compile_when_mux_lint_then_produces_i64_builtin() {
@@ -17,8 +16,7 @@ PROGRAM main
   y := MUX(k, 100, 200, 300);
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // BUILTIN MUX_I64_BASE+3 = 0x0423

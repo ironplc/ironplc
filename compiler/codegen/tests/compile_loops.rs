@@ -2,8 +2,7 @@
 
 mod common;
 
-use common::parse;
-use ironplc_codegen::compile;
+use common::parse_and_compile;
 
 #[test]
 fn compile_when_while_then_produces_loop_with_jmp_if_not() {
@@ -17,8 +16,7 @@ PROGRAM main
   END_WHILE;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // x=var:0, constants: pool:0=0, pool:1=1
     // Bytecode layout:
@@ -73,8 +71,7 @@ PROGRAM main
   END_REPEAT;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // x=var:0, constants: pool:0=1, pool:1=5
     // Bytecode layout:
@@ -122,8 +119,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // i=var:0, y=var:1
     // constants: pool:0=1, pool:1=5
@@ -188,8 +184,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
 

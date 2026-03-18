@@ -8,8 +8,7 @@
 
 mod common;
 
-use common::parse;
-use ironplc_codegen::compile;
+use common::parse_and_compile;
 
 /// Helper to build an IEC 61131-3 program that calls a two-arg function form.
 fn two_arg_program(func_name: &str, var_type: &str) -> String {
@@ -30,8 +29,7 @@ END_PROGRAM
 /// Helper to assert bytecode for a two-arg function form.
 /// The expected_opcode is the single-byte opcode that the function should emit.
 fn assert_two_arg_bytecode(source: &str, expected_opcode: u8) {
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
@@ -99,8 +97,7 @@ PROGRAM main
   y := AND(x, FALSE);
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert!(
         bytecode.contains(&0x54),
@@ -121,8 +118,7 @@ PROGRAM main
   y := OR(x, TRUE);
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert!(
         bytecode.contains(&0x55),
@@ -143,8 +139,7 @@ PROGRAM main
   y := XOR(x, TRUE);
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert!(
         bytecode.contains(&0x56),
@@ -199,8 +194,7 @@ PROGRAM main
   y := MOVE(x);
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(

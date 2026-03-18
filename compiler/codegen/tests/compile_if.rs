@@ -2,8 +2,7 @@
 
 mod common;
 
-use common::parse;
-use ironplc_codegen::compile;
+use common::parse_and_compile;
 
 #[test]
 fn compile_when_simple_if_then_produces_jmp_if_not() {
@@ -18,8 +17,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // x=var:0, y=var:1
     // Bytecode layout:
@@ -60,8 +58,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // Bytecode layout:
     //   0: LOAD_VAR_I32 var:0
@@ -109,8 +106,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // Bytecode layout:
     //   0: LOAD_VAR_I32 var:0
