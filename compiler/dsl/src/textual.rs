@@ -163,7 +163,7 @@ pub struct StructuredVariable {
 
 impl fmt::Display for StructuredVariable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("{} {}", self.record.as_ref(), self.field))
+        f.write_fmt(format_args!("{}.{}", self.record.as_ref(), self.field))
     }
 }
 
