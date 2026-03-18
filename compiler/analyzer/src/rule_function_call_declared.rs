@@ -325,6 +325,24 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
+    fn apply_when_expt_called_then_ok() {
+        let program = "
+FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+    base : INT;
+    exp : INT;
+END_VAR
+    result := EXPT(base, exp);
+END_FUNCTION_BLOCK";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn apply_when_mux_called_with_3_args_then_ok() {
         let program = "
 FUNCTION_BLOCK CALLER

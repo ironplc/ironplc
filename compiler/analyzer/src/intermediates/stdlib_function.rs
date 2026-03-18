@@ -376,6 +376,12 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
+        // EXPT: exponentiation (ANY_NUM, ANY_NUM -> ANY_NUM)
+        FunctionSignature::stdlib(
+            "EXPT",
+            TypeName::from("ANY_NUM"),
+            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+        ),
     ]
 }
 
@@ -788,7 +794,7 @@ mod tests {
         // Int-to-bit-string: 8 × 4 = 32
         // Bool-to/from-bit-string: 4 × 2 = 8
         // Bit-string-to/from-real: 4 × 2 × 2 = 16
-        // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT, SEL, LN, LOG, EXP, SIN, COS, TAN, ASIN, ACOS, ATAN = 15
+        // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT, SEL, LN, LOG, EXP, SIN, COS, TAN, ASIN, ACOS, ATAN, EXPT = 16
         // Truncation function: TRUNC = 1
         // BCD conversion functions: BCD_TO_INT, INT_TO_BCD = 2
         // Arithmetic functions: ADD, SUB, MUL, DIV, MOD = 5
@@ -798,8 +804,8 @@ mod tests {
         // Assignment function: MOVE = 1
         // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
         // String functions: LEN, FIND, REPLACE, INSERT, DELETE, LEFT, RIGHT, MID, CONCAT = 9
-        // Total: 56 + 16 + 16 + 2 + 8 + 8 + 12 + 32 + 32 + 8 + 16 + 15 + 1 + 2 + 5 + 6 + 4 + 1 + 1 + 4 + 9 = 254
-        assert_eq!(functions.len(), 254);
+        // Total: 56 + 16 + 16 + 2 + 8 + 8 + 12 + 32 + 32 + 8 + 16 + 16 + 1 + 2 + 5 + 6 + 4 + 1 + 1 + 4 + 9 = 255
+        assert_eq!(functions.len(), 255);
     }
 
     #[test]
@@ -889,7 +895,7 @@ mod tests {
     fn get_numeric_functions_when_called_then_contains_all_functions() {
         let functions = get_numeric_functions();
 
-        assert_eq!(functions.len(), 15);
+        assert_eq!(functions.len(), 16);
 
         assert!(functions.iter().any(|f| f.name.original() == "ABS"));
         assert!(functions.iter().any(|f| f.name.original() == "SQRT"));
@@ -906,6 +912,7 @@ mod tests {
         assert!(functions.iter().any(|f| f.name.original() == "ASIN"));
         assert!(functions.iter().any(|f| f.name.original() == "ACOS"));
         assert!(functions.iter().any(|f| f.name.original() == "ATAN"));
+        assert!(functions.iter().any(|f| f.name.original() == "EXPT"));
     }
 
     #[test]
