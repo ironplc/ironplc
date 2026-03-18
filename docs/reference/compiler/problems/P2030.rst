@@ -1,0 +1,38 @@
+=====
+P2030
+=====
+
+.. problem-summary:: P2030
+
+This error occurs when ``REF()`` is applied to an array element. References to individual array elements are not supported; only references to entire variables are allowed.
+
+Example
+-------
+
+The following code will generate error P2030:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           arr : ARRAY [0..9] OF INT;
+           x : REF_TO INT;
+       END_VAR
+
+       x := REF(arr[3]);  (* Error: cannot take reference of array element *)
+   END_PROGRAM
+
+To fix this error, take a reference to the entire array or use a separate variable:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           arr : ARRAY [0..9] OF INT;
+           element : INT;
+           x : REF_TO INT;
+       END_VAR
+
+       element := arr[3];
+       x := REF(element);  (* Correct: element is a simple variable *)
+   END_PROGRAM

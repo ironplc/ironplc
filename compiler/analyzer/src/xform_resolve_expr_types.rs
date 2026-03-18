@@ -74,7 +74,9 @@ impl ExprTypeResolver<'_> {
                 SpecificationKind::Named(tn) => tn.clone(),
                 SpecificationKind::Inline(_) => return,
             },
-            InitialValueAssignmentKind::Reference(_) => return,
+            InitialValueAssignmentKind::Reference(ref_init) => {
+                ref_init.referenced_type_name.clone()
+            }
             InitialValueAssignmentKind::LateResolvedType(tn) => tn.clone(),
         };
 
@@ -115,9 +117,21 @@ impl ExprTypeResolver<'_> {
             ExprKind::EnumeratedValue(ev) => ev.type_name.clone(),
             ExprKind::Expression(inner) => inner.resolved_type.clone(),
             ExprKind::LateBound(_) => None,
-            ExprKind::Ref(_) => None,
-            ExprKind::Deref(_) => None,
-            ExprKind::Null(_) => None,
+            ExprKind::Ref(var) => {
+                // REF(var) produces a reference — resolve the variable's type
+                self.resolve_variable_type(var)
+            }
+            ExprKind::Deref(inner) => {
+                // Dereference: the result type is the referenced variable's type.
+                // The inner expression should be a reference whose resolved_type
+                // is the referenced type name.
+                inner.resolved_type.clone()
+            }
+            ExprKind::Null(_) => {
+                // NULL has placeholder type BOOL (see design doc NULL Type Resolution Strategy).
+                // Actual type compatibility is checked contextually by semantic rules.
+                Some(TypeName::from("BOOL"))
+            }
         }
     }
 

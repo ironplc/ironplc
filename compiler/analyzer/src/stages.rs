@@ -16,9 +16,9 @@ use crate::{
     rule_bit_access_range, rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
     rule_enumeration_values_unique, rule_function_block_invocation, rule_function_call_declared,
     rule_function_call_type_check, rule_pou_hierarchy, rule_program_task_definition_exists,
-    rule_stdlib_type_redefinition, rule_task_names_unique, rule_unsupported_stdlib_type,
-    rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
-    rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
+    rule_ref_to, rule_stdlib_type_redefinition, rule_task_names_unique,
+    rule_unsupported_stdlib_type, rule_use_declared_enumerated_value,
+    rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
     semantic_context::SemanticContext,
     symbol_environment::SymbolEnvironment,
@@ -201,6 +201,7 @@ pub(crate) fn semantic(library: &Library, context: &SemanticContext) -> Semantic
         rule_var_decl_global_const_requires_external_const::apply,
         rule_pou_hierarchy::apply,
         rule_bit_access_range::apply,
+        rule_ref_to::apply,
     ];
 
     let mut all_diagnostics = vec![];

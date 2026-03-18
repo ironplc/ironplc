@@ -1,0 +1,43 @@
+=====
+V4004
+=====
+
+.. problem-summary:: V4004
+
+The program attempted to dereference a reference variable that is ``NULL``.
+A ``NULL`` reference does not point to any variable, so dereferencing it with
+the ``^`` operator is not valid.
+
+Example
+-------
+
+The following code will generate error V4004:
+
+.. code-block::
+
+   PROGRAM Main
+   VAR
+       r : REF_TO INT := NULL;
+       value : INT;
+   END_VAR
+   value := r^;  (* Error: r is NULL, cannot dereference *)
+   END_PROGRAM
+
+The reference ``r`` is ``NULL`` and does not point to any variable. Dereferencing
+it attempts to read a value that does not exist.
+
+To fix this error, ensure the reference points to a valid variable before
+dereferencing:
+
+.. code-block::
+
+   PROGRAM Main
+   VAR
+       counter : INT;
+       r : REF_TO INT := REF(counter);
+       value : INT;
+   END_VAR
+   IF r <> NULL THEN
+       value := r^;  (* Correct: r points to counter *)
+   END_IF;
+   END_PROGRAM

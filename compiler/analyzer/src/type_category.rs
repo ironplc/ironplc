@@ -39,6 +39,7 @@ impl TypeCategory {
             IntermediateType::FunctionBlock { .. } | IntermediateType::Function { .. } => {
                 TypeCategory::UserDefined
             }
+            IntermediateType::Reference { .. } => TypeCategory::Derived,
         }
     }
 }

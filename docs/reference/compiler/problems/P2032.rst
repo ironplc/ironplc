@@ -1,0 +1,36 @@
+=====
+P2032
+=====
+
+.. problem-summary:: P2032
+
+This error occurs when a reference assignment has incompatible types. The reference type and the target type must match exactly.
+
+Example
+-------
+
+The following code will generate error P2032:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT;
+           y : REF_TO REAL;
+       END_VAR
+
+       y := REF(x);  (* Error: REF_TO REAL cannot hold reference to INT *)
+   END_PROGRAM
+
+To fix this error, ensure the reference type matches the variable type:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT;
+           y : REF_TO INT;
+       END_VAR
+
+       y := REF(x);  (* Correct: REF_TO INT matches INT variable *)
+   END_PROGRAM

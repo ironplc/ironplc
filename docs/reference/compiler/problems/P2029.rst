@@ -1,0 +1,38 @@
+=====
+P2029
+=====
+
+.. problem-summary:: P2029
+
+This error occurs when ``REF()`` is applied to a stack-allocated variable that would be destroyed when the function returns, creating a dangling reference. Variables in ``VAR_TEMP`` sections and ``VAR_INPUT``/``VAR_OUTPUT`` sections of ``FUNCTION`` declarations (not ``FUNCTION_BLOCK``) are stack-allocated.
+
+Example
+-------
+
+The following code will generate error P2029:
+
+.. code-block::
+
+   FUNCTION MyFunc : INT
+       VAR_TEMP
+           temp : INT;
+       END_VAR
+       VAR
+           x : REF_TO INT;
+       END_VAR
+
+       x := REF(temp);  (* Error: temp is stack-allocated and will be destroyed *)
+   END_FUNCTION
+
+To fix this error, use a variable from a persistent scope such as a ``FUNCTION_BLOCK`` instance variable:
+
+.. code-block::
+
+   FUNCTION_BLOCK MyFB
+       VAR
+           counter : INT;
+           x : REF_TO INT;
+       END_VAR
+
+       x := REF(counter);  (* Correct: FB instance variables persist *)
+   END_FUNCTION_BLOCK

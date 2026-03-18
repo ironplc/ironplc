@@ -1,0 +1,40 @@
+=====
+P2035
+=====
+
+.. problem-summary:: P2035
+
+This error occurs when ordering comparison operators (``<``, ``>``, ``<=``, ``>=``) are used with reference types. Only equality (``=``) and inequality (``<>``) comparisons are allowed on references.
+
+Example
+-------
+
+The following code will generate error P2035:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT;
+           xRef : REF_TO INT := REF(x);
+           yRef : REF_TO INT := REF(x);
+           result : BOOL;
+       END_VAR
+
+       result := xRef > yRef;  (* Error: ordering comparison on references *)
+   END_PROGRAM
+
+To fix this error, use equality or inequality comparison instead:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT;
+           xRef : REF_TO INT := REF(x);
+           yRef : REF_TO INT := REF(x);
+           result : BOOL;
+       END_VAR
+
+       result := xRef = yRef;  (* Correct: equality comparison is allowed *)
+   END_PROGRAM

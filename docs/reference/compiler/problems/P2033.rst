@@ -1,0 +1,37 @@
+=====
+P2033
+=====
+
+.. problem-summary:: P2033
+
+This error occurs when arithmetic operations (``+``, ``-``, ``*``, ``/``, ``MOD``) are performed on reference types. Pointer arithmetic is not allowed in IEC 61131-3.
+
+Example
+-------
+
+The following code will generate error P2033:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT;
+           xRef : REF_TO INT := REF(x);
+       END_VAR
+
+       xRef := xRef + 1;  (* Error: arithmetic on references is not allowed *)
+   END_PROGRAM
+
+To fix this error, dereference the variable first, then perform arithmetic on the value:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT;
+           xRef : REF_TO INT := REF(x);
+           y : INT;
+       END_VAR
+
+       y := xRef^ + 1;  (* Correct: dereference first, then add *)
+   END_PROGRAM

@@ -35,6 +35,15 @@ P2024,ArrayDimensionInvalid,Array dimension range is invalid
 P2025,TypeEnvironmentUnknownType,Unknown type
 P2026,ConstantOverflow,Constant value overflows the target type
 P2027,ArrayIndexOutOfBounds,Array index out of bounds
+P2028,RefOperandNotVariable,REF() operand must be a simple variable
+P2029,RefOfEphemeralVariable,REF() of stack-allocated variable (VAR_TEMP or FUNCTION VAR_INPUT/VAR_OUTPUT) would create a dangling reference
+P2030,RefOfArrayElement,REF() of array element is not supported
+P2031,DerefRequiresReferenceType,Dereference operator (^) requires a REF_TO type
+P2032,ReferenceTypeMismatch,Reference type mismatch in assignment
+P2033,ArithmeticOnReference,Arithmetic operations are not allowed on reference types
+P2034,NullRequiresReferenceType,NULL can only be assigned to a REF_TO type
+P2035,OrderingOnReference,Ordering comparison on reference types (only = and <> are allowed)
+P2036,NestedRefToNotSupported,Nested REF_TO (multi-level indirection) is not supported
 P4001,FunctionCallMixedArgTypes,Function call mixes named (formal) and positional (non-format) input arguments
 P4002,FunctionInvocationMissingInput,Function invocation assigns named (formal) input that is not defined
 P4003,FunctionInvocationRequiresFormal,Function invocation requires non-formal inputs but the invocation has formal inputs

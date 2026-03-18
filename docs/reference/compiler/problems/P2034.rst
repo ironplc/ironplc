@@ -1,0 +1,34 @@
+=====
+P2034
+=====
+
+.. problem-summary:: P2034
+
+This error occurs when ``NULL`` is assigned to a variable that is not a ``REF_TO`` type. ``NULL`` represents an empty reference and can only be used with reference types.
+
+Example
+-------
+
+The following code will generate error P2034:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT;
+       END_VAR
+
+       x := NULL;  (* Error: NULL can only be assigned to REF_TO types *)
+   END_PROGRAM
+
+To fix this error, ensure the target variable is a reference type:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : REF_TO INT;
+       END_VAR
+
+       x := NULL;  (* Correct: x is REF_TO INT *)
+   END_PROGRAM

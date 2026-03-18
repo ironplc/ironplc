@@ -1,0 +1,37 @@
+=====
+P2031
+=====
+
+.. problem-summary:: P2031
+
+This error occurs when the dereference operator (``^``) is applied to an expression that is not a ``REF_TO`` type. The dereference operator follows a reference to access the value it points to, and can only be used on reference types.
+
+Example
+-------
+
+The following code will generate error P2031:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT := 42;
+           y : INT;
+       END_VAR
+
+       y := x^;  (* Error: x is INT, not REF_TO *)
+   END_PROGRAM
+
+To fix this error, ensure the variable is declared as a reference type:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT := 42;
+           xRef : REF_TO INT := REF(x);
+           y : INT;
+       END_VAR
+
+       y := xRef^;  (* Correct: xRef is REF_TO INT *)
+   END_PROGRAM

@@ -84,6 +84,15 @@ impl TypeEnvironment {
                         default: None,
                     }))
                 }
+                IntermediateType::Reference { .. } => {
+                    // Reference type alias: treat as a simple alias
+                    Ok(DataTypeDeclarationKind::Reference(
+                        ironplc_dsl::common::ReferenceDeclaration {
+                            type_name: node.data_type_name,
+                            referenced_type_name: node.base_type_name,
+                        },
+                    ))
+                }
                 // FunctionBlock and Function types are POUs (Program Organization Units),
                 // not TYPE declarations, so they should never appear in the type environment.
                 // If we reach this branch, it indicates a bug in the compiler.
@@ -298,6 +307,33 @@ impl Fold<Diagnostic> for TypeEnvironment {
             }
         }
 
+        Ok(node)
+    }
+
+    fn fold_reference_declaration(
+        &mut self,
+        node: ReferenceDeclaration,
+    ) -> Result<ReferenceDeclaration, Diagnostic> {
+        // Resolve the referenced type to build the Reference intermediate type.
+        let referenced_attrs = self.get(&node.referenced_type_name).ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::ParentTypeNotDeclared,
+                Label::span(node.type_name.span(), "Reference type declaration"),
+            )
+            .with_secondary(Label::span(
+                node.referenced_type_name.span(),
+                "Referenced type",
+            ))
+        })?;
+
+        let target_type = referenced_attrs.representation.clone();
+        let attrs = crate::type_attributes::TypeAttributes::new(
+            node.type_name.span(),
+            IntermediateType::Reference {
+                target_type: Box::new(target_type),
+            },
+        );
+        self.insert_type(&node.type_name, attrs)?;
         Ok(node)
     }
 
