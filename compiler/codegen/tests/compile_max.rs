@@ -2,8 +2,7 @@
 
 mod common;
 
-use common::parse;
-use ironplc_codegen::compile;
+use common::parse_and_compile;
 
 #[test]
 fn compile_when_max_function_then_produces_builtin_bytecode() {
@@ -17,8 +16,7 @@ PROGRAM main
   y := MAX(x, 3);
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     assert_eq!(container.header.num_variables, 2);
     assert_eq!(container.constant_pool.get_i32(0).unwrap(), 10);

@@ -2,8 +2,7 @@
 
 mod common;
 
-use common::parse;
-use ironplc_codegen::compile;
+use common::parse_and_compile;
 
 #[test]
 fn compile_when_abs_real_then_produces_abs_f32_bytecode() {
@@ -17,8 +16,7 @@ PROGRAM main
   y := ABS(x);
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // x := 5.0: LOAD_CONST_F32 pool:0, STORE_VAR_F32 var:0
     // y := ABS(x): LOAD_VAR_F32 var:0, BUILTIN ABS_F32, STORE_VAR_F32 var:1
@@ -49,8 +47,7 @@ PROGRAM main
   y := ABS(x);
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // x := 5.0: LOAD_CONST_F64 pool:0, STORE_VAR_F64 var:0
     // y := ABS(x): LOAD_VAR_F64 var:0, BUILTIN ABS_F64, STORE_VAR_F64 var:1
