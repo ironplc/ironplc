@@ -37,10 +37,10 @@ Scope Keywords
      - Partial
    * - ``VAR_GLOBAL``
      - Global variable (accessible across POUs)
-     - Not yet supported
+     - Supported
    * - ``VAR_EXTERNAL``
      - Reference to a global variable
-     - Not yet supported
+     - Supported
 
 Example
 -------
@@ -65,6 +65,40 @@ Example
            running := FALSE;
        END_IF;
    END_FUNCTION_BLOCK
+
+Global Variables
+----------------
+
+Global variables are declared in a :code:`CONFIGURATION` block using
+:code:`VAR_GLOBAL` and accessed from programs using :code:`VAR_EXTERNAL`.
+The :code:`VAR_EXTERNAL` declaration must match the name and type of the
+global variable it references.
+
+.. playground::
+
+   CONFIGURATION config
+     VAR_GLOBAL
+       MaxSpeed : INT := 100;
+       Readings : ARRAY[1..3] OF INT := [10, 20, 30];
+     END_VAR
+     RESOURCE resource1 ON PLC
+       TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+       PROGRAM plc_task_instance WITH plc_task : main;
+     END_RESOURCE
+   END_CONFIGURATION
+
+   PROGRAM main
+     VAR_EXTERNAL
+       MaxSpeed : INT;
+       Readings : ARRAY[1..3] OF INT;
+     END_VAR
+     VAR
+       currentSpeed : INT;
+       firstReading : INT;
+     END_VAR
+     currentSpeed := MaxSpeed;
+     firstReading := Readings[1];
+   END_PROGRAM
 
 See Also
 --------
