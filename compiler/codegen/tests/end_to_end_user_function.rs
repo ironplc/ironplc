@@ -408,3 +408,28 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i32(), 2);
     assert_eq!(bufs.vars[1].as_i32(), 5);
 }
+
+#[test]
+fn end_to_end_when_user_function_with_real_comparison_then_correct() {
+    let source = "
+FUNCTION SIGN_R : BOOL
+VAR_INPUT
+    in : REAL;
+END_VAR
+    SIGN_R := in < 0.0;
+END_FUNCTION
+PROGRAM main
+VAR
+    neg : BOOL;
+    pos : BOOL;
+END_VAR
+    neg := SIGN_R(in := -2.5);
+    pos := SIGN_R(in := 2.5);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // -2.5 < 0.0 is TRUE (1), 2.5 < 0.0 is FALSE (0)
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+    assert_eq!(bufs.vars[1].as_i32(), 0);
+}
