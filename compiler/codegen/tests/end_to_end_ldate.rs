@@ -4,16 +4,16 @@
 //! for long date/time variables and literals. These are IEC 61131-3
 //! Edition 3 (2013) features that use 64-bit storage:
 //!
-//! - LDATE: stored as u64 days since 0001-01-01
+//! - LDATE: stored as u64 seconds since 1970-01-01 (industry standard)
 //! - LTOD (LTIME_OF_DAY): stored as u64 milliseconds since midnight
-//! - LDT (LDATE_AND_TIME): stored as u64 milliseconds since 0001-01-01 00:00:00
+//! - LDT (LDATE_AND_TIME): stored as u64 seconds since 1970-01-01 00:00:00
 
 mod common;
 
 use common::parse_and_run_edition3;
 
 #[test]
-fn end_to_end_when_ldate_assignment_then_value_is_i64_days_since_epoch() {
+fn end_to_end_when_ldate_assignment_then_value_is_i64_seconds_since_epoch() {
     let source = "
 PROGRAM main
   VAR
@@ -23,8 +23,8 @@ PROGRAM main
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run_edition3(source);
-    // 2024-01-01 is 738885 days after 0001-01-01
-    assert_eq!(bufs.vars[0].as_i64() as u64, 738885);
+    // 2024-01-01 is 19723 days after 1970-01-01 = 19723 * 86400 = 1704067200
+    assert_eq!(bufs.vars[0].as_i64() as u64, 1_704_067_200);
 }
 
 #[test]
@@ -43,7 +43,7 @@ END_PROGRAM
 }
 
 #[test]
-fn end_to_end_when_ldt_assignment_then_value_is_i64_milliseconds_since_epoch() {
+fn end_to_end_when_ldt_assignment_then_value_is_i64_seconds_since_epoch() {
     let source = "
 PROGRAM main
   VAR
@@ -53,8 +53,8 @@ PROGRAM main
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run_edition3(source);
-    // 738885 days * 86400000 ms/day + 45000000 ms = 63839709000000
-    assert_eq!(bufs.vars[0].as_i64() as u64, 63_839_709_000_000);
+    // 1704067200 (date) + 12*3600 + 30*60 = 1704067200 + 45000 = 1704112200
+    assert_eq!(bufs.vars[0].as_i64() as u64, 1_704_112_200);
 }
 
 #[test]
@@ -105,6 +105,6 @@ PROGRAM main
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run_edition3(source);
-    // 738885 days * 86400000 ms/day = 63839664000000
-    assert_eq!(bufs.vars[0].as_i64() as u64, 63_839_664_000_000);
+    // 19723 days * 86400 = 1704067200 seconds
+    assert_eq!(bufs.vars[0].as_i64() as u64, 1_704_067_200);
 }
