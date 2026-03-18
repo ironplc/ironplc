@@ -912,8 +912,11 @@ fn resolve_iec_type_tag(name: &Id) -> u8 {
         "time" => iec_type_tag::TIME,
         "ltime" => iec_type_tag::LTIME,
         "date" => iec_type_tag::DATE,
+        "ldate" => iec_type_tag::LDATE,
         "time_of_day" | "tod" => iec_type_tag::TIME_OF_DAY,
+        "ltime_of_day" | "ltod" => iec_type_tag::LTOD,
         "date_and_time" | "dt" => iec_type_tag::DATE_AND_TIME,
+        "ldate_and_time" | "ldt" => iec_type_tag::LDT,
         _ => iec_type_tag::OTHER,
     }
 }
@@ -1214,6 +1217,21 @@ pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
             storage_bits: 32,
         }),
         "date_and_time" | "dt" => Some(VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Unsigned,
+            storage_bits: 32,
+        }),
+        "ldate" => Some(VarTypeInfo {
+            op_width: OpWidth::W64,
+            signedness: Signedness::Unsigned,
+            storage_bits: 64,
+        }),
+        "ltime_of_day" | "ltod" => Some(VarTypeInfo {
+            op_width: OpWidth::W64,
+            signedness: Signedness::Unsigned,
+            storage_bits: 64,
+        }),
+        "ldate_and_time" | "ldt" => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Unsigned,
             storage_bits: 64,
@@ -3440,23 +3458,31 @@ fn compile_constant(
             Ok(())
         }
         ConstantKind::Date(lit) => {
-            let days = lit.days_since_epoch();
+            let secs = lit.seconds_since_epoch();
             match op_type.0 {
                 OpWidth::W64 => {
-                    let pool_index = ctx.add_i64_constant(days as i64);
+                    let pool_index = ctx.add_i64_constant(secs as i64);
                     emitter.emit_load_const_i64(pool_index);
                 }
                 _ => {
-                    let pool_index = ctx.add_i32_constant(days as i32);
+                    let pool_index = ctx.add_i32_constant(secs as i32);
                     emitter.emit_load_const_i32(pool_index);
                 }
             }
             Ok(())
         }
         ConstantKind::DateAndTime(lit) => {
-            let ms = lit.whole_milliseconds();
-            let pool_index = ctx.add_i64_constant(ms as i64);
-            emitter.emit_load_const_i64(pool_index);
+            let secs = lit.seconds_since_epoch();
+            match op_type.0 {
+                OpWidth::W64 => {
+                    let pool_index = ctx.add_i64_constant(secs as i64);
+                    emitter.emit_load_const_i64(pool_index);
+                }
+                _ => {
+                    let pool_index = ctx.add_i32_constant(secs as i32);
+                    emitter.emit_load_const_i32(pool_index);
+                }
+            }
             Ok(())
         }
         ConstantKind::BitStringLiteral(lit) => {
