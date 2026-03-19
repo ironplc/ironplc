@@ -96,7 +96,7 @@ Elementary Types
      - Supported
    * - :doc:`LTIME <ltime>`
      - 64 bits
-     - Duration (Edition 3)
+     - Duration (:doc:`Edition 3 </reference/language/edition-support>`)
      - Supported
    * - :doc:`DATE <date>`
      - 32 bits
@@ -104,7 +104,7 @@ Elementary Types
      - Supported
    * - :doc:`LDATE <ldate>`
      - 64 bits
-     - Calendar date (Edition 3)
+     - Calendar date (:doc:`Edition 3 </reference/language/edition-support>`)
      - Supported
    * - :doc:`TIME_OF_DAY <time-of-day>`
      - 32 bits
@@ -112,7 +112,7 @@ Elementary Types
      - Supported
    * - :doc:`LTIME_OF_DAY <ltime-of-day>`
      - 64 bits
-     - Time of day (Edition 3)
+     - Time of day (:doc:`Edition 3 </reference/language/edition-support>`)
      - Supported
    * - :doc:`DATE_AND_TIME <date-and-time>`
      - 64 bits
@@ -120,7 +120,7 @@ Elementary Types
      - Supported
    * - :doc:`LDATE_AND_TIME <ldate-and-time>`
      - 64 bits
-     - Date and time of day (Edition 3)
+     - Date and time of day (:doc:`Edition 3 </reference/language/edition-support>`)
      - Supported
 
 Derived Types

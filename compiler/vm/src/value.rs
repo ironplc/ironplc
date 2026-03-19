@@ -55,6 +55,22 @@ impl Slot {
     pub fn as_u64(self) -> u64 {
         self.0
     }
+
+    /// Creates a null reference sentinel (u64::MAX).
+    pub fn null_ref() -> Self {
+        Slot(u64::MAX)
+    }
+
+    /// Returns true if this slot holds the null reference sentinel.
+    pub fn is_null_ref(self) -> bool {
+        self.0 == u64::MAX
+    }
+
+    /// Extracts a variable table index from this slot.
+    /// Returns `None` if the value exceeds u16::MAX (invalid index).
+    pub fn as_var_index(self) -> Option<u16> {
+        u16::try_from(self.0).ok()
+    }
 }
 
 #[cfg(test)]
@@ -132,5 +148,39 @@ mod tests {
     #[test]
     fn slot_from_u64_when_zero_then_default() {
         assert_eq!(Slot::from_u64(0), Slot::default());
+    }
+
+    #[test]
+    fn slot_null_ref_when_created_then_is_null() {
+        assert!(Slot::null_ref().is_null_ref());
+    }
+
+    #[test]
+    fn slot_is_null_ref_when_not_null_then_false() {
+        assert!(!Slot::from_i64(0).is_null_ref());
+        assert!(!Slot::from_i64(42).is_null_ref());
+    }
+
+    #[test]
+    fn slot_as_var_index_when_valid_then_some() {
+        let slot = Slot::from_i64(5);
+        assert_eq!(slot.as_var_index(), Some(5));
+    }
+
+    #[test]
+    fn slot_as_var_index_when_max_u16_then_some() {
+        let slot = Slot::from_u64(u16::MAX as u64);
+        assert_eq!(slot.as_var_index(), Some(u16::MAX));
+    }
+
+    #[test]
+    fn slot_as_var_index_when_null_ref_then_none() {
+        assert_eq!(Slot::null_ref().as_var_index(), None);
+    }
+
+    #[test]
+    fn slot_as_var_index_when_too_large_then_none() {
+        let slot = Slot::from_u64(u16::MAX as u64 + 1);
+        assert_eq!(slot.as_var_index(), None);
     }
 }

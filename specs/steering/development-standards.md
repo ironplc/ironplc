@@ -226,9 +226,20 @@ Two Sphinx directives are available (defined in `docs/extensions/ironplc_playgro
 
 ### Documentation Content Guidelines
 
+- **Describe features as they are, not as future plans.** The website documents current capabilities. Do not include forward-looking statements like "this page will be updated when..." or "future versions will support...". If a feature is not yet supported, say so plainly (e.g., "Not yet supported") without speculating about when it will be added.
 - **Do not document architecture or internals** in user-facing reference docs. Architecture belongs in `docs/explanation/` if anywhere.
 - **Do not explain standard VS Code concepts** (e.g., workspace vs. user settings). Assume the reader knows VS Code.
 - **Use platform tabs** (via `sphinx_inline_tabs`) for platform-specific instructions.
+
+### Edition-Gated Features
+
+Some IEC 61131-3 features require the user to enable a specific edition of the standard. When documenting an edition-gated feature:
+
+1. **Use the reusable include** — add `.. include:: ../../../includes/requires-edition3.rst` near the top of the page (after the description, before the detail table). Do not write a custom note.
+2. **Link to the edition support matrix** — in the feature's detail table, use `:doc:\`Edition 3 </reference/language/edition-support>\`` in the Support row instead of hardcoding the flag name.
+3. **Update the matrix** — add the feature to `docs/reference/language/edition-support.rst`.
+
+The centralized explanation page at `docs/explanation/enabling-features.rst` covers how to enable editions in both the CLI and VS Code. Individual feature pages link there rather than duplicating instructions.
 
 ### Problem Documentation Format
 Each problem code must have a corresponding `.rst` file in `docs/compiler/problems/` with:
