@@ -88,7 +88,7 @@ def _auto_height(code_lines, scaffold=False, vars_decl=""):
     return f"{max(_MIN_HEIGHT_PX, height)}px"
 
 
-def _build_playground_url(code, scaffold=False, vars_decl="", embed=False):
+def _build_playground_url(code, scaffold=False, vars_decl="", embed=False, edition=""):
     """Build a playground URL with encoded parameters."""
     params = []
 
@@ -98,6 +98,9 @@ def _build_playground_url(code, scaffold=False, vars_decl="", embed=False):
     if scaffold:
         params.append("scaffold=true")
 
+    if edition:
+        params.append("edition=" + quote(edition, safe=""))
+
     params.append("code=" + quote(b64encode(code.encode()).decode(), safe=""))
 
     if vars_decl:
@@ -106,8 +109,10 @@ def _build_playground_url(code, scaffold=False, vars_decl="", embed=False):
     return PLAYGROUND_URL + "?" + "&".join(params)
 
 
-def _build_iframe(code, height, scaffold=False, vars_decl=""):
-    src = _build_playground_url(code, scaffold=scaffold, vars_decl=vars_decl, embed=True)
+def _build_iframe(code, height, scaffold=False, vars_decl="", edition=""):
+    src = _build_playground_url(
+        code, scaffold=scaffold, vars_decl=vars_decl, embed=True, edition=edition
+    )
 
     raw_html = (
         f'<iframe src="{src}" '
@@ -125,13 +130,15 @@ class PlaygroundDirective(Directive):
     has_content = True
     option_spec = {
         "height": directives.unchanged,
+        "edition": directives.unchanged,
     }
 
     def run(self):
         code = "\n".join(self.content)
         code_lines = len(self.content)
         height = self.options.get("height") or _auto_height(code_lines)
-        return [_build_iframe(code, height)]
+        edition = self.options.get("edition", "")
+        return [_build_iframe(code, height, edition=edition)]
 
 
 class PlaygroundWithProgramDirective(Directive):
@@ -139,16 +146,18 @@ class PlaygroundWithProgramDirective(Directive):
     option_spec = {
         "vars": directives.unchanged,
         "height": directives.unchanged,
+        "edition": directives.unchanged,
     }
 
     def run(self):
         code = "\n".join(self.content)
         code_lines = len(self.content)
         vars_decl = self.options.get("vars", "")
+        edition = self.options.get("edition", "")
         height = self.options.get("height") or _auto_height(
             code_lines, scaffold=True, vars_decl=vars_decl
         )
-        return [_build_iframe(code, height, scaffold=True, vars_decl=vars_decl)]
+        return [_build_iframe(code, height, scaffold=True, vars_decl=vars_decl, edition=edition)]
 
 
 _DEFAULT_LINK_TEXT = "Try this in the IronPLC Playground"
@@ -160,12 +169,14 @@ class PlaygroundLinkDirective(Directive):
     has_content = True
     option_spec = {
         "text": directives.unchanged,
+        "edition": directives.unchanged,
     }
 
     def run(self):
         code = "\n".join(self.content)
         link_text = self.options.get("text", _DEFAULT_LINK_TEXT)
-        href = _build_playground_url(code)
+        edition = self.options.get("edition", "")
+        href = _build_playground_url(code, edition=edition)
 
         ref_node = nodes.reference("", link_text, refuri=href, internal=False)
         ref_node["classes"].append("playground-link")

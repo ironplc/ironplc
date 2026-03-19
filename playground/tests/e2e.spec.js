@@ -296,6 +296,53 @@ END_PROGRAM
     await expect(page.locator('[data-testid="examples-select"]')).toBeHidden();
   });
 
+  test("edition_select_when_loaded_then_defaults_to_2003", async ({ page }) => {
+    const select = page.locator('[data-testid="edition-select"]');
+    await expect(select).toBeVisible();
+    await expect(select).toHaveValue("2003");
+  });
+
+  test("edition_select_when_embed_mode_then_hidden", async ({ page }) => {
+    await page.goto("/?embed=true");
+    await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
+      timeout: 15000,
+    });
+
+    await expect(page.locator('[data-testid="edition-select"]')).toBeHidden();
+  });
+
+  test("edition_badge_when_embed_with_edition_2013_then_shows_badge", async ({ page }) => {
+    await page.goto("/?embed=true&edition=2013");
+    await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
+      timeout: 15000,
+    });
+
+    const badge = page.locator('[data-testid="edition-badge"]');
+    await expect(badge).toBeVisible();
+    await expect(badge).toHaveText("IEC 61131-3:2013");
+  });
+
+  test("start_when_edition_2013_and_ltime_program_then_runs", async ({ page }) => {
+    const editor = page.locator('[data-testid="editor"]');
+    const select = page.locator('[data-testid="edition-select"]');
+
+    await select.selectOption("2013");
+    await editor.fill(`PROGRAM main
+  VAR
+    duration : LTIME;
+  END_VAR
+  duration := LTIME#500ms;
+END_PROGRAM
+`);
+
+    await page.click('[data-testid="start-btn"]');
+
+    const variablesPanel = page.locator('[data-testid="variables-panel"]');
+    await expect(variablesPanel).toContainText("duration", { timeout: 10000 });
+
+    await page.click('[data-testid="stop-btn"]');
+  });
+
   test("embed_when_loaded_then_shows_start_and_stop_only", async ({ page }) => {
     await page.goto("/?embed=true");
     await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
