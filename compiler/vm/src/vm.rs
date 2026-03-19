@@ -768,7 +768,7 @@ fn execute(
                     .ok_or(Trap::InvalidFunctionId(func_id))?;
 
                 let func_scope = VariableScope {
-                    shared_globals_size: 0,
+                    shared_globals_size: scope.shared_globals_size,
                     instance_offset: var_offset,
                     instance_count: func.num_locals,
                 };
