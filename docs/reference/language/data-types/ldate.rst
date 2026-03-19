@@ -4,11 +4,7 @@ LDATE
 
 64-bit calendar date value.
 
-.. note::
-
-   LDATE is an IEC 61131-3:2013 (Edition 3) type. You must pass
-   ``--std-iec-61131-3=2013`` to the compiler. See :doc:`/reference/compiler/ironplcc`
-   for details.
+.. include:: ../../../includes/requires-edition3.rst
 
 .. list-table::
    :widths: 30 70
@@ -20,7 +16,7 @@ LDATE
    * - **IEC 61131-3**
      - Section 2.3.1 (Edition 3)
    * - **Support**
-     - Supported (requires ``--std-iec-61131-3=2013``)
+     - Supported (:doc:`Edition 3 </reference/language/edition-support>`)
 
 Example
 -------
