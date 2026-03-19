@@ -187,6 +187,16 @@ impl Emitter {
     emit_unaryop!(emit_trunc_i16, opcode::TRUNC_I16);
     emit_unaryop!(emit_trunc_u16, opcode::TRUNC_U16);
 
+    // --- Reference (indirect) ops ---
+    emit_unaryop!(emit_load_indirect, opcode::LOAD_INDIRECT);
+
+    /// Emits STORE_INDIRECT.
+    /// Pops 2 (value and reference). Net: -2.
+    pub fn emit_store_indirect(&mut self) {
+        self.bytecode.push(opcode::STORE_INDIRECT);
+        self.pop_stack(2);
+    }
+
     /// Emits LOAD_ARRAY with var_index and desc_index operands.
     /// Pops 1 (flat index already on stack), pushes 1 (element value). Net: 0.
     #[allow(dead_code)]
