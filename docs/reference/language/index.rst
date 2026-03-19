@@ -45,6 +45,7 @@ Support Status
    :maxdepth: 2
    :hidden:
 
+   edition-support
    data-types/index
    variables/index
    pous/index
