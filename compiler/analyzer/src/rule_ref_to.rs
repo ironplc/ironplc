@@ -622,4 +622,15 @@ END_VAR
 END_PROGRAM",
         );
     }
+
+    #[test]
+    fn array_of_ref_to_when_declared_then_ok() {
+        assert_ok(
+            "PROGRAM Main
+VAR
+    data : ARRAY[0..3] OF REF_TO BYTE;
+END_VAR
+END_PROGRAM",
+        );
+    }
 }
