@@ -24,6 +24,8 @@ pub(crate) struct ArraySpec {
     pub dimensions: Vec<(i32, i32)>,
     /// Element type name (e.g., "INT", "DINT").
     pub element_type_name: Id,
+    /// Whether each element is a REF_TO the named type.
+    pub ref_to: bool,
 }
 
 /// Metadata for a single dimension of an array, used for index computation.
@@ -139,6 +141,7 @@ pub(crate) fn array_spec_from_inline(
     Ok(ArraySpec {
         dimensions,
         element_type_name: Id::from(&subranges.type_name.to_string()),
+        ref_to: subranges.ref_to,
     })
 }
 
@@ -148,10 +151,17 @@ pub(crate) fn array_spec_from_named(
     dimensions: &[ArrayDimension],
 ) -> Result<ArraySpec, Diagnostic> {
     let dims: Vec<(i32, i32)> = dimensions.iter().map(|d| (d.lower, d.upper)).collect();
-    let element_type_name = intermediate_type_to_name(element_type)?;
+    let ref_to = matches!(element_type, IntermediateType::Reference { .. });
+    let inner_type = if let IntermediateType::Reference { target_type } = element_type {
+        target_type.as_ref()
+    } else {
+        element_type
+    };
+    let element_type_name = intermediate_type_to_name(inner_type)?;
     Ok(ArraySpec {
         dimensions: dims,
         element_type_name,
+        ref_to,
     })
 }
 
@@ -247,13 +257,21 @@ pub(crate) fn register_array_variable(
     span: &ironplc_dsl::core::SourceSpan,
 ) -> Result<(u8, String), Diagnostic> {
     // 1. Resolve element type
-    let element_vti =
+    let element_vti = if spec.ref_to {
+        // References are stored as 64-bit unsigned variable-table indices
+        VarTypeInfo {
+            op_width: OpWidth::W64,
+            signedness: Signedness::Unsigned,
+            storage_bits: 64,
+        }
+    } else {
         super::compile::resolve_type_name(&spec.element_type_name).ok_or_else(|| {
             Diagnostic::problem(
                 Problem::NotImplemented,
                 Label::span(span.clone(), "Unsupported array element type"),
             )
-        })?;
+        })?
+    };
 
     // 2. Build DimensionInfo from normalized bounds
     let mut dimensions: Vec<DimensionInfo> = Vec::new();
@@ -329,10 +347,17 @@ pub(crate) fn register_array_variable(
     );
 
     let type_tag = ironplc_container::debug_section::iec_type_tag::OTHER;
-    let type_name_str = format!(
-        "ARRAY OF {}",
-        spec.element_type_name.to_string().to_uppercase()
-    );
+    let type_name_str = if spec.ref_to {
+        format!(
+            "ARRAY OF REF_TO {}",
+            spec.element_type_name.to_string().to_uppercase()
+        )
+    } else {
+        format!(
+            "ARRAY OF {}",
+            spec.element_type_name.to_string().to_uppercase()
+        )
+    };
     Ok((type_tag, type_name_str))
 }
 
