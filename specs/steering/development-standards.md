@@ -172,6 +172,40 @@ All IronPLC documentation follows the **Documentation Quadrants** approach, orga
 - **Reference + Explanation**: Both provide theoretical knowledge
 - **Tutorials + Explanation**: Both support learning and study
 
+### Writing Style
+
+All documentation follows these writing style principles to keep content clear, direct, and easy to scan.
+
+#### Voice and Tense
+
+- **Use active voice.** Name the actor (the compiler, the runtime, IEC 61131-3, the user) as the subject of the sentence.
+  - ✅ "Edition 3 introduced the following features"
+  - ❌ "The following features were introduced in Edition 3"
+  - ✅ "IronPLC supports the following platforms"
+  - ❌ "IronPLC is supported on the following platforms"
+- **Use present tense.** Describe what the software *does*, not what it *will do* or *did*.
+  - ✅ "The compiler reports an error when..."
+  - ❌ "The compiler will report an error when..."
+- **Passive voice is acceptable** in two cases:
+  1. The actor is genuinely unknown or irrelevant (e.g., "the file may be corrupted").
+  2. Active voice would blame the user for an error (e.g., "This error occurs when a comment is not properly closed" is better than "You forgot to close the comment").
+
+#### Person and Mood
+
+- **Use second person ("you")** in tutorials and how-to guides.
+- **Use imperative mood** for instructions: "Run the command", not "You should run the command" or "The command can be run".
+- **Avoid third-person references to the reader**: "the user", "the developer", "one".
+
+#### Sentence Structure
+
+- **Lead with the action or result**, not the context. Put the most important information first.
+  - ✅ "Set the ``--std`` flag to enable Edition 3 features."
+  - ❌ "In order to enable Edition 3 features, you need to set the ``--std`` flag."
+- **Keep sentences short.** Prefer one idea per sentence. If a sentence has more than one comma-separated clause, consider splitting it.
+- **Avoid nominalizations.** Use verbs instead of noun forms of verbs.
+  - ✅ "The compiler validates the program"
+  - ❌ "The compiler performs validation of the program"
+
 ### RST Annotation Conventions
 
 All Sphinx documentation must use the correct RST roles for consistent rendering. **Never use plain text or double backticks for elements that have a dedicated role.**

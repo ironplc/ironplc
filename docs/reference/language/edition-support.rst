@@ -9,7 +9,7 @@ compiler or VS Code extension.
 Edition 3 (2013) Features
 =========================
 
-The following features were introduced in Edition 3 and require
+Edition 3 introduced the following features, which require
 ``--std-iec-61131-3=2013`` (CLI) or ``ironplc.std61131Version``: ``2013``
 (VS Code).
 
