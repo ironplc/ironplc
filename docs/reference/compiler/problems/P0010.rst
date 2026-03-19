@@ -23,9 +23,15 @@ The following code will generate error P0010:
 The code uses :code:`LTIME`, which is an IEC 61131-3:2013 data type and is
 not available in the default mode.
 
-To fix this error, enable IEC 61131-3:2013 support with the ``--std-iec-61131-3``
-command line option when running the compiler:
+To fix this error, enable IEC 61131-3:2013 support:
 
-.. code-block:: bash
+* **CLI:** Pass the ``--std-iec-61131-3`` option:
 
-   ironplcc check --std-iec-61131-3=2013 myprogram.st
+  .. code-block:: bash
+
+     ironplcc check --std-iec-61131-3=2013 myprogram.st
+
+* **VS Code:** Set :code:`ironplc.std61131Version` to :code:`2013` in your
+  extension settings. See :doc:`/reference/editor/settings` for details.
+
+See :doc:`/explanation/enabling-features` for more about standard editions.
