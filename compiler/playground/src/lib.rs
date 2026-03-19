@@ -43,6 +43,21 @@ thread_local! {
     static SESSION: RefCell<Option<VmSession>> = const { RefCell::new(None) };
 }
 
+/// Build [`ParseOptions`] from an edition string.
+///
+/// `"2013"` enables IEC 61131-3 Edition 3 keywords (LTIME, REF_TO, etc.).
+/// Any other value (including empty) uses the default Edition 2 (2003).
+fn parse_options_from_edition(edition: &str) -> ParseOptions {
+    if edition == "2013" {
+        ParseOptions {
+            allow_iec_61131_3_2013: true,
+            ..Default::default()
+        }
+    } else {
+        ParseOptions::default()
+    }
+}
+
 /// Install a panic hook that logs to `console.error` with a full stack trace.
 ///
 /// Called once from JavaScript before using any other exports.
@@ -272,21 +287,17 @@ struct StepResult {
 /// { "ok": false, "diagnostics": [{"code": "...", "message": "...", "start": N, "end": N}] }
 /// ```
 #[wasm_bindgen]
-pub fn compile(source: &str) -> String {
-    let result = compile_inner(source);
+pub fn compile(source: &str, edition: &str) -> String {
+    let result = compile_inner(source, edition);
     serde_json::to_string(&result).unwrap_or_else(|e| {
         format!(r#"{{"ok":false,"diagnostics":[{{"code":"INTERNAL","message":"Serialization error: {e}","label":"","start":0,"end":0}}]}}"#)
     })
 }
 
-fn compile_inner(source: &str) -> CompileResult {
+fn compile_inner(source: &str, edition: &str) -> CompileResult {
     let file_type = FileType::from_content(source);
-    let library = match parse_source(
-        file_type,
-        source,
-        &FileId::default(),
-        &ParseOptions::default(),
-    ) {
+    let options = parse_options_from_edition(edition);
+    let library = match parse_source(file_type, source, &FileId::default(), &options) {
         Ok(lib) => lib,
         Err(diag) => {
             return CompileResult {
@@ -495,15 +506,15 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
 ///
 /// Returns a JSON string with both compilation diagnostics and execution results.
 #[wasm_bindgen]
-pub fn run_source(source: &str, scans: u32) -> String {
-    let result = run_source_inner(source, scans);
+pub fn run_source(source: &str, scans: u32, edition: &str) -> String {
+    let result = run_source_inner(source, scans, edition);
     serde_json::to_string(&result).unwrap_or_else(|e| {
         format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"scans_completed":0,"error":"Serialization error: {e}"}}"#)
     })
 }
 
-fn run_source_inner(source: &str, scans: u32) -> RunSourceResult {
-    let compile_result = compile_inner(source);
+fn run_source_inner(source: &str, scans: u32, edition: &str) -> RunSourceResult {
+    let compile_result = compile_inner(source, edition);
     if !compile_result.ok {
         return RunSourceResult {
             ok: false,
@@ -588,15 +599,15 @@ fn read_all_variables_faulted(
 /// The session stores compiled bytecode and a variable buffer that persists
 /// across calls to [`step`]. Returns a JSON `StepResult` with `total_scans: 0`.
 #[wasm_bindgen]
-pub fn load_program(source: &str, cycle_time_us: u32) -> String {
-    let result = load_program_inner(source, cycle_time_us);
+pub fn load_program(source: &str, cycle_time_us: u32, edition: &str) -> String {
+    let result = load_program_inner(source, cycle_time_us, edition);
     serde_json::to_string(&result).unwrap_or_else(|e| {
         format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":"Serialization error: {e}"}}"#)
     })
 }
 
-fn load_program_inner(source: &str, cycle_time_us: u32) -> StepResult {
-    let compile_result = compile_inner(source);
+fn load_program_inner(source: &str, cycle_time_us: u32, edition: &str) -> StepResult {
+    let compile_result = compile_inner(source, edition);
     if !compile_result.ok {
         return StepResult {
             ok: false,
@@ -829,7 +840,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-        let result: CompileResult = serde_json::from_str(&compile(source)).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
         assert!(result.ok);
         assert!(result.bytecode.is_some());
         assert!(result.diagnostics.is_empty());
@@ -838,7 +849,7 @@ END_PROGRAM
     #[test]
     fn compile_when_syntax_error_then_returns_diagnostics() {
         let source = "PROGRAM main INVALID END_PROGRAM";
-        let result: CompileResult = serde_json::from_str(&compile(source)).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
         assert!(!result.ok);
         assert!(result.bytecode.is_none());
         assert!(!result.diagnostics.is_empty());
@@ -855,7 +866,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-        let compile_result: CompileResult = serde_json::from_str(&compile(source)).unwrap();
+        let compile_result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
         let bytecode = compile_result.bytecode.unwrap();
 
         let result: RunResult = serde_json::from_str(&run(&bytecode, 1)).unwrap();
@@ -892,7 +903,7 @@ PROGRAM main
   y := x + 32;
 END_PROGRAM
 ";
-        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1)).unwrap();
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "")).unwrap();
         assert!(result.ok);
         assert!(result.diagnostics.is_empty());
         assert!(result.error.is_none());
@@ -905,7 +916,7 @@ END_PROGRAM
     #[test]
     fn run_source_when_syntax_error_then_returns_diagnostics() {
         let source = "PROGRAM main INVALID END_PROGRAM";
-        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1)).unwrap();
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "")).unwrap();
         assert!(!result.ok);
         assert!(!result.diagnostics.is_empty());
         assert_eq!(result.scans_completed, 0);
@@ -921,7 +932,7 @@ PROGRAM main
   x := 99;
 END_PROGRAM
 ";
-        let result: RunSourceResult = serde_json::from_str(&run_source(source, 5)).unwrap();
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 5, "")).unwrap();
         assert!(result.ok);
         assert_eq!(result.scans_completed, 5);
         assert_eq!(result.variables[0].value, "99");
@@ -937,7 +948,7 @@ PROGRAM main
   x := 1;
 END_PROGRAM
 ";
-        let result: CompileResult = serde_json::from_str(&compile(source)).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
         let bytecode = result.bytecode.unwrap();
         let decoded = BASE64.decode(&bytecode);
         assert!(decoded.is_ok());
@@ -954,7 +965,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-        let compile_result: CompileResult = serde_json::from_str(&compile(source)).unwrap();
+        let compile_result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
         let bytecode = compile_result.bytecode.unwrap();
 
         let result: RunResult = serde_json::from_str(&run(&bytecode, 0)).unwrap();
@@ -975,7 +986,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-        let result: StepResult = serde_json::from_str(&load_program(source, 100_000)).unwrap();
+        let result: StepResult = serde_json::from_str(&load_program(source, 100_000, "")).unwrap();
         assert!(result.ok);
         assert_eq!(result.total_scans, 0);
         assert!(result.diagnostics.is_empty());
@@ -986,7 +997,7 @@ END_PROGRAM
     fn load_program_when_syntax_error_then_returns_diagnostics() {
         reset_session();
         let source = "PROGRAM main INVALID END_PROGRAM";
-        let result: StepResult = serde_json::from_str(&load_program(source, 100_000)).unwrap();
+        let result: StepResult = serde_json::from_str(&load_program(source, 100_000, "")).unwrap();
         assert!(!result.ok);
         assert!(!result.diagnostics.is_empty());
     }
@@ -1010,7 +1021,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-        load_program(source, 100_000);
+        load_program(source, 100_000, "");
         let result: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(result.ok);
         assert_eq!(result.total_scans, 1);
@@ -1029,7 +1040,7 @@ PROGRAM main
   count := count + 1;
 END_PROGRAM
 ";
-        load_program(source, 100_000);
+        load_program(source, 100_000, "");
 
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r1.ok);
@@ -1051,7 +1062,7 @@ PROGRAM main
   x := 1;
 END_PROGRAM
 ";
-        load_program(source, 100_000);
+        load_program(source, 100_000, "");
 
         let r1: StepResult = serde_json::from_str(&step(3)).unwrap();
         assert_eq!(r1.total_scans, 3);
@@ -1073,7 +1084,7 @@ PROGRAM main
   x := 1 / y;
 END_PROGRAM
 ";
-        load_program(source, 100_000);
+        load_program(source, 100_000, "");
 
         // First step should fault (divide by zero)
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
@@ -1096,7 +1107,7 @@ PROGRAM main
   x := 1;
 END_PROGRAM
 ";
-        load_program(source, 100_000);
+        load_program(source, 100_000, "");
         step(1);
 
         reset_session();
@@ -1141,7 +1152,7 @@ bSwitch := TRUE;
     </pous>
   </types>
 </project>"#;
-        let result: CompileResult = serde_json::from_str(&compile(source)).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
         assert!(
             result.ok,
             "Expected ok but got diagnostics: {:?}",
@@ -1164,7 +1175,7 @@ END_VAR]]></Declaration>
     </Implementation>
   </POU>
 </TcPlcObject>"#;
-        let result: CompileResult = serde_json::from_str(&compile(source)).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
         assert!(
             result.ok,
             "Expected ok but got diagnostics: {:?}",
@@ -1176,7 +1187,7 @@ END_VAR]]></Declaration>
     #[test]
     fn compile_when_malformed_xml_then_returns_diagnostics() {
         let source = "<?xml version=\"1.0\"?><project><invalid";
-        let result: CompileResult = serde_json::from_str(&compile(source)).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
         assert!(!result.ok);
         assert!(!result.diagnostics.is_empty());
     }
@@ -1192,7 +1203,7 @@ PROGRAM main
   x := 10;
 END_PROGRAM
 ";
-        load_program(source_a, 100_000);
+        load_program(source_a, 100_000, "");
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert_eq!(r1.variables[0].value, "10");
 
@@ -1204,7 +1215,7 @@ PROGRAM main
   x := 20;
 END_PROGRAM
 ";
-        load_program(source_b, 100_000);
+        load_program(source_b, 100_000, "");
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert_eq!(r2.variables[0].value, "20");
         assert_eq!(r2.total_scans, 1);
@@ -1221,7 +1232,7 @@ PROGRAM main
   exponentially := exponentially * 2;
 END_PROGRAM
 ";
-        load_program(source, 100_000);
+        load_program(source, 100_000, "");
 
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r1.ok);
@@ -1249,7 +1260,7 @@ PROGRAM main
   int_val := BCD_TO_INT(BYTE#16#42);
 END_PROGRAM
 ";
-        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1)).unwrap();
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "")).unwrap();
         assert!(result.ok, "Expected ok but got error: {:?}", result.error);
         assert_eq!(result.variables[0].value, "42");
     }
@@ -1264,7 +1275,7 @@ PROGRAM main
   bcd_val := INT_TO_BCD(USINT#42);
 END_PROGRAM
 ";
-        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1)).unwrap();
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "")).unwrap();
         assert!(result.ok, "Expected ok but got error: {:?}", result.error);
         assert_eq!(result.variables[0].value, "16#42");
     }
@@ -1279,7 +1290,7 @@ PROGRAM main
   x := undeclared_var;
 END_PROGRAM
 ";
-        let result: CompileResult = serde_json::from_str(&compile(source)).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
         assert!(!result.ok);
         assert!(!result.diagnostics.is_empty());
     }
@@ -1300,7 +1311,7 @@ PROGRAM main
   myTimer(IN := start, PT := T#5s, Q => done, ET => elapsed);
 END_PROGRAM
 ";
-        let load: StepResult = serde_json::from_str(&load_program(source, 100_000)).unwrap();
+        let load: StepResult = serde_json::from_str(&load_program(source, 100_000, "")).unwrap();
         assert!(
             load.ok,
             "load failed: error={:?}, diagnostics={:?}",
@@ -1343,7 +1354,7 @@ PROGRAM main
   myTimer(IN := run, PT := T#5s, Q => active, ET => elapsed);
 END_PROGRAM
 ";
-        let load: StepResult = serde_json::from_str(&load_program(source, 100_000)).unwrap();
+        let load: StepResult = serde_json::from_str(&load_program(source, 100_000, "")).unwrap();
         assert!(
             load.ok,
             "load failed: error={:?}, diagnostics={:?}",
@@ -1385,5 +1396,63 @@ END_PROGRAM
     #[test]
     fn format_time_value_ms_when_i64_ltime_then_formats_correctly() {
         assert_eq!(format_time_value_ms(5000i64), "T#5s");
+    }
+
+    #[test]
+    fn compile_when_edition_2013_then_accepts_ltime() {
+        let source = "
+PROGRAM main
+  VAR
+    duration : LTIME;
+  END_VAR
+  duration := LTIME#100ms;
+END_PROGRAM
+";
+        let result: CompileResult = serde_json::from_str(&compile(source, "2013")).unwrap();
+        assert!(
+            result.ok,
+            "Expected ok but got diagnostics: {:?}",
+            result.diagnostics
+        );
+        assert!(result.bytecode.is_some());
+    }
+
+    #[test]
+    fn compile_when_default_edition_then_rejects_ltime_as_type() {
+        let source = "
+PROGRAM main
+  VAR
+    duration : LTIME;
+  END_VAR
+  duration := LTIME#100ms;
+END_PROGRAM
+";
+        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
+        assert!(!result.ok);
+        assert!(!result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn load_program_when_edition_2013_then_runs_ltime_program() {
+        reset_session();
+        let source = "
+PROGRAM main
+  VAR
+    duration : LTIME;
+  END_VAR
+  duration := LTIME#500ms;
+END_PROGRAM
+";
+        let result: StepResult =
+            serde_json::from_str(&load_program(source, 100_000, "2013")).unwrap();
+        assert!(
+            result.ok,
+            "Expected ok but got error: {:?}, diagnostics: {:?}",
+            result.error, result.diagnostics
+        );
+
+        let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
+        assert!(r1.ok, "step failed: {:?}", r1.error);
+        assert!(!r1.variables.is_empty());
     }
 }
