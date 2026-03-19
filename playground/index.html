@@ -17,26 +17,30 @@
   <main>
     <section class="editor-section">
       <div class="toolbar">
-        <select id="examples-select" data-testid="examples-select" title="Load an example program">
-          <option value="" disabled selected>Examples</option>
-        </select>
-        <select id="edition-select" data-testid="edition-select" title="IEC 61131-3 edition">
-          <option value="2003" selected>Edition 2 (2003)</option>
-          <option value="2013">Edition 3 (2013)</option>
-        </select>
-        <span id="edition-badge" data-testid="edition-badge" class="edition-badge"></span>
-        <button id="start-btn" disabled data-testid="start-btn" title="Compile and start running">&#x25B6;</button>
-        <button id="stop-btn" disabled data-testid="stop-btn" title="Stop and reset">&#x25A0;</button>
-        <button id="pause-btn" disabled data-testid="pause-btn" title="Pause/resume execution">&#x23F8;</button>
-        <label title="Milliseconds between scan cycles">
-          Interval (ms):
-          <input id="interval-input" type="number" value="500" min="1" max="60000" data-testid="interval-input">
-        </label>
-        <span class="transport-info">
-          <span id="duration-display" data-testid="duration-display">0.0s</span>
-          <span class="transport-separator">|</span>
-          <span id="cycles-display" data-testid="cycles-display">0 cycles</span>
-        </span>
+        <div class="toolbar-selectors">
+          <select id="examples-select" data-testid="examples-select" title="Load an example program">
+            <option value="" disabled selected>Examples</option>
+          </select>
+          <select id="edition-select" data-testid="edition-select" title="IEC 61131-3 edition">
+            <option value="2003" selected>Edition 2 (2003)</option>
+            <option value="2013">Edition 3 (2013)</option>
+          </select>
+          <span id="edition-badge" data-testid="edition-badge" class="edition-badge"></span>
+          <label title="Milliseconds between scan cycles">
+            Interval (ms):
+            <input id="interval-input" type="number" value="500" min="1" max="60000" data-testid="interval-input">
+          </label>
+        </div>
+        <div class="toolbar-transport">
+          <button id="start-btn" disabled data-testid="start-btn" title="Compile and start running">&#x25B6;</button>
+          <button id="stop-btn" disabled data-testid="stop-btn" title="Stop and reset">&#x25A0;</button>
+          <button id="pause-btn" disabled data-testid="pause-btn" title="Pause/resume execution">&#x23F8;</button>
+          <span class="transport-info">
+            <span id="duration-display" data-testid="duration-display">0.0s</span>
+            <span class="transport-separator">|</span>
+            <span id="cycles-display" data-testid="cycles-display">0 cycles</span>
+          </span>
+        </div>
       </div>
       <textarea id="editor" spellcheck="false" data-testid="editor">PROGRAM main
   VAR
