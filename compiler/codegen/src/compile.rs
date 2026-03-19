@@ -42,8 +42,8 @@ use ironplc_container::debug_section::{
 use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES};
 use ironplc_dsl::common::{
     Boolean, ConstantKind, ElementaryTypeName, FunctionBlockBodyKind, FunctionDeclaration,
-    InitialValueAssignmentKind, Library, LibraryElementKind, ProgramDeclaration, SignedInteger,
-    SpecificationKind, VarDecl, VariableType,
+    InitialValueAssignmentKind, Library, LibraryElementKind, ProgramDeclaration,
+    ReferenceInitialValue, SignedInteger, SpecificationKind, VarDecl, VariableType,
 };
 use ironplc_dsl::configuration::ConfigurationDeclaration;
 use ironplc_dsl::core::{FileId, Id, Located};
@@ -878,6 +878,18 @@ fn assign_variables(
                         &decl.identifier.span(),
                     )?
                 }
+                InitialValueAssignmentKind::Reference(_) => {
+                    // References are stored as 64-bit variable-table indices (unsigned).
+                    ctx.var_types.insert(
+                        id.clone(),
+                        VarTypeInfo {
+                            op_width: OpWidth::W64,
+                            signedness: Signedness::Unsigned,
+                            storage_bits: 64,
+                        },
+                    );
+                    (iec_type_tag::OTHER, "REF_TO".into())
+                }
                 // Other initializer kinds (EnumeratedType, etc.)
                 // do not yet have type info tracked in codegen.
                 _ => (iec_type_tag::OTHER, String::new()),
@@ -1033,6 +1045,23 @@ fn emit_initial_values(
                             }
                         }
                     }
+                }
+                InitialValueAssignmentKind::Reference(ref_init) => {
+                    let var_index = ctx.var_index(id)?;
+                    match &ref_init.initial_value {
+                        Some(ReferenceInitialValue::Ref(target_var)) => {
+                            // REF(var) → load the target variable's index as a u64 constant.
+                            let target_index = resolve_variable(ctx, target_var)?;
+                            let pool_index = ctx.add_i64_constant(target_index as i64);
+                            emitter.emit_load_const_i64(pool_index);
+                        }
+                        _ => {
+                            // NULL or no initializer → store null sentinel (u64::MAX).
+                            let pool_index = ctx.add_i64_constant(u64::MAX as i64);
+                            emitter.emit_load_const_i64(pool_index);
+                        }
+                    }
+                    emitter.emit_store_var_i64(var_index);
                 }
                 // Other initializer kinds (EnumeratedType, etc.)
                 // do not yet support initial values in codegen.
@@ -1475,6 +1504,26 @@ fn compile_statement(
 ) -> Result<(), Diagnostic> {
     match stmt {
         StmtKind::Assignment(assignment) => {
+            // Dereference assignment: myRef^ := expr
+            // Compile the RHS, load the reference variable, emit STORE_INDIRECT.
+            if assignment.deref {
+                let target_name = resolve_variable_name(&assignment.target);
+                let target_index = target_name
+                    .and_then(|name| ctx.variables.get(name).copied())
+                    .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+
+                // Compile the value expression (use DEFAULT_OP_TYPE; the referenced
+                // type determines the actual width at runtime).
+                compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+
+                // Load the reference (variable index stored in the ref variable).
+                emitter.emit_load_var_i64(target_index);
+
+                // STORE_INDIRECT pops both value and ref.
+                emitter.emit_store_indirect();
+                return Ok(());
+            }
+
             // Check if the target is a bit access variable (read-modify-write).
             if let Some(bit_access) = extract_bit_access_target(&assignment.target) {
                 return compile_bit_access_assignment(emitter, ctx, bit_access, &assignment.value);
@@ -2285,8 +2334,25 @@ pub(crate) fn compile_expr(
             line!(),
         )),
         ExprKind::Function(func) => compile_function_call(emitter, ctx, func, op_type),
-        ExprKind::Ref(_) | ExprKind::Deref(_) | ExprKind::Null(_) => {
-            Err(Diagnostic::todo(file!(), line!()))
+        ExprKind::Ref(variable) => {
+            // REF(var) → push the variable's table index as a u64 constant.
+            let var_index = resolve_variable(ctx, variable)?;
+            let pool_index = ctx.add_i64_constant(var_index as i64);
+            emitter.emit_load_const_i64(pool_index);
+            Ok(())
+        }
+        ExprKind::Deref(inner) => {
+            // var^ → compile the reference expression (produces a var index),
+            // then emit LOAD_INDIRECT to load the referenced variable's value.
+            compile_expr(emitter, ctx, inner, (OpWidth::W64, Signedness::Unsigned))?;
+            emitter.emit_load_indirect();
+            Ok(())
+        }
+        ExprKind::Null(_) => {
+            // NULL → push null sentinel (u64::MAX) as a u64 constant.
+            let pool_index = ctx.add_i64_constant(u64::MAX as i64);
+            emitter.emit_load_const_i64(pool_index);
+            Ok(())
         }
     }
 }

@@ -286,6 +286,16 @@ pub const LOAD_VAR_F32: u8 = 0x12;
 /// Operand: u16 variable index (little-endian).
 pub const LOAD_VAR_F64: u8 = 0x13;
 
+/// Indirect load: pops a reference (variable index) from the stack,
+/// loads the referenced variable's value, and pushes it.
+/// No operand. Stack: [..., ref] → [..., value].
+pub const LOAD_INDIRECT: u8 = 0x14;
+
+/// Indirect store: pops a value and a reference (variable index) from the stack,
+/// stores the value into the referenced variable.
+/// No operand. Stack: [..., value, ref] → [...].
+pub const STORE_INDIRECT: u8 = 0x15;
+
 /// Store a 64-bit integer to the variable table.
 /// Operand: u16 variable index (little-endian).
 pub const STORE_VAR_I64: u8 = 0x19;

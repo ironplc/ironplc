@@ -67,6 +67,18 @@ pub fn parse_and_run_edition3(source: &str) -> (Container, VmBuffers) {
     (container, bufs)
 }
 
+/// Like [`parse_and_try_run`], but enables IEC 61131-3 Edition 3 (2013) features.
+pub fn parse_and_try_run_edition3(source: &str) -> Result<(Container, VmBuffers), FaultContext> {
+    let (library, context) = parse_edition3(source);
+    let container = compile(&library, &context).unwrap();
+    let mut bufs = VmBuffers::from_container(&container);
+    {
+        let mut vm = load_and_start(&container, &mut bufs)?;
+        vm.run_round(0)?;
+    }
+    Ok((container, bufs))
+}
+
 /// Parses, analyzes, compiles, and runs one scan cycle, returning `Err` on VM trap.
 /// Use this to test that certain programs produce runtime traps.
 pub fn parse_and_try_run(source: &str) -> Result<(Container, VmBuffers), FaultContext> {
