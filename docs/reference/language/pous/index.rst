@@ -8,29 +8,22 @@ configuration containing resources and tasks.
 
 .. list-table::
    :header-rows: 1
-   :widths: 25 45 30
+   :widths: 30 70
 
    * - Unit
      - Description
-     - Status
    * - :doc:`program`
      - Top-level executable unit
-     - Supported
    * - :doc:`function`
      - Stateless callable unit with return value
-     - Partial
    * - :doc:`function-block`
      - Stateful callable unit with inputs and outputs
-     - Partial
    * - :doc:`configuration`
      - Top-level deployment container
-     - Supported
    * - :doc:`resource`
      - Processing resource within a configuration
-     - Supported
    * - :doc:`task`
      - Execution scheduling unit
-     - Supported
 
 .. toctree::
    :maxdepth: 1

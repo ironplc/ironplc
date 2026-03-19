@@ -11,77 +11,60 @@ selection, iteration, and function invocation.
 
    * - **IEC 61131-3**
      - Section 3.3
-   * - **Support**
-     - Partial
 
 Statements
 ----------
 
 .. list-table::
    :header-rows: 1
-   :widths: 25 45 30
+   :widths: 30 70
 
    * - Statement
      - Description
-     - Status
    * - :doc:`assignment`
      - Assign a value to a variable
-     - Supported
    * - :doc:`if`
      - Conditional branching
-     - Supported
    * - :doc:`case`
      - Multi-way selection by integer value
-     - Supported
    * - :doc:`for`
      - Counted loop
-     - Supported
    * - :doc:`while`
      - Pre-tested loop
-     - Supported
    * - :doc:`repeat`
      - Post-tested loop
-     - Supported
    * - :doc:`exit`
      - Break from innermost loop
-     - Supported
    * - :doc:`return`
      - Early exit from POU
-     - Supported
 
 Operators
 ---------
 
 .. list-table::
    :header-rows: 1
-   :widths: 25 45 30
+   :widths: 30 70
 
    * - Category
      - Description
-     - Status
    * - :doc:`arithmetic-operators`
      - Addition, subtraction, multiplication, division, modulo, power
-     - Supported
    * - :doc:`comparison-operators`
      - Equality, inequality, less than, greater than
-     - Supported
    * - :doc:`logical-operators`
      - AND, OR, XOR, NOT
-     - Supported
 
 Function Calls
 --------------
 
 .. list-table::
    :header-rows: 1
-   :widths: 25 45 30
+   :widths: 30 70
 
    * - Topic
      - Description
-     - Status
    * - :doc:`function-call`
      - Calling functions and function block instances
-     - Partial
 
 Operator Precedence
 -------------------
