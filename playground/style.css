@@ -68,6 +68,13 @@ main {
   border-bottom: 1px solid var(--border);
 }
 
+.toolbar-selectors,
+.toolbar-transport {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .toolbar button {
   background: var(--accent);
   color: #fff;
@@ -374,5 +381,10 @@ body.embed .sparkline-cell {
 
   .toolbar {
     flex-wrap: wrap;
+  }
+
+  .toolbar-selectors,
+  .toolbar-transport {
+    width: 100%;
   }
 }
