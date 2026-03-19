@@ -64,10 +64,3 @@ Or add it directly to your :file:`settings.json`:
 
 See :doc:`/reference/editor/settings` for all extension settings.
 
----------------------------------
-Future Capabilities
----------------------------------
-
-As IronPLC adds support for more of the standard and its revisions, new
-capability flags may be introduced. This page will be updated to cover
-each new flag as it becomes available.

@@ -10,8 +10,8 @@ them later when you want to understand *why* things work the way they do.
    :maxdepth: 1
 
    What is IEC 61131-3? <what-is-iec-61131-3>
-   Enabling Features <enabling-features>
    IronPLC and the IEC 61131-3 Ecosystem <ironplc-ecosystem>
    Structured Text Basics <structured-text-basics>
    Program Organization <program-organization>
    Variables and I/O <variables-and-io>
+   Enabling Features <enabling-features>
