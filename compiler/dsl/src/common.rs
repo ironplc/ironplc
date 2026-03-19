@@ -1540,6 +1540,9 @@ impl ArraySpecificationKind {
 pub struct ArraySubranges {
     pub ranges: Vec<Subrange>,
     pub type_name: TypeName,
+    /// Whether the element type is wrapped in REF_TO (Edition 3).
+    #[recurse(ignore)]
+    pub ref_to: bool,
 }
 
 /// Subrange of an array.

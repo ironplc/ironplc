@@ -51,10 +51,19 @@ pub fn try_from(
                 })
                 .collect::<Result<Vec<_>, Diagnostic>>()?;
 
+            // Wrap in Reference if the element type is REF_TO
+            let resolved_element_type = if array_subranges.ref_to {
+                IntermediateType::Reference {
+                    target_type: Box::new(element_type.representation.clone()),
+                }
+            } else {
+                element_type.representation.clone()
+            };
+
             Ok(IntermediateResult::Type(TypeAttributes::new(
                 node_name.span(),
                 IntermediateType::Array {
-                    element_type: Box::new(element_type.representation.clone()),
+                    element_type: Box::new(resolved_element_type),
                     dimensions,
                 },
             )))
@@ -320,6 +329,7 @@ mod tests {
                 },
             }],
             type_name: TypeName::from("int"),
+            ref_to: false,
         };
 
         let spec = SpecificationKind::Inline(array_subranges);
@@ -405,6 +415,7 @@ mod tests {
                 },
             }],
             type_name: TypeName::from("MISSING_TYPE"),
+            ref_to: false,
         };
 
         let spec = SpecificationKind::Inline(array_subranges);
@@ -468,6 +479,7 @@ mod tests {
                 },
             ],
             type_name: TypeName::from("bool"),
+            ref_to: false,
         };
 
         let spec = SpecificationKind::Inline(array_subranges);
@@ -493,6 +505,63 @@ mod tests {
             assert_eq!(dimensions[0].upper, 3);
             assert_eq!(dimensions[1].lower, 1);
             assert_eq!(dimensions[1].upper, 4);
+        } else {
+            unreachable!("Expected Array type");
+        }
+    }
+
+    #[test]
+    fn try_from_when_array_of_ref_to_then_element_type_is_reference() {
+        let env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+
+        let array_subranges = ArraySubranges {
+            ranges: vec![Subrange {
+                start: SignedInteger {
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 0,
+                    },
+                    is_neg: false,
+                },
+                end: SignedInteger {
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 3,
+                    },
+                    is_neg: false,
+                },
+            }],
+            type_name: TypeName::from("byte"),
+            ref_to: true,
+        };
+
+        let spec = SpecificationKind::Inline(array_subranges);
+        let result = try_from(&TypeName::from("MY_REF_ARRAY"), &spec, &env);
+        assert!(result.is_ok());
+
+        let attrs = match result.unwrap() {
+            IntermediateResult::Type(attrs) => attrs,
+            _ => unreachable!("Expected Type result"),
+        };
+
+        if let IntermediateType::Array {
+            element_type,
+            dimensions,
+        } = attrs.representation
+        {
+            assert!(element_type.is_reference());
+            assert_eq!(
+                element_type.referenced_type().unwrap(),
+                &IntermediateType::Bytes {
+                    size: ByteSized::B8
+                }
+            );
+            assert_eq!(dimensions.len(), 1);
+            assert_eq!(dimensions[0].lower, 0);
+            assert_eq!(dimensions[0].upper, 3);
         } else {
             unreachable!("Expected Array type");
         }

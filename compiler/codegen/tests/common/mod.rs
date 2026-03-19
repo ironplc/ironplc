@@ -47,6 +47,12 @@ pub fn try_parse_and_compile(source: &str) -> Result<Container, Diagnostic> {
     compile(&library, &context)
 }
 
+/// Like [`parse_and_compile`], but enables IEC 61131-3 Edition 3 (2013) features.
+pub fn parse_and_compile_edition3(source: &str) -> Container {
+    let (library, context) = parse_edition3(source);
+    compile(&library, &context).unwrap()
+}
+
 /// Parses, analyzes, compiles, and runs one scan cycle.
 /// Returns the container and buffers so callers can inspect variable values.
 pub fn parse_and_run(source: &str) -> (Container, VmBuffers) {

@@ -474,6 +474,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("]");
         self.write_ws("OF");
 
+        if node.ref_to {
+            self.write_ws("REF_TO");
+        }
+
         self.visit_type_name(&node.type_name)
     }
 

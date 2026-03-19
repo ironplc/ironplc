@@ -5,8 +5,8 @@ mod test {
         ConstantKind, DataTypeDeclarationKind, DeclarationQualifier, EnumeratedSpecificationInit,
         EnumerationDeclaration, FunctionBlockBodyKind, FunctionBlockDeclaration,
         FunctionDeclaration, InitialValueAssignmentKind, Library, LibraryElementKind,
-        ProgramDeclaration, RealLiteral, SimpleInitializer, TypeName, TypeReference, VarDecl,
-        VariableIdentifier, VariableType,
+        ProgramDeclaration, RealLiteral, SimpleInitializer, SpecificationKind, TypeName,
+        TypeReference, VarDecl, VariableIdentifier, VariableType,
     };
     use dsl::configuration::{
         ConfigurationDeclaration, DataSourceKind, ProgramConfiguration, ResourceDeclaration,
@@ -1413,6 +1413,74 @@ END_PROGRAM",
             LibraryElementKind::ProgramDeclaration(prog) => {
                 assert_eq!(prog.variables.len(), 1);
             }
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_array_of_ref_to_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    data : ARRAY[0..3] OF REF_TO BYTE;
+END_VAR
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => {
+                assert_eq!(prog.variables.len(), 1);
+                match &prog.variables[0].initializer {
+                    InitialValueAssignmentKind::Array(arr) => match &arr.spec {
+                        SpecificationKind::Inline(subranges) => {
+                            assert!(subranges.ref_to);
+                            assert_eq!(subranges.type_name.to_string(), "BYTE");
+                            assert_eq!(subranges.ranges.len(), 1);
+                        }
+                        _ => panic!("Expected inline array spec"),
+                    },
+                    other => panic!("Expected Array initializer, got {:?}", other),
+                }
+            }
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_array_of_ref_to_type_decl_then_ok() {
+        let lib = parse_text_edition3("TYPE MyArr : ARRAY[1..5] OF REF_TO INT; END_TYPE");
+        match &lib.elements[0] {
+            LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Array(arr)) => {
+                match &arr.spec {
+                    SpecificationKind::Inline(subranges) => {
+                        assert!(subranges.ref_to);
+                        assert_eq!(subranges.type_name.to_string(), "INT");
+                    }
+                    _ => panic!("Expected inline array spec"),
+                }
+            }
+            other => panic!("Expected Array type declaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_array_without_ref_to_then_ref_to_is_false() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    data : ARRAY[0..3] OF BYTE;
+END_VAR
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => match &prog.variables[0].initializer {
+                InitialValueAssignmentKind::Array(arr) => match &arr.spec {
+                    SpecificationKind::Inline(subranges) => {
+                        assert!(!subranges.ref_to);
+                    }
+                    _ => panic!("Expected inline array spec"),
+                },
+                other => panic!("Expected Array initializer, got {:?}", other),
+            },
             other => panic!("Expected ProgramDeclaration, got {:?}", other),
         }
     }
