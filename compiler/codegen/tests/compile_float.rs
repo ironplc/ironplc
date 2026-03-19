@@ -2,8 +2,7 @@
 
 mod common;
 
-use common::parse;
-use ironplc_codegen::compile;
+use common::parse_and_compile;
 
 #[test]
 fn compile_when_real_then_produces_f32_opcodes() {
@@ -15,8 +14,7 @@ PROGRAM main
   x := 3.14;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     assert_eq!(container.header.num_variables, 1);
 
@@ -44,8 +42,7 @@ PROGRAM main
   y := x + 2.5;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     assert_eq!(container.header.num_variables, 2);
 
@@ -83,8 +80,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // Verify that the bytecode contains GT_F32 (0x84)
     let bytecode = container.code.get_function_bytecode(1).unwrap();

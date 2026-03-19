@@ -34,16 +34,16 @@
 //! After arithmetic at native width, narrow types (SINT, INT, USINT, UINT)
 //! are truncated back to their declared range before storing.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use ironplc_container::debug_section::{
     function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry,
 };
 use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES};
 use ironplc_dsl::common::{
-    Boolean, ConstantKind, FunctionBlockBodyKind, FunctionDeclaration, InitialValueAssignmentKind,
-    Library, LibraryElementKind, ProgramDeclaration, SignedInteger, SpecificationKind, VarDecl,
-    VariableType,
+    Boolean, ConstantKind, ElementaryTypeName, FunctionBlockBodyKind, FunctionDeclaration,
+    InitialValueAssignmentKind, Library, LibraryElementKind, ProgramDeclaration, SignedInteger,
+    SpecificationKind, VarDecl, VariableType,
 };
 use ironplc_dsl::configuration::ConfigurationDeclaration;
 use ironplc_dsl::core::{FileId, Id, Located};
@@ -55,7 +55,7 @@ use ironplc_dsl::textual::{
 use ironplc_problems::Problem;
 
 use ironplc_analyzer::intermediate_type::IntermediateType;
-use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
+use ironplc_analyzer::{FunctionEnvironment, SemanticContext, TypeEnvironment};
 
 use crate::emit::Emitter;
 
@@ -119,49 +119,40 @@ struct StringVarInfo {
 /// Compiles a library into a bytecode container.
 ///
 /// Finds the first PROGRAM declaration in the library and compiles it
-/// into a container suitable for execution by the VM.
+/// into a container suitable for execution by the VM. Only user-defined
+/// functions reachable from the program root are included; unreachable
+/// functions are automatically excluded.
 ///
 /// Returns an error if no program is found or if the program contains
 /// unsupported constructs.
-pub fn compile(
-    library: &Library,
-    functions: &FunctionEnvironment,
-    types: &TypeEnvironment,
-) -> Result<Container, Diagnostic> {
-    compile_reachable(library, functions, types, None)
-}
-
-/// Like [`compile`], but only includes user-defined functions whose names
-/// appear in `reachable`. When `reachable` is `None`, all functions are
-/// compiled (same behaviour as [`compile`]).
-pub fn compile_reachable(
-    library: &Library,
-    functions: &FunctionEnvironment,
-    types: &TypeEnvironment,
-    reachable: Option<&HashSet<Id>>,
-) -> Result<Container, Diagnostic> {
+pub fn compile(library: &Library, context: &SemanticContext) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
     let config = find_configuration(library);
     let global_vars: &[VarDecl] = config.map(|c| c.global_var.as_slice()).unwrap_or(&[]);
 
+    let reachable = context.reachable();
+
     // Collect user-defined function declarations from the library,
-    // filtering to only reachable functions when a reachable set is provided.
+    // filtering to only reachable functions.
     let func_decls: Vec<&FunctionDeclaration> = library
         .elements
         .iter()
         .filter_map(|e| {
             if let LibraryElementKind::FunctionDeclaration(f) = e {
-                match reachable {
-                    Some(set) => set.contains(&f.name).then_some(f),
-                    None => Some(f),
-                }
+                reachable.contains(&f.name).then_some(f)
             } else {
                 None
             }
         })
         .collect();
 
-    compile_program_with_functions(program, &func_decls, global_vars, functions, types)
+    compile_program_with_functions(
+        program,
+        &func_decls,
+        global_vars,
+        context.functions(),
+        context.types(),
+    )
 }
 
 /// Finds the first PROGRAM declaration in the library.
@@ -921,31 +912,35 @@ fn map_var_section(vt: &VariableType) -> u8 {
 
 /// Maps an IEC 61131-3 type name to its debug type tag.
 fn resolve_iec_type_tag(name: &Id) -> u8 {
-    match name.lower_case().as_str() {
-        "bool" => iec_type_tag::BOOL,
-        "sint" => iec_type_tag::SINT,
-        "int" => iec_type_tag::INT,
-        "dint" => iec_type_tag::DINT,
-        "lint" => iec_type_tag::LINT,
-        "usint" => iec_type_tag::USINT,
-        "uint" => iec_type_tag::UINT,
-        "udint" => iec_type_tag::UDINT,
-        "ulint" => iec_type_tag::ULINT,
-        "real" => iec_type_tag::REAL,
-        "lreal" => iec_type_tag::LREAL,
-        "byte" => iec_type_tag::BYTE,
-        "word" => iec_type_tag::WORD,
-        "dword" => iec_type_tag::DWORD,
-        "lword" => iec_type_tag::LWORD,
-        "time" => iec_type_tag::TIME,
-        "ltime" => iec_type_tag::LTIME,
-        "date" => iec_type_tag::DATE,
-        "ldate" => iec_type_tag::LDATE,
-        "time_of_day" | "tod" => iec_type_tag::TIME_OF_DAY,
-        "ltime_of_day" | "ltod" => iec_type_tag::LTOD,
-        "date_and_time" | "dt" => iec_type_tag::DATE_AND_TIME,
-        "ldate_and_time" | "ldt" => iec_type_tag::LDT,
-        _ => iec_type_tag::OTHER,
+    match ElementaryTypeName::try_from(name) {
+        Ok(elem) => match elem {
+            ElementaryTypeName::BOOL => iec_type_tag::BOOL,
+            ElementaryTypeName::SINT => iec_type_tag::SINT,
+            ElementaryTypeName::INT => iec_type_tag::INT,
+            ElementaryTypeName::DINT => iec_type_tag::DINT,
+            ElementaryTypeName::LINT => iec_type_tag::LINT,
+            ElementaryTypeName::USINT => iec_type_tag::USINT,
+            ElementaryTypeName::UINT => iec_type_tag::UINT,
+            ElementaryTypeName::UDINT => iec_type_tag::UDINT,
+            ElementaryTypeName::ULINT => iec_type_tag::ULINT,
+            ElementaryTypeName::REAL => iec_type_tag::REAL,
+            ElementaryTypeName::LREAL => iec_type_tag::LREAL,
+            ElementaryTypeName::BYTE => iec_type_tag::BYTE,
+            ElementaryTypeName::WORD => iec_type_tag::WORD,
+            ElementaryTypeName::DWORD => iec_type_tag::DWORD,
+            ElementaryTypeName::LWORD => iec_type_tag::LWORD,
+            ElementaryTypeName::STRING => iec_type_tag::STRING,
+            ElementaryTypeName::WSTRING => iec_type_tag::WSTRING,
+            ElementaryTypeName::TIME => iec_type_tag::TIME,
+            ElementaryTypeName::LTIME => iec_type_tag::LTIME,
+            ElementaryTypeName::DATE => iec_type_tag::DATE,
+            ElementaryTypeName::LDATE => iec_type_tag::LDATE,
+            ElementaryTypeName::TimeOfDay => iec_type_tag::TIME_OF_DAY,
+            ElementaryTypeName::LTimeOfDay => iec_type_tag::LTOD,
+            ElementaryTypeName::DateAndTime => iec_type_tag::DATE_AND_TIME,
+            ElementaryTypeName::LDateAndTime => iec_type_tag::LDT,
+        },
+        Err(()) => iec_type_tag::OTHER,
     }
 }
 
@@ -1146,125 +1141,128 @@ fn emit_zero_const(emitter: &mut Emitter, ctx: &mut CompileContext, op_type: OpT
 
 /// Maps an IEC 61131-3 type name to its `VarTypeInfo`.
 ///
-/// Returns `None` for unrecognized type names (e.g., user-defined types).
+/// Returns `None` for unrecognized type names (e.g., user-defined types)
+/// and for STRING/WSTRING which are handled separately.
 pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
-    match name.lower_case().as_str() {
-        "sint" => Some(VarTypeInfo {
+    let elem = ElementaryTypeName::try_from(name).ok()?;
+    match elem {
+        ElementaryTypeName::SINT => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Signed,
             storage_bits: 8,
         }),
-        "int" => Some(VarTypeInfo {
+        ElementaryTypeName::INT => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Signed,
             storage_bits: 16,
         }),
-        "dint" => Some(VarTypeInfo {
+        ElementaryTypeName::DINT => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Signed,
             storage_bits: 32,
         }),
-        "lint" => Some(VarTypeInfo {
+        ElementaryTypeName::LINT => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Signed,
             storage_bits: 64,
         }),
-        "usint" => Some(VarTypeInfo {
+        ElementaryTypeName::USINT => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 8,
         }),
-        "uint" => Some(VarTypeInfo {
+        ElementaryTypeName::UINT => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 16,
         }),
-        "udint" => Some(VarTypeInfo {
+        ElementaryTypeName::UDINT => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 32,
         }),
-        "ulint" => Some(VarTypeInfo {
+        ElementaryTypeName::ULINT => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Unsigned,
             storage_bits: 64,
         }),
-        "real" => Some(VarTypeInfo {
+        ElementaryTypeName::REAL => Some(VarTypeInfo {
             op_width: OpWidth::F32,
             signedness: Signedness::Signed,
             storage_bits: 32,
         }),
-        "lreal" => Some(VarTypeInfo {
+        ElementaryTypeName::LREAL => Some(VarTypeInfo {
             op_width: OpWidth::F64,
             signedness: Signedness::Signed,
             storage_bits: 64,
         }),
-        "bool" => Some(VarTypeInfo {
+        ElementaryTypeName::BOOL => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Signed,
             storage_bits: 1,
         }),
-        "byte" => Some(VarTypeInfo {
+        ElementaryTypeName::BYTE => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 8,
         }),
-        "word" => Some(VarTypeInfo {
+        ElementaryTypeName::WORD => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 16,
         }),
-        "dword" => Some(VarTypeInfo {
+        ElementaryTypeName::DWORD => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 32,
         }),
-        "lword" => Some(VarTypeInfo {
+        ElementaryTypeName::LWORD => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Unsigned,
             storage_bits: 64,
         }),
-        "time" => Some(VarTypeInfo {
+        ElementaryTypeName::TIME => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Signed,
             storage_bits: 32,
         }),
-        "ltime" => Some(VarTypeInfo {
+        ElementaryTypeName::LTIME => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Signed,
             storage_bits: 64,
         }),
-        "date" => Some(VarTypeInfo {
+        ElementaryTypeName::DATE => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 32,
         }),
-        "time_of_day" | "tod" => Some(VarTypeInfo {
+        ElementaryTypeName::TimeOfDay => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 32,
         }),
-        "date_and_time" | "dt" => Some(VarTypeInfo {
+        ElementaryTypeName::DateAndTime => Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Unsigned,
             storage_bits: 32,
         }),
-        "ldate" => Some(VarTypeInfo {
+        ElementaryTypeName::LDATE => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Unsigned,
             storage_bits: 64,
         }),
-        "ltime_of_day" | "ltod" => Some(VarTypeInfo {
+        ElementaryTypeName::LTimeOfDay => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Unsigned,
             storage_bits: 64,
         }),
-        "ldate_and_time" | "ldt" => Some(VarTypeInfo {
+        ElementaryTypeName::LDateAndTime => Some(VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Unsigned,
             storage_bits: 64,
         }),
-        _ => None,
+        // STRING and WSTRING are handled separately in codegen
+        ElementaryTypeName::STRING | ElementaryTypeName::WSTRING => None,
     }
 }
 
@@ -4043,7 +4041,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, context.functions(), context.types()).unwrap();
+        let container = compile(&library, &context).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.header.num_functions, 2);
@@ -4068,7 +4066,7 @@ FUNCTION_BLOCK MyBlock
 END_FUNCTION_BLOCK
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, context.functions(), context.types());
+        let result = compile(&library, &context);
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -4085,7 +4083,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, context.functions(), context.types()).unwrap();
+        let container = compile(&library, &context).unwrap();
 
         // Should have two functions (init + scan), both just RET_VOID
         assert_eq!(container.header.num_functions, 2);
@@ -4108,7 +4106,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, context.functions(), context.types()).unwrap();
+        let container = compile(&library, &context).unwrap();
 
         // Should only have one constant (10 is deduplicated)
         assert_eq!(container.constant_pool.len(), 1);
@@ -4127,7 +4125,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, context.functions(), context.types()).unwrap();
+        let container = compile(&library, &context).unwrap();
 
         assert_eq!(container.header.num_variables, 2);
         assert_eq!(container.header.num_functions, 2);
@@ -4160,7 +4158,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, context.functions(), context.types()).unwrap();
+        let container = compile(&library, &context).unwrap();
 
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), -5);
 
@@ -4182,7 +4180,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, context.functions(), context.types());
+        let result = compile(&library, &context);
 
         assert!(result.is_ok());
     }
@@ -4199,7 +4197,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, context.functions(), context.types());
+        let result = compile(&library, &context);
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -4220,7 +4218,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, context.functions(), context.types());
+        let result = compile(&library, &context);
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -4238,7 +4236,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, context.functions(), context.types()).unwrap();
+        let container = compile(&library, &context).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), 42);
@@ -4255,7 +4253,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, context.functions(), context.types()).unwrap();
+        let container = compile(&library, &context).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.constant_pool.get_i32(0).unwrap(), 255);
@@ -4278,13 +4276,7 @@ END_VAR
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile_reachable(
-            &library,
-            context.functions(),
-            context.types(),
-            Some(context.reachable()),
-        )
-        .unwrap();
+        let container = compile(&library, &context).unwrap();
 
         // Should have 3 functions: init, scan, SIGN_R
         assert_eq!(container.header.num_functions, 3);

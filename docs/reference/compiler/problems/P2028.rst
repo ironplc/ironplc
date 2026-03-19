@@ -1,0 +1,35 @@
+=====
+P2028
+=====
+
+.. problem-summary:: P2028
+
+This error occurs when the ``REF()`` operator is applied to something other than a simple variable. The ``REF()`` operator creates a reference (pointer) to a variable, and the operand must be a named variable.
+
+Example
+-------
+
+The following code will generate error P2028:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : REF_TO INT;
+       END_VAR
+
+       x := REF(42);  (* Error: REF() operand must be a variable, not a literal *)
+   END_PROGRAM
+
+To fix this error, use a named variable as the operand:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           counter : INT;
+           x : REF_TO INT;
+       END_VAR
+
+       x := REF(counter);  (* Correct: counter is a simple variable *)
+   END_PROGRAM

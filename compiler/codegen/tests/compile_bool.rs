@@ -2,8 +2,7 @@
 
 mod common;
 
-use common::parse;
-use ironplc_codegen::compile;
+use common::parse_and_compile;
 
 #[test]
 fn compile_when_and_expression_then_produces_bool_and_bytecode() {
@@ -17,8 +16,7 @@ PROGRAM main
   y := x > 0 AND x < 10;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     assert_eq!(container.header.num_variables, 2);
 
@@ -60,8 +58,7 @@ PROGRAM main
   y := x > 0 OR x < 10;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
@@ -94,8 +91,7 @@ PROGRAM main
   y := x > 0 XOR x < 10;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
@@ -128,8 +124,7 @@ PROGRAM main
   y := NOT x;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
     // y := NOT x: LOAD_VAR_I32 var:0, BOOL_NOT, STORE_VAR_I32 var:1
@@ -158,8 +153,7 @@ PROGRAM main
   y := TRUE;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // y := TRUE: LOAD_TRUE, STORE_VAR_I32 var:0
     // RET_VOID
@@ -184,8 +178,7 @@ PROGRAM main
   y := FALSE;
 END_PROGRAM
 ";
-    let (library, context) = parse(source);
-    let container = compile(&library, context.functions(), context.types()).unwrap();
+    let container = parse_and_compile(source);
 
     // y := FALSE: LOAD_FALSE, STORE_VAR_I32 var:0
     // RET_VOID

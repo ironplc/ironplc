@@ -130,6 +130,12 @@ pub enum IntermediateType {
         /// List of function parameters
         parameters: Vec<IntermediateFunctionParameter>,
     },
+    /// Reference type (REF_TO) pointing to a target type.
+    /// References are stored as variable-table indices (u64) at runtime.
+    Reference {
+        /// The type that this reference points to
+        target_type: Box<IntermediateType>,
+    },
 }
 
 impl IntermediateType {
@@ -178,6 +184,19 @@ impl IntermediateType {
     /// Returns if the type is a function.
     pub fn is_function(&self) -> bool {
         matches!(self, IntermediateType::Function { .. })
+    }
+
+    /// Returns if the type is a reference (REF_TO).
+    pub fn is_reference(&self) -> bool {
+        matches!(self, IntermediateType::Reference { .. })
+    }
+
+    /// Returns the target type if this is a reference type, None otherwise.
+    pub fn referenced_type(&self) -> Option<&IntermediateType> {
+        match self {
+            IntermediateType::Reference { target_type } => Some(target_type),
+            _ => None,
+        }
     }
 
     /// Returns if the type is numeric (integer, unsigned integer, or real).
@@ -288,6 +307,10 @@ impl IntermediateType {
                 // Functions don't have memory layout in the traditional sense
                 None
             }
+            IntermediateType::Reference { .. } => {
+                // References are stored as 64-bit variable-table indices
+                Some(8)
+            }
         }
     }
 
@@ -334,6 +357,7 @@ impl IntermediateType {
                     .unwrap_or(1)
             }
             IntermediateType::Function { .. } => 1, // Default alignment (functions don't have memory layout)
+            IntermediateType::Reference { .. } => 8, // References are 64-bit variable-table indices
         }
     }
 
@@ -373,6 +397,7 @@ impl IntermediateType {
             }
             IntermediateType::FunctionBlock { .. } => true, // Function block instances have explicit size
             IntermediateType::Function { .. } => true, // Functions have explicit size (no variable size)
+            IntermediateType::Reference { .. } => true, // References are always 8 bytes
         }
     }
 
@@ -676,6 +701,14 @@ mod tests {
             dimensions: vec![],
         };
         assert_eq!(dynamic_array.size_in_bytes(), None);
+
+        // Test reference types (always 8 bytes)
+        let ref_type = IntermediateType::Reference {
+            target_type: Box::new(IntermediateType::Int {
+                size: ByteSized::B16,
+            }),
+        };
+        assert_eq!(ref_type.size_in_bytes(), Some(8));
     }
 
     #[test]
@@ -758,6 +791,12 @@ mod tests {
             dimensions: vec![ArrayDimension { lower: 1, upper: 3 }],
         };
         assert_eq!(array.alignment_bytes(), 8);
+
+        // Test reference type alignment (always 8 bytes)
+        let ref_type = IntermediateType::Reference {
+            target_type: Box::new(IntermediateType::Bool),
+        };
+        assert_eq!(ref_type.alignment_bytes(), 8);
     }
 
     #[test]

@@ -126,6 +126,20 @@ let compilerVersion = "";
 const params = new URLSearchParams(window.location.search);
 const isEmbed = params.get("embed") === "true";
 
+// --- Analytics (Clicky) ---
+
+function trackGoal(name) {
+  if (typeof clicky !== "undefined" && clicky.goal) {
+    clicky.goal(name);
+  }
+}
+
+function trackPageview(path, title) {
+  if (typeof clicky !== "undefined" && clicky.log) {
+    clicky.log(path, title);
+  }
+}
+
 // --- Sparkline history ---
 
 const STEP_INTERVAL_MS = 100;
@@ -210,6 +224,7 @@ examplesSelect.addEventListener("change", () => {
   }
 
   editor.value = selected.code;
+  trackPageview("/playground/example/" + selected.name, selected.name);
 
   // Reset the dropdown to show "Examples" label
   examplesSelect.selectedIndex = 0;
@@ -424,6 +439,7 @@ startBtn.addEventListener("click", async () => {
     } else if (loadResult.error) {
       status.textContent = loadResult.error;
     }
+    trackGoal(isEmbed ? "embed_compile_error" : "playground_compile_error");
     resetTransportButtons();
     return;
   }
@@ -445,6 +461,7 @@ startBtn.addEventListener("click", async () => {
   intervalInput.disabled = true;
 
   status.textContent = "Running";
+  trackGoal(isEmbed ? "embed_run" : "playground_run");
 
   startStepLoop();
   startRenderLoop();
