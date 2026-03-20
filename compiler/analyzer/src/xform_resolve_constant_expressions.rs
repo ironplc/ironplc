@@ -189,8 +189,54 @@ mod tests {
         .unwrap()
     }
 
+    /// Find the first VarDecl with the given name from a function block.
+    fn find_var_decl<'a>(lib: &'a Library, var_name: &str) -> &'a VarDecl {
+        for element in &lib.elements {
+            let vars = match element {
+                LibraryElementKind::FunctionBlockDeclaration(fb) => &fb.variables,
+                LibraryElementKind::FunctionDeclaration(f) => &f.variables,
+                _ => continue,
+            };
+            for var in vars {
+                if var.identifier.to_string().eq_ignore_ascii_case(var_name) {
+                    return var;
+                }
+            }
+        }
+        panic!("Variable '{}' not found", var_name);
+    }
+
+    /// Extract the string length from a variable's initializer.
+    fn get_string_length(var: &VarDecl) -> u128 {
+        match &var.initializer {
+            InitialValueAssignmentKind::String(s) => match &s.length {
+                Some(IntegerRef::Literal(lit)) => lit.value,
+                other => panic!("Expected resolved integer literal, got {:?}", other),
+            },
+            other => panic!("Expected String initializer, got {:?}", other),
+        }
+    }
+
+    /// Extract array subranges from a variable's initializer.
+    fn get_array_subranges(var: &VarDecl) -> &[Subrange] {
+        match &var.initializer {
+            InitialValueAssignmentKind::Array(arr) => match &arr.spec {
+                ArraySpecificationKind::Inline(sub) => &sub.ranges,
+                other => panic!("Expected ArraySubranges, got {:?}", other),
+            },
+            other => panic!("Expected Array initializer, got {:?}", other),
+        }
+    }
+
+    fn signed_integer_ref_value(r: &SignedIntegerRef) -> (bool, u128) {
+        match r {
+            SignedIntegerRef::Literal(si) => (si.is_neg, si.value.value),
+            other => panic!("Expected resolved SignedInteger literal, got {:?}", other),
+        }
+    }
+
     #[test]
-    fn apply_when_constant_in_string_length_then_resolved() {
+    fn apply_when_constant_in_string_length_then_resolves_to_value() {
         let lib = parse(
             "
             VAR_GLOBAL CONSTANT
@@ -204,16 +250,51 @@ mod tests {
         ",
         );
 
+        let lib = apply(lib).unwrap();
+        let var = find_var_decl(&lib, "STR");
+        assert_eq!(get_string_length(var), 250);
+    }
+
+    #[test]
+    fn apply_when_constant_in_array_bounds_then_resolves_to_value() {
+        let lib = parse(
+            "
+            VAR_GLOBAL CONSTANT
+                ARRAY_SIZE : INT := 10;
+            END_VAR
+            FUNCTION_BLOCK fb1
+            VAR_INPUT
+                ARR : ARRAY[1..ARRAY_SIZE] OF INT;
+            END_VAR
+            END_FUNCTION_BLOCK
+        ",
+        );
+
+        let lib = apply(lib).unwrap();
+        let var = find_var_decl(&lib, "ARR");
+        let subranges = get_array_subranges(var);
+        assert_eq!(subranges.len(), 1);
+        assert_eq!(signed_integer_ref_value(&subranges[0].start), (false, 1));
+        assert_eq!(signed_integer_ref_value(&subranges[0].end), (false, 10));
+    }
+
+    #[test]
+    fn apply_when_non_integer_type_constant_then_not_collected() {
+        let lib = parse(
+            "
+            VAR_GLOBAL CONSTANT
+                MY_REAL : REAL := 3.14;
+            END_VAR
+            FUNCTION_BLOCK fb1
+            VAR_INPUT
+                STR : STRING[MY_REAL];
+            END_VAR
+            END_FUNCTION_BLOCK
+        ",
+        );
+
         let result = apply(lib);
-        match &result {
-            Ok(_) => {}
-            Err(diagnostics) => {
-                for d in diagnostics {
-                    eprintln!("Diagnostic: {:?}", d);
-                }
-            }
-        }
-        assert!(result.is_ok());
+        assert!(result.is_err());
     }
 
     #[test]
@@ -230,5 +311,46 @@ mod tests {
 
         let result = apply(lib);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_multiple_constants_then_all_resolved() {
+        let lib = parse(
+            "
+            VAR_GLOBAL CONSTANT
+                LEN : UINT := 100;
+                SIZE : DINT := 5;
+            END_VAR
+            FUNCTION_BLOCK fb1
+            VAR_INPUT
+                STR : STRING[LEN];
+                ARR : ARRAY[1..SIZE] OF INT;
+            END_VAR
+            END_FUNCTION_BLOCK
+        ",
+        );
+
+        let lib = apply(lib).unwrap();
+        assert_eq!(get_string_length(find_var_decl(&lib, "STR")), 100);
+
+        let subranges = get_array_subranges(find_var_decl(&lib, "ARR"));
+        assert_eq!(signed_integer_ref_value(&subranges[0].end), (false, 5));
+    }
+
+    #[test]
+    fn apply_when_no_constants_referenced_then_unchanged() {
+        let lib = parse(
+            "
+            FUNCTION_BLOCK fb1
+            VAR_INPUT
+                STR : STRING[50];
+            END_VAR
+            END_FUNCTION_BLOCK
+        ",
+        );
+
+        let lib = apply(lib).unwrap();
+        let var = find_var_decl(&lib, "STR");
+        assert_eq!(get_string_length(var), 50);
     }
 }
