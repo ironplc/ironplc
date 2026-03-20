@@ -580,6 +580,9 @@ pub struct IntermediateFunctionParameter {
     pub is_output: bool,
     /// Whether this is an input-output parameter
     pub is_inout: bool,
+    /// Whether this parameter is a REF_TO reference type.
+    /// When true, `param_type` holds the referenced type name (e.g., BYTE for REF_TO BYTE).
+    pub is_reference: bool,
 }
 
 #[cfg(test)]

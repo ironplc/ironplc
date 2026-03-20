@@ -9,7 +9,7 @@
 //! on-demand during validation via TypeEnvironment.
 
 use ironplc_dsl::{
-    common::{Library, TypeReference, VariableType},
+    common::{InitialValueAssignmentKind, Library, TypeReference, VariableType},
     core::{Id, Located},
     diagnostic::Diagnostic,
     visitor::Visitor,
@@ -159,10 +159,18 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
                 ironplc_dsl::common::VariableIdentifier::Direct(_) => continue,
             };
 
-            // Get parameter type name (store as TypeName, resolve later)
-            let param_type = match var_decl.type_name() {
-                TypeReference::Named(type_name) => type_name,
-                _ => continue, // Inline or unspecified types not supported yet
+            // Get parameter type name (store as TypeName, resolve later).
+            // REF_TO parameters report TypeReference::Inline from type_name(),
+            // so we check the initializer directly to extract the referenced type.
+            let (param_type, is_reference) = match var_decl.type_name() {
+                TypeReference::Named(type_name) => (type_name, false),
+                TypeReference::Inline => match &var_decl.initializer {
+                    InitialValueAssignmentKind::Reference(ref_init) => {
+                        (ref_init.referenced_type_name.clone(), true)
+                    }
+                    _ => continue,
+                },
+                _ => continue,
             };
 
             parameters.push(IntermediateFunctionParameter {
@@ -171,6 +179,7 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
                 is_input: var_decl.var_type == VariableType::Input,
                 is_output: var_decl.var_type == VariableType::Output,
                 is_inout: var_decl.var_type == VariableType::InOut,
+                is_reference,
             });
         }
 

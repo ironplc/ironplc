@@ -168,3 +168,107 @@ END_PROGRAM
     // result2 (var[4]) should be 20 (from b after reassign)
     assert_eq!(bufs.vars[4].as_i32(), 20);
 }
+
+// --- REF_TO in FUNCTION context tests ---
+
+#[test]
+fn end_to_end_when_function_with_ref_to_input_then_reads_value() {
+    let source = "
+FUNCTION READ_REF : INT
+  VAR_INPUT
+    PT : REF_TO INT;
+  END_VAR
+  READ_REF := PT^;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    b : INT := 42;
+    result : INT;
+  END_VAR
+  result := READ_REF(PT := REF(b));
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run_edition3(source);
+    // var layout (globals): b=0, result=1
+    assert_eq!(bufs.vars[1].as_i32(), 42);
+}
+
+#[test]
+fn end_to_end_when_function_with_ref_to_write_then_modifies_target() {
+    let source = "
+FUNCTION WRITE_REF : BOOL
+  VAR_INPUT
+    PT : REF_TO INT;
+  END_VAR
+  PT^ := 99;
+  WRITE_REF := TRUE;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    b : INT := 0;
+    result : BOOL;
+  END_VAR
+  result := WRITE_REF(PT := REF(b));
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run_edition3(source);
+    // b (var[0]) should be 99 after write through ref
+    assert_eq!(bufs.vars[0].as_i32(), 99);
+}
+
+#[test]
+fn end_to_end_when_function_with_ref_to_local_then_null_initialized() {
+    // REF_TO local variables in a function should default to NULL.
+    let source = "
+FUNCTION CHECK_NULL : BOOL
+  VAR_INPUT
+    PT : REF_TO INT;
+  END_VAR
+  VAR
+    local_ref : REF_TO INT;
+  END_VAR
+  CHECK_NULL := (local_ref = NULL);
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    b : INT := 42;
+    result : BOOL;
+  END_VAR
+  result := CHECK_NULL(PT := REF(b));
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run_edition3(source);
+    // result should be TRUE (1) since local_ref is NULL
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_function_with_multiple_ref_to_types_then_compiles() {
+    // Verifies that REF_TO works with different types (BYTE, DWORD)
+    // in both VAR_INPUT and VAR blocks of a FUNCTION.
+    let source = "
+FUNCTION TEST : BOOL
+  VAR_INPUT
+    PT : REF_TO BYTE;
+  END_VAR
+  VAR
+    ptw : REF_TO DWORD;
+  END_VAR
+  TEST := TRUE;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : BOOL;
+    b : BYTE := 42;
+  END_VAR
+  result := TEST(PT := REF(b));
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run_edition3(source);
+    // result (var[0]) should be TRUE (1)
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+}

@@ -161,6 +161,7 @@ mod tests {
                 is_input: true,
                 is_output: false,
                 is_inout: false,
+                is_reference: false,
             })
             .collect();
 

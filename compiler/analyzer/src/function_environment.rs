@@ -310,6 +310,7 @@ mod tests {
                 is_input: true,
                 is_output: false,
                 is_inout: false,
+                is_reference: false,
             },
             IntermediateFunctionParameter {
                 name: Id::from("IN2"),
@@ -317,6 +318,7 @@ mod tests {
                 is_input: true,
                 is_output: false,
                 is_inout: false,
+                is_reference: false,
             },
             IntermediateFunctionParameter {
                 name: Id::from("OUT1"),
@@ -324,6 +326,7 @@ mod tests {
                 is_input: false,
                 is_output: true,
                 is_inout: false,
+                is_reference: false,
             },
         ];
 

@@ -1055,7 +1055,7 @@ parser! {
     // TODO add instruction_list
     rule function_body() -> Vec<StmtKind> = statement_list()
     // TODO add many types here
-    rule var2_init_decl() -> Vec<UntypedVarDecl> = var1_init_decl__with_ambiguous_struct()
+    rule var2_init_decl() -> Vec<UntypedVarDecl> = ref_to_var_init_decl() / var1_init_decl__with_ambiguous_struct()
 
     // B.1.5.2 Function blocks
     // IEC 61131 defines separate standard and derived function block names,

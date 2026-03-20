@@ -265,7 +265,7 @@ impl ContainerBuilder {
                 init_function_id: self.init_function_id,
             };
             TaskTable {
-                shared_globals_size: 0,
+                shared_globals_size: self.shared_globals_size,
                 tasks: vec![default_task],
                 programs: vec![default_program],
             }

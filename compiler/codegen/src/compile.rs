@@ -297,7 +297,10 @@ fn compile_program_with_functions(
         );
     }
 
-    builder = builder.init_function_id(0).entry_function_id(1);
+    builder = builder
+        .init_function_id(0)
+        .entry_function_id(1)
+        .shared_globals_size(program_var_count);
 
     // Add debug info.
     let program_name = program.name.to_string();
@@ -395,6 +398,16 @@ fn compile_user_function(
                         },
                     );
                 }
+                InitialValueAssignmentKind::Reference(_) => {
+                    ctx.var_types.insert(
+                        id.clone(),
+                        VarTypeInfo {
+                            op_width: OpWidth::W64,
+                            signedness: Signedness::Unsigned,
+                            storage_bits: 64,
+                        },
+                    );
+                }
                 _ => {}
             }
             current_index += 1;
@@ -443,6 +456,16 @@ fn compile_user_function(
                         StringVarInfo {
                             data_offset,
                             max_length,
+                        },
+                    );
+                }
+                InitialValueAssignmentKind::Reference(_) => {
+                    ctx.var_types.insert(
+                        id.clone(),
+                        VarTypeInfo {
+                            op_width: OpWidth::W64,
+                            signedness: Signedness::Unsigned,
+                            storage_bits: 64,
                         },
                     );
                 }
@@ -520,6 +543,10 @@ fn compile_user_function(
                 } else {
                     param_string_info.push(None);
                 }
+            }
+            InitialValueAssignmentKind::Reference(_) => {
+                param_op_types.push((OpWidth::W64, Signedness::Unsigned));
+                param_string_info.push(None);
             }
             _ => {
                 if let Some(sig) = functions.get(&func_decl.name) {
@@ -1128,6 +1155,21 @@ fn emit_function_local_prologue(
                             emitter.emit_str_store_var(data_offset);
                         }
                     }
+                }
+                InitialValueAssignmentKind::Reference(ref_init) => {
+                    match &ref_init.initial_value {
+                        Some(ReferenceInitialValue::Ref(target_var)) => {
+                            let target_index = resolve_variable(ctx, target_var)?;
+                            let pool_index = ctx.add_i64_constant(target_index as i64);
+                            emitter.emit_load_const_i64(pool_index);
+                        }
+                        _ => {
+                            // NULL or no initializer: store null sentinel (u64::MAX).
+                            let pool_index = ctx.add_i64_constant(u64::MAX as i64);
+                            emitter.emit_load_const_i64(pool_index);
+                        }
+                    }
+                    emitter.emit_store_var_i64(var_index);
                 }
                 _ => {
                     // Other initializer kinds (FunctionBlock, etc.)
