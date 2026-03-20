@@ -782,6 +782,21 @@ impl ElementaryTypeName {
             ElementaryTypeName::WSTRING => Id::from("WSTRING"),
         }
     }
+
+    /// Returns true if this is an integer type (signed or unsigned).
+    pub fn is_integer(&self) -> bool {
+        matches!(
+            self,
+            ElementaryTypeName::SINT
+                | ElementaryTypeName::INT
+                | ElementaryTypeName::DINT
+                | ElementaryTypeName::LINT
+                | ElementaryTypeName::USINT
+                | ElementaryTypeName::UINT
+                | ElementaryTypeName::UDINT
+                | ElementaryTypeName::ULINT
+        )
+    }
 }
 
 impl fmt::Display for ElementaryTypeName {

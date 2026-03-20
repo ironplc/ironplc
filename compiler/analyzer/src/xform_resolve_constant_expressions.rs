@@ -91,8 +91,10 @@ fn extract_integer_value(init: &InitialValueAssignmentKind) -> Option<u128> {
     match init {
         InitialValueAssignmentKind::Simple(simple) => {
             // Check that the type is integer-compatible
-            let type_name_str = simple.type_name.to_string().to_uppercase();
-            if !is_integer_type(&type_name_str) {
+            let is_integer = ElementaryTypeName::try_from(&simple.type_name.name)
+                .map(|t| t.is_integer())
+                .unwrap_or(false);
+            if !is_integer {
                 return None;
             }
 
@@ -111,13 +113,6 @@ fn extract_integer_value(init: &InitialValueAssignmentKind) -> Option<u128> {
         }
         _ => None,
     }
-}
-
-fn is_integer_type(type_name: &str) -> bool {
-    matches!(
-        type_name,
-        "SINT" | "INT" | "DINT" | "LINT" | "USINT" | "UINT" | "UDINT" | "ULINT"
-    )
 }
 
 struct ConstantResolver {
