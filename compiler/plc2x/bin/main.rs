@@ -51,6 +51,16 @@ struct FileArgs {
     /// Allow missing semicolons after keyword statements like END_IF and END_STRUCT.
     #[arg(long)]
     allow_missing_semicolon: bool,
+
+    /// Allow VAR_GLOBAL declarations at the top level (outside CONFIGURATION).
+    /// This is a vendor extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_top_level_var_global: bool,
+
+    /// Allow constant references in type parameters (e.g., STRING[MY_CONST]).
+    /// This is a vendor extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_constant_type_params: bool,
 }
 
 impl FileArgs {
@@ -63,6 +73,8 @@ impl FileArgs {
             },
         };
         options.allow_missing_semicolon = self.allow_missing_semicolon;
+        options.allow_top_level_var_global = self.allow_top_level_var_global;
+        options.allow_constant_type_params = self.allow_constant_type_params;
         options
     }
 }

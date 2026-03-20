@@ -28,7 +28,7 @@ enum TypeDefinitionKind {
     Array(ArraySpecificationKind),
     Structure,
     StructureInitialization,
-    String(StringType, Integer),
+    String(StringType, IntegerRef),
     FunctionBlock,
     Reference(TypeName),
 }

@@ -8,7 +8,10 @@ pub fn from(initializer: &StringInitializer) -> TypeAttributes {
     TypeAttributes::new(
         initializer.span(),
         IntermediateType::String {
-            max_len: initializer.length.as_ref().map(|len| len.value),
+            max_len: initializer
+                .length
+                .as_ref()
+                .and_then(|len| len.as_integer().map(|i| i.value)),
         },
     )
 }
@@ -17,7 +20,7 @@ pub fn from_decl(decl: &StringDeclaration) -> TypeAttributes {
     TypeAttributes::new(
         decl.type_name.span(),
         IntermediateType::String {
-            max_len: Some(decl.length.value),
+            max_len: decl.length.as_integer().map(|i| i.value),
         },
     )
 }

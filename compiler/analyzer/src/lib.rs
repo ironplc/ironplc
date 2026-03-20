@@ -37,6 +37,7 @@ mod type_category;
 mod type_environment;
 mod type_table;
 mod xform_named_to_positional_args;
+mod xform_resolve_constant_expressions;
 mod xform_resolve_expr_types;
 mod xform_resolve_late_bound_expr_kind;
 mod xform_resolve_late_bound_type_initializer;
