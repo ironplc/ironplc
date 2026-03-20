@@ -65,9 +65,15 @@ END_STRUCT; END_TYPE
 (* Rect = 5 slots = 40 bytes *)
 ```
 
-### 1.3 Structure Size Limit
+### 1.3 Structure Size Limits
 
-The maximum structure size is bounded by the data region limit (`data_region_bytes: u32`, max 4 GiB). Practically, the `data_offset` is stored as `i32` in a slot (matching the array pattern), limiting effective addressing to 2 GiB. The compiler must assert `data_region_offset <= i32::MAX as u32` during allocation.
+The following limits apply to structure allocation:
+
+1. **Data region addressing**: The `data_offset` is stored as `i32` in a slot (matching the array pattern), limiting effective addressing to 2 GiB. The compiler must assert `data_region_offset <= i32::MAX as u32` after each allocation.
+
+2. **Slot count limit**: A single structure variable (including all nested fields and embedded arrays) must not exceed 32,768 total slots. This matches the existing array element limit and ensures flat-index arithmetic stays within safe i32 bounds. The compiler checks `total_slots > 32768` before allocation.
+
+3. **Nesting depth**: The recursive slot-count computation includes a depth guard (max 32 levels) as defense-in-depth against type cycles that escape the analyzer's toposort validation. If exceeded, the structure is rejected with an unsupported-type diagnostic.
 
 ---
 
@@ -280,19 +286,26 @@ StructVarInfo {
     var_index: u16,                     // slot table index
     data_offset: u32,                   // byte offset in data region
     total_slots: u32,                   // total 8-byte slots for this variable
-    field_map: HashMap<String, StructFieldInfo>,  // field name → info
+    desc_index: u16,                    // array descriptor index (struct as flat slot array)
+    fields: Vec<StructFieldInfo>,       // fields in declaration order
+    field_index: HashMap<String, usize>,// lowercase name → index in fields Vec
 }
 
 StructFieldInfo {
+    name: String,                       // lowercase field name
     slot_offset: u32,                   // slot offset relative to struct base
     field_type: IntermediateType,       // for nested resolution
-    op_type: OpType,                    // (OpWidth, Signedness) for leaf fields
+    op_type: Option<OpType>,            // Some for leaf fields, None for struct/array fields
 }
 ```
 
-For nested structures, the `field_map` is flat at each level — resolving `outer.inner.x` means:
+**Why `Vec` + `HashMap` instead of `HashMap` alone**: `HashMap` has non-deterministic iteration order. Using a `Vec` for storage ensures that initialization code is emitted in declaration order, producing deterministic bytecode (reproducible builds). The `HashMap` provides O(1) lookup by field name.
+
+**Why `op_type` is `Option<OpType>`**: Leaf fields (primitive, enum) have `Some(OpType)` for direct load/store. Non-leaf fields (nested structure, embedded array) have `None` — these are accessed via further resolution and never directly loaded/stored as a single value.
+
+For nested structures, the field list is flat at each level — resolving `outer.inner.x` means:
 1. Look up `outer` in `ctx.struct_vars` → `StructVarInfo`
-2. Look up `inner` in the `field_map` → `StructFieldInfo { slot_offset: 1, field_type: Structure { ... } }`
+2. Look up `inner` via `field_index` → `StructFieldInfo { slot_offset: 1, field_type: Structure { ... } }`
 3. Look up `x` in the nested structure's fields → `StructFieldInfo { slot_offset: 0, ... }`
 4. Sum: `1 + 0 = 1`, byte offset: `data_offset + 1 * 8`
 
@@ -342,6 +355,27 @@ For structure fields with compile-time-known offsets, the compiler can:
 However, if opcode budget preservation is preferred, Approach B works entirely with existing opcodes at the cost of one array descriptor per structure variable. This is the simpler path for initial implementation.
 
 **Decision**: Start with Approach B (reuse LOAD_ARRAY/STORE_ARRAY) for the initial implementation. Evaluate adding direct data-region load/store opcodes as a follow-up optimization if the descriptor-per-variable overhead is problematic.
+
+### 5.3 Element Type Byte for Structure Descriptors
+
+Array descriptors include an `element_type` byte that encodes the element's data type. The existing encoding uses values 0-5 for primitive types (I32, U32, I64, U64, F32, F64). Structures are heterogeneous (different fields have different types), so no single primitive type applies.
+
+**Decision**: Define `SLOT = 6` as a new element type byte for structure descriptors:
+
+| Type byte | Meaning |
+|-----------|---------|
+| 0 | I32 |
+| 1 | U32 |
+| 2 | I64 |
+| 3 | U64 |
+| 4 | F32 |
+| 5 | F64 |
+| **6** | **SLOT** — heterogeneous structure field |
+
+The VM's LOAD_ARRAY/STORE_ARRAY instructions do **not** check the element type byte at runtime — they only use `total_elements` for bounds checking and always read/write 8 bytes. The type byte serves three purposes:
+1. **Bytecode verifier**: Can distinguish structure descriptors from typed array descriptors and skip per-element type enforcement for SLOT descriptors.
+2. **Debug tools**: Can identify which descriptors belong to structure variables.
+3. **Descriptor deduplication**: The container builder caches descriptors on `(element_type, total_elements)`. Using SLOT=6 prevents false merging of a structure descriptor with an unrelated I64 array of the same element count.
 
 ---
 
@@ -484,7 +518,7 @@ The bytecode verifier sees LOAD_ARRAY/STORE_ARRAY operations on what appear to b
 - Stack depth is correct (value + index for store, index for load)
 - Type byte matches descriptor's element type
 
-For structures reusing the array infrastructure, the descriptor's `element_type` should be a generic type tag (e.g., `I64` or a new `SLOT` tag) since structure fields are heterogeneous. The verifier checks bounds but cannot enforce per-field type correctness — this is acceptable because field type correctness is guaranteed by the compiler's type checker.
+For structures reusing the array infrastructure, the descriptor's `element_type` uses the `SLOT` type byte (value 6, see section 5.3). The verifier must recognize this value and skip per-element type enforcement for SLOT descriptors, since structure fields are heterogeneous. Bounds checking still applies. Per-field type correctness is guaranteed by the compiler's type checker, not the verifier.
 
 ---
 
