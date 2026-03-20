@@ -80,7 +80,7 @@ For example, the decimal value ``42`` is encoded as ``0100_0010`` in BCD
 (``4`` in the high nibble, ``2`` in the low nibble).
 
 ``BCD_TO_INT`` decodes a BCD-encoded bit string into its integer value.
-Invalid BCD nibbles (values 10--15) are treated as 0.
+The function treats invalid BCD nibbles (values 10--15) as 0.
 
 ``INT_TO_BCD`` encodes an integer value into BCD format. Values that
 exceed the maximum representable BCD value for the target width wrap
