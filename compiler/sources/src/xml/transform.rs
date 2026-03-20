@@ -10,9 +10,10 @@ use ironplc_dsl::{
         EnumeratedSpecificationInit, EnumeratedSpecificationValues, EnumeratedValue,
         EnumerationDeclaration, FunctionBlockBodyKind, FunctionBlockDeclaration,
         FunctionDeclaration, InitialValueAssignmentKind, Integer, Library, LibraryElementKind,
-        ProgramDeclaration, SignedInteger, SimpleDeclaration, SimpleInitializer, SpecificationKind,
-        StructureDeclaration, StructureElementDeclaration, Subrange, SubrangeDeclaration,
-        SubrangeSpecification, TypeName, VarDecl, VariableIdentifier, VariableType,
+        ProgramDeclaration, SignedInteger, SignedIntegerRef, SimpleDeclaration, SimpleInitializer,
+        SpecificationKind, StructureDeclaration, StructureElementDeclaration, Subrange,
+        SubrangeDeclaration, SubrangeSpecification, TypeName, VarDecl, VariableIdentifier,
+        VariableType,
     },
     configuration::{
         ConfigurationDeclaration, ProgramConfiguration, ResourceDeclaration, TaskConfiguration,
@@ -188,20 +189,20 @@ fn transform_dimensions(
                 .map_err(|_| invalid_value_error(&dim.upper, "array upper bound", file_id))?;
 
             Ok(Subrange {
-                start: SignedInteger {
+                start: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer {
                         span: span.clone(),
                         value: lower.unsigned_abs(),
                     },
                     is_neg: lower < 0,
-                },
-                end: SignedInteger {
+                }),
+                end: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer {
                         span,
                         value: upper.unsigned_abs(),
                     },
                     is_neg: upper < 0,
-                },
+                }),
             })
         })
         .collect()
@@ -257,20 +258,20 @@ fn transform_subrange_signed_decl(
         spec: SpecificationKind::Inline(SubrangeSpecification {
             type_name: base_type,
             subrange: Subrange {
-                start: SignedInteger {
+                start: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer {
                         span: span.clone(),
                         value: lower.unsigned_abs(),
                     },
                     is_neg: lower < 0,
-                },
-                end: SignedInteger {
+                }),
+                end: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer {
                         span,
                         value: upper.unsigned_abs(),
                     },
                     is_neg: upper < 0,
-                },
+                }),
             },
         }),
         default: None,
@@ -300,17 +301,17 @@ fn transform_subrange_unsigned_decl(
         spec: SpecificationKind::Inline(SubrangeSpecification {
             type_name: base_type,
             subrange: Subrange {
-                start: SignedInteger {
+                start: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer {
                         span: span.clone(),
                         value: lower,
                     },
                     is_neg: false,
-                },
-                end: SignedInteger {
+                }),
+                end: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer { span, value: upper },
                     is_neg: false,
-                },
+                }),
             },
         }),
         default: None,

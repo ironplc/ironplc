@@ -287,6 +287,44 @@ impl SignedInteger {
     }
 }
 
+/// An integer value that may be either a literal or a reference to a named constant.
+///
+/// This enables vendor extensions where constant identifiers can be used in
+/// positions that normally require integer literals, such as STRING lengths
+/// and array bounds.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub enum IntegerRef {
+    Literal(Integer),
+    Constant(Id),
+}
+
+impl IntegerRef {
+    pub fn as_integer(&self) -> Option<&Integer> {
+        match self {
+            IntegerRef::Literal(i) => Some(i),
+            IntegerRef::Constant(_) => None,
+        }
+    }
+}
+
+/// A signed integer value that may be either a literal or a reference to a named constant.
+///
+/// See `IntegerRef` for details on the vendor extension support.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub enum SignedIntegerRef {
+    Literal(SignedInteger),
+    Constant(Id),
+}
+
+impl SignedIntegerRef {
+    pub fn as_signed_integer(&self) -> Option<&SignedInteger> {
+        match self {
+            SignedIntegerRef::Literal(si) => Some(si),
+            SignedIntegerRef::Constant(_) => None,
+        }
+    }
+}
+
 impl From<Integer> for SignedInteger {
     fn from(value: Integer) -> SignedInteger {
         SignedInteger {
@@ -1421,7 +1459,7 @@ pub enum StringType {
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct StringDeclaration {
     pub type_name: TypeName,
-    pub length: Integer,
+    pub length: IntegerRef,
     /// The size of a single 'character'
     #[recurse(ignore)]
     pub width: StringType,
@@ -1550,8 +1588,8 @@ pub struct ArraySubranges {
 /// See section 2.4.2.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct Subrange {
-    pub start: SignedInteger,
-    pub end: SignedInteger,
+    pub start: SignedIntegerRef,
+    pub end: SignedIntegerRef,
 }
 
 /// Container for structures that have variables.
@@ -2092,7 +2130,7 @@ pub struct SimpleInitializer {
 #[derive(Clone, PartialEq, Debug, Recurse)]
 pub struct StringInitializer {
     /// Maximum length of the string.
-    pub length: Option<Integer>,
+    pub length: Option<IntegerRef>,
     /// The size of a single 'character'
     #[recurse(ignore)]
     pub width: StringType,
@@ -2183,7 +2221,7 @@ pub enum VariableSpecificationKind {
 pub struct StringSpecification {
     #[recurse(ignore)]
     pub width: StringType,
-    pub length: Option<Integer>,
+    pub length: Option<IntegerRef>,
     pub keyword_span: SourceSpan,
 }
 
@@ -2205,6 +2243,12 @@ pub enum LibraryElementKind {
     FunctionBlockDeclaration(FunctionBlockDeclaration),
     ProgramDeclaration(ProgramDeclaration),
     ConfigurationDeclaration(ConfigurationDeclaration),
+    /// Top-level global variable declarations (vendor extension).
+    ///
+    /// In the IEC 61131-3 standard, VAR_GLOBAL only appears inside
+    /// CONFIGURATION/RESOURCE blocks. This variant enables the common
+    /// vendor extension of declaring globals at the top level.
+    GlobalVarDeclarations(Vec<VarDecl>),
 }
 
 ///Function Program Organization Unit Declaration

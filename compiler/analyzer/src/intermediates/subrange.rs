@@ -47,15 +47,34 @@ pub fn try_from(
             }
 
             // Extract min and max values from the subrange
-            let min_value = if spec.subrange.start.is_neg {
-                -(spec.subrange.start.value.value as i128)
+            let start = spec.subrange.start.as_signed_integer().ok_or_else(|| {
+                Diagnostic::problem(
+                    Problem::InternalError,
+                    Label::span(
+                        node_name.span(),
+                        "Subrange start bound is an unresolved constant",
+                    ),
+                )
+            })?;
+            let end = spec.subrange.end.as_signed_integer().ok_or_else(|| {
+                Diagnostic::problem(
+                    Problem::InternalError,
+                    Label::span(
+                        node_name.span(),
+                        "Subrange end bound is an unresolved constant",
+                    ),
+                )
+            })?;
+
+            let min_value = if start.is_neg {
+                -(start.value.value as i128)
             } else {
-                spec.subrange.start.value.value as i128
+                start.value.value as i128
             };
-            let max_value = if spec.subrange.end.is_neg {
-                -(spec.subrange.end.value.value as i128)
+            let max_value = if end.is_neg {
+                -(end.value.value as i128)
             } else {
-                spec.subrange.end.value.value as i128
+                end.value.value as i128
             };
 
             // Validate range
@@ -65,11 +84,11 @@ pub fn try_from(
                     Label::span(node_name.span(), "Subrange declaration"),
                 )
                 .with_secondary(Label::span(
-                    spec.subrange.start.value.span(),
+                    start.value.span(),
                     format!("Minimum value: {}", min_value),
                 ))
                 .with_secondary(Label::span(
-                    spec.subrange.end.value.span(),
+                    end.value.span(),
                     format!("Maximum value: {}", max_value),
                 )));
             }
@@ -265,20 +284,20 @@ mod tests {
         let spec = SpecificationKind::Inline(SubrangeSpecification {
             type_name: ElementaryTypeName::INT,
             subrange: Subrange {
-                start: SignedInteger {
+                start: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer {
                         span: SourceSpan::default(),
                         value: 1,
                     },
                     is_neg: false,
-                },
-                end: SignedInteger {
+                }),
+                end: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer {
                         span: SourceSpan::default(),
                         value: 100,
                     },
                     is_neg: false,
-                },
+                }),
             },
         });
 
@@ -356,20 +375,20 @@ mod tests {
         let spec = SpecificationKind::Inline(SubrangeSpecification {
             type_name: ElementaryTypeName::INT,
             subrange: Subrange {
-                start: SignedInteger {
+                start: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer {
                         span: SourceSpan::default(),
                         value: 100,
                     },
                     is_neg: false,
-                },
-                end: SignedInteger {
+                }),
+                end: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer {
                         span: SourceSpan::default(),
                         value: 1,
                     },
                     is_neg: false,
-                },
+                }),
             },
         });
 
@@ -390,20 +409,20 @@ mod tests {
         let spec = SpecificationKind::Inline(SubrangeSpecification {
             type_name: ElementaryTypeName::SINT,
             subrange: Subrange {
-                start: SignedInteger {
+                start: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer {
                         span: SourceSpan::default(),
                         value: 200,
                     },
                     is_neg: true,
-                },
-                end: SignedInteger {
+                }),
+                end: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer {
                         span: SourceSpan::default(),
                         value: 200,
                     },
                     is_neg: false,
-                },
+                }),
             },
         });
 
@@ -421,20 +440,20 @@ mod tests {
         let spec = SpecificationKind::Inline(SubrangeSpecification {
             type_name: ElementaryTypeName::INT,
             subrange: Subrange {
-                start: SignedInteger {
+                start: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer {
                         span: SourceSpan::default(),
                         value: 1,
                     },
                     is_neg: false,
-                },
-                end: SignedInteger {
+                }),
+                end: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer {
                         span: SourceSpan::default(),
                         value: 100,
                     },
                     is_neg: false,
-                },
+                }),
             },
         });
 
@@ -462,20 +481,20 @@ mod tests {
         let spec = SpecificationKind::Inline(SubrangeSpecification {
             type_name: ElementaryTypeName::STRING,
             subrange: Subrange {
-                start: SignedInteger {
+                start: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer {
                         span: SourceSpan::default(),
                         value: 1,
                     },
                     is_neg: false,
-                },
-                end: SignedInteger {
+                }),
+                end: SignedIntegerRef::Literal(SignedInteger {
                     value: Integer {
                         span: SourceSpan::default(),
                         value: 100,
                     },
                     is_neg: false,
-                },
+                }),
             },
         });
 

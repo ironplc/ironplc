@@ -45,8 +45,10 @@ pub fn try_from(
                 .ranges
                 .iter()
                 .map(|range| {
-                    let lower = signed_integer_to_i32(&range.start)?;
-                    let upper = signed_integer_to_i32(&range.end)?;
+                    let start = resolve_signed_integer_ref(&range.start, node_name)?;
+                    let end = resolve_signed_integer_ref(&range.end, node_name)?;
+                    let lower = signed_integer_to_i32(start)?;
+                    let upper = signed_integer_to_i32(end)?;
                     Ok(ArrayDimension { lower, upper })
                 })
                 .collect::<Result<Vec<_>, Diagnostic>>()?;
@@ -83,6 +85,25 @@ pub fn try_from(
     }
 }
 
+/// Resolves a `SignedIntegerRef` to a `SignedInteger` reference.
+///
+/// The transform pass resolves all `Constant` variants before analysis runs,
+/// so encountering one here indicates an internal error.
+fn resolve_signed_integer_ref<'a>(
+    sir: &'a SignedIntegerRef,
+    context: &TypeName,
+) -> Result<&'a SignedInteger, Diagnostic> {
+    sir.as_signed_integer().ok_or_else(|| {
+        Diagnostic::problem(
+            Problem::ArrayDimensionInvalid,
+            Label::span(
+                context.span(),
+                "Array dimension contains unresolved constant",
+            ),
+        )
+    })
+}
+
 /// Converts a SignedInteger to an i32 value.
 fn signed_integer_to_i32(si: &SignedInteger) -> Result<i32, Diagnostic> {
     let magnitude = si.value.value;
@@ -116,15 +137,18 @@ pub fn validate_array_bounds(ranges: &[Subrange], type_name: &TypeName) -> Resul
     }
 
     for range in ranges.iter() {
-        let min_value = if range.start.is_neg {
-            -(range.start.value.value as i128)
+        let start = resolve_signed_integer_ref(&range.start, type_name)?;
+        let end = resolve_signed_integer_ref(&range.end, type_name)?;
+
+        let min_value = if start.is_neg {
+            -(start.value.value as i128)
         } else {
-            range.start.value.value as i128
+            start.value.value as i128
         };
-        let max_value = if range.end.is_neg {
-            -(range.end.value.value as i128)
+        let max_value = if end.is_neg {
+            -(end.value.value as i128)
         } else {
-            range.end.value.value as i128
+            end.value.value as i128
         };
 
         if min_value > max_value {
@@ -133,11 +157,11 @@ pub fn validate_array_bounds(ranges: &[Subrange], type_name: &TypeName) -> Resul
                 Label::span(type_name.span(), "Array declaration"),
             )
             .with_secondary(Label::span(
-                range.start.value.span(),
+                start.value.span(),
                 format!("Minimum value: {}", min_value),
             ))
             .with_secondary(Label::span(
-                range.end.value.span(),
+                end.value.span(),
                 format!("Maximum value: {}", max_value),
             )));
         }
@@ -149,8 +173,8 @@ pub fn validate_array_bounds(ranges: &[Subrange], type_name: &TypeName) -> Resul
                 Problem::ArraySizeOverflow,
                 Label::span(type_name.span(), "Array declaration"),
             )
-            .with_secondary(Label::span(range.start.value.span(), "Dimension start"))
-            .with_secondary(Label::span(range.end.value.span(), "Dimension end")));
+            .with_secondary(Label::span(start.value.span(), "Dimension start"))
+            .with_secondary(Label::span(end.value.span(), "Dimension end")));
         }
     }
 
@@ -165,40 +189,27 @@ mod tests {
     use ironplc_dsl::common::TypeName;
     use ironplc_dsl::core::SourceSpan;
 
+    /// Helper to create a `SignedIntegerRef::Literal` for tests.
+    fn literal(value: u128, is_neg: bool) -> SignedIntegerRef {
+        SignedIntegerRef::Literal(SignedInteger {
+            value: Integer {
+                span: SourceSpan::default(),
+                value,
+            },
+            is_neg,
+        })
+    }
+
     #[test]
     fn validate_array_bounds_with_valid_ranges_then_succeeds() {
         let ranges = vec![
             Subrange {
-                start: SignedInteger {
-                    value: Integer {
-                        span: SourceSpan::default(),
-                        value: 1,
-                    },
-                    is_neg: false,
-                },
-                end: SignedInteger {
-                    value: Integer {
-                        span: SourceSpan::default(),
-                        value: 10,
-                    },
-                    is_neg: false,
-                },
+                start: literal(1, false),
+                end: literal(10, false),
             },
             Subrange {
-                start: SignedInteger {
-                    value: Integer {
-                        span: SourceSpan::default(),
-                        value: 1,
-                    },
-                    is_neg: false,
-                },
-                end: SignedInteger {
-                    value: Integer {
-                        span: SourceSpan::default(),
-                        value: 5,
-                    },
-                    is_neg: false,
-                },
+                start: literal(1, false),
+                end: literal(5, false),
             },
         ];
 
@@ -216,20 +227,8 @@ mod tests {
     #[test]
     fn validate_array_bounds_with_invalid_range_then_error() {
         let ranges = vec![Subrange {
-            start: SignedInteger {
-                value: Integer {
-                    span: SourceSpan::default(),
-                    value: 10,
-                },
-                is_neg: false,
-            },
-            end: SignedInteger {
-                value: Integer {
-                    span: SourceSpan::default(),
-                    value: 1,
-                },
-                is_neg: false,
-            },
+            start: literal(10, false),
+            end: literal(1, false),
         }];
 
         let result = validate_array_bounds(&ranges, &TypeName::from("TEST_ARRAY"));
@@ -239,20 +238,8 @@ mod tests {
     #[test]
     fn validate_array_bounds_with_negative_ranges_then_succeeds() {
         let ranges = vec![Subrange {
-            start: SignedInteger {
-                value: Integer {
-                    span: SourceSpan::default(),
-                    value: 5,
-                },
-                is_neg: true, // -5
-            },
-            end: SignedInteger {
-                value: Integer {
-                    span: SourceSpan::default(),
-                    value: 5,
-                },
-                is_neg: false, // 5
-            },
+            start: literal(5, true), // -5
+            end: literal(5, false),  // 5
         }];
 
         let result = validate_array_bounds(&ranges, &TypeName::from("TEST_ARRAY"));
@@ -313,20 +300,8 @@ mod tests {
 
         let array_subranges = ArraySubranges {
             ranges: vec![Subrange {
-                start: SignedInteger {
-                    value: Integer {
-                        span: SourceSpan::default(),
-                        value: 1,
-                    },
-                    is_neg: false,
-                },
-                end: SignedInteger {
-                    value: Integer {
-                        span: SourceSpan::default(),
-                        value: 10,
-                    },
-                    is_neg: false,
-                },
+                start: literal(1, false),
+                end: literal(10, false),
             }],
             type_name: TypeName::from("int"),
             ref_to: false,
@@ -399,20 +374,8 @@ mod tests {
 
         let array_subranges = ArraySubranges {
             ranges: vec![Subrange {
-                start: SignedInteger {
-                    value: Integer {
-                        span: SourceSpan::default(),
-                        value: 1,
-                    },
-                    is_neg: false,
-                },
-                end: SignedInteger {
-                    value: Integer {
-                        span: SourceSpan::default(),
-                        value: 10,
-                    },
-                    is_neg: false,
-                },
+                start: literal(1, false),
+                end: literal(10, false),
             }],
             type_name: TypeName::from("MISSING_TYPE"),
             ref_to: false,
@@ -446,36 +409,12 @@ mod tests {
         let array_subranges = ArraySubranges {
             ranges: vec![
                 Subrange {
-                    start: SignedInteger {
-                        value: Integer {
-                            span: SourceSpan::default(),
-                            value: 1,
-                        },
-                        is_neg: false,
-                    },
-                    end: SignedInteger {
-                        value: Integer {
-                            span: SourceSpan::default(),
-                            value: 3,
-                        },
-                        is_neg: false,
-                    },
+                    start: literal(1, false),
+                    end: literal(3, false),
                 },
                 Subrange {
-                    start: SignedInteger {
-                        value: Integer {
-                            span: SourceSpan::default(),
-                            value: 1,
-                        },
-                        is_neg: false,
-                    },
-                    end: SignedInteger {
-                        value: Integer {
-                            span: SourceSpan::default(),
-                            value: 4,
-                        },
-                        is_neg: false,
-                    },
+                    start: literal(1, false),
+                    end: literal(4, false),
                 },
             ],
             type_name: TypeName::from("bool"),
@@ -519,20 +458,8 @@ mod tests {
 
         let array_subranges = ArraySubranges {
             ranges: vec![Subrange {
-                start: SignedInteger {
-                    value: Integer {
-                        span: SourceSpan::default(),
-                        value: 0,
-                    },
-                    is_neg: false,
-                },
-                end: SignedInteger {
-                    value: Integer {
-                        span: SourceSpan::default(),
-                        value: 3,
-                    },
-                    is_neg: false,
-                },
+                start: literal(0, false),
+                end: literal(3, false),
             }],
             type_name: TypeName::from("byte"),
             ref_to: true,

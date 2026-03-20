@@ -219,6 +219,7 @@ parser! {
       / fbd:function_block_declaration() { vec![LibraryElementKind::FunctionBlockDeclaration(fbd)] }
       / pd:program_declaration() { vec![LibraryElementKind::ProgramDeclaration(pd)] }
       / cd:configuration_declaration() { vec![LibraryElementKind::ConfigurationDeclaration(cd)] }
+      / gv:global_var_declarations() { vec![LibraryElementKind::GlobalVarDeclarations(gv)] }
 
     // B.1.1 Letters, digits and identifier
     rule identifier() -> Id = i:tok(TokenType::Identifier) {
@@ -486,7 +487,9 @@ parser! {
     }
     rule subrange_specification__with_range() -> SubrangeSpecificationKind
       = type_name:integer_type_name() _ tok(TokenType::LeftParen) _ subrange:subrange() _ tok(TokenType::RightParen) { SpecificationKind::Inline(SubrangeSpecification{ type_name, subrange }) }
-    rule subrange() -> Subrange = start:signed_integer() tok(TokenType::Range) end:signed_integer() { Subrange{start, end} }
+    rule integer_ref() -> IntegerRef = i:integer() { IntegerRef::Literal(i) } / id:identifier() { IntegerRef::Constant(id) }
+    rule signed_integer_ref() -> SignedIntegerRef = si:signed_integer() { SignedIntegerRef::Literal(si) } / id:identifier() { SignedIntegerRef::Constant(id) }
+    rule subrange() -> Subrange = start:signed_integer_ref() _ tok(TokenType::Range) _ end:signed_integer_ref() { Subrange{start, end} }
 
     rule enumerated_type_declaration__with_value() -> EnumerationDeclaration =
       type_name:enumerated_type_name() _ tok(TokenType::Colon) _ spec_init:enumerated_spec_init__with_value() {
@@ -682,7 +685,7 @@ parser! {
       InitialValueAssignmentKind::LateResolvedType(i)
     }
     rule string_type_name() -> TypeName = type_name()
-    rule string_type_declaration() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) _ tok(TokenType::LeftBracket) _ length:integer() _ tok(TokenType::RightBracket) _ init:(tok(TokenType::Assignment) _ str:character_string() {str})? {
+    rule string_type_declaration() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) _ tok(TokenType::LeftBracket) _ length:integer_ref() _ tok(TokenType::RightBracket) _ init:(tok(TokenType::Assignment) _ str:character_string() {str})? {
       StringDeclaration {
         type_name,
         length,
@@ -690,7 +693,7 @@ parser! {
         init: init.map(|v| v.into_iter().collect()),
       }
     }
-    rule string_type_declaration__parenthesis() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) _ tok(TokenType::LeftParen) _ length:integer() _ tok(TokenType::RightParen) _ init:(tok(TokenType::Assignment) _ str:character_string() {str})? {
+    rule string_type_declaration__parenthesis() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) _ tok(TokenType::LeftParen) _ length:integer_ref() _ tok(TokenType::RightParen) _ init:(tok(TokenType::Assignment) _ str:character_string() {str})? {
       StringDeclaration {
         type_name,
         length,
@@ -973,7 +976,7 @@ parser! {
         }
       }).collect()
     }
-    rule single_byte_string_spec() -> StringInitializer = start:tok(TokenType::String) _ length:(tok(TokenType::LeftBracket) _ i:integer() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:single_byte_character_string() {v})? {
+    rule single_byte_string_spec() -> StringInitializer = start:tok(TokenType::String) _ length:(tok(TokenType::LeftBracket) _ i:integer_ref() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:single_byte_character_string() {v})? {
       StringInitializer {
         length,
         width: StringType::String,
@@ -989,7 +992,7 @@ parser! {
         }
       }).collect()
     }
-    rule double_byte_string_spec() -> StringInitializer = start:tok(TokenType::WString) _ length:(tok(TokenType::LeftBracket) _ i:integer() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:double_byte_character_string() {v})? {
+    rule double_byte_string_spec() -> StringInitializer = start:tok(TokenType::WString) _ length:(tok(TokenType::LeftBracket) _ i:integer_ref() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:double_byte_character_string() {v})? {
       StringInitializer {
         length,
         width: StringType::WString,
@@ -1027,8 +1030,8 @@ parser! {
       sr:subrange_specification__with_range() { VariableSpecificationKind::Subrange(sr) }
       / e:enumerated_specification() { VariableSpecificationKind::Enumerated(e) }
       / a:array_specification() { VariableSpecificationKind::Array(a) }
-      / tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
-      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
       / et:elementary_type_name() { VariableSpecificationKind::Simple(et.into()) }
       / id:type_name() { VariableSpecificationKind::Ambiguous(id) }
 
