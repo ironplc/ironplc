@@ -62,7 +62,7 @@ Directly Represented Variables
 
 The key concept that distinguishes PLC programming from general-purpose
 programming is the ability to map variables directly to hardware I/O
-addresses. These are called **directly represented variables**.
+addresses. IEC 61131-3 calls these **directly represented variables**.
 
 A directly represented variable uses the :code:`AT` keyword followed by
 an address:

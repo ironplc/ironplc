@@ -7,7 +7,7 @@ extension displays a human-readable disassembly of the binary contents. The
 viewer is read-only — it shows the compiled output but does not allow editing.
 
 The viewer opens automatically for any file with the :file:`.iplc` extension.
-No additional configuration is required.
+You do not need any additional configuration.
 
 .. note::
 

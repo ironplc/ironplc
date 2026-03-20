@@ -16,8 +16,8 @@ Description
 ===========
 
 :program:`ironplcvm` is the IronPLC virtual machine runtime. It loads and
-executes compiled bytecode container (``.iplc``) files produced by
-:doc:`ironplcc </reference/compiler/ironplcc>`.
+executes compiled bytecode container (``.iplc``) files that
+:doc:`ironplcc </reference/compiler/ironplcc>` produces.
 
 The runtime follows the IEC 61131-3 execution model. Each scheduling round,
 the runtime checks which tasks are due based on elapsed time and executes

@@ -4,7 +4,7 @@
 Installation
 ============
 
-IronPLC is supported on the following platforms:
+IronPLC supports the following platforms:
 
 - Windows (x64)
 - macOS

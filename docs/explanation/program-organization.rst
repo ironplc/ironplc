@@ -10,7 +10,7 @@ up these layers step by step, follow the :doc:`/quickstart/index`.
 The Big Picture
 --------------------------------------
 
-An IEC 61131-3 application is built from these building blocks, from
+You build an IEC 61131-3 application from these building blocks, from
 innermost to outermost:
 
 .. code-block:: text
@@ -115,7 +115,7 @@ an instance of the :code:`main` program, name it :code:`plc_task_instance`,
 and run it on :code:`plc_task`."
 
 The ``ON PLC`` part names the hardware target. In practice, the target
-name is defined by the runtime environment.
+name comes from the runtime environment.
 
 --------------------------------------
 Configurations
