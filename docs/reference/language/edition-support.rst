@@ -32,6 +32,18 @@ Edition 3 introduced the following features, which require
    * - :doc:`LDATE_AND_TIME <data-types/ldate-and-time>`
      - Data type
      - 64-bit date and time of day
+   * - :doc:`REF_TO <data-types/reference-types>`
+     - Data type
+     - Reference (pointer) to a variable
+   * - ``REF()``
+     - Operator
+     - Create a reference to a variable
+   * - ``^``
+     - Operator
+     - Dereference a reference
+   * - ``NULL``
+     - Literal
+     - Null reference value
 
 Edition 2 (2003) Features
 =========================

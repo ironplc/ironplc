@@ -64,3 +64,39 @@ Or add it directly to your :file:`settings.json`:
 
 See :doc:`/reference/editor/settings` for all extension settings.
 
+---------------------------------
+Vendor Extensions
+---------------------------------
+
+Some PLC vendors support features beyond the IEC 61131-3 standard. IronPLC
+provides flags for these common vendor extensions to improve compatibility
+with code written for other PLC environments.
+
+``--allow-all``
+   Enable all vendor extensions at once.
+
+``--allow-top-level-var-global``
+   Allow :code:`VAR_GLOBAL` declarations at the top level of a file,
+   outside of a :code:`CONFIGURATION` block. See
+   :doc:`/reference/language/variables/scope`.
+
+``--allow-constant-type-params``
+   Allow constant references in type parameters such as array bounds and
+   string lengths (e.g., ``ARRAY[1..MY_CONST] OF INT`` or
+   ``STRING[MY_CONST]``). See :doc:`/reference/language/data-types/array-types`.
+
+Command Line
+^^^^^^^^^^^^
+
+.. code-block:: shell
+
+   ironplcc check --allow-all main.st
+
+Or enable individual extensions:
+
+.. code-block:: shell
+
+   ironplcc check --allow-top-level-var-global --allow-constant-type-params main.st
+
+See :doc:`/reference/compiler/ironplcc` for all compiler options.
+
