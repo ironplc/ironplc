@@ -22,6 +22,7 @@ fn input_param(name: &str, param_type_name: &str) -> IntermediateFunctionParamet
         is_input: true,
         is_output: false,
         is_inout: false,
+        is_reference: false,
     }
 }
 
