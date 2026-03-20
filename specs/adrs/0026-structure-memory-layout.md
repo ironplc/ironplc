@@ -158,7 +158,13 @@ The number of slots for a structure is computed recursively:
 - Nested structure field: sum of slots of all fields (recursive)
 - Array field: `total_elements * element_slots` where `element_slots` is 1 for primitive arrays or the nested structure's slot count for structure arrays
 
-This computation is performed at compile time during structure type resolution. The result is deterministic and bounded by the declared types.
+This computation is performed at compile time during structure type resolution. The result is deterministic and bounded by the declared types. The recursive computation includes a depth guard (max 32 nesting levels) as defense-in-depth against type cycles that escape the analyzer's toposort validation (`xform_toposort_declarations.rs`). If the depth limit is exceeded, `slot_count()` returns `None` and the compiler rejects the structure with a diagnostic.
+
+A single structure variable must not exceed **32,768 total slots** (matching the existing array element limit). This ensures flat-index arithmetic in LOAD_ARRAY/STORE_ARRAY stays within safe i32 bounds.
+
+### Element Type Byte
+
+When registering an array descriptor for a structure variable, the element type byte is `SLOT = 6` (a new value distinct from the primitive type bytes 0-5). This distinguishes structure descriptors from typed array descriptors in the bytecode verifier and debug tools, and prevents false descriptor deduplication with unrelated arrays.
 
 ### Scope Limitations
 
