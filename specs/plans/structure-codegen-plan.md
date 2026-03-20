@@ -93,7 +93,23 @@ impl IntermediateType {
     ///
     /// Returns `Some(n)` for types with known slot counts, `None` for types
     /// that cannot yet be stored in the data region (STRING, WSTRING, FunctionBlock).
+    ///
+    /// Uses a depth counter to guard against stack overflow from recursive type
+    /// cycles. The analyzer's toposort pass (`xform_toposort_declarations.rs`)
+    /// rejects cycles before codegen runs, but this provides defense-in-depth.
     pub fn slot_count(&self) -> Option<u32> {
+        self.slot_count_inner(0)
+    }
+
+    fn slot_count_inner(&self, depth: u32) -> Option<u32> {
+        // Guard against runaway recursion (defense-in-depth).
+        // The analyzer rejects recursive types via toposort, but if a bug
+        // allows one through, this prevents a stack overflow.
+        const MAX_NESTING_DEPTH: u32 = 32;
+        if depth > MAX_NESTING_DEPTH {
+            return None;
+        }
+
         match self {
             // Primitives: 1 slot each
             IntermediateType::Bool
@@ -112,14 +128,14 @@ impl IntermediateType {
             IntermediateType::Structure { fields } => {
                 let mut total = 0u32;
                 for field in fields {
-                    total = total.checked_add(field.field_type.slot_count()?)?;
+                    total = total.checked_add(field.field_type.slot_count_inner(depth + 1)?)?;
                 }
                 Some(total)
             }
 
             // Arrays: total_elements * element_slots
             IntermediateType::Array { element_type, dimensions } => {
-                let elem_slots = element_type.slot_count()?;
+                let elem_slots = element_type.slot_count_inner(depth + 1)?;
                 let total_elements = dimensions.iter().try_fold(1u32, |acc, dim| {
                     let size = (dim.upper - dim.lower + 1) as u32;
                     acc.checked_mul(size)
@@ -153,51 +169,76 @@ struct StructVarInfo {
     total_slots: u32,
     /// Array descriptor index for this structure (treats struct as flat slot array).
     desc_index: u16,
-    /// Maps field name (lowercase) to field metadata.
-    field_map: HashMap<String, StructFieldInfo>,
+    /// Fields in declaration order. Preserving order ensures deterministic
+    /// bytecode emission (reproducible builds) and predictable initialization
+    /// sequences. Use `field_index` for O(1) lookup by name.
+    fields: Vec<StructFieldInfo>,
+    /// Maps field name (lowercase) to index in `fields` Vec for O(1) lookup.
+    field_index: HashMap<String, usize>,
 }
 
 /// Metadata for a single structure field.
 struct StructFieldInfo {
+    /// Field name (lowercase, for matching against access chains).
+    name: String,
     /// Slot offset relative to the containing structure's base.
     slot_offset: u32,
     /// The field's intermediate type (for nested resolution).
     field_type: IntermediateType,
-    /// Op type for leaf (primitive/enum) fields.
+    /// Op type for leaf (primitive/enum) fields. `None` for structure/array
+    /// fields (which are accessed via further resolution).
     op_type: Option<OpType>,
 }
 ```
 
 Add `struct_vars: HashMap<Id, StructVarInfo>` to `CompileContext`.
 
-### 1d: Add helper to build StructFieldInfo from IntermediateType::Structure
+**Field lookup pattern**: All field access by name goes through `field_index` to get the Vec index, then indexes into `fields`. All iteration (initialization, debug output) uses `fields` directly, which preserves declaration order.
+
+### 1d: Add helper to build struct field metadata from IntermediateType::Structure
 
 ```rust
-/// Builds a field map from a structure's intermediate type.
+/// Builds field metadata (ordered Vec + lookup HashMap) from a structure's
+/// intermediate type.
 ///
-/// Computes slot offsets for each field, flattening nested structures
-/// are NOT flattened here — each level is a separate field_map.
-fn build_struct_field_map(fields: &[IntermediateStructField]) -> HashMap<String, StructFieldInfo> {
-    let mut map = HashMap::new();
+/// Returns `Err` if any field has an unsupported type (STRING, WSTRING,
+/// FunctionBlock). Nested structures are NOT flattened — each level is a
+/// separate field list.
+fn build_struct_fields(
+    fields: &[IntermediateStructField],
+    span: &SourceSpan,
+) -> Result<(Vec<StructFieldInfo>, HashMap<String, usize>), Diagnostic> {
+    let mut field_list = Vec::with_capacity(fields.len());
+    let mut field_index = HashMap::with_capacity(fields.len());
     let mut slot_offset = 0u32;
     for field in fields {
-        let field_slots = field.field_type.slot_count().unwrap_or(0);
+        let field_slots = field.field_type.slot_count().ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(
+                    span.clone(),
+                    format!("Structure field '{}' has unsupported type (STRING, WSTRING, or FunctionBlock)", field.name),
+                ),
+            )
+        })?;
+        let name = field.name.to_string().to_lowercase();
         let op_type = resolve_field_op_type(&field.field_type);
-        map.insert(
-            field.name.to_string().to_lowercase(),
-            StructFieldInfo {
-                slot_offset,
-                field_type: field.field_type.clone(),
-                op_type,
-            },
-        );
+        field_index.insert(name.clone(), field_list.len());
+        field_list.push(StructFieldInfo {
+            name,
+            slot_offset,
+            field_type: field.field_type.clone(),
+            op_type,
+        });
         slot_offset += field_slots;
     }
-    map
+    Ok((field_list, field_index))
 }
 ```
 
 Where `resolve_field_op_type` returns `Some(OpType)` for primitive/enum fields and `None` for structure/array fields (which are accessed via further resolution).
+
+**Why `unwrap_or(0)` is wrong**: If `slot_count()` returns `None` (unsupported field type like STRING), using `unwrap_or(0)` would assign 0 slots to that field, causing all subsequent fields to overlap with it in memory. This silently produces corrupt layouts. The function must return an error instead.
 
 ### Tests
 
@@ -207,10 +248,14 @@ Where `resolve_field_op_type` returns `Some(OpType)` for primitive/enum fields a
 - `slot_count_when_array_of_primitives_then_returns_total_elements`
 - `slot_count_when_array_of_structures_then_returns_elements_times_struct_slots`
 - `slot_count_when_string_field_then_returns_none`
+- `slot_count_when_nesting_exceeds_max_depth_then_returns_none`
 - `resolve_struct_type_when_structure_then_returns_type`
 - `resolve_struct_type_when_not_structure_then_returns_none`
-- `build_struct_field_map_when_two_fields_then_sequential_offsets`
-- `build_struct_field_map_when_nested_struct_then_inner_occupies_multiple_slots`
+- `build_struct_fields_when_two_fields_then_sequential_offsets`
+- `build_struct_fields_when_nested_struct_then_inner_occupies_multiple_slots`
+- `build_struct_fields_when_string_field_then_returns_error`
+- `build_struct_fields_when_fb_field_then_returns_error`
+- `build_struct_fields_when_iterated_then_declaration_order_preserved`
 
 ---
 
@@ -222,15 +267,26 @@ Where `resolve_field_op_type` returns `Some(OpType)` for primitive/enum fields a
 
 **File**: `compiler/codegen/src/compile.rs`, in `assign_variables()`
 
-Add a match arm for `InitialValueAssignmentKind::Structure(struct_init)`:
+Extract a helper function that performs structure allocation, so it can be called from both the `Structure` and `LateResolvedType` match arms:
 
 ```rust
-InitialValueAssignmentKind::Structure(struct_init) => {
-    // Resolve the structure type from the type environment
-    let struct_type = types.resolve_struct_type(&struct_init.type_name)
+/// Allocates data region space for a structure variable and registers metadata.
+///
+/// Called from both the `Structure` and `LateResolvedType` match arms in
+/// `assign_variables`.
+fn allocate_struct_variable(
+    ctx: &mut CompileContext,
+    builder: &mut ContainerBuilder,
+    types: &TypeEnvironment,
+    type_name: &TypeName,
+    id: &Id,
+    index: u16,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let struct_type = types.resolve_struct_type(type_name)
         .ok_or_else(|| Diagnostic::problem(
             Problem::NotImplemented,
-            Label::span(struct_init.type_name.span(), "Unknown structure type"),
+            Label::span(span.clone(), "Unknown structure type"),
         ))?;
 
     let IntermediateType::Structure { fields } = struct_type else {
@@ -241,9 +297,17 @@ InitialValueAssignmentKind::Structure(struct_init) => {
     let total_slots = struct_type.slot_count().ok_or_else(|| {
         Diagnostic::problem(
             Problem::NotImplemented,
-            Label::span(struct_init.type_name.span(), "Structure contains unsupported field types"),
+            Label::span(span.clone(), "Structure contains unsupported field types"),
         )
     })?;
+
+    // Enforce slot limit (matches existing array limit for i32 flat-index safety)
+    if total_slots > 32768 {
+        return Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span.clone(), "Structure exceeds maximum 32768 slots"),
+        ));
+    }
 
     // Allocate data region space
     let data_offset = ctx.data_region_offset;
@@ -252,14 +316,28 @@ InitialValueAssignmentKind::Structure(struct_init) => {
         .checked_add(total_bytes)
         .ok_or_else(|| Diagnostic::problem(
             Problem::NotImplemented,
-            Label::span(decl.identifier.span(), "Data region overflow"),
+            Label::span(span.clone(), "Data region overflow"),
         ))?;
 
-    // Register array descriptor (treating struct as flat slot array)
-    let desc_index = builder.add_array_descriptor(total_slots, ...);
+    // Guard against i32 truncation (data_offset is stored as i32 in the
+    // variable slot, matching the array pattern)
+    if ctx.data_region_offset > i32::MAX as u32 {
+        return Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span.clone(), "Data region exceeds 2 GiB limit"),
+        ));
+    }
 
-    // Build field map
-    let field_map = build_struct_field_map(fields);
+    // Register array descriptor (treating struct as flat slot array).
+    // Use element type SLOT (6) for heterogeneous structure fields.
+    // The VM does not check the element type at runtime — it only uses
+    // total_elements for bounds checking. See section "Element Type Byte
+    // for Structure Descriptors" below for rationale.
+    const ELEMENT_TYPE_SLOT: u8 = 6;
+    let desc_index = builder.add_array_descriptor(ELEMENT_TYPE_SLOT, total_slots);
+
+    // Build field metadata (returns error for unsupported field types)
+    let (fields_vec, field_index) = build_struct_fields(fields, span)?;
 
     // Store metadata
     ctx.struct_vars.insert(
@@ -269,27 +347,83 @@ InitialValueAssignmentKind::Structure(struct_init) => {
             data_offset,
             total_slots,
             desc_index,
-            field_map,
+            fields: fields_vec,
+            field_index,
         },
     );
+    Ok(())
+}
+```
 
+Add the match arm in `assign_variables`:
+
+```rust
+InitialValueAssignmentKind::Structure(struct_init) => {
+    allocate_struct_variable(
+        ctx, builder, types, &struct_init.type_name,
+        id, index, &decl.identifier.span(),
+    )?;
     let type_name_str = struct_init.type_name.to_string().to_uppercase();
     (iec_type_tag::OTHER, type_name_str)
 }
 ```
 
-### 2b: Handle `Simple` initializer that resolves to a structure type
+### 2b: Handle `LateResolvedType` that resolves to a structure type
 
-When a variable is declared as `myVar : MyStructType;` (no explicit initial values), the parser may produce `InitialValueAssignmentKind::Simple` with the struct's type name. The `LateResolvedType` transform may also produce this. Check if the `Simple` type name resolves to a structure in the type environment, and if so, treat it as a structure allocation.
+**Investigation result**: When a variable is declared as `myVar : MyStructType;` (no explicit initial values), the parser produces `InitialValueAssignmentKind::LateResolvedType(TypeName("MyStructType"))`. The `xform_resolve_late_bound_expr_kind` transform resolves late-bound *expressions* (e.g., RHS of assignments) but does **not** change the `InitialValueAssignmentKind` variant itself. So when codegen's `assign_variables` runs, the variant is still `LateResolvedType`.
 
-Alternatively, ensure the late-bound type resolution transform (`xform_resolve_late_bound_expr_kind.rs`) correctly produces `InitialValueAssignmentKind::Structure` for structure-typed variables. Verify this path in testing.
+The existing catch-all arm `_ => (iec_type_tag::OTHER, String::new())` silently skips these variables, meaning they get a variable slot but no data region allocation.
+
+**Fix**: Add a `LateResolvedType` match arm that checks the type environment and dispatches to the appropriate allocation function:
+
+```rust
+InitialValueAssignmentKind::LateResolvedType(type_name) => {
+    // Check if this late-resolved type is a structure
+    if types.resolve_struct_type(type_name).is_some() {
+        allocate_struct_variable(
+            ctx, builder, types, type_name,
+            id, index, &decl.identifier.span(),
+        )?;
+        let type_name_str = type_name.to_string().to_uppercase();
+        (iec_type_tag::OTHER, type_name_str)
+    } else {
+        // Not a structure — fall through to default handling.
+        // Future work may add FB, array-of-struct, etc. dispatch here.
+        (iec_type_tag::OTHER, String::new())
+    }
+}
+```
+
+This arm must appear before the catch-all `_` in the match statement.
+
+### Element Type Byte for Structure Descriptors
+
+The existing array descriptor element type encoding uses values 0-5 (I32, U32, I64, U64, F32, F64). Structures are heterogeneous — different fields have different types — so no single primitive type byte applies. Define a new value:
+
+| Type byte | Meaning |
+|-----------|---------|
+| 0 | I32 |
+| 1 | U32 |
+| 2 | I64 |
+| 3 | U64 |
+| 4 | F32 |
+| 5 | F64 |
+| **6** | **SLOT** (heterogeneous structure field) |
+
+The VM's `LOAD_ARRAY` / `STORE_ARRAY` implementation does not check the element type byte at runtime — it only uses `total_elements` for bounds checking and always reads/writes 8 bytes. The type byte is metadata for the bytecode verifier and debug tools. Using a distinct value (SLOT = 6) rather than repurposing I64 ensures that:
+- The bytecode verifier can distinguish structure descriptors from true I64 array descriptors.
+- Debug tools can identify which descriptors belong to structure variables.
+- Descriptor deduplication (which keys on `(element_type, total_elements)`) does not falsely merge a structure descriptor with an unrelated I64 array of the same size.
 
 ### Tests
 
-- `compile_when_struct_var_then_allocates_data_region`
-- `compile_when_struct_var_then_registers_array_descriptor`
+- `compile_when_struct_var_with_init_then_allocates_data_region` (Structure variant)
+- `compile_when_struct_var_without_init_then_allocates_data_region` (LateResolvedType variant)
+- `compile_when_struct_var_then_registers_descriptor_with_slot_type`
 - `compile_when_two_struct_vars_then_sequential_data_offsets`
 - `compile_when_nested_struct_var_then_allocates_sum_of_slots`
+- `compile_when_struct_exceeds_32768_slots_then_error`
+- `compile_when_struct_causes_data_region_overflow_then_error`
 
 ---
 
@@ -336,13 +470,13 @@ fn initialize_struct_fields(
         .map(|e| (e.name.to_string().to_lowercase(), &e.init))
         .collect();
 
-    // Iterate over fields in declaration order
-    for (field_name, field_info) in &struct_info.field_map {
+    // Iterate over fields in declaration order (Vec guarantees deterministic order)
+    for field_info in &struct_info.fields {
         let slot_idx = field_info.slot_offset;
 
         if let Some(op_type) = field_info.op_type {
             // Leaf field (primitive/enum)
-            if let Some(init_value) = init_map.get(field_name) {
+            if let Some(init_value) = init_map.get(&field_info.name) {
                 // Emit explicit initial value
                 compile_struct_field_init(emitter, ctx, init_value, op_type)?;
             } else {
@@ -436,8 +570,10 @@ fn walk_struct_chain(
             // Base case: root is a named variable
             let struct_info = ctx.struct_vars.get(&named.name)
                 .ok_or_else(|| ...)?;
-            let field_info = struct_info.field_map.get(&field.to_string().to_lowercase())
+            let field_name = field.to_string().to_lowercase();
+            let &field_idx = struct_info.field_index.get(&field_name)
                 .ok_or_else(|| ...)?;
+            let field_info = &struct_info.fields[field_idx];
             Ok((named.name.clone(), field_info.slot_offset, field_info.field_type.clone()))
         }
         SymbolicVariableKind::Structured(inner) => {
@@ -632,7 +768,8 @@ Array-of-struct initialization iterates over array elements, and for each elemen
 
 ```
 for element_index in 0..array_size {
-    for (field_name, field_info) in struct_fields {
+    // Iterate fields in declaration order (Vec, not HashMap)
+    for field_info in &struct_fields {
         let slot = element_index * struct_stride + field_info.slot_offset;
         // emit constant + STORE_ARRAY at slot
     }
@@ -692,7 +829,7 @@ Examples:
 
 ### Medium Risk
 - PRs 4-5 (field read/write): Touches `compile_expr` and assignment compilation, which handle many existing patterns. Risk of regression in existing expression compilation. Mitigated by existing test suite.
-- PR 6 (nesting): Recursive resolution adds complexity. Risk of infinite recursion with pathological types. Mitigated by the analyzer already validating against recursive structure definitions.
+- PR 6 (nesting): Recursive resolution adds complexity. Risk of infinite recursion with pathological types. Mitigated by (a) the analyzer rejecting recursive type cycles via toposort (`xform_toposort_declarations.rs`, `Problem::RecursiveCycle`) and (b) the defense-in-depth depth guard in `slot_count()` (max 32 levels).
 
 ### Higher Risk
 - PRs 7-8 (struct+array composition): Combines two access patterns (struct field resolution + array index computation) in the same expression. The interaction between compile-time struct offsets and runtime array indices requires careful arithmetic. Risk of off-by-one errors in offset computation. Mitigated by exhaustive VM integration tests with known expected values.
