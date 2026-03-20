@@ -47,18 +47,26 @@ impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
     type Value = ();
 
     fn visit_subrange(&mut self, node: &Subrange) -> Result<(), Diagnostic> {
-        let minimum: i128 = node.start.clone().try_into().expect("Value in range i128");
-        let maximum: i128 = node.end.clone().try_into().expect("Value in range i128");
+        let start = match node.start.as_signed_integer() {
+            Some(si) => si,
+            None => return Ok(()),
+        };
+        let end = match node.end.as_signed_integer() {
+            Some(si) => si,
+            None => return Ok(()),
+        };
+        let minimum: i128 = start.clone().try_into().expect("Value in range i128");
+        let maximum: i128 = end.clone().try_into().expect("Value in range i128");
 
         if minimum >= maximum {
             self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::SubrangeMinStrictlyLessMax,
-                    Label::span(node.start.value.span(), "Expected smaller value"),
+                    Label::span(start.value.span(), "Expected smaller value"),
                 )
-                .with_context("minimum", &node.start.to_string())
-                .with_context("maximum", &node.end.to_string())
-                .with_secondary(Label::span(node.end.value.span(), "Expected greater value")),
+                .with_context("minimum", &start.to_string())
+                .with_context("maximum", &end.to_string())
+                .with_secondary(Label::span(end.value.span(), "Expected greater value")),
             );
         }
         Ok(())

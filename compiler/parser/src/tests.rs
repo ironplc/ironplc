@@ -213,7 +213,7 @@ mod test {
 
         let err = res.unwrap_err();
         assert_eq!("Syntax error".to_owned(), err.description());
-        assert_eq!("Expected ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | 'CONFIGURATION' | 'FUNCTION' | 'FUNCTION_BLOCK' | 'PROGRAM' | 'TYPE' | '\\n' (new line). Found text 'ACTION' that matched token 'ACTION'".to_owned(), err.primary.message);
+        assert_eq!("Expected ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | 'CONFIGURATION' | 'FUNCTION' | 'FUNCTION_BLOCK' | 'PROGRAM' | 'TYPE' | 'VAR_GLOBAL' | '\\n' (new line). Found text 'ACTION' that matched token 'ACTION'".to_owned(), err.primary.message);
     }
 
     #[test]
