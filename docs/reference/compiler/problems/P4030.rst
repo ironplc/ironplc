@@ -1,0 +1,34 @@
+=====
+P4030
+=====
+
+.. problem-summary:: P4030
+
+This error occurs when a constant name is used in a type parameter (such as a ``STRING`` length or array bound) but no matching ``VAR_GLOBAL CONSTANT`` declaration can be found.
+
+Example
+-------
+
+The following code will generate error P4030:
+
+.. code-block::
+
+   FUNCTION_BLOCK MyFB
+   VAR_INPUT
+       name : STRING[UNDEFINED_CONST];
+   END_VAR
+   END_FUNCTION_BLOCK
+
+The constant ``UNDEFINED_CONST`` is not declared anywhere. To fix this error, declare the constant:
+
+.. code-block::
+
+   VAR_GLOBAL CONSTANT
+       UNDEFINED_CONST : INT := 100;
+   END_VAR
+
+   FUNCTION_BLOCK MyFB
+   VAR_INPUT
+       name : STRING[UNDEFINED_CONST];
+   END_VAR
+   END_FUNCTION_BLOCK

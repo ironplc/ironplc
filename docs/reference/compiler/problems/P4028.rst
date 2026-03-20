@@ -1,0 +1,41 @@
+=====
+P4028
+=====
+
+.. problem-summary:: P4028
+
+This error occurs when ``VAR_GLOBAL`` declarations appear at the top level (outside a ``CONFIGURATION`` block) without the ``--allow-top-level-var-global`` compiler flag. In the IEC 61131-3 standard, ``VAR_GLOBAL`` declarations are only permitted inside ``CONFIGURATION`` and ``RESOURCE`` blocks. Top-level ``VAR_GLOBAL`` is a vendor extension.
+
+Example
+-------
+
+The following code will generate error P4028:
+
+.. code-block::
+
+   VAR_GLOBAL CONSTANT
+       MY_CONST : INT := 42;
+   END_VAR
+
+   PROGRAM main
+   VAR
+       x : INT;
+   END_VAR
+       x := MY_CONST;
+   END_PROGRAM
+
+To fix this error, either wrap the declaration in a ``CONFIGURATION`` block:
+
+.. code-block::
+
+   CONFIGURATION config
+       VAR_GLOBAL CONSTANT
+           MY_CONST : INT := 42;
+       END_VAR
+       RESOURCE resource1 ON PLC
+           TASK task1(INTERVAL := T#100ms, PRIORITY := 1);
+           PROGRAM instance1 WITH task1 : main;
+       END_RESOURCE
+   END_CONFIGURATION
+
+Or enable the vendor extension with the ``--allow-top-level-var-global`` flag.

@@ -371,7 +371,7 @@ fn compile_user_function(
                     let max_length = string_init
                         .length
                         .as_ref()
-                        .map(|len| len.value as u16)
+                        .map(|len| len.as_integer().unwrap().value as u16)
                         .unwrap_or(DEFAULT_STRING_MAX_LENGTH);
 
                     let data_offset = ctx.data_region_offset;
@@ -432,7 +432,7 @@ fn compile_user_function(
                     let max_length = string_init
                         .length
                         .as_ref()
-                        .map(|len| len.value as u16)
+                        .map(|len| len.as_integer().unwrap().value as u16)
                         .unwrap_or(DEFAULT_STRING_MAX_LENGTH);
 
                     let data_offset = ctx.data_region_offset;
@@ -814,7 +814,7 @@ fn assign_variables(
                     let max_length = string_init
                         .length
                         .as_ref()
-                        .map(|len| len.value as u16)
+                        .map(|len| len.as_integer().unwrap().value as u16)
                         .unwrap_or(DEFAULT_STRING_MAX_LENGTH);
 
                     // Allocate space in the data region: [max_length: u16][cur_length: u16][data]
@@ -1885,25 +1885,25 @@ fn compile_case_selector(
             compile_expr(emitter, ctx, selector_expr, op_type)?;
             match op_type.0 {
                 OpWidth::W32 => {
-                    let start = signed_integer_to_i32(&sr.start)?;
+                    let start = signed_integer_to_i32(sr.start.as_signed_integer().unwrap())?;
                     let start_index = ctx.add_i32_constant(start);
                     emitter.emit_load_const_i32(start_index);
                     emit_ge(emitter, op_type);
 
                     compile_expr(emitter, ctx, selector_expr, op_type)?;
-                    let end = signed_integer_to_i32(&sr.end)?;
+                    let end = signed_integer_to_i32(sr.end.as_signed_integer().unwrap())?;
                     let end_index = ctx.add_i32_constant(end);
                     emitter.emit_load_const_i32(end_index);
                     emit_le(emitter, op_type);
                 }
                 OpWidth::W64 => {
-                    let start = signed_integer_to_i64(&sr.start)?;
+                    let start = signed_integer_to_i64(sr.start.as_signed_integer().unwrap())?;
                     let start_index = ctx.add_i64_constant(start);
                     emitter.emit_load_const_i64(start_index);
                     emit_ge(emitter, op_type);
 
                     compile_expr(emitter, ctx, selector_expr, op_type)?;
-                    let end = signed_integer_to_i64(&sr.end)?;
+                    let end = signed_integer_to_i64(sr.end.as_signed_integer().unwrap())?;
                     let end_index = ctx.add_i64_constant(end);
                     emitter.emit_load_const_i64(end_index);
                     emit_le(emitter, op_type);

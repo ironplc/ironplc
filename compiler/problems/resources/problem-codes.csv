@@ -71,6 +71,11 @@ P4024,FunctionCallDuplicateNamedArg,Function call has duplicate named argument
 P4025,BitAccessOutOfRange,Bit access index is out of range for the variable type
 P4026,FunctionCallArgTypeMismatch,Function call argument type does not match parameter type
 P4027,FunctionCallReturnTypeMismatch,Function return type does not match assignment destination type
+P4028,TopLevelVarGlobalNotAllowed,Top-level VAR_GLOBAL requires --allow-top-level-var-global flag
+P4029,ConstantTypeParamNotAllowed,Constant reference in type parameter requires --allow-constant-type-params flag
+P4030,UndefinedConstantReference,Constant referenced in type parameter is not defined
+P4031,ConstantNotIntegerType,Constant referenced in type parameter is not an integer type
+P4032,ConstantMissingInitializer,Constant referenced in type parameter has no initializer
 P6001,CannotCanonicalizePath,Unable to canonicalize the path
 P6002,CannotReadMetadata,Unable to read metadata for the path
 P6003,CannotReadDirectory,Unable to read directory

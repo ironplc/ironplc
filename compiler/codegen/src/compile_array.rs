@@ -133,8 +133,10 @@ pub(crate) fn array_spec_from_inline(
         .ranges
         .iter()
         .map(|range| {
-            let lower = super::compile::signed_integer_to_i32(&range.start)?;
-            let upper = super::compile::signed_integer_to_i32(&range.end)?;
+            let lower =
+                super::compile::signed_integer_to_i32(range.start.as_signed_integer().unwrap())?;
+            let upper =
+                super::compile::signed_integer_to_i32(range.end.as_signed_integer().unwrap())?;
             Ok((lower, upper))
         })
         .collect::<Result<Vec<_>, Diagnostic>>()?;

@@ -109,8 +109,10 @@ pub trait Visitor<E> {
     // Declarations from Common
 
     dispatch!(Integer);
+    dispatch!(IntegerRef);
 
     dispatch!(SignedInteger);
+    dispatch!(SignedIntegerRef);
 
     // 2.2.1
     dispatch!(IntegerLiteral);

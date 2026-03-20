@@ -1,0 +1,36 @@
+=====
+P4029
+=====
+
+.. problem-summary:: P4029
+
+This error occurs when a constant name is used in place of an integer literal in a type parameter (such as a ``STRING`` length or array bound) without the ``--allow-constant-type-params`` compiler flag. In the IEC 61131-3 standard, type parameters require integer literals. Using constant references is a vendor extension.
+
+Example
+-------
+
+The following code will generate error P4029:
+
+.. code-block::
+
+   VAR_GLOBAL CONSTANT
+       MAX_LEN : INT := 100;
+   END_VAR
+
+   FUNCTION_BLOCK MyFB
+   VAR_INPUT
+       name : STRING[MAX_LEN];
+   END_VAR
+   END_FUNCTION_BLOCK
+
+To fix this error, either use an integer literal directly:
+
+.. code-block::
+
+   FUNCTION_BLOCK MyFB
+   VAR_INPUT
+       name : STRING[100];
+   END_VAR
+   END_FUNCTION_BLOCK
+
+Or enable the vendor extension with the ``--allow-constant-type-params`` flag.

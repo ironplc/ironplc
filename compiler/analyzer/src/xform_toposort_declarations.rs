@@ -75,6 +75,7 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
     // at the beginning.
     let mut types_by_name: HashMap<Id, DataTypeDeclarationKind> = HashMap::new();
     let mut elems_by_name: HashMap<Id, LibraryElementKind> = HashMap::new();
+    let mut global_var_decls: Vec<Vec<VarDecl>> = Vec::new();
     for element in lib.elements {
         match element {
             LibraryElementKind::DataTypeDeclaration(decl) => {
@@ -161,11 +162,18 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
                     LibraryElementKind::ConfigurationDeclaration(decl),
                 );
             }
+            LibraryElementKind::GlobalVarDeclarations(decls) => {
+                global_var_decls.push(decls);
+            }
         }
     }
 
     // Merge things back together
     let mut elements = Vec::new();
+    // Global var declarations go first so they are available for constant resolution
+    for decls in global_var_decls {
+        elements.push(LibraryElementKind::GlobalVarDeclarations(decls));
+    }
     elements.extend(sorted_ids.iter().filter_map(|id| {
         types_by_name
             .remove(id)
