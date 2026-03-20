@@ -67,7 +67,7 @@ does. Instead, it executes a **scan cycle** that repeats continuously:
 3. **Write outputs** — send the computed results to actuators.
 4. **Repeat** — go back to step 1.
 
-Each pass through the cycle is called a **scan**. A typical scan takes
+IEC 61131-3 calls each pass through the cycle a **scan**. A typical scan takes
 between 1 and 100 milliseconds depending on the complexity of the program
 and the speed of the hardware. This is what makes PLC programs
 **real-time**: they guarantee that inputs are read and outputs are
