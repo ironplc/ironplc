@@ -42,6 +42,25 @@ Example
        level := level + 10;
    END_PROGRAM
 
+Constant Bounds (Vendor Extension)
+----------------------------------
+
+.. include:: ../../../includes/requires-vendor-extension.rst
+
+With the ``--allow-constant-type-params`` flag (or ``--allow-all``), you can
+use global constants for the subrange bounds:
+
+.. code-block::
+
+   VAR_GLOBAL CONSTANT
+       MIN_PERCENT : INT := 0;
+       MAX_PERCENT : INT := 100;
+   END_VAR
+
+   TYPE
+       Percent : INT (MIN_PERCENT .. MAX_PERCENT);
+   END_TYPE
+
 Related Problem Codes
 ---------------------
 

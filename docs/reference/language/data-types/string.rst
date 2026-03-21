@@ -34,6 +34,29 @@ The maximum length can be specified in the declaration:
        msg  : STRING;       (* default max length *)
    END_VAR
 
+Constant Length (Vendor Extension)
+----------------------------------
+
+.. include:: ../../../includes/requires-vendor-extension.rst
+
+With the ``--allow-constant-type-params`` flag (or ``--allow-all``), you can
+use a global constant for the maximum length instead of a literal:
+
+.. code-block::
+
+   VAR_GLOBAL CONSTANT
+       MAX_NAME_LEN : INT := 50;
+   END_VAR
+
+   FUNCTION_BLOCK fb1
+       VAR_EXTERNAL CONSTANT
+           MAX_NAME_LEN : INT;
+       END_VAR
+       VAR
+           name : STRING[MAX_NAME_LEN];
+       END_VAR
+   END_FUNCTION_BLOCK
+
 See Also
 --------
 

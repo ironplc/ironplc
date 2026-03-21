@@ -61,6 +61,11 @@ struct FileArgs {
     /// This is a vendor extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_constant_type_params: bool,
+
+    /// Enable all vendor extensions.
+    /// Equivalent to passing every --allow-* flag.
+    #[arg(long)]
+    allow_all: bool,
 }
 
 impl FileArgs {
@@ -73,8 +78,8 @@ impl FileArgs {
             },
         };
         options.allow_missing_semicolon = self.allow_missing_semicolon;
-        options.allow_top_level_var_global = self.allow_top_level_var_global;
-        options.allow_constant_type_params = self.allow_constant_type_params;
+        options.allow_top_level_var_global = self.allow_top_level_var_global || self.allow_all;
+        options.allow_constant_type_params = self.allow_constant_type_params || self.allow_all;
         options
     }
 }
