@@ -85,8 +85,7 @@ with code written for other PLC environments.
    string lengths (e.g., ``ARRAY[1..MY_CONST] OF INT`` or
    ``STRING[MY_CONST]``). See :doc:`/reference/language/data-types/array-types`.
 
-Command Line
-^^^^^^^^^^^^
+Pass the flag when running :program:`ironplcc`:
 
 .. code-block:: shell
 
