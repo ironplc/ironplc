@@ -19,15 +19,8 @@ Use these commands for common development tasks. Each skill includes fallback co
 - `/project:test` - Run tests (with coverage options)
 - `/project:ci` - **Full CI pipeline (REQUIRED before creating any PR)**
 - `/project:format` - Auto-fix formatting and lint issues
-- `/project:add-problem-code` - Add a new error code (P/E/V-prefix)
-- `/project:add-steering-file` - Create a new steering file or skill
-- `/project:check-extension-tests` - VS Code extension CI gates and testing
 
-For full details, see the source-of-truth docs in `specs/steering/`:
-- [Common Tasks](specs/steering/common-tasks.md)
-- [Problem Code Management](specs/steering/problem-code-management.md)
-- [Steering File Guidelines](specs/steering/steering-file-guidelines.md)
-- [Extension Testing Requirements](specs/steering/extension-testing-requirements.md)
+For full details, see [specs/steering/common-tasks.md](specs/steering/common-tasks.md).
 
 ## MANDATORY: Git Workflow
 

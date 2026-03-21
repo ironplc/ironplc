@@ -429,10 +429,7 @@ specs/steering/                          # Single source of truth
     ├── build.md                         # /project:build
     ├── test.md                          # /project:test
     ├── ci.md                            # /project:ci
-    ├── format.md                        # /project:format
-    ├── add-problem-code.md              # /project:add-problem-code
-    ├── add-steering-file.md             # /project:add-steering-file
-    └── check-extension-tests.md         # /project:check-extension-tests
+    └── format.md                        # /project:format
 
 CLAUDE.md                                # Claude entry point
                                          # Steering docs + skills list
