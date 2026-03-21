@@ -338,6 +338,25 @@ mod tests {
     }
 
     #[test]
+    fn apply_when_var_global_not_constant_then_error() {
+        let lib = parse(
+            "
+            VAR_GLOBAL
+                NOT_A_CONST : INT := 100;
+            END_VAR
+            FUNCTION_BLOCK fb1
+            VAR_INPUT
+                STR : STRING[NOT_A_CONST];
+            END_VAR
+            END_FUNCTION_BLOCK
+        ",
+        );
+
+        let result = apply(lib);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn apply_when_no_constants_referenced_then_unchanged() {
         let lib = parse(
             "
