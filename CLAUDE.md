@@ -8,10 +8,26 @@ Before making changes, read the relevant steering files in `specs/steering/`:
 
 - **[Development Standards](specs/steering/development-standards.md)** - Core project conventions, testing patterns, error handling, and documentation standards
 - **[Compiler Architecture](specs/steering/compiler-architecture.md)** - Patterns for implementing language features, module organization, and semantic analysis
-- **[Common Tasks](specs/steering/common-tasks.md)** - Build commands, testing workflows, and justfile-based development tasks
-- **[Problem Code Management](specs/steering/problem-code-management.md)** - Guidelines for error handling and diagnostic creation (especially relevant for `compiler/problems/` files)
 - **[IEC 61131-3 Compliance](specs/steering/iec-61131-3-compliance.md)** - Standards compliance and validation rules (especially relevant for `**/analyzer/**` files)
-- **[Steering File Guidelines](specs/steering/steering-file-guidelines.md)** - How to create and maintain steering files (for AI assistants updating documentation)
+- **[PLCopen XML Module](specs/steering/plcopen-xml-module.md)** - Architecture and patterns for the PLCopen XML parsing module (especially relevant for `compiler/sources/src/xml/` files)
+
+## Skills (Slash Commands)
+
+Use these commands for common development tasks. Each skill includes fallback commands for when `just` is not available.
+
+- `/project:build` - Build the compiler
+- `/project:test` - Run tests (with coverage options)
+- `/project:ci` - **Full CI pipeline (REQUIRED before creating any PR)**
+- `/project:format` - Auto-fix formatting and lint issues
+- `/project:add-problem-code` - Add a new error code (P/E/V-prefix)
+- `/project:add-steering-file` - Create a new steering file or skill
+- `/project:check-extension-tests` - VS Code extension CI gates and testing
+
+For full details, see the source-of-truth docs in `specs/steering/`:
+- [Common Tasks](specs/steering/common-tasks.md)
+- [Problem Code Management](specs/steering/problem-code-management.md)
+- [Steering File Guidelines](specs/steering/steering-file-guidelines.md)
+- [Extension Testing Requirements](specs/steering/extension-testing-requirements.md)
 
 ## MANDATORY: Git Workflow
 

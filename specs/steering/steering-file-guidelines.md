@@ -120,6 +120,7 @@ specs/steering/common-tasks.md (single source of truth)
     ↓
     ├─→ .kiro/steering/common-tasks.md (Kiro pointer)
     ├─→ CLAUDE.md (Claude entry point)
+    ├─→ .claude/commands/ci.md (Claude skill / slash command)
     ├─→ CURSOR.md (Cursor entry point, if created)
     └─→ Direct reference (any AI tool)
 ```
@@ -167,7 +168,7 @@ See [specs/steering/[topic].md](../../specs/steering/[topic].md) for the full [t
 
 #### For Claude
 
-Update `CLAUDE.md` to add a reference:
+**For steering docs** (context/reference), update `CLAUDE.md` to add a reference:
 
 ```markdown
 ## Steering Files
@@ -175,6 +176,34 @@ Update `CLAUDE.md` to add a reference:
 Before making changes, read the relevant steering files in `specs/steering/`:
 
 - **[Topic Name](specs/steering/[topic].md)** - [Brief description]
+```
+
+**For skills** (actionable procedures), create a Claude Code slash command in `.claude/commands/[action].md`:
+
+```markdown
+# [Action Name]
+
+[Brief description]. See [specs/steering/[topic].md](../../specs/steering/[topic].md) for the full reference.
+
+## Command
+
+\`\`\`bash
+[primary command using just]
+\`\`\`
+
+## Fallback (when `just` is not available)
+
+\`\`\`bash
+[equivalent cargo/npm commands]
+\`\`\`
+```
+
+Then add the skill to the "Skills" section of `CLAUDE.md`:
+
+```markdown
+## Skills (Slash Commands)
+
+- `/project:[action]` - [Brief description]
 ```
 
 #### For Other AI Tools
@@ -226,6 +255,44 @@ Use when:
 - User should explicitly request it with `#File`
 
 **Note**: Other AI tools can always reference `specs/steering/` files directly, regardless of Kiro's inclusion settings.
+
+## Steering Docs vs Skills
+
+Not all guidance documents serve the same purpose. IronPLC separates them into two categories:
+
+### Steering Docs (Context/Reference)
+
+Background information that AI assistants need as context when working on code. These are loaded automatically (or on demand) to inform decisions.
+
+**Examples**: Development standards, compiler architecture, IEC 61131-3 compliance, PLCopen XML module patterns.
+
+**Characteristics**:
+- Answer "what are the rules?" or "how is this structured?"
+- Needed as background context for making code changes
+- Referenced in `CLAUDE.md` under "Steering Files"
+- Referenced in `.kiro/steering/` as pointer files
+
+### Skills (Actionable Procedures)
+
+Step-by-step instructions for completing specific tasks. These are invoked on-demand when the task is needed.
+
+**Examples**: Build commands, adding problem codes, creating steering files, checking extension tests.
+
+**Characteristics**:
+- Answer "how do I do X?"
+- Follow a specific sequence of steps
+- Available as Claude Code slash commands in `.claude/commands/`
+- Referenced in `CLAUDE.md` under "Skills (Slash Commands)"
+- Source-of-truth docs still live in `specs/steering/`
+
+### How to Decide
+
+| Question | → Type |
+|----------|--------|
+| Does it describe conventions, architecture, or rules? | Steering doc |
+| Does it describe a step-by-step procedure? | Skill |
+| Is it needed as background context for code changes? | Steering doc |
+| Is it invoked to perform a specific task? | Skill |
 
 ## Content Guidelines
 
@@ -337,12 +404,14 @@ For AI-assisted development patterns, see `specs/steering/`.
 
 ```
 specs/steering/                          # Single source of truth
-├── common-tasks.md                      # Detailed (200+ lines)
-├── compiler-architecture.md             # Detailed (300+ lines)
-├── development-standards.md             # Detailed (400+ lines)
-├── iec-61131-3-compliance.md           # Detailed (150+ lines)
-├── problem-code-management.md          # Detailed (100+ lines)
-└── steering-file-guidelines.md         # This file
+├── development-standards.md             # Steering doc (context)
+├── compiler-architecture.md             # Steering doc (context)
+├── iec-61131-3-compliance.md           # Steering doc (context)
+├── plcopen-xml-module.md               # Steering doc (context)
+├── common-tasks.md                      # Skill source (actionable)
+├── problem-code-management.md          # Skill source (actionable)
+├── extension-testing-requirements.md   # Skill source (actionable)
+└── steering-file-guidelines.md         # Skill source (actionable)
 
 .kiro/steering/                          # Kiro-specific pointers
 ├── common-tasks.md                      # Pointer (always)
@@ -350,10 +419,23 @@ specs/steering/                          # Single source of truth
 ├── development-standards.md             # Pointer (always)
 ├── iec-61131-3-compliance.md           # Pointer (fileMatch)
 ├── problem-code-management.md          # Pointer (fileMatch)
+├── extension-testing-requirements.md   # Pointer (fileMatch)
+├── plcopen-xml-module.md               # Pointer (fileMatch)
 └── steering-file-guidelines.md         # Pointer (always)
 
+.claude/                                 # Claude Code configuration
+├── settings.json                        # SessionStart hook (installs just)
+└── commands/                            # Slash commands (skill pointers)
+    ├── build.md                         # /project:build
+    ├── test.md                          # /project:test
+    ├── ci.md                            # /project:ci
+    ├── format.md                        # /project:format
+    ├── add-problem-code.md              # /project:add-problem-code
+    ├── add-steering-file.md             # /project:add-steering-file
+    └── check-extension-tests.md         # /project:check-extension-tests
+
 CLAUDE.md                                # Claude entry point
-                                         # Lists all specs/steering/ files
+                                         # Steering docs + skills list
 ```
 
 ## AI Assistant Instructions
