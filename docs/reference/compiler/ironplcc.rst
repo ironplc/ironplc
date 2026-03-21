@@ -90,6 +90,20 @@ Options
    option, only Edition 2 features are accepted. Available values: ``2013``.
    Applies to the ``check``, ``compile``, and ``echo`` commands.
 
+``--allow-all``
+   Enable all vendor extensions. Equivalent to passing every ``--allow-*``
+   flag. See :doc:`/explanation/enabling-features` for details.
+
+``--allow-top-level-var-global``
+   Allow ``VAR_GLOBAL`` declarations at the top level of a file, outside of
+   a ``CONFIGURATION`` block. This is a vendor extension not part of the
+   IEC 61131-3 standard.
+
+``--allow-constant-type-params``
+   Allow constant references in type parameters (e.g., ``STRING[MY_CONST]``
+   or ``ARRAY[1..MY_CONST] OF INT``). This is a vendor extension not part
+   of the IEC 61131-3 standard.
+
 Examples
 ========
 

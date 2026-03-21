@@ -100,6 +100,38 @@ global variable it references.
      firstReading := Readings[1];
    END_PROGRAM
 
+Top-Level Global Variables (Vendor Extension)
+----------------------------------------------
+
+.. include:: ../../../includes/requires-vendor-extension.rst
+
+Many PLC vendors allow :code:`VAR_GLOBAL` blocks at the top level of a file,
+outside of a :code:`CONFIGURATION` block. IronPLC supports this common
+extension to improve compatibility with code written for other PLC
+environments.
+
+Enable with ``--allow-top-level-var-global`` or ``--allow-all`` on the
+command line.
+
+.. playground::
+
+   VAR_GLOBAL
+     MaxSpeed : INT := 100;
+   END_VAR
+
+   PROGRAM main
+     VAR_EXTERNAL
+       MaxSpeed : INT;
+     END_VAR
+     VAR
+       currentSpeed : INT;
+     END_VAR
+     currentSpeed := MaxSpeed;
+   END_PROGRAM
+
+Programs access top-level globals the same way as configuration globals —
+through :code:`VAR_EXTERNAL` declarations that match the name and type.
+
 See Also
 --------
 

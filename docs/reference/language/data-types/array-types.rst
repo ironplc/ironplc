@@ -43,6 +43,37 @@ Example
 Multi-dimensional arrays use comma-separated ranges in the index
 specification.
 
+Constant Bounds (Vendor Extension)
+----------------------------------
+
+.. include:: ../../../includes/requires-vendor-extension.rst
+
+Many PLC vendors allow global constants in place of literal values for
+array bounds. IronPLC supports this with the ``--allow-constant-type-params``
+flag (or ``--allow-all``). The constant must be declared in a
+``VAR_GLOBAL CONSTANT`` block.
+
+.. playground::
+
+   VAR_GLOBAL CONSTANT
+     ARRAY_SIZE : INT := 10;
+   END_VAR
+
+   FUNCTION_BLOCK fb1
+     VAR_EXTERNAL CONSTANT
+       ARRAY_SIZE : INT;
+     END_VAR
+     VAR
+       data : ARRAY[1..ARRAY_SIZE] OF INT;
+     END_VAR
+   END_FUNCTION_BLOCK
+
+   PROGRAM main
+     VAR
+       instance : fb1;
+     END_VAR
+   END_PROGRAM
+
 See Also
 --------
 

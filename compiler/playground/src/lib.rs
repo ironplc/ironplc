@@ -47,14 +47,15 @@ thread_local! {
 ///
 /// `"2013"` enables IEC 61131-3 Edition 3 keywords (LTIME, REF_TO, etc.).
 /// Any other value (including empty) uses the default Edition 2 (2003).
+///
+/// The playground always enables all vendor extensions so that users can
+/// explore non-standard features without toggling flags.
 fn parse_options_from_edition(edition: &str) -> ParseOptions {
-    if edition == "2013" {
-        ParseOptions {
-            allow_iec_61131_3_2013: true,
-            ..Default::default()
-        }
-    } else {
-        ParseOptions::default()
+    ParseOptions {
+        allow_iec_61131_3_2013: edition == "2013",
+        allow_top_level_var_global: true,
+        allow_constant_type_params: true,
+        ..Default::default()
     }
 }
 

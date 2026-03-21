@@ -114,6 +114,8 @@ Derived Types
      - Fixed-size indexed collection
    * - :doc:`Structure types <structure-types>`
      - Record with named fields
+   * - :doc:`Reference types <reference-types>`
+     - Pointer to a variable (:doc:`Edition 3 </reference/language/edition-support>`)
 
 .. toctree::
    :maxdepth: 1
@@ -148,3 +150,4 @@ Derived Types
    subrange-types
    array-types
    structure-types
+   reference-types
