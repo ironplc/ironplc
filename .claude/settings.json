@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "which just >/dev/null 2>&1 || (echo 'Installing just...' && cargo install just 2>/dev/null) || echo 'Warning: could not install just. Use /project:ci and other skills which include cargo fallback commands.'"
+          }
+        ]
+      }
+    ]
+  }
+}
