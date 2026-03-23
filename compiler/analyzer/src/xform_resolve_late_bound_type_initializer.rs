@@ -30,7 +30,7 @@ enum TypeDefinitionKind {
     StructureInitialization,
     String(StringType, IntegerRef),
     FunctionBlock,
-    Reference(TypeName),
+    Reference(ReferenceTarget),
 }
 
 impl Value for TypeDefinitionKind {}
@@ -114,7 +114,7 @@ impl Visitor<Diagnostic> for ScopedTable<'_, TypeName, TypeDefinitionKind> {
             ),
             DataTypeDeclarationKind::Reference(node) => self.add_if_new(
                 &node.type_name,
-                TypeDefinitionKind::Reference(node.referenced_type_name.clone()),
+                TypeDefinitionKind::Reference(node.target.clone()),
             ),
             DataTypeDeclarationKind::LateBound(_) => Ok(()),
         }
@@ -214,9 +214,9 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                                 initial_values: vec![],
                             },
                         )),
-                        TypeDefinitionKind::Reference(referenced_type_name) => Ok(
+                        TypeDefinitionKind::Reference(ref_target) => Ok(
                             InitialValueAssignmentKind::Reference(ReferenceInitializer {
-                                referenced_type_name: referenced_type_name.clone(),
+                                target: ref_target.clone(),
                                 initial_value: None,
                             }),
                         ),
