@@ -203,6 +203,7 @@ pub trait Visitor<E> {
     // 2.3.3.1
     dispatch!(StringDeclaration);
 
+    dispatch!(ReferenceTarget);
     dispatch!(ReferenceDeclaration);
     dispatch!(ReferenceInitializer);
     dispatch!(ReferenceInitialValue);
