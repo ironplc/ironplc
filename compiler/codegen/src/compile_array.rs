@@ -110,6 +110,35 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                             subscripts: all_subscripts,
                         });
                     }
+                    SymbolicVariableKind::Deref(deref) => {
+                        // Dereference in array chain (e.g., PT^[0] where PT is REF_TO ARRAY).
+                        // Walk through the deref to find the base variable name.
+                        let mut inner = deref.variable.as_ref();
+                        while let SymbolicVariableKind::Deref(d) = inner {
+                            inner = d.variable.as_ref();
+                        }
+                        match inner {
+                            SymbolicVariableKind::Named(named) => {
+                                levels.reverse();
+                                let all_subscripts: Vec<&Expr> =
+                                    levels.into_iter().flatten().collect();
+                                let info = ctx.array_vars.get(&named.name).ok_or_else(|| {
+                                    Diagnostic::todo_with_span(named.name.span(), file!(), line!())
+                                })?;
+                                return Ok(ResolvedAccess::ArrayElement {
+                                    info,
+                                    subscripts: all_subscripts,
+                                });
+                            }
+                            other => {
+                                return Err(Diagnostic::todo_with_span(
+                                    other.span(),
+                                    file!(),
+                                    line!(),
+                                ));
+                            }
+                        }
+                    }
                     other => {
                         return Err(Diagnostic::todo_with_span(other.span(), file!(), line!()));
                     }

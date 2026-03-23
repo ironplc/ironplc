@@ -186,6 +186,7 @@ impl ExprTypeResolver<'_> {
             Variable::Symbolic(SymbolicVariableKind::Array(_)) => None,
             Variable::Symbolic(SymbolicVariableKind::Structured(_)) => None,
             Variable::Symbolic(SymbolicVariableKind::BitAccess(_)) => Some(TypeName::from("BOOL")),
+            Variable::Symbolic(SymbolicVariableKind::Deref(_)) => None,
             Variable::Direct(_) => None,
         }
     }

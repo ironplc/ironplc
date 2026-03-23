@@ -272,3 +272,29 @@ END_PROGRAM
     // result (var[0]) should be TRUE (1)
     assert_eq!(bufs.vars[0].as_i32(), 1);
 }
+
+#[test]
+fn end_to_end_when_function_with_deref_array_subscript_then_parses_and_runs() {
+    // Verifies that PT^[0] syntax (dereference + array subscript) parses
+    // and runs. The function is declared but not called, so the program
+    // simply sets result := 0.
+    let source = "
+FUNCTION my_func : INT
+  VAR_INPUT
+      PT : REF_TO ARRAY[0..10] OF BYTE;
+  END_VAR
+      my_func := 0;
+      PT^[0] := BYTE#0;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+END_VAR
+    result := 0;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run_edition3(source);
+    // result (var[0]) should be 0
+    assert_eq!(bufs.vars[0].as_i32(), 0);
+}

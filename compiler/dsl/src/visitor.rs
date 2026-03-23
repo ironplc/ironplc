@@ -409,6 +409,8 @@ pub trait Visitor<E> {
     dispatch!(StructuredVariable);
 
     dispatch!(BitAccessVariable);
+
+    dispatch!(DerefVariable);
 }
 
 #[cfg(test)]

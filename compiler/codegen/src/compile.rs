@@ -3771,6 +3771,7 @@ fn resolve_symbolic_variable_name(kind: &SymbolicVariableKind) -> Result<&Id, Di
         SymbolicVariableKind::Structured(structured) => {
             resolve_symbolic_variable_name(&structured.record)
         }
+        SymbolicVariableKind::Deref(deref) => resolve_symbolic_variable_name(&deref.variable),
     }
 }
 
@@ -3795,6 +3796,9 @@ pub(crate) fn resolve_variable(
                 file!(),
                 line!(),
             )),
+            SymbolicVariableKind::Deref(deref) => {
+                Err(Diagnostic::todo_with_span(deref.span(), file!(), line!()))
+            }
         },
         Variable::Direct(direct) => Err(Diagnostic::todo_with_span(
             direct.position.clone(),
