@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.178.0">
+<meta name="ironplc-version" content="0.179.0">
 </head>
   <body>
     
@@ -245,10 +245,12 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/structured-text-basics.html">Structured Text Basics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/program-organization.html">Program Organization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/variables-and-io.html">Variables and I/O</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../explanation/enabling-features.html">Enabling Features</a></li>
 </ul>
 </li>
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../../index.html">Reference</a><input aria-label="Toggle navigation of Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2 current has-children"><a class="reference internal" href="../index.html">Language</a><input aria-label="Toggle navigation of Language" checked="" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../edition-support.html">Edition Support</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../data-types/index.html">Data Types</a><input aria-label="Toggle navigation of Data Types" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../data-types/bool.html">BOOL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../data-types/sint.html">SINT</a></li>
@@ -279,6 +281,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../data-types/subrange-types.html">Subrange Types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../data-types/array-types.html">Array Types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../data-types/structure-types.html">Structure Types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../data-types/reference-types.html">Reference Types</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../variables/index.html">Variables</a><input aria-label="Toggle navigation of Variables" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -468,6 +471,11 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4025.html">P4025</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4026.html">P4026</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4027.html">P4027</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4028.html">P4028</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4029.html">P4029</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4030.html">P4030</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4031.html">P4031</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4032.html">P4032</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -591,9 +599,6 @@ selection, iteration, and function invocation.</p>
 <tr class="row-odd"><td><p><strong>IEC 61131-3</strong></p></td>
 <td><p>Section 3.3</p></td>
 </tr>
-<tr class="row-even"><td><p><strong>Support</strong></p></td>
-<td><p>Partial</p></td>
-</tr>
 </tbody>
 </table>
 </div>
@@ -602,48 +607,38 @@ selection, iteration, and function invocation.</p>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
-<col style="width: 25.0%" />
-<col style="width: 45.0%" />
 <col style="width: 30.0%" />
+<col style="width: 70.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Statement</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="assignment.html"><span class="doc">Assignment</span></a></p></td>
 <td><p>Assign a value to a variable</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="if.html"><span class="doc">IF</span></a></p></td>
 <td><p>Conditional branching</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="case.html"><span class="doc">CASE</span></a></p></td>
 <td><p>Multi-way selection by integer value</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="for.html"><span class="doc">FOR</span></a></p></td>
 <td><p>Counted loop</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="while.html"><span class="doc">WHILE</span></a></p></td>
 <td><p>Pre-tested loop</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="repeat.html"><span class="doc">REPEAT</span></a></p></td>
 <td><p>Post-tested loop</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="exit.html"><span class="doc">EXIT</span></a></p></td>
 <td><p>Break from innermost loop</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="return.html"><span class="doc">RETURN</span></a></p></td>
 <td><p>Early exit from POU</p></td>
-<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -654,28 +649,23 @@ selection, iteration, and function invocation.</p>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
-<col style="width: 25.0%" />
-<col style="width: 45.0%" />
 <col style="width: 30.0%" />
+<col style="width: 70.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Category</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="arithmetic-operators.html"><span class="doc">Arithmetic Operators</span></a></p></td>
 <td><p>Addition, subtraction, multiplication, division, modulo, power</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="comparison-operators.html"><span class="doc">Comparison Operators</span></a></p></td>
 <td><p>Equality, inequality, less than, greater than</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="logical-operators.html"><span class="doc">Logical Operators</span></a></p></td>
 <td><p>AND, OR, XOR, NOT</p></td>
-<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -686,20 +676,17 @@ selection, iteration, and function invocation.</p>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
-<col style="width: 25.0%" />
-<col style="width: 45.0%" />
 <col style="width: 30.0%" />
+<col style="width: 70.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Topic</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="function-call.html"><span class="doc">Function Call</span></a></p></td>
 <td><p>Calling functions and function block instances</p></td>
-<td><p>Partial</p></td>
 </tr>
 </tbody>
 </table>

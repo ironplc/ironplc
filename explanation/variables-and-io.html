@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Reference" href="../reference/index.html"><link rel="prev" title="Program Organization" href="program-organization.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Enabling Features" href="enabling-features.html"><link rel="prev" title="Program Organization" href="program-organization.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Variables and I/O - IronPLC documentation</title>
@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.178.0">
+<meta name="ironplc-version" content="0.179.0">
 </head>
   <body>
     
@@ -245,10 +245,12 @@
 <li class="toctree-l2"><a class="reference internal" href="structured-text-basics.html">Structured Text Basics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="program-organization.html">Program Organization</a></li>
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Variables and I/O</a></li>
+<li class="toctree-l2"><a class="reference internal" href="enabling-features.html">Enabling Features</a></li>
 </ul>
 </li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../reference/index.html">Reference</a><input aria-label="Toggle navigation of Reference" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2 has-children"><a class="reference internal" href="../reference/language/index.html">Language</a><input aria-label="Toggle navigation of Language" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/language/edition-support.html">Edition Support</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../reference/language/data-types/index.html">Data Types</a><input aria-label="Toggle navigation of Data Types" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/data-types/bool.html">BOOL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/data-types/sint.html">SINT</a></li>
@@ -279,6 +281,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/data-types/subrange-types.html">Subrange Types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/data-types/array-types.html">Array Types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/data-types/structure-types.html">Structure Types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/language/data-types/reference-types.html">Reference Types</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../reference/language/variables/index.html">Variables</a><input aria-label="Toggle navigation of Variables" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -468,6 +471,11 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4025.html">P4025</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4026.html">P4026</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4027.html">P4027</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4028.html">P4028</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4029.html">P4029</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4030.html">P4030</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4031.html">P4031</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4032.html">P4032</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -640,7 +648,7 @@ control systems.</p>
 <h2>Directly Represented Variables<a class="headerlink" href="#directly-represented-variables" title="Link to this heading">¶</a></h2>
 <p>The key concept that distinguishes PLC programming from general-purpose
 programming is the ability to map variables directly to hardware I/O
-addresses. These are called <strong>directly represented variables</strong>.</p>
+addresses. IEC 61131-3 calls these <strong>directly represented variables</strong>.</p>
 <p>A directly represented variable uses the <code class="code docutils literal notranslate"><span class="pre">AT</span></code> keyword followed by
 an address:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">VAR</span>
@@ -749,12 +757,12 @@ types and variable sections, see the <a class="reference internal" href="../refe
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="../reference/index.html">
+          <a class="next-page" href="enabling-features.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Reference</div>
+                <div class="title">Enabling Features</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>

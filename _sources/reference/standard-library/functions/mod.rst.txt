@@ -72,8 +72,8 @@ Returns the remainder of *IN1* divided by *IN2*. ``MOD(a, b)`` is the
 functional form of the ``MOD`` operator: ``a MOD b``. Both forms are
 equivalent.
 
-The result has the same sign as *IN1*. The ``MOD`` function is defined
-only for integer types. Division by zero causes a runtime fault.
+The result has the same sign as *IN1*. IEC 61131-3 defines the ``MOD``
+function only for integer types. Division by zero causes a runtime fault.
 
 Example
 -------

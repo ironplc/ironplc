@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.178.0">
+<meta name="ironplc-version" content="0.179.0">
 </head>
   <body>
     
@@ -245,10 +245,12 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/structured-text-basics.html">Structured Text Basics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/program-organization.html">Program Organization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/variables-and-io.html">Variables and I/O</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../explanation/enabling-features.html">Enabling Features</a></li>
 </ul>
 </li>
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../../index.html">Reference</a><input aria-label="Toggle navigation of Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2 current has-children"><a class="reference internal" href="../index.html">Language</a><input aria-label="Toggle navigation of Language" checked="" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../edition-support.html">Edition Support</a></li>
 <li class="toctree-l3 current has-children"><a class="reference internal" href="index.html">Data Types</a><input aria-label="Toggle navigation of Data Types" checked="" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l4"><a class="reference internal" href="bool.html">BOOL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="sint.html">SINT</a></li>
@@ -279,6 +281,7 @@
 <li class="toctree-l4"><a class="reference internal" href="subrange-types.html">Subrange Types</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">Array Types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="structure-types.html">Structure Types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="reference-types.html">Reference Types</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../variables/index.html">Variables</a><input aria-label="Toggle navigation of Variables" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -468,6 +471,11 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4025.html">P4025</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4026.html">P4026</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4027.html">P4027</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4028.html">P4028</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4029.html">P4029</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4030.html">P4030</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4031.html">P4031</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4032.html">P4032</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -622,6 +630,18 @@
 <p>Multi-dimensional arrays use comma-separated ranges in the index
 specification.</p>
 </section>
+<section id="constant-bounds-vendor-extension">
+<h2>Constant Bounds (Vendor Extension)<a class="headerlink" href="#constant-bounds-vendor-extension" title="Link to this heading">¶</a></h2>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This is a vendor extension not part of the IEC 61131-3 standard.
+See <a class="reference internal" href="../../../explanation/enabling-features.html"><span class="doc">Enabling Features</span></a> for how to enable it.</p>
+</div>
+<p>Many PLC vendors allow global constants in place of literal values for
+array bounds. IronPLC supports this with the <code class="docutils literal notranslate"><span class="pre">--allow-constant-type-params</span></code>
+flag (or <code class="docutils literal notranslate"><span class="pre">--allow-all</span></code>). The constant must be declared in a
+<code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span> <span class="pre">CONSTANT</span></code> block.</p>
+<iframe src="https://playground.ironplc.com/?embed=true&code=VkFSX0dMT0JBTCBDT05TVEFOVAogIEFSUkFZX1NJWkUgOiBJTlQgOj0gMTA7CkVORF9WQVIKCkZVTkNUSU9OX0JMT0NLIGZiMQogIFZBUl9FWFRFUk5BTCBDT05TVEFOVAogICAgQVJSQVlfU0laRSA6IElOVDsKICBFTkRfVkFSCiAgVkFSCiAgICBkYXRhIDogQVJSQVlbMS4uQVJSQVlfU0laRV0gT0YgSU5UOwogIEVORF9WQVIKRU5EX0ZVTkNUSU9OX0JMT0NLCgpQUk9HUkFNIG1haW4KICBWQVIKICAgIGluc3RhbmNlIDogZmIxOwogIEVORF9WQVIKRU5EX1BST0dSQU0%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:529px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">
@@ -696,6 +716,7 @@ specification.</p>
 <li><a class="reference internal" href="#">Array Types</a><ul>
 <li><a class="reference internal" href="#syntax">Syntax</a></li>
 <li><a class="reference internal" href="#example">Example</a></li>
+<li><a class="reference internal" href="#constant-bounds-vendor-extension">Constant Bounds (Vendor Extension)</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>

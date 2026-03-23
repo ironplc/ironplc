@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.178.0">
+<meta name="ironplc-version" content="0.179.0">
 </head>
   <body>
     
@@ -245,10 +245,12 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/structured-text-basics.html">Structured Text Basics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/program-organization.html">Program Organization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/variables-and-io.html">Variables and I/O</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../explanation/enabling-features.html">Enabling Features</a></li>
 </ul>
 </li>
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../../index.html">Reference</a><input aria-label="Toggle navigation of Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2 has-children"><a class="reference internal" href="../../language/index.html">Language</a><input aria-label="Toggle navigation of Language" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../language/edition-support.html">Edition Support</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../language/data-types/index.html">Data Types</a><input aria-label="Toggle navigation of Data Types" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../language/data-types/bool.html">BOOL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../language/data-types/sint.html">SINT</a></li>
@@ -279,6 +281,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../language/data-types/subrange-types.html">Subrange Types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../language/data-types/array-types.html">Array Types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../language/data-types/structure-types.html">Structure Types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/reference-types.html">Reference Types</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../language/variables/index.html">Variables</a><input aria-label="Toggle navigation of Variables" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -468,6 +471,11 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4025.html">P4025</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4026.html">P4026</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4027.html">P4027</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4028.html">P4028</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4029.html">P4029</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4030.html">P4030</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4031.html">P4031</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4032.html">P4032</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -585,27 +593,22 @@
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 20.0%" />
-<col style="width: 50.0%" />
-<col style="width: 30.0%" />
+<col style="width: 80.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Function Block</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="ton.html"><span class="doc">TON</span></a></p></td>
 <td><p>On-delay timer</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="tof.html"><span class="doc">TOF</span></a></p></td>
 <td><p>Off-delay timer</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="tp.html"><span class="doc">TP</span></a></p></td>
 <td><p>Pulse timer</p></td>
-<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -617,27 +620,22 @@
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 20.0%" />
-<col style="width: 50.0%" />
-<col style="width: 30.0%" />
+<col style="width: 80.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Function Block</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="ctu.html"><span class="doc">CTU</span></a></p></td>
 <td><p>Count up</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="ctd.html"><span class="doc">CTD</span></a></p></td>
 <td><p>Count down</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="ctud.html"><span class="doc">CTUD</span></a></p></td>
 <td><p>Count up/down</p></td>
-<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -649,23 +647,19 @@
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 20.0%" />
-<col style="width: 50.0%" />
-<col style="width: 30.0%" />
+<col style="width: 80.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Function Block</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="r-trig.html"><span class="doc">R_TRIG</span></a></p></td>
 <td><p>Rising edge detection</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="f-trig.html"><span class="doc">F_TRIG</span></a></p></td>
 <td><p>Falling edge detection</p></td>
-<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -677,23 +671,19 @@
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 20.0%" />
-<col style="width: 50.0%" />
-<col style="width: 30.0%" />
+<col style="width: 80.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Function Block</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="sr.html"><span class="doc">SR</span></a></p></td>
 <td><p>Set-dominant flip-flop</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="rs.html"><span class="doc">RS</span></a></p></td>
 <td><p>Reset-dominant flip-flop</p></td>
-<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>

@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.178.0">
+<meta name="ironplc-version" content="0.179.0">
 </head>
   <body>
     
@@ -245,10 +245,12 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/structured-text-basics.html">Structured Text Basics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/program-organization.html">Program Organization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/variables-and-io.html">Variables and I/O</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../explanation/enabling-features.html">Enabling Features</a></li>
 </ul>
 </li>
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../../index.html">Reference</a><input aria-label="Toggle navigation of Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2 current has-children"><a class="reference internal" href="../index.html">Language</a><input aria-label="Toggle navigation of Language" checked="" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../edition-support.html">Edition Support</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../data-types/index.html">Data Types</a><input aria-label="Toggle navigation of Data Types" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../data-types/bool.html">BOOL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../data-types/sint.html">SINT</a></li>
@@ -279,6 +281,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../data-types/subrange-types.html">Subrange Types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../data-types/array-types.html">Array Types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../data-types/structure-types.html">Structure Types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../data-types/reference-types.html">Reference Types</a></li>
 </ul>
 </li>
 <li class="toctree-l3 current has-children"><a class="reference internal" href="index.html">Variables</a><input aria-label="Toggle navigation of Variables" checked="" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
@@ -468,6 +471,11 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4025.html">P4025</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4026.html">P4026</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4027.html">P4027</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4028.html">P4028</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4029.html">P4029</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4030.html">P4030</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4031.html">P4031</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4032.html">P4032</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -670,6 +678,22 @@ variables within program organization units.</p>
 The <code class="code docutils literal notranslate"><span class="pre">VAR_EXTERNAL</span></code> declaration must match the name and type of the
 global variable it references.</p>
 <iframe src="https://playground.ironplc.com/?embed=true&code=Q09ORklHVVJBVElPTiBjb25maWcKICBWQVJfR0xPQkFMCiAgICBNYXhTcGVlZCA6IElOVCA6PSAxMDA7CiAgICBSZWFkaW5ncyA6IEFSUkFZWzEuLjNdIE9GIElOVCA6PSBbMTAsIDIwLCAzMF07CiAgRU5EX1ZBUgogIFJFU09VUkNFIHJlc291cmNlMSBPTiBQTEMKICAgIFRBU0sgcGxjX3Rhc2soSU5URVJWQUwgOj0gVCMxMDBtcywgUFJJT1JJVFkgOj0gMSk7CiAgICBQUk9HUkFNIHBsY190YXNrX2luc3RhbmNlIFdJVEggcGxjX3Rhc2sgOiBtYWluOwogIEVORF9SRVNPVVJDRQpFTkRfQ09ORklHVVJBVElPTgoKUFJPR1JBTSBtYWluCiAgVkFSX0VYVEVSTkFMCiAgICBNYXhTcGVlZCA6IElOVDsKICAgIFJlYWRpbmdzIDogQVJSQVlbMS4uM10gT0YgSU5UOwogIEVORF9WQVIKICBWQVIKICAgIGN1cnJlbnRTcGVlZCA6IElOVDsKICAgIGZpcnN0UmVhZGluZyA6IElOVDsKICBFTkRfVkFSCiAgY3VycmVudFNwZWVkIDo9IE1heFNwZWVkOwogIGZpcnN0UmVhZGluZyA6PSBSZWFkaW5nc1sxXTsKRU5EX1BST0dSQU0%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:529px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
+<section id="top-level-global-variables-vendor-extension">
+<h2>Top-Level Global Variables (Vendor Extension)<a class="headerlink" href="#top-level-global-variables-vendor-extension" title="Link to this heading">¶</a></h2>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This is a vendor extension not part of the IEC 61131-3 standard.
+See <a class="reference internal" href="../../../explanation/enabling-features.html"><span class="doc">Enabling Features</span></a> for how to enable it.</p>
+</div>
+<p>Many PLC vendors allow <code class="code docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code> blocks at the top level of a file,
+outside of a <code class="code docutils literal notranslate"><span class="pre">CONFIGURATION</span></code> block. IronPLC supports this common
+extension to improve compatibility with code written for other PLC
+environments.</p>
+<p>Enable with <code class="docutils literal notranslate"><span class="pre">--allow-top-level-var-global</span></code> or <code class="docutils literal notranslate"><span class="pre">--allow-all</span></code> on the
+command line.</p>
+<iframe src="https://playground.ironplc.com/?embed=true&code=VkFSX0dMT0JBTAogIE1heFNwZWVkIDogSU5UIDo9IDEwMDsKRU5EX1ZBUgoKUFJPR1JBTSBtYWluCiAgVkFSX0VYVEVSTkFMCiAgICBNYXhTcGVlZCA6IElOVDsKICBFTkRfVkFSCiAgVkFSCiAgICBjdXJyZW50U3BlZWQgOiBJTlQ7CiAgRU5EX1ZBUgogIGN1cnJlbnRTcGVlZCA6PSBNYXhTcGVlZDsKRU5EX1BST0dSQU0%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:472px;border:1px solid #3e3e5e;border-radius:4px;"></iframe><p>Programs access top-level globals the same way as configuration globals —
+through <code class="code docutils literal notranslate"><span class="pre">VAR_EXTERNAL</span></code> declarations that match the name and type.</p>
+</section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">
@@ -747,6 +771,7 @@ global variable it references.</p>
 <li><a class="reference internal" href="#scope-keywords">Scope Keywords</a></li>
 <li><a class="reference internal" href="#example">Example</a></li>
 <li><a class="reference internal" href="#global-variables">Global Variables</a></li>
+<li><a class="reference internal" href="#top-level-global-variables-vendor-extension">Top-Level Global Variables (Vendor Extension)</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>

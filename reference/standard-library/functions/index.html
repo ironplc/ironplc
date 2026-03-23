@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.178.0">
+<meta name="ironplc-version" content="0.179.0">
 </head>
   <body>
     
@@ -245,10 +245,12 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/structured-text-basics.html">Structured Text Basics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/program-organization.html">Program Organization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/variables-and-io.html">Variables and I/O</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../explanation/enabling-features.html">Enabling Features</a></li>
 </ul>
 </li>
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../../index.html">Reference</a><input aria-label="Toggle navigation of Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2 has-children"><a class="reference internal" href="../../language/index.html">Language</a><input aria-label="Toggle navigation of Language" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../language/edition-support.html">Edition Support</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../language/data-types/index.html">Data Types</a><input aria-label="Toggle navigation of Data Types" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../language/data-types/bool.html">BOOL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../language/data-types/sint.html">SINT</a></li>
@@ -279,6 +281,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../language/data-types/subrange-types.html">Subrange Types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../language/data-types/array-types.html">Array Types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../language/data-types/structure-types.html">Structure Types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/reference-types.html">Reference Types</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../language/variables/index.html">Variables</a><input aria-label="Toggle navigation of Variables" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -468,6 +471,11 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4025.html">P4025</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4026.html">P4026</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4027.html">P4027</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4028.html">P4028</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4029.html">P4029</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4030.html">P4030</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4031.html">P4031</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4032.html">P4032</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -587,43 +595,34 @@ output for the same inputs every time.</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 20.0%" />
-<col style="width: 50.0%" />
-<col style="width: 30.0%" />
+<col style="width: 80.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Function</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="abs.html"><span class="doc">ABS</span></a></p></td>
 <td><p>Absolute value</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="sqrt.html"><span class="doc">SQRT</span></a></p></td>
 <td><p>Square root</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="ln.html"><span class="doc">LN</span></a></p></td>
 <td><p>Natural logarithm</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="log.html"><span class="doc">LOG</span></a></p></td>
 <td><p>Base-10 logarithm</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="exp.html"><span class="doc">EXP</span></a></p></td>
 <td><p>Natural exponential</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="expt.html"><span class="doc">EXPT</span></a></p></td>
 <td><p>Exponentiation</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="trunc.html"><span class="doc">TRUNC</span></a></p></td>
 <td><p>Truncate real to integer</p></td>
-<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -635,39 +634,31 @@ output for the same inputs every time.</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 20.0%" />
-<col style="width: 50.0%" />
-<col style="width: 30.0%" />
+<col style="width: 80.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Function</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="sin.html"><span class="doc">SIN</span></a></p></td>
 <td><p>Sine</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="cos.html"><span class="doc">COS</span></a></p></td>
 <td><p>Cosine</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="tan.html"><span class="doc">TAN</span></a></p></td>
 <td><p>Tangent</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="asin.html"><span class="doc">ASIN</span></a></p></td>
 <td><p>Arc sine</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="acos.html"><span class="doc">ACOS</span></a></p></td>
 <td><p>Arc cosine</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="atan.html"><span class="doc">ATAN</span></a></p></td>
 <td><p>Arc tangent</p></td>
-<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -679,35 +670,28 @@ output for the same inputs every time.</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 20.0%" />
-<col style="width: 50.0%" />
-<col style="width: 30.0%" />
+<col style="width: 80.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Function</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="add.html"><span class="doc">ADD</span></a></p></td>
 <td><p>Addition</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="sub.html"><span class="doc">SUB</span></a></p></td>
 <td><p>Subtraction</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="mul.html"><span class="doc">MUL</span></a></p></td>
 <td><p>Multiplication</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="div.html"><span class="doc">DIV</span></a></p></td>
 <td><p>Division</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="mod.html"><span class="doc">MOD</span></a></p></td>
 <td><p>Modulo</p></td>
-<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -719,39 +703,31 @@ output for the same inputs every time.</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 20.0%" />
-<col style="width: 50.0%" />
-<col style="width: 30.0%" />
+<col style="width: 80.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Function</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="gt.html"><span class="doc">GT</span></a></p></td>
 <td><p>Greater than</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="ge.html"><span class="doc">GE</span></a></p></td>
 <td><p>Greater than or equal</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="eq.html"><span class="doc">EQ</span></a></p></td>
 <td><p>Equal</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="le.html"><span class="doc">LE</span></a></p></td>
 <td><p>Less than or equal</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="lt.html"><span class="doc">LT</span></a></p></td>
 <td><p>Less than</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="ne.html"><span class="doc">NE</span></a></p></td>
 <td><p>Not equal</p></td>
-<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -763,19 +739,16 @@ output for the same inputs every time.</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 20.0%" />
-<col style="width: 50.0%" />
-<col style="width: 30.0%" />
+<col style="width: 80.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Function</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="move.html"><span class="doc">MOVE</span></a></p></td>
 <td><p>Assignment (copy value)</p></td>
-<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -787,35 +760,28 @@ output for the same inputs every time.</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 20.0%" />
-<col style="width: 50.0%" />
-<col style="width: 30.0%" />
+<col style="width: 80.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Function</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="sel.html"><span class="doc">SEL</span></a></p></td>
 <td><p>Binary selection</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="max.html"><span class="doc">MAX</span></a></p></td>
 <td><p>Maximum</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="min.html"><span class="doc">MIN</span></a></p></td>
 <td><p>Minimum</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="limit.html"><span class="doc">LIMIT</span></a></p></td>
 <td><p>Clamp to range</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="mux.html"><span class="doc">MUX</span></a></p></td>
 <td><p>Multiplexer</p></td>
-<td><p>Not yet supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -827,31 +793,25 @@ output for the same inputs every time.</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 20.0%" />
-<col style="width: 50.0%" />
-<col style="width: 30.0%" />
+<col style="width: 80.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Function</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="shl.html"><span class="doc">SHL</span></a></p></td>
 <td><p>Shift left</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="shr.html"><span class="doc">SHR</span></a></p></td>
 <td><p>Shift right</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="rol.html"><span class="doc">ROL</span></a></p></td>
 <td><p>Rotate left</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="ror.html"><span class="doc">ROR</span></a></p></td>
 <td><p>Rotate right</p></td>
-<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -863,51 +823,40 @@ output for the same inputs every time.</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 20.0%" />
-<col style="width: 50.0%" />
-<col style="width: 30.0%" />
+<col style="width: 80.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Function</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="len.html"><span class="doc">LEN</span></a></p></td>
 <td><p>String length</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="left.html"><span class="doc">LEFT</span></a></p></td>
 <td><p>Left substring</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="right.html"><span class="doc">RIGHT</span></a></p></td>
 <td><p>Right substring</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="mid.html"><span class="doc">MID</span></a></p></td>
 <td><p>Middle substring</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="concat.html"><span class="doc">CONCAT</span></a></p></td>
 <td><p>String concatenation</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="insert.html"><span class="doc">INSERT</span></a></p></td>
 <td><p>String insertion</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="delete.html"><span class="doc">DELETE</span></a></p></td>
 <td><p>String deletion</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="replace.html"><span class="doc">REPLACE</span></a></p></td>
 <td><p>String replacement</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="find.html"><span class="doc">FIND</span></a></p></td>
 <td><p>String search</p></td>
-<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -919,23 +868,19 @@ output for the same inputs every time.</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 20.0%" />
-<col style="width: 50.0%" />
-<col style="width: 30.0%" />
+<col style="width: 80.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Function</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="type-conversions.html"><span class="doc">Type conversions</span></a></p></td>
 <td><p>Type conversion functions (<code class="docutils literal notranslate"><span class="pre">*_TO_*</span></code>)</p></td>
-<td><p>Supported (numeric)</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="bcd.html"><span class="doc">BCD_TO_INT / INT_TO_BCD</span></a></p></td>
 <td><p>BCD conversion functions</p></td>
-<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>

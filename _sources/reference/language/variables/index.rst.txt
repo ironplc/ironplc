@@ -8,26 +8,20 @@ rules.
 
 .. list-table::
    :header-rows: 1
-   :widths: 30 40 30
+   :widths: 30 70
 
    * - Topic
      - Description
-     - Status
    * - :doc:`declarations`
      - Variable declaration blocks
-     - Supported
    * - :doc:`io-qualifiers`
      - Direct addressing (%I, %Q, %M)
-     - Partial
    * - :doc:`scope`
      - Variable scope keywords
-     - Partial
    * - :doc:`retention`
      - Retention and constant qualifiers
-     - Not yet supported
    * - :doc:`initial-values`
      - Variable initialization
-     - Supported
 
 .. toctree::
    :maxdepth: 1

@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="BOOL" href="bool.html"><link rel="prev" title="Language Reference" href="../index.html">
+<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="BOOL" href="bool.html"><link rel="prev" title="Edition Support" href="../edition-support.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Data Types - IronPLC documentation</title>
@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.178.0">
+<meta name="ironplc-version" content="0.179.0">
 </head>
   <body>
     
@@ -245,10 +245,12 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/structured-text-basics.html">Structured Text Basics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/program-organization.html">Program Organization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/variables-and-io.html">Variables and I/O</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../explanation/enabling-features.html">Enabling Features</a></li>
 </ul>
 </li>
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../../index.html">Reference</a><input aria-label="Toggle navigation of Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2 current has-children"><a class="reference internal" href="../index.html">Language</a><input aria-label="Toggle navigation of Language" checked="" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../edition-support.html">Edition Support</a></li>
 <li class="toctree-l3 current has-children current-page"><a class="current reference internal" href="#">Data Types</a><input aria-label="Toggle navigation of Data Types" checked="" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="bool.html">BOOL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="sint.html">SINT</a></li>
@@ -279,6 +281,7 @@
 <li class="toctree-l4"><a class="reference internal" href="subrange-types.html">Subrange Types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="array-types.html">Array Types</a></li>
 <li class="toctree-l4"><a class="reference internal" href="structure-types.html">Structure Types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="reference-types.html">Reference Types</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../variables/index.html">Variables</a><input aria-label="Toggle navigation of Variables" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -468,6 +471,11 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4025.html">P4025</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4026.html">P4026</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4027.html">P4027</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4028.html">P4028</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4029.html">P4029</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4030.html">P4030</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4031.html">P4031</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4032.html">P4032</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -591,143 +599,116 @@ and see results in your browser. Powered by the
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
+<col style="width: 20.0%" />
 <col style="width: 15.0%" />
-<col style="width: 15.0%" />
-<col style="width: 40.0%" />
-<col style="width: 30.0%" />
+<col style="width: 65.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Type</p></th>
 <th class="head"><p>Size</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="bool.html"><span class="doc">BOOL</span></a></p></td>
 <td><p>1 bit</p></td>
 <td><p>Boolean</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="sint.html"><span class="doc">SINT</span></a></p></td>
 <td><p>8 bits</p></td>
 <td><p>Signed short integer</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="int.html"><span class="doc">INT</span></a></p></td>
 <td><p>16 bits</p></td>
 <td><p>Signed integer</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="dint.html"><span class="doc">DINT</span></a></p></td>
 <td><p>32 bits</p></td>
 <td><p>Signed double integer</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="lint.html"><span class="doc">LINT</span></a></p></td>
 <td><p>64 bits</p></td>
 <td><p>Signed long integer</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="usint.html"><span class="doc">USINT</span></a></p></td>
 <td><p>8 bits</p></td>
 <td><p>Unsigned short integer</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="uint.html"><span class="doc">UINT</span></a></p></td>
 <td><p>16 bits</p></td>
 <td><p>Unsigned integer</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="udint.html"><span class="doc">UDINT</span></a></p></td>
 <td><p>32 bits</p></td>
 <td><p>Unsigned double integer</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="ulint.html"><span class="doc">ULINT</span></a></p></td>
 <td><p>64 bits</p></td>
 <td><p>Unsigned long integer</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="real.html"><span class="doc">REAL</span></a></p></td>
 <td><p>32 bits</p></td>
 <td><p>Single-precision floating point</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="lreal.html"><span class="doc">LREAL</span></a></p></td>
 <td><p>64 bits</p></td>
 <td><p>Double-precision floating point</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="byte.html"><span class="doc">BYTE</span></a></p></td>
 <td><p>8 bits</p></td>
 <td><p>Bit string of 8 bits</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="word.html"><span class="doc">WORD</span></a></p></td>
 <td><p>16 bits</p></td>
 <td><p>Bit string of 16 bits</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="dword.html"><span class="doc">DWORD</span></a></p></td>
 <td><p>32 bits</p></td>
 <td><p>Bit string of 32 bits</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="lword.html"><span class="doc">LWORD</span></a></p></td>
 <td><p>64 bits</p></td>
 <td><p>Bit string of 64 bits</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="string.html"><span class="doc">STRING</span></a></p></td>
 <td><p>Variable</p></td>
 <td><p>Single-byte character string</p></td>
-<td><p>Not yet supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="wstring.html"><span class="doc">WSTRING</span></a></p></td>
 <td><p>Variable</p></td>
 <td><p>Double-byte character string</p></td>
-<td><p>Not yet supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="time.html"><span class="doc">TIME</span></a></p></td>
 <td><p>32 bits</p></td>
 <td><p>Duration</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="ltime.html"><span class="doc">LTIME</span></a></p></td>
 <td><p>64 bits</p></td>
-<td><p>Duration (Edition 3)</p></td>
-<td><p>Supported</p></td>
+<td><p>Duration (<a class="reference internal" href="../edition-support.html"><span class="doc">Edition 3</span></a>)</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="date.html"><span class="doc">DATE</span></a></p></td>
 <td><p>32 bits</p></td>
 <td><p>Calendar date</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="ldate.html"><span class="doc">LDATE</span></a></p></td>
 <td><p>64 bits</p></td>
-<td><p>Calendar date (Edition 3)</p></td>
-<td><p>Supported</p></td>
+<td><p>Calendar date (<a class="reference internal" href="../edition-support.html"><span class="doc">Edition 3</span></a>)</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="time-of-day.html"><span class="doc">TIME_OF_DAY</span></a></p></td>
 <td><p>32 bits</p></td>
 <td><p>Time of day</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="ltime-of-day.html"><span class="doc">LTIME_OF_DAY</span></a></p></td>
 <td><p>64 bits</p></td>
-<td><p>Time of day (Edition 3)</p></td>
-<td><p>Supported</p></td>
+<td><p>Time of day (<a class="reference internal" href="../edition-support.html"><span class="doc">Edition 3</span></a>)</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="date-and-time.html"><span class="doc">DATE_AND_TIME</span></a></p></td>
 <td><p>64 bits</p></td>
 <td><p>Date and time of day</p></td>
-<td><p>Supported</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="ldate-and-time.html"><span class="doc">LDATE_AND_TIME</span></a></p></td>
 <td><p>64 bits</p></td>
-<td><p>Date and time of day (Edition 3)</p></td>
-<td><p>Supported</p></td>
+<td><p>Date and time of day (<a class="reference internal" href="../edition-support.html"><span class="doc">Edition 3</span></a>)</p></td>
 </tr>
 </tbody>
 </table>
@@ -738,32 +719,29 @@ and see results in your browser. Powered by the
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
-<col style="width: 25.0%" />
-<col style="width: 45.0%" />
 <col style="width: 30.0%" />
+<col style="width: 70.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Type</p></th>
 <th class="head"><p>Description</p></th>
-<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="enumerated-types.html"><span class="doc">Enumerated types</span></a></p></td>
 <td><p>Named set of values</p></td>
-<td><p>Partial</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="subrange-types.html"><span class="doc">Subrange types</span></a></p></td>
 <td><p>Integer type restricted to a range</p></td>
-<td><p>Partial</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="array-types.html"><span class="doc">Array types</span></a></p></td>
 <td><p>Fixed-size indexed collection</p></td>
-<td><p>Not yet supported</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="structure-types.html"><span class="doc">Structure types</span></a></p></td>
 <td><p>Record with named fields</p></td>
-<td><p>Partial</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="reference-types.html"><span class="doc">Reference types</span></a></p></td>
+<td><p>Pointer to a variable (<a class="reference internal" href="../edition-support.html"><span class="doc">Edition 3</span></a>)</p></td>
 </tr>
 </tbody>
 </table>
@@ -787,14 +765,14 @@ and see results in your browser. Powered by the
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="../index.html">
+          <a class="prev-page" href="../edition-support.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Language Reference</div>
+                <div class="title">Edition Support</div>
                 
               </div>
             </a>
