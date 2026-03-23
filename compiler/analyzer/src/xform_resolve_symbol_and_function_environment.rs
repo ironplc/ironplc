@@ -166,7 +166,10 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
                 TypeReference::Named(type_name) => (type_name, false),
                 TypeReference::Inline => match &var_decl.initializer {
                     InitialValueAssignmentKind::Reference(ref_init) => {
-                        (ref_init.referenced_type_name.clone(), true)
+                        match ref_init.target.type_name() {
+                            Some(tn) => (tn.clone(), true),
+                            None => continue, // Inline array REF_TO targets
+                        }
                     }
                     _ => continue,
                 },

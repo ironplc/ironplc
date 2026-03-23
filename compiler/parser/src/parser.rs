@@ -435,10 +435,10 @@ parser! {
       / structure_type_declaration__with_constant()
       / enumerated:enumerated_type_declaration__with_value() { DataTypeDeclarationKind::Enumeration(enumerated) }
       / simple:simple_type_declaration__with_constant() { DataTypeDeclarationKind::Simple(simple )}
-      / type_name:type_name() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ referenced:non_generic_type_name() {
+      / type_name:type_name() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ ref_target:ref_to_target() {
         DataTypeDeclarationKind::Reference(ReferenceDeclaration {
           type_name,
-          referenced_type_name: referenced,
+          target: ref_target,
         })
       }
       // The remaining are structure, enumerated and simple without an initializer
@@ -835,12 +835,12 @@ parser! {
     }
     rule fb_name_list() -> Vec<Id> = commasep_oneplus(<fb_name()>)
     rule fb_name() -> Id = i:identifier() { i }
-    rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ ref_type:non_generic_type_name() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
+    rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ ref_target:ref_to_target() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Reference(ReferenceInitializer {
-            referenced_type_name: ref_type.clone(),
+            target: ref_target.clone(),
             initial_value: init.clone(),
           }),
         }
@@ -849,6 +849,14 @@ parser! {
     rule ref_initial_value() -> ReferenceInitialValue =
       t:tok(TokenType::Null) { ReferenceInitialValue::Null(t.span.clone()) }
       / tok(TokenType::Ref) _ tok(TokenType::LeftParen) _ v:variable() _ tok(TokenType::RightParen) { ReferenceInitialValue::Ref(v) }
+    rule ref_to_target() -> ReferenceTarget =
+      spec:array_specification() {
+        match spec {
+          SpecificationKind::Inline(arr) => ReferenceTarget::Array(arr),
+          SpecificationKind::Named(tn) => ReferenceTarget::Named(tn),
+        }
+      }
+      / tn:non_generic_type_name() { ReferenceTarget::Named(tn) }
     pub rule output_declarations() -> Vec<VarDecl> = tok(TokenType::VarOutput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::flat_map(declarations, VariableType::Output, qualifier)
     }

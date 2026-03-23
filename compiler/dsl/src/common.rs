@@ -1169,13 +1169,37 @@ impl Located for LateBoundDeclaration {
     }
 }
 
+/// The target of a REF_TO declaration.
+///
+/// A reference can point to either a named type (e.g., `REF_TO INT`) or an
+/// inline array type (e.g., `REF_TO ARRAY[1..10] OF INT`).
+///
+/// See IEC 61131-3 Edition 3, section 2.3.3.1.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub enum ReferenceTarget {
+    /// Reference to a named type: `REF_TO INT`
+    Named(TypeName),
+    /// Reference to an inline array type: `REF_TO ARRAY[1..10] OF INT`
+    Array(ArraySubranges),
+}
+
+impl ReferenceTarget {
+    /// Returns the type name for named targets, or `None` for inline array targets.
+    pub fn type_name(&self) -> Option<&TypeName> {
+        match self {
+            ReferenceTarget::Named(tn) => Some(tn),
+            ReferenceTarget::Array(_) => None,
+        }
+    }
+}
+
 /// Reference type declaration (REF_TO).
 ///
 /// See IEC 61131-3 Edition 3, section 2.3.3.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct ReferenceDeclaration {
     pub type_name: TypeName,
-    pub referenced_type_name: TypeName,
+    pub target: ReferenceTarget,
 }
 
 /// See section 2.3.3.1.
@@ -2129,7 +2153,7 @@ pub enum ReferenceInitialValue {
 /// See IEC 61131-3 Edition 3, section 2.4.3.2.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct ReferenceInitializer {
-    pub referenced_type_name: TypeName,
+    pub target: ReferenceTarget,
     pub initial_value: Option<ReferenceInitialValue>,
 }
 

@@ -5,8 +5,8 @@ mod test {
         ConstantKind, DataTypeDeclarationKind, DeclarationQualifier, EnumeratedSpecificationInit,
         EnumerationDeclaration, FunctionBlockBodyKind, FunctionBlockDeclaration,
         FunctionDeclaration, InitialValueAssignmentKind, Library, LibraryElementKind,
-        ProgramDeclaration, RealLiteral, SimpleInitializer, SpecificationKind, TypeName,
-        TypeReference, VarDecl, VariableIdentifier, VariableType,
+        ProgramDeclaration, RealLiteral, ReferenceTarget, SimpleInitializer, SpecificationKind,
+        TypeName, TypeReference, VarDecl, VariableIdentifier, VariableType,
     };
     use dsl::configuration::{
         ConfigurationDeclaration, DataSourceKind, ProgramConfiguration, ResourceDeclaration,
@@ -1087,7 +1087,7 @@ END_PROGRAM";
         match &lib.elements[0] {
             LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Reference(decl)) => {
                 assert_eq!(decl.type_name.to_string(), "IntRef");
-                assert_eq!(decl.referenced_type_name.to_string(), "INT");
+                assert_eq!(decl.target.type_name().unwrap().to_string(), "INT");
             }
             other => panic!("Expected Reference type declaration, got {:?}", other),
         }
@@ -1158,6 +1158,42 @@ END_PROGRAM",
                 other => panic!("Expected Reference initializer, got {:?}", other),
             },
             other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_ref_to_array_var_decl_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    x : REF_TO ARRAY[1..10] OF INT;
+END_VAR
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => {
+                assert_eq!(prog.variables.len(), 1);
+                match &prog.variables[0].initializer {
+                    InitialValueAssignmentKind::Reference(ref_init) => {
+                        assert!(matches!(ref_init.target, ReferenceTarget::Array(_)));
+                    }
+                    other => panic!("Expected Reference initializer, got {:?}", other),
+                }
+            }
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_ref_to_array_type_decl_then_ok() {
+        let lib = parse_text_edition3("TYPE ArrRef : REF_TO ARRAY[0..3] OF BYTE; END_TYPE");
+        assert_eq!(lib.elements.len(), 1);
+        match &lib.elements[0] {
+            LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Reference(decl)) => {
+                assert_eq!(decl.type_name.to_string(), "ArrRef");
+                assert!(matches!(decl.target, ReferenceTarget::Array(_)));
+            }
+            other => panic!("Expected Reference type declaration, got {:?}", other),
         }
     }
 

@@ -74,9 +74,10 @@ impl ExprTypeResolver<'_> {
                 SpecificationKind::Named(tn) => tn.clone(),
                 SpecificationKind::Inline(_) => return,
             },
-            InitialValueAssignmentKind::Reference(ref_init) => {
-                ref_init.referenced_type_name.clone()
-            }
+            InitialValueAssignmentKind::Reference(ref_init) => match ref_init.target.type_name() {
+                Some(tn) => tn.clone(),
+                None => return, // Inline array targets don't have a single type name
+            },
             InitialValueAssignmentKind::LateResolvedType(tn) => tn.clone(),
         };
 

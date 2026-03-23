@@ -89,7 +89,9 @@ impl TypeEnvironment {
                     Ok(DataTypeDeclarationKind::Reference(
                         ironplc_dsl::common::ReferenceDeclaration {
                             type_name: node.data_type_name,
-                            referenced_type_name: node.base_type_name,
+                            target: ironplc_dsl::common::ReferenceTarget::Named(
+                                node.base_type_name,
+                            ),
                         },
                     ))
                 }
@@ -315,18 +317,32 @@ impl Fold<Diagnostic> for TypeEnvironment {
         node: ReferenceDeclaration,
     ) -> Result<ReferenceDeclaration, Diagnostic> {
         // Resolve the referenced type to build the Reference intermediate type.
-        let referenced_attrs = self.get(&node.referenced_type_name).ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::ParentTypeNotDeclared,
-                Label::span(node.type_name.span(), "Reference type declaration"),
-            )
-            .with_secondary(Label::span(
-                node.referenced_type_name.span(),
-                "Referenced type",
-            ))
-        })?;
+        let target_type = match &node.target {
+            ReferenceTarget::Named(referenced_type_name) => {
+                let referenced_attrs = self.get(referenced_type_name).ok_or_else(|| {
+                    Diagnostic::problem(
+                        Problem::ParentTypeNotDeclared,
+                        Label::span(node.type_name.span(), "Reference type declaration"),
+                    )
+                    .with_secondary(Label::span(referenced_type_name.span(), "Referenced type"))
+                })?;
+                referenced_attrs.representation.clone()
+            }
+            ReferenceTarget::Array(array_subranges) => {
+                // Resolve the inline array spec: REF_TO ARRAY[1..10] OF INT
+                let array_spec = SpecificationKind::Inline(array_subranges.clone());
+                let result = array::try_from(&node.type_name, &array_spec, self)?;
+                match result {
+                    array::IntermediateResult::Type(attrs) => attrs.representation,
+                    array::IntermediateResult::Alias(base_type_name) => self
+                        .get(&base_type_name)
+                        .ok_or_else(|| Diagnostic::internal_error(file!(), line!()))?
+                        .representation
+                        .clone(),
+                }
+            }
+        };
 
-        let target_type = referenced_attrs.representation.clone();
         let attrs = crate::type_attributes::TypeAttributes::new(
             node.type_name.span(),
             IntermediateType::Reference {
