@@ -64,6 +64,11 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
         info: &'ctx ArrayVarInfo,
         subscripts: Vec<&'ast Expr>,
     },
+    /// Array element through a dereferenced reference — use LOAD_ARRAY_DEREF/STORE_ARRAY_DEREF.
+    DerefArrayElement {
+        info: &'ctx ArrayVarInfo,
+        subscripts: Vec<&'ast Expr>,
+    },
 }
 
 /// Resolves a variable reference into its access kind.
@@ -125,7 +130,7 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                                 let info = ctx.array_vars.get(&named.name).ok_or_else(|| {
                                     Diagnostic::todo_with_span(named.name.span(), file!(), line!())
                                 })?;
-                                return Ok(ResolvedAccess::ArrayElement {
+                                return Ok(ResolvedAccess::DerefArrayElement {
                                     info,
                                     subscripts: all_subscripts,
                                 });
