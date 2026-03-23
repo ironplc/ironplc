@@ -242,6 +242,20 @@ pub const LOAD_ARRAY: u8 = 0x24;
 /// Pops 2 (value, flat index). Net stack: -2.
 pub const STORE_ARRAY: u8 = 0x25;
 
+/// Load a value from an array element through a reference (double indirection).
+/// Operand 1: u16 reference variable index (little-endian). The slot holds the
+///            target array's variable index.
+/// Operand 2: u16 array descriptor index (little-endian).
+/// Pops 1 (flat index), pushes 1 (element value). Net stack: 0.
+pub const LOAD_ARRAY_DEREF: u8 = 0x26;
+
+/// Store a value to an array element through a reference (double indirection).
+/// Operand 1: u16 reference variable index (little-endian). The slot holds the
+///            target array's variable index.
+/// Operand 2: u16 array descriptor index (little-endian).
+/// Pops 2 (value, flat index). Net stack: -2.
+pub const STORE_ARRAY_DEREF: u8 = 0x27;
+
 // --- Truncation opcodes ---
 
 /// Truncate i32 to i8 range, then sign-extend back to i32.

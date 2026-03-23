@@ -46,6 +46,9 @@ impl From<SymbolicVariableKind> for Variable {
             SymbolicVariableKind::BitAccess(bit_access) => {
                 Variable::Symbolic(SymbolicVariableKind::BitAccess(bit_access))
             }
+            SymbolicVariableKind::Deref(deref) => {
+                Variable::Symbolic(SymbolicVariableKind::Deref(deref))
+            }
         }
     }
 }
@@ -65,6 +68,7 @@ pub enum SymbolicVariableKind {
     Array(ArrayVariable),
     Structured(StructuredVariable),
     BitAccess(BitAccessVariable),
+    Deref(DerefVariable),
 }
 
 impl fmt::Display for SymbolicVariableKind {
@@ -78,6 +82,7 @@ impl fmt::Display for SymbolicVariableKind {
             SymbolicVariableKind::BitAccess(bit_access) => {
                 f.write_fmt(format_args!("{bit_access}"))
             }
+            SymbolicVariableKind::Deref(deref) => f.write_fmt(format_args!("{deref}")),
         }
     }
 }
@@ -89,6 +94,7 @@ impl Located for SymbolicVariableKind {
             SymbolicVariableKind::Array(array) => array.span(),
             SymbolicVariableKind::Structured(structured) => structured.span(),
             SymbolicVariableKind::BitAccess(bit_access) => bit_access.span(),
+            SymbolicVariableKind::Deref(deref) => deref.span(),
         }
     }
 }
@@ -193,6 +199,28 @@ impl fmt::Display for BitAccessVariable {
 impl Located for BitAccessVariable {
     fn span(&self) -> SourceSpan {
         SourceSpan::join2(self.variable.as_ref(), &self.index)
+    }
+}
+
+/// Dereference of a pointer variable, used when the result is further
+/// accessed (e.g., `PT^[0]` or `PT^.field`).
+///
+/// See section B.1.4.
+#[derive(Debug, PartialEq, Clone, Recurse)]
+pub struct DerefVariable {
+    /// The variable being dereferenced.
+    pub variable: Box<SymbolicVariableKind>,
+}
+
+impl fmt::Display for DerefVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}^", self.variable)
+    }
+}
+
+impl Located for DerefVariable {
+    fn span(&self) -> SourceSpan {
+        self.variable.span()
     }
 }
 

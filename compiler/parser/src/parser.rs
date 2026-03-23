@@ -109,6 +109,7 @@ enum Element {
     Struct(Id),
     Array(Vec<Expr>),
     Bit(Integer),
+    Deref,
 }
 
 enum InstanceInitKind {
@@ -709,7 +710,7 @@ parser! {
     //rule symbolic_variable() -> SymbolicVariableKind =
     //  multi_element_variable()
     //  / name:variable_name() { SymbolicVariableKind::Named(NamedVariable{name}) }
-    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) n:integer() { Element::Bit(n) } / tok(TokenType::Period) id:identifier() { Element::Struct(id) } / sub:subscript_list() {Element::Array(sub)})* {
+    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) n:integer() { Element::Bit(n) } / tok(TokenType::Period) id:identifier() { Element::Struct(id) } / sub:subscript_list() {Element::Array(sub)} / tok(TokenType::Caret) &(tok(TokenType::LeftBracket) / tok(TokenType::Period)) { Element::Deref })* {
       // Start by assuming that the top is just a named variable
       let mut head = SymbolicVariableKind::Named(NamedVariable { name });
 
@@ -732,6 +733,11 @@ parser! {
               head = SymbolicVariableKind::BitAccess(BitAccessVariable{
                 variable: Box::new(head),
                 index: idx,
+              });
+            },
+            Element::Deref => {
+              head = SymbolicVariableKind::Deref(DerefVariable{
+                variable: Box::new(head),
               });
             },
         }

@@ -1364,6 +1364,55 @@ END_PROGRAM",
     }
 
     #[test]
+    fn parse_when_deref_array_subscript_then_ok() {
+        let lib = parse_text_edition3(
+            "FUNCTION my_func : INT
+VAR_INPUT
+    PT : REF_TO ARRAY[0..10] OF BYTE;
+END_VAR
+    my_func := 0;
+    PT^[0] := BYTE#0;
+END_FUNCTION
+
+PROGRAM test_main
+VAR
+    result : INT;
+END_VAR
+    result := 0;
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::FunctionDeclaration(func) => {
+                let stmts = &func.body;
+                assert_eq!(stmts.len(), 2);
+                match &stmts[1] {
+                    StmtKind::Assignment(assignment) => {
+                        // Target should be Array(Deref(Named(PT)), [0])
+                        match &assignment.target {
+                            Variable::Symbolic(SymbolicVariableKind::Array(arr)) => {
+                                match arr.subscripted_variable.as_ref() {
+                                    SymbolicVariableKind::Deref(d) => match d.variable.as_ref() {
+                                        SymbolicVariableKind::Named(n) => {
+                                            assert_eq!(n.name.to_string(), "PT");
+                                        }
+                                        other => {
+                                            panic!("Expected Named inside Deref, got {:?}", other)
+                                        }
+                                    },
+                                    other => panic!("Expected Deref inside Array, got {:?}", other),
+                                }
+                            }
+                            other => panic!("Expected Array variable, got {:?}", other),
+                        }
+                    }
+                    other => panic!("Expected Assignment, got {:?}", other),
+                }
+            }
+            other => panic!("Expected FunctionDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn parse_when_ldate_literal_then_ok() {
         let lib = parse_text_edition3(
             "PROGRAM main
