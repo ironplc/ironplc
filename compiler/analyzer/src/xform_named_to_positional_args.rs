@@ -148,7 +148,7 @@ mod tests {
     use crate::function_environment::{FunctionEnvironment, FunctionSignature};
     use crate::intermediate_type::IntermediateFunctionParameter;
     use crate::test_helpers::parse_and_resolve_types;
-    use ironplc_dsl::common::TypeName;
+    use ironplc_dsl::common::{FunctionReturnType, TypeName};
     use ironplc_dsl::core::Id;
 
     /// Helper to build a FunctionEnvironment with a single user-defined function.
@@ -167,7 +167,7 @@ mod tests {
 
         let sig = FunctionSignature::new(
             Id::from(name),
-            Some(TypeName::from("INT")),
+            Some(FunctionReturnType::Named(TypeName::from("INT"))),
             parameters,
             ironplc_dsl::core::SourceSpan::default(),
         );

@@ -544,7 +544,8 @@ fn compile_user_function(
     let return_var_index = current_index;
     let return_id = func_decl.name.clone();
     ctx.variables.insert(return_id.clone(), return_var_index);
-    if let Some(type_info) = resolve_type_name(&func_decl.return_type.name) {
+    let return_type_name = func_decl.return_type.to_type_name();
+    if let Some(type_info) = resolve_type_name(&return_type_name.name) {
         ctx.var_types.insert(return_id, type_info);
     }
     current_index += 1;
@@ -552,7 +553,7 @@ fn compile_user_function(
     let num_locals = current_index - var_offset;
 
     // Determine return type's OpType.
-    let return_op_type = resolve_type_name(&func_decl.return_type.name)
+    let return_op_type = resolve_type_name(&return_type_name.name)
         .map(|info| (info.op_width, info.signedness))
         .unwrap_or(DEFAULT_OP_TYPE);
 
