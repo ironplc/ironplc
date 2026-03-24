@@ -255,6 +255,8 @@ pub trait Visitor<E> {
 
     dispatch!(LibraryElementKind);
 
+    dispatch!(FunctionReturnType);
+
     // 2.5.1
     dispatch!(FunctionDeclaration);
 

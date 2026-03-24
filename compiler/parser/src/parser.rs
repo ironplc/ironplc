@@ -1053,7 +1053,12 @@ parser! {
     rule function_name() -> Id = standard_function_name() / derived_function_name() / t:tok(TokenType::Mod) { Id::from(t.text.as_str()).with_position(t.span.clone()) } / t:tok(TokenType::And) { Id::from(t.text.as_str()).with_position(t.span.clone()) } / t:tok(TokenType::Or) { Id::from(t.text.as_str()).with_position(t.span.clone()) } / t:tok(TokenType::Xor) { Id::from(t.text.as_str()).with_position(t.span.clone()) } / t:tok(TokenType::Not) { Id::from(t.text.as_str()).with_position(t.span.clone()) }
     rule standard_function_name() -> Id = identifier()
     rule derived_function_name() -> Id = identifier()
-    rule function_declaration() -> FunctionDeclaration = tok(TokenType::Function) _  name:derived_function_name() _ tok(TokenType::Colon) _ rt:(et:elementary_type_name() { et.into() } / dt:derived_type_name() { dt }) _ var_decls:(io:io_var_declarations() / func:function_var_decls() { vec![ func ]}) ** _ _ body:function_body() _ tok(TokenType::EndFunction) {
+    rule function_return_type() -> FunctionReturnType =
+      tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { FunctionReturnType::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { FunctionReturnType::WString(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
+      / et:elementary_type_name() { FunctionReturnType::Named(et.into()) }
+      / dt:derived_type_name() { FunctionReturnType::Named(dt) }
+    rule function_declaration() -> FunctionDeclaration = tok(TokenType::Function) _  name:derived_function_name() _ tok(TokenType::Colon) _ rt:function_return_type() _ var_decls:(io:io_var_declarations() / func:function_var_decls() { vec![ func ]}) ** _ _ body:function_body() _ tok(TokenType::EndFunction) {
       let var_decls = VarDeclarations::flatten(var_decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(var_decls);
       let (edge_variables, remainder) = VarDeclarations::drain_edge_decl(remainder);

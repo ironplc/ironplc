@@ -4,9 +4,9 @@ mod test {
     use dsl::common::{
         ConstantKind, DataTypeDeclarationKind, DeclarationQualifier, EnumeratedSpecificationInit,
         EnumerationDeclaration, FunctionBlockBodyKind, FunctionBlockDeclaration,
-        FunctionDeclaration, InitialValueAssignmentKind, Library, LibraryElementKind,
-        ProgramDeclaration, RealLiteral, ReferenceTarget, SimpleInitializer, SpecificationKind,
-        TypeName, TypeReference, VarDecl, VariableIdentifier, VariableType,
+        FunctionDeclaration, FunctionReturnType, InitialValueAssignmentKind, Library,
+        LibraryElementKind, ProgramDeclaration, RealLiteral, ReferenceTarget, SimpleInitializer,
+        SpecificationKind, TypeName, TypeReference, VarDecl, VariableIdentifier, VariableType,
     };
     use dsl::configuration::{
         ConfigurationDeclaration, DataSourceKind, ProgramConfiguration, ResourceDeclaration,
@@ -249,7 +249,7 @@ END_FUNCTION";
         let expected = new_library(LibraryElementKind::FunctionDeclaration(
             FunctionDeclaration {
                 name: Id::from("fun"),
-                return_type: TypeName::from("DWORD"),
+                return_type: FunctionReturnType::Named(TypeName::from("DWORD")),
                 variables: vec![VarDecl {
                     identifier: VariableIdentifier::new_symbol("InputsNumber"),
                     var_type: VariableType::Var,
@@ -286,7 +286,7 @@ END_FUNCTION";
         let expected = new_library(LibraryElementKind::FunctionDeclaration(
             FunctionDeclaration {
                 name: Id::from("fun"),
-                return_type: TypeName::from("DWORD"),
+                return_type: FunctionReturnType::Named(TypeName::from("DWORD")),
                 variables: vec![VarDecl {
                     identifier: VariableIdentifier::new_symbol("InputsNumber"),
                     var_type: VariableType::Var,
@@ -323,7 +323,7 @@ END_FUNCTION";
         let expected = new_library(LibraryElementKind::FunctionDeclaration(
             FunctionDeclaration {
                 name: Id::from("fun"),
-                return_type: TypeName::from("DWORD"),
+                return_type: FunctionReturnType::Named(TypeName::from("DWORD")),
                 variables: vec![VarDecl {
                     identifier: VariableIdentifier::new_symbol("InputsNumber"),
                     var_type: VariableType::Var,
@@ -360,7 +360,7 @@ END_FUNCTION";
         let expected = new_library(LibraryElementKind::FunctionDeclaration(
             FunctionDeclaration {
                 name: Id::from("fun"),
-                return_type: TypeName::from("TIME"),
+                return_type: FunctionReturnType::Named(TypeName::from("TIME")),
                 variables: vec![VarDecl {
                     identifier: VariableIdentifier::new_symbol("tv"),
                     var_type: VariableType::Var,
@@ -419,7 +419,7 @@ END_FUNCTION";
         let expected = new_library(LibraryElementKind::FunctionDeclaration(
             FunctionDeclaration {
                 name: Id::from("AverageVal"),
-                return_type: TypeName::from("REAL"),
+                return_type: FunctionReturnType::Named(TypeName::from("REAL")),
                 variables: vec![
                     VarDecl::simple("Cnt1", "INT").with_type(VariableType::Input),
                     VarDecl::simple("Cnt2", "INT").with_type(VariableType::Input),
@@ -729,7 +729,10 @@ END_FUNCTION";
         let LibraryElementKind::FunctionDeclaration(func) = &lib.elements[0] else {
             unreachable!()
         };
-        assert_eq!(func.return_type, TypeName::from("ANY_NUM"));
+        assert_eq!(
+            func.return_type,
+            FunctionReturnType::Named(TypeName::from("ANY_NUM"))
+        );
     }
 
     #[test]
@@ -791,10 +794,82 @@ END_FUNCTION";
             };
             assert_eq!(
                 func.return_type,
-                TypeName::from(generic_type),
+                FunctionReturnType::Named(TypeName::from(generic_type)),
                 "Return type mismatch for {}",
                 generic_type
             );
+        }
+    }
+
+    #[test]
+    fn parse_when_function_with_string_length_return_type_then_parses() {
+        let lib = parse_text(
+            "FUNCTION my_func : STRING[255]
+            VAR_INPUT
+                x : INT;
+            END_VAR
+            my_func := 'hello';
+            END_FUNCTION",
+        );
+
+        assert_eq!(lib.elements.len(), 1);
+        let LibraryElementKind::FunctionDeclaration(func) = &lib.elements[0] else {
+            unreachable!()
+        };
+        match &func.return_type {
+            FunctionReturnType::String(spec) => {
+                assert_eq!(spec.width, dsl::common::StringType::String);
+                assert!(spec.length.is_some());
+            }
+            other => panic!("Expected FunctionReturnType::String, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_function_with_wstring_length_return_type_then_parses() {
+        let lib = parse_text(
+            "FUNCTION my_func : WSTRING[100]
+            VAR_INPUT
+                x : INT;
+            END_VAR
+            my_func := 'hello';
+            END_FUNCTION",
+        );
+
+        assert_eq!(lib.elements.len(), 1);
+        let LibraryElementKind::FunctionDeclaration(func) = &lib.elements[0] else {
+            unreachable!()
+        };
+        match &func.return_type {
+            FunctionReturnType::WString(spec) => {
+                assert_eq!(spec.width, dsl::common::StringType::WString);
+                assert!(spec.length.is_some());
+            }
+            other => panic!("Expected FunctionReturnType::WString, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_function_with_bare_string_return_type_then_parses() {
+        let lib = parse_text(
+            "FUNCTION my_func : STRING
+            VAR_INPUT
+                x : INT;
+            END_VAR
+            my_func := 'hello';
+            END_FUNCTION",
+        );
+
+        assert_eq!(lib.elements.len(), 1);
+        let LibraryElementKind::FunctionDeclaration(func) = &lib.elements[0] else {
+            unreachable!()
+        };
+        match &func.return_type {
+            FunctionReturnType::String(spec) => {
+                assert_eq!(spec.width, dsl::common::StringType::String);
+                assert!(spec.length.is_none());
+            }
+            other => panic!("Expected FunctionReturnType::String, got {:?}", other),
         }
     }
 
