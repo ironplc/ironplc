@@ -1145,6 +1145,104 @@ END_PROGRAM";
         assert!(result.is_ok());
     }
 
+    #[test]
+    fn parse_when_end_while_without_semicolon_and_flag_enabled_then_ok() {
+        let source = "PROGRAM main
+VAR
+    x : BOOL;
+END_VAR
+    WHILE x DO
+        x := FALSE;
+    END_WHILE
+END_PROGRAM";
+
+        let options = ParseOptions {
+            allow_missing_semicolon: true,
+            ..Default::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_end_for_without_semicolon_and_flag_enabled_then_ok() {
+        let source = "PROGRAM main
+VAR
+    i : INT;
+END_VAR
+    FOR i := 0 TO 10 DO
+        i := i;
+    END_FOR
+END_PROGRAM";
+
+        let options = ParseOptions {
+            allow_missing_semicolon: true,
+            ..Default::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_end_case_without_semicolon_and_flag_enabled_then_ok() {
+        let source = "PROGRAM main
+VAR
+    x : INT;
+END_VAR
+    CASE x OF
+        1: x := 2;
+    END_CASE
+END_PROGRAM";
+
+        let options = ParseOptions {
+            allow_missing_semicolon: true,
+            ..Default::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_end_repeat_without_semicolon_and_flag_enabled_then_ok() {
+        let source = "PROGRAM main
+VAR
+    x : BOOL;
+END_VAR
+    REPEAT
+        x := FALSE;
+    UNTIL x
+    END_REPEAT
+END_PROGRAM";
+
+        let options = ParseOptions {
+            allow_missing_semicolon: true,
+            ..Default::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_function_end_if_without_semicolon_and_flag_enabled_then_ok() {
+        let source = "FUNCTION MY_FUNC : REAL
+VAR_INPUT
+    x : INT;
+END_VAR
+IF x > 0 THEN
+    MY_FUNC := 1.0;
+ELSE
+    MY_FUNC := 0.0;
+END_IF
+END_FUNCTION";
+
+        let options = ParseOptions {
+            allow_missing_semicolon: true,
+            ..Default::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
     fn parse_text_edition3(source: &str) -> Library {
         let options = ParseOptions {
             allow_iec_61131_3_2013: true,
