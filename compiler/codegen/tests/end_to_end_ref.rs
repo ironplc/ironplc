@@ -272,3 +272,34 @@ END_PROGRAM
     // result (var[0]) should be TRUE (1)
     assert_eq!(bufs.vars[0].as_i32(), 1);
 }
+
+#[test]
+fn end_to_end_when_function_with_deref_array_subscript_then_writes_through_ref() {
+    // Verifies that PT^[0] syntax (dereference + array subscript) actually
+    // writes to the target array through the reference at runtime.
+    // Exercises the STORE_ARRAY_DEREF codegen and VM path.
+    let source = "
+FUNCTION write_array : INT
+  VAR_INPUT
+      PT : REF_TO ARRAY[0..10] OF BYTE;
+  END_VAR
+      PT^[0] := BYTE#42;
+      write_array := 1;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    arr : ARRAY[0..10] OF BYTE;
+    result : INT;
+    check : BYTE;
+END_VAR
+    result := write_array(PT := REF(arr));
+    check := arr[0];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run_edition3(source);
+    // result (var[1]) should be 1 (function return value)
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+    // check (var[2]) should be 42 (written through REF)
+    assert_eq!(bufs.vars[2].as_i32(), 42);
+}

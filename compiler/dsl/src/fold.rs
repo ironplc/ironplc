@@ -152,6 +152,7 @@ pub trait Fold<E> {
     // 2.3.3.1
     dispatch!(StringDeclaration);
 
+    dispatch!(ReferenceTarget);
     dispatch!(ReferenceDeclaration);
     dispatch!(ReferenceInitializer);
     dispatch!(ReferenceInitialValue);
@@ -202,6 +203,8 @@ pub trait Fold<E> {
     dispatch!(DirectVariableIdentifier);
 
     dispatch!(LibraryElementKind);
+
+    dispatch!(FunctionReturnType);
 
     // 2.5.1
     dispatch!(FunctionDeclaration);
@@ -357,4 +360,6 @@ pub trait Fold<E> {
     dispatch!(StructuredVariable);
 
     dispatch!(BitAccessVariable);
+
+    dispatch!(DerefVariable);
 }

@@ -219,6 +219,27 @@ impl Emitter {
         self.pop_stack(2);
     }
 
+    /// Emits LOAD_ARRAY_DEREF with ref_var_index and desc_index operands.
+    /// Pops 1 (flat index), pushes 1 (element value). Net: 0.
+    pub fn emit_load_array_deref(&mut self, ref_var_index: u16, desc_index: u16) {
+        self.bytecode.push(opcode::LOAD_ARRAY_DEREF);
+        self.bytecode
+            .extend_from_slice(&ref_var_index.to_le_bytes());
+        self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
+        self.pop_stack(1);
+        self.push_stack(1);
+    }
+
+    /// Emits STORE_ARRAY_DEREF with ref_var_index and desc_index operands.
+    /// Pops 2 (value and flat index). Net: -2.
+    pub fn emit_store_array_deref(&mut self, ref_var_index: u16, desc_index: u16) {
+        self.bytecode.push(opcode::STORE_ARRAY_DEREF);
+        self.bytecode
+            .extend_from_slice(&ref_var_index.to_le_bytes());
+        self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
+        self.pop_stack(2);
+    }
+
     /// Emits BUILTIN with a function ID.
     /// All builtins pop `arg_count` values and push one result.
     /// The arg count is looked up from `opcode::builtin::arg_count()`.

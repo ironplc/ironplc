@@ -1169,13 +1169,37 @@ impl Located for LateBoundDeclaration {
     }
 }
 
+/// The target of a REF_TO declaration.
+///
+/// A reference can point to either a named type (e.g., `REF_TO INT`) or an
+/// inline array type (e.g., `REF_TO ARRAY[1..10] OF INT`).
+///
+/// See IEC 61131-3 Edition 3, section 2.3.3.1.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub enum ReferenceTarget {
+    /// Reference to a named type: `REF_TO INT`
+    Named(TypeName),
+    /// Reference to an inline array type: `REF_TO ARRAY[1..10] OF INT`
+    Array(ArraySubranges),
+}
+
+impl ReferenceTarget {
+    /// Returns the type name for named targets, or `None` for inline array targets.
+    pub fn type_name(&self) -> Option<&TypeName> {
+        match self {
+            ReferenceTarget::Named(tn) => Some(tn),
+            ReferenceTarget::Array(_) => None,
+        }
+    }
+}
+
 /// Reference type declaration (REF_TO).
 ///
 /// See IEC 61131-3 Edition 3, section 2.3.3.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct ReferenceDeclaration {
     pub type_name: TypeName,
-    pub referenced_type_name: TypeName,
+    pub target: ReferenceTarget,
 }
 
 /// See section 2.3.3.1.
@@ -2129,7 +2153,7 @@ pub enum ReferenceInitialValue {
 /// See IEC 61131-3 Edition 3, section 2.4.3.2.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct ReferenceInitializer {
-    pub referenced_type_name: TypeName,
+    pub target: ReferenceTarget,
     pub initial_value: Option<ReferenceInitialValue>,
 }
 
@@ -2266,6 +2290,40 @@ pub enum LibraryElementKind {
     GlobalVarDeclarations(Vec<VarDecl>),
 }
 
+/// Return type for a function declaration.
+///
+/// IEC 61131-3 allows functions to return elementary types, derived types,
+/// or string types with an optional length specifier (e.g., `STRING[255]`).
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub enum FunctionReturnType {
+    /// A simple type name (elementary or derived), e.g. `INT`, `REAL`, `MY_TYPE`.
+    Named(TypeName),
+    /// `STRING` with optional length, e.g. `STRING[255]`.
+    String(StringSpecification),
+    /// `WSTRING` with optional length, e.g. `WSTRING[100]`.
+    WString(StringSpecification),
+}
+
+impl FunctionReturnType {
+    /// Returns the type name suitable for type resolution.
+    ///
+    /// For `Named`, returns the inner `TypeName`.
+    /// For `String`/`WString`, returns `TypeName::from("STRING")` or `TypeName::from("WSTRING")`.
+    pub fn to_type_name(&self) -> TypeName {
+        match self {
+            FunctionReturnType::Named(tn) => tn.clone(),
+            FunctionReturnType::String(_) => TypeName::from("STRING"),
+            FunctionReturnType::WString(_) => TypeName::from("WSTRING"),
+        }
+    }
+}
+
+impl From<TypeName> for FunctionReturnType {
+    fn from(tn: TypeName) -> Self {
+        FunctionReturnType::Named(tn)
+    }
+}
+
 ///Function Program Organization Unit Declaration
 ///
 /// A function is stateless and has no "memory". Functions
@@ -2276,7 +2334,7 @@ pub enum LibraryElementKind {
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct FunctionDeclaration {
     pub name: Id,
-    pub return_type: TypeName,
+    pub return_type: FunctionReturnType,
     pub variables: Vec<VarDecl>,
     pub edge_variables: Vec<EdgeVarDecl>,
     pub body: Vec<StmtKind>,

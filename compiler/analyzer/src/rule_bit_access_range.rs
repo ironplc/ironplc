@@ -167,6 +167,9 @@ fn resolve_variable_type(
         SymbolicVariableKind::BitAccess(bit_access) => {
             resolve_variable_type(&bit_access.variable, var_initializers, type_env)
         }
+        SymbolicVariableKind::Deref(deref) => {
+            resolve_variable_type(&deref.variable, var_initializers, type_env)
+        }
     }
 }
 

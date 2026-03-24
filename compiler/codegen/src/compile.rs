@@ -43,7 +43,8 @@ use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES
 use ironplc_dsl::common::{
     Boolean, ConstantKind, ElementaryTypeName, FunctionBlockBodyKind, FunctionDeclaration,
     InitialValueAssignmentKind, Library, LibraryElementKind, ProgramDeclaration,
-    ReferenceInitialValue, SignedInteger, SpecificationKind, VarDecl, VariableType,
+    ReferenceInitialValue, ReferenceTarget, SignedInteger, SpecificationKind, VarDecl,
+    VariableType,
 };
 use ironplc_dsl::configuration::ConfigurationDeclaration;
 use ironplc_dsl::core::{FileId, Id, Located};
@@ -233,8 +234,14 @@ fn compile_program_with_functions(
     let mut var_offset = program_var_count;
 
     for func_decl in func_decls {
-        let compiled =
-            compile_user_function(func_decl, next_function_id, var_offset, &mut ctx, functions)?;
+        let compiled = compile_user_function(
+            func_decl,
+            next_function_id,
+            var_offset,
+            &mut ctx,
+            functions,
+            &mut builder,
+        )?;
         var_offset += compiled.num_locals;
         next_function_id += 1;
         compiled_functions.push(compiled);
@@ -342,11 +349,13 @@ fn compile_user_function(
     var_offset: u16,
     ctx: &mut CompileContext,
     functions: &FunctionEnvironment,
+    builder: &mut ContainerBuilder,
 ) -> Result<CompiledFunction, Diagnostic> {
     // Save the program's variable mappings.
     let saved_variables = std::mem::take(&mut ctx.variables);
     let saved_var_types = std::mem::take(&mut ctx.var_types);
     let saved_string_vars = std::mem::take(&mut ctx.string_vars);
+    let saved_array_vars = std::mem::take(&mut ctx.array_vars);
 
     // Assign variable slots for the function's parameters and locals,
     // starting at var_offset. Input parameters come first (declaration order),
@@ -398,7 +407,7 @@ fn compile_user_function(
                         },
                     );
                 }
-                InitialValueAssignmentKind::Reference(_) => {
+                InitialValueAssignmentKind::Reference(ref_init) => {
                     ctx.var_types.insert(
                         id.clone(),
                         VarTypeInfo {
@@ -407,6 +416,62 @@ fn compile_user_function(
                             storage_bits: 64,
                         },
                     );
+                    // If the reference target is an inline array type
+                    // (REF_TO ARRAY[...] OF T), register an array descriptor
+                    // so that PT^[idx] can be compiled with deref array opcodes.
+                    // No data region space is allocated — the reference parameter
+                    // points to an array in the caller's scope.
+                    if let ReferenceTarget::Array(subranges) = &ref_init.target {
+                        let span = id.span();
+                        let spec = crate::compile_array::array_spec_from_inline(subranges, &span)?;
+                        let element_vti = if spec.ref_to {
+                            VarTypeInfo {
+                                op_width: OpWidth::W64,
+                                signedness: Signedness::Unsigned,
+                                storage_bits: 64,
+                            }
+                        } else {
+                            resolve_type_name(&spec.element_type_name).unwrap_or(VarTypeInfo {
+                                op_width: OpWidth::W32,
+                                signedness: Signedness::Unsigned,
+                                storage_bits: 32,
+                            })
+                        };
+                        let element_type_byte =
+                            crate::compile_array::var_type_info_to_type_byte(&element_vti);
+                        let mut dimensions = Vec::new();
+                        let mut total_elements: u32 = 1;
+                        for &(lower, upper) in &spec.dimensions {
+                            let size = (upper as i64 - lower as i64 + 1) as u32;
+                            dimensions.push(crate::compile_array::DimensionInfo {
+                                lower_bound: lower,
+                                size,
+                                stride: 0,
+                            });
+                            total_elements *= size;
+                        }
+                        let n = dimensions.len();
+                        if n > 0 {
+                            dimensions[n - 1].stride = 1;
+                            for k in (0..n - 1).rev() {
+                                dimensions[k].stride =
+                                    dimensions[k + 1].stride * dimensions[k + 1].size;
+                            }
+                        }
+                        let desc_index =
+                            builder.add_array_descriptor(element_type_byte, total_elements);
+                        ctx.array_vars.insert(
+                            id.clone(),
+                            crate::compile_array::ArrayVarInfo {
+                                var_index: current_index,
+                                desc_index,
+                                data_offset: 0,
+                                element_var_type_info: element_vti,
+                                total_elements,
+                                dimensions,
+                            },
+                        );
+                    }
                 }
                 _ => {}
             }
@@ -479,7 +544,8 @@ fn compile_user_function(
     let return_var_index = current_index;
     let return_id = func_decl.name.clone();
     ctx.variables.insert(return_id.clone(), return_var_index);
-    if let Some(type_info) = resolve_type_name(&func_decl.return_type.name) {
+    let return_type_name = func_decl.return_type.to_type_name();
+    if let Some(type_info) = resolve_type_name(&return_type_name.name) {
         ctx.var_types.insert(return_id, type_info);
     }
     current_index += 1;
@@ -487,7 +553,7 @@ fn compile_user_function(
     let num_locals = current_index - var_offset;
 
     // Determine return type's OpType.
-    let return_op_type = resolve_type_name(&func_decl.return_type.name)
+    let return_op_type = resolve_type_name(&return_type_name.name)
         .map(|info| (info.op_width, info.signedness))
         .unwrap_or(DEFAULT_OP_TYPE);
 
@@ -588,6 +654,7 @@ fn compile_user_function(
     ctx.variables = saved_variables;
     ctx.var_types = saved_var_types;
     ctx.string_vars = saved_string_vars;
+    ctx.array_vars = saved_array_vars;
 
     Ok(CompiledFunction {
         function_id,
@@ -1628,6 +1695,36 @@ fn compile_statement(
                         )?;
                         // Stack: [..., value, index]. STORE_ARRAY pops both.
                         emitter.emit_store_array(arr_var_index, arr_desc_index);
+                    }
+                    crate::compile_array::ResolvedAccess::DerefArrayElement {
+                        info,
+                        subscripts,
+                    } => {
+                        let element_vti = info.element_var_type_info;
+                        let ref_var_index = info.var_index;
+                        let arr_desc_index = info.desc_index;
+                        let dim_info: Vec<_> = info
+                            .dimensions
+                            .iter()
+                            .map(|d| crate::compile_array::DimensionInfo {
+                                lower_bound: d.lower_bound,
+                                size: d.size,
+                                stride: d.stride,
+                            })
+                            .collect();
+                        let element_op_type = (element_vti.op_width, element_vti.signedness);
+                        let target_span = variable_span(&assignment.target);
+
+                        compile_expr(emitter, ctx, &assignment.value, element_op_type)?;
+                        emit_truncation(emitter, element_vti);
+                        crate::compile_array::emit_flat_index(
+                            emitter,
+                            ctx,
+                            &subscripts,
+                            &dim_info,
+                            &target_span,
+                        )?;
+                        emitter.emit_store_array_deref(ref_var_index, arr_desc_index);
                     }
                 }
             }
@@ -3752,6 +3849,28 @@ fn compile_variable_read(
                     )?;
                     emitter.emit_load_array(arr_var_index, arr_desc_index);
                 }
+                crate::compile_array::ResolvedAccess::DerefArrayElement { info, subscripts } => {
+                    let ref_var_index = info.var_index;
+                    let arr_desc_index = info.desc_index;
+                    let dim_info: Vec<_> = info
+                        .dimensions
+                        .iter()
+                        .map(|d| crate::compile_array::DimensionInfo {
+                            lower_bound: d.lower_bound,
+                            size: d.size,
+                            stride: d.stride,
+                        })
+                        .collect();
+                    let span = variable_span(variable);
+                    crate::compile_array::emit_flat_index(
+                        emitter,
+                        ctx,
+                        &subscripts,
+                        &dim_info,
+                        &span,
+                    )?;
+                    emitter.emit_load_array_deref(ref_var_index, arr_desc_index);
+                }
             }
             Ok(())
         }
@@ -3771,6 +3890,7 @@ fn resolve_symbolic_variable_name(kind: &SymbolicVariableKind) -> Result<&Id, Di
         SymbolicVariableKind::Structured(structured) => {
             resolve_symbolic_variable_name(&structured.record)
         }
+        SymbolicVariableKind::Deref(deref) => resolve_symbolic_variable_name(&deref.variable),
     }
 }
 
@@ -3795,6 +3915,9 @@ pub(crate) fn resolve_variable(
                 file!(),
                 line!(),
             )),
+            SymbolicVariableKind::Deref(deref) => {
+                Err(Diagnostic::todo_with_span(deref.span(), file!(), line!()))
+            }
         },
         Variable::Direct(direct) => Err(Diagnostic::todo_with_span(
             direct.position.clone(),

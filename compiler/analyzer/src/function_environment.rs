@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 
-use ironplc_dsl::common::TypeName;
+use ironplc_dsl::common::{FunctionReturnType, TypeName};
 use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_problems::Problem;
@@ -28,8 +28,8 @@ use crate::intermediates::stdlib_function::get_all_stdlib_functions;
 pub struct FunctionSignature {
     /// Name of the function
     pub name: Id,
-    /// Return type name of the function (None for procedures)
-    pub return_type: Option<TypeName>,
+    /// Return type of the function (None for procedures)
+    pub return_type: Option<FunctionReturnType>,
     /// List of function parameters
     pub parameters: Vec<IntermediateFunctionParameter>,
     /// Source location (builtin for stdlib functions)
@@ -46,7 +46,7 @@ impl FunctionSignature {
     /// Creates a new function signature.
     pub fn new(
         name: Id,
-        return_type: Option<TypeName>,
+        return_type: Option<FunctionReturnType>,
         parameters: Vec<IntermediateFunctionParameter>,
         span: SourceSpan,
     ) -> Self {
@@ -68,7 +68,7 @@ impl FunctionSignature {
     ) -> Self {
         Self {
             name: Id::from(name),
-            return_type: Some(return_type),
+            return_type: Some(FunctionReturnType::Named(return_type)),
             parameters,
             span: SourceSpan::builtin(),
             is_extensible: false,
@@ -90,7 +90,7 @@ impl FunctionSignature {
     ) -> Self {
         Self {
             name: Id::from(name),
-            return_type: Some(return_type),
+            return_type: Some(FunctionReturnType::Named(return_type)),
             parameters,
             span: SourceSpan::builtin(),
             is_extensible: true,
@@ -294,7 +294,7 @@ mod tests {
     fn function_signature_is_stdlib_when_user_defined_then_false() {
         let sig = FunctionSignature::new(
             Id::from("MY_FUNC"),
-            Some(TypeName::from("BOOL")),
+            Some(FunctionReturnType::Named(TypeName::from("BOOL"))),
             vec![],
             SourceSpan::default(),
         );
@@ -332,7 +332,7 @@ mod tests {
 
         let sig = FunctionSignature::new(
             Id::from("MY_FUNC"),
-            Some(TypeName::from("BOOL")),
+            Some(FunctionReturnType::Named(TypeName::from("BOOL"))),
             params,
             SourceSpan::default(),
         );

@@ -109,6 +109,7 @@ enum Element {
     Struct(Id),
     Array(Vec<Expr>),
     Bit(Integer),
+    Deref,
 }
 
 enum InstanceInitKind {
@@ -435,10 +436,10 @@ parser! {
       / structure_type_declaration__with_constant()
       / enumerated:enumerated_type_declaration__with_value() { DataTypeDeclarationKind::Enumeration(enumerated) }
       / simple:simple_type_declaration__with_constant() { DataTypeDeclarationKind::Simple(simple )}
-      / type_name:type_name() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ referenced:non_generic_type_name() {
+      / type_name:type_name() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ ref_target:ref_to_target() {
         DataTypeDeclarationKind::Reference(ReferenceDeclaration {
           type_name,
-          referenced_type_name: referenced,
+          target: ref_target,
         })
       }
       // The remaining are structure, enumerated and simple without an initializer
@@ -709,7 +710,7 @@ parser! {
     //rule symbolic_variable() -> SymbolicVariableKind =
     //  multi_element_variable()
     //  / name:variable_name() { SymbolicVariableKind::Named(NamedVariable{name}) }
-    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) n:integer() { Element::Bit(n) } / tok(TokenType::Period) id:identifier() { Element::Struct(id) } / sub:subscript_list() {Element::Array(sub)})* {
+    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) n:integer() { Element::Bit(n) } / tok(TokenType::Period) id:identifier() { Element::Struct(id) } / sub:subscript_list() {Element::Array(sub)} / tok(TokenType::Caret) &(tok(TokenType::LeftBracket) / tok(TokenType::Period)) { Element::Deref })* {
       // Start by assuming that the top is just a named variable
       let mut head = SymbolicVariableKind::Named(NamedVariable { name });
 
@@ -732,6 +733,11 @@ parser! {
               head = SymbolicVariableKind::BitAccess(BitAccessVariable{
                 variable: Box::new(head),
                 index: idx,
+              });
+            },
+            Element::Deref => {
+              head = SymbolicVariableKind::Deref(DerefVariable{
+                variable: Box::new(head),
               });
             },
         }
@@ -835,12 +841,12 @@ parser! {
     }
     rule fb_name_list() -> Vec<Id> = commasep_oneplus(<fb_name()>)
     rule fb_name() -> Id = i:identifier() { i }
-    rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ ref_type:non_generic_type_name() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
+    rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ ref_target:ref_to_target() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Reference(ReferenceInitializer {
-            referenced_type_name: ref_type.clone(),
+            target: ref_target.clone(),
             initial_value: init.clone(),
           }),
         }
@@ -849,6 +855,14 @@ parser! {
     rule ref_initial_value() -> ReferenceInitialValue =
       t:tok(TokenType::Null) { ReferenceInitialValue::Null(t.span.clone()) }
       / tok(TokenType::Ref) _ tok(TokenType::LeftParen) _ v:variable() _ tok(TokenType::RightParen) { ReferenceInitialValue::Ref(v) }
+    rule ref_to_target() -> ReferenceTarget =
+      spec:array_specification() {
+        match spec {
+          SpecificationKind::Inline(arr) => ReferenceTarget::Array(arr),
+          SpecificationKind::Named(tn) => ReferenceTarget::Named(tn),
+        }
+      }
+      / tn:non_generic_type_name() { ReferenceTarget::Named(tn) }
     pub rule output_declarations() -> Vec<VarDecl> = tok(TokenType::VarOutput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::flat_map(declarations, VariableType::Output, qualifier)
     }
@@ -1039,7 +1053,12 @@ parser! {
     rule function_name() -> Id = standard_function_name() / derived_function_name() / t:tok(TokenType::Mod) { Id::from(t.text.as_str()).with_position(t.span.clone()) } / t:tok(TokenType::And) { Id::from(t.text.as_str()).with_position(t.span.clone()) } / t:tok(TokenType::Or) { Id::from(t.text.as_str()).with_position(t.span.clone()) } / t:tok(TokenType::Xor) { Id::from(t.text.as_str()).with_position(t.span.clone()) } / t:tok(TokenType::Not) { Id::from(t.text.as_str()).with_position(t.span.clone()) }
     rule standard_function_name() -> Id = identifier()
     rule derived_function_name() -> Id = identifier()
-    rule function_declaration() -> FunctionDeclaration = tok(TokenType::Function) _  name:derived_function_name() _ tok(TokenType::Colon) _ rt:(et:elementary_type_name() { et.into() } / dt:derived_type_name() { dt }) _ var_decls:(io:io_var_declarations() / func:function_var_decls() { vec![ func ]}) ** _ _ body:function_body() _ tok(TokenType::EndFunction) {
+    rule function_return_type() -> FunctionReturnType =
+      tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { FunctionReturnType::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { FunctionReturnType::WString(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
+      / et:elementary_type_name() { FunctionReturnType::Named(et.into()) }
+      / dt:derived_type_name() { FunctionReturnType::Named(dt) }
+    rule function_declaration() -> FunctionDeclaration = tok(TokenType::Function) _  name:derived_function_name() _ tok(TokenType::Colon) _ rt:function_return_type() _ var_decls:(io:io_var_declarations() / func:function_var_decls() { vec![ func ]}) ** _ _ body:function_body() _ tok(TokenType::EndFunction) {
       let var_decls = VarDeclarations::flatten(var_decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(var_decls);
       let (edge_variables, remainder) = VarDeclarations::drain_edge_decl(remainder);
@@ -1437,7 +1456,7 @@ parser! {
       / function:function_expression() {
           function
         }
-      / id:identifier() _ !(tok(TokenType::LeftParen) / tok(TokenType::LeftBracket) / tok(TokenType::Period)) {
+      / id:identifier() _ !(tok(TokenType::LeftParen) / tok(TokenType::LeftBracket) / tok(TokenType::Period) / tok(TokenType::Caret)) {
         ExprKind::LateBound(LateBound{ value: id })
       }
       / variable:variable() {

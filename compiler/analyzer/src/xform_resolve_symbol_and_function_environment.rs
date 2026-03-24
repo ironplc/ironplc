@@ -166,7 +166,16 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
                 TypeReference::Named(type_name) => (type_name, false),
                 TypeReference::Inline => match &var_decl.initializer {
                     InitialValueAssignmentKind::Reference(ref_init) => {
-                        (ref_init.referenced_type_name.clone(), true)
+                        match &ref_init.target {
+                            crate::ironplc_dsl::common::ReferenceTarget::Named(tn) => {
+                                (tn.clone(), true)
+                            }
+                            crate::ironplc_dsl::common::ReferenceTarget::Array(subranges) => {
+                                // REF_TO ARRAY[...] OF T — use the element type name
+                                // so the parameter is registered in the function signature.
+                                (subranges.type_name.clone(), true)
+                            }
+                        }
                     }
                     _ => continue,
                 },
@@ -329,7 +338,7 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
 
 #[cfg(test)]
 mod test {
-    use ironplc_dsl::common::TypeName;
+    use ironplc_dsl::common::{FunctionReturnType, TypeName};
     use ironplc_dsl::core::Id;
 
     use crate::{
@@ -449,7 +458,10 @@ END_FUNCTION";
         let func_sig = function_env.get(&Id::from("ADD_INTS")).unwrap();
         assert_eq!(func_sig.name.original(), "ADD_INTS");
         // Return type is now stored as TypeName, not resolved IntermediateType
-        assert_eq!(func_sig.return_type, Some(TypeName::from("INT")));
+        assert_eq!(
+            func_sig.return_type,
+            Some(FunctionReturnType::Named(TypeName::from("INT")))
+        );
         assert_eq!(func_sig.parameters.len(), 2);
 
         // Check first parameter

@@ -74,9 +74,10 @@ impl ExprTypeResolver<'_> {
                 SpecificationKind::Named(tn) => tn.clone(),
                 SpecificationKind::Inline(_) => return,
             },
-            InitialValueAssignmentKind::Reference(ref_init) => {
-                ref_init.referenced_type_name.clone()
-            }
+            InitialValueAssignmentKind::Reference(ref_init) => match ref_init.target.type_name() {
+                Some(tn) => tn.clone(),
+                None => return, // Inline array targets don't have a single type name
+            },
             InitialValueAssignmentKind::LateResolvedType(tn) => tn.clone(),
         };
 
@@ -102,7 +103,7 @@ impl ExprTypeResolver<'_> {
             ExprKind::Compare(_) => Some(TypeName::from("BOOL")),
             ExprKind::Function(f) => {
                 let sig = self.function_environment.get(&f.name)?;
-                let return_type = sig.return_type.clone()?;
+                let return_type = sig.return_type.as_ref()?.to_type_name();
                 if is_generic_type(&return_type) {
                     // Generic return type: infer concrete type from first argument
                     f.param_assignment.iter().find_map(|p| match p {
@@ -185,6 +186,7 @@ impl ExprTypeResolver<'_> {
             Variable::Symbolic(SymbolicVariableKind::Array(_)) => None,
             Variable::Symbolic(SymbolicVariableKind::Structured(_)) => None,
             Variable::Symbolic(SymbolicVariableKind::BitAccess(_)) => Some(TypeName::from("BOOL")),
+            Variable::Symbolic(SymbolicVariableKind::Deref(_)) => None,
             Variable::Direct(_) => None,
         }
     }
@@ -199,10 +201,11 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         // Register the implicit return variable (function name = return type)
         // so that references like `FOO := SHR(FOO, 1)` inside FUNCTION FOO
         // can resolve the type of the FOO variable.
+        let return_type_name = node.return_type.to_type_name();
         let resolved_return_type = self
             .type_environment
-            .resolve_elementary_type_name(&node.return_type)
-            .unwrap_or_else(|| node.return_type.clone());
+            .resolve_elementary_type_name(&return_type_name)
+            .unwrap_or(return_type_name);
         self.var_types
             .insert(node.name.clone(), resolved_return_type);
         let result = node.recurse_fold(self);

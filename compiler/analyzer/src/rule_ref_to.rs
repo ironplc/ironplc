@@ -87,7 +87,7 @@ impl RuleRefTo<'_> {
         let init = self.var_types.get(id)?;
         match init {
             InitialValueAssignmentKind::Simple(si) => Some(si.type_name.clone()),
-            InitialValueAssignmentKind::Reference(ri) => Some(ri.referenced_type_name.clone()),
+            InitialValueAssignmentKind::Reference(ri) => ri.target.type_name().cloned(),
             InitialValueAssignmentKind::LateResolvedType(tn) => Some(tn.clone()),
             _ => None,
         }
@@ -284,7 +284,7 @@ impl RuleRefTo<'_> {
             _ => return None,
         };
         match self.var_types.get(id)? {
-            InitialValueAssignmentKind::Reference(ri) => Some(ri.referenced_type_name.clone()),
+            InitialValueAssignmentKind::Reference(ri) => ri.target.type_name().cloned(),
             _ => None,
         }
     }
@@ -337,12 +337,14 @@ impl Visitor<Diagnostic> for RuleRefTo<'_> {
         &mut self,
         node: &ReferenceDeclaration,
     ) -> Result<(), Diagnostic> {
-        // P2036: Check for nested REF_TO
-        if self.is_reference_type(&node.referenced_type_name) {
-            self.diagnostics.push(Diagnostic::problem(
-                Problem::NestedRefToNotSupported,
-                Label::span(node.type_name.span(), "Nested REF_TO is not supported"),
-            ));
+        // P2036: Check for nested REF_TO (only applicable for named targets)
+        if let ReferenceTarget::Named(referenced_type_name) = &node.target {
+            if self.is_reference_type(referenced_type_name) {
+                self.diagnostics.push(Diagnostic::problem(
+                    Problem::NestedRefToNotSupported,
+                    Label::span(node.type_name.span(), "Nested REF_TO is not supported"),
+                ));
+            }
         }
         node.recurse_visit(self)
     }
@@ -629,6 +631,29 @@ END_PROGRAM",
             "PROGRAM Main
 VAR
     data : ARRAY[0..3] OF REF_TO BYTE;
+END_VAR
+END_PROGRAM",
+        );
+    }
+
+    #[test]
+    fn ref_to_array_when_declared_then_ok() {
+        assert_ok(
+            "PROGRAM Main
+VAR
+    data : REF_TO ARRAY[1..10] OF INT;
+END_VAR
+END_PROGRAM",
+        );
+    }
+
+    #[test]
+    fn ref_to_array_type_decl_when_declared_then_ok() {
+        assert_ok(
+            "TYPE ArrRef : REF_TO ARRAY[0..3] OF BYTE; END_TYPE
+PROGRAM Main
+VAR
+    data : ArrRef;
 END_VAR
 END_PROGRAM",
         );

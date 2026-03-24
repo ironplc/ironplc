@@ -95,6 +95,25 @@ impl LibraryRenderer {
         self.indents -= 1;
     }
 
+    fn visit_function_return_type(&mut self, node: &FunctionReturnType) -> Result<(), Diagnostic> {
+        match node {
+            FunctionReturnType::Named(tn) => self.visit_type_name(tn)?,
+            FunctionReturnType::String(spec) | FunctionReturnType::WString(spec) => {
+                let kw = match spec.width {
+                    StringType::String => "STRING",
+                    StringType::WString => "WSTRING",
+                };
+                self.write_ws(kw);
+                if let Some(len) = &spec.length {
+                    self.write_ws("[");
+                    self.visit_integer(len.as_integer().unwrap())?;
+                    self.write_ws("]");
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn render_data_source_kind(
         &mut self,
         source: &dsl::configuration::DataSourceKind,
@@ -774,7 +793,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("FUNCTION");
         self.visit_id(&node.name)?;
         self.write_ws(":");
-        self.visit_type_name(&node.return_type)?;
+        self.visit_function_return_type(&node.return_type)?;
 
         if !node.variables.is_empty() {
             self.indent();
@@ -1171,6 +1190,9 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &dsl::textual::Assignment,
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_variable(&node.target)?;
+        if node.deref {
+            self.write("^");
+        }
         self.write_ws(":=");
         self.visit_expr(&node.value)?;
 
@@ -1425,6 +1447,110 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.newline();
         self.newline();
         Ok(())
+    }
+
+    fn visit_expr_kind(
+        &mut self,
+        node: &dsl::textual::ExprKind,
+    ) -> Result<Self::Value, Diagnostic> {
+        match node {
+            dsl::textual::ExprKind::Ref(var) => {
+                self.write_ws("REF(");
+                self.visit_variable(var)?;
+                self.write_ws(")");
+                Ok(())
+            }
+            dsl::textual::ExprKind::Deref(expr) => {
+                self.visit_expr(expr)?;
+                self.write_ws("^");
+                Ok(())
+            }
+            dsl::textual::ExprKind::Null(_) => {
+                self.write_ws("NULL");
+                Ok(())
+            }
+            _ => node.recurse_visit(self),
+        }
+    }
+
+    fn visit_deref_variable(
+        &mut self,
+        node: &dsl::textual::DerefVariable,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_symbolic_variable_kind(&node.variable)?;
+        self.write("^");
+        Ok(())
+    }
+
+    fn visit_reference_declaration(
+        &mut self,
+        node: &ReferenceDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_type_name(&node.type_name)?;
+        self.write_ws(":");
+        self.write_ws("REF_TO");
+        self.visit_reference_target(&node.target)
+    }
+
+    fn visit_reference_initializer(
+        &mut self,
+        node: &ReferenceInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("REF_TO");
+        self.visit_reference_target(&node.target)?;
+
+        if let Some(init) = &node.initial_value {
+            self.write_ws(":=");
+            self.visit_reference_initial_value(init)?;
+        }
+
+        Ok(())
+    }
+
+    fn visit_reference_target(
+        &mut self,
+        node: &ReferenceTarget,
+    ) -> Result<Self::Value, Diagnostic> {
+        match node {
+            ReferenceTarget::Named(type_name) => self.visit_type_name(type_name),
+            ReferenceTarget::Array(subranges) => self.visit_array_subranges(subranges),
+        }
+    }
+
+    fn visit_reference_initial_value(
+        &mut self,
+        node: &ReferenceInitialValue,
+    ) -> Result<Self::Value, Diagnostic> {
+        match node {
+            ReferenceInitialValue::Null(_) => {
+                self.write_ws("NULL");
+                Ok(())
+            }
+            ReferenceInitialValue::Ref(var) => {
+                self.write_ws("REF(");
+                self.visit_variable(var)?;
+                self.write_ws(")");
+                Ok(())
+            }
+        }
+    }
+
+    fn visit_named_input(
+        &mut self,
+        node: &dsl::textual::NamedInput,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.name)?;
+        self.write_ws(":=");
+        self.visit_expr(&node.expr)
+    }
+
+    fn visit_output(&mut self, node: &dsl::textual::Output) -> Result<Self::Value, Diagnostic> {
+        if node.not {
+            self.write_ws("NOT");
+        }
+        self.visit_id(&node.src)?;
+        self.write_ws("=>");
+        self.visit_variable(&node.tgt)
     }
 
     fn visit_array_variable(
