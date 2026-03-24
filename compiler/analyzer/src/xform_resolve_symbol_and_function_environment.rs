@@ -166,9 +166,15 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
                 TypeReference::Named(type_name) => (type_name, false),
                 TypeReference::Inline => match &var_decl.initializer {
                     InitialValueAssignmentKind::Reference(ref_init) => {
-                        match ref_init.target.type_name() {
-                            Some(tn) => (tn.clone(), true),
-                            None => continue, // Inline array REF_TO targets
+                        match &ref_init.target {
+                            crate::ironplc_dsl::common::ReferenceTarget::Named(tn) => {
+                                (tn.clone(), true)
+                            }
+                            crate::ironplc_dsl::common::ReferenceTarget::Array(subranges) => {
+                                // REF_TO ARRAY[...] OF T — use the element type name
+                                // so the parameter is registered in the function signature.
+                                (subranges.type_name.clone(), true)
+                            }
                         }
                     }
                     _ => continue,
