@@ -124,6 +124,23 @@ mod test {
         assert_eq!(rendered, expected);
     }
 
+    pub fn parse_and_render_resource_edition3(name: &'static str) -> String {
+        let source = read_shared_resource(name);
+        let options = ParseOptions {
+            allow_iec_61131_3_2013: true,
+            ..ParseOptions::default()
+        };
+        let library = parse_program(&source, &FileId::default(), &options).unwrap();
+        write_to_string(&library).unwrap()
+    }
+
+    #[test]
+    fn write_to_string_ref() {
+        let rendered = parse_and_render_resource_edition3("ref.st");
+        let expected = read_resource("ref_rendered.st");
+        assert_eq!(rendered, expected);
+    }
+
     #[test]
     fn write_to_string_late_bound_declaration() {
         use ironplc_dsl::common::{
