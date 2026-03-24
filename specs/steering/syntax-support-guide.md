@@ -388,6 +388,47 @@ pub fn parse_with_extension(source: &str) -> (Library, SemanticContext) {
 - The VM executes the bytecode and produces expected results
 - Runtime behavior matches IEC 61131-3 semantics
 
+## Pipeline Integration Points
+
+The token processing pipeline in `parser/src/lib.rs` (`tokenize_program` function) runs these steps in order:
+
+1. **`preprocess()`** — normalize source text
+2. **`tokenize()`** — lexer produces raw tokens (via `logos`)
+3. **`insert_keyword_statement_terminators()`** — token transform (flag-gated)
+4. **`xform_demote_edition3_keywords::apply()`** — token demotion (edition-gated)
+5. **`check_tokens()`** — runs validation rules (flag-gated)
+6. **`parse_library()`** — PEG parser consumes tokens, produces AST
+
+New token transforms go between steps 2 and 5. New validation rules are registered in `check_tokens()`:
+
+```rust
+fn check_tokens(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnostic>> {
+    let rules: Vec<fn(&[Token], &ParseOptions) -> Result<(), Vec<Diagnostic>>> =
+        vec![rule_token_no_c_style_comment::apply];  // Add your rule here
+
+    let mut errors = vec![];
+    for rule in rules {
+        match rule(tokens, options) {
+            Ok(_) => {}
+            Err(mut diagnostics) => errors.append(&mut diagnostics),
+        };
+    }
+    // ...
+}
+```
+
+New demotion transforms must be called in `tokenize_program()` **before** `check_tokens()` and **before** `parse_library()`. The order matters: demotion must happen before parsing so the parser sees identifiers, not keywords.
+
+## Common Mistakes
+
+- **Forgetting `--allow-all`**: Every new `--allow-x` flag must include `|| self.allow_all` in `parse_options()`. Without this, `--allow-all` silently ignores the new feature.
+- **Missing LSP wiring**: The flag works on the CLI but not in VS Code because `extract_parse_options()` in `plc2x/src/lsp.rs` was not updated. Always add LSP extraction for new flags.
+- **No round-trip test**: The feature parses but the renderer in `plc2plc` cannot write it back. Always add the round-trip test.
+- **No execution test**: The feature parses and analyzes but was never proven to execute correctly. Always add at least one end-to-end test.
+- **Creating a flag for standard syntax**: Only vendor extensions get `--allow-x` flags. Standard IEC 61131-3 syntax is always on (or gated by `--std-iec-61131-3`).
+- **Stateful lexer changes**: The lexer (`logos`) is stateless. Use token transforms for context-dependent behavior, not lexer rules.
+- **Not registering transforms**: Adding a new `xform_*.rs` module but forgetting to call it from `tokenize_program()` in `parser/src/lib.rs`, or adding a new rule module but forgetting to register it in `check_tokens()`.
+
 ## Step-by-Step Walkthrough
 
 This walkthrough shows the typical sequence for adding a new syntax feature.
