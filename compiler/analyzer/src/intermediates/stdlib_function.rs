@@ -779,6 +779,7 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ironplc_dsl::common::FunctionReturnType;
 
     #[test]
     fn get_all_stdlib_functions_returns_expected_count() {
@@ -821,7 +822,10 @@ mod tests {
         // Parameter type is now TypeName, not IntermediateType
         assert_eq!(sig.parameters[0].param_type, TypeName::from("INT"));
         // Return type is now TypeName, not IntermediateType
-        assert_eq!(sig.return_type, Some(TypeName::from("REAL")));
+        assert_eq!(
+            sig.return_type,
+            Some(FunctionReturnType::Named(TypeName::from("REAL")))
+        );
     }
 
     #[test]
@@ -1064,7 +1068,10 @@ mod tests {
         assert_eq!(bool_to_int.input_parameter_count(), 1);
         assert_eq!(bool_to_int.parameters[0].name.original(), "IN");
         assert_eq!(bool_to_int.parameters[0].param_type, TypeName::from("BOOL"));
-        assert_eq!(bool_to_int.return_type, Some(TypeName::from("INT")));
+        assert_eq!(
+            bool_to_int.return_type,
+            Some(FunctionReturnType::Named(TypeName::from("INT")))
+        );
         assert!(bool_to_int.is_stdlib());
     }
 
@@ -1108,7 +1115,10 @@ mod tests {
         assert_eq!(int_to_bool.input_parameter_count(), 1);
         assert_eq!(int_to_bool.parameters[0].name.original(), "IN");
         assert_eq!(int_to_bool.parameters[0].param_type, TypeName::from("INT"));
-        assert_eq!(int_to_bool.return_type, Some(TypeName::from("BOOL")));
+        assert_eq!(
+            int_to_bool.return_type,
+            Some(FunctionReturnType::Named(TypeName::from("BOOL")))
+        );
         assert!(int_to_bool.is_stdlib());
     }
 
@@ -1145,7 +1155,10 @@ mod tests {
             byte_to_word.parameters[0].param_type,
             TypeName::from("BYTE")
         );
-        assert_eq!(byte_to_word.return_type, Some(TypeName::from("WORD")));
+        assert_eq!(
+            byte_to_word.return_type,
+            Some(FunctionReturnType::Named(TypeName::from("WORD")))
+        );
         assert!(byte_to_word.is_stdlib());
     }
 

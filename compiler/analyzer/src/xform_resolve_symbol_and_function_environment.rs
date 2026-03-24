@@ -338,7 +338,7 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
 
 #[cfg(test)]
 mod test {
-    use ironplc_dsl::common::TypeName;
+    use ironplc_dsl::common::{FunctionReturnType, TypeName};
     use ironplc_dsl::core::Id;
 
     use crate::{
@@ -458,7 +458,10 @@ END_FUNCTION";
         let func_sig = function_env.get(&Id::from("ADD_INTS")).unwrap();
         assert_eq!(func_sig.name.original(), "ADD_INTS");
         // Return type is now stored as TypeName, not resolved IntermediateType
-        assert_eq!(func_sig.return_type, Some(TypeName::from("INT")));
+        assert_eq!(
+            func_sig.return_type,
+            Some(FunctionReturnType::Named(TypeName::from("INT")))
+        );
         assert_eq!(func_sig.parameters.len(), 2);
 
         // Check first parameter

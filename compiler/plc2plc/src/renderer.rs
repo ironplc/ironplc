@@ -95,6 +95,25 @@ impl LibraryRenderer {
         self.indents -= 1;
     }
 
+    fn visit_function_return_type(&mut self, node: &FunctionReturnType) -> Result<(), Diagnostic> {
+        match node {
+            FunctionReturnType::Named(tn) => self.visit_type_name(tn)?,
+            FunctionReturnType::String(spec) | FunctionReturnType::WString(spec) => {
+                let kw = match spec.width {
+                    StringType::String => "STRING",
+                    StringType::WString => "WSTRING",
+                };
+                self.write_ws(kw);
+                if let Some(len) = &spec.length {
+                    self.write_ws("[");
+                    self.visit_integer(len.as_integer().unwrap())?;
+                    self.write_ws("]");
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn render_data_source_kind(
         &mut self,
         source: &dsl::configuration::DataSourceKind,
@@ -774,7 +793,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("FUNCTION");
         self.visit_id(&node.name)?;
         self.write_ws(":");
-        self.visit_type_name(&node.return_type)?;
+        self.visit_function_return_type(&node.return_type)?;
 
         if !node.variables.is_empty() {
             self.indent();
