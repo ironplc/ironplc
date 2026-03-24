@@ -42,9 +42,9 @@ use ironplc_container::debug_section::{
 use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES};
 use ironplc_dsl::common::{
     Boolean, ConstantKind, ElementaryTypeName, FunctionBlockBodyKind, FunctionDeclaration,
-    InitialValueAssignmentKind, Library, LibraryElementKind, ProgramDeclaration,
-    ReferenceInitialValue, ReferenceTarget, SignedInteger, SpecificationKind, VarDecl,
-    VariableType,
+    FunctionReturnType, InitialValueAssignmentKind, Library, LibraryElementKind,
+    ProgramDeclaration, ReferenceInitialValue, ReferenceTarget, SignedInteger, SpecificationKind,
+    VarDecl, VariableType,
 };
 use ironplc_dsl::configuration::ConfigurationDeclaration;
 use ironplc_dsl::core::{FileId, Id, Located};
@@ -544,15 +544,53 @@ fn compile_user_function(
     let return_var_index = current_index;
     let return_id = func_decl.name.clone();
     ctx.variables.insert(return_id.clone(), return_var_index);
-    let return_type_name = func_decl.return_type.to_type_name();
-    if let Some(type_info) = resolve_type_name(&return_type_name.name) {
-        ctx.var_types.insert(return_id, type_info);
-    }
+
+    // Check if this function returns a STRING/WSTRING.
+    let return_string_info = match &func_decl.return_type {
+        FunctionReturnType::String(spec) | FunctionReturnType::WString(spec) => {
+            let max_length = spec
+                .length
+                .as_ref()
+                .map(|len| len.as_integer().unwrap().value as u16)
+                .unwrap_or(DEFAULT_STRING_MAX_LENGTH);
+
+            let data_offset = ctx.data_region_offset;
+            let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+            ctx.data_region_offset = ctx
+                .data_region_offset
+                .checked_add(total_bytes)
+                .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+
+            if max_length > ctx.max_string_capacity {
+                ctx.max_string_capacity = max_length;
+            }
+
+            ctx.string_vars.insert(
+                return_id.clone(),
+                StringVarInfo {
+                    data_offset,
+                    max_length,
+                },
+            );
+            Some(StringReturnInfo {
+                data_offset,
+                max_length,
+            })
+        }
+        FunctionReturnType::Named(_) => {
+            let return_type_name = func_decl.return_type.to_type_name();
+            if let Some(type_info) = resolve_type_name(&return_type_name.name) {
+                ctx.var_types.insert(return_id.clone(), type_info);
+            }
+            None
+        }
+    };
     current_index += 1;
 
     let num_locals = current_index - var_offset;
 
     // Determine return type's OpType.
+    let return_type_name = func_decl.return_type.to_type_name();
     let return_op_type = resolve_type_name(&return_type_name.name)
         .map(|info| (info.op_width, info.signedness))
         .unwrap_or(DEFAULT_OP_TYPE);
@@ -578,7 +616,14 @@ fn compile_user_function(
     compile_statements(&mut func_emitter, ctx, &body)?;
 
     // Load the return value and emit RET.
-    emit_load_var(&mut func_emitter, return_var_index, return_op_type);
+    if let Some(ref str_info) = return_string_info {
+        // For STRING return: load the return string from the data region into
+        // a temp buffer, leaving buf_idx on the stack for the caller.
+        ctx.num_temp_bufs += 1;
+        func_emitter.emit_str_load_var(str_info.data_offset);
+    } else {
+        emit_load_var(&mut func_emitter, return_var_index, return_op_type);
+    }
     func_emitter.emit_ret();
 
     let max_stack_depth = func_emitter.max_stack_depth();
@@ -646,6 +691,7 @@ fn compile_user_function(
             num_params,
             param_op_types,
             param_string_info,
+            return_string_info,
             max_stack_depth,
         },
     );
@@ -678,6 +724,18 @@ struct StringParamInfo {
     max_length: u16,
 }
 
+/// Metadata for a STRING return value in a user-defined function.
+///
+/// When a function returns STRING/WSTRING, the return value lives in the
+/// data region rather than on the operand stack.
+#[derive(Clone)]
+struct StringReturnInfo {
+    /// Byte offset in the data region where the return string is stored.
+    data_offset: u32,
+    /// Maximum number of characters the return string can hold.
+    max_length: u16,
+}
+
 /// Metadata for a compiled user-defined function.
 #[derive(Clone)]
 struct UserFunctionInfo {
@@ -692,6 +750,10 @@ struct UserFunctionInfo {
     /// For each input parameter (in order), `Some(info)` if it is a STRING
     /// parameter that needs copy-in at the call site, `None` for scalar params.
     param_string_info: Vec<Option<StringParamInfo>>,
+    /// If the function returns STRING/WSTRING, info about the return string
+    /// in the data region. Used at call sites to initialize the return string
+    /// header before CALL.
+    return_string_info: Option<StringReturnInfo>,
     /// Maximum stack depth used by this function's body.
     max_stack_depth: u16,
 }
@@ -1249,8 +1311,13 @@ fn emit_function_local_prologue(
     }
 
     // Zero-initialize the return variable.
-    emit_zero_const(emitter, ctx, return_op_type);
-    emit_store_var(emitter, return_var_index, return_op_type);
+    if let Some(info) = ctx.string_vars.get(&func_decl.name) {
+        // STRING return: initialize the string header in the data region.
+        emitter.emit_str_init(info.data_offset, info.max_length);
+    } else {
+        emit_zero_const(emitter, ctx, return_op_type);
+        emit_store_var(emitter, return_var_index, return_op_type);
+    }
 
     Ok(())
 }
@@ -2609,12 +2676,21 @@ fn compile_user_function_call(
         }
     }
 
+    // If the function returns STRING, initialize the return string's header
+    // in the data region before CALL so the function body can write to it.
+    if let Some(ref ret_str) = func_info.return_string_info {
+        emitter.emit_str_init(ret_str.data_offset, ret_str.max_length);
+    }
+
     emitter.emit_call(
         func_info.function_id,
         func_info.num_params,
         func_info.var_offset,
         func_info.max_stack_depth,
     );
+    // For STRING-returning functions, the CALL leaves a buf_idx on the stack
+    // (from emit_str_load_var in the function epilogue). The caller's
+    // assignment path will consume it via emit_str_store_var.
     Ok(())
 }
 
@@ -3678,7 +3754,16 @@ fn compile_constant(
             }
             Ok(())
         }
-        ConstantKind::CharacterString(_) => Err(Diagnostic::todo(file!(), line!())),
+        ConstantKind::CharacterString(lit) => {
+            // Load the string literal into a temp buffer, leaving buf_idx on the stack.
+            // The caller (e.g., string assignment path) will consume the buf_idx via
+            // emit_str_store_var to copy the value into the target data region.
+            let bytes: Vec<u8> = lit.value.iter().map(|&ch| ch as u8).collect();
+            let pool_index = ctx.add_str_constant(bytes);
+            ctx.num_temp_bufs += 1;
+            emitter.emit_load_const_str(pool_index);
+            Ok(())
+        }
         ConstantKind::Duration(lit) => {
             match op_type.0 {
                 OpWidth::W64 => {
