@@ -874,6 +874,62 @@ END_FUNCTION";
     }
 
     #[test]
+    fn parse_when_function_var_with_string_length_then_parses() {
+        let _lib = parse_text(
+            "FUNCTION MY_FUNC : INT
+            VAR_INPUT
+                x : INT;
+            END_VAR
+            VAR
+                buf : STRING[10];
+            END_VAR
+            MY_FUNC := 0;
+            END_FUNCTION",
+        );
+    }
+
+    #[test]
+    fn parse_when_function_var_constant_with_string_length_then_parses() {
+        let _lib = parse_text(
+            "FUNCTION MY_FUNC : INT
+            VAR CONSTANT
+                FILL : STRING[1] := '0';
+            END_VAR
+            MY_FUNC := 0;
+            END_FUNCTION",
+        );
+    }
+
+    #[test]
+    fn parse_when_function_var_in_out_with_string_length_then_parses() {
+        let _lib = parse_text(
+            "FUNCTION MY_FUNC : INT
+            VAR_IN_OUT
+                buf : STRING[255];
+            END_VAR
+            MY_FUNC := 0;
+            END_FUNCTION",
+        );
+    }
+
+    #[test]
+    fn parse_when_struct_member_with_string_length_then_parses() {
+        let _lib = parse_text(
+            "TYPE MY_STRUCT :
+            STRUCT
+                name : STRING[10];
+            END_STRUCT;
+            END_TYPE
+            FUNCTION MY_FUNC : INT
+            VAR_INPUT
+                x : INT;
+            END_VAR
+            MY_FUNC := 0;
+            END_FUNCTION",
+        );
+    }
+
+    #[test]
     fn parse_when_task_with_interval_and_priority_then_builds_structure() {
         let source = "
         CONFIGURATION config
