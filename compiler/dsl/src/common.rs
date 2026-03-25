@@ -1866,6 +1866,29 @@ pub enum VariableType {
     Access,
 }
 
+impl VariableType {
+    /// Returns true if this variable type receives a value from the caller
+    /// (i.e., VAR_INPUT or VAR_IN_OUT). These are the parameter kinds that
+    /// appear as arguments in a function/FB call.
+    pub fn is_input_compatible(&self) -> bool {
+        matches!(self, VariableType::Input | VariableType::InOut)
+    }
+
+    /// Returns true if this is a local variable (VAR or VAR_TEMP).
+    pub fn is_local(&self) -> bool {
+        matches!(self, VariableType::Var | VariableType::VarTemp)
+    }
+
+    /// Returns true if this is any kind of parameter visible to a caller
+    /// (VAR_INPUT, VAR_OUTPUT, or VAR_IN_OUT).
+    pub fn is_parameter(&self) -> bool {
+        matches!(
+            self,
+            VariableType::Input | VariableType::Output | VariableType::InOut
+        )
+    }
+}
+
 /// Declaration (that does not permit a location).
 ///
 /// See section 2.4.3.

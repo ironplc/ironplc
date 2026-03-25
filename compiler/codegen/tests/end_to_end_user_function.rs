@@ -433,3 +433,85 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
+
+#[test]
+fn end_to_end_when_user_function_with_inout_dint_then_correct() {
+    let source = "
+FUNCTION ADD_TEN : DINT
+  VAR_IN_OUT
+    data : DINT;
+  END_VAR
+  data := data + 10;
+  ADD_TEN := data;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    x : DINT := 5;
+    result : DINT;
+  END_VAR
+  result := ADD_TEN(data := x);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // ADD_TEN receives 5, adds 10, returns 15
+    assert_eq!(bufs.vars[1].as_i32(), 15);
+}
+
+#[test]
+fn end_to_end_when_user_function_with_inout_and_input_then_correct() {
+    let source = "
+FUNCTION ADD_N : DINT
+  VAR_INPUT
+    n : DINT;
+  END_VAR
+  VAR_IN_OUT
+    data : DINT;
+  END_VAR
+  data := data + n;
+  ADD_N := data;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    x : DINT := 100;
+    result : DINT;
+  END_VAR
+  result := ADD_N(n := 42, data := x);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    // ADD_N receives data=100 and n=42, returns 142
+    assert_eq!(bufs.vars[1].as_i32(), 142);
+}
+
+#[test]
+fn end_to_end_when_user_function_with_inout_string_ref_then_correct() {
+    use common::parse_and_run_edition3;
+
+    let source = "
+FUNCTION MY_FUNC : BOOL
+  VAR_IN_OUT
+      data : STRING[80];
+  END_VAR
+  VAR
+      pt : REF_TO BYTE;
+  END_VAR
+      pt := REF(data);
+      MY_FUNC := TRUE;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+      s : STRING[80] := 'hello';
+      result : BOOL;
+  END_VAR
+      result := MY_FUNC(data := s);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run_edition3(source);
+
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}

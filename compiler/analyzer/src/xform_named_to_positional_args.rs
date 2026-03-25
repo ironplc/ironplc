@@ -114,7 +114,7 @@ impl Fold<Diagnostic> for NamedToPositionalResolver<'_> {
         //    to produce positional arguments in declaration order.
         let mut positional_args: Vec<ParamAssignmentKind> = vec![];
         for param in &signature.parameters {
-            if !param.is_input {
+            if !param.is_input_compatible() {
                 continue;
             }
             if let Some(ni) = named_map.remove(&param.name) {
@@ -403,6 +403,107 @@ END_PROGRAM
         assert!(errs
             .iter()
             .any(|d| d.code == Problem::FunctionCallDuplicateNamedArg.code()));
+    }
+
+    /// Helper to build a FunctionEnvironment with input and inout parameters.
+    fn env_with_inout_function(name: &str, params: Vec<(&str, &str, bool)>) -> FunctionEnvironment {
+        let parameters = params
+            .into_iter()
+            .map(|(pname, ptype, is_inout)| IntermediateFunctionParameter {
+                name: Id::from(pname),
+                param_type: TypeName::from(ptype),
+                is_input: !is_inout,
+                is_output: false,
+                is_inout,
+                is_reference: false,
+            })
+            .collect();
+
+        let sig = FunctionSignature::new(
+            Id::from(name),
+            Some(FunctionReturnType::Named(TypeName::from("BOOL"))),
+            parameters,
+            ironplc_dsl::core::SourceSpan::default(),
+        );
+
+        let mut env = FunctionEnvironment::new();
+        env.insert(sig).unwrap();
+        env
+    }
+
+    #[test]
+    fn apply_when_named_inout_arg_then_converted_to_positional() {
+        let program = "
+FUNCTION MY_FUNC : BOOL
+VAR_IN_OUT
+  data : DINT;
+END_VAR
+  MY_FUNC := TRUE;
+END_FUNCTION
+
+PROGRAM main
+VAR
+  x : DINT;
+END_VAR
+  x := MY_FUNC(data := x);
+END_PROGRAM
+";
+        let library = parse_and_resolve_types(program);
+        let env = env_with_inout_function("MY_FUNC", vec![("data", "DINT", true)]);
+        let result = apply(library, &env).unwrap();
+
+        let func_call = find_function_call(&result, "MY_FUNC");
+        assert!(func_call.is_some(), "Should find MY_FUNC call");
+        let func = func_call.unwrap();
+        assert_eq!(func.param_assignment.len(), 1);
+        assert!(
+            matches!(
+                &func.param_assignment[0],
+                ParamAssignmentKind::PositionalInput(_)
+            ),
+            "InOut arg should be converted to positional"
+        );
+    }
+
+    #[test]
+    fn apply_when_mixed_input_and_inout_named_args_then_positional_in_declaration_order() {
+        let program = "
+FUNCTION MY_FUNC : BOOL
+VAR_INPUT
+  count : INT;
+END_VAR
+VAR_IN_OUT
+  data : DINT;
+END_VAR
+  MY_FUNC := TRUE;
+END_FUNCTION
+
+PROGRAM main
+VAR
+  x : DINT;
+END_VAR
+  x := MY_FUNC(data := x, count := 5);
+END_PROGRAM
+";
+        let library = parse_and_resolve_types(program);
+        let env = env_with_inout_function(
+            "MY_FUNC",
+            vec![("count", "INT", false), ("data", "DINT", true)],
+        );
+        let result = apply(library, &env).unwrap();
+
+        let func_call = find_function_call(&result, "MY_FUNC");
+        assert!(func_call.is_some(), "Should find MY_FUNC call");
+        let func = func_call.unwrap();
+        assert_eq!(func.param_assignment.len(), 2);
+        assert!(matches!(
+            &func.param_assignment[0],
+            ParamAssignmentKind::PositionalInput(_)
+        ));
+        assert!(matches!(
+            &func.param_assignment[1],
+            ParamAssignmentKind::PositionalInput(_)
+        ));
     }
 
     /// Helper to find a Function call node by name in the library.

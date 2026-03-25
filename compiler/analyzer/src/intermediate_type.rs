@@ -585,6 +585,14 @@ pub struct IntermediateFunctionParameter {
     pub is_reference: bool,
 }
 
+impl IntermediateFunctionParameter {
+    /// Returns true if this parameter receives a value from the caller
+    /// (either VAR_INPUT or VAR_IN_OUT).
+    pub fn is_input_compatible(&self) -> bool {
+        self.is_input || self.is_inout
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};

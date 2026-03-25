@@ -368,13 +368,10 @@ fn compile_user_function(
     let mut current_index = var_offset;
     let mut num_params: u16 = 0;
 
-    // TODO: VAR_IN_OUT STRING[N] variables are parsed but not yet supported
-    // at runtime. InOut string parameters need pass-by-reference semantics
-    // for the string data region.
-
-    // First pass: input parameters (must come first for CALL arg passing).
+    // First pass: input-compatible parameters (VAR_INPUT and VAR_IN_OUT)
+    // must come first for CALL arg passing.
     for decl in &func_decl.variables {
-        if decl.var_type != VariableType::Input {
+        if !decl.var_type.is_input_compatible() {
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {
@@ -487,7 +484,7 @@ fn compile_user_function(
 
     // Second pass: local variables (VAR, VAR_TEMP).
     for decl in &func_decl.variables {
-        if !matches!(decl.var_type, VariableType::Var | VariableType::VarTemp) {
+        if !decl.var_type.is_local() {
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {
@@ -633,7 +630,7 @@ fn compile_user_function(
     let mut param_op_types: Vec<OpType> = Vec::new();
     let mut param_string_info: Vec<Option<StringParamInfo>> = Vec::new();
     for decl in &func_decl.variables {
-        if decl.var_type != VariableType::Input {
+        if !decl.var_type.is_input_compatible() {
             continue;
         }
         match &decl.initializer {
