@@ -51,13 +51,13 @@ thread_local! {
 /// The playground always enables all vendor extensions so that users can
 /// explore non-standard features without toggling flags.
 fn parse_options_from_edition(edition: &str) -> ParseOptions {
-    ParseOptions {
+    let mut options = ParseOptions {
         allow_iec_61131_3_2013: edition == "2013",
-        allow_top_level_var_global: true,
-        allow_constant_type_params: true,
-        allow_empty_var_blocks: true,
+        allow_all: true,
         ..Default::default()
-    }
+    };
+    options.apply_allow_all();
+    options
 }
 
 /// Install a panic hook that logs to `console.error` with a full stack trace.

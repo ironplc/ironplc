@@ -88,10 +88,12 @@ impl FileArgs {
             },
         };
         options.allow_missing_semicolon = self.allow_missing_semicolon;
-        options.allow_top_level_var_global = self.allow_top_level_var_global || self.allow_all;
-        options.allow_constant_type_params = self.allow_constant_type_params || self.allow_all;
-        options.allow_empty_var_blocks = self.allow_empty_var_blocks || self.allow_all;
-        options.allow_time_as_function_name = self.allow_time_as_function_name || self.allow_all;
+        options.allow_top_level_var_global = self.allow_top_level_var_global;
+        options.allow_constant_type_params = self.allow_constant_type_params;
+        options.allow_empty_var_blocks = self.allow_empty_var_blocks;
+        options.allow_time_as_function_name = self.allow_time_as_function_name;
+        options.allow_all = self.allow_all;
+        options.apply_allow_all();
         options
     }
 }
