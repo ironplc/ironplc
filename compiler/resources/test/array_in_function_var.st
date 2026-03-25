@@ -1,0 +1,14 @@
+FUNCTION MY_FUNC : BOOL
+
+VAR_INPUT
+    x : INT;
+END_VAR
+
+VAR
+    stack : ARRAY[1..32] OF UINT;
+END_VAR
+
+stack[1] := INT_TO_UINT(x);
+MY_FUNC := TRUE;
+
+END_FUNCTION
