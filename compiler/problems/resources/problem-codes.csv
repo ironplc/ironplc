@@ -9,6 +9,7 @@ P0007,XmlSchemaViolation,XML violates PLCopen schema
 P0008,SfcMissingInitialStep,SFC body does not have an initial step
 P0009,TwinCatMalformed,TwinCAT XML file has invalid structure
 P0010,Std2013Feature,Feature requires IEC 61131-3:2013 (use --std-iec-61131-3=2013 flag)
+P0011,EmptyVarBlock,Empty variable block requires --allow-empty-var-blocks flag
 P2001,StructureDuplicatedElement,Structure has more than one element with name
 P2002,SubrangeMinStrictlyLessMax,Subrange declaration minimum value is not less than the maximum
 P2003,EnumTypeDeclDuplicateItem,Enumeration type declaration has duplicated value
