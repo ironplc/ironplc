@@ -47,9 +47,9 @@ use ironplc_container::debug_section::{
 use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES};
 use ironplc_dsl::common::{
     Boolean, ConstantKind, ElementaryTypeName, FunctionBlockBodyKind, FunctionDeclaration,
-    FunctionReturnType, InitialValueAssignmentKind, Library, LibraryElementKind,
-    ProgramDeclaration, ReferenceInitialValue, ReferenceTarget, SignedInteger, SpecificationKind,
-    VarDecl, VariableType,
+    FunctionReturnType, InitialValueAssignmentKind, IntegerRef, Library, LibraryElementKind,
+    ProgramDeclaration, ReferenceInitialValue, ReferenceTarget, SignedInteger, SignedIntegerRef,
+    SpecificationKind, StringInitializer, StringSpecification, VarDecl, VariableType,
 };
 use ironplc_dsl::configuration::ConfigurationDeclaration;
 use ironplc_dsl::core::{FileId, Id, Located};
@@ -386,11 +386,7 @@ fn compile_user_function(
                     }
                 }
                 InitialValueAssignmentKind::String(string_init) => {
-                    let max_length = string_init
-                        .length
-                        .as_ref()
-                        .map(|len| len.as_integer().unwrap().value as u16)
-                        .unwrap_or(DEFAULT_STRING_MAX_LENGTH);
+                    let max_length = resolve_string_max_length(string_init)?;
 
                     let data_offset = ctx.data_region_offset;
                     let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
@@ -503,11 +499,7 @@ fn compile_user_function(
                     }
                 }
                 InitialValueAssignmentKind::String(string_init) => {
-                    let max_length = string_init
-                        .length
-                        .as_ref()
-                        .map(|len| len.as_integer().unwrap().value as u16)
-                        .unwrap_or(DEFAULT_STRING_MAX_LENGTH);
+                    let max_length = resolve_string_max_length(string_init)?;
 
                     let data_offset = ctx.data_region_offset;
                     let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
@@ -557,11 +549,7 @@ fn compile_user_function(
     // Check if this function returns a STRING/WSTRING.
     let return_string_info = match &func_decl.return_type {
         FunctionReturnType::String(spec) | FunctionReturnType::WString(spec) => {
-            let max_length = spec
-                .length
-                .as_ref()
-                .map(|len| len.as_integer().unwrap().value as u16)
-                .unwrap_or(DEFAULT_STRING_MAX_LENGTH);
+            let max_length = resolve_string_spec_max_length(spec)?;
 
             let data_offset = ctx.data_region_offset;
             let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
@@ -949,11 +937,7 @@ fn assign_variables(
                     (tag, name)
                 }
                 InitialValueAssignmentKind::String(string_init) => {
-                    let max_length = string_init
-                        .length
-                        .as_ref()
-                        .map(|len| len.as_integer().unwrap().value as u16)
-                        .unwrap_or(DEFAULT_STRING_MAX_LENGTH);
+                    let max_length = resolve_string_max_length(string_init)?;
 
                     // Allocate space in the data region: [max_length: u16][cur_length: u16][data]
                     let data_offset = ctx.data_region_offset;
@@ -2058,25 +2042,29 @@ fn compile_case_selector(
             compile_expr(emitter, ctx, selector_expr, op_type)?;
             match op_type.0 {
                 OpWidth::W32 => {
-                    let start = signed_integer_to_i32(sr.start.as_signed_integer().unwrap())?;
+                    let start_si = resolve_signed_integer_ref(&sr.start)?;
+                    let start = signed_integer_to_i32(start_si)?;
                     let start_index = ctx.add_i32_constant(start);
                     emitter.emit_load_const_i32(start_index);
                     emit_ge(emitter, op_type);
 
                     compile_expr(emitter, ctx, selector_expr, op_type)?;
-                    let end = signed_integer_to_i32(sr.end.as_signed_integer().unwrap())?;
+                    let end_si = resolve_signed_integer_ref(&sr.end)?;
+                    let end = signed_integer_to_i32(end_si)?;
                     let end_index = ctx.add_i32_constant(end);
                     emitter.emit_load_const_i32(end_index);
                     emit_le(emitter, op_type);
                 }
                 OpWidth::W64 => {
-                    let start = signed_integer_to_i64(sr.start.as_signed_integer().unwrap())?;
+                    let start_si = resolve_signed_integer_ref(&sr.start)?;
+                    let start = signed_integer_to_i64(start_si)?;
                     let start_index = ctx.add_i64_constant(start);
                     emitter.emit_load_const_i64(start_index);
                     emit_ge(emitter, op_type);
 
                     compile_expr(emitter, ctx, selector_expr, op_type)?;
-                    let end = signed_integer_to_i64(sr.end.as_signed_integer().unwrap())?;
+                    let end_si = resolve_signed_integer_ref(&sr.end)?;
+                    let end = signed_integer_to_i64(end_si)?;
                     let end_index = ctx.add_i64_constant(end);
                     emitter.emit_load_const_i64(end_index);
                     emit_le(emitter, op_type);
@@ -2095,6 +2083,36 @@ fn compile_case_selector(
 }
 
 /// Converts a `SignedInteger` AST node to an `i32` value.
+/// Extracts the max length from a `StringInitializer`, returning a
+/// not-implemented diagnostic if the length is an unresolved constant reference.
+fn resolve_string_max_length(string_init: &StringInitializer) -> Result<u16, Diagnostic> {
+    match &string_init.length {
+        None => Ok(DEFAULT_STRING_MAX_LENGTH),
+        Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
+        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
+    }
+}
+
+/// Extracts the max length from a `StringSpecification` (used for function
+/// return types), returning a not-implemented diagnostic if the length is an
+/// unresolved constant reference.
+fn resolve_string_spec_max_length(spec: &StringSpecification) -> Result<u16, Diagnostic> {
+    match &spec.length {
+        None => Ok(DEFAULT_STRING_MAX_LENGTH),
+        Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
+        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
+    }
+}
+
+/// Extracts a concrete `SignedInteger` from a `SignedIntegerRef`, returning a
+/// not-implemented diagnostic if it is an unresolved constant reference.
+fn resolve_signed_integer_ref(sir: &SignedIntegerRef) -> Result<&SignedInteger, Diagnostic> {
+    match sir {
+        SignedIntegerRef::Literal(si) => Ok(si),
+        SignedIntegerRef::Constant(id) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
+    }
+}
+
 pub(crate) fn signed_integer_to_i32(si: &SignedInteger) -> Result<i32, Diagnostic> {
     if si.is_neg {
         let unsigned = si.value.value as i128;
@@ -3917,6 +3935,18 @@ fn compile_variable_read(
             Ok(())
         }
         _ => {
+            // Check if this is a string variable (stored in data region).
+            // String reads emit str_load_var to produce a buf_idx on the stack,
+            // which is consumed by string assignment or string function args.
+            if let Some(var_name) = resolve_variable_name(variable) {
+                if let Some(info) = ctx.string_vars.get(var_name) {
+                    let data_offset = info.data_offset;
+                    ctx.num_temp_bufs += 1;
+                    emitter.emit_str_load_var(data_offset);
+                    return Ok(());
+                }
+            }
+
             match crate::compile_array::resolve_access(ctx, variable)? {
                 crate::compile_array::ResolvedAccess::Scalar { var_index } => {
                     emit_load_var(emitter, var_index, op_type);
