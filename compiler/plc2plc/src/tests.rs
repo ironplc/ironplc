@@ -124,6 +124,13 @@ mod test {
         assert_eq!(rendered, expected);
     }
 
+    #[test]
+    fn write_to_string_sized_string_contexts() {
+        let rendered = parse_and_render_resource("sized_string_contexts.st");
+        let expected = read_resource("sized_string_contexts_rendered.st");
+        assert_eq!(rendered, expected);
+    }
+
     pub fn parse_and_render_resource_edition3(name: &'static str) -> String {
         let source = read_shared_resource(name);
         let options = ParseOptions {
