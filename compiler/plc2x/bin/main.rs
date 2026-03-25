@@ -67,6 +67,11 @@ struct FileArgs {
     #[arg(long)]
     allow_empty_var_blocks: bool,
 
+    /// Allow TIME to be used as a function name (e.g., TIME()).
+    /// Required for OSCAT compatibility where TIME() reads the PLC system clock.
+    #[arg(long)]
+    allow_time_as_function_name: bool,
+
     /// Enable all vendor extensions.
     /// Equivalent to passing every --allow-* flag.
     #[arg(long)]
@@ -86,6 +91,7 @@ impl FileArgs {
         options.allow_top_level_var_global = self.allow_top_level_var_global || self.allow_all;
         options.allow_constant_type_params = self.allow_constant_type_params || self.allow_all;
         options.allow_empty_var_blocks = self.allow_empty_var_blocks || self.allow_all;
+        options.allow_time_as_function_name = self.allow_time_as_function_name || self.allow_all;
         options
     }
 }
