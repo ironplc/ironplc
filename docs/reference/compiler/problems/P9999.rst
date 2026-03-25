@@ -13,5 +13,18 @@ requires adding support for the elements to the IronPLC compiler.
 * avoid the particular elements (this is usually not feasible)
 * verify that you have the latest version of the IronPLC compiler
 * report the issue to `IronPLC GitHub issues`_.
-  
+
+Known Limitations
+-----------------
+
+The following features are not yet supported in code generation and will
+produce this error:
+
+* ``ARRAY`` element access
+* ``STRUCT`` member access
+* ``FUNCTION_BLOCK`` with SFC bodies
+* ``STRING`` pass-by-reference (``VAR_IN_OUT``)
+* Direct variables (hardware-mapped I/O such as ``%IX0.0``)
+* Enumerated values in expressions and ``CASE`` selectors
+
 .. _IronPLC GitHub issues: https://github.com/ironplc/ironplc/issues/new?template=todo_report.md
