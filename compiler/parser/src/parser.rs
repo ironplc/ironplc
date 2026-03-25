@@ -619,6 +619,8 @@ parser! {
           },
         }
       }
+      / str_init:single_byte_string_spec() { InitialValueAssignmentKind::String(str_init) }
+      / str_init:double_byte_string_spec() { InitialValueAssignmentKind::String(str_init) }
       / simple_spec_init__with_constant()
       / simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()
     ) {
@@ -871,7 +873,7 @@ parser! {
       VarDeclarations::flat_map(declarations, VariableType::InOut,  None)
     }
     rule var_declaration() -> Vec<UntypedVarDecl> = temp_var_decl() / fb_name_decl()
-    rule temp_var_decl() -> Vec<UntypedVarDecl> = var1_declaration() / array_var_declaration() / structured_var_declaration() / string_var_declaration()
+    rule temp_var_decl() -> Vec<UntypedVarDecl> = string_var_declaration() / var1_declaration() / array_var_declaration() / structured_var_declaration()
     rule var1_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(spec:subrange_specification__with_range() {InitialValueAssignmentKind::Subrange(spec)} / values:enumerated_specification__only_values()  {InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer{ values, initial_value: None})} / spec:simple_specification() { InitialValueAssignmentKind::LateResolvedType(spec)} ) {
       // TODO this could eventually cause duplicated definitions because
       // multiple variables have the same type declaration
@@ -1078,7 +1080,7 @@ parser! {
     // TODO add instruction_list
     rule function_body() -> Vec<StmtKind> = statement_list()
     // TODO add many types here
-    rule var2_init_decl() -> Vec<UntypedVarDecl> = ref_to_var_init_decl() / var1_init_decl__with_ambiguous_struct()
+    rule var2_init_decl() -> Vec<UntypedVarDecl> = ref_to_var_init_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
 
     // B.1.5.2 Function blocks
     // IEC 61131 defines separate standard and derived function block names,

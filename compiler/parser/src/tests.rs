@@ -874,6 +874,62 @@ END_FUNCTION";
     }
 
     #[test]
+    fn parse_when_function_var_with_string_length_then_parses() {
+        let _lib = parse_text(
+            "FUNCTION MY_FUNC : INT
+            VAR_INPUT
+                x : INT;
+            END_VAR
+            VAR
+                buf : STRING[10];
+            END_VAR
+            MY_FUNC := 0;
+            END_FUNCTION",
+        );
+    }
+
+    #[test]
+    fn parse_when_function_var_constant_with_string_length_then_parses() {
+        let _lib = parse_text(
+            "FUNCTION MY_FUNC : INT
+            VAR CONSTANT
+                FILL : STRING[1] := '0';
+            END_VAR
+            MY_FUNC := 0;
+            END_FUNCTION",
+        );
+    }
+
+    #[test]
+    fn parse_when_function_var_in_out_with_string_length_then_parses() {
+        let _lib = parse_text(
+            "FUNCTION MY_FUNC : INT
+            VAR_IN_OUT
+                buf : STRING[255];
+            END_VAR
+            MY_FUNC := 0;
+            END_FUNCTION",
+        );
+    }
+
+    #[test]
+    fn parse_when_struct_member_with_string_length_then_parses() {
+        let _lib = parse_text(
+            "TYPE MY_STRUCT :
+            STRUCT
+                name : STRING[10];
+            END_STRUCT;
+            END_TYPE
+            FUNCTION MY_FUNC : INT
+            VAR_INPUT
+                x : INT;
+            END_VAR
+            MY_FUNC := 0;
+            END_FUNCTION",
+        );
+    }
+
+    #[test]
     fn parse_when_task_with_interval_and_priority_then_builds_structure() {
         let source = "
         CONFIGURATION config
@@ -1136,6 +1192,104 @@ END_VAR
         x := FALSE;
     END_IF
 END_PROGRAM";
+
+        let options = ParseOptions {
+            allow_missing_semicolon: true,
+            ..Default::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_end_while_without_semicolon_and_flag_enabled_then_ok() {
+        let source = "PROGRAM main
+VAR
+    x : BOOL;
+END_VAR
+    WHILE x DO
+        x := FALSE;
+    END_WHILE
+END_PROGRAM";
+
+        let options = ParseOptions {
+            allow_missing_semicolon: true,
+            ..Default::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_end_for_without_semicolon_and_flag_enabled_then_ok() {
+        let source = "PROGRAM main
+VAR
+    i : INT;
+END_VAR
+    FOR i := 0 TO 10 DO
+        i := i;
+    END_FOR
+END_PROGRAM";
+
+        let options = ParseOptions {
+            allow_missing_semicolon: true,
+            ..Default::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_end_case_without_semicolon_and_flag_enabled_then_ok() {
+        let source = "PROGRAM main
+VAR
+    x : INT;
+END_VAR
+    CASE x OF
+        1: x := 2;
+    END_CASE
+END_PROGRAM";
+
+        let options = ParseOptions {
+            allow_missing_semicolon: true,
+            ..Default::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_end_repeat_without_semicolon_and_flag_enabled_then_ok() {
+        let source = "PROGRAM main
+VAR
+    x : BOOL;
+END_VAR
+    REPEAT
+        x := FALSE;
+    UNTIL x
+    END_REPEAT
+END_PROGRAM";
+
+        let options = ParseOptions {
+            allow_missing_semicolon: true,
+            ..Default::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_function_end_if_without_semicolon_and_flag_enabled_then_ok() {
+        let source = "FUNCTION MY_FUNC : REAL
+VAR_INPUT
+    x : INT;
+END_VAR
+IF x > 0 THEN
+    MY_FUNC := 1.0;
+ELSE
+    MY_FUNC := 0.0;
+END_IF
+END_FUNCTION";
 
         let options = ParseOptions {
             allow_missing_semicolon: true,

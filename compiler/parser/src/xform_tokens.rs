@@ -24,7 +24,17 @@ pub fn insert_keyword_statement_terminators(
 
     let mut in_end_statement = false;
     for tok in input {
-        if !in_end_statement && matches!(tok.token_type, TokenType::EndIf | TokenType::EndStruct) {
+        if !in_end_statement
+            && matches!(
+                tok.token_type,
+                TokenType::EndIf
+                    | TokenType::EndStruct
+                    | TokenType::EndWhile
+                    | TokenType::EndFor
+                    | TokenType::EndCase
+                    | TokenType::EndRepeat
+            )
+        {
             in_end_statement = true;
         } else if in_end_statement
             && tok.token_type != TokenType::Semicolon
