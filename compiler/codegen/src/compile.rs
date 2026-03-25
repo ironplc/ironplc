@@ -27,6 +27,11 @@
 //! - WHILE, FOR, and REPEAT iteration statements
 //! - EXIT (break from innermost loop) and RETURN (early program exit)
 //!
+//! # Not yet supported
+//!
+//! - TODO: STRING[N] in VAR_IN_OUT (parsed, but runtime pass-by-reference not implemented)
+//! - TODO: STRING[N] in STRUCT members (parsed, but struct compilation not implemented)
+//!
 //! # Integer type strategy: promote-operate-truncate
 //!
 //! Two native operation widths: **i32** (for ≤32-bit types) and **i64**
@@ -362,6 +367,10 @@ fn compile_user_function(
     // then local variables.
     let mut current_index = var_offset;
     let mut num_params: u16 = 0;
+
+    // TODO: VAR_IN_OUT STRING[N] variables are parsed but not yet supported
+    // at runtime. InOut string parameters need pass-by-reference semantics
+    // for the string data region.
 
     // First pass: input parameters (must come first for CALL arg passing).
     for decl in &func_decl.variables {
