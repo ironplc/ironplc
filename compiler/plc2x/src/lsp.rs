@@ -53,7 +53,13 @@ fn extract_parse_options(initialize_params: &InitializeParams) -> ParseOptions {
             }
             _ => ParseOptions::default(),
         };
+        let allow_time_as_function_name = opts
+            .get("allowTimeAsFunctionName")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         options.allow_missing_semicolon = allow_missing_semicolon;
+        options.allow_time_as_function_name = allow_time_as_function_name;
         options
     } else {
         ParseOptions::default()
