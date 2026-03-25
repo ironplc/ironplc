@@ -260,6 +260,9 @@ fn handle_diagnostics(
                     if let Some(content) = set.get(file_id) {
                         let id = files.add(file_id.to_string(), content.as_string());
                         files_to_ids.insert(file_id, id);
+                    } else {
+                        let id = files.add(file_id.to_string(), empty_source);
+                        files_to_ids.insert(file_id, id);
                     }
                 }
             }
@@ -414,5 +417,41 @@ mod tests {
         let container = ironplc_container::Container::read_from(&mut file).unwrap();
         assert_eq!(container.header.num_variables, 2);
         assert_eq!(container.header.num_functions, 2);
+    }
+
+    #[test]
+    fn compile_when_structured_variable_then_error() {
+        use std::io::Write;
+
+        let mut source = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            source,
+            "FUNCTION MY_FUNC : BOOL
+  VAR_INPUT
+      x : BYTE;
+  END_VAR
+      IF setup.EXTENDED_ASCII THEN
+          MY_FUNC := TRUE;
+      ELSE
+          MY_FUNC := FALSE;
+      END_IF;
+  END_FUNCTION
+  PROGRAM main
+  VAR
+      result : BOOL;
+  END_VAR
+      result := MY_FUNC(x := BYTE#65);
+  END_PROGRAM"
+        )
+        .unwrap();
+
+        let output = tempfile::NamedTempFile::new().unwrap();
+        let result = compile(
+            &[source.path().to_path_buf()],
+            output.path(),
+            ParseOptions::default(),
+            true,
+        );
+        assert!(result.is_err());
     }
 }
