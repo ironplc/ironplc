@@ -1,0 +1,36 @@
+=====
+P0011
+=====
+
+.. problem-summary:: P0011
+
+This error occurs when a variable block (``VAR``, ``VAR_INPUT``, ``VAR_OUTPUT``, ``VAR_IN_OUT``, ``VAR_EXTERNAL``, ``VAR_GLOBAL``, etc.) contains no declarations. The IEC 61131-3 standard requires at least one variable declaration within each variable block.
+
+Example
+-------
+
+The following code will generate error P0011:
+
+.. code-block::
+
+   FUNCTION myFunc : INT
+   VAR
+   END_VAR
+       myFunc := 1;
+   END_FUNCTION
+
+The ``VAR`` block is empty and does not contain any variable declarations.
+
+To fix this error, you have two options:
+
+**Option 1: Remove the empty variable block**
+
+.. code-block::
+
+   FUNCTION myFunc : INT
+       myFunc := 1;
+   END_FUNCTION
+
+**Option 2: Enable empty variable blocks with command line option**
+
+If your code is auto-generated and contains empty variable blocks, you can allow them with the ``--allow-empty-var-blocks`` command line option when running the compiler.
