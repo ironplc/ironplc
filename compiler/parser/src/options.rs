@@ -42,10 +42,10 @@ macro_rules! define_parse_options {
 
 define_parse_options! {
     standard {
-        allow_c_style_comments,
         allow_iec_61131_3_2013,
     }
     vendor {
+        allow_c_style_comments,
         allow_missing_semicolon,
         allow_top_level_var_global,
         allow_constant_type_params,
@@ -66,6 +66,7 @@ mod tests {
         };
         options.apply_allow_all();
 
+        assert!(options.allow_c_style_comments);
         assert!(options.allow_missing_semicolon);
         assert!(options.allow_top_level_var_global);
         assert!(options.allow_constant_type_params);
@@ -78,6 +79,7 @@ mod tests {
         let mut options = ParseOptions::default();
         options.apply_allow_all();
 
+        assert!(!options.allow_c_style_comments);
         assert!(!options.allow_missing_semicolon);
         assert!(!options.allow_top_level_var_global);
         assert!(!options.allow_constant_type_params);
@@ -93,7 +95,6 @@ mod tests {
         };
         options.apply_allow_all();
 
-        assert!(!options.allow_c_style_comments);
         assert!(!options.allow_iec_61131_3_2013);
     }
 }
