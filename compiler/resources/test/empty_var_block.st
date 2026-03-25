@@ -1,0 +1,8 @@
+FUNCTION myFunc : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+VAR
+END_VAR
+    myFunc := x;
+END_FUNCTION

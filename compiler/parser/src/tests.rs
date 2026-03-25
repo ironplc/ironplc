@@ -1850,4 +1850,126 @@ END_PROGRAM",
             other => panic!("Expected ProgramDeclaration, got {:?}", other),
         }
     }
+
+    #[test]
+    fn parse_when_empty_var_in_function_with_flag_then_ok() {
+        let source = "
+FUNCTION myFunc : INT
+VAR
+END_VAR
+    myFunc := 1;
+END_FUNCTION";
+        let options = ParseOptions {
+            allow_empty_var_blocks: true,
+            ..ParseOptions::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_empty_var_in_function_without_flag_then_error() {
+        let source = "
+FUNCTION myFunc : INT
+VAR
+END_VAR
+    myFunc := 1;
+END_FUNCTION";
+        let result = parse_program(source, &FileId::default(), &ParseOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_when_empty_var_input_with_flag_then_ok() {
+        let source = "
+FUNCTION myFunc : INT
+VAR_INPUT
+END_VAR
+    myFunc := 1;
+END_FUNCTION";
+        let options = ParseOptions {
+            allow_empty_var_blocks: true,
+            ..ParseOptions::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_empty_var_output_with_flag_then_ok() {
+        let source = "
+FUNCTION myFunc : INT
+VAR_OUTPUT
+END_VAR
+    myFunc := 1;
+END_FUNCTION";
+        let options = ParseOptions {
+            allow_empty_var_blocks: true,
+            ..ParseOptions::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_empty_var_in_out_with_flag_then_ok() {
+        let source = "
+FUNCTION myFunc : INT
+VAR_IN_OUT
+END_VAR
+    myFunc := 1;
+END_FUNCTION";
+        let options = ParseOptions {
+            allow_empty_var_blocks: true,
+            ..ParseOptions::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_empty_var_constant_with_flag_then_ok() {
+        let source = "
+FUNCTION myFunc : INT
+VAR CONSTANT
+END_VAR
+    myFunc := 1;
+END_FUNCTION";
+        let options = ParseOptions {
+            allow_empty_var_blocks: true,
+            ..ParseOptions::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_empty_var_in_program_with_flag_then_ok() {
+        let source = "
+PROGRAM main
+VAR
+END_VAR
+END_PROGRAM";
+        let options = ParseOptions {
+            allow_empty_var_blocks: true,
+            ..ParseOptions::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_when_empty_var_in_function_block_with_flag_then_ok() {
+        let source = "
+FUNCTION_BLOCK myFb
+VAR
+END_VAR
+END_FUNCTION_BLOCK";
+        let options = ParseOptions {
+            allow_empty_var_blocks: true,
+            ..ParseOptions::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok());
+    }
 }

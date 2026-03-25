@@ -206,6 +206,7 @@ parser! {
     rule periodsep_no_trailing<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ period() _)) {v}
     rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v}
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
+    rule semisep_or_empty<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v} / { vec![] }
     rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) comma() {v}
 
 
@@ -779,7 +780,7 @@ parser! {
     rule field_selector() -> Id = identifier()
 
     // B.1.4.3 Declarations and initialization
-    rule input_declarations() -> Vec<VarDeclarations> = tok(TokenType::VarInput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<input_declaration()>) _ tok(TokenType::EndVar) {
+    rule input_declarations() -> Vec<VarDeclarations> = tok(TokenType::VarInput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_or_empty(<input_declaration()>) _ tok(TokenType::EndVar) {
       VarDeclarations::with(declarations, qualifier.unwrap_or(DeclarationQualifier::Unspecified))
     }
     rule input_declaration() -> VarDeclarations =
@@ -865,10 +866,10 @@ parser! {
         }
       }
       / tn:non_generic_type_name() { ReferenceTarget::Named(tn) }
-    pub rule output_declarations() -> Vec<VarDecl> = tok(TokenType::VarOutput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
+    pub rule output_declarations() -> Vec<VarDecl> = tok(TokenType::VarOutput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_or_empty(<var_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::flat_map(declarations, VariableType::Output, qualifier)
     }
-    pub rule input_output_declarations() -> Vec<VarDecl> = tok(TokenType::VarInOut) _ declarations:semisep(<var_declaration()>) _ tok(TokenType::EndVar) {
+    pub rule input_output_declarations() -> Vec<VarDecl> = tok(TokenType::VarInOut) _ declarations:semisep_or_empty(<var_declaration()>) _ tok(TokenType::EndVar) {
       VarDeclarations::flat_map(declarations, VariableType::InOut,  None)
     }
     rule var_declaration() -> Vec<UntypedVarDecl> = temp_var_decl() / fb_name_decl()
@@ -902,14 +903,14 @@ parser! {
         }
       }).collect()
     }
-    rule var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) {DeclarationQualifier::Constant})? _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
+    rule var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) {DeclarationQualifier::Constant})? _ declarations:semisep_or_empty(<var_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
-    rule retentive_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ tok(TokenType::Retain) _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
+    rule retentive_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ tok(TokenType::Retain) _ declarations:semisep_or_empty(<var_init_decl()>) _ tok(TokenType::EndVar) {
       let qualifier = Option::Some(DeclarationQualifier::Retain);
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
-    rule located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) { DeclarationQualifier::Constant } / tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<located_var_decl()>) _ tok(TokenType::EndVar) {
+    rule located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) { DeclarationQualifier::Constant } / tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_or_empty(<located_var_decl()>) _ tok(TokenType::EndVar) {
       let qualifier = qualifier.unwrap_or(DeclarationQualifier::Unspecified);
       VarDeclarations::Located(VarDeclarations::map(declarations, &qualifier))
     }
@@ -923,7 +924,7 @@ parser! {
       }
     }
     // We use the same type as in other places for VarInit, but the external always omits the initializer
-    rule external_var_declarations() -> VarDeclarations = tok(TokenType::VarExternal) _ qualifier:(tok(TokenType::Constant) {DeclarationQualifier::Constant})? _ declarations:semisep(<external_declaration()>) _ tok(TokenType::EndVar) {
+    rule external_var_declarations() -> VarDeclarations = tok(TokenType::VarExternal) _ qualifier:(tok(TokenType::Constant) {DeclarationQualifier::Constant})? _ declarations:semisep_or_empty(<external_declaration()>) _ tok(TokenType::EndVar) {
       let qualifier = qualifier.unwrap_or(DeclarationQualifier::Unspecified);
       VarDeclarations::External(VarDeclarations::map(declarations, &qualifier))
     }
@@ -949,7 +950,7 @@ parser! {
     }
     rule global_var_name() -> Id = i:identifier() { i }
     rule global_var_declarations__qualifier() -> DeclarationQualifier = tok(TokenType::Constant) { DeclarationQualifier::Constant } / tok(TokenType::Retain) { DeclarationQualifier::Retain }
-    pub rule global_var_declarations() -> Vec<VarDecl> = tok(TokenType::VarGlobal) _ qualifier:global_var_declarations__qualifier()? _ declarations:semisep(<global_var_decl()>) _ tok(TokenType::EndVar) {
+    pub rule global_var_declarations() -> Vec<VarDecl> = tok(TokenType::VarGlobal) _ qualifier:global_var_declarations__qualifier()? _ declarations:semisep_or_empty(<global_var_decl()>) _ tok(TokenType::EndVar) {
       // TODO set the options - this is pretty similar to VarInit - maybe it should be the same
       let declarations = declarations.into_iter().flatten();
       declarations.into_iter().map(|declaration| {
@@ -1016,7 +1017,7 @@ parser! {
         keyword_span: start.span.clone(),
       }
     }
-    rule incompl_located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep(<incompl_located_var_decl()>) _ tok(TokenType::EndVar) {
+    rule incompl_located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_or_empty(<incompl_located_var_decl()>) _ tok(TokenType::EndVar) {
       let declarations = declarations.into_iter().map(|decl| {
         let qualifier = qualifier
           .clone()
@@ -1073,7 +1074,7 @@ parser! {
       }
     }
     rule io_var_declarations() -> Vec<VarDeclarations> = input_declarations() / o:output_declarations() { vec![VarDeclarations::Outputs(o)] } / io:input_output_declarations() { vec![VarDeclarations::Inouts(io)] }
-    rule function_var_decls() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) {DeclarationQualifier::Constant})? _ vars:semisep_oneplus(<var2_init_decl()>) _ tok(TokenType::EndVar) {
+    rule function_var_decls() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) {DeclarationQualifier::Constant})? _ vars:semisep_or_empty(<var2_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::Var(VarDeclarations::flat_map(vars, VariableType::Var, qualifier))
     }
     // TODO add instruction_list
@@ -1104,7 +1105,7 @@ parser! {
     //  let qualifier = Option::Some(DeclarationQualifier::Retain);
     //  VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::VarTemp, qualifier))
     //}
-    rule non_retentive_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ tok(TokenType::NonRetain) _ declarations:semisep(<var_init_decl()>) _ tok(TokenType::EndVar) {
+    rule non_retentive_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ tok(TokenType::NonRetain) _ declarations:semisep_or_empty(<var_init_decl()>) _ tok(TokenType::EndVar) {
       let qualifier = Option::Some(DeclarationQualifier::NonRetain);
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
