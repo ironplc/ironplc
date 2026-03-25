@@ -61,6 +61,10 @@ fn extract_parse_options(initialize_params: &InitializeParams) -> ParseOptions {
             .get("allowTimeAsFunctionName")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let allow_c_style_comments = opts
+            .get("allowCStyleComments")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let allow_all = opts
             .get("allowAll")
             .and_then(|v| v.as_bool())
@@ -69,6 +73,7 @@ fn extract_parse_options(initialize_params: &InitializeParams) -> ParseOptions {
         options.allow_missing_semicolon = allow_missing_semicolon;
         options.allow_empty_var_blocks = allow_empty_var_blocks;
         options.allow_time_as_function_name = allow_time_as_function_name;
+        options.allow_c_style_comments = allow_c_style_comments;
         options.allow_all = allow_all;
         options.apply_allow_all();
         options

@@ -353,4 +353,11 @@ END_PROGRAM",
         let expected = read_resource("empty_var_block_rendered.st");
         assert_eq!(rendered, expected);
     }
+
+    #[test]
+    fn write_to_string_var_temp() {
+        let rendered = parse_and_render_resource("var_temp.st");
+        let expected = read_resource("var_temp_rendered.st");
+        assert_eq!(rendered, expected);
+    }
 }

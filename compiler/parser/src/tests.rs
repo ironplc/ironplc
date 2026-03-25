@@ -2037,4 +2037,61 @@ END_PROGRAM";
         let result = parse_program(source, &FileId::default(), &options);
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
     }
+
+    #[test]
+    fn parse_when_function_with_var_temp_then_succeeds() {
+        let lib = parse_text(
+            "FUNCTION my_func : DINT
+VAR_INPUT
+    a : DINT;
+END_VAR
+VAR_TEMP
+    temp : DINT;
+END_VAR
+    temp := a * 2;
+    my_func := temp;
+END_FUNCTION",
+        );
+        let elem = &lib.elements[0];
+        match elem {
+            LibraryElementKind::FunctionDeclaration(func) => {
+                assert_eq!(func.variables.len(), 2);
+                assert_eq!(func.variables[0].var_type, VariableType::Input);
+                assert_eq!(func.variables[1].var_type, VariableType::VarTemp);
+            }
+            _ => panic!("Expected FunctionDeclaration"),
+        }
+    }
+
+    #[test]
+    fn parse_when_function_block_with_var_temp_then_succeeds() {
+        let lib = parse_text(
+            "FUNCTION_BLOCK my_fb
+VAR_TEMP
+    t : INT;
+END_VAR
+    t := 42;
+END_FUNCTION_BLOCK",
+        );
+        let elem = &lib.elements[0];
+        match elem {
+            LibraryElementKind::FunctionBlockDeclaration(fb) => {
+                assert_eq!(fb.variables.len(), 1);
+                assert_eq!(fb.variables[0].var_type, VariableType::VarTemp);
+            }
+            _ => panic!("Expected FunctionBlockDeclaration"),
+        }
+    }
+
+    #[test]
+    fn parse_when_program_with_var_temp_then_fails() {
+        let source = "PROGRAM main
+VAR_TEMP
+    t : INT;
+END_VAR
+    t := 42;
+END_PROGRAM";
+        let result = parse_program(source, &FileId::default(), &ParseOptions::default());
+        assert!(result.is_err());
+    }
 }
