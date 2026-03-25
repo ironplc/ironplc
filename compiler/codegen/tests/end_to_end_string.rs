@@ -153,3 +153,28 @@ END_PROGRAM
     let s = read_string(&bufs.data_region, 0);
     assert_eq!(s, "hello");
 }
+
+#[test]
+fn end_to_end_when_user_function_returns_string_input_then_correct() {
+    // Verify that a function accepting STRING[80] and returning STRING[80]
+    // can copy the input to the return value via variable assignment.
+    let source = "
+FUNCTION MY_FUNC : STRING[80]
+VAR_INPUT
+    str : STRING[80];
+END_VAR
+    MY_FUNC := str;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : STRING[80];
+END_VAR
+    result := MY_FUNC(str := 'Hello');
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+
+    let s = read_string(&bufs.data_region, 0);
+    assert_eq!(s, "Hello");
+}
