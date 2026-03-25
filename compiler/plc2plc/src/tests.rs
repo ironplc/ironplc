@@ -34,6 +34,13 @@ mod test {
     }
 
     #[test]
+    fn write_to_string_when_array_in_function_var_then_renders() {
+        let rendered = parse_and_render_resource("array_in_function_var.st");
+        let expected = read_resource("array_in_function_var_rendered.st");
+        assert_eq!(rendered, expected);
+    }
+
+    #[test]
     fn write_to_string_conditional() {
         let rendered = parse_and_render_resource("conditional.st");
         let expected = read_resource("conditional_rendered.st");

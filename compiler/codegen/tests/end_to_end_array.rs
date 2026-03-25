@@ -186,3 +186,28 @@ END_PROGRAM
     let (_c, bufs) = parse_and_run(source);
     assert_eq!(bufs.vars[1].as_i32(), 42);
 }
+
+#[test]
+fn end_to_end_when_array_in_function_var_then_parses_and_analyzes() {
+    let source = "
+FUNCTION MY_FUNC : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+VAR
+    stack : ARRAY[1..32] OF INT;
+END_VAR
+    MY_FUNC := x;
+END_FUNCTION
+PROGRAM main
+VAR
+    result : INT;
+    arg : INT;
+END_VAR
+    arg := 42;
+    result := MY_FUNC(x := arg);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), 42);
+}
