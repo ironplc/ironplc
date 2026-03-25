@@ -1061,7 +1061,7 @@ parser! {
       / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { FunctionReturnType::WString(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
       / et:elementary_type_name() { FunctionReturnType::Named(et.into()) }
       / dt:derived_type_name() { FunctionReturnType::Named(dt) }
-    rule function_declaration() -> FunctionDeclaration = tok(TokenType::Function) _  name:derived_function_name() _ tok(TokenType::Colon) _ rt:function_return_type() _ var_decls:(io:io_var_declarations() / func:function_var_decls() { vec![ func ]}) ** _ _ body:function_body() _ tok(TokenType::EndFunction) {
+    rule function_declaration() -> FunctionDeclaration = tok(TokenType::Function) _  name:derived_function_name() _ tok(TokenType::Colon) _ rt:function_return_type() _ var_decls:(io:io_var_declarations() / func:function_var_decls() { vec![ func ] } / temp:temp_var_decls() { vec![ temp ] }) ** _ _ body:function_body() _ tok(TokenType::EndFunction) {
       let var_decls = VarDeclarations::flatten(var_decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(var_decls);
       let (edge_variables, remainder) = VarDeclarations::drain_edge_decl(remainder);
@@ -1087,7 +1087,7 @@ parser! {
     // but we don't need that distinction here.
     rule function_block_type_name() -> TypeName = type_name()
     rule derived_function_block_name() -> TypeName = type_name()
-    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
+    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
@@ -1099,12 +1099,10 @@ parser! {
         span: SourceSpan::join(&start.span, &end.span),
       }
     }
-    // TODO temp_var_decls
     rule other_var_declarations() -> VarDeclarations = external_var_declarations() / var_declarations() / retentive_var_declarations() / non_retentive_var_declarations() / incompl_located_var_declarations()
-    //rule temp_var_decls() -> VarDeclarations = tok(TokenType::VarTemp) _ declarations:semisep(<temp_var_decl()>) _ tok(TokenType::EndVar) {
-    //  let qualifier = Option::Some(DeclarationQualifier::Retain);
-    //  VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::VarTemp, qualifier))
-    //}
+    rule temp_var_decls() -> VarDeclarations = tok(TokenType::VarTemp) _ declarations:semisep_or_empty(<var2_init_decl()>) _ tok(TokenType::EndVar) {
+      VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::VarTemp, None))
+    }
     rule non_retentive_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ tok(TokenType::NonRetain) _ declarations:semisep_or_empty(<var_init_decl()>) _ tok(TokenType::EndVar) {
       let qualifier = Option::Some(DeclarationQualifier::NonRetain);
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
