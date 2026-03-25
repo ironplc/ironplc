@@ -42,6 +42,10 @@ fn extract_parse_options(initialize_params: &InitializeParams) -> ParseOptions {
             .get("allowMissingSemicolon")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let allow_empty_var_blocks = opts
+            .get("allowEmptyVarBlocks")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         let mut options = match std_version {
             Some("2013") => {
@@ -54,6 +58,7 @@ fn extract_parse_options(initialize_params: &InitializeParams) -> ParseOptions {
             _ => ParseOptions::default(),
         };
         options.allow_missing_semicolon = allow_missing_semicolon;
+        options.allow_empty_var_blocks = allow_empty_var_blocks;
         options
     } else {
         ParseOptions::default()
@@ -699,6 +704,28 @@ mod test {
 
         let options = super::extract_parse_options(&params);
         assert!(options.allow_missing_semicolon);
+    }
+
+    #[test]
+    fn extract_parse_options_when_allow_empty_var_blocks_then_enables_flag() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(serde_json::json!({"allowEmptyVarBlocks": true})),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_parse_options(&params);
+        assert!(options.allow_empty_var_blocks);
     }
 
     #[test]
