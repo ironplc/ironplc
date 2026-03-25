@@ -72,6 +72,11 @@ struct FileArgs {
     #[arg(long)]
     allow_time_as_function_name: bool,
 
+    /// Allow C-style comments (// line comments and /* block comments */).
+    /// These are not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_c_style_comments: bool,
+
     /// Enable all vendor extensions.
     /// Equivalent to passing every --allow-* flag.
     #[arg(long)]
@@ -92,6 +97,7 @@ impl FileArgs {
         options.allow_constant_type_params = self.allow_constant_type_params || self.allow_all;
         options.allow_empty_var_blocks = self.allow_empty_var_blocks || self.allow_all;
         options.allow_time_as_function_name = self.allow_time_as_function_name || self.allow_all;
+        options.allow_c_style_comments = self.allow_c_style_comments || self.allow_all;
         options
     }
 }
