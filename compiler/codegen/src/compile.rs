@@ -485,9 +485,9 @@ fn compile_user_function(
         }
     }
 
-    // Second pass: local variables (VAR).
+    // Second pass: local variables (VAR, VAR_TEMP).
     for decl in &func_decl.variables {
-        if decl.var_type != VariableType::Var {
+        if !matches!(decl.var_type, VariableType::Var | VariableType::VarTemp) {
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {

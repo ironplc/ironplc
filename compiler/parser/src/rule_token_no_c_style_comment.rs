@@ -13,7 +13,9 @@ pub fn apply(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnos
     let mut errors = Vec::new();
 
     for tok in tokens {
-        if tok.token_type == TokenType::Comment && tok.text.starts_with("//") {
+        if tok.token_type == TokenType::Comment
+            && (tok.text.starts_with("//") || tok.text.starts_with("/*"))
+        {
             errors.push(Diagnostic::problem(
                 ironplc_problems::Problem::CStyleComment,
                 Label::span(tok.span.clone(), "Comment"),
@@ -65,6 +67,46 @@ mod test {
             line: 1,
             col: 1,
             text: String::from("// comment"),
+        }];
+
+        let result = apply(
+            &tokens,
+            &ParseOptions {
+                allow_c_style_comments: true,
+                ..ParseOptions::default()
+            },
+        );
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    fn apply_when_has_block_comment_and_not_allowed_then_error() {
+        let tokens = vec![Token {
+            token_type: TokenType::Comment,
+            span: SourceSpan::default(),
+            line: 1,
+            col: 1,
+            text: String::from("/* block comment */"),
+        }];
+
+        let result = apply(
+            &tokens,
+            &ParseOptions {
+                allow_c_style_comments: false,
+                ..ParseOptions::default()
+            },
+        );
+        assert!(result.is_err())
+    }
+
+    #[test]
+    fn apply_when_has_block_comment_and_allowed_then_ok() {
+        let tokens = vec![Token {
+            token_type: TokenType::Comment,
+            span: SourceSpan::default(),
+            line: 1,
+            col: 1,
+            text: String::from("/* block comment */"),
         }];
 
         let result = apply(

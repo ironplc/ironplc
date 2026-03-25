@@ -56,6 +56,7 @@ fn parse_options_from_edition(edition: &str) -> ParseOptions {
         allow_top_level_var_global: true,
         allow_constant_type_params: true,
         allow_empty_var_blocks: true,
+        allow_c_style_comments: true,
         ..Default::default()
     }
 }
