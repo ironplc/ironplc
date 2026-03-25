@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{parse_and_compile, parse_and_run};
+use common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
 
 /// Reads a STRING value from the data region at the given byte offset.
@@ -130,9 +130,9 @@ END_PROGRAM
 }
 
 #[test]
-fn end_to_end_when_function_returns_string_with_length_then_compiles() {
-    // Verify that FUNCTION : STRING[255] compiles through the full pipeline
-    // (parse -> analyze -> codegen) without errors.
+fn end_to_end_when_function_returns_string_with_length_then_executes() {
+    // Verify that FUNCTION : STRING[255] compiles and executes through the
+    // full pipeline (parse -> analyze -> codegen -> VM) without errors.
     let source = "
 FUNCTION my_func : STRING[255]
   VAR_INPUT
@@ -143,12 +143,13 @@ END_FUNCTION
 
 PROGRAM main
   VAR
-    r : BOOL;
+    result : STRING;
   END_VAR
-  r := TRUE;
+  result := my_func(1);
 END_PROGRAM
 ";
-    // This previously failed at parse time because STRING[255] was not
-    // accepted as a function return type.
-    let _container = parse_and_compile(source);
+    let (_c, bufs) = parse_and_run(source);
+
+    let s = read_string(&bufs.data_region, 0);
+    assert_eq!(s, "hello");
 }
