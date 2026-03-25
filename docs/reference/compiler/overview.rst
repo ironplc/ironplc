@@ -82,13 +82,14 @@ On success, the command produces no output.
 Compile the Program
 -------------------
 
-.. warning::
+.. note::
 
-   The compile command currently supports only trivial programs. Supported
-   features include: ``PROGRAM`` declarations, ``INT`` variable declarations,
-   assignment statements, integer literal constants, and the ``+`` (add)
-   operator. Programs using other features will produce a code generation
-   error.
+   The compile command supports most IEC 61131-3 structured text features.
+   Notable limitations include: ``ARRAY`` element access, ``STRUCT`` member
+   access, ``FUNCTION_BLOCK`` with SFC bodies, ``STRING`` pass-by-reference
+   (``VAR_IN_OUT``), direct variables (hardware-mapped I/O such as
+   ``%IX0.0``), and enumerated values in expressions. Programs using
+   unsupported features will produce a code generation error.
 
 You can compile a source file into a bytecode container (``.iplc``) file
 using the ``compile`` command. Run the commands in
