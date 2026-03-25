@@ -10,5 +10,6 @@ pub struct ParseOptions {
     pub allow_missing_semicolon: bool,
     pub allow_top_level_var_global: bool,
     pub allow_constant_type_params: bool,
+    pub allow_empty_var_blocks: bool,
     pub allow_time_as_function_name: bool,
 }

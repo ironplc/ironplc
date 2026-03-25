@@ -124,6 +124,13 @@ mod test {
         assert_eq!(rendered, expected);
     }
 
+    #[test]
+    fn write_to_string_sized_string_contexts() {
+        let rendered = parse_and_render_resource("sized_string_contexts.st");
+        let expected = read_resource("sized_string_contexts_rendered.st");
+        assert_eq!(rendered, expected);
+    }
+
     pub fn parse_and_render_resource_edition3(name: &'static str) -> String {
         let source = read_shared_resource(name);
         let options = ParseOptions {
@@ -328,5 +335,22 @@ END_PROGRAM",
         // Expected output should be a TYPE declaration with the alias
         let expected = "TYPE\n   MY_ALIAS : INT ;\nEND_TYPE\n";
         assert_eq!(result, expected);
+    }
+
+    fn parse_and_render_resource_empty_var_blocks(name: &'static str) -> String {
+        let source = read_shared_resource(name);
+        let options = ParseOptions {
+            allow_empty_var_blocks: true,
+            ..ParseOptions::default()
+        };
+        let library = parse_program(&source, &FileId::default(), &options).unwrap();
+        write_to_string(&library).unwrap()
+    }
+
+    #[test]
+    fn write_to_string_empty_var_block() {
+        let rendered = parse_and_render_resource_empty_var_blocks("empty_var_block.st");
+        let expected = read_resource("empty_var_block_rendered.st");
+        assert_eq!(rendered, expected);
     }
 }
