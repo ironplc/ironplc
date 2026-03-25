@@ -82,14 +82,6 @@ On success, the command produces no output.
 Compile the Program
 -------------------
 
-.. warning::
-
-   The compile command currently supports only trivial programs. Supported
-   features include: ``PROGRAM`` declarations, ``INT`` variable declarations,
-   assignment statements, integer literal constants, and the ``+`` (add)
-   operator. Programs using other features will produce a code generation
-   error.
-
 You can compile a source file into a bytecode container (``.iplc``) file
 using the ``compile`` command. Run the commands in
 :ref:`Compile Program <compiler-compile-program>` to compile your program.
