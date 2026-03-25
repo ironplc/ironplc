@@ -91,8 +91,8 @@ Options
    Applies to the ``check``, ``compile``, and ``echo`` commands.
 
 ``--allow-all``
-   Enable all vendor extensions. Equivalent to passing every ``--allow-*``
-   flag. See :doc:`/explanation/enabling-features` for details.
+   Enable all vendor extensions except ``--allow-missing-semicolon``.
+   See :doc:`/explanation/enabling-features` for details.
 
 ``--allow-top-level-var-global``
    Allow ``VAR_GLOBAL`` declarations at the top level of a file, outside of
@@ -103,6 +103,25 @@ Options
    Allow constant references in type parameters (e.g., ``STRING[MY_CONST]``
    or ``ARRAY[1..MY_CONST] OF INT``). This is a vendor extension not part
    of the IEC 61131-3 standard.
+
+``--allow-empty-var-blocks``
+   Allow empty variable blocks (``VAR END_VAR``, ``VAR_INPUT END_VAR``,
+   etc.). This is a vendor extension not part of the IEC 61131-3 standard.
+
+``--allow-time-as-function-name``
+   Allow ``TIME`` to be used as a function name (e.g., ``TIME()``).
+   Required for OSCAT compatibility. This is a vendor extension not part
+   of the IEC 61131-3 standard.
+
+``--allow-c-style-comments``
+   Allow C-style comments (``//`` line comments and ``/* */`` block
+   comments). This is a vendor extension not part of the IEC 61131-3
+   standard.
+
+``--allow-missing-semicolon``
+   Allow missing semicolons after keyword statements like ``END_IF`` and
+   ``END_STRUCT``. This is a vendor extension not part of the IEC 61131-3
+   standard. Note: this flag is **not** included in ``--allow-all``.
 
 Examples
 ========

@@ -73,7 +73,8 @@ provides flags for these common vendor extensions to improve compatibility
 with code written for other PLC environments.
 
 ``--allow-all``
-   Enable all vendor extensions at once.
+   Enable all vendor extensions at once (except ``--allow-missing-semicolon``,
+   which must be passed explicitly).
 
 ``--allow-top-level-var-global``
    Allow :code:`VAR_GLOBAL` declarations at the top level of a file,
@@ -84,6 +85,25 @@ with code written for other PLC environments.
    Allow constant references in type parameters such as array bounds and
    string lengths (e.g., ``ARRAY[1..MY_CONST] OF INT`` or
    ``STRING[MY_CONST]``). See :doc:`/reference/language/data-types/array-types`.
+
+``--allow-c-style-comments``
+   Allow C-style comments (``//`` line comments and ``/* */`` block comments).
+   These are not part of the IEC 61131-3 standard but are supported by many
+   PLC environments.
+
+``--allow-empty-var-blocks``
+   Allow empty variable blocks (``VAR END_VAR``, ``VAR_INPUT END_VAR``, etc.).
+   Some PLC environments permit variable blocks with no declarations.
+
+``--allow-time-as-function-name``
+   Allow ``TIME`` to be used as a function name (e.g., ``TIME()``).
+   Required for OSCAT compatibility where ``TIME()`` reads the PLC system
+   clock.
+
+``--allow-missing-semicolon``
+   Allow missing semicolons after keyword statements like ``END_IF`` and
+   ``END_STRUCT``. Note: this flag is **not** included in ``--allow-all``
+   and must be passed explicitly.
 
 Pass the flag when running :program:`ironplcc`:
 

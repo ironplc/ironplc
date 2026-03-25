@@ -19,6 +19,7 @@ When adding new syntax, ensure every applicable item is complete:
 - [ ] **End-to-end execution test**: Parse → compile → run → verify variable values
 - [ ] **Non-standard gating**: If not standard IEC 61131-3, gate behind `--allow-x` flag
 - [ ] **LSP integration**: If a new `--allow-x` flag, add to LSP `extract_parse_options`
+- [ ] **Documentation**: If a new `--allow-x` flag, update `docs/explanation/enabling-features.rst`, `docs/reference/compiler/ironplcc.rst`, and the flag table in this file
 
 Not every syntax change requires all items. A new operator might not need new tokens. A token-level fix might not need codegen changes. Use judgment, but **always** include both round-trip and execution tests when the syntax produces executable code.
 
@@ -148,11 +149,13 @@ Current flags in `ParseOptions` (`parser/src/options.rs`):
 
 | Flag | CLI | Purpose | In `--allow-all`? |
 |------|-----|---------|-------------------|
-| `allow_c_style_comments` | (internal) | Permits `//` style comments | No |
+| `allow_c_style_comments` | `--allow-c-style-comments` | Permits `//` and `/* */` comments | Yes |
+| `allow_constant_type_params` | `--allow-constant-type-params` | Constants in type params (e.g., `STRING[MY_CONST]`) | Yes |
+| `allow_empty_var_blocks` | `--allow-empty-var-blocks` | Empty variable blocks (VAR END_VAR etc.) | Yes |
 | `allow_iec_61131_3_2013` | `--std-iec-61131-3 2013` | Enables Edition 3 keywords | N/A (version flag) |
 | `allow_missing_semicolon` | `--allow-missing-semicolon` | Inserts semicolons after END_IF etc. | No |
+| `allow_time_as_function_name` | `--allow-time-as-function-name` | TIME as function name (OSCAT compat) | Yes |
 | `allow_top_level_var_global` | `--allow-top-level-var-global` | VAR_GLOBAL outside CONFIGURATION | Yes |
-| `allow_constant_type_params` | `--allow-constant-type-params` | Constants in type params (e.g., `STRING[MY_CONST]`) | Yes |
 
 ### Grouping Guidance
 
@@ -219,6 +222,13 @@ If the extension should be enabled by default in the playground, set it there.
 #### 5. Implement the gating
 
 Use either the token demotion pattern, validation rule pattern, or analyzer-level check (see sections above). Always test both the allowed and disallowed cases.
+
+#### 6. Documentation
+
+Update these files to document the new flag:
+- `docs/explanation/enabling-features.rst` — add to the Vendor Extensions section
+- `docs/reference/compiler/ironplcc.rst` — add to the Options section
+- Update the flag table in this file (syntax-support-guide.md)
 
 ## plc2plc Round-Trip Testing
 
