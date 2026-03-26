@@ -614,6 +614,33 @@ InitialValueAssignmentKind::Structure(struct_init) => {
 }
 ```
 
+**LateResolvedType init arm** (mirrors the allocation arm from PR 2b):
+
+When a variable is declared as `myVar : MyStructType;` (no explicit initial values), the
+`InitialValueAssignmentKind` is `LateResolvedType`. PR 2b handles this in `assign_variables`
+for allocation. The init function must also handle it — otherwise these variables get allocated
+but never initialized, hitting the catch-all `_ => {}`.
+
+```rust
+InitialValueAssignmentKind::LateResolvedType(type_name) => {
+    // Check if this late-resolved type was allocated as a structure in assign_variables
+    if let Some(struct_info) = ctx.struct_vars.get(id) {
+        let data_offset = struct_info.data_offset;
+        let var_index = struct_info.var_index;
+
+        // Store data_offset into the variable slot
+        let offset_const = ctx.add_i32_constant(data_offset as i32);
+        emitter.emit_load_const_i32(offset_const);
+        emitter.emit_store_var_i32(var_index);
+
+        // Initialize with type-default values (no explicit initializers)
+        initialize_struct_fields(emitter, ctx, struct_info, &[])?;
+    }
+    // else: not a struct — other LateResolvedType kinds (FB, array-of-struct,
+    // etc.) are handled by their own init arms or are future work.
+}
+```
+
 ### 3b: Field-by-field initialization
 
 ```rust
@@ -668,9 +695,11 @@ fn initialize_struct_fields(
 - `compile_when_struct_with_explicit_init_then_emits_field_stores`
 - `compile_when_struct_with_default_init_then_emits_zero_stores`
 - `compile_when_struct_with_partial_init_then_defaults_unspecified_fields`
+- `compile_when_struct_late_resolved_type_then_initializes_with_defaults` (LateResolvedType variant — no explicit init values)
 
 **End-to-end VM test** (compile + execute):
 - `vm_when_struct_field_initialized_then_reads_correct_value`
+- `vm_when_struct_late_resolved_type_then_fields_have_defaults` (verifies LateResolvedType init path)
 
 ---
 
@@ -823,15 +852,16 @@ The recursive `walk_struct_chain` function from PR 4 handles arbitrary nesting d
 Extend `initialize_struct_fields` to handle nested structure fields:
 
 ```rust
-if field_info.field_type.is_structure() {
+// Note: IntermediateType has is_structure() but no structure_fields() accessor.
+// Use pattern matching to extract the fields from the Structure variant.
+if let IntermediateType::Structure { fields, .. } = &field_info.field_type {
     // Recurse into nested structure
-    let inner_fields = field_info.field_type.structure_fields().unwrap();
     let nested_inits = find_nested_inits(element_inits, field_name);
     initialize_nested_struct_fields(
         emitter, ctx,
         struct_info.var_index, struct_info.desc_index,
         field_info.slot_offset,
-        inner_fields, &nested_inits,
+        fields, &nested_inits,
     )?;
 }
 ```
@@ -885,34 +915,69 @@ fn compile_struct_array_field_load(
     ctx: &mut CompileContext,
     struct_info: &StructVarInfo,
     field_base_offset: u32,    // slot offset of array field within struct
+    array_total_elements: u32, // number of elements in the embedded array
     array_dimensions: &[ArrayDimension],
     subscripts: &[Expr],
 ) -> Result<(), Diagnostic> {
     // Compute flat index within the embedded array (0-based).
     // For constant subscript: emit as compile-time constant.
     // For variable subscript: emit runtime arithmetic.
+    //
+    // IMPORTANT: The VM's LOAD_ARRAY/STORE_ARRAY bounds-checks against the
+    // struct's total_slots, NOT the embedded array's element count. An
+    // out-of-range array index that still falls within the struct would
+    // silently read/write wrong fields. We must emit our own bounds check
+    // against the embedded array's actual element count.
     let is_const = is_constant_subscript(&subscripts[0]);
 
     if is_const {
-        // Compile-time: combine struct offset + array index into one constant
+        // Compile-time: validate bounds statically and fold into one constant
         let array_index = evaluate_constant_subscript(&subscripts[0])?;
-        let flat_index = array_index - array_dimensions[0].lower;
-        let total_slot = field_base_offset + flat_index as u32;
+        let zero_based = array_index - array_dimensions[0].lower;
+        if zero_based < 0 || zero_based as u32 >= array_total_elements {
+            return Err(Diagnostic::problem(
+                Problem::ArrayIndexOutOfBounds,
+                Label::span(subscripts[0].span(), "Index out of bounds for embedded array"),
+            ));
+        }
+        let total_slot = field_base_offset + zero_based as u32;
         let idx_const = ctx.add_i32_constant(total_slot as i32);
         emitter.emit_load_const_i32(idx_const);
     } else {
-        // Runtime: emit (subscript - lower) + field_base_offset
+        // Runtime: emit (subscript - lower), then bounds-check against
+        // the embedded array's element count, then add field_base_offset.
         //
         // Bytecode sequence:
         //   LOAD_VAR subscript_var          ; push subscript value
         //   LOAD_CONST lower_bound          ; push array lower bound
         //   SUB_I32                          ; subscript - lower = 0-based index
+        //   DUP                             ; duplicate for bounds check
+        //   LOAD_CONST array_total_elements ; push embedded array size
+        //   BOUNDS_CHECK                    ; trap if 0-based index >= total_elements
         //   LOAD_CONST field_base_offset    ; push struct field offset
         //   ADD_I32                          ; total flat slot index
+        //
+        // BOUNDS_CHECK (or equivalent: compare + conditional trap) ensures
+        // the 0-based index is within [0, array_total_elements). Without this,
+        // the VM would only check against the struct's total_slots, allowing
+        // an out-of-range array subscript to silently alias another field.
+        //
+        // If a dedicated BOUNDS_CHECK opcode is not available, the equivalent
+        // can be emitted as:
+        //   DUP
+        //   LOAD_CONST 0
+        //   LT_I32              ; index < 0?
+        //   TRAP_IF             ; trap on negative index
+        //   DUP
+        //   LOAD_CONST array_total_elements
+        //   GE_I32              ; index >= total_elements?
+        //   TRAP_IF             ; trap on overflow
         compile_expr(emitter, ctx, &subscripts[0], (OpWidth::W32, Signedness::Signed))?;
         let lower_const = ctx.add_i32_constant(array_dimensions[0].lower as i32);
         emitter.emit_load_const_i32(lower_const);
         emitter.emit(opcode::SUB_I32);
+        // Emit embedded-array bounds check
+        emit_array_bounds_check(emitter, ctx, array_total_elements, &subscripts[0])?;
         let offset_const = ctx.add_i32_constant(field_base_offset as i32);
         emitter.emit_load_const_i32(offset_const);
         emitter.emit(opcode::ADD_I32);
@@ -922,9 +987,29 @@ fn compile_struct_array_field_load(
     emitter.emit_load_array(struct_info.var_index, struct_info.desc_index);
     Ok(())
 }
+
+/// Emits a runtime bounds check for a 0-based index already on the stack.
+/// Traps if the index is negative or >= `total_elements`.
+/// The index value remains on the stack after the check (consumed copy via DUP).
+///
+/// This is needed for embedded arrays within structures because the VM's
+/// built-in LOAD_ARRAY/STORE_ARRAY bounds check uses the struct's total_slots,
+/// not the embedded array's element count.
+fn emit_array_bounds_check(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    total_elements: u32,
+    span_source: &Expr,  // for error reporting
+) -> Result<(), Diagnostic> {
+    // Implementation uses the same pattern as standalone array bounds checking.
+    // The exact opcode sequence depends on available VM primitives (BOUNDS_CHECK
+    // opcode or compare+trap sequence). See compile_array.rs for the existing
+    // pattern.
+    todo!("Emit bounds check: 0 <= top-of-stack < total_elements")
+}
 ```
 
-The store variant is symmetric (emit RHS value first, then compute the index, then `emit_store_array`).
+The store variant is symmetric (emit RHS value first, then compute the index with bounds check, then `emit_store_array`). Both load and store paths must include the embedded-array bounds check.
 
 Multi-dimensional arrays within structs follow the same flat-index computation
 as standalone arrays (see `compile_array.rs`), but add `field_base_offset` to the
@@ -938,9 +1023,11 @@ Extend `initialize_struct_fields` to handle array-typed fields:
 ### Tests
 
 - `compile_when_struct_with_array_field_then_allocates_correct_slots`
+- `compile_when_struct_array_field_const_index_out_of_range_then_error` (compile-time bounds check)
 - `vm_when_struct_array_field_const_index_then_correct_value`
 - `vm_when_struct_array_field_var_index_then_correct_value`
-- `vm_when_struct_array_field_bounds_check_then_traps`
+- `vm_when_struct_array_field_var_index_out_of_range_then_traps` (embedded-array bounds check, not struct-level)
+- `vm_when_struct_array_field_var_index_in_struct_but_out_of_array_then_traps` (index within struct total_slots but beyond embedded array — must still trap)
 - `vm_when_struct_array_field_init_then_all_elements_initialized`
 
 ---
@@ -956,11 +1043,40 @@ When `assign_variables` encounters an array whose element type resolves to a str
 - `total_slots` = `array_total_elements * struct_slots`
 - Register array descriptor with `total_elements = total_slots`
 
-The variable is stored in `array_vars` (it's an array), but with additional metadata indicating the element is a structure.
+The variable is stored in `array_vars` (it's an array), and additionally in a new
+`ctx.array_of_struct_vars: HashMap<Id, ArrayOfStructInfo>` with the structure metadata
+needed for field-access compilation (see `ArrayOfStructInfo` definition in PR 8b).
 
 ### 8b: Handle array-then-struct access pattern
 
 **File**: `compiler/codegen/src/compile_struct.rs`
+
+**Define `ArrayOfStructInfo`**: This struct captures the metadata needed to compile
+`arr[i].field` access patterns. It is stored in a new `HashMap<Id, ArrayOfStructInfo>`
+in `CompileContext`, populated during `assign_variables` when an array's element type
+resolves to a structure.
+
+```rust
+/// Metadata for an array-of-structure variable.
+///
+/// Stored in `CompileContext::array_of_struct_vars` during allocation (PR 8a).
+/// Used during expression compilation to resolve `arr[i].field` patterns.
+struct ArrayOfStructInfo {
+    /// Variable slot index (same as the array's var_index).
+    var_index: u16,
+    /// Array descriptor index (descriptor has total_elements = array_size * struct_slots).
+    desc_index: u16,
+    /// Number of slots per structure element (from slot_count()).
+    struct_stride: u32,
+    /// Array dimensions (for lower-bound subtraction during subscript computation).
+    dimensions: Vec<DimensionInfo>,
+    /// Field metadata for the structure element type (reused from struct type resolution).
+    /// Indexed by field name for O(1) lookup during field-access compilation.
+    field_index: HashMap<String, usize>,
+    /// Ordered list of fields (same as StructVarInfo::fields).
+    fields: Vec<StructFieldInfo>,
+}
+```
 
 When the access chain is `arr[i].field`, the AST looks like:
 ```
