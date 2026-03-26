@@ -11,6 +11,7 @@ Add code generation and VM support for user-defined structures (STRUCT). This do
 - Structures containing function block instances — TODO: requires FB lifecycle management
 - Whole-structure assignment (`s1 := s2`) — TODO: requires field-by-field copy emission
 - Structure literals in expressions — TODO: requires temp struct allocation
+- Structure-typed function/FB parameters (VAR_INPUT, VAR_OUTPUT, VAR_IN_OUT) — TODO: requires pass-by-value copy or pass-by-reference semantics
 - Packed byte-level layout — TODO: tracked in ADR-0026 migration path
 
 **Prerequisite reading**: ADR-0026 (structure memory layout), ADR-0027 (compile-time field offset resolution), design doc `structure-codegen-memory-layout.md`, array codegen plan `array-codegen-plan.md`.
@@ -85,29 +86,50 @@ This mirrors the existing `resolve_array_type` pattern.
 
 **File**: `compiler/analyzer/src/intermediate_type.rs`
 
-Add a method that computes the number of 8-byte slots a type occupies:
+Add a method that computes the number of 8-byte slots a type occupies.
+
+The method returns `Result<u32, SlotCountError>` rather than `Option<u32>` so that
+callers can produce accurate diagnostic messages (distinguishing "unsupported field
+type" from "nesting too deep" from "arithmetic overflow"):
 
 ```rust
+/// Reason why `slot_count` could not compute a slot count.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SlotCountError {
+    /// The type contains a field type not yet supported in the data region
+    /// (STRING, WSTRING, or FunctionBlock).
+    UnsupportedFieldType,
+    /// The type nesting depth exceeds the maximum allowed depth (defense-in-depth
+    /// guard against recursive type cycles that the analyzer should have rejected).
+    MaxDepthExceeded,
+    /// The total slot count overflows u32 (structure or array is too large).
+    Overflow,
+}
+
 impl IntermediateType {
     /// Returns the number of 8-byte slots this type occupies in the data region.
     ///
-    /// Returns `Some(n)` for types with known slot counts, `None` for types
-    /// that cannot yet be stored in the data region (STRING, WSTRING, FunctionBlock).
+    /// Returns `Ok(n)` for types with known slot counts.
     ///
-    /// Uses a depth counter to guard against stack overflow from recursive type
-    /// cycles. The analyzer's toposort pass (`xform_toposort_declarations.rs`)
-    /// rejects cycles before codegen runs, but this provides defense-in-depth.
-    pub fn slot_count(&self) -> Option<u32> {
+    /// Returns `Err(SlotCountError::UnsupportedFieldType)` for types that cannot
+    /// yet be stored in the data region (STRING, WSTRING, FunctionBlock).
+    ///
+    /// Returns `Err(SlotCountError::MaxDepthExceeded)` if the nesting depth
+    /// exceeds 32 levels (defense-in-depth against recursive type cycles that
+    /// the analyzer's toposort pass should have rejected).
+    ///
+    /// Returns `Err(SlotCountError::Overflow)` if the total slot count exceeds u32.
+    pub fn slot_count(&self) -> Result<u32, SlotCountError> {
         self.slot_count_inner(0)
     }
 
-    fn slot_count_inner(&self, depth: u32) -> Option<u32> {
+    fn slot_count_inner(&self, depth: u32) -> Result<u32, SlotCountError> {
         // Guard against runaway recursion (defense-in-depth).
         // The analyzer rejects recursive types via toposort, but if a bug
         // allows one through, this prevents a stack overflow.
         const MAX_NESTING_DEPTH: u32 = 32;
         if depth > MAX_NESTING_DEPTH {
-            return None;
+            return Err(SlotCountError::MaxDepthExceeded);
         }
 
         match self {
@@ -122,31 +144,36 @@ impl IntermediateType {
             | IntermediateType::TimeOfDay { .. }
             | IntermediateType::DateAndTime { .. }
             | IntermediateType::Enumeration { .. }
-            | IntermediateType::Subrange { .. } => Some(1),
+            | IntermediateType::Subrange { .. }
+            | IntermediateType::Reference { .. } => Ok(1),
 
             // Structures: sum of field slot counts
             IntermediateType::Structure { fields } => {
                 let mut total = 0u32;
                 for field in fields {
-                    total = total.checked_add(field.field_type.slot_count_inner(depth + 1)?)?;
+                    let field_slots = field.field_type.slot_count_inner(depth + 1)?;
+                    total = total.checked_add(field_slots)
+                        .ok_or(SlotCountError::Overflow)?;
                 }
-                Some(total)
+                Ok(total)
             }
 
             // Arrays: total_elements * element_slots
             IntermediateType::Array { element_type, dimensions } => {
                 let elem_slots = element_type.slot_count_inner(depth + 1)?;
                 let total_elements = dimensions.iter().try_fold(1u32, |acc, dim| {
-                    let size = (dim.upper - dim.lower + 1) as u32;
-                    acc.checked_mul(size)
+                    let size = u32::try_from(dim.upper - dim.lower + 1)
+                        .map_err(|_| SlotCountError::Overflow)?;
+                    acc.checked_mul(size).ok_or(SlotCountError::Overflow)
                 })?;
                 total_elements.checked_mul(elem_slots)
+                    .ok_or(SlotCountError::Overflow)
             }
 
             // Not yet supported in data region
             IntermediateType::String { .. }
             | IntermediateType::FunctionBlock { .. }
-            | IntermediateType::Function { .. } => None,
+            | IntermediateType::Function { .. } => Err(SlotCountError::UnsupportedFieldType),
         }
     }
 }
@@ -154,7 +181,19 @@ impl IntermediateType {
 
 ### 1c: Add StructVarInfo and StructFieldInfo to codegen
 
-**File**: `compiler/codegen/src/compile.rs`
+**File**: `compiler/codegen/src/compile_struct.rs` (new module, following the `compile_array.rs` pattern)
+
+Create a new module `compile_struct.rs` and register it in `compiler/codegen/src/lib.rs`:
+```rust
+mod compile_struct;
+```
+
+`compile.rs` is already ~4400 lines (well over the project's 1000-line module limit).
+All structure-specific logic — `StructVarInfo`, `StructFieldInfo`, `build_struct_fields`,
+`allocate_struct_variable`, `resolve_struct_field_access`, `walk_struct_chain`,
+`initialize_struct_fields`, and their helpers — goes in `compile_struct.rs`. Only the
+match arm dispatch in `assign_variables` and `compile_expr` stays in `compile.rs`,
+calling `pub(crate)` functions from the new module.
 
 Add new metadata types:
 
@@ -212,14 +251,22 @@ fn build_struct_fields(
     let mut field_index = HashMap::with_capacity(fields.len());
     let mut slot_offset = 0u32;
     for field in fields {
-        let field_slots = field.field_type.slot_count().ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(
-                    span.clone(),
-                    format!("Structure field '{}' has unsupported type (STRING, WSTRING, or FunctionBlock)", field.name),
+        let field_slots = field.field_type.slot_count().map_err(|e| {
+            let msg = match e {
+                SlotCountError::UnsupportedFieldType => format!(
+                    "Structure field '{}' has unsupported type (STRING, WSTRING, or FunctionBlock)",
+                    field.name
                 ),
-            )
+                SlotCountError::MaxDepthExceeded => format!(
+                    "Structure field '{}' exceeds maximum nesting depth (possible recursive type)",
+                    field.name
+                ),
+                SlotCountError::Overflow => format!(
+                    "Structure field '{}' is too large (slot count overflows)",
+                    field.name
+                ),
+            };
+            Diagnostic::problem(Problem::NotImplemented, Label::span(span.clone(), msg))
         })?;
         let name = field.name.to_string().to_lowercase();
         let op_type = resolve_field_op_type(&field.field_type);
@@ -236,9 +283,99 @@ fn build_struct_fields(
 }
 ```
 
-Where `resolve_field_op_type` returns `Some(OpType)` for primitive/enum fields and `None` for structure/array fields (which are accessed via further resolution).
+**Why `unwrap_or(0)` is wrong**: If `slot_count()` returns an error (unsupported field type like STRING), using `unwrap_or(0)` would assign 0 slots to that field, causing all subsequent fields to overlap with it in memory. This silently produces corrupt layouts. The function must return an error instead.
 
-**Why `unwrap_or(0)` is wrong**: If `slot_count()` returns `None` (unsupported field type like STRING), using `unwrap_or(0)` would assign 0 slots to that field, causing all subsequent fields to overlap with it in memory. This silently produces corrupt layouts. The function must return an error instead.
+### 1e: Helper function signatures
+
+**File**: `compiler/codegen/src/compile_struct.rs`
+
+The following helper functions are referenced throughout the plan. All live in
+`compile_struct.rs` and are `pub(crate)` where called from `compile.rs` match arms.
+
+```rust
+/// Maps an IntermediateType to its OpType for leaf fields.
+///
+/// Returns `Some((OpWidth, Signedness))` for primitive, enum, and subrange types.
+/// Returns `None` for structure, array, and other composite types (which are
+/// accessed via further resolution, not loaded/stored directly as single values).
+///
+/// This mirrors how `resolve_type_name` works for elementary type names, but
+/// operates on IntermediateType rather than Id. The mapping follows the same
+/// rules as the existing `resolve_type_name` in compile.rs:
+/// - Bool → (W32, Unsigned) with 8-bit storage
+/// - Int { B8..B32 } → (W32, Signed), Int { B64 } → (W64, Signed)
+/// - UInt / Bytes → (W32/W64, Unsigned)
+/// - Real { B32 } → (F32, Signed), Real { B64 } → (F64, Signed)
+/// - Time/Date/TimeOfDay/DateAndTime → width depends on ByteSized
+/// - Enumeration → delegate to underlying_type
+/// - Subrange → delegate to base_type
+/// - Reference → (W64, Unsigned) (references are u64 indices)
+fn resolve_field_op_type(field_type: &IntermediateType) -> Option<OpType>
+
+/// Emits a constant load for the type-appropriate default value of a struct field.
+///
+/// For subrange types, emits the subrange's lower bound (min_value) as an i32/i64
+/// constant, since IEC 61131-3 §2.4.3.1 specifies the default is the "leftmost
+/// value" of the subrange. For all other types, emits zero via `emit_zero_const`.
+fn emit_default_for_field(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    field_type: &IntermediateType,
+    op_type: OpType,
+) -> Result<(), Diagnostic>
+
+/// Compiles an explicit initial value for a structure field.
+///
+/// Handles constant expressions (integer/real/boolean literals and enum values)
+/// from StructInitialValueAssignmentKind. Emits the appropriate LOAD_CONST
+/// instruction. Returns an error for unsupported initializer kinds.
+fn compile_struct_field_init(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    init: &StructInitialValueAssignmentKind,
+    op_type: OpType,
+) -> Result<(), Diagnostic>
+
+/// Emits truncation instructions for narrow types when storing to a struct field.
+///
+/// Delegates to the existing `emit_truncation(emitter, type_info)` in compile.rs,
+/// but takes an IntermediateType to derive the VarTypeInfo. This is needed because
+/// struct fields are identified by IntermediateType, not by variable-table entries.
+fn emit_truncation_for_field(emitter: &mut Emitter, field_type: &IntermediateType)
+
+/// Looks up a field by name within an IntermediateType::Structure's field list.
+///
+/// Returns `(slot_offset, field_type)` for the named field, or an error if the
+/// field is not found. Used by `walk_struct_chain` to resolve nested field access.
+fn find_field_in_type(
+    fields: &[IntermediateStructField],
+    field_name: &Id,
+) -> Result<(u32, IntermediateType), Diagnostic>
+
+/// Finds nested initializer values for a specific field in a structure initializer.
+///
+/// Given a list of `StructureElementInit` entries and a field name, returns the
+/// sub-initializer list for that field (for nested structure initialization in PR 6).
+fn find_nested_inits<'a>(
+    element_inits: &'a [StructureElementInit],
+    field_name: &str,
+) -> Vec<&'a StructureElementInit>
+
+/// Initializes fields of a nested structure within a parent structure's data region.
+///
+/// Like `initialize_struct_fields` but takes a base slot offset within the parent
+/// structure's flat slot array. Each field is stored at
+/// `parent_base_offset + field.slot_offset`.
+fn initialize_nested_struct_fields(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    var_index: u16,
+    desc_index: u16,
+    base_slot_offset: u32,
+    inner_fields: &[IntermediateStructField],
+    nested_inits: &[&StructureElementInit],
+) -> Result<(), Diagnostic>
+```
 
 ### Tests
 
@@ -247,8 +384,10 @@ Where `resolve_field_op_type` returns `Some(OpType)` for primitive/enum fields a
 - `slot_count_when_nested_structure_then_returns_sum`
 - `slot_count_when_array_of_primitives_then_returns_total_elements`
 - `slot_count_when_array_of_structures_then_returns_elements_times_struct_slots`
-- `slot_count_when_string_field_then_returns_none`
-- `slot_count_when_nesting_exceeds_max_depth_then_returns_none`
+- `slot_count_when_reference_field_then_returns_1`
+- `slot_count_when_string_field_then_returns_unsupported_field_type`
+- `slot_count_when_nesting_exceeds_max_depth_then_returns_max_depth_exceeded`
+- `slot_count_when_total_overflows_u32_then_returns_overflow`
 - `resolve_struct_type_when_structure_then_returns_type`
 - `resolve_struct_type_when_not_structure_then_returns_none`
 - `build_struct_fields_when_two_fields_then_sequential_offsets`
@@ -265,9 +404,9 @@ Where `resolve_field_op_type` returns `Some(OpType)` for primitive/enum fields a
 
 ### 2a: Handle Structure in assign_variables
 
-**File**: `compiler/codegen/src/compile.rs`, in `assign_variables()`
+**File**: `compiler/codegen/src/compile_struct.rs` (allocation function), `compiler/codegen/src/compile.rs` (match arm dispatch only)
 
-Extract a helper function that performs structure allocation, so it can be called from both the `Structure` and `LateResolvedType` match arms:
+Extract a helper function in `compile_struct.rs` that performs structure allocation, so it can be called from both the `Structure` and `LateResolvedType` match arms in `compile.rs`:
 
 ```rust
 /// Allocates data region space for a structure variable and registers metadata.
@@ -294,11 +433,13 @@ fn allocate_struct_variable(
     };
 
     // Compute total slots
-    let total_slots = struct_type.slot_count().ok_or_else(|| {
-        Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(span.clone(), "Structure contains unsupported field types"),
-        )
+    let total_slots = struct_type.slot_count().map_err(|e| {
+        let msg = match e {
+            SlotCountError::UnsupportedFieldType => "Structure contains unsupported field types (STRING, WSTRING, or FunctionBlock)",
+            SlotCountError::MaxDepthExceeded => "Structure exceeds maximum nesting depth (possible recursive type)",
+            SlotCountError::Overflow => "Structure is too large (slot count overflows u32)",
+        };
+        Diagnostic::problem(Problem::NotImplemented, Label::span(span.clone(), msg))
     })?;
 
     // Enforce slot limit (matches existing array limit for i32 flat-index safety)
@@ -329,12 +470,12 @@ fn allocate_struct_variable(
     }
 
     // Register array descriptor (treating struct as flat slot array).
-    // Use element type SLOT (6) for heterogeneous structure fields.
-    // The VM does not check the element type at runtime — it only uses
-    // total_elements for bounds checking. See section "Element Type Byte
-    // for Structure Descriptors" below for rationale.
-    const ELEMENT_TYPE_SLOT: u8 = 6;
-    let desc_index = builder.add_array_descriptor(ELEMENT_TYPE_SLOT, total_slots);
+    // Use FieldType::Slot for heterogeneous structure fields. This constant
+    // is defined in the container crate's FieldType enum (value 10), ensuring
+    // a single source of truth shared by codegen, the bytecode verifier, and
+    // debug tools. See section "Element Type Byte for Structure Descriptors"
+    // below for rationale.
+    let desc_index = builder.add_array_descriptor(FieldType::Slot as u8, total_slots);
 
     // Build field metadata (returns error for unsupported field types)
     let (fields_vec, field_index) = build_struct_fields(fields, span)?;
@@ -398,22 +539,40 @@ This arm must appear before the catch-all `_` in the match statement.
 
 ### Element Type Byte for Structure Descriptors
 
-The existing array descriptor element type encoding uses values 0-5 (I32, U32, I64, U64, F32, F64). Structures are heterogeneous — different fields have different types — so no single primitive type byte applies. Define a new value:
+The existing array descriptor element type encoding uses the `FieldType` enum from
+the container crate (`compiler/container/src/type_section.rs`). Values 0-9 are
+already assigned (I32, U32, I64, U64, F32, F64, String, WString, FbInstance, Time).
+Structures are heterogeneous — different fields have different types — so no single
+primitive type byte applies. Add a new variant to `FieldType`:
 
-| Type byte | Meaning |
-|-----------|---------|
-| 0 | I32 |
-| 1 | U32 |
-| 2 | I64 |
-| 3 | U64 |
-| 4 | F32 |
-| 5 | F64 |
-| **6** | **SLOT** (heterogeneous structure field) |
+**File**: `compiler/container/src/type_section.rs`
 
-The VM's `LOAD_ARRAY` / `STORE_ARRAY` implementation does not check the element type byte at runtime — it only uses `total_elements` for bounds checking and always reads/writes 8 bytes. The type byte is metadata for the bytecode verifier and debug tools. Using a distinct value (SLOT = 6) rather than repurposing I64 ensures that:
-- The bytecode verifier can distinguish structure descriptors from true I64 array descriptors.
+```rust
+pub enum FieldType {
+    I32 = 0,
+    U32 = 1,
+    I64 = 2,
+    U64 = 3,
+    F32 = 4,
+    F64 = 5,
+    String = 6,
+    WString = 7,
+    FbInstance = 8,
+    Time = 9,
+    /// Heterogeneous structure field slot. Used as the element type in array
+    /// descriptors that back structure variables (which are treated as flat
+    /// arrays of 8-byte slots). The VM does not check this value at runtime.
+    Slot = 10,
+}
+```
+
+Update `FieldType::from_u8` to handle value 10.
+
+The VM's `LOAD_ARRAY` / `STORE_ARRAY` implementation does not check the element type byte at runtime — it only uses `total_elements` for bounds checking and always reads/writes 8 bytes. The type byte is metadata for the bytecode verifier and debug tools. Defining `Slot` as a shared `FieldType` variant (rather than a local constant) ensures that:
+- The bytecode verifier can distinguish structure descriptors from true array descriptors.
 - Debug tools can identify which descriptors belong to structure variables.
-- Descriptor deduplication (which keys on `(element_type, total_elements)`) does not falsely merge a structure descriptor with an unrelated I64 array of the same size.
+- Descriptor deduplication (which keys on `(element_type, total_elements)`) does not falsely merge a structure descriptor with an unrelated array of the same size.
+- All components reference a single source of truth — no magic numbers scattered across crates.
 
 ### Tests
 
@@ -433,7 +592,7 @@ The VM's `LOAD_ARRAY` / `STORE_ARRAY` implementation does not check the element 
 
 ### 3a: Emit default initialization for structure fields
 
-**File**: `compiler/codegen/src/compile.rs`, in the init function emission section
+**File**: `compiler/codegen/src/compile_struct.rs` (initialization logic), `compiler/codegen/src/compile.rs` (match arm dispatch in init function)
 
 For each structure variable, emit constant-load + STORE_ARRAY for each field:
 
@@ -480,12 +639,15 @@ fn initialize_struct_fields(
                 // Emit explicit initial value
                 compile_struct_field_init(emitter, ctx, init_value, op_type)?;
             } else {
-                // Emit default value (0)
-                emit_default_for_type(emitter, ctx, op_type)?;
+                // Emit type-appropriate default value.
+                // For subrange types, the default is the lower bound of the range
+                // (IEC 61131-3 §2.4.3.1: "initial value [...] is the leftmost value").
+                // For all other types, the default is 0.
+                emit_default_for_field(emitter, ctx, &field_info.field_type, op_type)?;
             }
 
-            // Truncate if needed
-            emit_truncation_for_op_type(emitter, op_type);
+            // Truncate narrow types (e.g., SINT stored in W32 slot)
+            emit_truncation_for_field(emitter, &field_info.field_type);
 
             // Store to field
             let idx_const = ctx.add_i32_constant(slot_idx as i32);
@@ -518,7 +680,7 @@ fn initialize_struct_fields(
 
 ### 4a: Resolve SymbolicVariableKind::Structured for expressions
 
-**File**: `compiler/codegen/src/compile.rs`
+**File**: `compiler/codegen/src/compile_struct.rs` (resolution logic), `compiler/codegen/src/compile.rs` (match arm dispatch in `compile_expr`)
 
 The `compile_expr` function handles `Variable::Symbolic(SymbolicVariableKind::Structured(...))`. Currently it returns `todo_with_span`. Replace with:
 
@@ -613,7 +775,7 @@ fn walk_struct_chain(
 
 ### 5a: Handle Structured target in assignment compilation
 
-**File**: `compiler/codegen/src/compile.rs`
+**File**: `compiler/codegen/src/compile_struct.rs` (resolution + store logic), `compiler/codegen/src/compile.rs` (match arm dispatch in assignment compilation)
 
 In the assignment compilation (where `Variable::Symbolic(SymbolicVariableKind::Structured(...))` appears as the target of `:=`), use the same `resolve_struct_field_access` from PR 4:
 
@@ -625,8 +787,8 @@ SymbolicVariableKind::Structured(structured) => {
     // Compile the RHS expression
     compile_expr(emitter, ctx, rhs_expr, op_type)?;
 
-    // Truncate if needed
-    emit_truncation_for_type(emitter, ...);
+    // Truncate narrow types (e.g., SINT stored in W32 slot)
+    emit_truncation_for_field(emitter, &structured_field_type);
 
     // Push flat_index
     let idx_const = ctx.add_i32_constant(slot_offset as i32);
@@ -694,6 +856,8 @@ The `slot_count` method from PR 1 already handles array fields (returns `total_e
 
 ### 7b: Handle struct-then-array access pattern
 
+**File**: `compiler/codegen/src/compile_struct.rs`
+
 When the access chain is `s.arr[i]`, the `StructuredVariable` AST looks like:
 ```
 ArrayVariable {
@@ -703,10 +867,68 @@ ArrayVariable {
 ```
 
 This requires extending the expression compilation to handle `SymbolicVariableKind::Array` where the subscripted variable is a `StructuredVariable`. The resolution:
-1. Walk the struct chain to find the array field's base slot offset
-2. Compute the array subscript flat index
-3. Add the base slot offset to the flat index
+1. Walk the struct chain to find the array field's base slot offset and its `IntermediateType::Array`
+2. Compute the array subscript flat index (within the embedded array)
+3. Add the struct field's base slot offset to the flat index
 4. Use LOAD_ARRAY/STORE_ARRAY with the root struct's descriptor
+
+**Bytecode emission for `s.arr[i]` (read, variable subscript)**:
+
+```rust
+/// Compiles a read of `struct_var.array_field[subscript]`.
+///
+/// The entire struct is a flat slot array. The embedded array's elements
+/// occupy slots starting at `field_base_offset`. The subscript selects
+/// which element within the embedded array.
+fn compile_struct_array_field_load(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    struct_info: &StructVarInfo,
+    field_base_offset: u32,    // slot offset of array field within struct
+    array_dimensions: &[ArrayDimension],
+    subscripts: &[Expr],
+) -> Result<(), Diagnostic> {
+    // Compute flat index within the embedded array (0-based).
+    // For constant subscript: emit as compile-time constant.
+    // For variable subscript: emit runtime arithmetic.
+    let is_const = is_constant_subscript(&subscripts[0]);
+
+    if is_const {
+        // Compile-time: combine struct offset + array index into one constant
+        let array_index = evaluate_constant_subscript(&subscripts[0])?;
+        let flat_index = array_index - array_dimensions[0].lower;
+        let total_slot = field_base_offset + flat_index as u32;
+        let idx_const = ctx.add_i32_constant(total_slot as i32);
+        emitter.emit_load_const_i32(idx_const);
+    } else {
+        // Runtime: emit (subscript - lower) + field_base_offset
+        //
+        // Bytecode sequence:
+        //   LOAD_VAR subscript_var          ; push subscript value
+        //   LOAD_CONST lower_bound          ; push array lower bound
+        //   SUB_I32                          ; subscript - lower = 0-based index
+        //   LOAD_CONST field_base_offset    ; push struct field offset
+        //   ADD_I32                          ; total flat slot index
+        compile_expr(emitter, ctx, &subscripts[0], (OpWidth::W32, Signedness::Signed))?;
+        let lower_const = ctx.add_i32_constant(array_dimensions[0].lower as i32);
+        emitter.emit_load_const_i32(lower_const);
+        emitter.emit(opcode::SUB_I32);
+        let offset_const = ctx.add_i32_constant(field_base_offset as i32);
+        emitter.emit_load_const_i32(offset_const);
+        emitter.emit(opcode::ADD_I32);
+    }
+
+    // Load from the struct's flat slot array
+    emitter.emit_load_array(struct_info.var_index, struct_info.desc_index);
+    Ok(())
+}
+```
+
+The store variant is symmetric (emit RHS value first, then compute the index, then `emit_store_array`).
+
+Multi-dimensional arrays within structs follow the same flat-index computation
+as standalone arrays (see `compile_array.rs`), but add `field_base_offset` to the
+resulting flat index.
 
 ### 7c: Initialization of array fields within structures
 
@@ -738,6 +960,8 @@ The variable is stored in `array_vars` (it's an array), but with additional meta
 
 ### 8b: Handle array-then-struct access pattern
 
+**File**: `compiler/codegen/src/compile_struct.rs`
+
 When the access chain is `arr[i].field`, the AST looks like:
 ```
 StructuredVariable {
@@ -748,10 +972,68 @@ StructuredVariable {
 
 Resolution:
 1. Identify `arr` as an array of structures
-2. Compute `struct_stride = struct_slots`
+2. Compute `struct_stride = struct_slots` (number of slots per struct element)
 3. For constant subscript: `flat_slot = (i - lower) * struct_stride + field_slot_offset`
-4. For variable subscript: emit `(subscript - lower) * struct_stride + field_slot_offset` as runtime computation
-5. Bounds check the total flat_slot against `total_slots`
+4. For variable subscript: emit runtime arithmetic
+5. The VM's bounds check on the descriptor's `total_slots` catches out-of-range access
+
+**Bytecode emission for `arr[i].field` (read, variable subscript)**:
+
+```rust
+/// Compiles a read of `array_of_struct[subscript].field`.
+///
+/// The array-of-struct variable is a flat slot array where each struct
+/// element occupies `struct_stride` consecutive slots. The field's position
+/// within each element is `field_slot_offset`.
+fn compile_array_of_struct_field_load(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    arr_info: &ArrayOfStructInfo,  // descriptor index, var index, stride, dimensions
+    field_slot_offset: u32,
+    subscripts: &[Expr],
+) -> Result<(), Diagnostic> {
+    let is_const = is_constant_subscript(&subscripts[0]);
+
+    if is_const {
+        // Compile-time: fold everything into one constant
+        let array_index = evaluate_constant_subscript(&subscripts[0])?;
+        let zero_based = array_index - arr_info.dimensions[0].lower;
+        let flat_slot = zero_based as u32 * arr_info.struct_stride + field_slot_offset;
+        let idx_const = ctx.add_i32_constant(flat_slot as i32);
+        emitter.emit_load_const_i32(idx_const);
+    } else {
+        // Runtime: emit (subscript - lower) * struct_stride + field_slot_offset
+        //
+        // Bytecode sequence:
+        //   LOAD_VAR subscript_var          ; push subscript
+        //   LOAD_CONST lower_bound          ; push lower
+        //   SUB_I32                          ; subscript - lower
+        //   LOAD_CONST struct_stride        ; push stride
+        //   MUL_I32                          ; (subscript - lower) * stride
+        //   LOAD_CONST field_slot_offset    ; push field offset
+        //   ADD_I32                          ; final flat slot index
+        compile_expr(emitter, ctx, &subscripts[0], (OpWidth::W32, Signedness::Signed))?;
+        let lower_const = ctx.add_i32_constant(arr_info.dimensions[0].lower as i32);
+        emitter.emit_load_const_i32(lower_const);
+        emitter.emit(opcode::SUB_I32);
+        let stride_const = ctx.add_i32_constant(arr_info.struct_stride as i32);
+        emitter.emit_load_const_i32(stride_const);
+        emitter.emit(opcode::MUL_I32);
+        let offset_const = ctx.add_i32_constant(field_slot_offset as i32);
+        emitter.emit_load_const_i32(offset_const);
+        emitter.emit(opcode::ADD_I32);
+    }
+
+    // Load from the array-of-struct's flat slot array.
+    // The VM's bounds check on total_slots catches out-of-range flat indices.
+    emitter.emit_load_array(arr_info.var_index, arr_info.desc_index);
+    Ok(())
+}
+```
+
+The store variant is symmetric. Note that `struct_stride` and `field_slot_offset` are
+both compile-time constants, so even the "variable subscript" path only has one truly
+runtime value (the subscript itself).
 
 ### 8c: Combined patterns
 
@@ -851,6 +1133,7 @@ These should be tracked as issues or inline TODOs in the codebase:
 - [ ] **TODO(struct-fb)**: Support function block instance fields in structures — requires FB lifecycle management for embedded instances
 - [ ] **TODO(struct-assign)**: Support whole-structure assignment (`s1 := s2`) — emit field-by-field copy or bulk memcpy
 - [ ] **TODO(struct-literal)**: Support structure literals in expressions — requires temp allocation
+- [ ] **TODO(struct-params)**: Support structure-typed function/FB parameters (VAR_INPUT, VAR_OUTPUT, VAR_IN_OUT) — requires pass-by-value copy or pass-by-reference semantics
 - [ ] **TODO(struct-packed)**: Migrate to packed byte-level layout (ADR-0026 migration path)
 - [ ] **TODO(struct-debug)**: Emit debug metadata mapping data region offsets to structure field paths
 - [ ] **TODO(struct-direct-load)**: Add direct data-region load/store opcodes to eliminate array descriptor overhead for constant-offset access
