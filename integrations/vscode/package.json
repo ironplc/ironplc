@@ -86,9 +86,9 @@
             "rusty"
           ],
           "enumDescriptions": [
-            "IEC 61131-3:2003 (Edition 2) — strict, no vendor extensions",
-            "IEC 61131-3:2013 (Edition 3) — enables LTIME, REF_TO, etc.",
-            "RuSTy-compatible — Edition 2 base with REF_TO and all vendor extensions"
+            "IEC 61131-3:2003 (Edition 2)",
+            "IEC 61131-3:2013 (Edition 3)",
+            "RuSTy-compatible"
           ]
         }
       }
