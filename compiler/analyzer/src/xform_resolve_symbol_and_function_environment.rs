@@ -145,11 +145,7 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
         // are resolved on-demand during validation via TypeEnvironment.
         let mut parameters = Vec::new();
         for var_decl in &node.variables {
-            let is_parameter = matches!(
-                var_decl.var_type,
-                VariableType::Input | VariableType::Output | VariableType::InOut
-            );
-            if !is_parameter {
+            if !var_decl.var_type.is_parameter() {
                 continue;
             }
 
