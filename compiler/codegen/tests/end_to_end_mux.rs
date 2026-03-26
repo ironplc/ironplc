@@ -1,6 +1,7 @@
 //! End-to-end integration tests for the MUX function.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -14,7 +15,7 @@ PROGRAM main
   y := MUX(0, 10, 20, 30);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 10);
 }
@@ -29,7 +30,7 @@ PROGRAM main
   y := MUX(1, 10, 20, 30);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 20);
 }
@@ -44,7 +45,7 @@ PROGRAM main
   y := MUX(2, 10, 20, 30);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 30);
 }
@@ -59,7 +60,7 @@ PROGRAM main
   y := MUX(5, 10, 20, 30);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // K=5 is out of range (only 3 inputs), clamps to last = 30
     assert_eq!(bufs.vars[0].as_i32(), 30);
@@ -77,7 +78,7 @@ PROGRAM main
   y := MUX(k, 10, 20, 30);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // K=-1 clamps to 0 = first input = 10
     assert_eq!(bufs.vars[1].as_i32(), 10);
@@ -95,7 +96,7 @@ PROGRAM main
   y := MUX(k, 100, 200, 300);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 200);
@@ -111,7 +112,7 @@ PROGRAM main
   y := MUX(1, 42, 99);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 99);
 }
@@ -126,7 +127,7 @@ PROGRAM main
   y := MUX(3, 10, 20, 30, 40);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 40);
 }
@@ -141,7 +142,7 @@ PROGRAM main
   y := MUX(15, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 16);
 }
@@ -156,7 +157,7 @@ PROGRAM main
   y := MUX(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 1);
 }
@@ -171,7 +172,7 @@ PROGRAM main
   y := MUX(7, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 8);
 }
@@ -187,7 +188,7 @@ PROGRAM main
   y := MUX(3, 10, 20, 30);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 30);
 }

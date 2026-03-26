@@ -19,7 +19,7 @@ use ironplc_codegen::compile as codegen_compile;
 use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::{Dialect, ParseOptions};
 use ironplc_sources::{parse_source, FileType};
 use ironplc_vm::{Slot, Vm, VmBuffers};
 use serde::{Deserialize, Serialize};
@@ -45,19 +45,16 @@ thread_local! {
 
 /// Build [`ParseOptions`] from an edition string.
 ///
-/// `"2013"` enables IEC 61131-3 Edition 3 keywords (LTIME, REF_TO, etc.).
-/// Any other value (including empty) uses the default Edition 2 (2003).
-///
-/// The playground always enables all vendor extensions so that users can
-/// explore non-standard features without toggling flags.
+/// `"2013"` selects the IEC 61131-3 Edition 3 dialect.
+/// Any other value (including empty) uses the RuSTy dialect, which enables
+/// all vendor extensions so playground users can explore non-standard
+/// features without toggling flags.
 fn parse_options_from_edition(edition: &str) -> ParseOptions {
-    let mut options = ParseOptions {
-        allow_iec_61131_3_2013: edition == "2013",
-        allow_all: true,
-        ..Default::default()
-    };
-    options.apply_allow_all();
-    options
+    if edition == "2013" {
+        ParseOptions::from_dialect(Dialect::Iec61131_3Ed3)
+    } else {
+        ParseOptions::from_dialect(Dialect::Rusty)
+    }
 }
 
 /// Install a panic hook that logs to `console.error` with a full stack trace.

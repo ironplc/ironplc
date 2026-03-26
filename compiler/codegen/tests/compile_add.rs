@@ -1,6 +1,7 @@
 //! Bytecode-level integration tests for the ADD operator compilation.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_compile;
 
@@ -16,7 +17,7 @@ PROGRAM main
   y := x + 32;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source);
+    let container = parse_and_compile(source, &ParseOptions::default());
 
     assert_eq!(container.header.num_variables, 2);
     assert_eq!(container.constant_pool.get_i32(0).unwrap(), 10);
@@ -50,7 +51,7 @@ PROGRAM main
   x := 1 + 2 + 3;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source);
+    let container = parse_and_compile(source, &ParseOptions::default());
 
     // Should have 3 constants: 1, 2, 3
     assert_eq!(container.constant_pool.len(), 3);
@@ -84,7 +85,7 @@ PROGRAM main
   x := 10 + 5 - 3;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source);
+    let container = parse_and_compile(source, &ParseOptions::default());
 
     // (10 + 5) - 3
     let bytecode = container.code.get_function_bytecode(1).unwrap();
@@ -112,7 +113,7 @@ PROGRAM main
   x := 2 + 3 * 4;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source);
+    let container = parse_and_compile(source, &ParseOptions::default());
 
     // Parser should respect operator precedence: 2 + (3 * 4)
     let bytecode = container.code.get_function_bytecode(1).unwrap();

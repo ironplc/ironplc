@@ -1,6 +1,7 @@
 //! End-to-end integration tests for bit string types (BYTE, WORD, DWORD, LWORD).
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -16,7 +17,7 @@ PROGRAM main
   x := 200;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 200);
 }
 
@@ -30,7 +31,7 @@ PROGRAM main
   x := 255 + 1;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // 256 truncated to u8 wraps to 0
     assert_eq!(bufs.vars[0].as_i32(), 0);
 }
@@ -47,7 +48,7 @@ PROGRAM main
   y := x + 100;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // 200 + 100 = 300, truncated to u8 = 44
     assert_eq!(bufs.vars[0].as_i32(), 200);
     assert_eq!(bufs.vars[1].as_i32(), 44);
@@ -65,7 +66,7 @@ PROGRAM main
   x := 50000;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 50000);
 }
 
@@ -79,7 +80,7 @@ PROGRAM main
   x := 65535 + 1;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // 65536 truncated to u16 wraps to 0
     assert_eq!(bufs.vars[0].as_i32(), 0);
 }
@@ -96,7 +97,7 @@ PROGRAM main
   x := 1000;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 1000);
 }
 
@@ -116,7 +117,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
 
@@ -132,7 +133,7 @@ PROGRAM main
   x := 100000;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 100000);
 }
 
@@ -152,7 +153,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i64(), 1);
 }
 
@@ -167,7 +168,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 200);
 }
 
@@ -180,7 +181,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 50000);
 }
 
@@ -193,7 +194,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 100000);
 }
 
@@ -206,7 +207,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 5000000);
 }
 
@@ -222,7 +223,7 @@ PROGRAM main
   x := DWORD#16#FF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 255);
 }
 
@@ -236,7 +237,7 @@ PROGRAM main
   x := BYTE#2#11111111;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 255);
 }
 
@@ -250,7 +251,7 @@ PROGRAM main
   x := WORD#8#377;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 255);
 }
 
@@ -268,7 +269,7 @@ PROGRAM main
   y := x AND BYTE#16#0F;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0xFF);
     assert_eq!(bufs.vars[1].as_i32(), 0x0F);
 }
@@ -287,7 +288,7 @@ PROGRAM main
   y := x OR BYTE#16#0F;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0xF0);
     assert_eq!(bufs.vars[1].as_i32(), 0xFF);
 }
@@ -306,7 +307,7 @@ PROGRAM main
   y := x XOR BYTE#16#0F;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0xFF);
     assert_eq!(bufs.vars[1].as_i32(), 0xF0);
 }
@@ -326,7 +327,7 @@ PROGRAM main
   y := NOT x;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0x0F);
     assert_eq!(bufs.vars[1].as_i32(), 0xF0);
 }
@@ -345,7 +346,7 @@ PROGRAM main
   y := x AND DWORD#16#FF00FF00;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // 0xFFFF0000 AND 0xFF00FF00 = 0xFF000000
     assert_eq!(bufs.vars[1].as_i32() as u32, 0xFF00_0000);
 }
@@ -362,7 +363,7 @@ PROGRAM main
   y := NOT x;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // NOT 0 = 0xFFFFFFFF (as i32: -1)
     assert_eq!(bufs.vars[1].as_i32(), -1);
 }
@@ -381,7 +382,7 @@ PROGRAM main
   y := x AND LWORD#16#0F;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i64(), 0x0F);
 }
 
@@ -397,7 +398,7 @@ PROGRAM main
   y := NOT x;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // NOT 0_i64 = -1_i64
     assert_eq!(bufs.vars[1].as_i64(), -1);
 }
@@ -420,7 +421,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // NOT 0xFF → BIT_NOT → 0xFFFFFF00 → TRUNC_U8 → 0x00 → IF sees 0 → skip body
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
@@ -441,7 +442,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // NOT 0x00 → BIT_NOT → 0xFFFFFFFF → TRUNC_U8 → 0xFF → IF sees non-zero → enter body
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
@@ -460,7 +461,7 @@ PROGRAM main
   y := NOT x;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // NOT 0xFF00 at 32-bit = 0xFFFF00FF, truncated to u16 = 0x00FF
     assert_eq!(bufs.vars[1].as_i32(), 0x00FF);
 }

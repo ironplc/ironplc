@@ -23,7 +23,7 @@ def validate_flags(app, config):
 
     # Extract "allow_*" field names
     fields = re.findall(r'pub (allow_\w+): bool', options_text)
-    # Edition flag uses --std-iec-61131-3, not --allow-*
+    # Edition flag is set by --dialect, not --allow-*
     fields = [f for f in fields if f != 'allow_iec_61131_3_2013']
 
     # Convert to CLI form: allow_foo_bar -> --allow-foo-bar

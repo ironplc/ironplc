@@ -1,6 +1,7 @@
 //! Bytecode-level integration tests for the SEL function with float types.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_compile;
 
@@ -14,7 +15,7 @@ PROGRAM main
   y := SEL(0, 10.0, 20.0);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source);
+    let container = parse_and_compile(source, &ParseOptions::default());
 
     // y := SEL(0, 10.0, 20.0):
     //   LOAD_CONST_I32 pool:0 (0)    -- G is always i32
@@ -47,7 +48,7 @@ PROGRAM main
   y := SEL(1, 10.0, 20.0);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source);
+    let container = parse_and_compile(source, &ParseOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(

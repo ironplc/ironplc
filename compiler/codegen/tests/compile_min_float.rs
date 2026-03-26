@@ -1,6 +1,7 @@
 //! Bytecode-level integration tests for the MIN function with float types.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_compile;
 
@@ -15,7 +16,7 @@ PROGRAM main
   y := MIN(x, 10.0);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source);
+    let container = parse_and_compile(source, &ParseOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // y := MIN(x, 10.0): LOAD_VAR_F32 var:0, LOAD_CONST_F32 pool:0, BUILTIN MIN_F32, STORE_VAR_F32 var:1
@@ -42,7 +43,7 @@ PROGRAM main
   y := MIN(x, 10.0);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source);
+    let container = parse_and_compile(source, &ParseOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(

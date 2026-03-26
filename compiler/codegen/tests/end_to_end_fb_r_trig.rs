@@ -1,6 +1,7 @@
 //! End-to-end tests for R_TRIG (rising edge detector) function block.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 use common::parse_and_run_rounds;
@@ -18,13 +19,13 @@ END_PROGRAM
 
 #[test]
 fn end_to_end_when_r_trig_clk_false_then_q_false() {
-    let (_container, bufs) = parse_and_run(PROGRAM);
+    let (_container, bufs) = parse_and_run(PROGRAM, &ParseOptions::default());
     assert_eq!(bufs.vars[2].as_i32(), 0, "Q should be FALSE");
 }
 
 #[test]
 fn end_to_end_when_r_trig_rising_edge_then_q_true() {
-    parse_and_run_rounds(PROGRAM, |vm| {
+    parse_and_run_rounds(PROGRAM, &ParseOptions::default(), |vm| {
         // First scan: CLK=FALSE
         vm.run_round(0).unwrap();
         // Rising edge: CLK=TRUE
@@ -40,7 +41,7 @@ fn end_to_end_when_r_trig_rising_edge_then_q_true() {
 
 #[test]
 fn end_to_end_when_r_trig_clk_stays_true_then_q_false_next_scan() {
-    parse_and_run_rounds(PROGRAM, |vm| {
+    parse_and_run_rounds(PROGRAM, &ParseOptions::default(), |vm| {
         // Rising edge
         vm.write_variable(1, 1).unwrap();
         vm.run_round(0).unwrap();
@@ -57,7 +58,7 @@ fn end_to_end_when_r_trig_clk_stays_true_then_q_false_next_scan() {
 
 #[test]
 fn end_to_end_when_r_trig_second_rising_edge_then_q_true_again() {
-    parse_and_run_rounds(PROGRAM, |vm| {
+    parse_and_run_rounds(PROGRAM, &ParseOptions::default(), |vm| {
         // First rising edge
         vm.write_variable(1, 1).unwrap();
         vm.run_round(0).unwrap();

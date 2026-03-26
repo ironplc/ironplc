@@ -1,6 +1,7 @@
 //! End-to-end integration tests for the FIND standard function.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -16,7 +17,7 @@ PROGRAM main
   n := FIND(s1, s2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // 'World' starts at position 7 (1-based).
     assert_eq!(bufs.vars[2].as_i32(), 7);
@@ -34,7 +35,7 @@ PROGRAM main
   n := FIND(s1, s2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 0);
 }
@@ -51,7 +52,7 @@ PROGRAM main
   n := FIND(s1, s2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
@@ -68,7 +69,7 @@ PROGRAM main
   n := FIND(s1, s2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 0);
 }
@@ -85,7 +86,7 @@ PROGRAM main
   n := FIND(s1, s2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
@@ -102,7 +103,7 @@ PROGRAM main
   n := FIND(s1, s2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 0);
 }
@@ -119,7 +120,7 @@ PROGRAM main
   n := FIND(s1, s2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // 'DE' starts at position 4 (1-based).
     assert_eq!(bufs.vars[2].as_i32(), 4);

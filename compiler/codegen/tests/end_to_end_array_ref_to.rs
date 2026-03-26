@@ -2,8 +2,8 @@
 //! Compiles ST programs with arrays of reference types and runs them through the VM.
 
 mod common;
-
-use common::{parse_and_compile_edition3, parse_and_run_edition3};
+use common::{parse_and_compile, parse_and_run};
+use ironplc_parser::options::{Dialect, ParseOptions};
 
 #[test]
 fn end_to_end_when_array_of_ref_to_declared_then_compiles_and_runs() {
@@ -15,7 +15,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run_edition3(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
     // x is at var index 1 (data is var 0, x is var 1)
     assert_eq!(bufs.vars[1].as_i32(), 42);
 }
@@ -33,7 +33,7 @@ PROGRAM main
   result := refs[0]^;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run_edition3(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
     // val=0, refs=1, result=2
     assert_eq!(bufs.vars[2].as_i32(), 77);
 }
@@ -48,7 +48,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let _container = parse_and_compile_edition3(source);
+    let _container = parse_and_compile(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
 }
 
 #[test]
@@ -63,5 +63,5 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let _container = parse_and_compile_edition3(source);
+    let _container = parse_and_compile(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
 }

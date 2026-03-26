@@ -1,6 +1,7 @@
 //! End-to-end integration tests for the MOD operator.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::{parse_and_run, parse_and_try_run};
 use ironplc_vm::error::Trap;
@@ -17,7 +18,7 @@ PROGRAM main
   y := x MOD 5;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 12);
     assert_eq!(bufs.vars[1].as_i32(), 2);
@@ -33,7 +34,7 @@ PROGRAM main
   x := 100 MOD 7 MOD 3;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // (100 MOD 7) MOD 3 = 2 MOD 3 = 2
     assert_eq!(bufs.vars[0].as_i32(), 2);
@@ -51,7 +52,7 @@ PROGRAM main
   y := x MOD 0;
 END_PROGRAM
 ";
-    let result = parse_and_try_run(source);
+    let result = parse_and_try_run(source, &ParseOptions::default());
 
     assert!(result.is_err(), "expected DivideByZero trap");
     assert_eq!(result.unwrap_err().trap, Trap::DivideByZero);

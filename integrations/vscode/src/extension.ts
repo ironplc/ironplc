@@ -104,8 +104,8 @@ function createClient(compilerFilePath: string, config: vscode.WorkspaceConfigur
 
   const serverOptions: ServerOptions = application;
 
-  // Read the IEC 61131-3 standard version setting
-  const std61131Version = config.get<string>('std61131Version', '2003');
+  // Read the dialect setting
+  const dialect = config.get<string>('dialect', 'iec61131-3-ed2');
 
   // Options to control the language client
   const clientOptions: LanguageClientOptions = {
@@ -117,7 +117,7 @@ function createClient(compilerFilePath: string, config: vscode.WorkspaceConfigur
       { scheme: 'file', language: 'twincat-dut' },
     ],
     initializationOptions: {
-      std61131Version: std61131Version,
+      dialect: dialect,
     },
   };
 

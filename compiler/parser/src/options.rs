@@ -1,39 +1,61 @@
 //! Options affecting parsing.
 //!
-//! Use the [`define_parse_options`] macro to declare fields so that
-//! [`ParseOptions::apply_allow_all`] is always kept in sync.
+//! Use [`Dialect`] to select a preset configuration, then optionally
+//! override individual flags.  Use the [`define_parse_options`] macro
+//! to declare vendor-extension fields so that [`ParseOptions::from_dialect`]
+//! is the single place that maps dialects to flags.
 
-/// Declares [`ParseOptions`] with two groups of boolean flags:
+/// A named configuration preset that sets the IEC edition and
+/// vendor-extension flags in one shot.
 ///
-/// * **standard** — flags that are *not* affected by `allow_all`
-///   (e.g. version selectors, internal-only knobs).
-/// * **vendor** — vendor-extension flags that `allow_all` should enable.
+/// Individual `--allow-*` CLI flags can still override on top of a dialect.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum Dialect {
+    /// Strict IEC 61131-3:2003 (Edition 2).  No vendor extensions.
+    #[default]
+    Iec61131_3Ed2,
+    /// Strict IEC 61131-3:2013 (Edition 3).  No vendor extensions.
+    Iec61131_3Ed3,
+    /// RuSTy-compatible dialect: Edition 2 base (so long-time keywords
+    /// like `LDT` stay as identifiers) plus `REF_TO` support and all
+    /// vendor extensions enabled.
+    Rusty,
+}
+
+/// Declares [`ParseOptions`] with a set of vendor-extension boolean flags.
 ///
-/// The macro auto-generates [`ParseOptions::apply_allow_all`] which sets
-/// every *vendor* flag to `true` when `allow_all` is set.  Adding a new
-/// vendor extension is a single-line change in the macro invocation — no
-/// additional wiring is needed.
+/// The macro auto-generates the struct, its `Default` impl, and
+/// [`ParseOptions::from_dialect`] which maps each [`Dialect`] variant
+/// to the correct combination of flags.
 macro_rules! define_parse_options {
     (
-        standard { $($(#[$std_meta:meta])* $std_field:ident),* $(,)? }
-        vendor { $($(#[$vendor_meta:meta])* $vendor_field:ident),* $(,)? }
+        $( $(#[$vendor_meta:meta])* $vendor_field:ident ),* $(,)?
     ) => {
         #[derive(Debug, Default, Clone, Copy)]
         pub struct ParseOptions {
-            $($(#[$std_meta])* pub $std_field: bool,)*
+            /// When `true`, IEC 61131-3:2013 keywords (`LTIME`, `LDATE`,
+            /// `LTOD`, `LDT`, `REF_TO`, `REF`, `NULL`) are recognised.
+            pub allow_iec_61131_3_2013: bool,
             $($(#[$vendor_meta])* pub $vendor_field: bool,)*
-            /// When set, [`apply_allow_all`](ParseOptions::apply_allow_all)
-            /// enables every vendor-extension flag.
-            pub allow_all: bool,
         }
 
         impl ParseOptions {
-            /// Sets all vendor extension flags to `true` when `allow_all` is
-            /// set.  Call this after constructing options to apply the
-            /// `--allow-all` CLI flag (or its LSP equivalent).
-            pub fn apply_allow_all(&mut self) {
-                if self.allow_all {
-                    $(self.$vendor_field = true;)*
+            /// Build a [`ParseOptions`] from a [`Dialect`] preset.
+            ///
+            /// Individual flags can be set to `true` afterwards to layer
+            /// additional extensions on top of the dialect.
+            pub fn from_dialect(dialect: Dialect) -> Self {
+                match dialect {
+                    Dialect::Iec61131_3Ed2 => Self::default(),
+                    Dialect::Iec61131_3Ed3 => Self {
+                        allow_iec_61131_3_2013: true,
+                        ..Self::default()
+                    },
+                    Dialect::Rusty => Self {
+                        allow_iec_61131_3_2013: false,
+                        // Enable every vendor extension.
+                        $($vendor_field: true,)*
+                    },
                 }
             }
         }
@@ -41,17 +63,13 @@ macro_rules! define_parse_options {
 }
 
 define_parse_options! {
-    standard {
-        allow_iec_61131_3_2013,
-    }
-    vendor {
-        allow_c_style_comments,
-        allow_missing_semicolon,
-        allow_top_level_var_global,
-        allow_constant_type_params,
-        allow_empty_var_blocks,
-        allow_time_as_function_name,
-    }
+    allow_c_style_comments,
+    allow_missing_semicolon,
+    allow_top_level_var_global,
+    allow_constant_type_params,
+    allow_empty_var_blocks,
+    allow_time_as_function_name,
+    allow_ref_to,
 }
 
 #[cfg(test)]
@@ -59,42 +77,52 @@ mod tests {
     use super::*;
 
     #[test]
-    fn apply_allow_all_when_set_then_enables_all_vendor_flags() {
-        let mut options = ParseOptions {
-            allow_all: true,
-            ..Default::default()
-        };
-        options.apply_allow_all();
+    fn from_dialect_when_ed2_then_all_flags_false() {
+        let options = ParseOptions::from_dialect(Dialect::Iec61131_3Ed2);
 
-        assert!(options.allow_c_style_comments);
-        assert!(options.allow_missing_semicolon);
-        assert!(options.allow_top_level_var_global);
-        assert!(options.allow_constant_type_params);
-        assert!(options.allow_empty_var_blocks);
-        assert!(options.allow_time_as_function_name);
-    }
-
-    #[test]
-    fn apply_allow_all_when_not_set_then_leaves_vendor_flags_unchanged() {
-        let mut options = ParseOptions::default();
-        options.apply_allow_all();
-
+        assert!(!options.allow_iec_61131_3_2013);
         assert!(!options.allow_c_style_comments);
         assert!(!options.allow_missing_semicolon);
         assert!(!options.allow_top_level_var_global);
         assert!(!options.allow_constant_type_params);
         assert!(!options.allow_empty_var_blocks);
         assert!(!options.allow_time_as_function_name);
+        assert!(!options.allow_ref_to);
     }
 
     #[test]
-    fn apply_allow_all_when_set_then_does_not_affect_standard_flags() {
-        let mut options = ParseOptions {
-            allow_all: true,
-            ..Default::default()
-        };
-        options.apply_allow_all();
+    fn from_dialect_when_ed3_then_edition3_enabled_and_vendor_flags_false() {
+        let options = ParseOptions::from_dialect(Dialect::Iec61131_3Ed3);
+
+        assert!(options.allow_iec_61131_3_2013);
+        assert!(!options.allow_c_style_comments);
+        assert!(!options.allow_missing_semicolon);
+        assert!(!options.allow_top_level_var_global);
+        assert!(!options.allow_constant_type_params);
+        assert!(!options.allow_empty_var_blocks);
+        assert!(!options.allow_time_as_function_name);
+        assert!(!options.allow_ref_to);
+    }
+
+    #[test]
+    fn from_dialect_when_rusty_then_all_vendor_flags_enabled_and_edition3_disabled() {
+        let options = ParseOptions::from_dialect(Dialect::Rusty);
 
         assert!(!options.allow_iec_61131_3_2013);
+        assert!(options.allow_c_style_comments);
+        assert!(options.allow_missing_semicolon);
+        assert!(options.allow_top_level_var_global);
+        assert!(options.allow_constant_type_params);
+        assert!(options.allow_empty_var_blocks);
+        assert!(options.allow_time_as_function_name);
+        assert!(options.allow_ref_to);
+    }
+
+    #[test]
+    fn from_dialect_when_default_then_ed2() {
+        let options = ParseOptions::from_dialect(Dialect::default());
+
+        assert!(!options.allow_iec_61131_3_2013);
+        assert!(!options.allow_ref_to);
     }
 }

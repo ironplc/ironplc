@@ -4,6 +4,7 @@
 //! an RS function block instance, compile to bytecode, and execute on the VM.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 use common::parse_and_run_rounds;
@@ -22,13 +23,13 @@ END_PROGRAM
 
 #[test]
 fn end_to_end_when_rs_both_false_then_q1_stays_false() {
-    let (_container, bufs) = parse_and_run(RS_PROGRAM);
+    let (_container, bufs) = parse_and_run(RS_PROGRAM, &ParseOptions::default());
     assert_eq!(bufs.vars[3].as_i32(), 0, "Q1 should be FALSE");
 }
 
 #[test]
 fn end_to_end_when_rs_set_then_q1_latches() {
-    parse_and_run_rounds(RS_PROGRAM, |vm| {
+    parse_and_run_rounds(RS_PROGRAM, &ParseOptions::default(), |vm| {
         // Set S = TRUE
         vm.write_variable(1, 1).unwrap();
         vm.run_round(0).unwrap();
@@ -51,7 +52,7 @@ fn end_to_end_when_rs_set_then_q1_latches() {
 
 #[test]
 fn end_to_end_when_rs_reset_after_set_then_q1_is_false() {
-    parse_and_run_rounds(RS_PROGRAM, |vm| {
+    parse_and_run_rounds(RS_PROGRAM, &ParseOptions::default(), |vm| {
         // Set
         vm.write_variable(1, 1).unwrap();
         vm.run_round(0).unwrap();
@@ -71,7 +72,7 @@ fn end_to_end_when_rs_reset_after_set_then_q1_is_false() {
 
 #[test]
 fn end_to_end_when_rs_both_true_then_reset_dominates() {
-    parse_and_run_rounds(RS_PROGRAM, |vm| {
+    parse_and_run_rounds(RS_PROGRAM, &ParseOptions::default(), |vm| {
         vm.write_variable(1, 1).unwrap();
         vm.write_variable(2, 1).unwrap();
         vm.run_round(0).unwrap();
