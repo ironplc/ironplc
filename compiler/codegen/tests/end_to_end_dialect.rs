@@ -83,3 +83,35 @@ END_PROGRAM
     let (_lib, _ctx) = parse_rusty(source);
     // If we get here, parsing and type resolution succeeded.
 }
+
+#[test]
+fn end_to_end_when_rusty_dialect_then_oscat_style_struct_with_ldt_member_access() {
+    // Full OSCAT scenario: struct with LDT as member name, function that reads
+    // the member, and a program that writes and reads through the struct.
+    // Struct member access is not yet implemented in codegen, so this test
+    // verifies parsing and semantic analysis only.
+    let source = "
+TYPE MY_STRUCT :
+  STRUCT
+      LDT : DINT;
+      value : REAL;
+  END_STRUCT;
+END_TYPE
+FUNCTION MY_FUNC : DINT
+VAR_INPUT
+    x : MY_STRUCT;
+END_VAR
+    MY_FUNC := x.LDT;
+END_FUNCTION
+PROGRAM main
+VAR
+    s : MY_STRUCT;
+    result : DINT;
+END_VAR
+    s.LDT := 42;
+    result := MY_FUNC(x := s);
+END_PROGRAM
+";
+    let (_lib, _ctx) = parse_rusty(source);
+    // If we get here, parsing and type resolution succeeded.
+}

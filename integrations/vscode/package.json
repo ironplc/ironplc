@@ -76,17 +76,19 @@
           "default": "",
           "editPresentation": "singlelineText"
         },
-        "ironplc.std61131Version": {
-          "markdownDescription": "IEC 61131-3 standard version. Edition 3 (2013) enables features such as `LTIME`.",
+        "ironplc.dialect": {
+          "markdownDescription": "Language dialect preset. Controls IEC edition and vendor extensions.\n\n- `iec61131-3-ed2`: Strict IEC 61131-3:2003 (Edition 2)\n- `iec61131-3-ed3`: IEC 61131-3:2013 (Edition 3) with `LTIME`, `REF_TO`, etc.\n- `rusty`: RuSTy-compatible — Edition 2 base with `REF_TO` and all vendor extensions",
           "type": "string",
-          "default": "2003",
+          "default": "iec61131-3-ed2",
           "enum": [
-            "2003",
-            "2013"
+            "iec61131-3-ed2",
+            "iec61131-3-ed3",
+            "rusty"
           ],
           "enumDescriptions": [
-            "2003 (2nd)",
-            "2013 (3rd)"
+            "IEC 61131-3:2003 (Edition 2) — strict, no vendor extensions",
+            "IEC 61131-3:2013 (Edition 3) — enables LTIME, REF_TO, etc.",
+            "RuSTy-compatible — Edition 2 base with REF_TO and all vendor extensions"
           ]
         }
       }
