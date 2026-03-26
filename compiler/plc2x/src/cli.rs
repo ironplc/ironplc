@@ -105,8 +105,8 @@ pub fn tokenize(
 
 /// Compiles source files into a bytecode container (.iplc) file.
 ///
-/// Parses the source files, runs type resolution to populate expression types,
-/// and generates bytecode.
+/// Parses the source files, runs full analysis (type resolution + semantic
+/// checks), and generates bytecode.
 pub fn compile(
     paths: &[PathBuf],
     output: &Path,
@@ -129,12 +129,21 @@ pub fn compile(
         }
     }
 
-    // Run type resolution to populate Expr.resolved_type
-    let (analyzed, context) =
-        ironplc_analyzer::stages::resolve_types(&[&combined]).map_err(|errs| {
-            handle_diagnostics(&errs, Some(&project), suppress_output);
-            String::from("Error during type resolution")
-        })?;
+    // Run full analysis: type resolution + semantic checks (e.g. undeclared
+    // function calls, type mismatches). This must happen before codegen so
+    // that semantic errors are reported with proper problem codes.
+    let (analyzed, context) = ironplc_analyzer::stages::analyze(&[&combined]).map_err(|errs| {
+        handle_diagnostics(&errs, Some(&project), suppress_output);
+        String::from("Error during analysis")
+    })?;
+
+    // Report semantic diagnostics before attempting codegen. Without this
+    // check, semantic errors (e.g. P4017 undeclared function) would surface
+    // as misleading codegen errors (e.g. P9999).
+    if context.has_diagnostics() {
+        handle_diagnostics(context.diagnostics(), Some(&project), suppress_output);
+        return Err(String::from("Error during analysis"));
+    }
 
     // Generate bytecode, skipping user-defined functions not reachable from
     // the PROGRAM root to reduce container size.
