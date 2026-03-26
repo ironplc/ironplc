@@ -2,7 +2,7 @@
 //! as Visual Studio Code.
 
 use crossbeam_channel::{Receiver, Sender};
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::{Dialect, ParseOptions};
 use log::{debug, trace};
 use lsp_server::{Connection, ExtractError, Message, RequestId};
 use lsp_types::{
@@ -35,47 +35,35 @@ pub fn start() -> Result<(), String> {
 }
 
 /// Extract parse options from LSP initialization options.
+///
+/// Reads `"dialect"` to select the base preset, then overlays individual
+/// `--allow-*` flags.  Supported dialect values: `"iec61131-3-ed2"` (default),
+/// `"iec61131-3-ed3"`, `"rusty"`.
 fn extract_parse_options(initialize_params: &InitializeParams) -> ParseOptions {
     if let Some(ref opts) = initialize_params.initialization_options {
-        let std_version = opts.get("std61131Version").and_then(|v| v.as_str());
-        let allow_missing_semicolon = opts
-            .get("allowMissingSemicolon")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let allow_empty_var_blocks = opts
-            .get("allowEmptyVarBlocks")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        let mut options = match std_version {
-            Some("2013") => {
-                debug!("Enabling IEC 61131-3:2013 features from initializationOptions");
-                ParseOptions {
-                    allow_iec_61131_3_2013: true,
-                    ..Default::default()
-                }
+        let dialect = match opts.get("dialect").and_then(|v| v.as_str()) {
+            Some("iec61131-3-ed3") => {
+                debug!("Using IEC 61131-3 Edition 3 dialect from initializationOptions");
+                Dialect::Iec61131_3Ed3
             }
-            _ => ParseOptions::default(),
+            Some("rusty") => {
+                debug!("Using RuSTy dialect from initializationOptions");
+                Dialect::Rusty
+            }
+            _ => Dialect::Iec61131_3Ed2,
         };
-        let allow_time_as_function_name = opts
-            .get("allowTimeAsFunctionName")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let allow_c_style_comments = opts
-            .get("allowCStyleComments")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let allow_all = opts
-            .get("allowAll")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
 
-        options.allow_missing_semicolon = allow_missing_semicolon;
-        options.allow_empty_var_blocks = allow_empty_var_blocks;
-        options.allow_time_as_function_name = allow_time_as_function_name;
-        options.allow_c_style_comments = allow_c_style_comments;
-        options.allow_all = allow_all;
-        options.apply_allow_all();
+        let mut options = ParseOptions::from_dialect(dialect);
+
+        // Individual flags override (can only enable, never disable).
+        let flag = |key: &str| opts.get(key).and_then(|v| v.as_bool()).unwrap_or(false);
+        options.allow_missing_semicolon |= flag("allowMissingSemicolon");
+        options.allow_empty_var_blocks |= flag("allowEmptyVarBlocks");
+        options.allow_time_as_function_name |= flag("allowTimeAsFunctionName");
+        options.allow_c_style_comments |= flag("allowCStyleComments");
+        options.allow_top_level_var_global |= flag("allowTopLevelVarGlobal");
+        options.allow_constant_type_params |= flag("allowConstantTypeParams");
+        options.allow_ref_to |= flag("allowRefTo");
         options
     } else {
         ParseOptions::default()
@@ -636,13 +624,13 @@ mod test {
     }
 
     #[test]
-    fn extract_parse_options_when_2013_then_enables_edition_3() {
+    fn extract_parse_options_when_ed3_dialect_then_enables_edition_3() {
         #[allow(deprecated)]
         let params = InitializeParams {
             process_id: None,
             root_path: None,
             root_uri: None,
-            initialization_options: Some(serde_json::json!({"std61131Version": "2013"})),
+            initialization_options: Some(serde_json::json!({"dialect": "iec61131-3-ed3"})),
             capabilities: ClientCapabilities::default(),
             trace: None,
             workspace_folders: None,
@@ -658,13 +646,13 @@ mod test {
     }
 
     #[test]
-    fn extract_parse_options_when_2003_then_uses_default() {
+    fn extract_parse_options_when_ed2_dialect_then_uses_default() {
         #[allow(deprecated)]
         let params = InitializeParams {
             process_id: None,
             root_path: None,
             root_uri: None,
-            initialization_options: Some(serde_json::json!({"std61131Version": "2003"})),
+            initialization_options: Some(serde_json::json!({"dialect": "iec61131-3-ed2"})),
             capabilities: ClientCapabilities::default(),
             trace: None,
             workspace_folders: None,
@@ -677,6 +665,31 @@ mod test {
 
         let options = super::extract_parse_options(&params);
         assert!(!options.allow_iec_61131_3_2013);
+    }
+
+    #[test]
+    fn extract_parse_options_when_rusty_dialect_then_enables_ref_to_and_vendor_flags() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(serde_json::json!({"dialect": "rusty"})),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_parse_options(&params);
+        assert!(!options.allow_iec_61131_3_2013);
+        assert!(options.allow_ref_to);
+        assert!(options.allow_c_style_comments);
+        assert!(options.allow_missing_semicolon);
     }
 
     #[test]
@@ -746,13 +759,10 @@ mod test {
     }
 
     #[test]
-    fn lsp_when_2013_options_then_accepts_ltime() {
-        use ironplc_parser::options::ParseOptions;
+    fn lsp_when_ed3_dialect_then_accepts_ltime() {
+        use ironplc_parser::options::{Dialect, ParseOptions};
 
-        let parse_options = ParseOptions {
-            allow_iec_61131_3_2013: true,
-            ..Default::default()
-        };
+        let parse_options = ParseOptions::from_dialect(Dialect::Iec61131_3Ed3);
         let proj = Box::new(FileBackedProject::with_options(parse_options));
         let mut server = TestServer::new(proj);
 

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::{Dialect, ParseOptions};
 use ironplcc::cli;
 use ironplcc::logger;
 use ironplcc::lsp;
@@ -25,15 +25,33 @@ struct Args {
     action: Action,
 }
 
-/// IEC 61131-3 standard version to compile against.
-#[derive(clap::ValueEnum, Clone, Debug)]
-enum StdVersion {
-    /// IEC 61131-3:2003 — Edition 2 (default).
-    #[value(name = "2003")]
-    Iec6113132003,
-    /// IEC 61131-3:2013 — enables Edition 3 features such as LTIME.
-    #[value(name = "2013")]
-    Iec6113132013,
+/// Language dialect preset.
+///
+/// A dialect selects the IEC 61131-3 edition and a default set of vendor
+/// extensions.  Individual `--allow-*` flags can still override on top.
+#[derive(clap::ValueEnum, Clone, Debug, Default)]
+enum CliDialect {
+    /// Strict IEC 61131-3:2003 (Edition 2).  No vendor extensions.
+    #[default]
+    #[value(name = "iec61131-3-ed2")]
+    Iec61131_3Ed2,
+    /// Strict IEC 61131-3:2013 (Edition 3).  No vendor extensions.
+    #[value(name = "iec61131-3-ed3")]
+    Iec61131_3Ed3,
+    /// RuSTy-compatible: Edition 2 base with REF_TO support and all
+    /// vendor extensions enabled.
+    #[value(name = "rusty")]
+    Rusty,
+}
+
+impl CliDialect {
+    fn to_dialect(&self) -> Dialect {
+        match self {
+            CliDialect::Iec61131_3Ed2 => Dialect::Iec61131_3Ed2,
+            CliDialect::Iec61131_3Ed3 => Dialect::Iec61131_3Ed3,
+            CliDialect::Rusty => Dialect::Rusty,
+        }
+    }
 }
 
 /// Shared arguments for commands that operate on source files.
@@ -43,10 +61,11 @@ struct FileArgs {
     /// add all files in the given directory.
     files: Vec<PathBuf>,
 
-    /// Select the IEC 61131-3 standard version to compile against.
-    /// Without this flag, only Edition 2 features are accepted.
-    #[arg(long = "std-iec-61131-3", default_value = "2003")]
-    std_version: StdVersion,
+    /// Select the language dialect.
+    /// Defaults to strict IEC 61131-3:2003 (Edition 2).
+    /// Individual --allow-* flags can override the dialect's defaults.
+    #[arg(long, default_value = "iec61131-3-ed2")]
+    dialect: CliDialect,
 
     /// Allow missing semicolons after keyword statements like END_IF and END_STRUCT.
     #[arg(long)]
@@ -77,29 +96,24 @@ struct FileArgs {
     #[arg(long)]
     allow_c_style_comments: bool,
 
-    /// Enable all vendor extensions.
-    /// Equivalent to passing every --allow-* flag.
+    /// Allow REF_TO, REF(), and NULL syntax without enabling full Edition 3.
+    /// This is useful for libraries like OSCAT that use references but also
+    /// use Edition 3 type names (LDT, LTIME) as identifiers.
     #[arg(long)]
-    allow_all: bool,
+    allow_ref_to: bool,
 }
 
 impl FileArgs {
     fn parse_options(&self) -> ParseOptions {
-        let mut options = match self.std_version {
-            StdVersion::Iec6113132003 => ParseOptions::default(),
-            StdVersion::Iec6113132013 => ParseOptions {
-                allow_iec_61131_3_2013: true,
-                ..Default::default()
-            },
-        };
-        options.allow_missing_semicolon = self.allow_missing_semicolon;
-        options.allow_top_level_var_global = self.allow_top_level_var_global;
-        options.allow_constant_type_params = self.allow_constant_type_params;
-        options.allow_empty_var_blocks = self.allow_empty_var_blocks;
-        options.allow_time_as_function_name = self.allow_time_as_function_name;
-        options.allow_c_style_comments = self.allow_c_style_comments;
-        options.allow_all = self.allow_all;
-        options.apply_allow_all();
+        let mut options = ParseOptions::from_dialect(self.dialect.to_dialect());
+        // Individual flags override (can only enable, never disable).
+        options.allow_missing_semicolon |= self.allow_missing_semicolon;
+        options.allow_top_level_var_global |= self.allow_top_level_var_global;
+        options.allow_constant_type_params |= self.allow_constant_type_params;
+        options.allow_empty_var_blocks |= self.allow_empty_var_blocks;
+        options.allow_time_as_function_name |= self.allow_time_as_function_name;
+        options.allow_c_style_comments |= self.allow_c_style_comments;
+        options.allow_ref_to |= self.allow_ref_to;
         options
     }
 }

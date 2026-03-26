@@ -36,8 +36,10 @@ pub fn insert_keyword_statement_terminators(
             )
         {
             in_end_statement = true;
+        } else if in_end_statement && tok.token_type == TokenType::Semicolon {
+            // The source already has the semicolon — no insertion needed.
+            in_end_statement = false;
         } else if in_end_statement
-            && tok.token_type != TokenType::Semicolon
             && tok.token_type != TokenType::Comment
             && tok.token_type != TokenType::Whitespace
         {

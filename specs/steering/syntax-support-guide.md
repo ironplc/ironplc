@@ -115,7 +115,7 @@ pub fn apply(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnos
 |----------|-----|
 | New keyword that could conflict with existing identifiers | Token demotion |
 | Syntax that is always distinct from standard syntax | Validation rule |
-| Feature controlled by `--std-iec-61131-3` version | Token demotion |
+| Feature controlled by `--dialect` (edition selection) | Token demotion |
 | Feature controlled by `--allow-x` vendor flag | Either, depending on conflict risk |
 
 ### Token Insertion Pattern
@@ -139,7 +139,7 @@ pub fn insert_keyword_statement_terminators(
 
 ## Non-Standard Syntax Gating (`--allow-x` Flags)
 
-**Rule**: Anything not in the IEC 61131-3 standard **must** be gated behind an `--allow-x` flag. Using `--allow-all` enables all vendor extensions.
+**Rule**: Anything not in the IEC 61131-3 standard **must** be gated behind an `--allow-x` flag. Using `--dialect=rusty` enables all vendor extensions.
 
 ### Before Creating a New Flag
 
@@ -147,15 +147,26 @@ pub fn insert_keyword_statement_terminators(
 
 Current flags in `ParseOptions` (`parser/src/options.rs`):
 
-| Flag | CLI | Purpose | In `--allow-all`? |
-|------|-----|---------|-------------------|
-| `allow_c_style_comments` | `--allow-c-style-comments` | Permits `//` and `/* */` comments | Yes |
-| `allow_constant_type_params` | `--allow-constant-type-params` | Constants in type params (e.g., `STRING[MY_CONST]`) | Yes |
-| `allow_empty_var_blocks` | `--allow-empty-var-blocks` | Empty variable blocks (VAR END_VAR etc.) | Yes |
-| `allow_iec_61131_3_2013` | `--std-iec-61131-3 2013` | Enables Edition 3 keywords | N/A (version flag) |
-| `allow_missing_semicolon` | `--allow-missing-semicolon` | Inserts semicolons after END_IF etc. | No |
-| `allow_time_as_function_name` | `--allow-time-as-function-name` | TIME as function name (OSCAT compat) | Yes |
-| `allow_top_level_var_global` | `--allow-top-level-var-global` | VAR_GLOBAL outside CONFIGURATION | Yes |
+| Flag | CLI | Purpose |
+|------|-----|---------|
+| `allow_iec_61131_3_2013` | Set by `--dialect` | Enables Edition 3 keywords (set by `iec61131-3-ed3` dialect) |
+| `allow_c_style_comments` | `--allow-c-style-comments` | Permits `//` and `/* */` comments |
+| `allow_constant_type_params` | `--allow-constant-type-params` | Constants in type params (e.g., `STRING[MY_CONST]`) |
+| `allow_empty_var_blocks` | `--allow-empty-var-blocks` | Empty variable blocks (VAR END_VAR etc.) |
+| `allow_missing_semicolon` | `--allow-missing-semicolon` | Inserts semicolons after END_IF etc. |
+| `allow_ref_to` | `--allow-ref-to` | REF_TO/REF/NULL syntax without full Edition 3 |
+| `allow_time_as_function_name` | `--allow-time-as-function-name` | TIME as function name (OSCAT compat) |
+| `allow_top_level_var_global` | `--allow-top-level-var-global` | VAR_GLOBAL outside CONFIGURATION |
+
+### Dialects
+
+Dialects (`--dialect`) set the base configuration. Individual `--allow-*` flags can override on top.
+
+| Dialect | `--dialect` value | Edition 3 types | REF_TO | Vendor extensions |
+|---------|-------------------|----------------|--------|-------------------|
+| IEC 61131-3 Ed 2 (default) | `iec61131-3-ed2` | OFF | OFF | all OFF |
+| IEC 61131-3 Ed 3 | `iec61131-3-ed3` | ON | ON | all OFF |
+| RuSTy | `rusty` | OFF | ON | all ON |
 
 ### Grouping Guidance
 
@@ -189,28 +200,25 @@ Add the clap argument:
 allow_my_extension: bool,
 ```
 
-Update `parse_options()` to propagate it:
+The `parse_options()` method uses `|=` to overlay flags on the dialect preset:
 
 ```rust
 fn parse_options(&self) -> ParseOptions {
-    // ... existing code ...
-    options.allow_my_extension = self.allow_my_extension || self.allow_all;
+    let mut options = ParseOptions::from_dialect(self.dialect.to_dialect());
+    // ... existing overlays ...
+    options.allow_my_extension |= self.allow_my_extension;
     options
 }
 ```
 
-**Always include `|| self.allow_all`** so that `--allow-all` enables the new flag.
+**Also add the flag to relevant dialect presets** in `ParseOptions::from_dialect()` (in `parser/src/options.rs`). If the extension should be on for the RuSTy dialect, add it to the `Dialect::Rusty` arm.
 
 #### 3. LSP extraction (`plc2x/src/lsp.rs`)
 
-Add to `extract_parse_options()`:
+Add to `extract_parse_options()` using the `|=` pattern:
 
 ```rust
-let allow_my_extension = opts
-    .get("allowMyExtension")  // camelCase for LSP
-    .and_then(|v| v.as_bool())
-    .unwrap_or(false);
-options.allow_my_extension = allow_my_extension;
+options.allow_my_extension |= flag("allowMyExtension");  // camelCase for LSP
 ```
 
 Add a test for the LSP extraction.
@@ -431,11 +439,11 @@ New demotion transforms must be called in `tokenize_program()` **before** `check
 
 ## Common Mistakes
 
-- **Forgetting `--allow-all`**: Every new `--allow-x` flag must include `|| self.allow_all` in `parse_options()`. Without this, `--allow-all` silently ignores the new feature.
+- **Forgetting dialect presets**: Every new `--allow-x` flag must be added to the relevant dialect presets in `ParseOptions::from_dialect()`. Without this, the RuSTy dialect (or future dialects) silently ignores the new feature.
 - **Missing LSP wiring**: The flag works on the CLI but not in VS Code because `extract_parse_options()` in `plc2x/src/lsp.rs` was not updated. Always add LSP extraction for new flags.
 - **No round-trip test**: The feature parses but the renderer in `plc2plc` cannot write it back. Always add the round-trip test.
 - **No execution test**: The feature parses and analyzes but was never proven to execute correctly. Always add at least one end-to-end test.
-- **Creating a flag for standard syntax**: Only vendor extensions get `--allow-x` flags. Standard IEC 61131-3 syntax is always on (or gated by `--std-iec-61131-3`).
+- **Creating a flag for standard syntax**: Only vendor extensions get `--allow-x` flags. Standard IEC 61131-3 syntax is always on (or gated by `--dialect`).
 - **Stateful lexer changes**: The lexer (`logos`) is stateless. Use token transforms for context-dependent behavior, not lexer rules.
 - **Not registering transforms**: Adding a new `xform_*.rs` module but forgetting to call it from `tokenize_program()` in `parser/src/lib.rs`, or adding a new rule module but forgetting to register it in `check_tokens()`.
 
@@ -453,10 +461,11 @@ Review `parser/src/options.rs` — does an existing flag cover this? If not, pro
 
 #### Step 2: Add the Flag
 
-1. Add `allow_repeat_limit: bool` to `ParseOptions`
+1. Add `allow_repeat_limit` to `ParseOptions` vendor fields in the `define_parse_options!` macro
 2. Add `--allow-repeat-limit` to CLI `FileArgs`
-3. Add `|| self.allow_all` in `parse_options()`
-4. Add LSP extraction for `"allowRepeatLimit"`
+3. Add `|= self.allow_repeat_limit` in `parse_options()`
+4. Add to relevant dialect presets in `ParseOptions::from_dialect()`
+5. Add LSP extraction for `"allowRepeatLimit"`
 
 #### Step 3: Add Tokens (if needed)
 

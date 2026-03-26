@@ -9,7 +9,7 @@ use ironplc_container::Container;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::{Dialect, ParseOptions};
 use ironplc_parser::parse_program;
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::FaultContext;
@@ -27,10 +27,16 @@ pub fn parse(source: &str) -> (Library, SemanticContext) {
 
 /// Like [`parse`], but enables IEC 61131-3 Edition 3 (2013) features such as LTIME.
 pub fn parse_edition3(source: &str) -> (Library, SemanticContext) {
-    let options = ParseOptions {
-        allow_iec_61131_3_2013: true,
-        ..ParseOptions::default()
-    };
+    let options = ParseOptions::from_dialect(Dialect::Iec61131_3Ed3);
+    let library = parse_program(source, &FileId::default(), &options).unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
+    (analyzed, ctx)
+}
+
+/// Like [`parse`], but uses the RuSTy dialect (Edition 2 base with REF_TO
+/// and all vendor extensions enabled).
+pub fn parse_rusty(source: &str) -> (Library, SemanticContext) {
+    let options = ParseOptions::from_dialect(Dialect::Rusty);
     let library = parse_program(source, &FileId::default(), &options).unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
     (analyzed, ctx)
@@ -63,6 +69,19 @@ pub fn parse_and_run(source: &str) -> (Container, VmBuffers) {
 /// Like [`parse_and_run`], but enables IEC 61131-3 Edition 3 (2013) features.
 pub fn parse_and_run_edition3(source: &str) -> (Container, VmBuffers) {
     let (library, context) = parse_edition3(source);
+    let container = compile(&library, &context).unwrap();
+    let mut bufs = VmBuffers::from_container(&container);
+    {
+        let mut vm =
+            load_and_start(&container, &mut bufs).expect("VM execution trapped unexpectedly");
+        vm.run_round(0).expect("VM round trapped unexpectedly");
+    }
+    (container, bufs)
+}
+
+/// Like [`parse_and_run`], but uses the RuSTy dialect.
+pub fn parse_and_run_rusty(source: &str) -> (Container, VmBuffers) {
+    let (library, context) = parse_rusty(source);
     let container = compile(&library, &context).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
