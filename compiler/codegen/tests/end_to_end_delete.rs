@@ -1,6 +1,7 @@
 //! End-to-end integration tests for the DELETE standard function.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
@@ -35,7 +36,7 @@ PROGRAM main
   result := DELETE(s1, 6, 1);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Delete 6 chars starting at position 1: remove 'Hello ' -> 'World'
     let result_offset = string_offset(&[254]);
@@ -53,7 +54,7 @@ PROGRAM main
   result := DELETE(s1, 6, 6);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Delete 6 chars starting at position 6: remove ' World' -> 'Hello'
     let result_offset = string_offset(&[254]);
@@ -71,7 +72,7 @@ PROGRAM main
   result := DELETE(s1, 5, 1);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Delete all 5 chars starting at position 1.
     let result_offset = string_offset(&[254]);
@@ -89,7 +90,7 @@ PROGRAM main
   result := DELETE(s1, 0, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Delete 0 chars: nothing changes.
     let result_offset = string_offset(&[254]);
@@ -107,7 +108,7 @@ PROGRAM main
   result := DELETE(s1, 100, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Delete 100 chars starting at position 3, but only 3 chars remain: remove 'CDE' -> 'AB'
     let result_offset = string_offset(&[254]);
@@ -127,7 +128,7 @@ PROGRAM main
   result := DELETE(s1, n_len, n_pos);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Delete 10 chars starting at position 6: remove 'Beautiful ' -> 'Hello World'
     let result_offset = string_offset(&[254]);
@@ -145,7 +146,7 @@ PROGRAM main
   result := DELETE(s1, 1, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Delete 1 char at position 3: remove 'C' -> 'ABDE'
     let result_offset = string_offset(&[254]);

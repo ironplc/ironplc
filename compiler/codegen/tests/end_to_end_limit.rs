@@ -1,6 +1,7 @@
 //! End-to-end integration tests for the LIMIT function.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -16,7 +17,7 @@ PROGRAM main
   y := LIMIT(0, x, 10);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 5);
     assert_eq!(bufs.vars[1].as_i32(), 5);
@@ -34,7 +35,7 @@ PROGRAM main
   y := LIMIT(0, x, 10);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), -5);
     assert_eq!(bufs.vars[1].as_i32(), 0);
@@ -52,7 +53,7 @@ PROGRAM main
   y := LIMIT(0, x, 10);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 15);
     assert_eq!(bufs.vars[1].as_i32(), 10);

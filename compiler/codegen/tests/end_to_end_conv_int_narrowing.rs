@@ -1,6 +1,7 @@
 //! End-to-end tests for integer narrowing type conversions.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -16,7 +17,7 @@ PROGRAM main
   y := DINT_TO_INT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 1000);
 }
 
@@ -32,7 +33,7 @@ PROGRAM main
   y := LINT_TO_DINT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 42);
 }
 
@@ -48,7 +49,7 @@ PROGRAM main
   y := DINT_TO_SINT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // 300 mod 256 = 44 (wrapping to i8 range)
     assert_eq!(bufs.vars[1].as_i32() as i8, 44);
 }
@@ -65,7 +66,7 @@ PROGRAM main
   y := LINT_TO_SINT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 50);
 }
 
@@ -81,6 +82,6 @@ PROGRAM main
   y := ULINT_TO_UDINT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32() as u32, 1000);
 }

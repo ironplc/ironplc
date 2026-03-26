@@ -141,7 +141,7 @@ mod test {
     pub fn parse_and_render_resource_edition3(name: &'static str) -> String {
         let source = read_shared_resource(name);
         let options = ParseOptions {
-            allow_iec_61131_3_2013: true,
+            allow_long_date_and_time: true,
             ..ParseOptions::default()
         };
         let library = parse_program(&source, &FileId::default(), &options).unwrap();
@@ -150,7 +150,7 @@ mod test {
 
     fn parse_and_render_edition3(source: &str) -> String {
         let options = ParseOptions {
-            allow_iec_61131_3_2013: true,
+            allow_long_date_and_time: true,
             ..ParseOptions::default()
         };
         let library = parse_program(source, &FileId::default(), &options).unwrap();

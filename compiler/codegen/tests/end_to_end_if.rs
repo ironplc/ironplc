@@ -1,6 +1,7 @@
 //! End-to-end integration tests for IF/ELSIF/ELSE statements.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -18,7 +19,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 5);
     assert_eq!(bufs.vars[1].as_i32(), 1);
@@ -38,7 +39,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), -5);
     assert_eq!(bufs.vars[1].as_i32(), 0); // untouched
@@ -60,7 +61,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 5);
     assert_eq!(bufs.vars[1].as_i32(), 1);
@@ -82,7 +83,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), -5);
     assert_eq!(bufs.vars[1].as_i32(), 2);
@@ -106,7 +107,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 10);
     assert_eq!(bufs.vars[1].as_i32(), 1);
@@ -130,7 +131,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 3);
     assert_eq!(bufs.vars[1].as_i32(), 2);
@@ -154,7 +155,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), -5);
     assert_eq!(bufs.vars[1].as_i32(), 3);
@@ -173,7 +174,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // n defaults to 0, so 2 > 0 is true
     assert_eq!(bufs.vars[1].as_i32(), 1);
@@ -193,7 +194,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // n is 5, so 2 > 5 is false
     assert_eq!(bufs.vars[0].as_i32(), 5);
@@ -212,7 +213,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // 2 * 4 = 8, and 8 > 8 is false
     assert_eq!(bufs.vars[0].as_i32(), 0);

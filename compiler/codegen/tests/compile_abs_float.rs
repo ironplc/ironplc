@@ -1,6 +1,7 @@
 //! Bytecode-level integration tests for the ABS function with float types.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_compile;
 
@@ -16,7 +17,7 @@ PROGRAM main
   y := ABS(x);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source);
+    let container = parse_and_compile(source, &ParseOptions::default());
 
     // x := 5.0: LOAD_CONST_F32 pool:0, STORE_VAR_F32 var:0
     // y := ABS(x): LOAD_VAR_F32 var:0, BUILTIN ABS_F32, STORE_VAR_F32 var:1
@@ -47,7 +48,7 @@ PROGRAM main
   y := ABS(x);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source);
+    let container = parse_and_compile(source, &ParseOptions::default());
 
     // x := 5.0: LOAD_CONST_F64 pool:0, STORE_VAR_F64 var:0
     // y := ABS(x): LOAD_VAR_F64 var:0, BUILTIN ABS_F64, STORE_VAR_F64 var:1

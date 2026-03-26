@@ -1,6 +1,7 @@
 //! End-to-end integration tests for the SQRT function.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -16,7 +17,7 @@ PROGRAM main
   y := SQRT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 3.0).abs() < 1e-5, "expected 3.0, got {y}");
@@ -34,7 +35,7 @@ PROGRAM main
   y := SQRT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 0.0).abs() < 1e-5, "expected 0.0, got {y}");
@@ -52,7 +53,7 @@ PROGRAM main
   y := SQRT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!(y.is_nan(), "expected NaN, got {y}");
@@ -70,7 +71,7 @@ PROGRAM main
   y := SQRT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!(
@@ -91,7 +92,7 @@ PROGRAM main
   y := SQRT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!(y.is_nan(), "expected NaN, got {y}");

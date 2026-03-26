@@ -12,9 +12,9 @@
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
     /// Strict IEC 61131-3:2003 (Edition 2).  No vendor extensions.
-    #[default]
     Iec61131_3Ed2,
     /// Strict IEC 61131-3:2013 (Edition 3).  No vendor extensions.
+    #[default]
     Iec61131_3Ed3,
     /// RuSTy-compatible dialect: Edition 2 base (so long-time keywords
     /// like `LDT` stay as identifiers) plus `REF_TO` support and all
@@ -33,9 +33,10 @@ macro_rules! define_parse_options {
     ) => {
         #[derive(Debug, Default, Clone, Copy)]
         pub struct ParseOptions {
-            /// When `true`, IEC 61131-3:2013 keywords (`LTIME`, `LDATE`,
-            /// `LTOD`, `LDT`, `REF_TO`, `REF`, `NULL`) are recognised.
-            pub allow_iec_61131_3_2013: bool,
+            /// When `true`, long date-and-time keywords (`LTIME`, `LDATE`,
+            /// `LTOD`, `LDT`) are recognised as type keywords rather than
+            /// identifiers.
+            pub allow_long_date_and_time: bool,
             $($(#[$vendor_meta])* pub $vendor_field: bool,)*
         }
 
@@ -48,11 +49,11 @@ macro_rules! define_parse_options {
                 match dialect {
                     Dialect::Iec61131_3Ed2 => Self::default(),
                     Dialect::Iec61131_3Ed3 => Self {
-                        allow_iec_61131_3_2013: true,
+                        allow_long_date_and_time: true,
                         ..Self::default()
                     },
                     Dialect::Rusty => Self {
-                        allow_iec_61131_3_2013: false,
+                        allow_long_date_and_time: false,
                         // Enable every vendor extension.
                         $($vendor_field: true,)*
                     },
@@ -80,7 +81,7 @@ mod tests {
     fn from_dialect_when_ed2_then_all_flags_false() {
         let options = ParseOptions::from_dialect(Dialect::Iec61131_3Ed2);
 
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(!options.allow_long_date_and_time);
         assert!(!options.allow_c_style_comments);
         assert!(!options.allow_missing_semicolon);
         assert!(!options.allow_top_level_var_global);
@@ -94,7 +95,7 @@ mod tests {
     fn from_dialect_when_ed3_then_edition3_enabled_and_vendor_flags_false() {
         let options = ParseOptions::from_dialect(Dialect::Iec61131_3Ed3);
 
-        assert!(options.allow_iec_61131_3_2013);
+        assert!(options.allow_long_date_and_time);
         assert!(!options.allow_c_style_comments);
         assert!(!options.allow_missing_semicolon);
         assert!(!options.allow_top_level_var_global);
@@ -108,7 +109,7 @@ mod tests {
     fn from_dialect_when_rusty_then_all_vendor_flags_enabled_and_edition3_disabled() {
         let options = ParseOptions::from_dialect(Dialect::Rusty);
 
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(!options.allow_long_date_and_time);
         assert!(options.allow_c_style_comments);
         assert!(options.allow_missing_semicolon);
         assert!(options.allow_top_level_var_global);
@@ -119,10 +120,10 @@ mod tests {
     }
 
     #[test]
-    fn from_dialect_when_default_then_ed2() {
+    fn from_dialect_when_default_then_ed3() {
         let options = ParseOptions::from_dialect(Dialect::default());
 
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(options.allow_long_date_and_time);
         assert!(!options.allow_ref_to);
     }
 }

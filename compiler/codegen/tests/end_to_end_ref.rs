@@ -4,7 +4,8 @@
 //! All programs use Edition 3 features (REF_TO, REF(), NULL, ^).
 
 mod common;
-use common::{parse_and_run_edition3, parse_and_try_run_edition3};
+use common::{parse_and_run, parse_and_try_run};
+use ironplc_parser::options::{Dialect, ParseOptions};
 use ironplc_vm::error::Trap;
 
 #[test]
@@ -19,7 +20,7 @@ PROGRAM main
   value := r^;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run_edition3(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
     // var layout: counter=0, r=1, value=2
     assert_eq!(bufs.vars[2].as_i32(), 42);
 }
@@ -35,7 +36,7 @@ PROGRAM main
   r^ := 99;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run_edition3(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
     // counter (var[0]) should be 99 after writing through ref
     assert_eq!(bufs.vars[0].as_i32(), 99);
 }
@@ -51,7 +52,8 @@ PROGRAM main
   value := r^;
 END_PROGRAM
 ";
-    let err = parse_and_try_run_edition3(source).unwrap_err();
+    let err =
+        parse_and_try_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3)).unwrap_err();
     assert_eq!(err.trap, Trap::NullDereference);
 }
 
@@ -65,7 +67,8 @@ PROGRAM main
   r^ := 42;
 END_PROGRAM
 ";
-    let err = parse_and_try_run_edition3(source).unwrap_err();
+    let err =
+        parse_and_try_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3)).unwrap_err();
     assert_eq!(err.trap, Trap::NullDereference);
 }
 
@@ -81,7 +84,8 @@ PROGRAM main
   value := r^;
 END_PROGRAM
 ";
-    let err = parse_and_try_run_edition3(source).unwrap_err();
+    let err =
+        parse_and_try_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3)).unwrap_err();
     assert_eq!(err.trap, Trap::NullDereference);
 }
 
@@ -100,7 +104,7 @@ PROGRAM main
   result := r2^;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run_edition3(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
     // counter (var[0]) should be 55
     assert_eq!(bufs.vars[0].as_i32(), 55);
     // result (var[3]) should also be 55 (read through r2)
@@ -121,7 +125,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run_edition3(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
     // value (var[1]) should remain 0 since r is NULL
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
@@ -141,7 +145,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run_edition3(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
 
@@ -162,7 +166,7 @@ PROGRAM main
   result2 := r^;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run_edition3(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
     // result1 (var[3]) should be 10 (from a)
     assert_eq!(bufs.vars[3].as_i32(), 10);
     // result2 (var[4]) should be 20 (from b after reassign)
@@ -189,7 +193,7 @@ PROGRAM main
   result := READ_REF(PT := REF(b));
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run_edition3(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
     // var layout (globals): b=0, result=1
     assert_eq!(bufs.vars[1].as_i32(), 42);
 }
@@ -213,7 +217,7 @@ PROGRAM main
   result := WRITE_REF(PT := REF(b));
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run_edition3(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
     // b (var[0]) should be 99 after write through ref
     assert_eq!(bufs.vars[0].as_i32(), 99);
 }
@@ -240,7 +244,7 @@ PROGRAM main
   result := CHECK_NULL(PT := REF(b));
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run_edition3(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
     // result should be TRUE (1) since local_ref is NULL
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
@@ -268,7 +272,7 @@ PROGRAM main
   result := TEST(PT := REF(b));
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run_edition3(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
     // result (var[0]) should be TRUE (1)
     assert_eq!(bufs.vars[0].as_i32(), 1);
 }
@@ -297,7 +301,7 @@ END_VAR
     check := arr[0];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run_edition3(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
     // result (var[1]) should be 1 (function return value)
     assert_eq!(bufs.vars[1].as_i32(), 1);
     // check (var[2]) should be 42 (written through REF)

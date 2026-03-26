@@ -1,6 +1,7 @@
 //! End-to-end integration tests for MAX with LINT type.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -18,6 +19,6 @@ PROGRAM main
   result := MAX(a, b);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[2].as_i64(), 10_000_000_000);
 }

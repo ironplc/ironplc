@@ -1,6 +1,7 @@
 //! End-to-end tests for integer to BOOL type conversions.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -18,7 +19,7 @@ PROGRAM main
   y := SINT_TO_BOOL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
 
@@ -34,7 +35,7 @@ PROGRAM main
   y := SINT_TO_BOOL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
 
@@ -50,7 +51,7 @@ PROGRAM main
   y := INT_TO_BOOL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
 
@@ -66,7 +67,7 @@ PROGRAM main
   y := INT_TO_BOOL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
 
@@ -82,7 +83,7 @@ PROGRAM main
   y := DINT_TO_BOOL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
 
@@ -98,7 +99,7 @@ PROGRAM main
   y := DINT_TO_BOOL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
 
@@ -114,7 +115,7 @@ PROGRAM main
   y := LINT_TO_BOOL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
 
@@ -130,7 +131,7 @@ PROGRAM main
   y := LINT_TO_BOOL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
 
@@ -148,7 +149,7 @@ PROGRAM main
   y := USINT_TO_BOOL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
 
@@ -164,7 +165,7 @@ PROGRAM main
   y := UINT_TO_BOOL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
 
@@ -180,7 +181,7 @@ PROGRAM main
   y := UDINT_TO_BOOL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
 
@@ -196,7 +197,7 @@ PROGRAM main
   y := ULINT_TO_BOOL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
 
@@ -212,7 +213,7 @@ PROGRAM main
   y := ULINT_TO_BOOL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
 
@@ -230,7 +231,7 @@ PROGRAM main
   y := INT_TO_BOOL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
 
@@ -246,6 +247,6 @@ PROGRAM main
   y := SINT_TO_BOOL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }

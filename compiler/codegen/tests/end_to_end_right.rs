@@ -1,6 +1,7 @@
 //! End-to-end integration tests for the RIGHT standard function.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
@@ -35,7 +36,7 @@ PROGRAM main
   result := RIGHT(s1, 5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // RIGHT 5 chars of 'Hello World' -> 'World'
     let result_offset = string_offset(&[254]);
@@ -53,7 +54,7 @@ PROGRAM main
   result := RIGHT(s1, 100);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // RIGHT 100 chars of 'Hi' -> 'Hi' (clamped to string length)
     let result_offset = string_offset(&[254]);
@@ -71,7 +72,7 @@ PROGRAM main
   result := RIGHT(s1, 0);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let result_offset = string_offset(&[254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "");
@@ -88,7 +89,7 @@ PROGRAM main
   result := RIGHT(s1, 1);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let result_offset = string_offset(&[254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "E");
@@ -105,7 +106,7 @@ PROGRAM main
   result := RIGHT(s1, 5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let result_offset = string_offset(&[254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "ABCDE");
@@ -123,7 +124,7 @@ PROGRAM main
   result := RIGHT(s1, n);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let result_offset = string_offset(&[254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "rld");
@@ -140,7 +141,7 @@ PROGRAM main
   result := RIGHT(s1, 5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let result_offset = string_offset(&[254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "");

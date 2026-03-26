@@ -1,6 +1,7 @@
 //! End-to-end integration tests for VAR_TEMP declarations.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -26,7 +27,7 @@ PROGRAM main
   result := add_doubled(3, 4);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 14);
 }
@@ -54,7 +55,7 @@ PROGRAM main
   result := compute(4);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 15);
 }

@@ -1,6 +1,7 @@
 //! End-to-end integration tests for the SUB operator.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::{parse_and_compile, parse_and_run, VmBuffers};
 use ironplc_vm::Vm;
@@ -17,7 +18,7 @@ PROGRAM main
   y := x - 3;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 10);
     assert_eq!(bufs.vars[1].as_i32(), 7);
@@ -33,7 +34,7 @@ PROGRAM main
   result := 3 - 10;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), -7);
 }
@@ -48,7 +49,7 @@ PROGRAM main
   result := 100 - 30 - 20 - 10;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 40);
 }
@@ -63,7 +64,7 @@ PROGRAM main
   result := 10 + 5 - 3;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 12);
 }
@@ -82,7 +83,7 @@ PROGRAM main
   c := a - b;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 100);
     assert_eq!(bufs.vars[1].as_i32(), 30);
@@ -99,7 +100,7 @@ PROGRAM main
   x := 42 - 0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 42);
 }
@@ -114,7 +115,7 @@ PROGRAM main
   x := 0 - 7;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), -7);
 }
@@ -129,7 +130,7 @@ PROGRAM main
   count := count - 1;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source);
+    let container = parse_and_compile(source, &ParseOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = Vm::new()
         .load(
@@ -162,7 +163,7 @@ PROGRAM main
   x := 10 - -5;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // 10 - (-5) = 15
     assert_eq!(bufs.vars[0].as_i32(), 15);

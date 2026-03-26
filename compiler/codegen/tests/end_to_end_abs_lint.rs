@@ -1,6 +1,7 @@
 //! End-to-end integration tests for ABS with LINT type.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -16,6 +17,6 @@ PROGRAM main
   y := ABS(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i64(), 7_000_000_000);
 }

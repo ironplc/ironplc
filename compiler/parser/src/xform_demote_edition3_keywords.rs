@@ -9,15 +9,15 @@ use crate::{
 /// Two independent groups are demoted:
 ///
 /// * **Long-time-type keywords** (`LTIME`, `LDATE`, `LTOD`, `LDT`) —
-///   demoted when Edition 3 mode is disabled (`!allow_iec_61131_3_2013`).
+///   demoted when Edition 3 mode is disabled (`!allow_long_date_and_time`).
 ///
 /// * **Reference keywords** (`REF_TO`, `REF`, `NULL`) — demoted when
 ///   *both* Edition 3 mode *and* `allow_ref_to` are disabled.  This lets
 ///   the RuSTy dialect enable `REF_TO` syntax while keeping `LDT` etc.
 ///   available as identifiers.
 pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
-    let demote_time_types = !options.allow_iec_61131_3_2013;
-    let demote_ref = !options.allow_iec_61131_3_2013 && !options.allow_ref_to;
+    let demote_time_types = !options.allow_long_date_and_time;
+    let demote_ref = !options.allow_long_date_and_time && !options.allow_ref_to;
 
     if !demote_time_types && !demote_ref {
         return;
@@ -60,21 +60,21 @@ mod tests {
 
     fn opts_no_edition3() -> ParseOptions {
         ParseOptions {
-            allow_iec_61131_3_2013: false,
+            allow_long_date_and_time: false,
             ..ParseOptions::default()
         }
     }
 
     fn opts_edition3() -> ParseOptions {
         ParseOptions {
-            allow_iec_61131_3_2013: true,
+            allow_long_date_and_time: true,
             ..ParseOptions::default()
         }
     }
 
     fn opts_ref_to_only() -> ParseOptions {
         ParseOptions {
-            allow_iec_61131_3_2013: false,
+            allow_long_date_and_time: false,
             allow_ref_to: true,
             ..ParseOptions::default()
         }

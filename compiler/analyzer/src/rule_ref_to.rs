@@ -383,7 +383,7 @@ mod tests {
 
     fn parse_edition3(program: &str) -> Result<(), String> {
         let options = ParseOptions {
-            allow_iec_61131_3_2013: true,
+            allow_long_date_and_time: true,
             ..ParseOptions::default()
         };
         let library =

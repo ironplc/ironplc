@@ -1,6 +1,7 @@
 //! End-to-end integration tests for bit access on integer variables (e.g., `a.0`).
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -18,7 +19,7 @@ PROGRAM main
   result := a.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // 5 = 0b101, bit 0 is 1 → TRUE
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
@@ -35,7 +36,7 @@ PROGRAM main
   result := a.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // 4 = 0b100, bit 0 is 0 → FALSE
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
@@ -52,7 +53,7 @@ PROGRAM main
   result := a.2;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // 5 = 0b101, bit 2 is 1 → TRUE
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
@@ -69,7 +70,7 @@ PROGRAM main
   result := a.1;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // 5 = 0b101, bit 1 is 0 → FALSE
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
@@ -86,7 +87,7 @@ PROGRAM main
   result := x.7;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // 0x80 = 0b10000000, bit 7 is 1 → TRUE
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
@@ -103,7 +104,7 @@ PROGRAM main
   result := x.15;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // 0x8000 bit 15 is 1 → TRUE
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
@@ -120,7 +121,7 @@ PROGRAM main
   y := x.16;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // 65536 = 0x10000, bit 16 = 1
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
@@ -137,7 +138,7 @@ PROGRAM main
   y := x.1;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // 10 = 0b1010, bit 1 = 1
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
@@ -161,7 +162,7 @@ PROGRAM main
   result := FOO(A := 5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // 5 = 0b101, bit 0 is 1 → TRUE, so FOO returns 1
     assert_eq!(bufs.vars[0].as_i32(), 1);
 }
@@ -179,7 +180,7 @@ PROGRAM main
   x.0 := TRUE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // Set bit 0: 0 -> 1
     assert_eq!(bufs.vars[0].as_i32(), 1);
 }
@@ -195,7 +196,7 @@ PROGRAM main
   x.3 := TRUE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // Set bit 3: 0 -> 8
     assert_eq!(bufs.vars[0].as_i32(), 8);
 }
@@ -211,7 +212,7 @@ PROGRAM main
   x.0 := FALSE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // Clear bit 0: 255 -> 254
     assert_eq!(bufs.vars[0].as_i32(), 254);
 }
@@ -227,7 +228,7 @@ PROGRAM main
   x.7 := FALSE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // Clear bit 7: 255 -> 127
     assert_eq!(bufs.vars[0].as_i32(), 127);
 }
@@ -243,7 +244,7 @@ PROGRAM main
   x.0 := TRUE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // 170 = 0b10101010, set bit 0 -> 0b10101011 = 171
     assert_eq!(bufs.vars[0].as_i32(), 171);
 }
@@ -259,7 +260,7 @@ PROGRAM main
   x.8 := TRUE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // Set bit 8: 0 -> 256
     assert_eq!(bufs.vars[0].as_i32(), 256);
 }
@@ -275,7 +276,7 @@ PROGRAM main
   x.16 := TRUE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // Set bit 16: 0 -> 65536
     assert_eq!(bufs.vars[0].as_i32(), 65536);
 }
@@ -295,7 +296,7 @@ PROGRAM main
   x.4 := TRUE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // Set bits 0, 2, 4: 0b00010101 = 21
     assert_eq!(bufs.vars[0].as_i32(), 21);
 }
@@ -313,7 +314,7 @@ PROGRAM main
   y := x.3;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 8); // x = 8
     assert_eq!(bufs.vars[1].as_i32(), 1); // y = TRUE
 }

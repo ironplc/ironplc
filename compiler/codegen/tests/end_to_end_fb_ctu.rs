@@ -4,6 +4,7 @@
 //! a CTU function block instance, compile to bytecode, and execute on the VM.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 use common::parse_and_run_rounds;
@@ -33,7 +34,7 @@ fn pulse_n(vm: &mut ironplc_vm::VmRunning<'_>, var_idx: u16, n: u64) {
 
 #[test]
 fn end_to_end_when_ctu_not_triggered_then_q_is_false() {
-    let (_container, bufs) = parse_and_run(CTU_PROGRAM);
+    let (_container, bufs) = parse_and_run(CTU_PROGRAM, &ParseOptions::default());
     assert_eq!(
         bufs.vars[3].as_i32(),
         0,
@@ -43,7 +44,7 @@ fn end_to_end_when_ctu_not_triggered_then_q_is_false() {
 
 #[test]
 fn end_to_end_when_ctu_counts_to_pv_then_q_is_true() {
-    parse_and_run_rounds(CTU_PROGRAM, |vm| {
+    parse_and_run_rounds(CTU_PROGRAM, &ParseOptions::default(), |vm| {
         pulse_n(vm, 1, 3);
         assert_eq!(
             vm.read_variable(3).unwrap(),
@@ -56,7 +57,7 @@ fn end_to_end_when_ctu_counts_to_pv_then_q_is_true() {
 
 #[test]
 fn end_to_end_when_ctu_reset_then_cv_is_zero() {
-    parse_and_run_rounds(CTU_PROGRAM, |vm| {
+    parse_and_run_rounds(CTU_PROGRAM, &ParseOptions::default(), |vm| {
         pulse_n(vm, 1, 2);
         assert_eq!(
             vm.read_variable(4).unwrap(),
@@ -82,7 +83,7 @@ fn end_to_end_when_ctu_reset_then_cv_is_zero() {
 
 #[test]
 fn end_to_end_when_ctu_below_pv_then_q_is_false() {
-    parse_and_run_rounds(CTU_PROGRAM, |vm| {
+    parse_and_run_rounds(CTU_PROGRAM, &ParseOptions::default(), |vm| {
         pulse_n(vm, 1, 2);
         // PV=3, CV=2 => Q should be FALSE
         assert_eq!(
@@ -105,7 +106,7 @@ PROGRAM main
   counter(CU := TRUE, R := FALSE, PV := 1, Q => result, CV => count);
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, |vm| {
+    parse_and_run_rounds(source, &ParseOptions::default(), |vm| {
         vm.run_round(0).unwrap();
         assert_eq!(vm.read_variable(1).unwrap(), 1, "Q should be TRUE");
         assert_eq!(vm.read_variable(2).unwrap(), 1, "CV should be 1");

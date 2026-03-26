@@ -1,6 +1,7 @@
 //! Bytecode-level integration tests for MUX function compilation with LINT type.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_compile;
 
@@ -16,7 +17,7 @@ PROGRAM main
   y := MUX(k, 100, 200, 300);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source);
+    let container = parse_and_compile(source, &ParseOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // BUILTIN MUX_I64_BASE+3 = 0x0423
