@@ -1,6 +1,7 @@
 //! End-to-end integration tests for the MID standard function.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
@@ -35,7 +36,7 @@ PROGRAM main
   result := MID(s1, 5, 1);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // MID 5 chars starting at position 1 -> 'Hello'
     let result_offset = string_offset(&[254]);
@@ -53,7 +54,7 @@ PROGRAM main
   result := MID(s1, 5, 7);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // MID 5 chars starting at position 7 -> 'World'
     let result_offset = string_offset(&[254]);
@@ -71,7 +72,7 @@ PROGRAM main
   result := MID(s1, 3, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // MID 3 chars starting at position 3 -> 'CDE'
     let result_offset = string_offset(&[254]);
@@ -89,7 +90,7 @@ PROGRAM main
   result := MID(s1, 100, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // MID 100 chars from position 3, but only 3 remain -> 'CDE'
     let result_offset = string_offset(&[254]);
@@ -107,7 +108,7 @@ PROGRAM main
   result := MID(s1, 0, 2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let result_offset = string_offset(&[254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "");
@@ -124,7 +125,7 @@ PROGRAM main
   result := MID(s1, 1, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let result_offset = string_offset(&[254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "C");
@@ -143,7 +144,7 @@ PROGRAM main
   result := MID(s1, n_len, n_pos);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // MID 9 chars starting at position 7 -> 'Beautiful'
     let result_offset = string_offset(&[254]);
@@ -161,7 +162,7 @@ PROGRAM main
   result := MID(s1, 5, 10);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Position 10 is beyond end of 3-char string -> empty
     let result_offset = string_offset(&[254]);

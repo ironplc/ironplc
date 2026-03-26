@@ -1,6 +1,7 @@
 //! End-to-end integration tests for the ABS function with float types.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -16,7 +17,7 @@ PROGRAM main
   y := ABS(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 42.5).abs() < 1e-5, "expected 42.5, got {y}");
@@ -34,7 +35,7 @@ PROGRAM main
   y := ABS(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 7.25).abs() < 1e-5, "expected 7.25, got {y}");
@@ -52,7 +53,7 @@ PROGRAM main
   y := ABS(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!(

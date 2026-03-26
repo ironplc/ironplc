@@ -1,6 +1,7 @@
 //! End-to-end integration tests for the REPLACE standard function.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
@@ -36,7 +37,7 @@ PROGRAM main
   result := REPLACE(s1, s2, 5, 7);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // s1 at offset 0 (max 254), s2 at offset 258 (4+254), result at offset 516 (4+254+4+254)
     let result_offset = string_offset(&[254, 254]);
@@ -55,7 +56,7 @@ PROGRAM main
   result := REPLACE(s1, s2, 0, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // L=0 means no deletion, just insert XY at position 3.
     // Result: AB + XY + CDE = ABXYCDE
@@ -75,7 +76,7 @@ PROGRAM main
   result := REPLACE(s1, s2, 5, 1);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Delete 5 chars from position 1 (all of 'Hello'), insert 'Hi'.
     let result_offset = string_offset(&[254, 254]);
@@ -94,7 +95,7 @@ PROGRAM main
   result := REPLACE(s1, s2, 2, 2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Delete 2 chars at position 2 ('BC'), insert empty string.
     // Result: A + DE = ADE
@@ -114,7 +115,7 @@ PROGRAM main
   result := REPLACE(s1, s2, 2, 4);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Delete 2 chars at position 4 ('DE'), insert 'XYZ'.
     // Result: ABC + XYZ = ABCXYZ
@@ -136,7 +137,7 @@ PROGRAM main
   result := REPLACE(s1, s2, n_len, n_pos);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Insert 'Beautiful ' at position 7, delete 0 chars.
     // Result: Hello Beautiful World
@@ -159,7 +160,7 @@ PROGRAM main
   result := REPLACE(s1, s2, 1, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Full result would be AB + XXXXX + DE = ABXXXXXDE (9 chars).
     // But result is STRING[6], so it truncates to 'ABXXXX' (6 chars).
@@ -179,7 +180,7 @@ PROGRAM main
   result := REPLACE(s1, s2, 1, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Result: AB + XY + DE = ABXYDE (6 chars) — fits exactly in STRING[6].
     let result_offset = string_offset(&[254, 254]);
@@ -198,7 +199,7 @@ PROGRAM main
   result := REPLACE(s1, s2, 1, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Result: AB + XYZ + DE = ABXYZDE (7 chars) — truncated to 'ABXYZD' (6 chars).
     let result_offset = string_offset(&[254, 254]);
@@ -217,7 +218,7 @@ PROGRAM main
   result := REPLACE(s1, s2, 5, 7);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     // Full result would be 'Hello Earth' (11 chars).
     // STRING[3] truncates to 'Hel'.

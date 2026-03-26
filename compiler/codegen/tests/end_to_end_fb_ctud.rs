@@ -4,6 +4,7 @@
 //! a CTUD function block instance, compile to bytecode, and execute on the VM.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 use common::parse_and_run_rounds;
@@ -38,14 +39,14 @@ fn pulse_n(vm: &mut ironplc_vm::VmRunning<'_>, var_idx: u16, n: u64, time_base: 
 #[test]
 fn end_to_end_when_ctud_not_triggered_then_outputs_at_defaults() {
     // CV=0, PV=3: QU = (0 >= 3) = FALSE, QD = (0 <= 0) = TRUE
-    let (_container, bufs) = parse_and_run(CTUD_PROGRAM);
+    let (_container, bufs) = parse_and_run(CTUD_PROGRAM, &ParseOptions::default());
     assert_eq!(bufs.vars[5].as_i32(), 0, "QU should be FALSE");
     assert_eq!(bufs.vars[6].as_i32(), 1, "QD should be TRUE (CV=0 <= 0)");
 }
 
 #[test]
 fn end_to_end_when_ctud_counts_up_to_pv_then_qu_is_true() {
-    parse_and_run_rounds(CTUD_PROGRAM, |vm| {
+    parse_and_run_rounds(CTUD_PROGRAM, &ParseOptions::default(), |vm| {
         pulse_n(vm, 1, 3, 0); // 3 rising edges on CU
         assert_eq!(vm.read_variable(7).unwrap(), 3, "CV should be 3");
         assert_eq!(
@@ -58,7 +59,7 @@ fn end_to_end_when_ctud_counts_up_to_pv_then_qu_is_true() {
 
 #[test]
 fn end_to_end_when_ctud_counts_down_then_qd_is_true() {
-    parse_and_run_rounds(CTUD_PROGRAM, |vm| {
+    parse_and_run_rounds(CTUD_PROGRAM, &ParseOptions::default(), |vm| {
         // CV starts at 0, counting down goes to -1
         vm.write_variable(2, 1).unwrap();
         vm.run_round(0).unwrap();
@@ -73,7 +74,7 @@ fn end_to_end_when_ctud_counts_down_then_qd_is_true() {
 
 #[test]
 fn end_to_end_when_ctud_reset_then_cv_is_zero() {
-    parse_and_run_rounds(CTUD_PROGRAM, |vm| {
+    parse_and_run_rounds(CTUD_PROGRAM, &ParseOptions::default(), |vm| {
         pulse_n(vm, 1, 2, 0); // Count up twice
         assert_eq!(
             vm.read_variable(7).unwrap(),
@@ -94,7 +95,7 @@ fn end_to_end_when_ctud_reset_then_cv_is_zero() {
 
 #[test]
 fn end_to_end_when_ctud_load_then_cv_equals_pv() {
-    parse_and_run_rounds(CTUD_PROGRAM, |vm| {
+    parse_and_run_rounds(CTUD_PROGRAM, &ParseOptions::default(), |vm| {
         vm.write_variable(4, 1).unwrap(); // LD = TRUE
         vm.run_round(0).unwrap();
         assert_eq!(
@@ -117,7 +118,7 @@ PROGRAM main
   counter(CU := TRUE, CD := FALSE, R := FALSE, LD := FALSE, PV := 1, QU => qu_out, CV => cv_out);
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, |vm| {
+    parse_and_run_rounds(source, &ParseOptions::default(), |vm| {
         vm.run_round(0).unwrap();
         assert_eq!(vm.read_variable(1).unwrap(), 1, "QU should be TRUE");
         assert_eq!(vm.read_variable(2).unwrap(), 1, "CV should be 1");

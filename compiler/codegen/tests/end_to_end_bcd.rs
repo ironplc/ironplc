@@ -1,6 +1,7 @@
 //! End-to-end integration tests for the BCD_TO_INT and INT_TO_BCD functions.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -16,7 +17,7 @@ PROGRAM main
   result := BCD_TO_INT(bcd_val);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let result = bufs.vars[1].as_i32() as u8;
     assert_eq!(result, 42, "expected 42, got {result}");
@@ -34,7 +35,7 @@ PROGRAM main
   result := BCD_TO_INT(bcd_val);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let result = bufs.vars[1].as_i32() as u16;
     assert_eq!(result, 1234, "expected 1234, got {result}");
@@ -52,7 +53,7 @@ PROGRAM main
   result := BCD_TO_INT(bcd_val);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let result = bufs.vars[1].as_i32() as u8;
     assert_eq!(result, 0, "expected 0, got {result}");
@@ -70,7 +71,7 @@ PROGRAM main
   result := INT_TO_BCD(int_val);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let result = bufs.vars[1].as_i32() as u8;
     assert_eq!(result, 0x42, "expected 0x42, got 0x{result:02X}");
@@ -88,7 +89,7 @@ PROGRAM main
   result := INT_TO_BCD(int_val);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let result = bufs.vars[1].as_i32() as u16;
     assert_eq!(result, 0x1234, "expected 0x1234, got 0x{result:04X}");
@@ -108,7 +109,7 @@ PROGRAM main
   result := BCD_TO_INT(bcd_val);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let result = bufs.vars[2].as_i32() as u8;
     assert_eq!(result, 73, "expected 73, got {result}");

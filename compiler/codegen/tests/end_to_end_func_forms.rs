@@ -7,6 +7,7 @@
 //! treats NOT as a unary operator applied to parenthesized expression (x).
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -24,7 +25,7 @@ PROGRAM main
   y := ADD(x, 32);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 10);
     assert_eq!(bufs.vars[1].as_i32(), 42);
@@ -40,7 +41,7 @@ PROGRAM main
   result := SUB(10, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 7);
 }
@@ -55,7 +56,7 @@ PROGRAM main
   result := MUL(6, 7);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 42);
 }
@@ -70,7 +71,7 @@ PROGRAM main
   result := DIV(20, 4);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 5);
 }
@@ -89,7 +90,7 @@ PROGRAM main
   false_result := GT(5, 10);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 0);
@@ -109,7 +110,7 @@ PROGRAM main
   false_result := GE(5, 10);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 1);
@@ -128,7 +129,7 @@ PROGRAM main
   false_result := EQ(5, 10);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 0);
@@ -146,7 +147,7 @@ PROGRAM main
   false_result := LE(10, 5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 0);
@@ -164,7 +165,7 @@ PROGRAM main
   false_result := LT(5, 5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 0);
@@ -182,7 +183,7 @@ PROGRAM main
   false_result := NE(5, 5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 0);
@@ -198,7 +199,7 @@ PROGRAM main
   result := MOD(10, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 1);
 }
@@ -215,7 +216,7 @@ PROGRAM main
   false_result := AND(TRUE, FALSE);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 0);
@@ -233,7 +234,7 @@ PROGRAM main
   false_result := OR(FALSE, FALSE);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 0);
@@ -251,7 +252,7 @@ PROGRAM main
   false_result := XOR(TRUE, TRUE);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 0);
@@ -271,7 +272,7 @@ PROGRAM main
   false_result := NOT(TRUE);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 0);
@@ -291,7 +292,7 @@ PROGRAM main
   result := MOVE(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 42);
     assert_eq!(bufs.vars[1].as_i32(), 42);

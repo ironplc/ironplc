@@ -1,6 +1,7 @@
 //! End-to-end integration tests for the TRUNC function.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_run;
 
@@ -16,7 +17,7 @@ PROGRAM main
   y := TRUNC(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let y = bufs.vars[1].as_i32();
     assert_eq!(y, 3, "expected 3, got {y}");
@@ -34,7 +35,7 @@ PROGRAM main
   y := TRUNC(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let y = bufs.vars[1].as_i32();
     assert_eq!(y, -3, "expected -3, got {y}");
@@ -52,7 +53,7 @@ PROGRAM main
   y := TRUNC(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let y = bufs.vars[1].as_i32();
     assert_eq!(y, 0, "expected 0, got {y}");
@@ -70,7 +71,7 @@ PROGRAM main
   y := TRUNC(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let y = bufs.vars[1].as_i64();
     assert_eq!(y, 99, "expected 99, got {y}");
@@ -88,7 +89,7 @@ PROGRAM main
   y := TRUNC(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
 
     let y = bufs.vars[1].as_i64();
     assert_eq!(y, -99, "expected -99, got {y}");

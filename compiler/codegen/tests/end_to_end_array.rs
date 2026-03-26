@@ -2,6 +2,7 @@
 //! Compiles ST programs with arrays and runs them through the VM.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::{parse_and_run, parse_and_run_rounds};
 
@@ -17,7 +18,7 @@ PROGRAM main
   x := arr[3];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // x is at var index 1 (arr is var 0, x is var 1)
     assert_eq!(bufs.vars[1].as_i32(), 42);
 }
@@ -42,7 +43,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // sum is var index 1 (arr=0, sum=1, i=2)
     assert_eq!(bufs.vars[1].as_i32(), 150);
 }
@@ -58,7 +59,7 @@ PROGRAM main
   x := arr[2];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 20);
 }
 
@@ -76,7 +77,7 @@ PROGRAM main
   x := arr[1];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 200000);
 }
 
@@ -96,7 +97,7 @@ PROGRAM main
   x := arr[0];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 300);
 }
 
@@ -118,7 +119,7 @@ PROGRAM main
   c := arr[3];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // arr=0, a=1, b=2, c=3
     assert_eq!(bufs.vars[1].as_i32(), 11);
     assert_eq!(bufs.vars[2].as_i32(), 22);
@@ -141,7 +142,7 @@ PROGRAM main
   x := arr[1];
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, |vm| {
+    parse_and_run_rounds(source, &ParseOptions::default(), |vm| {
         // First scan: sets arr[1] = 99
         vm.run_round(0).unwrap();
         assert_eq!(vm.read_variable(1).unwrap(), 99);
@@ -165,7 +166,7 @@ PROGRAM main
   y := arr[4];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     // arr=0, x=1, y=2
     assert_eq!(bufs.vars[1].as_i32(), 10); // arr[1] = first of 3(10)
     assert_eq!(bufs.vars[2].as_i32(), 20); // arr[4] = first of 3(20)
@@ -183,7 +184,7 @@ PROGRAM main
   x := matrix[2, 3];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 42);
 }
 
@@ -208,6 +209,6 @@ END_VAR
     result := MY_FUNC(x := arg);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source);
+    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 42);
 }

@@ -1,6 +1,7 @@
 //! Bytecode-level integration tests for CASE statement compilation.
 
 mod common;
+use ironplc_parser::options::ParseOptions;
 
 use common::parse_and_compile;
 
@@ -17,7 +18,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source);
+    let container = parse_and_compile(source, &ParseOptions::default());
 
     // x=var:0, y=var:1
     // Bytecode layout:
@@ -62,7 +63,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source);
+    let container = parse_and_compile(source, &ParseOptions::default());
 
     // Bytecode layout:
     //   0: LOAD_VAR_I32 var:0          (selector)
