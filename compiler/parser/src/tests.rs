@@ -1301,7 +1301,7 @@ END_FUNCTION";
 
     fn parse_text_edition3(source: &str) -> Library {
         let options = ParseOptions {
-            allow_long_date_and_time: true,
+            allow_iec_61131_3_2013: true,
             ..ParseOptions::default()
         };
         let result = parse_program(source, &FileId::default(), &options);

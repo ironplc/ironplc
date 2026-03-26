@@ -23,8 +23,8 @@ def validate_flags(app, config):
 
     # Extract "allow_*" field names
     fields = re.findall(r'pub (allow_\w+): bool', options_text)
-    # Long date/time flag is set by --dialect, not --allow-*
-    fields = [f for f in fields if f != 'allow_long_date_and_time']
+    # Edition flag is set by --dialect, not --allow-*
+    fields = [f for f in fields if f != 'allow_iec_61131_3_2013']
 
     # Convert to CLI form: allow_foo_bar -> --allow-foo-bar
     cli_flags = {f: '--' + f.replace('_', '-') for f in fields}

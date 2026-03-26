@@ -53,8 +53,8 @@ Keywords are case-insensitive (`ignore(case)`). Identifiers have lower priority 
 
 ```rust
 pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
-    let demote_time_types = !options.allow_long_date_and_time;
-    let demote_ref = !options.allow_long_date_and_time && !options.allow_ref_to;
+    let demote_time_types = !options.allow_iec_61131_3_2013;
+    let demote_ref = !options.allow_iec_61131_3_2013 && !options.allow_ref_to;
 
     for tok in tokens.iter_mut() {
         match tok.token_type {
@@ -153,7 +153,7 @@ Current flags in `ParseOptions` (`parser/src/options.rs`):
 
 | Flag | CLI | Purpose |
 |------|-----|---------|
-| `allow_long_date_and_time` | Set by `--dialect` | Enables long date/time keywords (`LTIME`, `LDATE`, `LTOD`, `LDT`) |
+| `allow_iec_61131_3_2013` | Set by `--dialect` | Enables Edition 3 keywords (set by `iec61131-3-ed3` dialect) |
 | `allow_c_style_comments` | `--allow-c-style-comments` | Permits `//` and `/* */` comments |
 | `allow_constant_type_params` | `--allow-constant-type-params` | Constants in type params (e.g., `STRING[MY_CONST]`) |
 | `allow_empty_var_blocks` | `--allow-empty-var-blocks` | Empty variable blocks (VAR END_VAR etc.) |
