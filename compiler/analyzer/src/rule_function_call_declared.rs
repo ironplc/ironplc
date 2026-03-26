@@ -189,6 +189,25 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
+    fn apply_when_function_calls_undeclared_function_then_error() {
+        let program = "
+FUNCTION MY_FUNC : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    MY_FUNC := UNDEFINED_HELPER(x);
+END_FUNCTION";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+
+        assert!(result.is_err());
+        let diagnostics = result.unwrap_err();
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, Problem::FunctionCallUndeclared.code());
+    }
+
+    #[test]
     fn apply_when_wrong_arg_count_then_error() {
         let program = "
 FUNCTION_BLOCK CALLER
