@@ -22,7 +22,8 @@ use ironplc_vm::{Slot, VmBuffers};
 /// parse → analyze (all semantic rules) → codegen.
 fn compile_st(source: &str) -> Container {
     let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
-    let (analyzed, context) = ironplc_analyzer::stages::analyze(&[&library]).unwrap();
+    let (analyzed, context) =
+        ironplc_analyzer::stages::analyze(&[&library], &ParseOptions::default()).unwrap();
     assert!(
         !context.has_diagnostics(),
         "Benchmark source has semantic diagnostics"

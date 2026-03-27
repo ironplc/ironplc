@@ -142,6 +142,11 @@ define_parse_options! {
     "--allow-ref-to",
     [Rusty],
     allow_ref_to,
+
+    "Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types",
+    "--allow-pointer-arithmetic",
+    [Rusty],
+    allow_pointer_arithmetic,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -199,6 +204,7 @@ mod tests {
         assert!(!options.allow_empty_var_blocks);
         assert!(!options.allow_time_as_function_name);
         assert!(!options.allow_ref_to);
+        assert!(!options.allow_pointer_arithmetic);
     }
 
     #[test]
@@ -213,6 +219,7 @@ mod tests {
         assert!(!options.allow_empty_var_blocks);
         assert!(!options.allow_time_as_function_name);
         assert!(!options.allow_ref_to);
+        assert!(!options.allow_pointer_arithmetic);
     }
 
     #[test]
@@ -227,6 +234,7 @@ mod tests {
         assert!(options.allow_empty_var_blocks);
         assert!(options.allow_time_as_function_name);
         assert!(options.allow_ref_to);
+        assert!(options.allow_pointer_arithmetic);
     }
 
     #[test]
@@ -239,7 +247,7 @@ mod tests {
 
     #[test]
     fn feature_descriptors_when_called_then_contains_all_vendor_flags() {
-        assert_eq!(ParseOptions::FEATURE_DESCRIPTORS.len(), 7);
+        assert_eq!(ParseOptions::FEATURE_DESCRIPTORS.len(), 8);
         assert_eq!(
             ParseOptions::FEATURE_DESCRIPTORS[0].cli_flag,
             "--allow-c-style-comments"
@@ -253,7 +261,7 @@ mod tests {
             .filter(|f| f.dialects.contains(&Dialect::Rusty))
             .map(|f| f.cli_flag)
             .collect();
-        assert_eq!(rusty_features.len(), 7);
+        assert_eq!(rusty_features.len(), 8);
     }
 
     #[test]

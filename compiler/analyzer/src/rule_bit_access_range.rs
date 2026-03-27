@@ -242,7 +242,7 @@ mod tests {
 
     fn assert_bit_access_err(program: &str) {
         let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let result = analyze(&[&library]);
+        let result = analyze(&[&library], &ParseOptions::default());
         let (_library, context) = result.unwrap();
         assert!(
             context.has_diagnostics(),

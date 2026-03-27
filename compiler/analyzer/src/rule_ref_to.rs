@@ -13,16 +13,19 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 use std::collections::HashMap;
 
+use ironplc_parser::options::ParseOptions;
+
 use crate::{
     result::SemanticResult, semantic_context::SemanticContext, type_environment::TypeEnvironment,
 };
 
-pub fn apply(lib: &Library, context: &SemanticContext) -> SemanticResult {
+pub fn apply(lib: &Library, context: &SemanticContext, options: &ParseOptions) -> SemanticResult {
     let mut visitor = RuleRefTo {
         type_environment: context.types(),
         var_types: HashMap::new(),
         var_classes: HashMap::new(),
         pou_kind: PouKind::Program,
+        allow_pointer_arithmetic: options.allow_pointer_arithmetic,
         diagnostics: Vec::new(),
     };
     visitor.walk(lib).map_err(|e| vec![e])?;
@@ -48,6 +51,8 @@ struct RuleRefTo<'a> {
     var_classes: HashMap<Id, VariableType>,
     /// The kind of POU currently being visited.
     pou_kind: PouKind,
+    /// When true, allow arithmetic and ordering comparisons on REF_TO types.
+    allow_pointer_arithmetic: bool,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -196,6 +201,9 @@ impl RuleRefTo<'_> {
 
     /// P2033: No arithmetic on reference types
     fn check_binary_op(&mut self, expr: &BinaryExpr) {
+        if self.allow_pointer_arithmetic {
+            return;
+        }
         let left_ref = self.is_expr_reference(&expr.left);
         let right_ref = self.is_expr_reference(&expr.right);
         if left_ref || right_ref {
@@ -223,9 +231,12 @@ impl RuleRefTo<'_> {
         }
         match expr.op {
             CompareOp::Eq | CompareOp::Ne => {
-                // Equality and inequality are allowed on references
+                // Equality and inequality are always allowed on references
             }
             CompareOp::Lt | CompareOp::Gt | CompareOp::LtEq | CompareOp::GtEq => {
+                if self.allow_pointer_arithmetic {
+                    return;
+                }
                 let span = if left_ref {
                     expr_span(&expr.left)
                 } else {
@@ -381,14 +392,25 @@ mod tests {
     use ironplc_dsl::core::FileId;
     use ironplc_parser::{options::ParseOptions, parse_program};
 
-    fn parse_edition3(program: &str) -> Result<(), String> {
-        let options = ParseOptions {
+    fn edition3_options() -> ParseOptions {
+        ParseOptions {
             allow_iec_61131_3_2013: true,
             ..ParseOptions::default()
-        };
+        }
+    }
+
+    fn pointer_arithmetic_options() -> ParseOptions {
+        ParseOptions {
+            allow_iec_61131_3_2013: true,
+            allow_pointer_arithmetic: true,
+            ..ParseOptions::default()
+        }
+    }
+
+    fn parse_with_options(program: &str, options: &ParseOptions) -> Result<(), String> {
         let library =
-            parse_program(program, &FileId::default(), &options).map_err(|e| format!("{e:?}"))?;
-        let (_library, context) = analyze(&[&library]).map_err(|e| format!("{e:?}"))?;
+            parse_program(program, &FileId::default(), options).map_err(|e| format!("{e:?}"))?;
+        let (_library, context) = analyze(&[&library], options).map_err(|e| format!("{e:?}"))?;
         if context.has_diagnostics() {
             Err(format!("{:?}", context.diagnostics()))
         } else {
@@ -397,12 +419,12 @@ mod tests {
     }
 
     fn assert_ok(program: &str) {
-        let result = parse_edition3(program);
+        let result = parse_with_options(program, &edition3_options());
         assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
     }
 
     fn assert_err(program: &str) {
-        let result = parse_edition3(program);
+        let result = parse_with_options(program, &edition3_options());
         assert!(result.is_err(), "Expected error but got OK");
     }
 
@@ -657,5 +679,90 @@ VAR
 END_VAR
 END_PROGRAM",
         );
+    }
+
+    // --allow-pointer-arithmetic tests: negative (flag not set)
+    #[test]
+    fn arithmetic_when_pointer_arithmetic_not_allowed_then_error() {
+        let result = parse_with_options(
+            "PROGRAM Main
+VAR
+    x : INT;
+    r : REF_TO INT := REF(x);
+    y : INT;
+END_VAR
+    y := r + 1;
+END_PROGRAM",
+            &edition3_options(),
+        );
+        assert!(result.is_err(), "Expected error but got OK");
+    }
+
+    #[test]
+    fn compare_when_ordering_without_pointer_arithmetic_then_error() {
+        let result = parse_with_options(
+            "PROGRAM Main
+VAR
+    x : INT;
+    r1 : REF_TO INT := REF(x);
+    r2 : REF_TO INT := REF(x);
+    result : BOOL;
+END_VAR
+    result := r1 > r2;
+END_PROGRAM",
+            &edition3_options(),
+        );
+        assert!(result.is_err(), "Expected error but got OK");
+    }
+
+    // --allow-pointer-arithmetic tests: positive (flag set)
+    #[test]
+    fn arithmetic_when_pointer_arithmetic_allowed_then_ok() {
+        let result = parse_with_options(
+            "PROGRAM Main
+VAR
+    x : INT;
+    r : REF_TO INT := REF(x);
+    y : INT;
+END_VAR
+    y := r + 1;
+END_PROGRAM",
+            &pointer_arithmetic_options(),
+        );
+        assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
+    }
+
+    #[test]
+    fn compare_when_ordering_with_pointer_arithmetic_allowed_then_ok() {
+        let result = parse_with_options(
+            "PROGRAM Main
+VAR
+    x : INT;
+    r1 : REF_TO INT := REF(x);
+    r2 : REF_TO INT := REF(x);
+    result : BOOL;
+END_VAR
+    result := r1 > r2;
+END_PROGRAM",
+            &pointer_arithmetic_options(),
+        );
+        assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
+    }
+
+    #[test]
+    fn compare_when_equality_with_pointer_arithmetic_allowed_then_ok() {
+        let result = parse_with_options(
+            "PROGRAM Main
+VAR
+    x : INT;
+    r1 : REF_TO INT := REF(x);
+    r2 : REF_TO INT := REF(x);
+    result : BOOL;
+END_VAR
+    result := r1 = r2;
+END_PROGRAM",
+            &pointer_arithmetic_options(),
+        );
+        assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
     }
 }

@@ -106,7 +106,7 @@ END_TYPE";
         use ironplc_parser::{options::ParseOptions, parse_program};
 
         let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let result = analyze(&[&library]);
+        let result = analyze(&[&library], &ParseOptions::default());
 
         let (_library, context) = result.unwrap();
         assert!(context.has_diagnostics());
