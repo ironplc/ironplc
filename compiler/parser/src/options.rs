@@ -147,6 +147,16 @@ define_parse_options! {
     "--allow-pointer-arithmetic",
     [Rusty],
     allow_pointer_arithmetic,
+
+    "Allow REF() on stack-allocated variables (VAR_TEMP, FUNCTION VAR_INPUT/VAR_OUTPUT)",
+    "--allow-ref-stack-variables",
+    [Rusty],
+    allow_ref_stack_variables,
+
+    "Allow assigning between REF_TO types of different base types (type punning)",
+    "--allow-ref-type-punning",
+    [Rusty],
+    allow_ref_type_punning,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -205,6 +215,8 @@ mod tests {
         assert!(!options.allow_time_as_function_name);
         assert!(!options.allow_ref_to);
         assert!(!options.allow_pointer_arithmetic);
+        assert!(!options.allow_ref_stack_variables);
+        assert!(!options.allow_ref_type_punning);
     }
 
     #[test]
@@ -220,6 +232,8 @@ mod tests {
         assert!(!options.allow_time_as_function_name);
         assert!(!options.allow_ref_to);
         assert!(!options.allow_pointer_arithmetic);
+        assert!(!options.allow_ref_stack_variables);
+        assert!(!options.allow_ref_type_punning);
     }
 
     #[test]
@@ -235,6 +249,8 @@ mod tests {
         assert!(options.allow_time_as_function_name);
         assert!(options.allow_ref_to);
         assert!(options.allow_pointer_arithmetic);
+        assert!(options.allow_ref_stack_variables);
+        assert!(options.allow_ref_type_punning);
     }
 
     #[test]
@@ -247,7 +263,7 @@ mod tests {
 
     #[test]
     fn feature_descriptors_when_called_then_contains_all_vendor_flags() {
-        assert_eq!(ParseOptions::FEATURE_DESCRIPTORS.len(), 8);
+        assert_eq!(ParseOptions::FEATURE_DESCRIPTORS.len(), 10);
         assert_eq!(
             ParseOptions::FEATURE_DESCRIPTORS[0].cli_flag,
             "--allow-c-style-comments"
@@ -261,7 +277,7 @@ mod tests {
             .filter(|f| f.dialects.contains(&Dialect::Rusty))
             .map(|f| f.cli_flag)
             .collect();
-        assert_eq!(rusty_features.len(), 8);
+        assert_eq!(rusty_features.len(), 10);
     }
 
     #[test]

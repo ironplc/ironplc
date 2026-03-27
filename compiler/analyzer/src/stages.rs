@@ -49,7 +49,7 @@ pub fn analyze(
             Label::span(span, "First location"),
         )]);
     }
-    let (library, mut context) = resolve_types(sources)?;
+    let (library, mut context) = resolve_types(sources, options)?;
 
     if let Err(diagnostics) = semantic(&library, &context, options) {
         context.add_diagnostics(diagnostics);
@@ -70,7 +70,10 @@ pub fn analyze(
     Ok((library, context))
 }
 
-pub fn resolve_types(sources: &[&Library]) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
+pub fn resolve_types(
+    sources: &[&Library],
+    options: &ParseOptions,
+) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
     let mut diagnostics: Vec<Diagnostic> = vec![];
 
     // We want to analyze this as a complete set, so we need to join the items together
@@ -186,6 +189,7 @@ pub fn resolve_types(sources: &[&Library]) -> Result<(Library, SemanticContext),
         function_environment,
         symbol_environment,
         reachable,
+        *options,
     );
     context.add_diagnostics(diagnostics);
 

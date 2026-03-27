@@ -21,7 +21,7 @@ pub use ironplc_vm::VmBuffers;
 /// variable declarations, which codegen requires.
 pub fn parse(source: &str, options: &ParseOptions) -> (Library, SemanticContext) {
     let library = parse_program(source, &FileId::default(), options).unwrap();
-    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], options).unwrap();
     (analyzed, ctx)
 }
 
