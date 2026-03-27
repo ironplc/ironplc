@@ -1339,6 +1339,21 @@ fn emit_zero_const(emitter: &mut Emitter, ctx: &mut CompileContext, op_type: OpT
 /// Returns `None` for unrecognized type names (e.g., user-defined types)
 /// and for STRING/WSTRING which are handled separately.
 pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
+    // Map generic types to their default concrete representation.
+    // These may reach codegen for expressions like `5 + 5` where no concrete
+    // type context was available to concretize them during type resolution.
+    let concrete_name;
+    let name = match name.lower_case().as_str() {
+        "any_int" | "any_num" | "any_magnitude" => {
+            concrete_name = Id::from("DINT");
+            &concrete_name
+        }
+        "any_real" => {
+            concrete_name = Id::from("REAL");
+            &concrete_name
+        }
+        _ => name,
+    };
     let elem = ElementaryTypeName::try_from(name).ok()?;
     match elem {
         ElementaryTypeName::SINT => Some(VarTypeInfo {
