@@ -431,10 +431,6 @@ mod tests {
         }
     }
 
-    fn parse_edition3(program: &str) -> Result<(), String> {
-        parse_with_options(program, &edition3_options())
-    }
-
     fn assert_ok(program: &str) {
         let result = parse_with_options(program, &edition3_options());
         assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
