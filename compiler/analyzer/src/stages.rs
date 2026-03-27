@@ -6,6 +6,7 @@ use ironplc_dsl::{
     core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
+use ironplc_parser::options::ParseOptions;
 use ironplc_problems::Problem;
 use log::debug;
 
@@ -37,7 +38,10 @@ use crate::{
 ///
 /// Returns `Err` only when no sources are provided or when foundational type resolution
 /// fails (declaration sorting or type environment building).
-pub fn analyze(sources: &[&Library]) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
+pub fn analyze(
+    sources: &[&Library],
+    options: &ParseOptions,
+) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
     if sources.is_empty() {
         let span = SourceSpan::range(0, 0).with_file_id(&FileId::default());
         return Err(vec![Diagnostic::problem(
@@ -47,7 +51,7 @@ pub fn analyze(sources: &[&Library]) -> Result<(Library, SemanticContext), Vec<D
     }
     let (library, mut context) = resolve_types(sources)?;
 
-    if let Err(diagnostics) = semantic(&library, &context) {
+    if let Err(diagnostics) = semantic(&library, &context, options) {
         context.add_diagnostics(diagnostics);
     }
 
@@ -192,7 +196,11 @@ pub fn resolve_types(sources: &[&Library]) -> Result<(Library, SemanticContext),
 ///
 /// Returns `Ok(())` if the library is free of semantic errors.
 /// Returns `Err(String)` if the library contains a semantic error.
-pub(crate) fn semantic(library: &Library, context: &SemanticContext) -> SemanticResult {
+pub(crate) fn semantic(
+    library: &Library,
+    context: &SemanticContext,
+    options: &ParseOptions,
+) -> SemanticResult {
     let functions: Vec<fn(&Library, &SemanticContext) -> SemanticResult> = vec![
         rule_decl_struct_element_unique_names::apply,
         rule_decl_subrange_limits::apply,
@@ -212,7 +220,6 @@ pub(crate) fn semantic(library: &Library, context: &SemanticContext) -> Semantic
         rule_var_decl_global_const_requires_external_const::apply,
         rule_pou_hierarchy::apply,
         rule_bit_access_range::apply,
-        rule_ref_to::apply,
     ];
 
     let mut all_diagnostics = vec![];
@@ -224,6 +231,14 @@ pub(crate) fn semantic(library: &Library, context: &SemanticContext) -> Semantic
             Err(diagnostics) => {
                 all_diagnostics.extend(diagnostics);
             }
+        }
+    }
+
+    // rule_ref_to needs options to conditionally allow pointer arithmetic.
+    match rule_ref_to::apply(library, context, options) {
+        Ok(_) => {}
+        Err(diagnostics) => {
+            all_diagnostics.extend(diagnostics);
         }
     }
 
@@ -246,14 +261,14 @@ mod tests {
     #[test]
     fn analyze_when_first_steps_then_result_is_ok() {
         let lib = parse_shared_library("first_steps.st");
-        let res = analyze(&[&lib]);
+        let res = analyze(&[&lib], &ParseOptions::default());
         assert!(res.is_ok());
     }
 
     #[test]
     fn analyze_when_first_steps_semantic_error_then_ok_with_diagnostics() {
         let lib = parse_shared_library("first_steps_semantic_error.st");
-        let res = analyze(&[&lib]);
+        let res = analyze(&[&lib], &ParseOptions::default());
         let (_library, context) = res.unwrap();
         assert!(context.has_diagnostics());
     }
@@ -261,7 +276,7 @@ mod tests {
     #[test]
     fn analyze_2() {
         let lib = parse_shared_library("main.st");
-        let res = analyze(&[&lib]);
+        let res = analyze(&[&lib], &ParseOptions::default());
         assert!(res.is_ok());
     }
 
@@ -285,7 +300,7 @@ END_FUNCTION_BLOCK";
         let program2 =
             parse_program(program2, &FileId::default(), &ParseOptions::default()).unwrap();
 
-        let result = analyze(&[&program1, &program2]);
+        let result = analyze(&[&program1, &program2], &ParseOptions::default());
         assert!(result.is_ok())
     }
 

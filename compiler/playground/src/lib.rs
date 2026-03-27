@@ -317,7 +317,7 @@ fn compile_inner(source: &str, edition: &str) -> CompileResult {
     // Type resolution populates expr.resolved_type so codegen can select
     // correct opcodes. Semantic checks catch errors like undeclared variables,
     // wrong argument counts, type mismatches, etc.
-    let (library, context) = match analyze(&[&library]) {
+    let (library, context) = match analyze(&[&library], &options) {
         Ok((resolved_lib, ctx)) => (resolved_lib, ctx),
         Err(diagnostics) => {
             return CompileResult {

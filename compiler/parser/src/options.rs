@@ -70,6 +70,7 @@ define_parse_options! {
     allow_empty_var_blocks,
     allow_time_as_function_name,
     allow_ref_to,
+    allow_pointer_arithmetic,
 }
 
 #[cfg(test)]
@@ -88,6 +89,7 @@ mod tests {
         assert!(!options.allow_empty_var_blocks);
         assert!(!options.allow_time_as_function_name);
         assert!(!options.allow_ref_to);
+        assert!(!options.allow_pointer_arithmetic);
     }
 
     #[test]
@@ -102,6 +104,7 @@ mod tests {
         assert!(!options.allow_empty_var_blocks);
         assert!(!options.allow_time_as_function_name);
         assert!(!options.allow_ref_to);
+        assert!(!options.allow_pointer_arithmetic);
     }
 
     #[test]
@@ -116,6 +119,7 @@ mod tests {
         assert!(options.allow_empty_var_blocks);
         assert!(options.allow_time_as_function_name);
         assert!(options.allow_ref_to);
+        assert!(options.allow_pointer_arithmetic);
     }
 
     #[test]
