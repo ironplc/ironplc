@@ -683,7 +683,39 @@ END_PROGRAM",
         );
     }
 
-    // --allow-pointer-arithmetic tests
+    // --allow-pointer-arithmetic tests: negative (flag not set)
+    #[test]
+    fn arithmetic_when_pointer_arithmetic_not_allowed_then_error() {
+        let result = parse_edition3(
+            "PROGRAM Main
+VAR
+    x : INT;
+    r : REF_TO INT := REF(x);
+    y : INT;
+END_VAR
+    y := r + 1;
+END_PROGRAM",
+        );
+        assert!(result.is_err(), "Expected error but got OK");
+    }
+
+    #[test]
+    fn compare_when_ordering_without_pointer_arithmetic_then_error() {
+        let result = parse_edition3(
+            "PROGRAM Main
+VAR
+    x : INT;
+    r1 : REF_TO INT := REF(x);
+    r2 : REF_TO INT := REF(x);
+    result : BOOL;
+END_VAR
+    result := r1 > r2;
+END_PROGRAM",
+        );
+        assert!(result.is_err(), "Expected error but got OK");
+    }
+
+    // --allow-pointer-arithmetic tests: positive (flag set)
     #[test]
     fn arithmetic_when_pointer_arithmetic_allowed_then_ok() {
         let result = parse_with_pointer_arithmetic(
