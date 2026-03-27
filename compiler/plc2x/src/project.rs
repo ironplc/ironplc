@@ -155,7 +155,7 @@ impl Project for FileBackedProject {
         }
 
         // Do the analysis
-        match analyze(&all_libraries) {
+        match analyze(&all_libraries, &self.parse_options) {
             Ok((_library, context)) => {
                 // Always cache the context so LSP features (document symbols, etc.)
                 // remain available even when there are semantic diagnostics.

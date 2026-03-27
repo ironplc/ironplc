@@ -132,10 +132,11 @@ pub fn compile(
     // Run full analysis: type resolution + semantic checks (e.g. undeclared
     // function calls, type mismatches). This must happen before codegen so
     // that semantic errors are reported with proper problem codes.
-    let (analyzed, context) = ironplc_analyzer::stages::analyze(&[&combined]).map_err(|errs| {
-        handle_diagnostics(&errs, Some(&project), suppress_output);
-        String::from("Error during analysis")
-    })?;
+    let (analyzed, context) = ironplc_analyzer::stages::analyze(&[&combined], &parse_options)
+        .map_err(|errs| {
+            handle_diagnostics(&errs, Some(&project), suppress_output);
+            String::from("Error during analysis")
+        })?;
 
     // Report semantic diagnostics before attempting codegen. Without this
     // check, semantic errors (e.g. P4017 undeclared function) would surface
