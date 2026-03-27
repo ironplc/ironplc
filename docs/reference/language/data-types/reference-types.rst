@@ -8,6 +8,12 @@ variable.
 
 .. include:: ../../../includes/requires-edition3.rst
 
+.. tip::
+
+   References can also be enabled without full Edition 3 by passing
+   ``--allow-ref-to`` or by selecting the ``rusty`` dialect.
+   See :doc:`/explanation/enabling-features`.
+
 .. list-table::
    :widths: 30 70
 
@@ -90,8 +96,10 @@ Restrictions
 - References to temporary variables (``VAR_TEMP``, function parameters)
   are not allowed.
 - Nested references (``REF_TO REF_TO``) are not supported.
-- Arithmetic on references is not supported.
-- Only ``=`` and ``<>`` comparison operators work with references.
+- Arithmetic on references is not supported by default. Use
+  ``--allow-pointer-arithmetic`` to enable it.
+- Only ``=`` and ``<>`` comparison operators work with references by default.
+  Use ``--allow-pointer-arithmetic`` to enable ordering comparisons.
 
 Related Problem Codes
 ---------------------

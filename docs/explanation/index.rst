@@ -14,4 +14,5 @@ them later when you want to understand *why* things work the way they do.
    Structured Text Basics <structured-text-basics>
    Program Organization <program-organization>
    Variables and I/O <variables-and-io>
+   References and Indirection <references>
    Enabling Features <enabling-features>

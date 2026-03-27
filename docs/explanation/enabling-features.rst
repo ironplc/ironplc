@@ -117,8 +117,14 @@ features — they never disable features that a dialect already includes.
 
 ``--allow-ref-to``
    Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax without enabling full
-   Edition 3. This is useful for libraries that use references but also use
-   Edition 3 type names (like ``LDT`` or ``LTIME``) as identifiers.
+   Edition 3. This is useful when you need references but want to keep
+   Edition 2 keyword handling for the rest of your code. See
+   :doc:`/reference/language/data-types/reference-types`.
+
+``--allow-pointer-arithmetic``
+   Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
+   ``<=``, ``>=``) on ``REF_TO`` types. By default, only ``=`` and ``<>``
+   are permitted on references.
 
 Pass the flag when running :program:`ironplcc`:
 
