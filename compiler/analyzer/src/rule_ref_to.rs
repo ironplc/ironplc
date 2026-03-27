@@ -392,6 +392,21 @@ mod tests {
     use ironplc_dsl::core::FileId;
     use ironplc_parser::{options::ParseOptions, parse_program};
 
+    fn edition3_options() -> ParseOptions {
+        ParseOptions {
+            allow_iec_61131_3_2013: true,
+            ..ParseOptions::default()
+        }
+    }
+
+    fn pointer_arithmetic_options() -> ParseOptions {
+        ParseOptions {
+            allow_iec_61131_3_2013: true,
+            allow_pointer_arithmetic: true,
+            ..ParseOptions::default()
+        }
+    }
+
     fn parse_with_options(program: &str, options: &ParseOptions) -> Result<(), String> {
         let library =
             parse_program(program, &FileId::default(), options).map_err(|e| format!("{e:?}"))?;
@@ -403,30 +418,13 @@ mod tests {
         }
     }
 
-    fn parse_edition3(program: &str) -> Result<(), String> {
-        let options = ParseOptions {
-            allow_iec_61131_3_2013: true,
-            ..ParseOptions::default()
-        };
-        parse_with_options(program, &options)
-    }
-
-    fn parse_with_pointer_arithmetic(program: &str) -> Result<(), String> {
-        let options = ParseOptions {
-            allow_iec_61131_3_2013: true,
-            allow_pointer_arithmetic: true,
-            ..ParseOptions::default()
-        };
-        parse_with_options(program, &options)
-    }
-
     fn assert_ok(program: &str) {
-        let result = parse_edition3(program);
+        let result = parse_with_options(program, &edition3_options());
         assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
     }
 
     fn assert_err(program: &str) {
-        let result = parse_edition3(program);
+        let result = parse_with_options(program, &edition3_options());
         assert!(result.is_err(), "Expected error but got OK");
     }
 
@@ -686,7 +684,7 @@ END_PROGRAM",
     // --allow-pointer-arithmetic tests: negative (flag not set)
     #[test]
     fn arithmetic_when_pointer_arithmetic_not_allowed_then_error() {
-        let result = parse_edition3(
+        let result = parse_with_options(
             "PROGRAM Main
 VAR
     x : INT;
@@ -695,13 +693,14 @@ VAR
 END_VAR
     y := r + 1;
 END_PROGRAM",
+            &edition3_options(),
         );
         assert!(result.is_err(), "Expected error but got OK");
     }
 
     #[test]
     fn compare_when_ordering_without_pointer_arithmetic_then_error() {
-        let result = parse_edition3(
+        let result = parse_with_options(
             "PROGRAM Main
 VAR
     x : INT;
@@ -711,6 +710,7 @@ VAR
 END_VAR
     result := r1 > r2;
 END_PROGRAM",
+            &edition3_options(),
         );
         assert!(result.is_err(), "Expected error but got OK");
     }
@@ -718,7 +718,7 @@ END_PROGRAM",
     // --allow-pointer-arithmetic tests: positive (flag set)
     #[test]
     fn arithmetic_when_pointer_arithmetic_allowed_then_ok() {
-        let result = parse_with_pointer_arithmetic(
+        let result = parse_with_options(
             "PROGRAM Main
 VAR
     x : INT;
@@ -727,13 +727,14 @@ VAR
 END_VAR
     y := r + 1;
 END_PROGRAM",
+            &pointer_arithmetic_options(),
         );
         assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
     }
 
     #[test]
     fn compare_when_ordering_with_pointer_arithmetic_allowed_then_ok() {
-        let result = parse_with_pointer_arithmetic(
+        let result = parse_with_options(
             "PROGRAM Main
 VAR
     x : INT;
@@ -743,13 +744,14 @@ VAR
 END_VAR
     result := r1 > r2;
 END_PROGRAM",
+            &pointer_arithmetic_options(),
         );
         assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
     }
 
     #[test]
     fn compare_when_equality_with_pointer_arithmetic_allowed_then_ok() {
-        let result = parse_with_pointer_arithmetic(
+        let result = parse_with_options(
             "PROGRAM Main
 VAR
     x : INT;
@@ -759,6 +761,7 @@ VAR
 END_VAR
     result := r1 = r2;
 END_PROGRAM",
+            &pointer_arithmetic_options(),
         );
         assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
     }

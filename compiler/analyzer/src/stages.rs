@@ -235,6 +235,7 @@ pub(crate) fn semantic(
     }
 
     // rule_ref_to needs options to conditionally allow pointer arithmetic.
+    // TODO: Pass ParseOptions into all rules so rule_ref_to isn't special-cased here.
     match rule_ref_to::apply(library, context, options) {
         Ok(_) => {}
         Err(diagnostics) => {
