@@ -101,6 +101,12 @@ struct FileArgs {
     /// use Edition 3 type names (LDT, LTIME) as identifiers.
     #[arg(long)]
     allow_ref_to: bool,
+
+    /// Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on
+    /// REF_TO types, treating them as memory addresses. This is a vendor
+    /// extension used by RuSTy and OSCAT for pointer arithmetic.
+    #[arg(long)]
+    allow_pointer_arithmetic: bool,
 }
 
 impl FileArgs {
@@ -114,6 +120,7 @@ impl FileArgs {
         options.allow_time_as_function_name |= self.allow_time_as_function_name;
         options.allow_c_style_comments |= self.allow_c_style_comments;
         options.allow_ref_to |= self.allow_ref_to;
+        options.allow_pointer_arithmetic |= self.allow_pointer_arithmetic;
         options
     }
 }

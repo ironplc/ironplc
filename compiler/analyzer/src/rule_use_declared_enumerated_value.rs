@@ -130,7 +130,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let result = analyze(&[&library]);
+        let result = analyze(&[&library], &ParseOptions::default());
 
         let (_library, context) = result.unwrap();
         assert!(context.has_diagnostics());
@@ -150,7 +150,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let result = analyze(&[&library]);
+        let result = analyze(&[&library], &ParseOptions::default());
 
         assert!(result.is_ok());
     }
@@ -172,7 +172,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let result = analyze(&[&library]);
+        let result = analyze(&[&library], &ParseOptions::default());
 
         assert!(result.is_ok());
     }
