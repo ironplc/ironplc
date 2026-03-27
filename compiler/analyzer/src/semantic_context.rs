@@ -17,6 +17,7 @@ use crate::symbol_environment::SymbolEnvironment;
 use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_parser::options::ParseOptions;
 
 /// Contains all environments needed for semantic analysis.
 ///
@@ -41,6 +42,8 @@ pub struct SemanticContext {
     /// Declarations transitively reachable from PROGRAM roots. Codegen uses
     /// this to skip compiling unused user-defined functions.
     reachable: HashSet<Id>,
+    /// Parse options that affect semantic validation (e.g., allow flags).
+    parse_options: ParseOptions,
 }
 
 impl SemanticContext {
@@ -50,6 +53,7 @@ impl SemanticContext {
         functions: FunctionEnvironment,
         symbols: SymbolEnvironment,
         reachable: HashSet<Id>,
+        parse_options: ParseOptions,
     ) -> Self {
         Self {
             types,
@@ -57,6 +61,7 @@ impl SemanticContext {
             symbols,
             diagnostics: Vec::new(),
             reachable,
+            parse_options,
         }
     }
 
@@ -93,6 +98,11 @@ impl SemanticContext {
     /// Returns the set of declarations reachable from PROGRAM roots.
     pub fn reachable(&self) -> &HashSet<Id> {
         &self.reachable
+    }
+
+    /// Provides read-only access to the parse options.
+    pub fn parse_options(&self) -> &ParseOptions {
+        &self.parse_options
     }
 
     /// Provides mutable access to the type environment.
@@ -159,6 +169,7 @@ impl SemanticContextBuilder {
             functions,
             symbols,
             HashSet::new(),
+            ParseOptions::default(),
         ))
     }
 }
@@ -180,7 +191,13 @@ mod tests {
         let functions = FunctionEnvironmentBuilder::new().build();
         let symbols = SymbolEnvironment::new();
 
-        let ctx = SemanticContext::new(types, functions, symbols, HashSet::new());
+        let ctx = SemanticContext::new(
+            types,
+            functions,
+            symbols,
+            HashSet::new(),
+            ParseOptions::default(),
+        );
 
         // Just verify we can access each environment
         let _ = ctx.types();
