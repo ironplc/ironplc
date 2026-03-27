@@ -65,15 +65,22 @@ Diagnostic Commands
    This is primarily useful for diagnostics and understanding the lexer
    behavior.
 
+Informational Commands
+----------------------
+
+:program:`ironplcc dialects`
+   Show available dialects and which features each enables. Use this to
+   discover which ``--allow-*`` flags a dialect includes.
+
+:program:`ironplcc version`
+   Print the version number of the compiler.
+
 Other Commands
 --------------
 
 :program:`ironplcc lsp` ``--stdio``
    Run in Language Server Protocol mode to integrate with development tools
    such as Visual Studio Code. Communication uses standard input/output.
-
-:program:`ironplcc version`
-   Print the version number of the compiler.
 
 Options
 =======
@@ -85,14 +92,22 @@ Options
 ``-l`` *FILE*, ``--log-file`` *FILE*
    Write log output to the specified file instead of the terminal.
 
-``--std-iec-61131-3`` *VERSION*
-   Select the IEC 61131-3 standard version to compile against. Without this
-   option, only Edition 2 features are accepted. Available values: ``2013``.
-   Applies to the ``check``, ``compile``, and ``echo`` commands.
+``--dialect`` *DIALECT*
+   Select the language dialect. A dialect sets the IEC 61131-3 edition and a
+   default set of vendor extensions. Individual ``--allow-*`` flags can
+   override the dialect's defaults. Available values: ``iec61131-3-ed2``
+   (default), ``iec61131-3-ed3``, ``rusty``. See
+   :doc:`/explanation/enabling-features` for details.
 
-``--allow-all``
-   Enable all vendor extensions except ``--allow-missing-semicolon``.
-   See :doc:`/explanation/enabling-features` for details.
+``--allow-c-style-comments``
+   Allow C-style comments (``//`` line comments and ``/* */`` block
+   comments). This is a vendor extension not part of the IEC 61131-3
+   standard.
+
+``--allow-missing-semicolon``
+   Allow missing semicolons after keyword statements like ``END_IF`` and
+   ``END_STRUCT``. This is a vendor extension not part of the IEC 61131-3
+   standard.
 
 ``--allow-top-level-var-global``
    Allow ``VAR_GLOBAL`` declarations at the top level of a file, outside of
@@ -113,15 +128,10 @@ Options
    Required for OSCAT compatibility. This is a vendor extension not part
    of the IEC 61131-3 standard.
 
-``--allow-c-style-comments``
-   Allow C-style comments (``//`` line comments and ``/* */`` block
-   comments). This is a vendor extension not part of the IEC 61131-3
-   standard.
-
-``--allow-missing-semicolon``
-   Allow missing semicolons after keyword statements like ``END_IF`` and
-   ``END_STRUCT``. This is a vendor extension not part of the IEC 61131-3
-   standard. Note: this flag is **not** included in ``--allow-all``.
+``--allow-ref-to``
+   Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax without enabling full
+   Edition 3. This is a vendor extension useful for libraries that use
+   references but also use Edition 3 type names as identifiers.
 
 Examples
 ========
@@ -160,7 +170,13 @@ Examples
 
    .. code-block:: shell
 
-      ironplcc check --std-iec-61131-3=2013 main.st
+      ironplcc check --dialect iec61131-3-ed3 main.st
+
+7. Show available dialects and their features:
+
+   .. code-block:: shell
+
+      ironplcc dialects
 
 See Also
 ========
