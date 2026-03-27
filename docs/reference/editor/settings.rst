@@ -86,7 +86,8 @@ and a default set of vendor extensions.
 
 * ``iec61131-3-ed2``: Strict IEC 61131-3:2003 (Edition 2). No vendor extensions.
 * ``iec61131-3-ed3``: IEC 61131-3:2013 (Edition 3) with ``LTIME``, ``REF_TO``, etc.
-* ``rusty``: RuSTy-compatible — Edition 2 base with ``REF_TO`` and all vendor extensions.
+* ``rusty``: RuSTy-compatible — designed for compatibility with code from
+  RuSTy-based PLC environments.
 
 This setting corresponds to the ``--dialect`` command-line option documented in
 :doc:`/reference/compiler/ironplcc`.
@@ -108,4 +109,3 @@ You can also configure these settings directly in your :file:`settings.json` fil
      "ironplc.logFile": "/tmp/ironplc-debug.log",
      "ironplc.dialect": "rusty"
    }
-
