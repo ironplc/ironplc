@@ -55,6 +55,23 @@ use ironplc_problems::Problem;
 
 use crate::{result::SemanticResult, semantic_context::SemanticContext};
 
+/// Returns true if `actual` is type-compatible with `expected`.
+///
+/// Exact matches always pass. If `actual` is a generic type (ANY_INT,
+/// ANY_REAL, etc.) and `expected` is a concrete elementary type, delegates
+/// to `GenericTypeName::is_compatible_with`.
+fn are_types_compatible(expected: &TypeName, actual: &TypeName) -> bool {
+    if *expected == *actual {
+        return true;
+    }
+    if let Ok(generic) = GenericTypeName::try_from(&actual.name) {
+        if let Ok(elementary) = ElementaryTypeName::try_from(&expected.name) {
+            return generic.is_compatible_with(&elementary);
+        }
+    }
+    false
+}
+
 pub fn apply(lib: &Library, context: &SemanticContext) -> SemanticResult {
     let mut visitor = RuleFunctionCallTypeCheck {
         context,
@@ -90,7 +107,7 @@ impl RuleFunctionCallTypeCheck<'_> {
                 if let Variable::Symbolic(SymbolicVariableKind::Named(ref nv)) = target {
                     if let Some(target_type) = self.var_types.get(&nv.name) {
                         if let Some(ref return_type) = value.resolved_type {
-                            if target_type != return_type {
+                            if !are_types_compatible(target_type, return_type) {
                                 self.diagnostics.push(
                                     Diagnostic::problem(
                                         Problem::FunctionCallReturnTypeMismatch,
@@ -196,7 +213,7 @@ impl Visitor<Diagnostic> for RuleFunctionCallTypeCheck<'_> {
                 let param = &input_params[i];
 
                 if let Some(ref arg_type) = arg_expr.resolved_type {
-                    if param.param_type != *arg_type {
+                    if !are_types_compatible(&param.param_type, arg_type) {
                         self.diagnostics.push(
                             Diagnostic::problem(
                                 Problem::FunctionCallArgTypeMismatch,
@@ -421,5 +438,184 @@ END_PROGRAM";
         let (library, context) = parse_and_resolve_types_with_context(program);
         let result = apply(&library, &context);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_bare_literal_arg_to_int_param_then_ok() {
+        let program = "
+FUNCTION ADD_ONE : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    ADD_ONE := x + 1;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+END_VAR
+    result := ADD_ONE(5);
+END_PROGRAM";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_bare_literal_arg_to_sint_param_then_ok() {
+        let program = "
+FUNCTION INC : SINT
+VAR_INPUT
+    x : SINT;
+END_VAR
+    INC := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : SINT;
+END_VAR
+    result := INC(5);
+END_PROGRAM";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_bare_real_literal_arg_to_lreal_param_then_ok() {
+        let program = "
+FUNCTION DBL : LREAL
+VAR_INPUT
+    x : LREAL;
+END_VAR
+    DBL := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : LREAL;
+END_VAR
+    result := DBL(3.14);
+END_PROGRAM";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_typed_dint_literal_arg_to_int_param_then_error() {
+        let program = "
+FUNCTION ADD_ONE : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    ADD_ONE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+END_VAR
+    result := ADD_ONE(DINT#5);
+END_PROGRAM";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+        assert!(result.is_err());
+        let diagnostics = result.unwrap_err();
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            Problem::FunctionCallArgTypeMismatch.code()
+        );
+    }
+
+    #[test]
+    fn apply_when_dint_var_arg_to_int_param_then_error() {
+        let program = "
+FUNCTION ADD_ONE : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    ADD_ONE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : DINT;
+END_VAR
+    result := ADD_ONE(y);
+END_PROGRAM";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+        assert!(result.is_err());
+        let diagnostics = result.unwrap_err();
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            Problem::FunctionCallArgTypeMismatch.code()
+        );
+    }
+
+    #[test]
+    fn are_types_compatible_when_exact_match_then_true() {
+        assert!(are_types_compatible(
+            &TypeName::from("INT"),
+            &TypeName::from("INT")
+        ));
+    }
+
+    #[test]
+    fn are_types_compatible_when_any_int_to_int_then_true() {
+        assert!(are_types_compatible(
+            &TypeName::from("INT"),
+            &TypeName::from("ANY_INT")
+        ));
+    }
+
+    #[test]
+    fn are_types_compatible_when_any_int_to_dint_then_true() {
+        assert!(are_types_compatible(
+            &TypeName::from("DINT"),
+            &TypeName::from("ANY_INT")
+        ));
+    }
+
+    #[test]
+    fn are_types_compatible_when_any_real_to_real_then_true() {
+        assert!(are_types_compatible(
+            &TypeName::from("REAL"),
+            &TypeName::from("ANY_REAL")
+        ));
+    }
+
+    #[test]
+    fn are_types_compatible_when_any_real_to_lreal_then_true() {
+        assert!(are_types_compatible(
+            &TypeName::from("LREAL"),
+            &TypeName::from("ANY_REAL")
+        ));
+    }
+
+    #[test]
+    fn are_types_compatible_when_any_int_to_real_then_false() {
+        assert!(!are_types_compatible(
+            &TypeName::from("REAL"),
+            &TypeName::from("ANY_INT")
+        ));
+    }
+
+    #[test]
+    fn are_types_compatible_when_dint_to_int_then_false() {
+        assert!(!are_types_compatible(
+            &TypeName::from("INT"),
+            &TypeName::from("DINT")
+        ));
     }
 }

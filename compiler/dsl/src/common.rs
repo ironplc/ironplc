@@ -1122,6 +1122,25 @@ impl From<GenericTypeName> for TypeName {
     }
 }
 
+impl TryFrom<&Id> for GenericTypeName {
+    type Error = ();
+    fn try_from(id: &Id) -> Result<Self, ()> {
+        match id.lower_case().as_str() {
+            "any" => Ok(GenericTypeName::Any),
+            "any_derived" => Ok(GenericTypeName::AnyDerived),
+            "any_elementary" => Ok(GenericTypeName::AnyElementary),
+            "any_magnitude" => Ok(GenericTypeName::AnyMagnitude),
+            "any_num" => Ok(GenericTypeName::AnyNum),
+            "any_real" => Ok(GenericTypeName::AnyReal),
+            "any_int" => Ok(GenericTypeName::AnyInt),
+            "any_bit" => Ok(GenericTypeName::AnyBit),
+            "any_string" => Ok(GenericTypeName::AnyString),
+            "any_date" => Ok(GenericTypeName::AnyDate),
+            _ => Err(()),
+        }
+    }
+}
+
 /// Kinds of derived data types.
 ///
 /// See section 2.3.3.1

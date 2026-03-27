@@ -98,7 +98,16 @@ impl ExprTypeResolver<'_> {
         match kind {
             ExprKind::Const(constant) => self.resolve_const_type(constant),
             ExprKind::Variable(var) => self.resolve_variable_type(var),
-            ExprKind::BinaryOp(op) => op.left.resolved_type.clone(),
+            ExprKind::BinaryOp(op) => {
+                match (&op.left.resolved_type, &op.right.resolved_type) {
+                    // If left is generic and right is concrete, use the concrete type.
+                    (Some(l), Some(r)) if is_generic_type(l) && !is_generic_type(r) => {
+                        Some(r.clone())
+                    }
+                    (Some(l), _) => Some(l.clone()),
+                    (_, r) => r.clone(),
+                }
+            }
             ExprKind::UnaryOp(op) => op.term.resolved_type.clone(),
             ExprKind::Compare(_) => Some(TypeName::from("BOOL")),
             ExprKind::Function(f) => {
@@ -146,7 +155,7 @@ impl ExprTypeResolver<'_> {
                         let tn: TypeName = elem.into();
                         tn
                     })
-                    .unwrap_or_else(|| TypeName::from("DINT")),
+                    .unwrap_or_else(|| TypeName::from("ANY_INT")),
             ),
             ConstantKind::RealLiteral(lit) => Some(
                 lit.data_type
@@ -156,7 +165,7 @@ impl ExprTypeResolver<'_> {
                         let tn: TypeName = elem.into();
                         tn
                     })
-                    .unwrap_or_else(|| TypeName::from("REAL")),
+                    .unwrap_or_else(|| TypeName::from("ANY_REAL")),
             ),
             ConstantKind::BitStringLiteral(lit) => lit.data_type.as_ref().map(|bstn| {
                 let elem: ElementaryTypeName = bstn.clone().into();
@@ -706,7 +715,60 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
-    fn apply_when_real_literal_without_type_then_defaults_to_real() {
+    fn apply_when_binary_op_literal_plus_concrete_then_resolves_concrete() {
+        // In 5 + x where x is INT, the result should be INT (concrete wins over ANY_INT)
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    result : INT;
+END_VAR
+    result := 5 + x;
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "INT");
+    }
+
+    #[test]
+    fn apply_when_binary_op_concrete_plus_literal_then_resolves_concrete() {
+        // In x + 5 where x is INT, the result should be INT (left is concrete)
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    result : INT;
+END_VAR
+    result := x + 5;
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "INT");
+    }
+
+    #[test]
+    fn apply_when_binary_op_two_literals_then_resolves_any_int() {
+        // In 5 + 10, both are ANY_INT, so the result is ANY_INT
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    result : DINT;
+END_VAR
+    result := 5 + 10;
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "ANY_INT");
+    }
+
+    #[test]
+    fn apply_when_real_literal_without_type_then_resolves_any_real() {
         let program = "
 FUNCTION_BLOCK FB_TEST
 VAR
@@ -718,7 +780,7 @@ END_FUNCTION_BLOCK";
         let result = run_pass(program);
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "REAL");
+        assert_type_eq(&types[0], "ANY_REAL");
     }
 
     #[test]
@@ -779,7 +841,7 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
-    fn apply_when_untyped_integer_literal_then_resolves_dint() {
+    fn apply_when_untyped_integer_literal_then_resolves_any_int() {
         let program = "
 FUNCTION_BLOCK FB_TEST
 VAR
@@ -791,7 +853,7 @@ END_FUNCTION_BLOCK";
         let result = run_pass(program);
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "DINT");
+        assert_type_eq(&types[0], "ANY_INT");
     }
 
     #[test]
