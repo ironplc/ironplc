@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use ironplc_parser::options::{Dialect, ParseOptions};
+use ironplc_parser::options::{describe_dialects, Dialect, ParseOptions};
 use ironplcc::cli;
 use ironplcc::logger;
 use ironplcc::lsp;
@@ -170,6 +170,8 @@ enum Action {
         #[arg(long)]
         stdio: bool,
     },
+    /// Show available dialects and which features each enables.
+    Dialects,
     /// Prints the version number of the compiler.
     Version,
 }
@@ -191,6 +193,10 @@ pub fn main() -> Result<(), String> {
         Action::Echo { file_args } => cli::echo(&file_args.files, file_args.parse_options(), false),
         Action::Tokenize { file_args } => {
             cli::tokenize(&file_args.files, file_args.parse_options(), false)
+        }
+        Action::Dialects => {
+            print!("{}", describe_dialects());
+            Ok(())
         }
         Action::Version => {
             println!("ironplcc version {VERSION}");

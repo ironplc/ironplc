@@ -10,7 +10,7 @@ Edition 3 (2013) Features
 =========================
 
 Edition 3 introduced the following features, which require
-``--std-iec-61131-3=2013`` (CLI) or ``ironplc.std61131Version``: ``2013``
+``--dialect iec61131-3-ed3`` (CLI) or ``ironplc.dialect``: ``iec61131-3-ed3``
 (VS Code).
 
 .. list-table::
