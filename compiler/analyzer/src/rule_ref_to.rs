@@ -27,6 +27,8 @@ pub fn apply(lib: &Library, context: &SemanticContext, options: &ParseOptions) -
         pou_kind: PouKind::Program,
         allow_pointer_arithmetic: options.allow_pointer_arithmetic,
         diagnostics: Vec::new(),
+        allow_ref_stack_variables: options.allow_ref_stack_variables,
+        allow_ref_type_punning: options.allow_ref_type_punning,
     };
     visitor.walk(lib).map_err(|e| vec![e])?;
 
@@ -54,6 +56,10 @@ struct RuleRefTo<'a> {
     /// When true, allow arithmetic and ordering comparisons on REF_TO types.
     allow_pointer_arithmetic: bool,
     diagnostics: Vec<Diagnostic>,
+    /// When true, suppress P2029 (REF of stack-allocated variables).
+    allow_ref_stack_variables: bool,
+    /// When true, suppress P2032 type mismatch for REF_TO type punning.
+    allow_ref_type_punning: bool,
 }
 
 /// Extracts a span from a Variable, falling back to default.
@@ -160,25 +166,30 @@ impl RuleRefTo<'_> {
             }
         }
 
-        // P2029: Check for ephemeral variables
-        if let Variable::Symbolic(SymbolicVariableKind::Named(named)) = var {
-            if let Some(var_class) = self.var_classes.get(&named.name) {
-                match var_class {
-                    VariableType::VarTemp => {
-                        self.diagnostics.push(Diagnostic::problem(
-                            Problem::RefOfEphemeralVariable,
-                            Label::span(named.span(), "VAR_TEMP variable is stack-allocated"),
-                        ));
+        // P2029: Check for ephemeral variables.
+        // Suppressed when allow_ref_stack_variables is enabled — OSCAT relies
+        // on REF() of function parameters for type punning patterns where the
+        // reference never escapes the function.
+        if !self.allow_ref_stack_variables {
+            if let Variable::Symbolic(SymbolicVariableKind::Named(named)) = var {
+                if let Some(var_class) = self.var_classes.get(&named.name) {
+                    match var_class {
+                        VariableType::VarTemp => {
+                            self.diagnostics.push(Diagnostic::problem(
+                                Problem::RefOfEphemeralVariable,
+                                Label::span(named.span(), "VAR_TEMP variable is stack-allocated"),
+                            ));
+                        }
+                        VariableType::Input | VariableType::Output
+                            if self.pou_kind == PouKind::Function =>
+                        {
+                            self.diagnostics.push(Diagnostic::problem(
+                                Problem::RefOfEphemeralVariable,
+                                Label::span(named.span(), "FUNCTION parameter is stack-allocated"),
+                            ));
+                        }
+                        _ => {}
                     }
-                    VariableType::Input | VariableType::Output
-                        if self.pou_kind == PouKind::Function =>
-                    {
-                        self.diagnostics.push(Diagnostic::problem(
-                            Problem::RefOfEphemeralVariable,
-                            Label::span(named.span(), "FUNCTION parameter is stack-allocated"),
-                        ));
-                    }
-                    _ => {}
                 }
             }
         }
@@ -272,8 +283,10 @@ impl RuleRefTo<'_> {
                     Problem::ReferenceTypeMismatch,
                     Label::span(ref_span, "Reference type mismatch in assignment"),
                 ));
-            } else {
-                // Check type compatibility
+            } else if !self.allow_ref_type_punning {
+                // Check type compatibility (P2032 type mismatch branch).
+                // Suppressed when allow_ref_type_punning is enabled — OSCAT
+                // uses REF() to reinterpret a REAL's bits as DWORD.
                 let target_ref_type = self.get_reference_target_type(target);
                 let operand_type = self.variable_type_name(ref_var);
                 if let (Some(target_type), Some(operand_type)) = (target_ref_type, operand_type) {
@@ -764,5 +777,110 @@ END_PROGRAM",
             &pointer_arithmetic_options(),
         );
         assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
+    }
+
+    // P2029: allow_ref_stack_variables suppresses REF of FUNCTION VAR_INPUT
+    #[test]
+    fn ref_when_allow_ref_stack_variables_and_function_var_input_then_ok() {
+        let options = ParseOptions {
+            allow_iec_61131_3_2013: true,
+            allow_ref_stack_variables: true,
+            ..ParseOptions::default()
+        };
+        let result = parse_with_options(
+            "FUNCTION MyFunc : INT
+VAR_INPUT
+    inVal : INT;
+END_VAR
+VAR
+    r : REF_TO INT;
+END_VAR
+    r := REF(inVal);
+    MyFunc := 0;
+END_FUNCTION",
+            &options,
+        );
+        assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
+    }
+
+    // P2029: allow_ref_stack_variables suppresses REF of VAR_TEMP
+    #[test]
+    fn ref_when_allow_ref_stack_variables_and_var_temp_then_ok() {
+        let options = ParseOptions {
+            allow_iec_61131_3_2013: true,
+            allow_ref_stack_variables: true,
+            ..ParseOptions::default()
+        };
+        let result = parse_with_options(
+            "FUNCTION_BLOCK FB1
+VAR_TEMP
+    temp : INT;
+END_VAR
+VAR
+    r : REF_TO INT;
+END_VAR
+    r := REF(temp);
+END_FUNCTION_BLOCK",
+            &options,
+        );
+        assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
+    }
+
+    // P2032: allow_ref_type_punning suppresses type mismatch
+    #[test]
+    fn assign_when_allow_ref_type_punning_and_types_incompatible_then_ok() {
+        let options = ParseOptions {
+            allow_iec_61131_3_2013: true,
+            allow_ref_type_punning: true,
+            ..ParseOptions::default()
+        };
+        let result = parse_with_options(
+            "PROGRAM Main
+VAR
+    x : REAL;
+    r : REF_TO INT;
+END_VAR
+    r := REF(x);
+END_PROGRAM",
+            &options,
+        );
+        assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
+    }
+
+    // P2032: type mismatch still fires without allow_ref_type_punning
+    #[test]
+    fn assign_when_no_allow_ref_type_punning_and_types_incompatible_then_error() {
+        let result = parse_with_options(
+            "PROGRAM Main
+VAR
+    x : REAL;
+    r : REF_TO INT;
+END_VAR
+    r := REF(x);
+END_PROGRAM",
+            &edition3_options(),
+        );
+        assert!(result.is_err(), "Expected error but got OK");
+    }
+
+    // P2032: allow_ref_stack_variables alone does NOT suppress type mismatch
+    #[test]
+    fn assign_when_allow_ref_stack_variables_only_and_types_incompatible_then_error() {
+        let options = ParseOptions {
+            allow_iec_61131_3_2013: true,
+            allow_ref_stack_variables: true,
+            ..ParseOptions::default()
+        };
+        let result = parse_with_options(
+            "PROGRAM Main
+VAR
+    x : REAL;
+    r : REF_TO INT;
+END_VAR
+    r := REF(x);
+END_PROGRAM",
+            &options,
+        );
+        assert!(result.is_err(), "Expected error but got OK");
     }
 }
