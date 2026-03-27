@@ -25,13 +25,13 @@ not available in the default mode.
 
 To fix this error, enable IEC 61131-3:2013 support:
 
-* **CLI:** Pass the ``--std-iec-61131-3`` option:
+* **CLI:** Pass the ``--dialect`` option:
 
   .. code-block:: bash
 
-     ironplcc check --std-iec-61131-3=2013 myprogram.st
+     ironplcc check --dialect iec61131-3-ed3 myprogram.st
 
-* **VS Code:** Set :code:`ironplc.std61131Version` to :code:`2013` in your
+* **VS Code:** Set :code:`ironplc.dialect` to :code:`iec61131-3-ed3` in your
   extension settings. See :doc:`/reference/editor/settings` for details.
 
 See :doc:`/explanation/enabling-features` for more about standard editions.

@@ -3,25 +3,31 @@ Enabling Features
 =================
 
 IronPLC aims to let you take code from another PLC environment and use it
-without changes. However, the IEC 61131-3 standard has evolved through
-multiple editions, and some features require you to tell IronPLC which
-edition your code targets.
+without changes. To support this, IronPLC uses **dialects** — named presets
+that select the IEC 61131-3 edition and a default set of vendor extensions.
+Individual ``--allow-*`` flags provide fine-grained control on top of the
+selected dialect.
 
 ---------------------------------
-Editions of the Standard
+Supported Dialects
 ---------------------------------
 
-The IEC 61131-3 standard has been published in several editions:
+**iec61131-3-ed2** *(default)*
+   Strict IEC 61131-3:2003 (Edition 2). No vendor extensions are enabled.
+   This is the default when no dialect is specified.
 
-**Edition 2 (2003)**
-   The widely deployed baseline. IronPLC uses this edition by default.
-
-**Edition 3 (2013)**
-   Adds new data types (:doc:`LTIME </reference/language/data-types/ltime>`,
+**iec61131-3-ed3**
+   Strict IEC 61131-3:2013 (Edition 3). Enables Edition 3 keywords
+   including :doc:`LTIME </reference/language/data-types/ltime>`,
    :doc:`LDATE </reference/language/data-types/ldate>`,
    :doc:`LTIME_OF_DAY </reference/language/data-types/ltime-of-day>`,
-   :doc:`LDATE_AND_TIME </reference/language/data-types/ldate-and-time>`)
-   and other language enhancements.
+   :doc:`LDATE_AND_TIME </reference/language/data-types/ldate-and-time>`,
+   ``REF_TO``, ``REF``, and ``NULL``. No vendor extensions.
+
+**rusty**
+   RuSTy-compatible dialect. Uses Edition 2 as a base (so Edition 3 type
+   names like ``LDT`` remain available as identifiers) and enables
+   ``REF_TO`` support plus all vendor extensions.
 
 Editions are additive — enabling a later edition includes all features from
 earlier editions.
@@ -29,52 +35,66 @@ earlier editions.
 See :doc:`/reference/language/edition-support` for a complete list of
 features that require a specific edition.
 
+.. tip::
+
+   Run ``ironplcc dialects`` to see which features each dialect enables.
+
 ---------------------------------
-How to Enable an Edition
+How to Select a Dialect
 ---------------------------------
 
 Command Line
 ^^^^^^^^^^^^
 
-Pass the ``--std-iec-61131-3`` flag when running :program:`ironplcc`:
+Pass the ``--dialect`` flag when running :program:`ironplcc`:
 
 .. code-block:: shell
 
-   ironplcc check --std-iec-61131-3=2013 main.st
+   ironplcc check --dialect rusty main.st
+
+.. code-block:: shell
+
+   ironplcc check --dialect iec61131-3-ed3 main.st
 
 See :doc:`/reference/compiler/ironplcc` for all compiler options.
 
 Visual Studio Code
 ^^^^^^^^^^^^^^^^^^
 
-Set the :code:`ironplc.std61131Version` setting to :code:`2013`:
+Set the :code:`ironplc.dialect` setting:
 
 1. Open :menuselection:`File --> Preferences --> Settings`
    (or :menuselection:`Code --> Preferences --> Settings` on macOS).
 2. Search for ``ironplc``.
-3. Change :guilabel:`Std 61131 Version` to ``2013``.
+3. Change :guilabel:`Dialect` to the desired value
+   (e.g., ``rusty`` or ``iec61131-3-ed3``).
 
 Or add it directly to your :file:`settings.json`:
 
 .. code-block:: json
 
    {
-     "ironplc.std61131Version": "2013"
+     "ironplc.dialect": "rusty"
    }
 
 See :doc:`/reference/editor/settings` for all extension settings.
 
 ---------------------------------
-Vendor Extensions
+Enabling Specific Features
 ---------------------------------
 
-Some PLC vendors support features beyond the IEC 61131-3 standard. IronPLC
-provides flags for these common vendor extensions to improve compatibility
-with code written for other PLC environments.
+Individual ``--allow-*`` flags can be combined with any dialect to enable
+additional features on top of the dialect's defaults. Flags can only enable
+features — they never disable features that a dialect already includes.
 
-``--allow-all``
-   Enable all vendor extensions at once (except ``--allow-missing-semicolon``,
-   which must be passed explicitly).
+``--allow-c-style-comments``
+   Allow C-style comments (``//`` line comments and ``/* */`` block comments).
+   These are not part of the IEC 61131-3 standard but are supported by many
+   PLC environments.
+
+``--allow-missing-semicolon``
+   Allow missing semicolons after keyword statements like ``END_IF`` and
+   ``END_STRUCT``.
 
 ``--allow-top-level-var-global``
    Allow :code:`VAR_GLOBAL` declarations at the top level of a file,
@@ -86,11 +106,6 @@ with code written for other PLC environments.
    string lengths (e.g., ``ARRAY[1..MY_CONST] OF INT`` or
    ``STRING[MY_CONST]``). See :doc:`/reference/language/data-types/array-types`.
 
-``--allow-c-style-comments``
-   Allow C-style comments (``//`` line comments and ``/* */`` block comments).
-   These are not part of the IEC 61131-3 standard but are supported by many
-   PLC environments.
-
 ``--allow-empty-var-blocks``
    Allow empty variable blocks (``VAR END_VAR``, ``VAR_INPUT END_VAR``, etc.).
    Some PLC environments permit variable blocks with no declarations.
@@ -100,22 +115,21 @@ with code written for other PLC environments.
    Required for OSCAT compatibility where ``TIME()`` reads the PLC system
    clock.
 
-``--allow-missing-semicolon``
-   Allow missing semicolons after keyword statements like ``END_IF`` and
-   ``END_STRUCT``. Note: this flag is **not** included in ``--allow-all``
-   and must be passed explicitly.
+``--allow-ref-to``
+   Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax without enabling full
+   Edition 3. This is useful for libraries that use references but also use
+   Edition 3 type names (like ``LDT`` or ``LTIME``) as identifiers.
 
 Pass the flag when running :program:`ironplcc`:
 
 .. code-block:: shell
 
-   ironplcc check --allow-all main.st
+   ironplcc check --allow-c-style-comments --allow-empty-var-blocks main.st
 
-Or enable individual extensions:
+Or combine with a dialect:
 
 .. code-block:: shell
 
-   ironplcc check --allow-top-level-var-global --allow-constant-type-params main.st
+   ironplcc check --dialect iec61131-3-ed3 --allow-c-style-comments main.st
 
 See :doc:`/reference/compiler/ironplcc` for all compiler options.
-
