@@ -47,9 +47,10 @@ use ironplc_container::debug_section::{
 use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES};
 use ironplc_dsl::common::{
     Boolean, ConstantKind, ElementaryTypeName, FunctionBlockBodyKind, FunctionDeclaration,
-    FunctionReturnType, InitialValueAssignmentKind, IntegerRef, Library, LibraryElementKind,
-    ProgramDeclaration, ReferenceInitialValue, ReferenceTarget, SignedInteger, SignedIntegerRef,
-    SpecificationKind, StringInitializer, StringSpecification, VarDecl, VariableType,
+    FunctionReturnType, GenericTypeName, InitialValueAssignmentKind, IntegerRef, Library,
+    LibraryElementKind, ProgramDeclaration, ReferenceInitialValue, ReferenceTarget, SignedInteger,
+    SignedIntegerRef, SpecificationKind, StringInitializer, StringSpecification, VarDecl,
+    VariableType,
 };
 use ironplc_dsl::configuration::ConfigurationDeclaration;
 use ironplc_dsl::core::{FileId, Id, Located};
@@ -1339,7 +1340,19 @@ fn emit_zero_const(emitter: &mut Emitter, ctx: &mut CompileContext, op_type: OpT
 /// Returns `None` for unrecognized type names (e.g., user-defined types)
 /// and for STRING/WSTRING which are handled separately.
 pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
-    let elem = ElementaryTypeName::try_from(name).ok()?;
+    // Try as elementary type first (the common case), then fall back to
+    // generic types mapped to their default concrete representation.
+    // Generic types may reach codegen for expressions like `5 + 5` where
+    // no concrete type context was available during type resolution.
+    let elem = ElementaryTypeName::try_from(name)
+        .or_else(|_| match GenericTypeName::try_from(name)? {
+            GenericTypeName::AnyInt | GenericTypeName::AnyNum | GenericTypeName::AnyMagnitude => {
+                Ok(ElementaryTypeName::DINT)
+            }
+            GenericTypeName::AnyReal => Ok(ElementaryTypeName::REAL),
+            _ => Err(()),
+        })
+        .ok()?;
     match elem {
         ElementaryTypeName::SINT => Some(VarTypeInfo {
             op_width: OpWidth::W32,
