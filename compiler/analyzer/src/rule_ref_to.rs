@@ -27,7 +27,7 @@ pub fn apply(lib: &Library, context: &SemanticContext, options: &ParseOptions) -
         pou_kind: PouKind::Program,
         allow_pointer_arithmetic: options.allow_pointer_arithmetic,
         diagnostics: Vec::new(),
-        allow_ref_to: options.allow_ref_to,
+        allow_ref_stack_variables: options.allow_ref_stack_variables,
         allow_ref_type_punning: options.allow_ref_type_punning,
     };
     visitor.walk(lib).map_err(|e| vec![e])?;
@@ -56,8 +56,8 @@ struct RuleRefTo<'a> {
     /// When true, allow arithmetic and ordering comparisons on REF_TO types.
     allow_pointer_arithmetic: bool,
     diagnostics: Vec<Diagnostic>,
-    /// When true, suppress P2029 (REF of ephemeral variables).
-    allow_ref_to: bool,
+    /// When true, suppress P2029 (REF of stack-allocated variables).
+    allow_ref_stack_variables: bool,
     /// When true, suppress P2032 type mismatch for REF_TO type punning.
     allow_ref_type_punning: bool,
 }
@@ -167,10 +167,10 @@ impl RuleRefTo<'_> {
         }
 
         // P2029: Check for ephemeral variables.
-        // Suppressed when allow_ref_to is enabled — this is an IronPLC-specific
-        // safety check (not required by the standard) that prevents REF() on
-        // stack-allocated variables. OSCAT relies on this pattern for type punning.
-        if !self.allow_ref_to {
+        // Suppressed when allow_ref_stack_variables is enabled — OSCAT relies
+        // on REF() of function parameters for type punning patterns where the
+        // reference never escapes the function.
+        if !self.allow_ref_stack_variables {
             if let Variable::Symbolic(SymbolicVariableKind::Named(named)) = var {
                 if let Some(var_class) = self.var_classes.get(&named.name) {
                     match var_class {
@@ -783,12 +783,12 @@ END_PROGRAM",
         assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
     }
 
-    // P2029: allow_ref_to suppresses REF of FUNCTION VAR_INPUT
+    // P2029: allow_ref_stack_variables suppresses REF of FUNCTION VAR_INPUT
     #[test]
-    fn ref_when_allow_ref_to_and_function_var_input_then_ok() {
+    fn ref_when_allow_ref_stack_variables_and_function_var_input_then_ok() {
         let options = ParseOptions {
             allow_iec_61131_3_2013: true,
-            allow_ref_to: true,
+            allow_ref_stack_variables: true,
             ..ParseOptions::default()
         };
         let result = parse_with_options(
@@ -807,12 +807,12 @@ END_FUNCTION",
         assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
     }
 
-    // P2029: allow_ref_to suppresses REF of VAR_TEMP
+    // P2029: allow_ref_stack_variables suppresses REF of VAR_TEMP
     #[test]
-    fn ref_when_allow_ref_to_and_var_temp_then_ok() {
+    fn ref_when_allow_ref_stack_variables_and_var_temp_then_ok() {
         let options = ParseOptions {
             allow_iec_61131_3_2013: true,
-            allow_ref_to: true,
+            allow_ref_stack_variables: true,
             ..ParseOptions::default()
         };
         let result = parse_with_options(
@@ -853,7 +853,7 @@ END_PROGRAM",
 
     // P2032: type mismatch still fires without allow_ref_type_punning
     #[test]
-    fn assign_when_allow_ref_type_punning_false_and_types_incompatible_then_error() {
+    fn assign_when_no_allow_ref_type_punning_and_types_incompatible_then_error() {
         let result = parse_with_options(
             "PROGRAM Main
 VAR
@@ -867,12 +867,12 @@ END_PROGRAM",
         assert!(result.is_err(), "Expected error but got OK");
     }
 
-    // P2032: allow_ref_to alone does NOT suppress type mismatch
+    // P2032: allow_ref_stack_variables alone does NOT suppress type mismatch
     #[test]
-    fn assign_when_allow_ref_to_only_and_types_incompatible_then_error() {
+    fn assign_when_allow_ref_stack_variables_only_and_types_incompatible_then_error() {
         let options = ParseOptions {
             allow_iec_61131_3_2013: true,
-            allow_ref_to: true,
+            allow_ref_stack_variables: true,
             ..ParseOptions::default()
         };
         let result = parse_with_options(
