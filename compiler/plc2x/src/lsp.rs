@@ -65,6 +65,7 @@ fn extract_parse_options(initialize_params: &InitializeParams) -> ParseOptions {
         options.allow_constant_type_params |= flag("allowConstantTypeParams");
         options.allow_ref_to |= flag("allowRefTo");
         options.allow_pointer_arithmetic |= flag("allowPointerArithmetic");
+        options.allow_ref_type_punning |= flag("allowRefTypePunning");
         options
     } else {
         ParseOptions::default()

@@ -4378,7 +4378,8 @@ mod tests {
     /// populated, which codegen requires for control flow and bitwise operations.
     fn parse(source: &str) -> (Library, SemanticContext) {
         let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
-        let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
+        let (analyzed, ctx) =
+            ironplc_analyzer::stages::resolve_types(&[&library], &ParseOptions::default()).unwrap();
         (analyzed, ctx)
     }
 

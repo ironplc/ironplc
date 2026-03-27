@@ -147,6 +147,11 @@ define_parse_options! {
     "--allow-pointer-arithmetic",
     [Rusty],
     allow_pointer_arithmetic,
+
+    "Allow assigning between REF_TO types of different base types (type punning)",
+    "--allow-ref-type-punning",
+    [Rusty],
+    allow_ref_type_punning,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -205,6 +210,7 @@ mod tests {
         assert!(!options.allow_time_as_function_name);
         assert!(!options.allow_ref_to);
         assert!(!options.allow_pointer_arithmetic);
+        assert!(!options.allow_ref_type_punning);
     }
 
     #[test]
@@ -220,6 +226,7 @@ mod tests {
         assert!(!options.allow_time_as_function_name);
         assert!(!options.allow_ref_to);
         assert!(!options.allow_pointer_arithmetic);
+        assert!(!options.allow_ref_type_punning);
     }
 
     #[test]
@@ -235,6 +242,7 @@ mod tests {
         assert!(options.allow_time_as_function_name);
         assert!(options.allow_ref_to);
         assert!(options.allow_pointer_arithmetic);
+        assert!(options.allow_ref_type_punning);
     }
 
     #[test]

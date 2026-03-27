@@ -107,6 +107,11 @@ struct FileArgs {
     /// extension used by RuSTy and OSCAT for pointer arithmetic.
     #[arg(long)]
     allow_pointer_arithmetic: bool,
+    /// Allow assigning between REF_TO types of different base types (type punning).
+    /// Required for OSCAT patterns like interpreting REAL bits as DWORD via
+    /// REF(real_var) into a REF_TO DWORD.
+    #[arg(long)]
+    allow_ref_type_punning: bool,
 }
 
 impl FileArgs {
@@ -121,6 +126,7 @@ impl FileArgs {
         options.allow_c_style_comments |= self.allow_c_style_comments;
         options.allow_ref_to |= self.allow_ref_to;
         options.allow_pointer_arithmetic |= self.allow_pointer_arithmetic;
+        options.allow_ref_type_punning |= self.allow_ref_type_punning;
         options
     }
 }
