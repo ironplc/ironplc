@@ -270,6 +270,20 @@ fn build_struct_fields(
         })?;
         let name = field.name.to_string().to_lowercase();
         let op_type = resolve_field_op_type(&field.field_type);
+
+        // Defense-in-depth: detect duplicate field names (case-insensitive).
+        // The analyzer should reject these, but if one slips through, silently
+        // overwriting the HashMap entry would make the first field inaccessible
+        // by name while it still occupies slots in the layout.
+        if field_index.contains_key(&name) {
+            return Err(Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(span.clone(), format!(
+                    "Structure has duplicate field name '{}' (case-insensitive)",
+                    name
+                )),
+            ));
+        }
         field_index.insert(name.clone(), field_list.len());
         field_list.push(StructFieldInfo {
             name,
@@ -345,12 +359,32 @@ fn emit_truncation_for_field(emitter: &mut Emitter, field_type: &IntermediateTyp
 
 /// Looks up a field by name within an IntermediateType::Structure's field list.
 ///
+/// **IMPORTANT**: Delegates to `build_struct_fields` to compute slot offsets,
+/// ensuring a single source of truth for offset computation. This prevents
+/// divergence between the offsets computed during variable allocation (PR 2)
+/// and those computed during expression compilation (PR 4). Both paths use
+/// `build_struct_fields` → `slot_count()` for offset accumulation.
+///
 /// Returns `(slot_offset, field_type)` for the named field, or an error if the
 /// field is not found. Used by `walk_struct_chain` to resolve nested field access.
 fn find_field_in_type(
     fields: &[IntermediateStructField],
     field_name: &Id,
-) -> Result<(u32, IntermediateType), Diagnostic>
+    span: &SourceSpan,
+) -> Result<(u32, IntermediateType), Diagnostic> {
+    // Reuse build_struct_fields to compute offsets — do NOT duplicate the
+    // slot-offset accumulation logic. The cost of building the full field
+    // list per lookup is acceptable at compile time (structures are small).
+    let (field_list, field_index) = build_struct_fields(fields, span)?;
+    let name_lower = field_name.to_string().to_lowercase();
+    let &idx = field_index.get(&name_lower)
+        .ok_or_else(|| Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span.clone(), format!("Unknown field '{}'", field_name)),
+        ))?;
+    let info = &field_list[idx];
+    Ok((info.slot_offset, info.field_type.clone()))
+}
 
 /// Finds nested initializer values for a specific field in a structure initializer.
 ///
@@ -395,6 +429,8 @@ fn initialize_nested_struct_fields(
 - `build_struct_fields_when_string_field_then_returns_error`
 - `build_struct_fields_when_fb_field_then_returns_error`
 - `build_struct_fields_when_iterated_then_declaration_order_preserved`
+- `build_struct_fields_when_duplicate_field_names_then_returns_error`
+- `find_field_in_type_when_valid_field_then_matches_build_struct_fields_offset` (cross-check: verify `find_field_in_type` returns the same offset as iterating `build_struct_fields` directly)
 
 ---
 
@@ -452,7 +488,11 @@ fn allocate_struct_variable(
 
     // Allocate data region space
     let data_offset = ctx.data_region_offset;
-    let total_bytes = total_slots * 8;
+    let total_bytes = total_slots.checked_mul(8)
+        .ok_or_else(|| Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span.clone(), "Structure size overflows (slots * 8)"),
+        ))?;
     ctx.data_region_offset = ctx.data_region_offset
         .checked_add(total_bytes)
         .ok_or_else(|| Diagnostic::problem(
@@ -567,6 +607,10 @@ pub enum FieldType {
 ```
 
 Update `FieldType::from_u8` to handle value 10.
+
+**Note**: ADR-0026 originally proposed `SLOT = 6`, but that value is already
+assigned to `FieldType::String`. This plan uses value 10 instead. ADR-0026
+should be updated to reflect this assignment.
 
 The VM's `LOAD_ARRAY` / `STORE_ARRAY` implementation does not check the element type byte at runtime — it only uses `total_elements` for bounds checking and always reads/writes 8 bytes. The type byte is metadata for the bytecode verifier and debug tools. Defining `Slot` as a shared `FieldType` variant (rather than a local constant) ensures that:
 - The bytecode verifier can distinguish structure descriptors from true array descriptors.
@@ -715,7 +759,7 @@ The `compile_expr` function handles `Variable::Symbolic(SymbolicVariableKind::St
 
 ```rust
 SymbolicVariableKind::Structured(structured) => {
-    let (var_index, desc_index, slot_offset, op_type) =
+    let (var_index, desc_index, slot_offset, op_type, _field_type) =
         resolve_struct_field_access(ctx, structured)?;
 
     // Push flat_index (compile-time constant)
@@ -732,30 +776,49 @@ SymbolicVariableKind::Structured(structured) => {
 
 ### 4b: Implement resolve_struct_field_access
 
-This function walks the `StructuredVariable` AST chain and resolves it to a (var_index, desc_index, slot_offset, op_type) tuple:
+This function walks the `StructuredVariable` AST chain and resolves it to a
+(var_index, desc_index, slot_offset, op_type, field_type) tuple. The return
+includes `IntermediateType` so that callers (PR 5 store path) can derive
+truncation information from the field's type:
 
 ```rust
 fn resolve_struct_field_access(
     ctx: &CompileContext,
     structured: &StructuredVariable,
-) -> Result<(u16, u16, u32, OpType), Diagnostic> {
-    // Walk the record chain to find the root variable and accumulate slot offsets
-    let (root_name, mut slot_offset, field_type) =
-        walk_struct_chain(ctx, &structured.record, &structured.field)?;
+) -> Result<(u16, u16, u32, OpType, IntermediateType), Diagnostic> {
+    // Walk the record chain to find the root variable and accumulate slot offsets.
+    // Depth starts at 0; walk_struct_chain increments per nesting level.
+    let (root_name, slot_offset, field_type) =
+        walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
 
     let struct_info = ctx.struct_vars.get(&root_name)
         .ok_or_else(|| ...)?;
 
     let op_type = resolve_op_type_from_intermediate(&field_type)?;
 
-    Ok((struct_info.var_index, struct_info.desc_index, slot_offset, op_type))
+    Ok((struct_info.var_index, struct_info.desc_index, slot_offset, op_type, field_type))
 }
+
+/// Maximum nesting depth for `walk_struct_chain`. Matches the depth guard
+/// in `slot_count_inner()`. Defense-in-depth: if the analyzer lets a
+/// recursive type through, this prevents a stack overflow during expression
+/// compilation (slot_count catches it during allocation, but walk_struct_chain
+/// is a separate recursive path that needs its own guard).
+const MAX_STRUCT_CHAIN_DEPTH: u32 = 32;
 
 fn walk_struct_chain(
     ctx: &CompileContext,
     record: &SymbolicVariableKind,
     field: &Id,
+    depth: u32,
 ) -> Result<(Id, u32, IntermediateType), Diagnostic> {
+    if depth > MAX_STRUCT_CHAIN_DEPTH {
+        return Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(field.span(), "Structure nesting exceeds maximum depth (possible recursive type)"),
+        ));
+    }
+
     match record {
         SymbolicVariableKind::Named(named) => {
             // Base case: root is a named variable
@@ -768,18 +831,20 @@ fn walk_struct_chain(
             Ok((named.name.clone(), field_info.slot_offset, field_info.field_type.clone()))
         }
         SymbolicVariableKind::Structured(inner) => {
-            // Recursive case: nested access
+            // Recursive case: nested access (depth incremented)
             let (root, parent_offset, parent_type) =
-                walk_struct_chain(ctx, &inner.record, &inner.field)?;
+                walk_struct_chain(ctx, &inner.record, &inner.field, depth + 1)?;
 
             // parent_type must be a Structure
             let IntermediateType::Structure { fields } = &parent_type else {
                 return Err(...);
             };
 
-            // Find the field within the parent structure type
+            // Find the field within the parent structure type.
+            // find_field_in_type delegates to build_struct_fields for offset
+            // computation, ensuring a single source of truth (C3 invariant).
             let (field_slot_offset, field_type) =
-                find_field_in_type(fields, field)?;
+                find_field_in_type(fields, field, &field.span())?;
 
             Ok((root, parent_offset + field_slot_offset, field_type))
         }
@@ -810,14 +875,16 @@ In the assignment compilation (where `Variable::Symbolic(SymbolicVariableKind::S
 
 ```rust
 SymbolicVariableKind::Structured(structured) => {
-    let (var_index, desc_index, slot_offset, op_type) =
+    // resolve_struct_field_access returns the field's IntermediateType
+    // alongside OpType, so we can derive truncation from it (H2 fix).
+    let (var_index, desc_index, slot_offset, op_type, field_type) =
         resolve_struct_field_access(ctx, structured)?;
 
     // Compile the RHS expression
     compile_expr(emitter, ctx, rhs_expr, op_type)?;
 
     // Truncate narrow types (e.g., SINT stored in W32 slot)
-    emit_truncation_for_field(emitter, &structured_field_type);
+    emit_truncation_for_field(emitter, &field_type);
 
     // Push flat_index
     let idx_const = ctx.add_i32_constant(slot_offset as i32);
@@ -902,118 +969,110 @@ This requires extending the expression compilation to handle `SymbolicVariableKi
 3. Add the struct field's base slot offset to the flat index
 4. Use LOAD_ARRAY/STORE_ARRAY with the root struct's descriptor
 
+**Bounds-checking strategy for embedded arrays**: The VM's `LOAD_ARRAY`/`STORE_ARRAY`
+bounds-checks against the descriptor's `total_elements`. If we reuse the struct's
+descriptor (where `total_elements` = struct's total slots), an out-of-range embedded
+array subscript that still falls within the struct's slot range would silently
+read/write the wrong field. The VM has no `DUP`, `BOUNDS_CHECK`, or `TRAP_IF`
+opcodes, so we cannot emit an inline bounds check.
+
+**Solution**: Use a **dedicated array descriptor** for the embedded array, with
+`total_elements` = the embedded array's element count. At access time, compute
+the embedded array's data region base (`struct_data_offset + field_base_offset * 8`)
+into a temporary variable, then use `LOAD_ARRAY`/`STORE_ARRAY` with the temp
+variable and the embedded-array descriptor. This way the VM's built-in bounds
+check validates against the embedded array's actual element count.
+
+**Allocation (in PR 2 or PR 7)**: For each structure variable that contains array
+fields, register one additional array descriptor per embedded array field:
+
+```rust
+// During allocate_struct_variable, for each array-typed field:
+let embed_desc_index = builder.add_array_descriptor(
+    element_field_type as u8,
+    embedded_array_total_elements,
+);
+// Store embed_desc_index in StructFieldInfo for use during access compilation.
+```
+
+Extend `StructFieldInfo` with an optional descriptor index for array fields:
+
+```rust
+struct StructFieldInfo {
+    name: String,
+    slot_offset: u32,
+    field_type: IntermediateType,
+    op_type: Option<OpType>,
+    /// For array-typed fields: descriptor index with total_elements = the
+    /// embedded array's element count. Used for bounds-checked access.
+    /// `None` for non-array fields.
+    embedded_array_desc: Option<u16>,
+}
+```
+
+Also allocate one temporary variable slot per `CompileContext` for computing
+embedded array base offsets at runtime:
+
+```rust
+// In CompileContext, allocated once during codegen setup:
+struct_array_temp_var: Option<u16>,
+```
+
 **Bytecode emission for `s.arr[i]` (read, variable subscript)**:
 
 ```rust
 /// Compiles a read of `struct_var.array_field[subscript]`.
 ///
-/// The entire struct is a flat slot array. The embedded array's elements
-/// occupy slots starting at `field_base_offset`. The subscript selects
-/// which element within the embedded array.
+/// Uses a dedicated embedded-array descriptor for bounds checking, and a
+/// temporary variable to hold the embedded array's data region base offset.
+/// This ensures the VM's built-in bounds check validates against the
+/// embedded array's actual element count, not the struct's total slots.
 fn compile_struct_array_field_load(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     struct_info: &StructVarInfo,
-    field_base_offset: u32,    // slot offset of array field within struct
-    array_total_elements: u32, // number of elements in the embedded array
-    array_dimensions: &[ArrayDimension],
-    subscripts: &[Expr],
+    field_info: &StructFieldInfo,      // contains slot_offset and embedded_array_desc
+    array_dimensions: &[DimensionInfo], // converted from IntermediateType::Array
+    subscripts: &[&Expr],
+    span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
-    // Compute flat index within the embedded array (0-based).
-    // For constant subscript: emit as compile-time constant.
-    // For variable subscript: emit runtime arithmetic.
-    //
-    // IMPORTANT: The VM's LOAD_ARRAY/STORE_ARRAY bounds-checks against the
-    // struct's total_slots, NOT the embedded array's element count. An
-    // out-of-range array index that still falls within the struct would
-    // silently read/write wrong fields. We must emit our own bounds check
-    // against the embedded array's actual element count.
-    let is_const = is_constant_subscript(&subscripts[0]);
+    let embed_desc = field_info.embedded_array_desc
+        .ok_or_else(|| Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span.clone(), "Field is not an array"),
+        ))?;
 
-    if is_const {
-        // Compile-time: validate bounds statically and fold into one constant
-        let array_index = evaluate_constant_subscript(&subscripts[0])?;
-        let zero_based = array_index - array_dimensions[0].lower;
-        if zero_based < 0 || zero_based as u32 >= array_total_elements {
-            return Err(Diagnostic::problem(
-                Problem::ArrayIndexOutOfBounds,
-                Label::span(subscripts[0].span(), "Index out of bounds for embedded array"),
-            ));
-        }
-        let total_slot = field_base_offset + zero_based as u32;
-        let idx_const = ctx.add_i32_constant(total_slot as i32);
-        emitter.emit_load_const_i32(idx_const);
-    } else {
-        // Runtime: emit (subscript - lower), then bounds-check against
-        // the embedded array's element count, then add field_base_offset.
-        //
-        // Bytecode sequence:
-        //   LOAD_VAR subscript_var          ; push subscript value
-        //   LOAD_CONST lower_bound          ; push array lower bound
-        //   SUB_I32                          ; subscript - lower = 0-based index
-        //   DUP                             ; duplicate for bounds check
-        //   LOAD_CONST array_total_elements ; push embedded array size
-        //   BOUNDS_CHECK                    ; trap if 0-based index >= total_elements
-        //   LOAD_CONST field_base_offset    ; push struct field offset
-        //   ADD_I32                          ; total flat slot index
-        //
-        // BOUNDS_CHECK (or equivalent: compare + conditional trap) ensures
-        // the 0-based index is within [0, array_total_elements). Without this,
-        // the VM would only check against the struct's total_slots, allowing
-        // an out-of-range array subscript to silently alias another field.
-        //
-        // If a dedicated BOUNDS_CHECK opcode is not available, the equivalent
-        // can be emitted as:
-        //   DUP
-        //   LOAD_CONST 0
-        //   LT_I32              ; index < 0?
-        //   TRAP_IF             ; trap on negative index
-        //   DUP
-        //   LOAD_CONST array_total_elements
-        //   GE_I32              ; index >= total_elements?
-        //   TRAP_IF             ; trap on overflow
-        compile_expr(emitter, ctx, &subscripts[0], (OpWidth::W32, Signedness::Signed))?;
-        let lower_const = ctx.add_i32_constant(array_dimensions[0].lower as i32);
-        emitter.emit_load_const_i32(lower_const);
-        emitter.emit(opcode::SUB_I32);
-        // Emit embedded-array bounds check
-        emit_array_bounds_check(emitter, ctx, array_total_elements, &subscripts[0])?;
-        let offset_const = ctx.add_i32_constant(field_base_offset as i32);
-        emitter.emit_load_const_i32(offset_const);
-        emitter.emit(opcode::ADD_I32);
-    }
+    // Reuse compile_array's emit_flat_index for subscript computation.
+    // This handles:
+    // - Constant subscripts: compile-time bounds validation via
+    //   try_constant_flat_index (returns Err for out-of-range constants)
+    // - Variable subscripts: i64 arithmetic matching the existing array
+    //   pattern (emit_sub_i64, emit_mul_i64, emit_add_i64)
+    // - Multi-dimensional arrays: full stride computation
+    crate::compile_array::emit_flat_index(
+        emitter, ctx, subscripts, array_dimensions, span,
+    )?;
 
-    // Load from the struct's flat slot array
-    emitter.emit_load_array(struct_info.var_index, struct_info.desc_index);
+    // Compute the embedded array's data region base into a temp variable:
+    //   temp_var = struct_data_offset + field_base_offset * 8
+    let temp_var = ctx.ensure_struct_array_temp_var();
+    let base_byte_offset = struct_info.data_offset + field_info.slot_offset * 8;
+    let base_const = ctx.add_i32_constant(base_byte_offset as i32);
+    emitter.emit_load_const_i32(base_const);
+    emitter.emit_store_var_i32(temp_var);
+
+    // Load using the embedded-array descriptor for tight bounds checking.
+    // The VM checks: 0 <= flat_index < embedded_array_total_elements
+    emitter.emit_load_array(temp_var, embed_desc);
     Ok(())
-}
-
-/// Emits a runtime bounds check for a 0-based index already on the stack.
-/// Traps if the index is negative or >= `total_elements`.
-/// The index value remains on the stack after the check (consumed copy via DUP).
-///
-/// This is needed for embedded arrays within structures because the VM's
-/// built-in LOAD_ARRAY/STORE_ARRAY bounds check uses the struct's total_slots,
-/// not the embedded array's element count.
-fn emit_array_bounds_check(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    total_elements: u32,
-    span_source: &Expr,  // for error reporting
-) -> Result<(), Diagnostic> {
-    // Implementation uses the same pattern as standalone array bounds checking.
-    // The exact opcode sequence depends on available VM primitives (BOUNDS_CHECK
-    // opcode or compare+trap sequence). See compile_array.rs for the existing
-    // pattern.
-    todo!("Emit bounds check: 0 <= top-of-stack < total_elements")
 }
 ```
 
-The store variant is symmetric (emit RHS value first, then compute the index with bounds check, then `emit_store_array`). Both load and store paths must include the embedded-array bounds check.
+The store variant is symmetric (emit RHS value first, then compute the index
+and base, then `emit_store_array` with the temp variable and embedded descriptor).
 
-Multi-dimensional arrays within structs follow the same flat-index computation
-as standalone arrays (see `compile_array.rs`), but add `field_base_offset` to the
-resulting flat index.
+Multi-dimensional arrays within structs are handled by `emit_flat_index`, which
+already supports arbitrary dimension counts via stride computation.
 
 ### 7c: Initialization of array fields within structures
 
@@ -1093,7 +1152,7 @@ Resolution:
 4. For variable subscript: emit runtime arithmetic
 5. The VM's bounds check on the descriptor's `total_slots` catches out-of-range access
 
-**Bytecode emission for `arr[i].field` (read, variable subscript)**:
+**Bytecode emission for `arr[i].field` (read)**:
 
 ```rust
 /// Compiles a read of `array_of_struct[subscript].field`.
@@ -1104,46 +1163,88 @@ Resolution:
 fn compile_array_of_struct_field_load(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    arr_info: &ArrayOfStructInfo,  // descriptor index, var index, stride, dimensions
+    arr_info: &ArrayOfStructInfo,
     field_slot_offset: u32,
-    subscripts: &[Expr],
+    subscripts: &[&Expr],
+    span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
-    let is_const = is_constant_subscript(&subscripts[0]);
-
-    if is_const {
-        // Compile-time: fold everything into one constant
-        let array_index = evaluate_constant_subscript(&subscripts[0])?;
-        let zero_based = array_index - arr_info.dimensions[0].lower;
-        let flat_slot = zero_based as u32 * arr_info.struct_stride + field_slot_offset;
-        let idx_const = ctx.add_i32_constant(flat_slot as i32);
+    // Try compile-time constant folding (reuses compile_array pattern).
+    // This also validates constant subscripts are within bounds.
+    if let Some(flat_index) = try_constant_array_of_struct_index(
+        subscripts, &arr_info.dimensions, arr_info.struct_stride,
+        field_slot_offset, span,
+    )? {
+        let idx_const = ctx.add_i32_constant(flat_index);
         emitter.emit_load_const_i32(idx_const);
     } else {
-        // Runtime: emit (subscript - lower) * struct_stride + field_slot_offset
+        // Variable subscript: emit runtime arithmetic using i64 to match
+        // the existing array pattern (compile_array.rs:428) and prevent
+        // overflow in intermediate products.
         //
         // Bytecode sequence:
-        //   LOAD_VAR subscript_var          ; push subscript
-        //   LOAD_CONST lower_bound          ; push lower
-        //   SUB_I32                          ; subscript - lower
-        //   LOAD_CONST struct_stride        ; push stride
-        //   MUL_I32                          ; (subscript - lower) * stride
-        //   LOAD_CONST field_slot_offset    ; push field offset
-        //   ADD_I32                          ; final flat slot index
-        compile_expr(emitter, ctx, &subscripts[0], (OpWidth::W32, Signedness::Signed))?;
-        let lower_const = ctx.add_i32_constant(arr_info.dimensions[0].lower as i32);
-        emitter.emit_load_const_i32(lower_const);
-        emitter.emit(opcode::SUB_I32);
-        let stride_const = ctx.add_i32_constant(arr_info.struct_stride as i32);
-        emitter.emit_load_const_i32(stride_const);
-        emitter.emit(opcode::MUL_I32);
-        let offset_const = ctx.add_i32_constant(field_slot_offset as i32);
-        emitter.emit_load_const_i32(offset_const);
-        emitter.emit(opcode::ADD_I32);
+        //   <compile subscript>              ; push subscript (i32, sign-extends to i64 in Slot)
+        //   LOAD_CONST_I64 lower_bound       ; push lower
+        //   SUB_I64                          ; subscript - lower
+        //   LOAD_CONST_I64 struct_stride     ; push stride
+        //   MUL_I64                          ; (subscript - lower) * stride
+        //   LOAD_CONST_I64 field_slot_offset ; push field offset
+        //   ADD_I64                          ; final flat slot index (as i64)
+        //
+        // The result is consumed by LOAD_ARRAY which reads it as i64 via
+        // `index_slot.as_i64()` (vm.rs:1628).
+        let subscript_op_type = (OpWidth::W32, Signedness::Signed);
+        compile_expr(emitter, ctx, &subscripts[0], subscript_op_type)?;
+        if arr_info.dimensions[0].lower_bound != 0 {
+            let lower_const = ctx.add_i64_constant(arr_info.dimensions[0].lower_bound as i64);
+            emitter.emit_load_const_i64(lower_const);
+            emitter.emit_sub_i64();
+        }
+        if arr_info.struct_stride != 1 {
+            let stride_const = ctx.add_i64_constant(arr_info.struct_stride as i64);
+            emitter.emit_load_const_i64(stride_const);
+            emitter.emit_mul_i64();
+        }
+        if field_slot_offset != 0 {
+            let offset_const = ctx.add_i64_constant(field_slot_offset as i64);
+            emitter.emit_load_const_i64(offset_const);
+            emitter.emit_add_i64();
+        }
     }
 
     // Load from the array-of-struct's flat slot array.
     // The VM's bounds check on total_slots catches out-of-range flat indices.
     emitter.emit_load_array(arr_info.var_index, arr_info.desc_index);
     Ok(())
+}
+
+/// Tries to compute the flat slot index at compile time for array-of-struct access.
+///
+/// Returns `None` if the subscript is not a literal (fall through to runtime).
+/// Returns `Err` if a literal subscript is out of bounds (compile-time error).
+/// Mirrors `try_constant_flat_index` in compile_array.rs.
+fn try_constant_array_of_struct_index(
+    subscripts: &[&Expr],
+    dimensions: &[DimensionInfo],
+    struct_stride: u32,
+    field_slot_offset: u32,
+    span: &SourceSpan,
+) -> Result<Option<i32>, Diagnostic> {
+    // Use the same literal extraction as compile_array.rs
+    let value = match try_extract_integer_literal(subscripts[0]) {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+    // Validate bounds against the array dimension
+    let upper = dimensions[0].lower_bound + dimensions[0].size as i32 - 1;
+    if value < dimensions[0].lower_bound || value > upper {
+        return Err(Diagnostic::problem(
+            Problem::ArrayIndexOutOfBounds,
+            Label::span(span.clone(), "Array index out of bounds"),
+        ));
+    }
+    let zero_based = value - dimensions[0].lower_bound;
+    let flat_slot = zero_based * struct_stride as i32 + field_slot_offset as i32;
+    Ok(Some(flat_slot))
 }
 ```
 
@@ -1177,6 +1278,7 @@ for element_index in 0..array_size {
 ### Tests
 
 - `compile_when_array_of_struct_then_allocates_elements_times_struct_slots`
+- `compile_when_array_of_struct_const_index_out_of_bounds_then_error` (compile-time bounds check — catches negative and too-large constant subscripts)
 - `vm_when_array_of_struct_const_index_then_correct_field`
 - `vm_when_array_of_struct_var_index_then_correct_field`
 - `vm_when_array_of_struct_bounds_then_traps`
@@ -1239,6 +1341,14 @@ Examples:
 2. Array descriptor bounds check catches runtime violations (VM enforcement)
 3. Bytecode verifier checks descriptor validity (load-time enforcement)
 
+### Safety Invariants Enforced by This Plan
+
+- **Single source of truth for slot offsets**: Both `build_struct_fields` (allocation) and `find_field_in_type` (expression compilation) use the same `build_struct_fields` → `slot_count()` path. Cross-checked by test `find_field_in_type_when_valid_field_then_matches_build_struct_fields_offset`.
+- **Embedded array bounds checking**: Uses dedicated descriptors per embedded array field (not the struct's descriptor), so the VM validates against the embedded array's actual element count.
+- **i64 arithmetic for runtime subscripts**: All runtime index computation uses i64 opcodes (`emit_sub_i64`, `emit_mul_i64`, `emit_add_i64`), matching the established array pattern and preventing overflow.
+- **Depth guards on all recursive paths**: Both `slot_count_inner()` and `walk_struct_chain()` enforce `MAX_NESTING_DEPTH = 32`.
+- **Checked arithmetic throughout**: `total_slots.checked_mul(8)`, `checked_add` for data region growth, `checked_mul` for array slot products.
+
 ---
 
 ## TODO Items for Future Work
@@ -1247,7 +1357,7 @@ These should be tracked as issues or inline TODOs in the codebase:
 
 - [ ] **TODO(struct-string)**: Support STRING/WSTRING fields in structures — requires sub-allocating string `[max_length][cur_length][data]` within the struct's data region block
 - [ ] **TODO(struct-fb)**: Support function block instance fields in structures — requires FB lifecycle management for embedded instances
-- [ ] **TODO(struct-assign)**: Support whole-structure assignment (`s1 := s2`) — emit field-by-field copy or bulk memcpy
+- [ ] **TODO(struct-assign)**: Support whole-structure assignment (`s1 := s2`) — emit field-by-field copy or bulk memory copy
 - [ ] **TODO(struct-literal)**: Support structure literals in expressions — requires temp allocation
 - [ ] **TODO(struct-params)**: Support structure-typed function/FB parameters (VAR_INPUT, VAR_OUTPUT, VAR_IN_OUT) — requires pass-by-value copy or pass-by-reference semantics
 - [ ] **TODO(struct-packed)**: Migrate to packed byte-level layout (ADR-0026 migration path)
