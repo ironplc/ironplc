@@ -1,7 +1,7 @@
 //! End-to-end integration tests for EXPT with DINT type.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -15,7 +15,7 @@ PROGRAM main
   result := EXPT(2, 10);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 1024);
 }
 
@@ -29,6 +29,6 @@ PROGRAM main
   result := EXPT(5, 0);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 1);
 }

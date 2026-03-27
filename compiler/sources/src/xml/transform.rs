@@ -27,7 +27,7 @@ use ironplc_dsl::{
     textual::{Expr, ExprKind, Statements, StmtKind},
     time::DurationLiteral,
 };
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 
 use super::schema::{
@@ -59,7 +59,7 @@ fn file_span(file_id: &FileId) -> SourceSpan {
 pub fn transform_project(
     project: &Project,
     file_id: &FileId,
-    parse_options: &ParseOptions,
+    compiler_options: &CompilerOptions,
 ) -> Result<Library, Diagnostic> {
     let mut library = Library::new();
 
@@ -73,7 +73,7 @@ pub fn transform_project(
 
     // Transform POUs
     for pou in &project.types.pous.pou {
-        let elem = transform_pou(pou, file_id, parse_options)?;
+        let elem = transform_pou(pou, file_id, compiler_options)?;
         library.elements.push(elem);
     }
 
@@ -404,12 +404,12 @@ fn transform_data_type(data_type: &DataType, file_id: &FileId) -> Result<TypeNam
 fn transform_pou(
     pou: &Pou,
     file_id: &FileId,
-    parse_options: &ParseOptions,
+    compiler_options: &CompilerOptions,
 ) -> Result<LibraryElementKind, Diagnostic> {
     match pou.pou_type {
-        PouType::Function => transform_function(pou, file_id, parse_options),
-        PouType::FunctionBlock => transform_function_block(pou, file_id, parse_options),
-        PouType::Program => transform_program(pou, file_id, parse_options),
+        PouType::Function => transform_function(pou, file_id, compiler_options),
+        PouType::FunctionBlock => transform_function_block(pou, file_id, compiler_options),
+        PouType::Program => transform_program(pou, file_id, compiler_options),
     }
 }
 
@@ -417,7 +417,7 @@ fn transform_pou(
 fn transform_function(
     pou: &Pou,
     file_id: &FileId,
-    parse_options: &ParseOptions,
+    compiler_options: &CompilerOptions,
 ) -> Result<LibraryElementKind, Diagnostic> {
     let name = make_id(&pou.name, file_id);
     let span = file_span(file_id);
@@ -447,7 +447,7 @@ fn transform_function(
     };
 
     let variables = transform_interface(pou.interface.as_ref(), file_id)?;
-    let body = transform_body_statements(pou, file_id, parse_options)?;
+    let body = transform_body_statements(pou, file_id, compiler_options)?;
 
     Ok(LibraryElementKind::FunctionDeclaration(
         FunctionDeclaration {
@@ -464,13 +464,13 @@ fn transform_function(
 fn transform_function_block(
     pou: &Pou,
     file_id: &FileId,
-    parse_options: &ParseOptions,
+    compiler_options: &CompilerOptions,
 ) -> Result<LibraryElementKind, Diagnostic> {
     let name = make_type_name(&pou.name, file_id);
     let span = file_span(file_id);
 
     let variables = transform_interface(pou.interface.as_ref(), file_id)?;
-    let body = transform_body(pou, file_id, parse_options)?;
+    let body = transform_body(pou, file_id, compiler_options)?;
 
     Ok(LibraryElementKind::FunctionBlockDeclaration(
         FunctionBlockDeclaration {
@@ -487,12 +487,12 @@ fn transform_function_block(
 fn transform_program(
     pou: &Pou,
     file_id: &FileId,
-    parse_options: &ParseOptions,
+    compiler_options: &CompilerOptions,
 ) -> Result<LibraryElementKind, Diagnostic> {
     let name = make_id(&pou.name, file_id);
 
     let variables = transform_interface(pou.interface.as_ref(), file_id)?;
-    let body = transform_body(pou, file_id, parse_options)?;
+    let body = transform_body(pou, file_id, compiler_options)?;
 
     Ok(LibraryElementKind::ProgramDeclaration(ProgramDeclaration {
         name,
@@ -609,7 +609,7 @@ fn transform_variable(
 fn transform_body(
     pou: &Pou,
     file_id: &FileId,
-    parse_options: &ParseOptions,
+    compiler_options: &CompilerOptions,
 ) -> Result<FunctionBlockBodyKind, Diagnostic> {
     let Some(ref body) = pou.body else {
         return Ok(FunctionBlockBodyKind::Empty);
@@ -621,14 +621,14 @@ fn transform_body(
             file_id,
             st_body.line_offset,
             st_body.col_offset,
-            parse_options,
+            compiler_options,
         )?;
         Ok(FunctionBlockBodyKind::Statements(Statements {
             body: stmts,
         }))
     } else if let Some(ref sfc_body) = body.sfc {
         // Transform SFC body
-        let sfc = transform_sfc_body(sfc_body, pou, file_id, parse_options)?;
+        let sfc = transform_sfc_body(sfc_body, pou, file_id, compiler_options)?;
         Ok(FunctionBlockBodyKind::Sfc(sfc))
     } else {
         Ok(FunctionBlockBodyKind::Empty)
@@ -639,7 +639,7 @@ fn transform_body(
 fn transform_body_statements(
     pou: &Pou,
     file_id: &FileId,
-    parse_options: &ParseOptions,
+    compiler_options: &CompilerOptions,
 ) -> Result<Vec<StmtKind>, Diagnostic> {
     let Some(ref body) = pou.body else {
         return Ok(vec![]);
@@ -651,7 +651,7 @@ fn transform_body_statements(
             file_id,
             st_body.line_offset,
             st_body.col_offset,
-            parse_options,
+            compiler_options,
         )
     } else {
         Ok(vec![])
@@ -891,7 +891,7 @@ fn transform_sfc_body(
     sfc_body: &SfcBody,
     pou: &Pou,
     file_id: &FileId,
-    parse_options: &ParseOptions,
+    compiler_options: &CompilerOptions,
 ) -> Result<Sfc, Diagnostic> {
     // Find the initial step
     let initial_step = sfc_body
@@ -938,7 +938,7 @@ fn transform_sfc_body(
             elements.push(ElementKind::Action(transform_sfc_action(
                 action,
                 file_id,
-                parse_options,
+                compiler_options,
             )?));
         }
     }
@@ -1037,7 +1037,7 @@ fn transform_sfc_transition(
 fn transform_sfc_action(
     action: &super::schema::Action,
     file_id: &FileId,
-    parse_options: &ParseOptions,
+    compiler_options: &CompilerOptions,
 ) -> Result<SfcAction, Diagnostic> {
     let name = make_id(&action.name, file_id);
 
@@ -1048,7 +1048,7 @@ fn transform_sfc_action(
             file_id,
             st_body.line_offset,
             st_body.col_offset,
-            parse_options,
+            compiler_options,
         )?;
         FunctionBlockBodyKind::Statements(Statements { body: stmts })
     } else {
@@ -1098,9 +1098,9 @@ fn parse_st_body(
     file_id: &FileId,
     line_offset: usize,
     col_offset: usize,
-    parse_options: &ParseOptions,
+    compiler_options: &CompilerOptions,
 ) -> Result<Vec<StmtKind>, Diagnostic> {
-    ironplc_parser::parse_st_statements(st_text, file_id, parse_options, line_offset, col_offset)
+    ironplc_parser::parse_st_statements(st_text, file_id, compiler_options, line_offset, col_offset)
 }
 
 /// Create an error diagnostic for invalid values
@@ -1148,7 +1148,7 @@ mod tests {
         );
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         assert_eq!(library.elements.len(), 0);
     }
@@ -1179,7 +1179,7 @@ mod tests {
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
         let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
@@ -1214,7 +1214,7 @@ mod tests {
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
         let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Array(array_decl)) =
@@ -1252,7 +1252,7 @@ mod tests {
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
         let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Structure(
@@ -1301,7 +1301,7 @@ IF Reset THEN Count := 0; END_IF;
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
         let LibraryElementKind::FunctionBlockDeclaration(fb_decl) = &library.elements[0] else {
@@ -1335,7 +1335,7 @@ IF Reset THEN Count := 0; END_IF;
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
         let LibraryElementKind::ProgramDeclaration(prog_decl) = &library.elements[0] else {
@@ -1383,7 +1383,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
         let LibraryElementKind::FunctionBlockDeclaration(fb_decl) = &library.elements[0] else {
@@ -1430,7 +1430,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         // Should have program declaration and configuration declaration
         assert_eq!(library.elements.len(), 2);
@@ -1470,7 +1470,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         let LibraryElementKind::ConfigurationDeclaration(config_decl) = &library.elements[1] else {
             panic!("Expected configuration declaration");
@@ -1504,7 +1504,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         let LibraryElementKind::ConfigurationDeclaration(config_decl) = &library.elements[0] else {
             panic!("Expected configuration declaration");
@@ -1549,7 +1549,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         let LibraryElementKind::ConfigurationDeclaration(config_decl) = &library.elements[1] else {
             panic!("Expected configuration declaration");
@@ -1591,7 +1591,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         let LibraryElementKind::ConfigurationDeclaration(config_decl) = &library.elements[1] else {
             panic!("Expected configuration declaration");
@@ -1683,7 +1683,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
         let LibraryElementKind::ProgramDeclaration(prog_decl) = &library.elements[0] else {
@@ -1732,7 +1732,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         let LibraryElementKind::ProgramDeclaration(prog_decl) = &library.elements[0] else {
             panic!("Expected program declaration");
@@ -1783,7 +1783,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         let LibraryElementKind::ProgramDeclaration(prog_decl) = &library.elements[0] else {
             panic!("Expected program declaration");
@@ -1825,7 +1825,7 @@ END_IF;
         );
 
         let project = parse_project(&xml);
-        let result = transform_project(&project, &test_file_id(), &ParseOptions::default());
+        let result = transform_project(&project, &test_file_id(), &CompilerOptions::default());
 
         assert!(result.is_err());
         let error = result.unwrap_err();
@@ -1862,7 +1862,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         // Should have 2 type declarations
         assert_eq!(library.elements.len(), 2);
@@ -1899,7 +1899,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         // Should have 2 POU declarations
         assert_eq!(library.elements.len(), 2);
@@ -1956,7 +1956,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         // Should have 3 type declarations + 1 program
         assert_eq!(library.elements.len(), 4);
@@ -1993,7 +1993,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let library =
-            transform_project(&project, &test_file_id(), &ParseOptions::default()).unwrap();
+            transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         // Should have 2 type declarations
         assert_eq!(library.elements.len(), 2);
@@ -2028,7 +2028,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let file_id = test_file_id();
-        let library = transform_project(&project, &file_id, &ParseOptions::default()).unwrap();
+        let library = transform_project(&project, &file_id, &CompilerOptions::default()).unwrap();
 
         let LibraryElementKind::FunctionDeclaration(func_decl) = &library.elements[0] else {
             panic!("Expected function declaration");
@@ -2071,7 +2071,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let file_id = test_file_id();
-        let library = transform_project(&project, &file_id, &ParseOptions::default()).unwrap();
+        let library = transform_project(&project, &file_id, &CompilerOptions::default()).unwrap();
 
         let LibraryElementKind::ProgramDeclaration(prog_decl) = &library.elements[0] else {
             panic!("Expected program declaration");
@@ -2120,7 +2120,7 @@ END_IF;
 
         let project = parse_project(&xml);
         let file_id = test_file_id();
-        let library = transform_project(&project, &file_id, &ParseOptions::default()).unwrap();
+        let library = transform_project(&project, &file_id, &CompilerOptions::default()).unwrap();
 
         let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
             enum_decl,

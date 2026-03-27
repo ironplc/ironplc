@@ -1,7 +1,7 @@
 //! Bytecode-level integration tests for MUX function compilation with float types.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_compile;
 
@@ -15,7 +15,7 @@ PROGRAM main
   y := MUX(0, 1.0, 2.0, 3.0);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // K=0 is an integer constant (i32), IN values are f32
@@ -38,7 +38,7 @@ PROGRAM main
   y := MUX(1, 1.0, 2.0);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // BUILTIN MUX_F64_BASE+2 = 0x0462

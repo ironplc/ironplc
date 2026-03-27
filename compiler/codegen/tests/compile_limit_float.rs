@@ -1,7 +1,7 @@
 //! Bytecode-level integration tests for the LIMIT function with float types.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_compile;
 
@@ -17,7 +17,7 @@ PROGRAM main
   y := LIMIT(0.0, x, 10.0);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // x := 5.0: LOAD_CONST_F32 pool:0, STORE_VAR_F32 var:0
     // y := LIMIT(0.0, x, 10.0): LOAD_CONST_F32 pool:1, LOAD_VAR_F32 var:0,
@@ -51,7 +51,7 @@ PROGRAM main
   y := LIMIT(0.0, x, 10.0);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(

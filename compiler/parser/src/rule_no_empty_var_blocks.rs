@@ -1,7 +1,7 @@
 use dsl::diagnostic::{Diagnostic, Label};
 
 use crate::{
-    options::ParseOptions,
+    options::CompilerOptions,
     token::{Token, TokenType},
 };
 
@@ -41,7 +41,7 @@ fn is_ignorable(tt: &TokenType) -> bool {
     )
 }
 
-pub fn apply(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnostic>> {
+pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diagnostic>> {
     if options.allow_empty_var_blocks {
         return Ok(());
     }
@@ -84,7 +84,7 @@ mod test {
     use dsl::core::SourceSpan;
 
     use crate::{
-        options::ParseOptions,
+        options::CompilerOptions,
         rule_no_empty_var_blocks::apply,
         token::{Token, TokenType},
     };
@@ -105,9 +105,9 @@ mod test {
 
         let result = apply(
             &tokens,
-            &ParseOptions {
+            &CompilerOptions {
                 allow_empty_var_blocks: false,
-                ..ParseOptions::default()
+                ..CompilerOptions::default()
             },
         );
         assert!(result.is_err());
@@ -119,9 +119,9 @@ mod test {
 
         let result = apply(
             &tokens,
-            &ParseOptions {
+            &CompilerOptions {
                 allow_empty_var_blocks: true,
-                ..ParseOptions::default()
+                ..CompilerOptions::default()
             },
         );
         assert!(result.is_ok());
@@ -139,9 +139,9 @@ mod test {
 
         let result = apply(
             &tokens,
-            &ParseOptions {
+            &CompilerOptions {
                 allow_empty_var_blocks: false,
-                ..ParseOptions::default()
+                ..CompilerOptions::default()
             },
         );
         assert!(result.is_err());
@@ -156,9 +156,9 @@ mod test {
 
         let result = apply(
             &tokens,
-            &ParseOptions {
+            &CompilerOptions {
                 allow_empty_var_blocks: false,
-                ..ParseOptions::default()
+                ..CompilerOptions::default()
             },
         );
         assert!(result.is_err());
@@ -175,9 +175,9 @@ mod test {
 
         let result = apply(
             &tokens,
-            &ParseOptions {
+            &CompilerOptions {
                 allow_empty_var_blocks: false,
-                ..ParseOptions::default()
+                ..CompilerOptions::default()
             },
         );
         assert!(result.is_ok());

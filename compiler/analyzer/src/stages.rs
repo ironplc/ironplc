@@ -6,7 +6,7 @@ use ironplc_dsl::{
     core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 use log::debug;
 
@@ -40,7 +40,7 @@ use crate::{
 /// fails (declaration sorting or type environment building).
 pub fn analyze(
     sources: &[&Library],
-    options: &ParseOptions,
+    options: &CompilerOptions,
 ) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
     if sources.is_empty() {
         let span = SourceSpan::range(0, 0).with_file_id(&FileId::default());
@@ -72,7 +72,7 @@ pub fn analyze(
 
 pub fn resolve_types(
     sources: &[&Library],
-    options: &ParseOptions,
+    options: &CompilerOptions,
 ) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
     let mut diagnostics: Vec<Diagnostic> = vec![];
 
@@ -203,9 +203,9 @@ pub fn resolve_types(
 pub(crate) fn semantic(
     library: &Library,
     context: &SemanticContext,
-    options: &ParseOptions,
+    options: &CompilerOptions,
 ) -> SemanticResult {
-    let functions: Vec<fn(&Library, &SemanticContext) -> SemanticResult> = vec![
+    let functions: Vec<fn(&Library, &SemanticContext, &CompilerOptions) -> SemanticResult> = vec![
         rule_decl_struct_element_unique_names::apply,
         rule_decl_subrange_limits::apply,
         rule_enumeration_values_unique::apply,
@@ -224,26 +224,18 @@ pub(crate) fn semantic(
         rule_var_decl_global_const_requires_external_const::apply,
         rule_pou_hierarchy::apply,
         rule_bit_access_range::apply,
+        rule_ref_to::apply,
     ];
 
     let mut all_diagnostics = vec![];
     for func in functions {
-        match func(library, context) {
+        match func(library, context, options) {
             Ok(_) => {
                 // Nothing to do here
             }
             Err(diagnostics) => {
                 all_diagnostics.extend(diagnostics);
             }
-        }
-    }
-
-    // rule_ref_to needs options to conditionally allow ref arithmetic.
-    // TODO: Pass ParseOptions into all rules so rule_ref_to isn't special-cased here.
-    match rule_ref_to::apply(library, context, options) {
-        Ok(_) => {}
-        Err(diagnostics) => {
-            all_diagnostics.extend(diagnostics);
         }
     }
 
@@ -259,21 +251,21 @@ mod tests {
     use crate::stages::analyze;
     use ironplc_dsl::common::Library;
     use ironplc_dsl::core::FileId;
-    use ironplc_parser::options::ParseOptions;
+    use ironplc_parser::options::CompilerOptions;
     use ironplc_parser::parse_program;
     use ironplc_test::read_shared_resource;
 
     #[test]
     fn analyze_when_first_steps_then_result_is_ok() {
         let lib = parse_shared_library("first_steps.st");
-        let res = analyze(&[&lib], &ParseOptions::default());
+        let res = analyze(&[&lib], &CompilerOptions::default());
         assert!(res.is_ok());
     }
 
     #[test]
     fn analyze_when_first_steps_semantic_error_then_ok_with_diagnostics() {
         let lib = parse_shared_library("first_steps_semantic_error.st");
-        let res = analyze(&[&lib], &ParseOptions::default());
+        let res = analyze(&[&lib], &CompilerOptions::default());
         let (_library, context) = res.unwrap();
         assert!(context.has_diagnostics());
     }
@@ -281,7 +273,7 @@ mod tests {
     #[test]
     fn analyze_2() {
         let lib = parse_shared_library("main.st");
-        let res = analyze(&[&lib], &ParseOptions::default());
+        let res = analyze(&[&lib], &CompilerOptions::default());
         assert!(res.is_ok());
     }
 
@@ -301,16 +293,16 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let program1 =
-            parse_program(program1, &FileId::default(), &ParseOptions::default()).unwrap();
+            parse_program(program1, &FileId::default(), &CompilerOptions::default()).unwrap();
         let program2 =
-            parse_program(program2, &FileId::default(), &ParseOptions::default()).unwrap();
+            parse_program(program2, &FileId::default(), &CompilerOptions::default()).unwrap();
 
-        let result = analyze(&[&program1, &program2], &ParseOptions::default());
+        let result = analyze(&[&program1, &program2], &CompilerOptions::default());
         assert!(result.is_ok())
     }
 
     fn parse_shared_library(name: &'static str) -> Library {
         let src = read_shared_resource(name);
-        parse_program(&src, &FileId::default(), &ParseOptions::default()).unwrap()
+        parse_program(&src, &FileId::default(), &CompilerOptions::default()).unwrap()
     }
 }

@@ -1,7 +1,7 @@
 //! End-to-end integration tests for the INSERT standard function.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
@@ -37,7 +37,7 @@ PROGRAM main
   result := INSERT(s1, s2, 5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // Insert ' ' after position 5: Hello + ' ' + World = 'Hello World'
     let result_offset = string_offset(&[254, 254]);
@@ -56,7 +56,7 @@ PROGRAM main
   result := INSERT(s1, s2, 0);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // Insert 'Hello ' at position 0 (before everything): 'Hello World'
     let result_offset = string_offset(&[254, 254]);
@@ -75,7 +75,7 @@ PROGRAM main
   result := INSERT(s1, s2, 5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // Insert ' World' after position 5 (end of string): 'Hello World'
     let result_offset = string_offset(&[254, 254]);
@@ -94,7 +94,7 @@ PROGRAM main
   result := INSERT(s1, s2, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // Inserting empty string changes nothing.
     let result_offset = string_offset(&[254, 254]);
@@ -113,7 +113,7 @@ PROGRAM main
   result := INSERT(s1, s2, 0);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let result_offset = string_offset(&[254, 254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "Hello");
@@ -132,7 +132,7 @@ PROGRAM main
   result := INSERT(s1, s2, n_pos);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // Insert 'XY' after position 2: AB + XY + CDE = 'ABXYCDE'
     let result_offset = string_offset(&[254, 254]);
@@ -151,7 +151,7 @@ PROGRAM main
   result := INSERT(s1, s2, 2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // Full result would be AB + XXXXX + CDE = ABXXXXXCDE (10 chars).
     // But result is STRING[6], so it truncates to 'ABXXXX' (6 chars).

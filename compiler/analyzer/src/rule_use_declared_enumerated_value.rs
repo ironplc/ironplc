@@ -37,8 +37,13 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use ironplc_parser::options::CompilerOptions;
 
-pub fn apply(lib: &Library, context: &SemanticContext) -> SemanticResult {
+pub fn apply(
+    lib: &Library,
+    context: &SemanticContext,
+    _options: &CompilerOptions,
+) -> SemanticResult {
     // Walk the library to find all references to enumerations
     // checking that all references use an enumeration value
     // that is part of the enumeration
@@ -114,7 +119,7 @@ mod tests {
 
     use crate::stages::analyze;
     use ironplc_dsl::core::FileId;
-    use ironplc_parser::{options::ParseOptions, parse_program};
+    use ironplc_parser::{options::CompilerOptions, parse_program};
 
     #[test]
     fn apply_when_var_init_undefined_enum_value_then_error() {
@@ -129,8 +134,9 @@ LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let result = analyze(&[&library], &ParseOptions::default());
+        let library =
+            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let result = analyze(&[&library], &CompilerOptions::default());
 
         let (_library, context) = result.unwrap();
         assert!(context.has_diagnostics());
@@ -149,8 +155,9 @@ LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let result = analyze(&[&library], &ParseOptions::default());
+        let library =
+            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let result = analyze(&[&library], &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -171,8 +178,9 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let result = analyze(&[&library], &ParseOptions::default());
+        let library =
+            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let result = analyze(&[&library], &CompilerOptions::default());
 
         assert!(result.is_ok());
     }

@@ -1,7 +1,7 @@
 //! End-to-end integration tests for MUX with LINT type.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -15,7 +15,7 @@ PROGRAM main
   result := MUX(0, LINT#5000000000, LINT#10000000000);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 5_000_000_000);
 }
 
@@ -29,7 +29,7 @@ PROGRAM main
   result := MUX(1, LINT#5000000000, LINT#10000000000);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 10_000_000_000);
 }
 
@@ -43,7 +43,7 @@ PROGRAM main
   result := MUX(2, LINT#100, LINT#200, LINT#300);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 300);
 }
 
@@ -57,7 +57,7 @@ PROGRAM main
   result := MUX(10, LINT#100, LINT#200, LINT#300);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 300);
 }
 
@@ -73,6 +73,6 @@ PROGRAM main
   result := MUX(k, LINT#100, LINT#200);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i64(), 100);
 }

@@ -481,7 +481,7 @@ This design means:
 
 The dialect gate lives in the **token transform layer**, not in the parser. The parser grammar rules for TwinCAT constructs (e.g., `METHOD ... END_METHOD`, `EXTENDS`, `INTERFACE`) are always present in the PEG grammar. They simply never fire in standard mode because the tokens that trigger them (`Method`, `Extends`, `Interface`, etc.) are only produced by the TwinCAT keyword promotion transform.
 
-This means the parser itself needs no dialect awareness or `ParseOptions` access for most features. A grammar rule like `tok(TokenType::Method) _ name() _ ...` will never match when parsing standard IEC 61131-3 because `METHOD` remains an `Identifier` token — it is never promoted to `Method`.
+This means the parser itself needs no dialect awareness or `CompilerOptions` access for most features. A grammar rule like `tok(TokenType::Method) _ name() _ ...` will never match when parsing standard IEC 61131-3 because `METHOD` remains an `Identifier` token — it is never promoted to `Method`.
 
 The only exception would be grammar rules that must distinguish between standard and TwinCAT behavior for the *same* token. No such cases have been identified in the current design — all TwinCAT grammar extensions use tokens that only exist after promotion.
 
@@ -970,7 +970,7 @@ SET := 22;
 END_FUNCTION_BLOCK
 ";
     // Parse with default (standard) options — no dialect
-    let result = parse_program(program, &FileId::default(), &ParseOptions::default());
+    let result = parse_program(program, &FileId::default(), &CompilerOptions::default());
     assert!(result.is_ok(), "Dialect keywords must remain valid identifiers in standard mode");
 }
 ```
@@ -997,7 +997,7 @@ This test lives in `compiler/parser/src/tests.rs` alongside the other parser tes
    - `rule_unsupported_extension.rs` semantic rule (empty initially — no extension nodes exist yet)
 
 1. **Phase 1 — Core OOP and pragmas** (enables parsing most real TwinCAT projects):
-   - `Dialect` enum and `ParseOptions` extension (shared infrastructure)
+   - `Dialect` enum and `CompilerOptions` extension (shared infrastructure)
    - Token transform pipeline: keyword promotion + pragma collapsing (shared with Siemens SCL)
    - `{ }` pragma collapsing
    - `METHOD` / `END_METHOD` parsing in ST

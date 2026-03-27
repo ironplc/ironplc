@@ -10,7 +10,7 @@ use ironplc_dsl::{
     core::FileId,
     diagnostic::{Diagnostic, Label},
 };
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 use log::{debug, trace};
 
@@ -22,13 +22,13 @@ pub struct Source {
     file_id: FileId,
     data: String,
     file_type: FileType,
-    parse_options: ParseOptions,
+    compiler_options: CompilerOptions,
     library: Option<Result<Library, Diagnostic>>,
 }
 
 impl Source {
     /// Create a new Source from content and file ID
-    pub fn new(source: String, file_id: &FileId, parse_options: ParseOptions) -> Self {
+    pub fn new(source: String, file_id: &FileId, compiler_options: CompilerOptions) -> Self {
         let path: PathBuf = file_id.to_string().into();
         let file_type = FileType::from_path(&path);
 
@@ -36,7 +36,7 @@ impl Source {
             file_id: file_id.clone(),
             data: source,
             file_type,
-            parse_options,
+            compiler_options,
             library: None,
         }
     }
@@ -44,11 +44,11 @@ impl Source {
     /// Create a Source by reading from a file
     pub fn try_from_file_id(
         item: &FileId,
-        parse_options: ParseOptions,
+        compiler_options: CompilerOptions,
     ) -> Result<Source, Diagnostic> {
         let path: PathBuf = item.to_string().into();
         let content = read_file_content(&path)?;
-        Ok(Source::new(content, item, parse_options))
+        Ok(Source::new(content, item, compiler_options))
     }
 
     /// Get the raw content as a string
@@ -90,7 +90,7 @@ impl Source {
             self.file_type.clone(),
             &self.data,
             &self.file_id,
-            &self.parse_options,
+            &self.compiler_options,
         )
     }
 }
@@ -151,7 +151,7 @@ mod tests {
         let source = Source::new(
             "PROGRAM Main END_PROGRAM".to_string(),
             &st_file_id,
-            ParseOptions::default(),
+            CompilerOptions::default(),
         );
         assert_eq!(source.file_type(), FileType::StructuredText);
 
@@ -159,7 +159,7 @@ mod tests {
         let source = Source::new(
             "<xml></xml>".to_string(),
             &xml_file_id,
-            ParseOptions::default(),
+            CompilerOptions::default(),
         );
         assert_eq!(source.file_type(), FileType::Xml);
     }
@@ -168,7 +168,7 @@ mod tests {
     fn source_as_string_returns_content() {
         let file_id = FileId::from_string("test.st");
         let content = "PROGRAM Main END_PROGRAM";
-        let source = Source::new(content.to_string(), &file_id, ParseOptions::default());
+        let source = Source::new(content.to_string(), &file_id, CompilerOptions::default());
         assert_eq!(source.as_string(), content);
     }
 
@@ -190,7 +190,7 @@ mod tests {
     <pous/>
   </types>
 </project>"#;
-        let mut source = Source::new(content.to_string(), &file_id, ParseOptions::default());
+        let mut source = Source::new(content.to_string(), &file_id, CompilerOptions::default());
 
         let result = source.library();
         assert!(result.is_ok());
@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn try_from_file_id_with_nonexistent_file() {
         let file_id = FileId::from_string("/nonexistent/file.st");
-        let result = Source::try_from_file_id(&file_id, ParseOptions::default());
+        let result = Source::try_from_file_id(&file_id, CompilerOptions::default());
         assert!(result.is_err());
     }
 
@@ -211,7 +211,7 @@ mod tests {
         let mut source = Source::new(
             "some content".to_string(),
             &file_id,
-            ParseOptions::default(),
+            CompilerOptions::default(),
         );
 
         let result = source.library();
@@ -223,7 +223,7 @@ mod tests {
     #[test]
     fn source_file_id_returns_correct_id() {
         let file_id = FileId::from_string("test.st");
-        let source = Source::new("content".to_string(), &file_id, ParseOptions::default());
+        let source = Source::new("content".to_string(), &file_id, CompilerOptions::default());
         assert_eq!(source.file_id(), &file_id);
     }
 
@@ -245,7 +245,7 @@ mod tests {
     <pous/>
   </types>
 </project>"#;
-        let mut source = Source::new(content.to_string(), &file_id, ParseOptions::default());
+        let mut source = Source::new(content.to_string(), &file_id, CompilerOptions::default());
 
         // First call should parse and cache
         {

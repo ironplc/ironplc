@@ -1,5 +1,5 @@
 '''
-Validates that all --allow-* compiler flags from ParseOptions are documented.
+Validates that all --allow-* compiler flags from CompilerOptions are documented.
 
 This extension reads the source of truth (compiler/parser/src/options.rs),
 extracts all allow_* fields, and verifies each one appears in both the
@@ -14,7 +14,7 @@ from sys import exit
 
 
 def validate_flags(app, config):
-    """Check every allow_* field in ParseOptions has doc entries."""
+    """Check every allow_* field in CompilerOptions has doc entries."""
     srcdir = Path(app.srcdir)
 
     # Read source of truth
@@ -40,7 +40,7 @@ def validate_flags(app, config):
         doc_text = doc_path.read_text()
         for field, cli_flag in cli_flags.items():
             if cli_flag not in doc_text:
-                missing.append(f'{cli_flag} (from ParseOptions.{field}) missing in {doc_rel}')
+                missing.append(f'{cli_flag} (from CompilerOptions.{field}) missing in {doc_rel}')
 
     if missing:
         for m in missing:

@@ -43,7 +43,7 @@ When `allow_iec_61131_3_2013` is `false`, demote all Edition 3 keyword tokens â€
 This replaces the existing `rule_token_no_std_2013.rs` rejection approach. The old file rejected Edition 3 tokens with an error; the new file silently demotes them to identifiers.
 
 ```rust
-pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
+pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
     if options.allow_iec_61131_3_2013 {
         return;
     }

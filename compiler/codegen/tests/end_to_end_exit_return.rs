@@ -1,7 +1,7 @@
 //! End-to-end integration tests for EXIT and RETURN statement compilation.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -20,7 +20,7 @@ PROGRAM main
   END_WHILE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 3);
 }
 
@@ -40,7 +40,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // sum = 1 + 2 + 3 = 6 (exits when i=4, before adding)
     assert_eq!(bufs.vars[1].as_i32(), 6);
 }
@@ -61,7 +61,7 @@ PROGRAM main
   END_REPEAT;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 2);
 }
 
@@ -84,7 +84,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // Inner loop runs j=1,2 then exits at j=3, for each of i=1,2,3
     // count = 3 * 2 = 6
     assert_eq!(bufs.vars[2].as_i32(), 6);
@@ -103,7 +103,7 @@ PROGRAM main
   y := 99;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 42);
     assert_eq!(bufs.vars[1].as_i32(), 0); // y not assigned
 }
@@ -123,7 +123,7 @@ PROGRAM main
   y := 99;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 0); // y not assigned
 }

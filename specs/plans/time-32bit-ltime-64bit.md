@@ -9,7 +9,7 @@ Change the internal representation of TIME from 64-bit to 32-bit (milliseconds),
 - **TIME**: 32-bit signed integer, milliseconds. Max range ~24.8 days.
 - **LTIME**: 64-bit signed integer, microseconds. Max range ~292,000 years.
 - **IntermediateType::Time** gets a `size: ByteSized` parameter (like `Int`/`UInt`), not a separate variant. This follows the existing pattern for integer types.
-- **LTIME token gating** via `ParseOptions` is deferred — tokens are parsed unconditionally and rejected by a post-tokenization validation rule. This matches the existing C-style comment gating pattern.
+- **LTIME token gating** via `CompilerOptions` is deferred — tokens are parsed unconditionally and rejected by a post-tokenization validation rule. This matches the existing C-style comment gating pattern.
 - **Timer FBs** (TON, TOF, TP) use TIME (32-bit ms) for their PT/ET fields. The VM intrinsics must switch from i64 to i32 for these fields.
 
 ## Implementation Steps
@@ -139,7 +139,7 @@ Rename `format_time_value()` to `format_time_value_us()` and add `format_time_va
 ### Step 10: Add LTIME token gating (deferred — can be a follow-up)
 
 **File**: `compiler/parser/src/options.rs`
-- Add `pub allow_edition_3_types: bool` to `ParseOptions`
+- Add `pub allow_edition_3_types: bool` to `CompilerOptions`
 
 **File**: `compiler/parser/src/` (new file `rule_token_no_edition_3.rs`)
 - Create a validation rule that rejects `TokenType::Ltime` (and future Edition 3 tokens) when `allow_edition_3_types` is false
@@ -147,7 +147,7 @@ Rename `format_time_value()` to `format_time_value_us()` and add `format_time_va
 
 **File**: `compiler/plc2x/src/cli.rs`
 - Add `--edition-3` or `--iec-2013` CLI flag
-- Wire it to `ParseOptions::allow_edition_3_types`
+- Wire it to `CompilerOptions::allow_edition_3_types`
 
 ### Step 11: Update existing tests
 

@@ -35,8 +35,13 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use ironplc_parser::options::CompilerOptions;
 
-pub fn apply(lib: &Library, context: &SemanticContext) -> SemanticResult {
+pub fn apply(
+    lib: &Library,
+    context: &SemanticContext,
+    _options: &CompilerOptions,
+) -> SemanticResult {
     let mut visitor = RuleFunctionCallDeclared {
         context,
         diagnostics: vec![],
@@ -140,7 +145,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -164,7 +169,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -180,7 +185,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_err());
         let diagnostics = result.unwrap_err();
@@ -199,7 +204,7 @@ END_VAR
 END_FUNCTION";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_err());
         let diagnostics = result.unwrap_err();
@@ -219,7 +224,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_err());
         let diagnostics = result.unwrap_err();
@@ -242,7 +247,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -259,7 +264,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -277,7 +282,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -295,7 +300,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -314,7 +319,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -332,7 +337,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_err());
         let diagnostics = result.unwrap_err();
@@ -356,7 +361,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -374,7 +379,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -394,7 +399,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -411,7 +416,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_err());
         let diagnostics = result.unwrap_err();
@@ -449,7 +454,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -482,7 +487,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_err());
         let diagnostics = result.unwrap_err();
@@ -512,7 +517,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_err());
         let diagnostics = result.unwrap_err();
@@ -541,7 +546,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -564,7 +569,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -594,7 +599,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -617,7 +622,7 @@ END_VAR
 END_PROGRAM";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }

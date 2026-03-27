@@ -19,7 +19,7 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
     fold::Fold,
 };
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 use log::debug;
 
@@ -47,7 +47,7 @@ struct CdataOffsets {
 pub fn parse(
     content: &str,
     file_id: &FileId,
-    parse_options: &ParseOptions,
+    compiler_options: &CompilerOptions,
 ) -> Result<Library, Diagnostic> {
     debug!("Parsing TwinCAT XML file: {}", file_id);
 
@@ -108,13 +108,13 @@ pub fn parse(
             declaration_byte_offset,
             &object,
             file_id,
-            parse_options,
+            compiler_options,
         ),
         "DUT" => parse_dut(
             declaration_text,
             declaration_byte_offset,
             file_id,
-            parse_options,
+            compiler_options,
         ),
         "GVL" => parse_gvl(declaration_text, file_id),
         _ => unreachable!(),
@@ -131,7 +131,7 @@ fn parse_pou(
     declaration_byte_offset: usize,
     object: &roxmltree::Node,
     file_id: &FileId,
-    parse_options: &ParseOptions,
+    compiler_options: &CompilerOptions,
 ) -> Result<Library, Diagnostic> {
     let (impl_text, impl_byte_offset) = extract_pou_implementation(object, file_id)?;
     let closing = closing_keyword(&declaration_text);
@@ -145,7 +145,7 @@ fn parse_pou(
     let combined = format!("{declaration_text}\n{impl_text}\n{closing}");
     debug!("POU combined ST ({} bytes)", combined.len());
 
-    let result = st_parser::parse(&combined, file_id, parse_options);
+    let result = st_parser::parse(&combined, file_id, compiler_options);
 
     match result {
         Ok(library) => {
@@ -161,7 +161,7 @@ fn parse_dut(
     declaration_text: String,
     declaration_byte_offset: usize,
     file_id: &FileId,
-    parse_options: &ParseOptions,
+    compiler_options: &CompilerOptions,
 ) -> Result<Library, Diagnostic> {
     debug!("DUT declaration ST ({} bytes)", declaration_text.len());
 
@@ -171,7 +171,7 @@ fn parse_dut(
         implementation_start: None,
     };
 
-    let result = st_parser::parse(&declaration_text, file_id, parse_options);
+    let result = st_parser::parse(&declaration_text, file_id, compiler_options);
 
     match result {
         Ok(library) => {
@@ -355,7 +355,7 @@ END_VAR]]></Declaration>
   </POU>
 </TcPlcObject>"#;
 
-        let result = parse(xml, &test_file_id(), &ParseOptions::default());
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
         assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
         let library = result.unwrap();
         assert_eq!(library.elements.len(), 1);
@@ -376,7 +376,7 @@ END_VAR]]></Declaration>
   </POU>
 </TcPlcObject>"#;
 
-        let result = parse(xml, &test_file_id(), &ParseOptions::default()).unwrap();
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         // Collect all spans to verify they point into the CDATA sections
         use ironplc_dsl::fold::Fold;
@@ -421,7 +421,7 @@ END_VAR]]></Declaration>
   </POU>
 </TcPlcObject>"#;
 
-        let result = parse(xml, &test_file_id(), &ParseOptions::default());
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
         assert!(result.is_err());
 
         let diag = result.unwrap_err();
@@ -450,7 +450,7 @@ END_VAR]]></Declaration>
   </POU>
 </TcPlcObject>"#;
 
-        let result = parse(xml, &test_file_id(), &ParseOptions::default());
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
         assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
         let library = result.unwrap();
         assert_eq!(library.elements.len(), 1);
@@ -469,7 +469,7 @@ END_VAR]]></Declaration>
 </TcPlcObject>"#;
 
         let file_id = FileId::from_string("test.TcGVL");
-        let result = parse(xml, &file_id, &ParseOptions::default());
+        let result = parse(xml, &file_id, &CompilerOptions::default());
         assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
     }
 
@@ -488,7 +488,7 @@ END_TYPE]]></Declaration>
 </TcPlcObject>"#;
 
         let file_id = FileId::from_string("test.TcDUT");
-        let result = parse(xml, &file_id, &ParseOptions::default());
+        let result = parse(xml, &file_id, &CompilerOptions::default());
         assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
     }
 
@@ -496,7 +496,7 @@ END_TYPE]]></Declaration>
     fn parse_when_malformed_xml_then_returns_p0006() {
         let xml = "NOT VALID XML <>";
 
-        let result = parse(xml, &test_file_id(), &ParseOptions::default());
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
         assert!(result.is_err());
 
         let diagnostic = result.unwrap_err();
@@ -512,7 +512,7 @@ END_TYPE]]></Declaration>
   </POU>
 </WrongRoot>"#;
 
-        let result = parse(xml, &test_file_id(), &ParseOptions::default());
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
         assert!(result.is_err());
 
         let diagnostic = result.unwrap_err();
@@ -526,7 +526,7 @@ END_TYPE]]></Declaration>
 <TcPlcObject Version="1.1.0.1">
 </TcPlcObject>"#;
 
-        let result = parse(xml, &test_file_id(), &ParseOptions::default());
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
         assert!(result.is_err());
 
         let diagnostic = result.unwrap_err();
@@ -545,7 +545,7 @@ END_TYPE]]></Declaration>
   </POU>
 </TcPlcObject>"#;
 
-        let result = parse(xml, &test_file_id(), &ParseOptions::default());
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
         assert!(result.is_err());
 
         let diagnostic = result.unwrap_err();
@@ -568,7 +568,7 @@ END_VAR]]></Declaration>
   </POU>
 </TcPlcObject>"#;
 
-        let result = parse(xml, &test_file_id(), &ParseOptions::default());
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
         assert!(result.is_err());
 
         let diagnostic = result.unwrap_err();

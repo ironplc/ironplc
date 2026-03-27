@@ -28,8 +28,13 @@ use ironplc_problems::Problem;
 use crate::{
     result::SemanticResult, semantic_context::SemanticContext, stdlib::is_unsupported_standard_type,
 };
+use ironplc_parser::options::CompilerOptions;
 
-pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
+pub fn apply(
+    lib: &Library,
+    _context: &SemanticContext,
+    _options: &CompilerOptions,
+) -> SemanticResult {
     let mut visitor = RuleUnsupportedStdLibType {
         diagnostics: Vec::new(),
     };
@@ -82,7 +87,7 @@ END_FUNCTION_BLOCK";
 
         let input = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context);
+        let result = apply(&input, &context, &CompilerOptions::default());
 
         // CTU_DINT is now supported, so this should pass (no unsupported stdlib type error)
         assert!(result.is_ok());
@@ -101,7 +106,7 @@ END_FUNCTION_BLOCK";
 
         let input = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context);
+        let result = apply(&input, &context, &CompilerOptions::default());
 
         // TON is now supported, so this should pass (no unsupported stdlib type error)
         assert!(result.is_ok());
@@ -125,7 +130,7 @@ END_FUNCTION_BLOCK";
 
         let input = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context);
+        let result = apply(&input, &context, &CompilerOptions::default());
 
         // User-defined function blocks are not stdlib types, so this should pass
         assert!(result.is_ok());

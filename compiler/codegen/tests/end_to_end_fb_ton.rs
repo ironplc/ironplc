@@ -7,7 +7,7 @@
 //! The VM cycle_time is in microseconds; timer intrinsics convert to ms internally.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_compile, VmBuffers};
 use ironplc_vm::test_support::load_and_start;
@@ -22,7 +22,7 @@ PROGRAM main
   elapsed := T#5s;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
     let debug = container.debug_section.as_ref().unwrap();
     let elapsed_entry = debug
         .var_names
@@ -46,7 +46,7 @@ PROGRAM main
   elapsed := T#5s;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -71,7 +71,7 @@ PROGRAM main
   timer(IN := FALSE, PT := T#5s, Q => result);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -93,7 +93,7 @@ PROGRAM main
   timer(IN := TRUE, PT := T#5s, Q => result);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -127,7 +127,7 @@ PROGRAM main
   timer(IN := TRUE, PT := T#5s, Q => result);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -156,7 +156,7 @@ PROGRAM main
   timer(IN := TRUE, PT := T#10s, ET => elapsed);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -187,7 +187,7 @@ PROGRAM main
   timer(IN := enable, PT := T#5s, Q => result, ET => elapsed);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -253,7 +253,7 @@ PROGRAM main
   timer(IN := TRUE, PT := T#5s, Q => result);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -285,7 +285,7 @@ PROGRAM main
   timer2(IN := TRUE, PT := T#7s, Q => q2);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();

@@ -410,7 +410,7 @@ mod tests {
     use ironplc_dsl::core::SourceSpan;
     use ironplc_dsl::diagnostic::Diagnostic;
     use ironplc_dsl::{common::*, core::FileId};
-    use ironplc_parser::options::ParseOptions;
+    use ironplc_parser::options::CompilerOptions;
     use ironplc_problems::Problem;
 
     #[test]
@@ -459,7 +459,7 @@ LEVEL : (CRITICAL) := CRITICAL;
 END_TYPE
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironment::new();
         let result = apply(input, &mut env);
@@ -475,7 +475,7 @@ LREAL : REAL;
 END_TYPE
         ";
         let result =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap_err();
         // This doesn't actually fail due to this transform but something should
         // catch this.
@@ -494,7 +494,7 @@ TYPE
 END_TYPE
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
 
         let mut env = TypeEnvironmentBuilder::new()
@@ -720,7 +720,7 @@ END_TYPE
         program: &str,
     ) -> (Result<Library, Vec<Diagnostic>>, TypeEnvironment) {
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -735,7 +735,7 @@ END_TYPE
         program: &str,
     ) -> (Result<Library, Vec<Diagnostic>>, TypeEnvironment) {
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironment::new();
         let result = apply(input, &mut env);

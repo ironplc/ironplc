@@ -6,7 +6,7 @@
 //! and unsigned semantics for each type.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -22,7 +22,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 42);
 }
 
@@ -38,7 +38,7 @@ PROGRAM main
   y := x + 1;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // -5 truncated to i8 sign-extends back to -5 in i32; -5 + 1 = -4
     assert_eq!(bufs.vars[0].as_i32(), -5);
     assert_eq!(bufs.vars[1].as_i32(), -4);
@@ -54,7 +54,7 @@ PROGRAM main
   x := 127 + 1;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // 128 truncated to i8 wraps to -128
     assert_eq!(bufs.vars[0].as_i32(), -128);
 }
@@ -71,7 +71,7 @@ PROGRAM main
   x := 1000;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 1000);
 }
 
@@ -87,7 +87,7 @@ PROGRAM main
   y := x + 1;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // -100 truncated to i16 sign-extends back to -100 in i32; -100 + 1 = -99
     assert_eq!(bufs.vars[0].as_i32(), -100);
     assert_eq!(bufs.vars[1].as_i32(), -99);
@@ -103,7 +103,7 @@ PROGRAM main
   x := 32767 + 1;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // 32768 truncated to i16 wraps to -32768
     assert_eq!(bufs.vars[0].as_i32(), -32768);
 }
@@ -120,7 +120,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 42);
 }
 
@@ -134,7 +134,7 @@ PROGRAM main
   x := 100000;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 100000);
 }
 
@@ -150,7 +150,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 42);
 }
 
@@ -166,7 +166,7 @@ PROGRAM main
   y := x + 1;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 3_000_000_000);
     assert_eq!(bufs.vars[1].as_i64(), 3_000_000_001);
 }
@@ -183,7 +183,7 @@ PROGRAM main
   y := x - 1;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i64(), 4_999_999_999);
 }
 
@@ -199,7 +199,7 @@ PROGRAM main
   y := x * 1000000;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // 1_000_000 * 1_000_000 = 1_000_000_000_000 (exceeds i32 range)
     assert_eq!(bufs.vars[1].as_i64(), 1_000_000_000_000);
 }
@@ -216,7 +216,7 @@ PROGRAM main
   y := x / 2;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i64(), 5_000_000_000);
 }
 
@@ -232,7 +232,7 @@ PROGRAM main
   y := x MOD 10000000000;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i64(), 1);
 }
 
@@ -248,7 +248,7 @@ PROGRAM main
   y := -x;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i64(), -3_000_000_000);
 }
 
@@ -270,7 +270,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 1);
 }
 
@@ -292,7 +292,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 1);
 }
 
@@ -314,7 +314,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 1);
 }
 
@@ -336,7 +336,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 1);
 }
 
@@ -358,7 +358,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 1);
 }
 
@@ -380,7 +380,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 1);
 }
 
@@ -396,7 +396,7 @@ PROGRAM main
   x := 200;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 200);
 }
 
@@ -412,7 +412,7 @@ PROGRAM main
   y := x + 10;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // 200 truncated to u8 zero-extends back to 200 in i32; 200 + 10 = 210
     assert_eq!(bufs.vars[0].as_i32(), 200);
     assert_eq!(bufs.vars[1].as_i32(), 210);
@@ -428,7 +428,7 @@ PROGRAM main
   x := 255 + 1;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // 256 truncated to u8 wraps to 0
     assert_eq!(bufs.vars[0].as_i32(), 0);
 }
@@ -445,7 +445,7 @@ PROGRAM main
   x := 50000;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 50000);
 }
 
@@ -461,7 +461,7 @@ PROGRAM main
   y := x + 1000;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // 50000 truncated to u16 zero-extends back to 50000 in i32; 50000 + 1000 = 51000
     assert_eq!(bufs.vars[0].as_i32(), 50000);
     assert_eq!(bufs.vars[1].as_i32(), 51000);
@@ -477,7 +477,7 @@ PROGRAM main
   x := 65535 + 1;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // 65536 truncated to u16 wraps to 0
     assert_eq!(bufs.vars[0].as_i32(), 0);
 }
@@ -494,7 +494,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 42);
 }
 
@@ -516,7 +516,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // 3B > 2B is true when treated as unsigned (3B as i32 is negative)
     assert_eq!(bufs.vars[0].as_i32(), 1);
 }
@@ -533,7 +533,7 @@ PROGRAM main
   y := x / 2;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // 3B / 2 = 1.5B as unsigned (would be wrong if signed: 3B as i32 is negative)
     assert_eq!(bufs.vars[1].as_i32() as u32, 1_500_000_000);
 }
@@ -550,7 +550,7 @@ PROGRAM main
   y := x MOD 3000000000;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // 3B+1 MOD 3B = 1 as unsigned (would be wrong if signed)
     assert_eq!(bufs.vars[1].as_i32() as u32, 1);
 }
@@ -573,7 +573,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // 2B < 3B is true unsigned (3B as i32 is negative, so signed LT would say false)
     assert_eq!(bufs.vars[0].as_i32(), 1);
 }
@@ -596,7 +596,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 1);
 }
 
@@ -618,7 +618,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // 3B >= 2B is true unsigned (3B as i32 is negative, so signed GE would say false)
     assert_eq!(bufs.vars[0].as_i32(), 1);
 }
@@ -635,7 +635,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 42);
 }
 
@@ -651,7 +651,7 @@ PROGRAM main
   y := x - 1;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i64(), 4_999_999_999);
 }
 
@@ -667,7 +667,7 @@ PROGRAM main
   y := x * 1000000;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i64(), 1_000_000_000_000);
 }
 
@@ -683,7 +683,7 @@ PROGRAM main
   y := x / 2;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i64(), 5_000_000_000);
 }
 
@@ -699,7 +699,7 @@ PROGRAM main
   y := x MOD 10000000000;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i64(), 1);
 }
 
@@ -721,7 +721,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 1);
 }
 
@@ -743,7 +743,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 1);
 }
 
@@ -765,7 +765,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 1);
 }
 
@@ -787,7 +787,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 1);
 }
 
@@ -803,7 +803,7 @@ PROGRAM main
   y := x + 1;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 5_000_000_000);
     assert_eq!(bufs.vars[1].as_i64(), 5_000_000_001);
 }

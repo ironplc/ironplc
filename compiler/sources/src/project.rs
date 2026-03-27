@@ -3,7 +3,7 @@
 use std::{collections::HashMap, path::Path};
 
 use ironplc_dsl::{core::FileId, diagnostic::Diagnostic};
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 use log::{info, trace};
 
 use crate::source::Source;
@@ -13,7 +13,7 @@ pub struct SourceProject {
     /// The source files in the project
     sources: HashMap<FileId, Source>,
     /// Parse options applied to all sources
-    parse_options: ParseOptions,
+    compiler_options: CompilerOptions,
 }
 
 impl Default for SourceProject {
@@ -27,21 +27,21 @@ impl SourceProject {
     pub fn new() -> Self {
         SourceProject {
             sources: HashMap::new(),
-            parse_options: ParseOptions::default(),
+            compiler_options: CompilerOptions::default(),
         }
     }
 
     /// Create a new project with specific parse options
-    pub fn with_options(parse_options: ParseOptions) -> Self {
+    pub fn with_options(compiler_options: CompilerOptions) -> Self {
         SourceProject {
             sources: HashMap::new(),
-            parse_options,
+            compiler_options,
         }
     }
 
     /// Add a source file to the project by file ID
     pub fn add_file(&mut self, file_id: FileId) -> Result<(), Diagnostic> {
-        match Source::try_from_file_id(&file_id, self.parse_options) {
+        match Source::try_from_file_id(&file_id, self.compiler_options) {
             Ok(src) => {
                 self.add_source(file_id, src.as_string().to_string());
                 Ok(())
@@ -53,7 +53,7 @@ impl SourceProject {
     /// Add source content directly to the project
     pub fn add_source(&mut self, file_id: FileId, content: String) {
         trace!("Adding source file: {}", file_id);
-        let source = Source::new(content, &file_id, self.parse_options);
+        let source = Source::new(content, &file_id, self.compiler_options);
         self.sources.insert(file_id, source);
     }
 
