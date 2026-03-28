@@ -10,7 +10,7 @@ use crate::debug_section::{DebugSection, FuncNameEntry, VarNameEntry};
 use crate::header::FileHeader;
 use crate::task_table::{ProgramInstanceEntry, TaskEntry, TaskTable, NO_SINGLE_VAR};
 use crate::task_type::TaskType;
-use crate::type_section::{ArrayDescriptor, FbTypeDescriptor, TypeSection};
+use crate::type_section::{ArrayDescriptor, FbTypeDescriptor, TypeSection, UserFbDescriptor};
 
 /// Fluent builder for constructing a [`Container`].
 pub struct ContainerBuilder {
@@ -30,6 +30,7 @@ pub struct ContainerBuilder {
     fb_types: Vec<FbTypeDescriptor>,
     array_descriptors: Vec<ArrayDescriptor>,
     array_descriptor_cache: HashMap<(u8, u32), u16>,
+    user_fb_types: Vec<UserFbDescriptor>,
     debug_var_names: Vec<VarNameEntry>,
     debug_func_names: Vec<FuncNameEntry>,
 }
@@ -53,6 +54,7 @@ impl ContainerBuilder {
             fb_types: Vec::new(),
             array_descriptors: Vec::new(),
             array_descriptor_cache: HashMap::new(),
+            user_fb_types: Vec::new(),
             debug_var_names: Vec::new(),
             debug_func_names: Vec::new(),
         }
@@ -201,6 +203,12 @@ impl ContainerBuilder {
         self
     }
 
+    /// Adds a user-defined FB descriptor to the type section.
+    pub fn add_user_fb_type(mut self, desc: UserFbDescriptor) -> Self {
+        self.user_fb_types.push(desc);
+        self
+    }
+
     /// Adds an array descriptor to the type section, deduplicating
     /// identical `(element_type, total_elements)` pairs.
     ///
@@ -231,10 +239,14 @@ impl ContainerBuilder {
         };
 
         // Build type section if there are any type descriptors.
-        let type_section = if !self.fb_types.is_empty() || !self.array_descriptors.is_empty() {
+        let type_section = if !self.fb_types.is_empty()
+            || !self.array_descriptors.is_empty()
+            || !self.user_fb_types.is_empty()
+        {
             Some(TypeSection {
                 fb_types: self.fb_types,
                 array_descriptors: self.array_descriptors,
+                user_fb_types: self.user_fb_types,
             })
         } else {
             None

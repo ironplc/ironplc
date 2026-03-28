@@ -82,6 +82,25 @@ pub struct ArrayDescriptor {
 /// Size of a single array descriptor on disk in bytes.
 const ARRAY_DESCRIPTOR_SIZE: usize = 8;
 
+/// A user-defined function block descriptor in the type section.
+///
+/// Maps a user-defined FB type ID to the compiled function that implements
+/// its body, the variable table offset where its fields are mapped, and
+/// the number of data-region fields in the instance.
+///
+/// On disk: type_id (u16 LE), function_id (u16 LE), var_offset (u16 LE),
+/// num_fields (u8), reserved (u8).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UserFbDescriptor {
+    pub type_id: u16,
+    pub function_id: u16,
+    pub var_offset: u16,
+    pub num_fields: u8,
+}
+
+/// Size of a single user FB descriptor on disk in bytes.
+const USER_FB_DESCRIPTOR_SIZE: usize = 8;
+
 /// The type section of a bytecode container.
 ///
 /// Contains FB type descriptors and array descriptors used by the verifier
@@ -90,6 +109,7 @@ const ARRAY_DESCRIPTOR_SIZE: usize = 8;
 pub struct TypeSection {
     pub fb_types: Vec<FbTypeDescriptor>,
     pub array_descriptors: Vec<ArrayDescriptor>,
+    pub user_fb_types: Vec<UserFbDescriptor>,
 }
 
 impl TypeSection {
@@ -102,6 +122,8 @@ impl TypeSection {
         }
         // Array descriptors: count(2) + descriptors * 8
         size += 2 + self.array_descriptors.len() as u32 * ARRAY_DESCRIPTOR_SIZE as u32;
+        // User FB descriptors: count(2) + descriptors * 8
+        size += 2 + self.user_fb_types.len() as u32 * USER_FB_DESCRIPTOR_SIZE as u32;
         size
     }
 
@@ -129,6 +151,16 @@ impl TypeSection {
             w.write_all(&[0u8])?; // reserved
             w.write_all(&desc.total_elements.to_le_bytes())?;
             w.write_all(&[0u8; 2])?; // element_extra (reserved)
+        }
+
+        // User FB descriptors
+        w.write_all(&(self.user_fb_types.len() as u16).to_le_bytes())?;
+        for desc in &self.user_fb_types {
+            w.write_all(&desc.type_id.to_le_bytes())?;
+            w.write_all(&desc.function_id.to_le_bytes())?;
+            w.write_all(&desc.var_offset.to_le_bytes())?;
+            w.write_all(&[desc.num_fields])?;
+            w.write_all(&[0u8])?; // reserved
         }
         Ok(())
     }
@@ -183,9 +215,35 @@ impl TypeSection {
             });
         }
 
+        // User FB descriptors
+        let mut buf2 = [0u8; 2];
+        let user_fb_count = if r.read_exact(&mut buf2).is_ok() {
+            u16::from_le_bytes(buf2) as usize
+        } else {
+            0
+        };
+
+        let mut user_fb_types = Vec::with_capacity(user_fb_count);
+        for _ in 0..user_fb_count {
+            let mut desc_buf = [0u8; USER_FB_DESCRIPTOR_SIZE];
+            r.read_exact(&mut desc_buf)?;
+            let type_id = u16::from_le_bytes([desc_buf[0], desc_buf[1]]);
+            let function_id = u16::from_le_bytes([desc_buf[2], desc_buf[3]]);
+            let var_offset = u16::from_le_bytes([desc_buf[4], desc_buf[5]]);
+            let num_fields = desc_buf[6];
+            // desc_buf[7] is reserved
+            user_fb_types.push(UserFbDescriptor {
+                type_id,
+                function_id,
+                var_offset,
+                num_fields,
+            });
+        }
+
         Ok(TypeSection {
             fb_types,
             array_descriptors,
+            user_fb_types,
         })
     }
 }
@@ -244,6 +302,7 @@ mod tests {
                 ],
             }],
             array_descriptors: vec![],
+            user_fb_types: vec![],
         };
 
         let mut buf = Vec::new();
@@ -278,6 +337,7 @@ mod tests {
                     total_elements: 32768,
                 },
             ],
+            user_fb_types: vec![],
         };
 
         let mut buf = Vec::new();
@@ -314,6 +374,7 @@ mod tests {
                 element_type: FieldType::U32 as u8,
                 total_elements: 100,
             }],
+            user_fb_types: vec![],
         };
 
         let mut buf = Vec::new();
@@ -335,8 +396,8 @@ mod tests {
     #[test]
     fn section_size_when_empty_then_returns_header_counts_only() {
         let section = TypeSection::default();
-        // 2 bytes for FB count + 2 bytes for array count
-        assert_eq!(section.section_size(), 4);
+        // 2 bytes for FB count + 2 bytes for array count + 2 bytes for user FB count
+        assert_eq!(section.section_size(), 6);
     }
 
     #[test]
@@ -353,9 +414,48 @@ mod tests {
                     total_elements: 20,
                 },
             ],
+            user_fb_types: vec![],
         };
-        // 2 (FB count) + 2 (array count) + 2 * 8 (descriptors) = 20
-        assert_eq!(section.section_size(), 20);
+        // 2 (FB count) + 2 (array count) + 2 * 8 (descriptors) + 2 (user FB count) = 22
+        assert_eq!(section.section_size(), 22);
+    }
+
+    #[test]
+    fn type_section_write_read_when_user_fb_descriptors_then_roundtrips() {
+        let section = TypeSection {
+            fb_types: vec![],
+            array_descriptors: vec![],
+            user_fb_types: vec![
+                UserFbDescriptor {
+                    type_id: 0x1000,
+                    function_id: 2,
+                    var_offset: 4,
+                    num_fields: 3,
+                },
+                UserFbDescriptor {
+                    type_id: 0x1001,
+                    function_id: 3,
+                    var_offset: 7,
+                    num_fields: 5,
+                },
+            ],
+        };
+
+        let mut buf = Vec::new();
+        section.write_to(&mut buf).unwrap();
+
+        let mut cursor = Cursor::new(&buf);
+        let decoded = TypeSection::read_from(&mut cursor).unwrap();
+
+        assert_eq!(decoded.user_fb_types.len(), 2);
+        assert_eq!(decoded.user_fb_types[0].type_id, 0x1000);
+        assert_eq!(decoded.user_fb_types[0].function_id, 2);
+        assert_eq!(decoded.user_fb_types[0].var_offset, 4);
+        assert_eq!(decoded.user_fb_types[0].num_fields, 3);
+        assert_eq!(decoded.user_fb_types[1].type_id, 0x1001);
+        assert_eq!(decoded.user_fb_types[1].function_id, 3);
+        assert_eq!(decoded.user_fb_types[1].var_offset, 7);
+        assert_eq!(decoded.user_fb_types[1].num_fields, 5);
     }
 
     #[test]
