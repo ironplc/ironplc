@@ -1,7 +1,7 @@
 //! End-to-end integration tests for STRING initial values.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
@@ -33,7 +33,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let s = read_string(&bufs.data_region, 0);
     assert_eq!(s, "hello");
@@ -50,7 +50,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let s = read_string(&bufs.data_region, 0);
     assert_eq!(s, "");
@@ -66,7 +66,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let s = read_string(&bufs.data_region, 0);
     assert_eq!(s, "hi");
@@ -83,7 +83,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // First string at offset 0: [max:254][cur:3][data]
     let s1 = read_string(&bufs.data_region, 0);
@@ -104,7 +104,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // Integer variable at slot 0.
     assert_eq!(bufs.vars[0].as_i32(), 42);
@@ -123,7 +123,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let s = read_string(&bufs.data_region, 0);
     assert_eq!(s, "");
@@ -149,7 +149,7 @@ PROGRAM main
   result := my_func(1);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let s = read_string(&bufs.data_region, 0);
     assert_eq!(s, "hello");
@@ -174,7 +174,7 @@ END_VAR
     result := MY_FUNC(str := 'Hello');
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let s = read_string(&bufs.data_region, 0);
     assert_eq!(s, "Hello");

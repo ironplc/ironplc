@@ -1,7 +1,7 @@
 //! End-to-end tests for integer-to-real type conversions.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -17,7 +17,7 @@ PROGRAM main
   y := INT_TO_REAL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert!((bufs.vars[1].as_f32() - 42.0).abs() < 1e-5);
 }
 
@@ -33,7 +33,7 @@ PROGRAM main
   y := DINT_TO_LREAL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert!((bufs.vars[1].as_f64() - (-100.0)).abs() < 1e-12);
 }
 
@@ -49,7 +49,7 @@ PROGRAM main
   y := SINT_TO_REAL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert!((bufs.vars[1].as_f32() - (-7.0)).abs() < 1e-5);
 }
 
@@ -65,7 +65,7 @@ PROGRAM main
   y := LINT_TO_LREAL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert!((bufs.vars[1].as_f64() - 123456789.0).abs() < 1.0);
 }
 
@@ -81,6 +81,6 @@ PROGRAM main
   y := UINT_TO_REAL(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert!((bufs.vars[1].as_f32() - 40000.0).abs() < 1.0);
 }

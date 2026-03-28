@@ -5,7 +5,7 @@ pub mod twincat_parser;
 pub mod xml_parser;
 
 use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 
 use crate::file_type::FileType;
@@ -15,12 +15,12 @@ pub fn parse_source(
     file_type: FileType,
     content: &str,
     file_id: &FileId,
-    parse_options: &ParseOptions,
+    compiler_options: &CompilerOptions,
 ) -> Result<Library, Diagnostic> {
     match file_type {
-        FileType::StructuredText => st_parser::parse(content, file_id, parse_options),
-        FileType::Xml => xml_parser::parse(content, file_id, parse_options),
-        FileType::TwinCat => twincat_parser::parse(content, file_id, parse_options),
+        FileType::StructuredText => st_parser::parse(content, file_id, compiler_options),
+        FileType::Xml => xml_parser::parse(content, file_id, compiler_options),
+        FileType::TwinCat => twincat_parser::parse(content, file_id, compiler_options),
         FileType::Unknown => Err(Diagnostic::problem(
             Problem::UnsupportedFileType,
             ironplc_dsl::diagnostic::Label::file(
@@ -44,7 +44,7 @@ mod tests {
             FileType::StructuredText,
             content,
             &file_id,
-            &ParseOptions::default(),
+            &CompilerOptions::default(),
         );
         assert!(result.is_ok());
     }
@@ -67,7 +67,12 @@ mod tests {
   </types>
 </project>"#;
         let file_id = FileId::from_string("test.xml");
-        let result = parse_source(FileType::Xml, content, &file_id, &ParseOptions::default());
+        let result = parse_source(
+            FileType::Xml,
+            content,
+            &file_id,
+            &CompilerOptions::default(),
+        );
         assert!(result.is_ok());
         let library = result.unwrap();
         assert_eq!(library.elements.len(), 0);
@@ -92,7 +97,7 @@ END_VAR]]></Declaration>
             FileType::TwinCat,
             content,
             &file_id,
-            &ParseOptions::default(),
+            &CompilerOptions::default(),
         );
         assert!(result.is_ok());
     }
@@ -105,7 +110,7 @@ END_VAR]]></Declaration>
             FileType::Unknown,
             content,
             &file_id,
-            &ParseOptions::default(),
+            &CompilerOptions::default(),
         );
         assert!(result.is_err());
     }

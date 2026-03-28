@@ -15,7 +15,7 @@ The question is how to gate Edition 3 features and what mechanism to use.
 
 ## Decision Drivers
 
-* **Existing pattern** — IronPLC already gates C-style comments via `ParseOptions` and a post-tokenization validation rule; the mechanism should be consistent
+* **Existing pattern** — IronPLC already gates C-style comments via `CompilerOptions` and a post-tokenization validation rule; the mechanism should be consistent
 * **Simplicity** — a single flag is easier to understand than per-feature toggles
 * **Extensibility** — future IEC 61131-3:2013 features (e.g., LWORD, WSTRING, namespaces) should use the same gate
 * **CLI ergonomics** — the flag should be easy to discover and use
@@ -25,18 +25,18 @@ The question is how to gate Edition 3 features and what mechanism to use.
 
 ### Option A: Single `--std=iec-61131-3:2013` flag on the CLI
 
-A `--std` flag on the `ironplcc` subcommands (check, compile) that accepts the standard version. Internally maps to `ParseOptions { allow_iec_61131_3_2013: true }`. A post-tokenization rule rejects IEC 61131-3:2013 tokens (starting with `LTIME`) when the flag is absent.
+A `--std` flag on the `ironplcc` subcommands (check, compile) that accepts the standard version. Internally maps to `CompilerOptions { allow_iec_61131_3_2013: true }`. A post-tokenization rule rejects IEC 61131-3:2013 tokens (starting with `LTIME`) when the flag is absent.
 
-* Good, because it follows the established `allow_c_style_comments` pattern for ParseOptions
+* Good, because it follows the established `allow_c_style_comments` pattern for CompilerOptions
 * Good, because one flag covers all IEC 61131-3:2013 features — no proliferation of flags
 * Good, because it's simple to explain: "add `--std=iec-61131-3:2013` to use LTIME"
-* Good, because the playground can set `allow_iec_61131_3_2013: true` directly on `ParseOptions`
+* Good, because the playground can set `allow_iec_61131_3_2013: true` directly on `CompilerOptions`
 * Good, because the `--std` naming convention is widely understood (C/C++ compilers use it)
 * Good, because it naturally extends to future standard versions
 
 ### Option B: Per-feature flags (`--allow-ltime`, `--allow-lword`, etc.)
 
-Each Edition 3 feature gets its own CLI flag and `ParseOptions` field.
+Each Edition 3 feature gets its own CLI flag and `CompilerOptions` field.
 
 * Good, because users can enable exactly the features they need
 * Bad, because it creates flag proliferation as Edition 3 features are added
@@ -56,13 +56,13 @@ An enum-based CLI argument selecting the target edition.
 
 **Option A: `--std=iec-61131-3:2013` flag.**
 
-A `--std` flag is added to the CLI subcommands that process source files (check, compile, echo). The flag accepts the value `iec-61131-3:2013`. Internally, `ParseOptions` gains an `allow_iec_61131_3_2013: bool` field (default `false`). A new post-tokenization validation rule rejects IEC 61131-3:2013 tokens when the flag is not set.
+A `--std` flag is added to the CLI subcommands that process source files (check, compile, echo). The flag accepts the value `iec-61131-3:2013`. Internally, `CompilerOptions` gains an `allow_iec_61131_3_2013: bool` field (default `false`). A new post-tokenization validation rule rejects IEC 61131-3:2013 tokens when the flag is not set.
 
 ### Implementation Approach
 
-**ParseOptions** (`compiler/parser/src/options.rs`):
+**CompilerOptions** (`compiler/parser/src/options.rs`):
 ```rust
-pub struct ParseOptions {
+pub struct CompilerOptions {
     pub allow_c_style_comments: bool,
     pub allow_iec_61131_3_2013: bool,
 }
@@ -86,10 +86,10 @@ struct FileArgs {
     std_version: Option<StdVersion>,
 }
 ```
-This flag is threaded through to `ParseOptions::allow_iec_61131_3_2013` when creating the parser.
+This flag is threaded through to `CompilerOptions::allow_iec_61131_3_2013` when creating the parser.
 
 **Playground** (`compiler/playground/src/lib.rs`):
-The playground sets `allow_iec_61131_3_2013: true` directly on `ParseOptions` so that LTIME is always available in the interactive environment.
+The playground sets `allow_iec_61131_3_2013: true` directly on `CompilerOptions` so that LTIME is always available in the interactive environment.
 
 **check_tokens registration** (`compiler/parser/src/lib.rs`):
 The new rule is added to the `rules` vector in `check_tokens()`, alongside the existing C-style comment rule.

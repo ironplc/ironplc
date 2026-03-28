@@ -1,5 +1,5 @@
 use crate::{
-    options::ParseOptions,
+    options::CompilerOptions,
     token::{Token, TokenType},
 };
 
@@ -8,7 +8,7 @@ use crate::{
 /// This allows `TIME()` to be parsed as a function call (used by OSCAT
 /// to read the PLC system clock) while preserving TIME as a keyword for
 /// type declarations (`VAR x : TIME;`) and duration literals (`TIME#5s`).
-pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
+pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
     if !options.allow_time_as_function_name {
         return;
     }
@@ -28,7 +28,7 @@ mod tests {
     use dsl::core::SourceSpan;
 
     use crate::{
-        options::ParseOptions,
+        options::CompilerOptions,
         token::{Token, TokenType},
         xform_demote_time_keyword::apply,
     };
@@ -43,15 +43,15 @@ mod tests {
         }
     }
 
-    fn opts_enabled() -> ParseOptions {
-        ParseOptions {
+    fn opts_enabled() -> CompilerOptions {
+        CompilerOptions {
             allow_time_as_function_name: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         }
     }
 
-    fn opts_disabled() -> ParseOptions {
-        ParseOptions::default()
+    fn opts_disabled() -> CompilerOptions {
+        CompilerOptions::default()
     }
 
     #[test]

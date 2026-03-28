@@ -1,7 +1,7 @@
 //! End-to-end integration tests for the LEN standard function.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 use proptest::prelude::*;
@@ -17,7 +17,7 @@ PROGRAM main
   n := LEN(s);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // s is at variable slot 0, n is at variable slot 1.
     assert_eq!(bufs.vars[1].as_i32(), 5);
@@ -34,7 +34,7 @@ PROGRAM main
   n := LEN(s);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
@@ -50,7 +50,7 @@ PROGRAM main
   n := LEN(s);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // Current length is 2 ('hi'), not the max length of 10.
     assert_eq!(bufs.vars[1].as_i32(), 2);
@@ -67,7 +67,7 @@ PROGRAM main
   n := LEN(s);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
@@ -100,7 +100,7 @@ END_PROGRAM
 ",
             s
         );
-        let (_c, bufs) = parse_and_run(&source, &ParseOptions::default());
+        let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
 
         prop_assert_eq!(bufs.vars[1].as_i32(), expected_len);
     }

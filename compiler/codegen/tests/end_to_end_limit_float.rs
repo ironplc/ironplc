@@ -1,7 +1,7 @@
 //! End-to-end integration tests for the LIMIT function with float types.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -17,7 +17,7 @@ PROGRAM main
   y := LIMIT(0.0, x, 10.0);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 5.0).abs() < 1e-5, "expected 5.0, got {y}");
@@ -35,7 +35,7 @@ PROGRAM main
   y := LIMIT(0.0, x, 10.0);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 0.0).abs() < 1e-5, "expected 0.0, got {y}");
@@ -53,7 +53,7 @@ PROGRAM main
   y := LIMIT(0.0, x, 10.0);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 10.0).abs() < 1e-5, "expected 10.0, got {y}");
@@ -71,7 +71,7 @@ PROGRAM main
   y := LIMIT(0.0, x, 10.0);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!((y - 0.0).abs() < 1e-12, "expected 0.0, got {y}");

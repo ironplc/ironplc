@@ -1,7 +1,7 @@
 //! End-to-end integration tests for LIMIT with ULINT type.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -15,6 +15,6 @@ PROGRAM main
   result := LIMIT(ULINT#1000000000, ULINT#5000000000, ULINT#10000000000000000000);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64() as u64, 5_000_000_000);
 }

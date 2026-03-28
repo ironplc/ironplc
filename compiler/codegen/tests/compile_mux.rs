@@ -1,7 +1,7 @@
 //! Bytecode-level integration tests for MUX function compilation.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_compile;
 
@@ -15,7 +15,7 @@ PROGRAM main
   y := MUX(1, 10, 20, 30);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     assert_eq!(container.header.num_variables, 1);
     assert_eq!(container.constant_pool.get_i32(0).unwrap(), 1);
@@ -56,7 +56,7 @@ PROGRAM main
   y := MUX(0, 100, 200);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // BUILTIN MUX_I32_BASE+2 = 0x0402
@@ -85,7 +85,7 @@ PROGRAM main
   y := MUX(k, 10, 20, 30);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     assert_eq!(container.header.num_variables, 2);
     // k := 2 uses pool:0

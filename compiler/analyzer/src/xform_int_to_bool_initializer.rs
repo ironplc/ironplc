@@ -24,7 +24,7 @@
 use ironplc_dsl::common::*;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use crate::intermediate_type::IntermediateType;
 use crate::type_environment::TypeEnvironment;
@@ -32,7 +32,7 @@ use crate::type_environment::TypeEnvironment;
 pub fn apply(
     lib: Library,
     type_environment: &mut TypeEnvironment,
-    options: &ParseOptions,
+    options: &CompilerOptions,
 ) -> Result<Library, Vec<Diagnostic>> {
     if !options.allow_int_to_bool_initializer {
         return Ok(lib);
@@ -90,11 +90,11 @@ impl Fold<Diagnostic> for IntToBoolFolder<'_> {
 mod tests {
     use super::*;
     use crate::test_helpers::parse_and_resolve_types_with_context;
-    use ironplc_parser::options::{Dialect, ParseOptions};
+    use ironplc_parser::options::{CompilerOptions, Dialect};
 
     fn apply_xform(program: &str) -> Library {
         let (library, mut context) = parse_and_resolve_types_with_context(program);
-        let options = ParseOptions::from_dialect(Dialect::Rusty);
+        let options = CompilerOptions::from_dialect(Dialect::Rusty);
         apply(library, context.types_mut(), &options).unwrap()
     }
 

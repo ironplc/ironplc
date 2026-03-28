@@ -118,7 +118,7 @@ All Edition 3 keyword tokens — `Ltime`, `RefTo`, `Ref`, and `Null` — use **k
 **File**: `compiler/parser/src/xform_demote_edition3_keywords.rs` (new file, replaces the existing `rule_token_no_std_2013.rs`)
 
 ```rust
-pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
+pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
     if options.allow_iec_61131_3_2013 {
         return; // Edition 3 enabled — keep as keywords
     }

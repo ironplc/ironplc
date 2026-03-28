@@ -2,7 +2,7 @@
 //! as Visual Studio Code.
 
 use crossbeam_channel::{Receiver, Sender};
-use ironplc_parser::options::{Dialect, ParseOptions};
+use ironplc_parser::options::{CompilerOptions, Dialect};
 use log::{debug, trace};
 use lsp_server::{Connection, ExtractError, Message, RequestId};
 use lsp_types::{
@@ -39,7 +39,7 @@ pub fn start() -> Result<(), String> {
 /// Reads `"dialect"` to select the base preset, then overlays individual
 /// `--allow-*` flags.  Supported dialect values: `"iec61131-3-ed2"` (default),
 /// `"iec61131-3-ed3"`, `"rusty"`.
-fn extract_parse_options(initialize_params: &InitializeParams) -> ParseOptions {
+fn extract_compiler_options(initialize_params: &InitializeParams) -> CompilerOptions {
     if let Some(ref opts) = initialize_params.initialization_options {
         let dialect = match opts.get("dialect").and_then(|v| v.as_str()) {
             Some("iec61131-3-ed3") => {
@@ -53,7 +53,7 @@ fn extract_parse_options(initialize_params: &InitializeParams) -> ParseOptions {
             _ => Dialect::Iec61131_3Ed2,
         };
 
-        let mut options = ParseOptions::from_dialect(dialect);
+        let mut options = CompilerOptions::from_dialect(dialect);
 
         // Individual flags override (can only enable, never disable).
         let flag = |key: &str| opts.get(key).and_then(|v| v.as_bool()).unwrap_or(false);
@@ -69,7 +69,7 @@ fn extract_parse_options(initialize_params: &InitializeParams) -> ParseOptions {
         options.allow_int_to_bool_initializer |= flag("allowIntToBoolInitializer");
         options
     } else {
-        ParseOptions::default()
+        CompilerOptions::default()
     }
 }
 
@@ -100,8 +100,8 @@ fn start_with_connection(
     let project = match project_override {
         Some(project) => project,
         None => {
-            let parse_options = extract_parse_options(&initialize_params);
-            LspProject::new(Box::new(FileBackedProject::with_options(parse_options)))
+            let compiler_options = extract_compiler_options(&initialize_params);
+            LspProject::new(Box::new(FileBackedProject::with_options(compiler_options)))
         }
     };
 
@@ -627,7 +627,7 @@ mod test {
     }
 
     #[test]
-    fn extract_parse_options_when_ed3_dialect_then_enables_edition_3() {
+    fn extract_compiler_options_when_ed3_dialect_then_enables_edition_3() {
         #[allow(deprecated)]
         let params = InitializeParams {
             process_id: None,
@@ -644,12 +644,12 @@ mod test {
             },
         };
 
-        let options = super::extract_parse_options(&params);
+        let options = super::extract_compiler_options(&params);
         assert!(options.allow_iec_61131_3_2013);
     }
 
     #[test]
-    fn extract_parse_options_when_ed2_dialect_then_uses_default() {
+    fn extract_compiler_options_when_ed2_dialect_then_uses_default() {
         #[allow(deprecated)]
         let params = InitializeParams {
             process_id: None,
@@ -666,12 +666,12 @@ mod test {
             },
         };
 
-        let options = super::extract_parse_options(&params);
+        let options = super::extract_compiler_options(&params);
         assert!(!options.allow_iec_61131_3_2013);
     }
 
     #[test]
-    fn extract_parse_options_when_rusty_dialect_then_enables_ref_to_and_vendor_flags() {
+    fn extract_compiler_options_when_rusty_dialect_then_enables_ref_to_and_vendor_flags() {
         #[allow(deprecated)]
         let params = InitializeParams {
             process_id: None,
@@ -688,7 +688,7 @@ mod test {
             },
         };
 
-        let options = super::extract_parse_options(&params);
+        let options = super::extract_compiler_options(&params);
         assert!(!options.allow_iec_61131_3_2013);
         assert!(options.allow_ref_to);
         assert!(options.allow_c_style_comments);
@@ -696,7 +696,7 @@ mod test {
     }
 
     #[test]
-    fn extract_parse_options_when_no_options_then_uses_default() {
+    fn extract_compiler_options_when_no_options_then_uses_default() {
         #[allow(deprecated)]
         let params = InitializeParams {
             process_id: None,
@@ -713,12 +713,12 @@ mod test {
             },
         };
 
-        let options = super::extract_parse_options(&params);
+        let options = super::extract_compiler_options(&params);
         assert!(!options.allow_iec_61131_3_2013);
     }
 
     #[test]
-    fn extract_parse_options_when_allow_missing_semicolon_then_enables_flag() {
+    fn extract_compiler_options_when_allow_missing_semicolon_then_enables_flag() {
         #[allow(deprecated)]
         let params = InitializeParams {
             process_id: None,
@@ -735,12 +735,12 @@ mod test {
             },
         };
 
-        let options = super::extract_parse_options(&params);
+        let options = super::extract_compiler_options(&params);
         assert!(options.allow_missing_semicolon);
     }
 
     #[test]
-    fn extract_parse_options_when_allow_empty_var_blocks_then_enables_flag() {
+    fn extract_compiler_options_when_allow_empty_var_blocks_then_enables_flag() {
         #[allow(deprecated)]
         let params = InitializeParams {
             process_id: None,
@@ -757,16 +757,16 @@ mod test {
             },
         };
 
-        let options = super::extract_parse_options(&params);
+        let options = super::extract_compiler_options(&params);
         assert!(options.allow_empty_var_blocks);
     }
 
     #[test]
     fn lsp_when_ed3_dialect_then_accepts_ltime() {
-        use ironplc_parser::options::{Dialect, ParseOptions};
+        use ironplc_parser::options::{CompilerOptions, Dialect};
 
-        let parse_options = ParseOptions::from_dialect(Dialect::Iec61131_3Ed3);
-        let proj = Box::new(FileBackedProject::with_options(parse_options));
+        let compiler_options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
+        let proj = Box::new(FileBackedProject::with_options(compiler_options));
         let mut server = TestServer::new(proj);
 
         // Send a document with LTIME literal (Edition 3 feature)

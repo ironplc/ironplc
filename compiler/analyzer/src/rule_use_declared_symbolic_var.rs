@@ -52,8 +52,13 @@ use crate::{
     semantic_context::SemanticContext,
     string_similarity::find_closest_match,
 };
+use ironplc_parser::options::CompilerOptions;
 
-pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
+pub fn apply(
+    lib: &Library,
+    _context: &SemanticContext,
+    _options: &CompilerOptions,
+) -> SemanticResult {
     let mut visitor: ScopedTable<Id, DummyNode> = scoped_table::ScopedTable::new();
 
     visitor.walk(lib).map_err(|e| vec![e])
@@ -150,7 +155,7 @@ END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_err());
         assert!(result
@@ -175,7 +180,7 @@ END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -194,7 +199,7 @@ END_FUNCTION";
 
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -213,7 +218,7 @@ END_PROGRAM";
 
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -234,7 +239,7 @@ END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -252,7 +257,7 @@ END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_err());
         let errors = result.unwrap_err();
@@ -274,7 +279,7 @@ END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_err());
         let errors = result.unwrap_err();

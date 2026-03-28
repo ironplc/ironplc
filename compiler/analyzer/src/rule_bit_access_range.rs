@@ -41,8 +41,13 @@ use crate::{
     intermediate_type::IntermediateType, result::SemanticResult, semantic_context::SemanticContext,
     type_environment::TypeEnvironment,
 };
+use ironplc_parser::options::CompilerOptions;
 
-pub fn apply(lib: &Library, context: &SemanticContext) -> SemanticResult {
+pub fn apply(
+    lib: &Library,
+    context: &SemanticContext,
+    _options: &CompilerOptions,
+) -> SemanticResult {
     let mut visitor = RuleBitAccessRange {
         type_environment: context.types(),
         var_initializers: HashMap::new(),
@@ -230,19 +235,20 @@ mod tests {
     use crate::stages::analyze;
     use crate::test_helpers::parse_and_resolve_types_with_context;
     use ironplc_dsl::core::FileId;
-    use ironplc_parser::{options::ParseOptions, parse_program};
+    use ironplc_parser::{options::CompilerOptions, parse_program};
 
     use super::*;
 
     fn assert_bit_access_ok(program: &str) {
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
         assert!(result.is_ok(), "Expected OK but got: {:?}", result);
     }
 
     fn assert_bit_access_err(program: &str) {
-        let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let result = analyze(&[&library], &ParseOptions::default());
+        let library =
+            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let result = analyze(&[&library], &CompilerOptions::default());
         let (_library, context) = result.unwrap();
         assert!(
             context.has_diagnostics(),

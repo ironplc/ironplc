@@ -5,7 +5,7 @@
 
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_parser::{options::ParseOptions, tokenize_program};
+use ironplc_parser::{options::CompilerOptions, tokenize_program};
 use ironplc_sources::{xml, FileType, Source};
 use log::debug;
 
@@ -49,7 +49,8 @@ fn tokenize_st(
     suppress_output: bool,
     handle_diagnostics: DiagnosticHandler,
 ) -> Result<(), String> {
-    let (tokens, diagnostics) = tokenize_program(content, file_id, &ParseOptions::default(), 0, 0);
+    let (tokens, diagnostics) =
+        tokenize_program(content, file_id, &CompilerOptions::default(), 0, 0);
 
     let tokens = format_tokens(&tokens);
 
@@ -172,7 +173,7 @@ fn tokenize_st_body(
     let (tokens, diagnostics) = tokenize_program(
         &st_body.text,
         file_id,
-        &ParseOptions::default(),
+        &CompilerOptions::default(),
         st_body.line_offset,
         st_body.col_offset,
     );

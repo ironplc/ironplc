@@ -130,8 +130,13 @@ Options
 
 ``--allow-ref-to``
    Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax without enabling full
-   Edition 3. This is a vendor extension useful for libraries that use
-   references but also use Edition 3 type names as identifiers.
+   Edition 3. This is a vendor extension useful when you need references
+   but want to keep Edition 2 keyword handling for the rest of your code.
+
+``--allow-pointer-arithmetic``
+   Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
+   ``<=``, ``>=``) on ``REF_TO`` types. By default, only ``=`` and ``<>``
+   are permitted on references.
 
 ``--allow-int-to-bool-initializer``
    Allow integer literals ``0`` and ``1`` as ``BOOL`` variable initializers,
@@ -172,7 +177,7 @@ Examples
 
       ironplcc echo main.st
 
-6. Check a source file using IEC 61131-3:2013 features:
+6. Check a source file using IEC 61131-3:2013 (Edition 3) features:
 
    .. code-block:: shell
 

@@ -1,7 +1,7 @@
 //! Bytecode-level integration tests for WHILE, REPEAT, and FOR loop compilation.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_compile;
 
@@ -17,7 +17,7 @@ PROGRAM main
   END_WHILE;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // x=var:0, constants: pool:0=0, pool:1=1
     // Bytecode layout:
@@ -72,7 +72,7 @@ PROGRAM main
   END_REPEAT;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // x=var:0, constants: pool:0=1, pool:1=5
     // Bytecode layout:
@@ -120,7 +120,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // i=var:0, y=var:1
     // constants: pool:0=1, pool:1=5
@@ -185,7 +185,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
 

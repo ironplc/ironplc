@@ -1,7 +1,7 @@
 //! Bytecode-level integration tests for EXIT and RETURN statement compilation.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_compile;
 
@@ -17,7 +17,7 @@ PROGRAM main
   END_WHILE;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // Bytecode layout:
     //   0: LOAD_TRUE                    (condition: TRUE)
@@ -48,7 +48,7 @@ PROGRAM main
   x := 20;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // Bytecode layout:
     //   0: LOAD_CONST_I32 pool:0 (10)

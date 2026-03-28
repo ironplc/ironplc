@@ -9,7 +9,7 @@
 //! - DATE_AND_TIME (DT): stored as u32 seconds since 1970-01-01
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -23,7 +23,7 @@ PROGRAM main
   d := D#2024-01-01;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // 2024-01-01 is 19723 days after 1970-01-01 = 19723 * 86400 = 1704067200
     assert_eq!(bufs.vars[0].as_i32() as u32, 1_704_067_200);
 }
@@ -38,7 +38,7 @@ PROGRAM main
   t := TOD#12:30:00;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // 12h * 3600000 + 30m * 60000 = 45000000 ms
     assert_eq!(bufs.vars[0].as_i32() as u32, 45_000_000);
 }
@@ -53,7 +53,7 @@ PROGRAM main
   my_dt := DT#2024-01-01-12:30:00;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     // 1704067200 (date) + 12*3600 + 30*60 = 1704067200 + 45000 = 1704112200
     assert_eq!(bufs.vars[0].as_i32() as u32, 1_704_112_200);
 }
@@ -76,7 +76,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
 
@@ -98,6 +98,6 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }

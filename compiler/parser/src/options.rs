@@ -1,8 +1,8 @@
-//! Options affecting parsing.
+//! Options affecting compilation (parsing, analysis, and code generation).
 //!
 //! Use [`Dialect`] to select a preset configuration, then optionally
-//! override individual flags.  Use the [`define_parse_options`] macro
-//! to declare vendor-extension fields so that [`ParseOptions::from_dialect`]
+//! override individual flags.  Use the [`define_compiler_options`] macro
+//! to declare vendor-extension fields so that [`CompilerOptions::from_dialect`]
 //! is the single place that maps dialects to flags.
 
 use std::fmt;
@@ -53,12 +53,12 @@ pub struct FeatureDescriptor {
     pub dialects: &'static [Dialect],
 }
 
-/// Declares [`ParseOptions`] with a set of vendor-extension boolean flags.
+/// Declares [`CompilerOptions`] with a set of vendor-extension boolean flags.
 ///
 /// Each field carries a description string and a list of [`Dialect`] variants
 /// that enable it.  The macro auto-generates the struct, its `Default` impl,
-/// [`ParseOptions::from_dialect`], and [`ParseOptions::FEATURE_DESCRIPTORS`].
-macro_rules! define_parse_options {
+/// [`CompilerOptions::from_dialect`], and [`CompilerOptions::FEATURE_DESCRIPTORS`].
+macro_rules! define_compiler_options {
     (
         $(
             $desc:literal,
@@ -68,15 +68,15 @@ macro_rules! define_parse_options {
         ),* $(,)?
     ) => {
         #[derive(Debug, Default, Clone, Copy)]
-        pub struct ParseOptions {
+        pub struct CompilerOptions {
             /// When `true`, IEC 61131-3:2013 keywords (`LTIME`, `LDATE`,
             /// `LTOD`, `LDT`, `REF_TO`, `REF`, `NULL`) are recognised.
             pub allow_iec_61131_3_2013: bool,
             $(pub $vendor_field: bool,)*
         }
 
-        impl ParseOptions {
-            /// Build a [`ParseOptions`] from a [`Dialect`] preset.
+        impl CompilerOptions {
+            /// Build a [`CompilerOptions`] from a [`Dialect`] preset.
             ///
             /// Individual flags can be set to `true` afterwards to layer
             /// additional extensions on top of the dialect.
@@ -107,7 +107,7 @@ macro_rules! define_parse_options {
     };
 }
 
-define_parse_options! {
+define_compiler_options! {
     "Allow C-style comments (// and /* */)",
     "--allow-c-style-comments",
     [Rusty],
@@ -144,9 +144,9 @@ define_parse_options! {
     allow_ref_to,
 
     "Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types",
-    "--allow-pointer-arithmetic",
+    "--allow-ref-arithmetic",
     [Rusty],
-    allow_pointer_arithmetic,
+    allow_ref_arithmetic,
 
     "Allow REF() on stack-allocated variables (VAR_TEMP, FUNCTION VAR_INPUT/VAR_OUTPUT)",
     "--allow-ref-stack-variables",
@@ -183,7 +183,7 @@ pub fn describe_dialects() -> String {
 
     for dialect in Dialect::ALL {
         out.push_str(&format!("\nFeatures enabled by \"{}\":\n", dialect));
-        let features: Vec<&FeatureDescriptor> = ParseOptions::FEATURE_DESCRIPTORS
+        let features: Vec<&FeatureDescriptor> = CompilerOptions::FEATURE_DESCRIPTORS
             .iter()
             .filter(|f| f.dialects.contains(dialect))
             .collect();
@@ -209,7 +209,7 @@ mod tests {
 
     #[test]
     fn from_dialect_when_ed2_then_all_flags_false() {
-        let options = ParseOptions::from_dialect(Dialect::Iec61131_3Ed2);
+        let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed2);
 
         assert!(!options.allow_iec_61131_3_2013);
         assert!(!options.allow_c_style_comments);
@@ -219,7 +219,7 @@ mod tests {
         assert!(!options.allow_empty_var_blocks);
         assert!(!options.allow_time_as_function_name);
         assert!(!options.allow_ref_to);
-        assert!(!options.allow_pointer_arithmetic);
+        assert!(!options.allow_ref_arithmetic);
         assert!(!options.allow_ref_stack_variables);
         assert!(!options.allow_ref_type_punning);
         assert!(!options.allow_int_to_bool_initializer);
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn from_dialect_when_ed3_then_edition3_enabled_and_vendor_flags_false() {
-        let options = ParseOptions::from_dialect(Dialect::Iec61131_3Ed3);
+        let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
 
         assert!(options.allow_iec_61131_3_2013);
         assert!(!options.allow_c_style_comments);
@@ -237,7 +237,7 @@ mod tests {
         assert!(!options.allow_empty_var_blocks);
         assert!(!options.allow_time_as_function_name);
         assert!(!options.allow_ref_to);
-        assert!(!options.allow_pointer_arithmetic);
+        assert!(!options.allow_ref_arithmetic);
         assert!(!options.allow_ref_stack_variables);
         assert!(!options.allow_ref_type_punning);
         assert!(!options.allow_int_to_bool_initializer);
@@ -245,7 +245,7 @@ mod tests {
 
     #[test]
     fn from_dialect_when_rusty_then_all_vendor_flags_enabled_and_edition3_disabled() {
-        let options = ParseOptions::from_dialect(Dialect::Rusty);
+        let options = CompilerOptions::from_dialect(Dialect::Rusty);
 
         assert!(!options.allow_iec_61131_3_2013);
         assert!(options.allow_c_style_comments);
@@ -255,7 +255,7 @@ mod tests {
         assert!(options.allow_empty_var_blocks);
         assert!(options.allow_time_as_function_name);
         assert!(options.allow_ref_to);
-        assert!(options.allow_pointer_arithmetic);
+        assert!(options.allow_ref_arithmetic);
         assert!(options.allow_ref_stack_variables);
         assert!(options.allow_ref_type_punning);
         assert!(options.allow_int_to_bool_initializer);
@@ -263,7 +263,7 @@ mod tests {
 
     #[test]
     fn from_dialect_when_default_then_ed2() {
-        let options = ParseOptions::from_dialect(Dialect::default());
+        let options = CompilerOptions::from_dialect(Dialect::default());
 
         assert!(!options.allow_iec_61131_3_2013);
         assert!(!options.allow_ref_to);
@@ -271,16 +271,16 @@ mod tests {
 
     #[test]
     fn feature_descriptors_when_called_then_contains_all_vendor_flags() {
-        assert_eq!(ParseOptions::FEATURE_DESCRIPTORS.len(), 11);
+        assert_eq!(CompilerOptions::FEATURE_DESCRIPTORS.len(), 11);
         assert_eq!(
-            ParseOptions::FEATURE_DESCRIPTORS[0].cli_flag,
+            CompilerOptions::FEATURE_DESCRIPTORS[0].cli_flag,
             "--allow-c-style-comments"
         );
     }
 
     #[test]
     fn feature_descriptors_when_rusty_then_all_features_listed() {
-        let rusty_features: Vec<&str> = ParseOptions::FEATURE_DESCRIPTORS
+        let rusty_features: Vec<&str> = CompilerOptions::FEATURE_DESCRIPTORS
             .iter()
             .filter(|f| f.dialects.contains(&Dialect::Rusty))
             .map(|f| f.cli_flag)
