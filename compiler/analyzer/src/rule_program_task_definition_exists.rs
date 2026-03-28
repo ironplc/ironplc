@@ -23,8 +23,13 @@ use ironplc_problems::Problem;
 use std::collections::HashSet;
 
 use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use ironplc_parser::options::CompilerOptions;
 
-pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
+pub fn apply(
+    lib: &Library,
+    _context: &SemanticContext,
+    _options: &CompilerOptions,
+) -> SemanticResult {
     let mut visitor = RuleProgramTaskDefinitionExists::new();
     visitor.walk(lib).map_err(|e| vec![e])?;
 
@@ -97,7 +102,7 @@ mod tests {
 
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
         assert!(result.is_err());
     }
 
@@ -113,7 +118,7 @@ mod tests {
 
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
         assert!(result.is_ok());
     }
 }

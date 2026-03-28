@@ -43,7 +43,7 @@ pub fn try_from_values(
 #[cfg(test)]
 mod tests {
     use ironplc_dsl::{common::TypeName, core::FileId};
-    use ironplc_parser::options::ParseOptions;
+    use ironplc_parser::options::CompilerOptions;
     use ironplc_problems::Problem;
 
     use crate::{
@@ -68,9 +68,12 @@ END_TYPE
             values_str
         );
 
-        let input =
-            ironplc_parser::parse_program(&program, &FileId::default(), &ParseOptions::default())
-                .unwrap();
+        let input = ironplc_parser::parse_program(
+            &program,
+            &FileId::default(),
+            &CompilerOptions::default(),
+        )
+        .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()
             .build()
@@ -100,9 +103,12 @@ END_TYPE
             values_str
         );
 
-        let input =
-            ironplc_parser::parse_program(&program, &FileId::default(), &ParseOptions::default())
-                .unwrap();
+        let input = ironplc_parser::parse_program(
+            &program,
+            &FileId::default(),
+            &CompilerOptions::default(),
+        )
+        .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()
             .build()
@@ -132,9 +138,12 @@ END_TYPE
             values_str
         );
 
-        let input =
-            ironplc_parser::parse_program(&program, &FileId::default(), &ParseOptions::default())
-                .unwrap();
+        let input = ironplc_parser::parse_program(
+            &program,
+            &FileId::default(),
+            &CompilerOptions::default(),
+        )
+        .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()
             .build()
@@ -155,7 +164,7 @@ LEVEL : (LOW, MEDIUM, HIGH) := LOW;
 END_TYPE
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -178,7 +187,7 @@ LEVEL2 : LEVEL;
 END_TYPE
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()

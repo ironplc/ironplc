@@ -5,7 +5,7 @@
 //! the correct opcodes.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -20,7 +20,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // BYTE is an unsigned 8-bit type; 42 fits within u8 range
     assert_eq!(bufs.vars[0].as_i32(), 42);
@@ -37,7 +37,7 @@ PROGRAM main
   x := 300;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // 300 truncated to u8 = 300 - 256 = 44
     assert_eq!(bufs.vars[0].as_i32(), 44);
@@ -56,7 +56,7 @@ PROGRAM main
   y := x + 200;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 100);
     assert_eq!(bufs.vars[1].as_i32(), 300);
@@ -73,7 +73,7 @@ PROGRAM main
   x := 40000;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // INT is signed 16-bit; 40000 truncated to i16 = 40000 - 65536 = -25536
     assert_eq!(bufs.vars[0].as_i32(), -25536);

@@ -180,7 +180,7 @@ mod tests {
         parse_program(
             src,
             &FileId::default(),
-            &ironplc_parser::options::ParseOptions {
+            &ironplc_parser::options::CompilerOptions {
                 allow_top_level_var_global: true,
                 allow_constant_type_params: true,
                 ..Default::default()

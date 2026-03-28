@@ -6,7 +6,7 @@ mod test {
 
     use dsl::core::FileId;
 
-    use ironplc_parser::options::ParseOptions;
+    use ironplc_parser::options::CompilerOptions;
     use ironplc_parser::parse_program;
     use ironplc_test::read_shared_resource;
 
@@ -22,7 +22,8 @@ mod test {
 
     pub fn parse_and_render_resource(name: &'static str) -> String {
         let source = read_shared_resource(name);
-        let library = parse_program(&source, &FileId::default(), &ParseOptions::default()).unwrap();
+        let library =
+            parse_program(&source, &FileId::default(), &CompilerOptions::default()).unwrap();
         write_to_string(&library).unwrap()
     }
 
@@ -140,18 +141,18 @@ mod test {
 
     pub fn parse_and_render_resource_edition3(name: &'static str) -> String {
         let source = read_shared_resource(name);
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_iec_61131_3_2013: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         };
         let library = parse_program(&source, &FileId::default(), &options).unwrap();
         write_to_string(&library).unwrap()
     }
 
     fn parse_and_render_edition3(source: &str) -> String {
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_iec_61131_3_2013: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         };
         let library = parse_program(source, &FileId::default(), &options).unwrap();
         write_to_string(&library).unwrap()
@@ -346,9 +347,9 @@ END_PROGRAM",
 
     fn parse_and_render_resource_empty_var_blocks(name: &'static str) -> String {
         let source = read_shared_resource(name);
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_empty_var_blocks: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         };
         let library = parse_program(&source, &FileId::default(), &options).unwrap();
         write_to_string(&library).unwrap()

@@ -4,7 +4,7 @@
 //! are accessible from a PROGRAM via VAR_EXTERNAL declarations.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -31,7 +31,7 @@ PROGRAM main
   result := shared;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // shared is at index 0 (global), result is at index 1 (program local)
     assert_eq!(bufs.vars[0].as_i32(), 42);
@@ -58,7 +58,7 @@ PROGRAM main
   counter := counter + 10;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // counter starts at 0, after one scan: 0 + 10 = 10
     assert_eq!(bufs.vars[0].as_i32(), 10);
@@ -87,7 +87,7 @@ PROGRAM main
   result := value;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 0);
     assert_eq!(bufs.vars[1].as_i32(), 0);
@@ -120,7 +120,7 @@ PROGRAM main
   sum := a + b;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // a=10, b=20, c=TRUE(1), sum=30
     assert_eq!(bufs.vars[0].as_i32(), 10);
@@ -152,7 +152,7 @@ PROGRAM main
   result := max_value;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 100);
     assert_eq!(bufs.vars[1].as_i32(), 100);
@@ -185,7 +185,7 @@ PROGRAM main
   third := readings[3];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // readings is at index 0 (global array), first/second/third at 1/2/3
     assert_eq!(bufs.vars[1].as_i32(), 10);
@@ -219,7 +219,7 @@ PROGRAM main
   result := data[1] + data[2] + data[3];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // result should be 100 + 200 + 300 = 600
     assert_eq!(bufs.vars[1].as_i32(), 600);
@@ -235,7 +235,7 @@ PROGRAM main
   x := 99;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 99);
 }

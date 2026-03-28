@@ -1,6 +1,6 @@
 use dsl::core::FileId;
 
-use crate::options::ParseOptions;
+use crate::options::CompilerOptions;
 use crate::token::{Token, TokenType};
 
 /// Adds a semicolon after keyword statements to terminate the statement.
@@ -14,7 +14,7 @@ use crate::token::{Token, TokenType};
 pub fn insert_keyword_statement_terminators(
     input: Vec<Token>,
     _file_id: &FileId,
-    options: &ParseOptions,
+    options: &CompilerOptions,
 ) -> Vec<Token> {
     if !options.allow_missing_semicolon {
         return input;

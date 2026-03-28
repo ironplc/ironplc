@@ -7,7 +7,7 @@
 //! unary NOT applied to parenthesized expression (x), which is semantically equivalent.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_compile;
 
@@ -30,7 +30,7 @@ END_PROGRAM
 /// Helper to assert bytecode for a two-arg function form.
 /// The expected_opcode is the single-byte opcode that the function should emit.
 fn assert_two_arg_bytecode(source: &str, expected_opcode: u8) {
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
@@ -98,7 +98,7 @@ PROGRAM main
   y := AND(x, FALSE);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert!(
         bytecode.contains(&0x54),
@@ -119,7 +119,7 @@ PROGRAM main
   y := OR(x, TRUE);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert!(
         bytecode.contains(&0x55),
@@ -140,7 +140,7 @@ PROGRAM main
   y := XOR(x, TRUE);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert!(
         bytecode.contains(&0x56),
@@ -195,7 +195,7 @@ PROGRAM main
   y := MOVE(x);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(

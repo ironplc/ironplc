@@ -1,7 +1,7 @@
 //! Bytecode-level integration tests for the MAX function with float types.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_compile;
 
@@ -16,7 +16,7 @@ PROGRAM main
   y := MAX(x, 10.0);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
@@ -42,7 +42,7 @@ PROGRAM main
   y := MAX(x, 10.0);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(

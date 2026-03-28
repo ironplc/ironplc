@@ -1,7 +1,7 @@
 //! Bytecode-level integration tests for bitwise operator compilation.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_compile;
 
@@ -16,7 +16,7 @@ PROGRAM main
   y := x AND BYTE#16#0F;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // y := x AND BYTE#16#0F:
     //   LOAD_VAR_I32 var:0
@@ -50,7 +50,7 @@ PROGRAM main
   y := NOT x;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // y := NOT x:
     //   LOAD_VAR_I32 var:0
@@ -84,7 +84,7 @@ PROGRAM main
   y := x > 0 AND x < 10;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // The AND here is in a comparison context (DINT is signed)
     // so it should still produce BOOL_AND (0x54), not BIT_AND_32.

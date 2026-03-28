@@ -286,13 +286,13 @@ mod tests {
     use crate::xform_resolve_type_decl_environment::apply;
     use ironplc_dsl::common::TypeName;
     use ironplc_dsl::core::{FileId, Id};
-    use ironplc_parser::options::ParseOptions;
+    use ironplc_parser::options::CompilerOptions;
 
     /// Helper function to parse a program and apply type resolution
     /// Returns the type environment with resolved types
     fn parse_and_apply(program: &str) -> TypeEnvironment {
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -307,7 +307,7 @@ mod tests {
     /// Returns the error diagnostics
     fn parse_and_expect_error(program: &str) -> Vec<ironplc_dsl::diagnostic::Diagnostic> {
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()

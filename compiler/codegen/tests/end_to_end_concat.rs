@@ -1,7 +1,7 @@
 //! End-to-end integration tests for the CONCAT standard function.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
@@ -37,7 +37,7 @@ PROGRAM main
   result := CONCAT(s1, s2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let result_offset = string_offset(&[254, 254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
@@ -55,7 +55,7 @@ PROGRAM main
   result := CONCAT(s1, s2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let result_offset = string_offset(&[254, 254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "AB");
@@ -73,7 +73,7 @@ PROGRAM main
   result := CONCAT(s1, s2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let result_offset = string_offset(&[254, 254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "World");
@@ -91,7 +91,7 @@ PROGRAM main
   result := CONCAT(s1, s2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let result_offset = string_offset(&[254, 254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "Hello");
@@ -109,7 +109,7 @@ PROGRAM main
   result := CONCAT(s1, s2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let result_offset = string_offset(&[254, 254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "");
@@ -127,7 +127,7 @@ PROGRAM main
   result := CONCAT(s1, s2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let result_offset = string_offset(&[254, 254]);
     assert_eq!(
@@ -147,7 +147,7 @@ PROGRAM main
   result := CONCAT(s1, s1);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let result_offset = string_offset(&[254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "ABCABC");
@@ -163,7 +163,7 @@ PROGRAM main
   result := CONCAT('Hello', ' World');
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // result is the first (and only) declared string variable at offset 0.
     let result_offset = string_offset(&[]);
@@ -181,7 +181,7 @@ PROGRAM main
   result := CONCAT('Hello ', s1);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let result_offset = string_offset(&[254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
@@ -198,7 +198,7 @@ PROGRAM main
   result := CONCAT(s1, ' World');
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let result_offset = string_offset(&[254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
@@ -214,7 +214,7 @@ PROGRAM main
   result := CONCAT('A', 'B');
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let result_offset = string_offset(&[]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "AB");

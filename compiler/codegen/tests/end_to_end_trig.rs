@@ -1,7 +1,7 @@
 //! End-to-end integration tests for SIN, COS, TAN, ASIN, ACOS, ATAN functions.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -17,7 +17,7 @@ PROGRAM main
   y := SIN(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 0.0).abs() < 1e-5, "expected 0.0, got {y}");
@@ -35,7 +35,7 @@ PROGRAM main
   y := SIN(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!((y - 1.0).abs() < 1e-12, "expected 1.0, got {y}");
@@ -53,7 +53,7 @@ PROGRAM main
   y := COS(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 1.0).abs() < 1e-5, "expected 1.0, got {y}");
@@ -71,7 +71,7 @@ PROGRAM main
   y := COS(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!((y - (-1.0)).abs() < 1e-12, "expected -1.0, got {y}");
@@ -89,7 +89,7 @@ PROGRAM main
   y := TAN(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 0.0).abs() < 1e-5, "expected 0.0, got {y}");
@@ -107,7 +107,7 @@ PROGRAM main
   y := TAN(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!((y - 1.0).abs() < 1e-12, "expected 1.0, got {y}");
@@ -125,7 +125,7 @@ PROGRAM main
   y := ASIN(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 0.0).abs() < 1e-5, "expected 0.0, got {y}");
@@ -143,7 +143,7 @@ PROGRAM main
   y := ASIN(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!(
@@ -164,7 +164,7 @@ PROGRAM main
   y := ACOS(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 0.0).abs() < 1e-5, "expected 0.0, got {y}");
@@ -182,7 +182,7 @@ PROGRAM main
   y := ACOS(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!(
@@ -203,7 +203,7 @@ PROGRAM main
   y := ATAN(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 0.0).abs() < 1e-5, "expected 0.0, got {y}");
@@ -221,7 +221,7 @@ PROGRAM main
   y := ATAN(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!(

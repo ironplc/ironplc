@@ -1,7 +1,7 @@
 //! End-to-end integration tests for the ADD operator.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_compile, parse_and_run, VmBuffers};
 use ironplc_vm::Vm;
@@ -18,7 +18,7 @@ PROGRAM main
   y := x + 32;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 10);
     assert_eq!(bufs.vars[1].as_i32(), 42);
@@ -34,7 +34,7 @@ PROGRAM main
   result := 1 + 2 + 3;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 6);
 }
@@ -53,7 +53,7 @@ PROGRAM main
   c := a + b;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 100);
     assert_eq!(bufs.vars[1].as_i32(), 200);
@@ -70,7 +70,7 @@ PROGRAM main
   count := count + 1;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = Vm::new()
         .load(
@@ -103,7 +103,7 @@ PROGRAM main
   result := 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 55);
 }

@@ -141,7 +141,7 @@ IronPLC already uses a dialect-like approach in several places:
 
 | Existing mechanism | What it does | Parallel |
 |---|---|---|
-| `ParseOptions::allow_c_style_comments` | Controls whether `//` comments are accepted | Dialect-specific syntax toggle |
+| `CompilerOptions::allow_c_style_comments` | Controls whether `//` comments are accepted | Dialect-specific syntax toggle |
 | `preprocessor.rs` (OSCAT comments) | Strips vendor-specific comment patterns | Vendor-specific preprocessing |
 | `twincat_parser.rs` | Parses Beckhoff XML wrapper format | Vendor-specific file format handling |
 | `FileType` enum | Routes to different parsers by extension | Dialect detection by extension |

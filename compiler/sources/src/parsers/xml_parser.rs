@@ -10,7 +10,7 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 use log::debug;
 
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use crate::xml::{position::parse_plcopen_xml, transform::transform_project};
 
@@ -29,7 +29,7 @@ use crate::xml::{position::parse_plcopen_xml, transform::transform_project};
 pub fn parse(
     content: &str,
     file_id: &FileId,
-    parse_options: &ParseOptions,
+    compiler_options: &CompilerOptions,
 ) -> Result<Library, Diagnostic> {
     debug!("Parsing PLCopen XML file: {}", file_id);
 
@@ -74,7 +74,7 @@ pub fn parse(
     }
 
     // Transform to IronPLC DSL
-    transform_project(&project, file_id, parse_options)
+    transform_project(&project, file_id, compiler_options)
 }
 
 #[cfg(test)]
@@ -104,7 +104,7 @@ mod tests {
   </types>
 </project>"#;
 
-        let result = parse(xml, &test_file_id(), &ParseOptions::default());
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
         assert!(result.is_ok());
     }
 
@@ -112,7 +112,7 @@ mod tests {
     fn parse_when_malformed_xml_then_returns_error() {
         let xml = "NOT VALID XML <>";
 
-        let result = parse(xml, &test_file_id(), &ParseOptions::default());
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
         assert!(result.is_err());
 
         let diagnostic = result.unwrap_err();
@@ -127,7 +127,7 @@ mod tests {
 <notproject xmlns="http://www.plcopen.org/xml/tc6_0201">
 </notproject>"#;
 
-        let result = parse(xml, &test_file_id(), &ParseOptions::default());
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
         assert!(result.is_err());
 
         let diagnostic = result.unwrap_err();
@@ -171,7 +171,7 @@ END_IF;
   </types>
 </project>"#;
 
-        let result = parse(xml, &test_file_id(), &ParseOptions::default());
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
         assert!(result.is_ok());
     }
 
@@ -201,7 +201,7 @@ END_IF;
   </types>
 </project>"#;
 
-        let result = parse(xml, &test_file_id(), &ParseOptions::default());
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
         assert!(result.is_err());
 
         let diagnostic = result.unwrap_err();
@@ -254,7 +254,7 @@ END_IF;
   </types>
 </project>"#;
 
-        let result = parse(xml, &test_file_id(), &ParseOptions::default());
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
         assert!(result.is_err());
 
         let diagnostic = result.unwrap_err();

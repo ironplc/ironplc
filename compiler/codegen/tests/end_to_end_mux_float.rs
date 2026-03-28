@@ -1,7 +1,7 @@
 //! End-to-end integration tests for the MUX function with float types.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -15,7 +15,7 @@ PROGRAM main
   y := MUX(0, 10.5, 20.5, 30.5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[0].as_f32();
     assert!((y - 10.5).abs() < 1e-5, "expected 10.5, got {y}");
@@ -31,7 +31,7 @@ PROGRAM main
   y := MUX(2, 10.5, 20.5, 30.5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[0].as_f32();
     assert!((y - 30.5).abs() < 1e-5, "expected 30.5, got {y}");
@@ -47,7 +47,7 @@ PROGRAM main
   y := MUX(5, 10.5, 20.5, 30.5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[0].as_f32();
     assert!((y - 30.5).abs() < 1e-5, "expected 30.5, got {y}");
@@ -63,7 +63,7 @@ PROGRAM main
   y := MUX(0, 10.5, 20.5, 30.5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[0].as_f64();
     assert!((y - 10.5).abs() < 1e-12, "expected 10.5, got {y}");
@@ -79,7 +79,7 @@ PROGRAM main
   y := MUX(1, 10.5, 20.5, 30.5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[0].as_f64();
     assert!((y - 20.5).abs() < 1e-12, "expected 20.5, got {y}");
@@ -95,7 +95,7 @@ PROGRAM main
   y := MUX(5, 10.5, 20.5, 30.5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[0].as_f64();
     assert!((y - 30.5).abs() < 1e-12, "expected 30.5, got {y}");
