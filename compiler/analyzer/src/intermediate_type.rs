@@ -546,6 +546,96 @@ pub enum FunctionBlockVarType {
     Internal,
 }
 
+/// Reason why `slot_count` could not compute a slot count.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SlotCountError {
+    /// The type contains a field type not yet supported in the data region
+    /// (STRING, WSTRING, or FunctionBlock).
+    UnsupportedFieldType,
+    /// The type nesting depth exceeds the maximum allowed depth (defense-in-depth
+    /// guard against recursive type cycles that the analyzer should have rejected).
+    MaxDepthExceeded,
+    /// The total slot count overflows u32 (structure or array is too large).
+    Overflow,
+}
+
+impl IntermediateType {
+    /// Returns the number of 8-byte slots this type occupies in the data region.
+    ///
+    /// Returns `Ok(n)` for types with known slot counts.
+    ///
+    /// Returns `Err(SlotCountError::UnsupportedFieldType)` for types that cannot
+    /// yet be stored in the data region (STRING, WSTRING, FunctionBlock).
+    ///
+    /// Returns `Err(SlotCountError::MaxDepthExceeded)` if the nesting depth
+    /// exceeds 32 levels (defense-in-depth against recursive type cycles that
+    /// the analyzer's toposort pass should have rejected).
+    ///
+    /// Returns `Err(SlotCountError::Overflow)` if the total slot count exceeds u32.
+    pub fn slot_count(&self) -> Result<u32, SlotCountError> {
+        self.slot_count_inner(0)
+    }
+
+    fn slot_count_inner(&self, depth: u32) -> Result<u32, SlotCountError> {
+        // Guard against runaway recursion (defense-in-depth).
+        // The analyzer rejects recursive types via toposort, but if a bug
+        // allows one through, this prevents a stack overflow.
+        const MAX_NESTING_DEPTH: u32 = 32;
+        if depth > MAX_NESTING_DEPTH {
+            return Err(SlotCountError::MaxDepthExceeded);
+        }
+
+        match self {
+            // Primitives: 1 slot each
+            IntermediateType::Bool
+            | IntermediateType::Int { .. }
+            | IntermediateType::UInt { .. }
+            | IntermediateType::Real { .. }
+            | IntermediateType::Bytes { .. }
+            | IntermediateType::Time { .. }
+            | IntermediateType::Date { .. }
+            | IntermediateType::TimeOfDay { .. }
+            | IntermediateType::DateAndTime { .. }
+            | IntermediateType::Enumeration { .. }
+            | IntermediateType::Subrange { .. }
+            | IntermediateType::Reference { .. } => Ok(1),
+
+            // Structures: sum of field slot counts
+            IntermediateType::Structure { fields } => {
+                let mut total = 0u32;
+                for field in fields {
+                    let field_slots = field.field_type.slot_count_inner(depth + 1)?;
+                    total = total
+                        .checked_add(field_slots)
+                        .ok_or(SlotCountError::Overflow)?;
+                }
+                Ok(total)
+            }
+
+            // Arrays: total_elements * element_slots
+            IntermediateType::Array {
+                element_type,
+                dimensions,
+            } => {
+                let elem_slots = element_type.slot_count_inner(depth + 1)?;
+                let total_elements = dimensions.iter().try_fold(1u32, |acc, dim| {
+                    let size = u32::try_from(dim.upper - dim.lower + 1)
+                        .map_err(|_| SlotCountError::Overflow)?;
+                    acc.checked_mul(size).ok_or(SlotCountError::Overflow)
+                })?;
+                total_elements
+                    .checked_mul(elem_slots)
+                    .ok_or(SlotCountError::Overflow)
+            }
+
+            // Not yet supported in data region
+            IntermediateType::String { .. }
+            | IntermediateType::FunctionBlock { .. }
+            | IntermediateType::Function { .. } => Err(SlotCountError::UnsupportedFieldType),
+        }
+    }
+}
+
 /// Represents a field within a structure or function block type in the intermediate representation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IntermediateStructField {
@@ -595,7 +685,10 @@ impl IntermediateFunctionParameter {
 
 #[cfg(test)]
 mod tests {
-    use crate::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};
+    use crate::intermediate_type::{
+        ArrayDimension, ByteSized, IntermediateStructField, IntermediateType, SlotCountError,
+    };
+    use ironplc_dsl::core::Id;
 
     #[test]
     fn intermediate_type_size_in_bytes_returns_bytes() {
@@ -1715,5 +1808,258 @@ mod tests {
         };
         // Should return None because one field has unknown size
         assert_eq!(fb_type.size_in_bytes(), None);
+    }
+
+    #[test]
+    fn slot_count_when_primitive_then_returns_1() {
+        assert_eq!(IntermediateType::Bool.slot_count(), Ok(1));
+        assert_eq!(
+            IntermediateType::Int {
+                size: ByteSized::B16
+            }
+            .slot_count(),
+            Ok(1)
+        );
+        assert_eq!(
+            IntermediateType::UInt {
+                size: ByteSized::B32
+            }
+            .slot_count(),
+            Ok(1)
+        );
+        assert_eq!(
+            IntermediateType::Real {
+                size: ByteSized::B64
+            }
+            .slot_count(),
+            Ok(1)
+        );
+        assert_eq!(
+            IntermediateType::Bytes {
+                size: ByteSized::B8
+            }
+            .slot_count(),
+            Ok(1)
+        );
+        assert_eq!(
+            IntermediateType::Time {
+                size: ByteSized::B32
+            }
+            .slot_count(),
+            Ok(1)
+        );
+        assert_eq!(
+            IntermediateType::Date {
+                size: ByteSized::B32
+            }
+            .slot_count(),
+            Ok(1)
+        );
+        assert_eq!(
+            IntermediateType::TimeOfDay {
+                size: ByteSized::B32
+            }
+            .slot_count(),
+            Ok(1)
+        );
+        assert_eq!(
+            IntermediateType::DateAndTime {
+                size: ByteSized::B64
+            }
+            .slot_count(),
+            Ok(1)
+        );
+        assert_eq!(
+            IntermediateType::Enumeration {
+                underlying_type: Box::new(IntermediateType::Int {
+                    size: ByteSized::B8
+                })
+            }
+            .slot_count(),
+            Ok(1)
+        );
+        assert_eq!(
+            IntermediateType::Subrange {
+                base_type: Box::new(IntermediateType::Int {
+                    size: ByteSized::B16
+                }),
+                min_value: 1,
+                max_value: 100,
+            }
+            .slot_count(),
+            Ok(1)
+        );
+    }
+
+    #[test]
+    fn slot_count_when_structure_with_two_fields_then_returns_2() {
+        let s = IntermediateType::Structure {
+            fields: vec![
+                IntermediateStructField {
+                    name: Id::from("a"),
+                    field_type: IntermediateType::Int {
+                        size: ByteSized::B16,
+                    },
+                    offset: 0,
+                    var_type: None,
+                    has_default: false,
+                },
+                IntermediateStructField {
+                    name: Id::from("b"),
+                    field_type: IntermediateType::Bool,
+                    offset: 2,
+                    var_type: None,
+                    has_default: false,
+                },
+            ],
+        };
+        assert_eq!(s.slot_count(), Ok(2));
+    }
+
+    #[test]
+    fn slot_count_when_nested_structure_then_returns_sum() {
+        let inner = IntermediateType::Structure {
+            fields: vec![
+                IntermediateStructField {
+                    name: Id::from("x"),
+                    field_type: IntermediateType::Int {
+                        size: ByteSized::B32,
+                    },
+                    offset: 0,
+                    var_type: None,
+                    has_default: false,
+                },
+                IntermediateStructField {
+                    name: Id::from("y"),
+                    field_type: IntermediateType::Int {
+                        size: ByteSized::B32,
+                    },
+                    offset: 4,
+                    var_type: None,
+                    has_default: false,
+                },
+            ],
+        };
+        let outer = IntermediateType::Structure {
+            fields: vec![
+                IntermediateStructField {
+                    name: Id::from("inner"),
+                    field_type: inner,
+                    offset: 0,
+                    var_type: None,
+                    has_default: false,
+                },
+                IntermediateStructField {
+                    name: Id::from("z"),
+                    field_type: IntermediateType::Bool,
+                    offset: 8,
+                    var_type: None,
+                    has_default: false,
+                },
+            ],
+        };
+        // inner occupies 2 slots + z occupies 1 slot = 3
+        assert_eq!(outer.slot_count(), Ok(3));
+    }
+
+    #[test]
+    fn slot_count_when_array_of_primitives_then_returns_total_elements() {
+        let arr = IntermediateType::Array {
+            element_type: Box::new(IntermediateType::Int {
+                size: ByteSized::B32,
+            }),
+            dimensions: vec![ArrayDimension {
+                lower: 1,
+                upper: 10,
+            }],
+        };
+        assert_eq!(arr.slot_count(), Ok(10));
+    }
+
+    #[test]
+    fn slot_count_when_array_of_structures_then_returns_elements_times_struct_slots() {
+        let s = IntermediateType::Structure {
+            fields: vec![
+                IntermediateStructField {
+                    name: Id::from("a"),
+                    field_type: IntermediateType::Int {
+                        size: ByteSized::B32,
+                    },
+                    offset: 0,
+                    var_type: None,
+                    has_default: false,
+                },
+                IntermediateStructField {
+                    name: Id::from("b"),
+                    field_type: IntermediateType::Int {
+                        size: ByteSized::B32,
+                    },
+                    offset: 4,
+                    var_type: None,
+                    has_default: false,
+                },
+            ],
+        };
+        let arr = IntermediateType::Array {
+            element_type: Box::new(s),
+            dimensions: vec![ArrayDimension { lower: 1, upper: 5 }],
+        };
+        // 5 elements * 2 slots each = 10
+        assert_eq!(arr.slot_count(), Ok(10));
+    }
+
+    #[test]
+    fn slot_count_when_reference_field_then_returns_1() {
+        let r = IntermediateType::Reference {
+            target_type: Box::new(IntermediateType::Int {
+                size: ByteSized::B32,
+            }),
+        };
+        assert_eq!(r.slot_count(), Ok(1));
+    }
+
+    #[test]
+    fn slot_count_when_string_field_then_returns_unsupported_field_type() {
+        let s = IntermediateType::String { max_len: Some(255) };
+        assert_eq!(s.slot_count(), Err(SlotCountError::UnsupportedFieldType));
+    }
+
+    #[test]
+    fn slot_count_when_nesting_exceeds_max_depth_then_returns_max_depth_exceeded() {
+        // Build 34 levels of nesting (exceeds MAX_NESTING_DEPTH of 32)
+        let mut t = IntermediateType::Bool;
+        for i in 0..34 {
+            t = IntermediateType::Structure {
+                fields: vec![IntermediateStructField {
+                    name: Id::from(&format!("f{}", i)),
+                    field_type: t,
+                    offset: 0,
+                    var_type: None,
+                    has_default: false,
+                }],
+            };
+        }
+        assert_eq!(t.slot_count(), Err(SlotCountError::MaxDepthExceeded));
+    }
+
+    #[test]
+    fn slot_count_when_total_overflows_u32_then_returns_overflow() {
+        // Create a multi-dimensional array that overflows u32
+        let arr = IntermediateType::Array {
+            element_type: Box::new(IntermediateType::Int {
+                size: ByteSized::B32,
+            }),
+            dimensions: vec![
+                ArrayDimension {
+                    lower: 1,
+                    upper: 100_000,
+                },
+                ArrayDimension {
+                    lower: 1,
+                    upper: 100_000,
+                },
+            ],
+        };
+        assert_eq!(arr.slot_count(), Err(SlotCountError::Overflow));
     }
 }

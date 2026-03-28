@@ -98,7 +98,7 @@ pub(crate) struct VarTypeInfo {
 }
 
 /// Shorthand for the operation type tuple used during expression compilation.
-type OpType = (OpWidth, Signedness);
+pub(crate) type OpType = (OpWidth, Signedness);
 
 /// The default operation type: 32-bit signed (used for pure-constant expressions).
 const DEFAULT_OP_TYPE: OpType = (OpWidth::W32, Signedness::Signed);
@@ -782,6 +782,9 @@ pub(crate) struct CompileContext {
     fb_instances: HashMap<Id, FbInstanceInfo>,
     /// Maps array variable identifiers to their metadata.
     pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
+    /// Maps structure variable identifiers to their metadata.
+    #[allow(dead_code)]
+    pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
     /// Next available byte offset in the data region.
     pub(crate) data_region_offset: u32,
     /// Maximum string capacity across all STRING variables (for temp buffer sizing).
@@ -804,6 +807,7 @@ impl CompileContext {
             string_vars: HashMap::new(),
             fb_instances: HashMap::new(),
             array_vars: HashMap::new(),
+            struct_vars: HashMap::new(),
             data_region_offset: 0,
             max_string_capacity: 0,
             num_temp_bufs: 0,
