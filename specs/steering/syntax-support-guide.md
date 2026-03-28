@@ -19,7 +19,7 @@ When adding new syntax, ensure every applicable item is complete:
 - [ ] **End-to-end execution test**: Parse → compile → run → verify variable values
 - [ ] **Non-standard gating**: If not standard IEC 61131-3, gate behind `--allow-x` flag
 - [ ] **LSP integration**: If a new `--allow-x` flag, add to LSP `extract_compiler_options`
-- [ ] **Documentation**: If a new `--allow-x` flag, update `docs/explanation/enabling-features.rst`, `docs/reference/compiler/ironplcc.rst`, and the flag table in this file
+- [ ] **Documentation**: If a new `--allow-x` flag, update `docs/explanation/enabling-dialects-and-features.rst`, `docs/reference/compiler/ironplcc.rst`, and the flag table in this file
 
 Not every syntax change requires all items. A new operator might not need new tokens. A token-level fix might not need codegen changes. Use judgment, but **always** include both round-trip and execution tests when the syntax produces executable code.
 
@@ -238,7 +238,7 @@ Use either the token demotion pattern, validation rule pattern, or analyzer-leve
 #### 6. Documentation
 
 Update these files to document the new flag:
-- `docs/explanation/enabling-features.rst` — add to the Vendor Extensions section
+- `docs/explanation/enabling-dialects-and-features.rst` — add to the Vendor Extensions section
 - `docs/reference/compiler/ironplcc.rst` — add to the Options section
 - Update the flag table in this file (syntax-support-guide.md)
 

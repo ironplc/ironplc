@@ -1,6 +1,6 @@
-=================
-Enabling Features
-=================
+==============================
+Enabling Dialects and Features
+==============================
 
 IronPLC aims to let you take code from another PLC environment and use it
 without changes. To support this, IronPLC uses **dialects** — named presets
@@ -22,12 +22,14 @@ Supported Dialects
    :doc:`LDATE </reference/language/data-types/ldate>`,
    :doc:`LTIME_OF_DAY </reference/language/data-types/ltime-of-day>`,
    :doc:`LDATE_AND_TIME </reference/language/data-types/ldate-and-time>`,
-   ``REF_TO``, ``REF``, and ``NULL``. No vendor extensions.
+   :doc:`REF_TO </reference/language/data-types/reference-types>`,
+   :doc:`REF </reference/language/data-types/reference-types>`, and
+   :doc:`NULL </reference/language/data-types/reference-types>`. No vendor extensions.
 
 **rusty**
    RuSTy-compatible dialect. Uses Edition 2 as a base (so Edition 3 type
-   names like ``LDT`` remain available as identifiers) and enables
-   ``REF_TO`` support plus all vendor extensions.
+   names like :doc:`LDT </reference/language/data-types/ldate-and-time>` remain available as identifiers) and enables
+   :doc:`REF_TO </reference/language/data-types/reference-types>` support plus all vendor extensions.
 
 Editions are additive — enabling a later edition includes all features from
 earlier editions.
