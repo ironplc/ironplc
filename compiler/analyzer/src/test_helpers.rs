@@ -70,3 +70,16 @@ pub fn parse_and_resolve_types_with_context(program: &str) -> (Library, Semantic
     let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
     resolve_types(&[&library], &ParseOptions::default()).unwrap()
 }
+
+/// Parses a program with custom options and resolves types, returning both library and context.
+/// Use this when testing dialect-specific behavior.
+#[cfg(test)]
+pub fn parse_and_resolve_types_with_options(
+    program: &str,
+    options: &ironplc_parser::options::ParseOptions,
+) -> (Library, SemanticContext) {
+    use ironplc_parser::parse_program;
+
+    let library = parse_program(program, &FileId::default(), options).unwrap();
+    resolve_types(&[&library], options).unwrap()
+}

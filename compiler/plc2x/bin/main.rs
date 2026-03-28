@@ -112,6 +112,11 @@ struct FileArgs {
     /// REF(real_var) into a REF_TO DWORD.
     #[arg(long)]
     allow_ref_type_punning: bool,
+
+    /// Allow integer literals (0 or 1) as BOOL variable initializers.
+    /// This is a vendor extension supported by CoDeSys, TwinCAT, and RuSTy.
+    #[arg(long)]
+    allow_int_to_bool_initializer: bool,
 }
 
 impl FileArgs {
@@ -127,6 +132,7 @@ impl FileArgs {
         options.allow_ref_to |= self.allow_ref_to;
         options.allow_ref_stack_variables |= self.allow_ref_stack_variables;
         options.allow_ref_type_punning |= self.allow_ref_type_punning;
+        options.allow_int_to_bool_initializer |= self.allow_int_to_bool_initializer;
         options
     }
 }

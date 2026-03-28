@@ -122,9 +122,12 @@ impl Visitor<Diagnostic> for RuleInitializerTypeCompat<'_> {
 
 #[cfg(test)]
 mod test {
-    use crate::test_helpers::parse_and_resolve_types_with_context;
+    use crate::test_helpers::{
+        parse_and_resolve_types_with_context, parse_and_resolve_types_with_options,
+    };
 
     use super::*;
+    use ironplc_parser::options::{Dialect, ParseOptions};
     use ironplc_problems::Problem;
 
     #[test]
@@ -303,6 +306,55 @@ END_VAR
 END_PROGRAM";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context);
+        assert!(result.is_err());
+
+        let errors = result.unwrap_err();
+        assert_eq!(1, errors.len());
+        assert_eq!(Problem::InitializerTypeMismatch.code(), errors[0].code);
+    }
+
+    #[test]
+    fn apply_when_bool_var_with_integer_one_and_rusty_dialect_then_ok() {
+        let program = "
+PROGRAM main
+VAR
+    x : BOOL := 1;
+END_VAR
+END_PROGRAM";
+
+        let options = ParseOptions::from_dialect(Dialect::Rusty);
+        let (library, context) = parse_and_resolve_types_with_options(program, &options);
+        let result = apply(&library, &context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_bool_var_with_integer_zero_and_rusty_dialect_then_ok() {
+        let program = "
+PROGRAM main
+VAR
+    x : BOOL := 0;
+END_VAR
+END_PROGRAM";
+
+        let options = ParseOptions::from_dialect(Dialect::Rusty);
+        let (library, context) = parse_and_resolve_types_with_options(program, &options);
+        let result = apply(&library, &context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_bool_var_with_integer_two_and_rusty_dialect_then_error() {
+        let program = "
+PROGRAM main
+VAR
+    x : BOOL := 2;
+END_VAR
+END_PROGRAM";
+
+        let options = ParseOptions::from_dialect(Dialect::Rusty);
+        let (library, context) = parse_and_resolve_types_with_options(program, &options);
         let result = apply(&library, &context);
         assert!(result.is_err());
 

@@ -24,10 +24,11 @@ use crate::{
     semantic_context::SemanticContext,
     symbol_environment::SymbolEnvironment,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
-    type_table, xform_named_to_positional_args, xform_resolve_constant_expressions,
-    xform_resolve_expr_types, xform_resolve_late_bound_expr_kind,
-    xform_resolve_late_bound_type_initializer, xform_resolve_symbol_and_function_environment,
-    xform_resolve_type_aliases, xform_resolve_type_decl_environment, xform_toposort_declarations,
+    type_table, xform_int_to_bool_initializer, xform_named_to_positional_args,
+    xform_resolve_constant_expressions, xform_resolve_expr_types,
+    xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
+    xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
+    xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
@@ -125,6 +126,19 @@ pub fn resolve_types(
     for xform in recoverable_xforms {
         let fallback = library.clone();
         match xform(library, &mut type_environment) {
+            Ok(result) => library = result,
+            Err(errs) => {
+                diagnostics.extend(errs);
+                library = fallback;
+            }
+        }
+    }
+
+    // Conditionally rewrite integer 0/1 initializers on BOOL variables to
+    // boolean literals. Runs after type environment is populated.
+    if options.allow_int_to_bool_initializer {
+        let fallback = library.clone();
+        match xform_int_to_bool_initializer::apply(library, &mut type_environment) {
             Ok(result) => library = result,
             Err(errs) => {
                 diagnostics.extend(errs);
