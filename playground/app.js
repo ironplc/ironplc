@@ -11,8 +11,8 @@ const status = document.getElementById("status");
 const variablesPanel = document.getElementById("variables-panel");
 const diagnosticsPanel = document.getElementById("diagnostics-panel");
 const examplesSelect = document.getElementById("examples-select");
-const editionSelect = document.getElementById("edition-select");
-const editionBadge = document.getElementById("edition-badge");
+const dialectSelect = document.getElementById("dialect-select");
+const dialectBadge = document.getElementById("dialect-badge");
 
 // --- Example programs ---
 
@@ -181,26 +181,25 @@ if (isEmbed) {
   intervalInput.disabled = true;
 }
 
-// Set edition from URL parameter (used by embed/Sphinx directives)
-if (params.has("edition")) {
-  const editionParam = params.get("edition");
-  if (editionParam === "2013") {
-    editionSelect.value = "2013";
-    editionBadge.textContent = "IEC 61131-3:2013";
-    editionBadge.classList.add("visible");
-  }
+// Set dialect from URL parameter (used by embed/Sphinx directives).
+// Also supports the legacy "edition" parameter for backwards compatibility.
+const dialectParam = params.get("dialect") || params.get("edition");
+if (dialectParam === "2013") {
+  dialectSelect.value = "2013";
+  dialectBadge.textContent = "IEC 61131-3:2013";
+  dialectBadge.classList.add("visible");
 }
 
-function getEdition() {
-  return editionSelect.value;
+function getDialect() {
+  return dialectSelect.value;
 }
 
-// Stop execution when edition changes (same as source change)
-editionSelect.addEventListener("change", () => {
+// Stop execution when dialect changes (same as source change)
+dialectSelect.addEventListener("change", () => {
   if (isRunning) {
     stopExecution();
     postCommand("reset");
-    status.textContent = "Edition changed \u2014 stopped. Click Start to recompile.";
+    status.textContent = "Dialect changed \u2014 stopped. Click Start to recompile.";
   }
 });
 
@@ -421,8 +420,8 @@ startBtn.addEventListener("click", async () => {
 
   status.textContent = "Compiling\u2026";
 
-  const edition = getEdition();
-  const loadMsg = await postCommand("load_program", { source, cycleTimeUs, edition });
+  const dialect = getDialect();
+  const loadMsg = await postCommand("load_program", { source, cycleTimeUs, dialect });
 
   if (loadMsg.type === "error") {
     status.textContent = loadMsg.error;
