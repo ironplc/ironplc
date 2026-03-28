@@ -1,3 +1,10 @@
+.. meta::
+   :description: IronPLC is an open-source IEC 61131-3 toolchain with a VS Code extension, command-line compiler, and browser-based playground for Structured Text programming.
+
+=======
+IronPLC
+=======
+
 .. image:: images/banner.svg
    :align: center
 
