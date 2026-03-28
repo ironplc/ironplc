@@ -296,35 +296,35 @@ END_PROGRAM
     await expect(page.locator('[data-testid="examples-select"]')).toBeHidden();
   });
 
-  test("edition_select_when_loaded_then_defaults_to_2003", async ({ page }) => {
-    const select = page.locator('[data-testid="edition-select"]');
+  test("dialect_select_when_loaded_then_defaults_to_2003", async ({ page }) => {
+    const select = page.locator('[data-testid="dialect-select"]');
     await expect(select).toBeVisible();
     await expect(select).toHaveValue("2003");
   });
 
-  test("edition_select_when_embed_mode_then_hidden", async ({ page }) => {
+  test("dialect_select_when_embed_mode_then_hidden", async ({ page }) => {
     await page.goto("/?embed=true");
     await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
       timeout: 15000,
     });
 
-    await expect(page.locator('[data-testid="edition-select"]')).toBeHidden();
+    await expect(page.locator('[data-testid="dialect-select"]')).toBeHidden();
   });
 
-  test("edition_badge_when_embed_with_edition_2013_then_shows_badge", async ({ page }) => {
-    await page.goto("/?embed=true&edition=2013");
+  test("dialect_badge_when_embed_with_dialect_2013_then_shows_badge", async ({ page }) => {
+    await page.goto("/?embed=true&dialect=2013");
     await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
       timeout: 15000,
     });
 
-    const badge = page.locator('[data-testid="edition-badge"]');
+    const badge = page.locator('[data-testid="dialect-badge"]');
     await expect(badge).toBeVisible();
     await expect(badge).toHaveText("IEC 61131-3:2013");
   });
 
-  test("start_when_edition_2013_and_ltime_program_then_runs", async ({ page }) => {
+  test("start_when_dialect_2013_and_ltime_program_then_runs", async ({ page }) => {
     const editor = page.locator('[data-testid="editor"]');
-    const select = page.locator('[data-testid="edition-select"]');
+    const select = page.locator('[data-testid="dialect-select"]');
 
     await select.selectOption("2013");
     await editor.fill(`PROGRAM main

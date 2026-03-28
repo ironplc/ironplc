@@ -105,7 +105,7 @@ main {
 }
 
 #examples-select,
-#edition-select {
+#dialect-select {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
@@ -116,11 +116,11 @@ main {
 }
 
 #examples-select:hover,
-#edition-select:hover {
+#dialect-select:hover {
   border-color: var(--accent);
 }
 
-.edition-badge {
+.dialect-badge {
   display: none;
   font-size: 0.75rem;
   color: var(--accent);
@@ -130,7 +130,7 @@ main {
   white-space: nowrap;
 }
 
-.edition-badge.visible {
+.dialect-badge.visible {
   display: inline-block;
 }
 
@@ -321,7 +321,7 @@ body.embed header,
 body.embed footer,
 body.embed #pause-btn,
 body.embed #examples-select,
-body.embed #edition-select {
+body.embed #dialect-select {
   display: none;
 }
 

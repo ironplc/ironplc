@@ -25,7 +25,7 @@ init()
   });
 
 self.onmessage = (e) => {
-  const { id, command, source, bytecodeBase64, scans, cycleTimeUs, edition } = e.data;
+  const { id, command, source, bytecodeBase64, scans, cycleTimeUs, dialect } = e.data;
 
   if (!ready) {
     self.postMessage({
@@ -40,16 +40,16 @@ self.onmessage = (e) => {
     let json;
     switch (command) {
       case "compile":
-        json = compile(source, edition || "");
+        json = compile(source, dialect || "");
         break;
       case "run":
         json = run(bytecodeBase64, scans);
         break;
       case "run_source":
-        json = run_source(source, scans, edition || "");
+        json = run_source(source, scans, dialect || "");
         break;
       case "load_program":
-        json = load_program(source, cycleTimeUs || 100000, edition || "");
+        json = load_program(source, cycleTimeUs || 100000, dialect || "");
         break;
       case "step":
         json = step(scans);
