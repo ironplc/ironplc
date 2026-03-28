@@ -157,6 +157,11 @@ define_compiler_options! {
     "--allow-ref-type-punning",
     [Rusty],
     allow_ref_type_punning,
+
+    "Allow integer literals (0/1) as BOOL variable initializers",
+    "--allow-int-to-bool-initializer",
+    [Rusty],
+    allow_int_to_bool_initializer,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -217,6 +222,7 @@ mod tests {
         assert!(!options.allow_ref_arithmetic);
         assert!(!options.allow_ref_stack_variables);
         assert!(!options.allow_ref_type_punning);
+        assert!(!options.allow_int_to_bool_initializer);
     }
 
     #[test]
@@ -234,6 +240,7 @@ mod tests {
         assert!(!options.allow_ref_arithmetic);
         assert!(!options.allow_ref_stack_variables);
         assert!(!options.allow_ref_type_punning);
+        assert!(!options.allow_int_to_bool_initializer);
     }
 
     #[test]
@@ -251,6 +258,7 @@ mod tests {
         assert!(options.allow_ref_arithmetic);
         assert!(options.allow_ref_stack_variables);
         assert!(options.allow_ref_type_punning);
+        assert!(options.allow_int_to_bool_initializer);
     }
 
     #[test]
@@ -263,7 +271,7 @@ mod tests {
 
     #[test]
     fn feature_descriptors_when_called_then_contains_all_vendor_flags() {
-        assert_eq!(CompilerOptions::FEATURE_DESCRIPTORS.len(), 10);
+        assert_eq!(CompilerOptions::FEATURE_DESCRIPTORS.len(), 11);
         assert_eq!(
             CompilerOptions::FEATURE_DESCRIPTORS[0].cli_flag,
             "--allow-c-style-comments"
@@ -277,7 +285,7 @@ mod tests {
             .filter(|f| f.dialects.contains(&Dialect::Rusty))
             .map(|f| f.cli_flag)
             .collect();
-        assert_eq!(rusty_features.len(), 10);
+        assert_eq!(rusty_features.len(), 11);
     }
 
     #[test]

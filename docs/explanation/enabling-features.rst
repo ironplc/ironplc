@@ -126,6 +126,12 @@ features — they never disable features that a dialect already includes.
    ``<=``, ``>=``) on ``REF_TO`` types. By default, only ``=`` and ``<>``
    are permitted on references.
 
+``--allow-int-to-bool-initializer``
+   Allow integer literals ``0`` and ``1`` as ``BOOL`` variable initializers
+   (e.g., ``debug : BOOL := 0;``). The compiler rewrites ``0`` to ``FALSE``
+   and ``1`` to ``TRUE``. This is a universal vendor extension supported by
+   CoDeSys, TwinCAT, RuSTy, and virtually every PLC runtime.
+
 Pass the flag when running :program:`ironplcc`:
 
 .. code-block:: shell
