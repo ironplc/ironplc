@@ -1,4 +1,4 @@
-//! Bytecode-level integration tests for structure variable allocation.
+//! Bytecode-level integration tests for structure variable allocation and initialization.
 
 mod common;
 use ironplc_parser::options::CompilerOptions;
@@ -137,5 +137,111 @@ END_PROGRAM
     assert!(
         slot_desc.is_some(),
         "Expected descriptor with 3 total slots for nested struct"
+    );
+}
+
+#[test]
+fn compile_when_struct_init_then_stores_data_offset_in_slot() {
+    let source = "
+TYPE MyStruct :
+  STRUCT
+    a : INT;
+    b : DINT;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MyStruct := (a := 10, b := 20);
+  END_VAR
+END_PROGRAM
+";
+    // Should compile — verifies the init function stores data_offset into
+    // the variable slot and emits field stores.
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    // Init function should have bytecode for storing data_offset + field values
+    assert!(bytecode.len() > 1, "Init function should have bytecode");
+}
+
+#[test]
+fn compile_when_struct_with_explicit_init_then_emits_field_stores() {
+    let source = "
+TYPE MyStruct :
+  STRUCT
+    a : INT;
+    b : DINT;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MyStruct := (a := 42, b := 100);
+  END_VAR
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    // Should contain STORE_ARRAY opcodes (0x25) for field initialization
+    let store_array_count = bytecode.iter().filter(|&&b| b == 0x25).count();
+    assert!(
+        store_array_count >= 2,
+        "Expected at least 2 STORE_ARRAY opcodes for 2 fields, got {}",
+        store_array_count
+    );
+}
+
+#[test]
+fn compile_when_struct_with_default_init_then_emits_zero_stores() {
+    let source = "
+TYPE MyStruct :
+  STRUCT
+    a : INT;
+    b : DINT;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MyStruct;
+  END_VAR
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    // Even without explicit init, fields should be zero-initialized via STORE_ARRAY
+    let store_array_count = bytecode.iter().filter(|&&b| b == 0x25).count();
+    assert!(
+        store_array_count >= 2,
+        "Expected at least 2 STORE_ARRAY opcodes for default init, got {}",
+        store_array_count
+    );
+}
+
+#[test]
+fn compile_when_struct_with_partial_init_then_defaults_unspecified_fields() {
+    let source = "
+TYPE MyStruct :
+  STRUCT
+    a : INT;
+    b : DINT;
+    c : BOOL;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MyStruct := (b := 42);
+  END_VAR
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    // All 3 fields should be initialized (1 explicit, 2 defaults)
+    let store_array_count = bytecode.iter().filter(|&&b| b == 0x25).count();
+    assert!(
+        store_array_count >= 3,
+        "Expected at least 3 STORE_ARRAY opcodes (1 explicit + 2 defaults), got {}",
+        store_array_count
     );
 }

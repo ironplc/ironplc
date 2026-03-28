@@ -1237,6 +1237,39 @@ fn emit_initial_values(
                     }
                     emitter.emit_store_var_i64(var_index);
                 }
+                InitialValueAssignmentKind::Structure(struct_init) => {
+                    if let Some(struct_info) = ctx.struct_vars.get(id) {
+                        // Extract needed values before mutable borrow of ctx.
+                        let data_offset = struct_info.data_offset;
+                        let var_index = struct_info.var_index;
+                        let desc_index = struct_info.desc_index;
+                        let fields: Vec<_> = struct_info
+                            .fields
+                            .iter()
+                            .map(|f| crate::compile_struct::FieldInitInfo {
+                                name: f.name.clone(),
+                                slot_offset: f.slot_offset,
+                                field_type: f.field_type.clone(),
+                                op_type: f.op_type,
+                            })
+                            .collect();
+
+                        // Store data_offset into the variable slot
+                        let offset_const = ctx.add_i32_constant(data_offset as i32);
+                        emitter.emit_load_const_i32(offset_const);
+                        emitter.emit_store_var_i32(var_index);
+
+                        // Initialize each field
+                        crate::compile_struct::initialize_struct_fields(
+                            emitter,
+                            ctx,
+                            var_index,
+                            desc_index,
+                            &fields,
+                            &struct_init.elements_init,
+                        )?;
+                    }
+                }
                 // Other initializer kinds (EnumeratedType, etc.)
                 // do not yet support initial values in codegen.
                 _ => {}
@@ -1341,7 +1374,7 @@ fn emit_function_local_prologue(
 }
 
 /// Emits a LOAD_CONST instruction that pushes a zero value of the given type.
-fn emit_zero_const(emitter: &mut Emitter, ctx: &mut CompileContext, op_type: OpType) {
+pub(crate) fn emit_zero_const(emitter: &mut Emitter, ctx: &mut CompileContext, op_type: OpType) {
     match op_type.0 {
         OpWidth::W32 => {
             let pool_index = ctx.add_i32_constant(0);
@@ -3682,7 +3715,7 @@ fn compile_shift_rotate(
 }
 
 /// Compiles a constant literal, pushing it onto the stack.
-fn compile_constant(
+pub(crate) fn compile_constant(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     constant: &ConstantKind,
@@ -4216,7 +4249,7 @@ fn signed_integer_to_i64(si: &SignedInteger) -> Result<i64, Diagnostic> {
 // Each helper selects the correct opcode based on the operation type
 // (width and/or signedness).
 
-fn emit_truncation(emitter: &mut Emitter, type_info: VarTypeInfo) {
+pub(crate) fn emit_truncation(emitter: &mut Emitter, type_info: VarTypeInfo) {
     match (
         type_info.op_width,
         type_info.signedness,
