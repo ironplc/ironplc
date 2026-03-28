@@ -1,3 +1,6 @@
+.. meta::
+   :description: Introduction to Structured Text (ST), the text-based IEC 61131-3 programming language for PLCs. Learn the syntax, data types, and control flow.
+
 =======================
 Structured Text Basics
 =======================
