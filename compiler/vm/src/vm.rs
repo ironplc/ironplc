@@ -1620,9 +1620,7 @@ fn execute(
                         let user_fb = container
                             .type_section
                             .as_ref()
-                            .and_then(|ts| {
-                                ts.user_fb_types.iter().find(|d| d.type_id == type_id)
-                            })
+                            .and_then(|ts| ts.user_fb_types.iter().find(|d| d.type_id == type_id))
                             .ok_or(Trap::InvalidFbTypeId(type_id))?;
 
                         let func_id = user_fb.function_id;
