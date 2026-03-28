@@ -382,7 +382,7 @@ pub(crate) fn allocate_struct_variable(
     })?;
 
     // Enforce slot limit (matches existing array limit for i32 flat-index safety)
-    if total_slots > 32768 {
+    if total_slots > super::compile::MAX_DATA_REGION_SLOTS {
         return Err(Diagnostic::problem(
             Problem::NotImplemented,
             Label::span(span.clone(), "Structure exceeds maximum 32768 slots"),

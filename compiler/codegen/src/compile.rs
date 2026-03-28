@@ -103,6 +103,10 @@ pub(crate) type OpType = (OpWidth, Signedness);
 /// The default operation type: 32-bit signed (used for pure-constant expressions).
 const DEFAULT_OP_TYPE: OpType = (OpWidth::W32, Signedness::Signed);
 
+/// Maximum number of data-region slots (or array elements) that a single variable
+/// may occupy. Keeps flat-index arithmetic within i32 range.
+pub(crate) const MAX_DATA_REGION_SLOTS: u32 = 32768;
+
 /// A constant in the pool: integer, float, or string.
 enum PoolConstant {
     I32(i32),
