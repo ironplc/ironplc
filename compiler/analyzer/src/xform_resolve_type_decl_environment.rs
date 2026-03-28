@@ -11,11 +11,11 @@
 //!
 //! The transformation succeeds when all data type declarations
 //! resolve to a declared type.
-use crate::intermediate_type::IntermediateType;
+use crate::intermediate_type::{FunctionBlockVarType, IntermediateStructField, IntermediateType};
 use crate::intermediates::*;
 use crate::type_environment::TypeEnvironment;
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::Located;
+use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_problems::Problem;
@@ -353,6 +353,80 @@ impl Fold<Diagnostic> for TypeEnvironment {
         Ok(node)
     }
 
+    fn fold_function_block_declaration(
+        &mut self,
+        node: FunctionBlockDeclaration,
+    ) -> Result<FunctionBlockDeclaration, Diagnostic> {
+        // Register the user-defined function block in the type environment
+        // so that variable declarations like `myFb : MY_FB` resolve to
+        // IntermediateType::FunctionBlock, just like stdlib FBs.
+        let mut fields = Vec::new();
+        let mut current_offset = 0u32;
+
+        for decl in &node.variables {
+            let var_type = match decl.var_type {
+                VariableType::Input => Some(FunctionBlockVarType::Input),
+                VariableType::Output => Some(FunctionBlockVarType::Output),
+                VariableType::InOut => Some(FunctionBlockVarType::InOut),
+                VariableType::Var => Some(FunctionBlockVarType::Internal),
+                _ => None,
+            };
+            let var_type = match var_type {
+                Some(vt) => vt,
+                None => continue,
+            };
+
+            if let Some(id) = decl.identifier.symbolic_id() {
+                let field_type = match &decl.initializer {
+                    InitialValueAssignmentKind::Simple(simple) => self
+                        .get(&simple.type_name)
+                        .map(|attrs| attrs.representation.clone())
+                        .unwrap_or(IntermediateType::Int {
+                            size: crate::intermediate_type::ByteSized::B32,
+                        }),
+                    InitialValueAssignmentKind::FunctionBlock(fb_init) => self
+                        .get(&fb_init.type_name)
+                        .map(|attrs| attrs.representation.clone())
+                        .unwrap_or(IntermediateType::Int {
+                            size: crate::intermediate_type::ByteSized::B32,
+                        }),
+                    _ => IntermediateType::Int {
+                        size: crate::intermediate_type::ByteSized::B32,
+                    },
+                };
+
+                let alignment = field_type.alignment_bytes() as u32;
+                let aligned_offset = if alignment == 0 {
+                    current_offset
+                } else {
+                    current_offset.div_ceil(alignment) * alignment
+                };
+                let size = field_type.size_in_bytes().unwrap_or(0);
+
+                fields.push(IntermediateStructField {
+                    name: Id::from(id.to_string().as_str()),
+                    field_type,
+                    offset: aligned_offset,
+                    var_type: Some(var_type),
+                    has_default: false,
+                });
+
+                current_offset = aligned_offset + size;
+            }
+        }
+
+        let attrs = crate::type_attributes::TypeAttributes::new(
+            node.name.span(),
+            IntermediateType::FunctionBlock {
+                name: node.name.name.to_string(),
+                fields,
+            },
+        );
+        self.insert_type(&node.name, attrs)?;
+
+        Ok(node)
+    }
+
     fn fold_data_type_declaration_kind(
         &mut self,
         node: DataTypeDeclarationKind,
@@ -395,6 +469,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
             LibraryElementKind::DataTypeDeclaration(kind) => {
                 let kind = self.fold_data_type_declaration_kind(kind)?;
                 Ok(LibraryElementKind::DataTypeDeclaration(kind))
+            }
+            LibraryElementKind::FunctionBlockDeclaration(fb) => {
+                let fb = self.fold_function_block_declaration(fb)?;
+                Ok(LibraryElementKind::FunctionBlockDeclaration(fb))
             }
             _ => node.recurse_fold(self),
         }

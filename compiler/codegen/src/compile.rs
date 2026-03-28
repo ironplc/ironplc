@@ -44,7 +44,9 @@ use std::collections::HashMap;
 use ironplc_container::debug_section::{
     function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry,
 };
-use ironplc_container::{opcode, Container, ContainerBuilder, UserFbDescriptor, STRING_HEADER_BYTES};
+use ironplc_container::{
+    opcode, Container, ContainerBuilder, UserFbDescriptor, STRING_HEADER_BYTES,
+};
 use ironplc_dsl::common::{
     Boolean, ConstantKind, ElementaryTypeName, FunctionBlockBodyKind, FunctionBlockDeclaration,
     FunctionDeclaration, FunctionReturnType, GenericTypeName, InitialValueAssignmentKind,
@@ -335,13 +337,8 @@ fn compile_program_with_functions(
         // Update the var_offset in the registered type info.
         ctx.user_fb_types.get_mut(&fb_name).unwrap().var_offset = var_offset;
 
-        let compiled = compile_user_function_block(
-            fb_decl,
-            fb_func_id,
-            var_offset,
-            &mut ctx,
-            types,
-        )?;
+        let compiled =
+            compile_user_function_block(fb_decl, fb_func_id, var_offset, &mut ctx, types)?;
         var_offset += compiled.num_locals;
         compiled_fb_bodies.push(compiled);
     }

@@ -53,11 +53,19 @@ END_PROGRAM
     parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
         // Round 1: total = 0 + 10 = 10
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(1).unwrap(), 10, "round 1: sum should be 10");
+        assert_eq!(
+            vm.read_variable(1).unwrap(),
+            10,
+            "round 1: sum should be 10"
+        );
 
         // Round 2: total = 10 + 10 = 20 (state persists in data region)
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(1).unwrap(), 20, "round 2: sum should be 20");
+        assert_eq!(
+            vm.read_variable(1).unwrap(),
+            20,
+            "round 2: sum should be 20"
+        );
     });
 }
 
