@@ -273,7 +273,7 @@ Some IEC 61131-3 features require the user to enable a specific edition of the s
 2. **Link to the edition support matrix** — in the feature's detail table, use `:doc:\`Edition 3 </reference/language/edition-support>\`` in the Support row instead of hardcoding the flag name.
 3. **Update the matrix** — add the feature to `docs/reference/language/edition-support.rst`.
 
-The centralized explanation page at `docs/explanation/enabling-features.rst` covers how to enable editions in both the CLI and VS Code. Individual feature pages link there rather than duplicating instructions.
+The centralized explanation page at `docs/explanation/enabling-dialects-and-features.rst` covers how to enable editions in both the CLI and VS Code. Individual feature pages link there rather than duplicating instructions.
 
 ### Problem Documentation Format
 Each problem code must have a corresponding `.rst` file in `docs/compiler/problems/` with:
