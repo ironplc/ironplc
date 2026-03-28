@@ -783,7 +783,6 @@ pub(crate) struct CompileContext {
     /// Maps array variable identifiers to their metadata.
     pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
     /// Maps structure variable identifiers to their metadata.
-    #[allow(dead_code)]
     pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
     /// Next available byte offset in the data region.
     pub(crate) data_region_offset: u32,
@@ -1040,6 +1039,39 @@ fn assign_variables(
                         },
                     );
                     (iec_type_tag::OTHER, "REF_TO".into())
+                }
+                InitialValueAssignmentKind::Structure(struct_init) => {
+                    crate::compile_struct::allocate_struct_variable(
+                        ctx,
+                        builder,
+                        types,
+                        &struct_init.type_name,
+                        id,
+                        index,
+                        &decl.identifier.span(),
+                    )?;
+                    let type_name_str = struct_init.type_name.to_string().to_uppercase();
+                    (iec_type_tag::OTHER, type_name_str)
+                }
+                InitialValueAssignmentKind::LateResolvedType(type_name) => {
+                    // Check if this late-resolved type is a structure
+                    if types.resolve_struct_type(type_name).is_some() {
+                        crate::compile_struct::allocate_struct_variable(
+                            ctx,
+                            builder,
+                            types,
+                            type_name,
+                            id,
+                            index,
+                            &decl.identifier.span(),
+                        )?;
+                        let type_name_str = type_name.to_string().to_uppercase();
+                        (iec_type_tag::OTHER, type_name_str)
+                    } else {
+                        // Not a structure — fall through to default handling.
+                        // Future work may add FB, array-of-struct, etc. dispatch here.
+                        (iec_type_tag::OTHER, String::new())
+                    }
                 }
                 // Other initializer kinds (EnumeratedType, etc.)
                 // do not yet have type info tracked in codegen.
