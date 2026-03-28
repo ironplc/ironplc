@@ -1,3 +1,6 @@
+.. meta::
+   :description: Learn what IEC 61131-3 is, how PLCs work, and why Structured Text matters for industrial automation programming.
+
 ======================
 What is IEC 61131-3?
 ======================

@@ -19,7 +19,9 @@ nitpicky = True
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    "sphinx_design"
+    "sphinx_design",
+    "sphinx_sitemap",
+    "sphinxext.opengraph",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -37,11 +39,14 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'includes']
 # a list of builtin themes.
 #
 html_theme = 'furo'
+html_baseurl = "https://www.ironplc.com/"
+html_title = "IronPLC - Open-Source IEC 61131-3 Toolchain"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
+html_extra_path = ['robots.txt']
 html_css_files = ["overrides.css"]
 html_js_files = ["version-check.js"]
 
@@ -106,3 +111,13 @@ extlinks = {'download_artifact': ('https://github.com/ironplc/ironplc/releases/d
 extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks", "sphinx.ext.autosectionlabel", "sphinx_copybutton", "ironplc_problemcode", "ironplc_playground", "ironplc_flags"]
 
 autosectionlabel_prefix_document = True
+
+# -- Open Graph configuration --------------------------------------------------
+
+ogp_site_url = "https://www.ironplc.com/"
+ogp_site_name = "IronPLC"
+ogp_description_length = 200
+
+# -- Sitemap configuration -----------------------------------------------------
+
+sitemap_url_scheme = "{link}"
