@@ -43,14 +43,14 @@ thread_local! {
     static SESSION: RefCell<Option<VmSession>> = const { RefCell::new(None) };
 }
 
-/// Build [`CompilerOptions`] from an edition string.
+/// Build [`CompilerOptions`] from a dialect string.
 ///
 /// `"2013"` selects the IEC 61131-3 Edition 3 dialect.
 /// Any other value (including empty) uses the RuSTy dialect, which enables
 /// all vendor extensions so playground users can explore non-standard
 /// features without toggling flags.
-fn compiler_options_from_edition(edition: &str) -> CompilerOptions {
-    if edition == "2013" {
+fn compiler_options_from_dialect(dialect: &str) -> CompilerOptions {
+    if dialect == "2013" {
         CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
     } else {
         CompilerOptions::from_dialect(Dialect::Rusty)
@@ -286,16 +286,16 @@ struct StepResult {
 /// { "ok": false, "diagnostics": [{"code": "...", "message": "...", "start": N, "end": N}] }
 /// ```
 #[wasm_bindgen]
-pub fn compile(source: &str, edition: &str) -> String {
-    let result = compile_inner(source, edition);
+pub fn compile(source: &str, dialect: &str) -> String {
+    let result = compile_inner(source, dialect);
     serde_json::to_string(&result).unwrap_or_else(|e| {
         format!(r#"{{"ok":false,"diagnostics":[{{"code":"INTERNAL","message":"Serialization error: {e}","label":"","start":0,"end":0}}]}}"#)
     })
 }
 
-fn compile_inner(source: &str, edition: &str) -> CompileResult {
+fn compile_inner(source: &str, dialect: &str) -> CompileResult {
     let file_type = FileType::from_content(source);
-    let options = compiler_options_from_edition(edition);
+    let options = compiler_options_from_dialect(dialect);
     let library = match parse_source(file_type, source, &FileId::default(), &options) {
         Ok(lib) => lib,
         Err(diag) => {
@@ -505,15 +505,15 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
 ///
 /// Returns a JSON string with both compilation diagnostics and execution results.
 #[wasm_bindgen]
-pub fn run_source(source: &str, scans: u32, edition: &str) -> String {
-    let result = run_source_inner(source, scans, edition);
+pub fn run_source(source: &str, scans: u32, dialect: &str) -> String {
+    let result = run_source_inner(source, scans, dialect);
     serde_json::to_string(&result).unwrap_or_else(|e| {
         format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"scans_completed":0,"error":"Serialization error: {e}"}}"#)
     })
 }
 
-fn run_source_inner(source: &str, scans: u32, edition: &str) -> RunSourceResult {
-    let compile_result = compile_inner(source, edition);
+fn run_source_inner(source: &str, scans: u32, dialect: &str) -> RunSourceResult {
+    let compile_result = compile_inner(source, dialect);
     if !compile_result.ok {
         return RunSourceResult {
             ok: false,
@@ -598,15 +598,15 @@ fn read_all_variables_faulted(
 /// The session stores compiled bytecode and a variable buffer that persists
 /// across calls to [`step`]. Returns a JSON `StepResult` with `total_scans: 0`.
 #[wasm_bindgen]
-pub fn load_program(source: &str, cycle_time_us: u32, edition: &str) -> String {
-    let result = load_program_inner(source, cycle_time_us, edition);
+pub fn load_program(source: &str, cycle_time_us: u32, dialect: &str) -> String {
+    let result = load_program_inner(source, cycle_time_us, dialect);
     serde_json::to_string(&result).unwrap_or_else(|e| {
         format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":"Serialization error: {e}"}}"#)
     })
 }
 
-fn load_program_inner(source: &str, cycle_time_us: u32, edition: &str) -> StepResult {
-    let compile_result = compile_inner(source, edition);
+fn load_program_inner(source: &str, cycle_time_us: u32, dialect: &str) -> StepResult {
+    let compile_result = compile_inner(source, dialect);
     if !compile_result.ok {
         return StepResult {
             ok: false,
@@ -1398,7 +1398,7 @@ END_PROGRAM
     }
 
     #[test]
-    fn compile_when_edition_2013_then_accepts_ltime() {
+    fn compile_when_dialect_2013_then_accepts_ltime() {
         let source = "
 PROGRAM main
   VAR
@@ -1417,7 +1417,7 @@ END_PROGRAM
     }
 
     #[test]
-    fn compile_when_default_edition_then_rejects_ltime_as_type() {
+    fn compile_when_default_dialect_then_rejects_ltime_as_type() {
         let source = "
 PROGRAM main
   VAR
@@ -1432,7 +1432,7 @@ END_PROGRAM
     }
 
     #[test]
-    fn load_program_when_edition_2013_then_runs_ltime_program() {
+    fn load_program_when_dialect_2013_then_runs_ltime_program() {
         reset_session();
         let source = "
 PROGRAM main

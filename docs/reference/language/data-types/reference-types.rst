@@ -72,7 +72,7 @@ Example
 -------
 
 .. playground::
-   :edition: 2013
+   :dialect: 2013
 
    PROGRAM main
      VAR
