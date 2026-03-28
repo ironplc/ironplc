@@ -142,6 +142,11 @@ jobs:
         run: just publish ironplc-vscode-extension.vsix
         env:
           VSCE_PAT: ${{ secrets.VS_MARKETPLACE_TOKEN }}
+      - name: Publish VS Code Extension to Open VSX
+        if: ${{ !inputs.dryrun }}
+        run: just publish-openvsx ironplc-vscode-extension.vsix
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
       # Save artifacts
       - name: Publish GitHub Release
