@@ -133,6 +133,12 @@ Options
    Edition 3. This is a vendor extension useful for libraries that use
    references but also use Edition 3 type names as identifiers.
 
+``--allow-int-to-bool-initializer``
+   Allow integer literals ``0`` and ``1`` as ``BOOL`` variable initializers,
+   treating ``0`` as ``FALSE`` and ``1`` as ``TRUE``. This is a vendor
+   extension supported by CoDeSys, TwinCAT, RuSTy, and virtually every
+   PLC runtime.
+
 Examples
 ========
 

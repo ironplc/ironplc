@@ -134,16 +134,14 @@ pub fn resolve_types(
         }
     }
 
-    // Conditionally rewrite integer 0/1 initializers on BOOL variables to
-    // boolean literals. Runs after type environment is populated.
-    if options.allow_int_to_bool_initializer {
-        let fallback = library.clone();
-        match xform_int_to_bool_initializer::apply(library, &mut type_environment) {
-            Ok(result) => library = result,
-            Err(errs) => {
-                diagnostics.extend(errs);
-                library = fallback;
-            }
+    // Rewrite integer 0/1 initializers on BOOL variables to boolean literals.
+    // Short-circuits internally when allow_int_to_bool_initializer is false.
+    let fallback = library.clone();
+    match xform_int_to_bool_initializer::apply(library, &mut type_environment, options) {
+        Ok(result) => library = result,
+        Err(errs) => {
+            diagnostics.extend(errs);
+            library = fallback;
         }
     }
 

@@ -24,6 +24,7 @@
 use ironplc_dsl::common::*;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
+use ironplc_parser::options::ParseOptions;
 
 use crate::intermediate_type::IntermediateType;
 use crate::type_environment::TypeEnvironment;
@@ -31,7 +32,11 @@ use crate::type_environment::TypeEnvironment;
 pub fn apply(
     lib: Library,
     type_environment: &mut TypeEnvironment,
+    options: &ParseOptions,
 ) -> Result<Library, Vec<Diagnostic>> {
+    if !options.allow_int_to_bool_initializer {
+        return Ok(lib);
+    }
     let mut folder = IntToBoolFolder { type_environment };
     folder.fold_library(lib).map_err(|e| vec![e])
 }
@@ -85,10 +90,12 @@ impl Fold<Diagnostic> for IntToBoolFolder<'_> {
 mod tests {
     use super::*;
     use crate::test_helpers::parse_and_resolve_types_with_context;
+    use ironplc_parser::options::{Dialect, ParseOptions};
 
     fn apply_xform(program: &str) -> Library {
         let (library, mut context) = parse_and_resolve_types_with_context(program);
-        apply(library, context.types_mut()).unwrap()
+        let options = ParseOptions::from_dialect(Dialect::Rusty);
+        apply(library, context.types_mut(), &options).unwrap()
     }
 
     fn get_first_var_initializer(library: &Library) -> ConstantKind {

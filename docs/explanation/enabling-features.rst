@@ -120,6 +120,12 @@ features — they never disable features that a dialect already includes.
    Edition 3. This is useful for libraries that use references but also use
    Edition 3 type names (like ``LDT`` or ``LTIME``) as identifiers.
 
+``--allow-int-to-bool-initializer``
+   Allow integer literals ``0`` and ``1`` as ``BOOL`` variable initializers
+   (e.g., ``debug : BOOL := 0;``). The compiler rewrites ``0`` to ``FALSE``
+   and ``1`` to ``TRUE``. This is a universal vendor extension supported by
+   CoDeSys, TwinCAT, RuSTy, and virtually every PLC runtime.
+
 Pass the flag when running :program:`ironplcc`:
 
 .. code-block:: shell
