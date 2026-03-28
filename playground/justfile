@@ -11,7 +11,7 @@ compile:
   wasm-pack build ../compiler/playground --target web --out-dir ../../playground/_build/pkg --no-typescript
   cp node_modules/uplot/dist/uPlot.esm.js _build/
   cp node_modules/uplot/dist/uPlot.min.css _build/
-  cp index.html app.js worker.js style.css _build/
+  cp *.html *.js *.css *.txt *.xml _build/
 
 # Build everything (CI entry point)
 ci: setup compile

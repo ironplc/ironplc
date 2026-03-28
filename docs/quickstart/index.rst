@@ -1,3 +1,6 @@
+.. meta::
+   :description: Get started with IronPLC: install the VS Code extension, write your first IEC 61131-3 Structured Text program, and compile it.
+
 ====================
 Quick start tutorial
 ====================
