@@ -34,4 +34,4 @@ To fix this error, enable IEC 61131-3:2013 support:
 * **VS Code:** Set :code:`ironplc.dialect` to :code:`iec61131-3-ed3` in your
   extension settings. See :doc:`/reference/editor/settings` for details.
 
-See :doc:`/explanation/enabling-features` for more about standard editions.
+See :doc:`/explanation/enabling-dialects-and-features` for more about standard editions.
