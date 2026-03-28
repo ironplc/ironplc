@@ -1615,7 +1615,67 @@ fn execute(
                         let slice = &mut data_region[instance_start..instance_end];
                         crate::intrinsic::f_trig(slice)?;
                     }
-                    _ => return Err(Trap::InvalidFbTypeId(type_id)),
+                    _ => {
+                        // User-defined FB: look up in the container's user FB table.
+                        let user_fb = container
+                            .type_section
+                            .as_ref()
+                            .and_then(|ts| ts.user_fb_types.iter().find(|d| d.type_id == type_id))
+                            .ok_or(Trap::InvalidFbTypeId(type_id))?;
+
+                        let func_id = user_fb.function_id;
+                        let var_off = user_fb.var_offset;
+                        let num_fields = user_fb.num_fields as usize;
+
+                        let func = container
+                            .code
+                            .get_function(func_id)
+                            .ok_or(Trap::InvalidFunctionId(func_id))?;
+                        let func_bytecode = container
+                            .code
+                            .get_function_bytecode(func_id)
+                            .ok_or(Trap::InvalidFunctionId(func_id))?;
+
+                        // Copy-in: data region fields -> variable table slots.
+                        for i in 0..num_fields {
+                            let offset = instance_start + i * 8;
+                            if offset + 8 > data_region.len() {
+                                return Err(Trap::DataRegionOutOfBounds(offset as u32));
+                            }
+                            let mut buf = [0u8; 8];
+                            buf.copy_from_slice(&data_region[offset..offset + 8]);
+                            variables.store(
+                                var_off + i as u16,
+                                Slot::from_i64(i64::from_le_bytes(buf)),
+                            )?;
+                        }
+
+                        // Execute the FB body.
+                        let func_scope = VariableScope {
+                            shared_globals_size: scope.shared_globals_size,
+                            instance_offset: var_off,
+                            instance_count: func.num_locals,
+                        };
+                        execute(
+                            func_bytecode,
+                            container,
+                            stack,
+                            variables,
+                            data_region,
+                            temp_buf,
+                            max_temp_buf_bytes,
+                            &func_scope,
+                            current_time_us,
+                        )?;
+
+                        // Copy-out: variable table slots -> data region fields.
+                        for i in 0..num_fields {
+                            let offset = instance_start + i * 8;
+                            let val = variables.load(var_off + i as u16)?;
+                            data_region[offset..offset + 8]
+                                .copy_from_slice(&val.as_i64().to_le_bytes());
+                        }
+                    }
                 }
             }
             // --- Array opcodes ---
