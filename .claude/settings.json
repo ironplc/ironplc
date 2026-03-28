@@ -11,6 +11,10 @@
           {
             "type": "command",
             "command": "which cargo-llvm-cov >/dev/null 2>&1 || (echo 'Installing cargo-llvm-cov...' && cargo install cargo-llvm-cov 2>/dev/null) || echo 'Warning: could not install cargo-llvm-cov.'"
+          },
+          {
+            "type": "command",
+            "command": "which sphinx-build >/dev/null 2>&1 || (echo 'Installing Sphinx and extensions...' && pip3 install --break-system-packages sphinx furo sphinx-inline-tabs sphinx-copybutton pytz sphinx-design 2>/dev/null) || echo 'Warning: could not install Sphinx. Run docs setup manually with: cd docs && just setup'"
           }
         ]
       }
