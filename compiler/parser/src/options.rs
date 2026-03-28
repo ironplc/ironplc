@@ -144,9 +144,9 @@ define_parse_options! {
     allow_ref_to,
 
     "Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types",
-    "--allow-pointer-arithmetic",
+    "--allow-ref-arithmetic",
     [Rusty],
-    allow_pointer_arithmetic,
+    allow_ref_arithmetic,
 
     "Allow REF() on stack-allocated variables (VAR_TEMP, FUNCTION VAR_INPUT/VAR_OUTPUT)",
     "--allow-ref-stack-variables",
@@ -214,7 +214,7 @@ mod tests {
         assert!(!options.allow_empty_var_blocks);
         assert!(!options.allow_time_as_function_name);
         assert!(!options.allow_ref_to);
-        assert!(!options.allow_pointer_arithmetic);
+        assert!(!options.allow_ref_arithmetic);
         assert!(!options.allow_ref_stack_variables);
         assert!(!options.allow_ref_type_punning);
     }
@@ -231,7 +231,7 @@ mod tests {
         assert!(!options.allow_empty_var_blocks);
         assert!(!options.allow_time_as_function_name);
         assert!(!options.allow_ref_to);
-        assert!(!options.allow_pointer_arithmetic);
+        assert!(!options.allow_ref_arithmetic);
         assert!(!options.allow_ref_stack_variables);
         assert!(!options.allow_ref_type_punning);
     }
@@ -248,7 +248,7 @@ mod tests {
         assert!(options.allow_empty_var_blocks);
         assert!(options.allow_time_as_function_name);
         assert!(options.allow_ref_to);
-        assert!(options.allow_pointer_arithmetic);
+        assert!(options.allow_ref_arithmetic);
         assert!(options.allow_ref_stack_variables);
         assert!(options.allow_ref_type_punning);
     }

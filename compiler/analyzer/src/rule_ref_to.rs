@@ -25,7 +25,7 @@ pub fn apply(lib: &Library, context: &SemanticContext, options: &ParseOptions) -
         var_types: HashMap::new(),
         var_classes: HashMap::new(),
         pou_kind: PouKind::Program,
-        allow_pointer_arithmetic: options.allow_pointer_arithmetic,
+        allow_ref_arithmetic: options.allow_ref_arithmetic,
         diagnostics: Vec::new(),
         allow_ref_stack_variables: options.allow_ref_stack_variables,
         allow_ref_type_punning: options.allow_ref_type_punning,
@@ -54,7 +54,7 @@ struct RuleRefTo<'a> {
     /// The kind of POU currently being visited.
     pou_kind: PouKind,
     /// When true, allow arithmetic and ordering comparisons on REF_TO types.
-    allow_pointer_arithmetic: bool,
+    allow_ref_arithmetic: bool,
     diagnostics: Vec<Diagnostic>,
     /// When true, suppress P2029 (REF of stack-allocated variables).
     allow_ref_stack_variables: bool,
@@ -212,7 +212,7 @@ impl RuleRefTo<'_> {
 
     /// P2033: No arithmetic on reference types
     fn check_binary_op(&mut self, expr: &BinaryExpr) {
-        if self.allow_pointer_arithmetic {
+        if self.allow_ref_arithmetic {
             return;
         }
         let left_ref = self.is_expr_reference(&expr.left);
@@ -245,7 +245,7 @@ impl RuleRefTo<'_> {
                 // Equality and inequality are always allowed on references
             }
             CompareOp::Lt | CompareOp::Gt | CompareOp::LtEq | CompareOp::GtEq => {
-                if self.allow_pointer_arithmetic {
+                if self.allow_ref_arithmetic {
                     return;
                 }
                 let span = if left_ref {
@@ -412,10 +412,10 @@ mod tests {
         }
     }
 
-    fn pointer_arithmetic_options() -> ParseOptions {
+    fn ref_arithmetic_options() -> ParseOptions {
         ParseOptions {
             allow_iec_61131_3_2013: true,
-            allow_pointer_arithmetic: true,
+            allow_ref_arithmetic: true,
             ..ParseOptions::default()
         }
     }
@@ -694,9 +694,9 @@ END_PROGRAM",
         );
     }
 
-    // --allow-pointer-arithmetic tests: negative (flag not set)
+    // --allow-ref-arithmetic tests: negative (flag not set)
     #[test]
-    fn arithmetic_when_pointer_arithmetic_not_allowed_then_error() {
+    fn arithmetic_when_ref_arithmetic_not_allowed_then_error() {
         let result = parse_with_options(
             "PROGRAM Main
 VAR
@@ -712,7 +712,7 @@ END_PROGRAM",
     }
 
     #[test]
-    fn compare_when_ordering_without_pointer_arithmetic_then_error() {
+    fn compare_when_ordering_without_ref_arithmetic_then_error() {
         let result = parse_with_options(
             "PROGRAM Main
 VAR
@@ -728,9 +728,9 @@ END_PROGRAM",
         assert!(result.is_err(), "Expected error but got OK");
     }
 
-    // --allow-pointer-arithmetic tests: positive (flag set)
+    // --allow-ref-arithmetic tests: positive (flag set)
     #[test]
-    fn arithmetic_when_pointer_arithmetic_allowed_then_ok() {
+    fn arithmetic_when_ref_arithmetic_allowed_then_ok() {
         let result = parse_with_options(
             "PROGRAM Main
 VAR
@@ -740,13 +740,13 @@ VAR
 END_VAR
     y := r + 1;
 END_PROGRAM",
-            &pointer_arithmetic_options(),
+            &ref_arithmetic_options(),
         );
         assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
     }
 
     #[test]
-    fn compare_when_ordering_with_pointer_arithmetic_allowed_then_ok() {
+    fn compare_when_ordering_with_ref_arithmetic_allowed_then_ok() {
         let result = parse_with_options(
             "PROGRAM Main
 VAR
@@ -757,13 +757,13 @@ VAR
 END_VAR
     result := r1 > r2;
 END_PROGRAM",
-            &pointer_arithmetic_options(),
+            &ref_arithmetic_options(),
         );
         assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
     }
 
     #[test]
-    fn compare_when_equality_with_pointer_arithmetic_allowed_then_ok() {
+    fn compare_when_equality_with_ref_arithmetic_allowed_then_ok() {
         let result = parse_with_options(
             "PROGRAM Main
 VAR
@@ -774,7 +774,7 @@ VAR
 END_VAR
     result := r1 = r2;
 END_PROGRAM",
-            &pointer_arithmetic_options(),
+            &ref_arithmetic_options(),
         );
         assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
     }
