@@ -174,7 +174,7 @@ END_VAR
 
 #### 2.2 `//` Line Comments
 
-Already handled. SCL universally uses `//` line comments, which the IronPLC lexer already recognizes (though they are not standard IEC 61131-3). The existing `ParseOptions::allow_c_style_comments` flag should be automatically enabled for the SCL dialect.
+Already handled. SCL universally uses `//` line comments, which the IronPLC lexer already recognizes (though they are not standard IEC 61131-3). The existing `CompilerOptions::allow_c_style_comments` flag should be automatically enabled for the SCL dialect.
 
 ### Priority 3: Present in Some Projects
 
@@ -294,10 +294,10 @@ Direct bit/byte/word access on integer variables:
 
 ## Parse Options Extension
 
-The existing `ParseOptions` struct is extended:
+The existing `CompilerOptions` struct is extended:
 
 ```rust
-pub struct ParseOptions {
+pub struct CompilerOptions {
     pub allow_c_style_comments: bool,
     pub dialect: Dialect,
 }
@@ -317,7 +317,7 @@ The `Dialect` enum is shared infrastructure defined once and used by both the [S
 
 The dialect gate lives in the **token transform layer**, not in the parser. The parser grammar rules for SCL constructs (e.g., `VERSION : <literal>`, optional `BEGIN`, `DATA_BLOCK ... END_DATA_BLOCK`) are always present in the PEG grammar. They simply never fire in standard mode because the tokens that trigger them (`Version`, `Begin`, `DataBlock`, etc.) are only produced by the SCL keyword promotion transform.
 
-This means the parser itself needs no dialect awareness or `ParseOptions` access for most features. A grammar rule like `tok(TokenType::Begin)` will never match when parsing standard IEC 61131-3 because `BEGIN` remains an `Identifier` token — it is never promoted to `Begin`.
+This means the parser itself needs no dialect awareness or `CompilerOptions` access for most features. A grammar rule like `tok(TokenType::Begin)` will never match when parsing standard IEC 61131-3 because `BEGIN` remains an `Identifier` token — it is never promoted to `Begin`.
 
 This is the same gating mechanism described in the [Beckhoff design](beckhoff-twincat-dialect.md#dialect-gating-token-transforms-as-the-gate). All SCL grammar extensions use tokens that only exist after promotion.
 
@@ -589,7 +589,7 @@ Extension mappings added to `from_path()`:
 - `"udt"` → `FileType::SiemensSCL`
 
 In `compiler/sources/src/parsers/mod.rs`, add a new `scl_parser` module that:
-1. Creates `ParseOptions` with `dialect: Dialect::SiemensSCL` (which implies `allow_c_style_comments: true`)
+1. Creates `CompilerOptions` with `dialect: Dialect::SiemensSCL` (which implies `allow_c_style_comments: true`)
 2. Delegates to `ironplc_parser::parse_program` with those options
 
 In `parse_source()`, add the routing:
@@ -660,7 +660,7 @@ Phase 0 is shared infrastructure with the [Beckhoff design](beckhoff-twincat-dia
    - `VendorExtension` trait in the DSL crate
    - `P9004 UnsupportedExtension` problem code in CSV and documentation
    - `rule_unsupported_extension.rs` semantic rule (empty initially — no extension nodes exist yet)
-   - `Dialect` enum and `ParseOptions` extension (shared infrastructure)
+   - `Dialect` enum and `CompilerOptions` extension (shared infrastructure)
    - Token transform pipeline: `promote_keywords` + `collapse_pragmas` (shared with Beckhoff)
 
 1. **Phase 1 — Core syntax** (enables parsing most open-process-library files):

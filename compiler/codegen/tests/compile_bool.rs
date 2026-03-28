@@ -1,7 +1,7 @@
 //! Bytecode-level integration tests for boolean operator compilation.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_compile;
 
@@ -17,7 +17,7 @@ PROGRAM main
   y := x > 0 AND x < 10;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     assert_eq!(container.header.num_variables, 2);
 
@@ -59,7 +59,7 @@ PROGRAM main
   y := x > 0 OR x < 10;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
@@ -92,7 +92,7 @@ PROGRAM main
   y := x > 0 XOR x < 10;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     assert_eq!(
@@ -125,7 +125,7 @@ PROGRAM main
   y := NOT x;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
     // y := NOT x: LOAD_VAR_I32 var:0, BOOL_NOT, STORE_VAR_I32 var:1
@@ -154,7 +154,7 @@ PROGRAM main
   y := TRUE;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // y := TRUE: LOAD_TRUE, STORE_VAR_I32 var:0
     // RET_VOID
@@ -179,7 +179,7 @@ PROGRAM main
   y := FALSE;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // y := FALSE: LOAD_FALSE, STORE_VAR_I32 var:0
     // RET_VOID

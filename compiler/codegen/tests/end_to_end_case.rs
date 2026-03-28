@@ -1,7 +1,7 @@
 //! End-to-end integration tests for CASE statement compilation.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -20,7 +20,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 10);
@@ -41,7 +41,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 2);
     assert_eq!(bufs.vars[1].as_i32(), 20);
@@ -62,7 +62,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 99);
     assert_eq!(bufs.vars[1].as_i32(), 0); // untouched
@@ -85,7 +85,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 99);
     assert_eq!(bufs.vars[1].as_i32(), 99);
@@ -106,7 +106,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 3);
     assert_eq!(bufs.vars[1].as_i32(), 30);
@@ -127,7 +127,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 3);
     assert_eq!(bufs.vars[1].as_i32(), 50);

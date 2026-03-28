@@ -1,7 +1,7 @@
 //! End-to-end integration tests for REAL (f32) and LREAL (f64) floating-point types.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -17,7 +17,7 @@ PROGRAM main
   x := 1.5;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let x = bufs.vars[0].as_f32();
     assert!((x - 1.5_f32).abs() < 1e-5, "expected 1.5, got {x}");
@@ -35,7 +35,7 @@ PROGRAM main
   y := x + 2.5;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 4.0).abs() < 1e-5, "expected 4.0, got {y}");
@@ -53,7 +53,7 @@ PROGRAM main
   y := x - 3.5;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 6.5).abs() < 1e-5, "expected 6.5, got {y}");
@@ -71,7 +71,7 @@ PROGRAM main
   y := x * 4.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 10.0).abs() < 1e-5, "expected 10.0, got {y}");
@@ -89,7 +89,7 @@ PROGRAM main
   y := x / 2.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 3.5).abs() < 1e-5, "expected 3.5, got {y}");
@@ -107,7 +107,7 @@ PROGRAM main
   y := -x;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - (-5.0)).abs() < 1e-5, "expected -5.0, got {y}");
@@ -131,7 +131,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
@@ -154,7 +154,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
@@ -177,7 +177,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
@@ -200,7 +200,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
@@ -223,7 +223,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
@@ -246,7 +246,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
@@ -261,7 +261,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let x = bufs.vars[0].as_f32();
     assert!((x - 42.0).abs() < 1e-5, "expected 42.0, got {x}");
@@ -279,7 +279,7 @@ PROGRAM main
   y := x ** 2.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 9.0).abs() < 1e-3, "expected 9.0, got {y}");
@@ -294,7 +294,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let x = bufs.vars[0].as_f32();
     #[allow(clippy::approx_constant)] // 3.14 is the IEC literal, not an approximation of PI
@@ -314,7 +314,7 @@ PROGRAM main
   x := 3.141592653589793;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let x = bufs.vars[0].as_f64();
     assert!(
@@ -335,7 +335,7 @@ PROGRAM main
   y := x + 2.5;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!((y - 4.0).abs() < 1e-12, "expected 4.0, got {y}");
@@ -353,7 +353,7 @@ PROGRAM main
   y := x - 3.5;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!((y - 6.5).abs() < 1e-12, "expected 6.5, got {y}");
@@ -371,7 +371,7 @@ PROGRAM main
   y := x * 4.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!((y - 10.0).abs() < 1e-12, "expected 10.0, got {y}");
@@ -389,7 +389,7 @@ PROGRAM main
   y := x / 2.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!((y - 3.5).abs() < 1e-12, "expected 3.5, got {y}");
@@ -407,7 +407,7 @@ PROGRAM main
   y := -x;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!((y - (-5.0)).abs() < 1e-12, "expected -5.0, got {y}");
@@ -431,7 +431,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
@@ -454,7 +454,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
@@ -477,7 +477,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
@@ -500,7 +500,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
@@ -523,7 +523,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
@@ -546,7 +546,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
@@ -561,7 +561,7 @@ PROGRAM main
   x := 1.0000000000000002;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // This value is distinguishable from 1.0 in f64 but not in f32
     let x = bufs.vars[0].as_f64();
@@ -580,7 +580,7 @@ PROGRAM main
   y := x ** 10.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!((y - 1024.0).abs() < 1e-6, "expected 1024.0, got {y}");
@@ -595,7 +595,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let x = bufs.vars[0].as_f64();
     assert!(
@@ -619,7 +619,7 @@ PROGRAM main
 END_PROGRAM
 ";
     // Float divide-by-zero does NOT trap — produces Inf per IEEE 754
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!(y.is_infinite() && y > 0.0, "expected +Inf, got {y}");
@@ -637,7 +637,7 @@ PROGRAM main
   y := x / 0.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!(y.is_infinite() && y < 0.0, "expected -Inf, got {y}");
@@ -655,7 +655,7 @@ PROGRAM main
   y := x / 0.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!(y.is_nan(), "expected NaN, got {y}");
@@ -692,7 +692,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // NaN == NaN is false
     assert_eq!(bufs.vars[2].as_i32(), 0, "NaN == NaN should be false");
@@ -721,7 +721,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1, "NaN <> NaN should be true");
 }
@@ -742,7 +742,7 @@ PROGRAM main
   product := inf * 2.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let sum = bufs.vars[2].as_f32();
     let product = bufs.vars[3].as_f32();
@@ -765,7 +765,7 @@ PROGRAM main
   y := x / 0.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!(y.is_infinite() && y > 0.0, "expected +Inf, got {y}");
@@ -783,7 +783,7 @@ PROGRAM main
   y := x / 0.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!(y.is_infinite() && y < 0.0, "expected -Inf, got {y}");
@@ -801,7 +801,7 @@ PROGRAM main
   y := x / 0.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f64();
     assert!(y.is_nan(), "expected NaN, got {y}");
@@ -837,7 +837,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 0, "NaN == NaN should be false");
     assert_eq!(bufs.vars[3].as_i32(), 0, "NaN < 1.0 should be false");
@@ -862,7 +862,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[2].as_i32(), 1, "NaN <> NaN should be true");
 }

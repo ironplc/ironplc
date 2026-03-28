@@ -1,7 +1,7 @@
 //! End-to-end integration tests for bit shift/rotate functions (SHL, SHR, ROL, ROR).
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -19,7 +19,7 @@ PROGRAM main
   y := SHL(x, 4);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0x0F);
     assert_eq!(bufs.vars[1].as_i32(), 0xF0);
 }
@@ -36,7 +36,7 @@ PROGRAM main
   y := SHL(x, 16);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0x0F);
     assert_eq!(bufs.vars[1].as_i32(), 0x000F_0000_u32 as i32);
 }
@@ -53,7 +53,7 @@ PROGRAM main
   y := SHL(x, 32);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i64(), 0x01);
     assert_eq!(bufs.vars[1].as_i64(), 0x1_0000_0000);
 }
@@ -72,7 +72,7 @@ PROGRAM main
   y := SHR(x, 8);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0xFF00);
     assert_eq!(bufs.vars[1].as_i32(), 0x00FF);
 }
@@ -89,7 +89,7 @@ PROGRAM main
   y := SHR(x, 4);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0xF0);
     assert_eq!(bufs.vars[1].as_i32(), 0x0F);
 }
@@ -109,7 +109,7 @@ PROGRAM main
   y := ROL(x, 1);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0x81);
     assert_eq!(bufs.vars[1].as_i32(), 0x03);
 }
@@ -127,7 +127,7 @@ PROGRAM main
   y := ROL(x, 1);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0x8001);
     assert_eq!(bufs.vars[1].as_i32(), 0x0003);
 }
@@ -145,7 +145,7 @@ PROGRAM main
   y := ROL(x, 1);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0x80000001_u32 as i32);
     assert_eq!(bufs.vars[1].as_i32(), 0x00000003);
 }
@@ -165,7 +165,7 @@ PROGRAM main
   y := ROR(x, 1);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0x01);
     assert_eq!(bufs.vars[1].as_i32(), 0x80000000_u32 as i32);
 }
@@ -183,7 +183,7 @@ PROGRAM main
   y := ROR(x, 1);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0x01);
     assert_eq!(bufs.vars[1].as_i32(), 0x80);
 }
@@ -201,7 +201,7 @@ PROGRAM main
   y := SHL(x, 4);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0xFF);
     assert_eq!(bufs.vars[1].as_i32(), 0xF0);
 }
@@ -218,7 +218,7 @@ PROGRAM main
   y := SHL(x, 0);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), bufs.vars[0].as_i32());
 }
 
@@ -236,7 +236,7 @@ PROGRAM main
   result := SHR(ABS(a), 1);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), -8);
     assert_eq!(bufs.vars[1].as_i32(), 4);
 }

@@ -20,16 +20,16 @@ mod test {
     use ironplc_test::read_shared_resource;
     use time::Duration;
 
-    use crate::options::ParseOptions;
+    use crate::options::CompilerOptions;
     use crate::parse_program;
 
     pub fn parse_resource(name: &'static str) -> Result<Library, Diagnostic> {
         let source = read_shared_resource(name);
-        parse_program(&source, &FileId::default(), &ParseOptions::default())
+        parse_program(&source, &FileId::default(), &CompilerOptions::default())
     }
 
     fn parse_text(source: &'static str) -> Library {
-        let result = parse_program(source, &FileId::default(), &ParseOptions::default());
+        let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
         assert!(result.is_ok());
         result.unwrap()
     }
@@ -117,7 +117,7 @@ mod test {
     #[test]
     fn parse_if_then_ok() {
         let source = ironplc_test::read_shared_resource("if.st");
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_missing_semicolon: true,
             ..Default::default()
         };
@@ -175,7 +175,7 @@ mod test {
             END_STRUCT;
         END_TYPE";
 
-        let res = parse_program(program, &FileId::default(), &ParseOptions::default());
+        let res = parse_program(program, &FileId::default(), &CompilerOptions::default());
         assert!(res.is_err());
 
         let err = res.unwrap_err();
@@ -195,7 +195,7 @@ mod test {
             END_STRUCT;
         END_TYPE";
 
-        let res = parse_program(program, &FileId::default(), &ParseOptions::default());
+        let res = parse_program(program, &FileId::default(), &CompilerOptions::default());
         assert!(res.is_err());
 
         let err = res.unwrap_err();
@@ -208,7 +208,7 @@ mod test {
         let program = "ACTION
         END_ACTION";
 
-        let res = parse_program(program, &FileId::default(), &ParseOptions::default());
+        let res = parse_program(program, &FileId::default(), &CompilerOptions::default());
         assert!(res.is_err());
 
         let err = res.unwrap_err();
@@ -781,7 +781,7 @@ END_FUNCTION";
                 generic_type, generic_type
             );
 
-            let result = parse_program(&source, &FileId::default(), &ParseOptions::default());
+            let result = parse_program(&source, &FileId::default(), &CompilerOptions::default());
             assert!(
                 result.is_ok(),
                 "Failed to parse generic type: {}",
@@ -1024,7 +1024,7 @@ END_FUNCTION";
             END_RESOURCE
         END_CONFIGURATION";
 
-        let result = parse_program(source, &FileId::default(), &ParseOptions::default());
+        let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
         assert!(result.is_err());
     }
 
@@ -1153,7 +1153,7 @@ END_VAR
     pt.Y := 2.0;
 END_PROGRAM";
 
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_missing_semicolon: true,
             ..Default::default()
         };
@@ -1178,7 +1178,7 @@ END_VAR
     pt.Y := 2.0;
 END_PROGRAM";
 
-        let result = parse_program(source, &FileId::default(), &ParseOptions::default());
+        let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
         assert!(result.is_err());
     }
 
@@ -1193,7 +1193,7 @@ END_VAR
     END_IF
 END_PROGRAM";
 
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_missing_semicolon: true,
             ..Default::default()
         };
@@ -1212,7 +1212,7 @@ END_VAR
     END_WHILE
 END_PROGRAM";
 
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_missing_semicolon: true,
             ..Default::default()
         };
@@ -1231,7 +1231,7 @@ END_VAR
     END_FOR
 END_PROGRAM";
 
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_missing_semicolon: true,
             ..Default::default()
         };
@@ -1250,7 +1250,7 @@ END_VAR
     END_CASE
 END_PROGRAM";
 
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_missing_semicolon: true,
             ..Default::default()
         };
@@ -1270,7 +1270,7 @@ END_VAR
     END_REPEAT
 END_PROGRAM";
 
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_missing_semicolon: true,
             ..Default::default()
         };
@@ -1291,7 +1291,7 @@ ELSE
 END_IF
 END_FUNCTION";
 
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_missing_semicolon: true,
             ..Default::default()
         };
@@ -1300,9 +1300,9 @@ END_FUNCTION";
     }
 
     fn parse_text_edition3(source: &str) -> Library {
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_iec_61131_3_2013: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         };
         let result = parse_program(source, &FileId::default(), &options);
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
@@ -1859,9 +1859,9 @@ VAR
 END_VAR
     myFunc := 1;
 END_FUNCTION";
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_empty_var_blocks: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         };
         let result = parse_program(source, &FileId::default(), &options);
         assert!(result.is_ok());
@@ -1875,7 +1875,7 @@ VAR
 END_VAR
     myFunc := 1;
 END_FUNCTION";
-        let result = parse_program(source, &FileId::default(), &ParseOptions::default());
+        let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
         assert!(result.is_err());
     }
 
@@ -1887,9 +1887,9 @@ VAR_INPUT
 END_VAR
     myFunc := 1;
 END_FUNCTION";
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_empty_var_blocks: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         };
         let result = parse_program(source, &FileId::default(), &options);
         assert!(result.is_ok());
@@ -1903,9 +1903,9 @@ VAR_OUTPUT
 END_VAR
     myFunc := 1;
 END_FUNCTION";
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_empty_var_blocks: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         };
         let result = parse_program(source, &FileId::default(), &options);
         assert!(result.is_ok());
@@ -1919,9 +1919,9 @@ VAR_IN_OUT
 END_VAR
     myFunc := 1;
 END_FUNCTION";
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_empty_var_blocks: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         };
         let result = parse_program(source, &FileId::default(), &options);
         assert!(result.is_ok());
@@ -1935,9 +1935,9 @@ VAR CONSTANT
 END_VAR
     myFunc := 1;
 END_FUNCTION";
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_empty_var_blocks: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         };
         let result = parse_program(source, &FileId::default(), &options);
         assert!(result.is_ok());
@@ -1950,9 +1950,9 @@ PROGRAM main
 VAR
 END_VAR
 END_PROGRAM";
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_empty_var_blocks: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         };
         let result = parse_program(source, &FileId::default(), &options);
         assert!(result.is_ok());
@@ -1965,9 +1965,9 @@ FUNCTION_BLOCK myFb
 VAR
 END_VAR
 END_FUNCTION_BLOCK";
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_empty_var_blocks: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         };
         let result = parse_program(source, &FileId::default(), &options);
         assert!(result.is_ok());
@@ -1983,7 +1983,7 @@ tx := TIME();
 MY_FUNC := TIME_TO_DWORD(tx);
 END_FUNCTION";
 
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_time_as_function_name: true,
             ..Default::default()
         };
@@ -2000,7 +2000,7 @@ END_VAR
 tx := TIME();
 END_FUNCTION";
 
-        let result = parse_program(source, &FileId::default(), &ParseOptions::default());
+        let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
         assert!(result.is_err());
     }
 
@@ -2013,7 +2013,7 @@ END_VAR
     t := TIME#5s;
 END_PROGRAM";
 
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_time_as_function_name: true,
             ..Default::default()
         };
@@ -2030,7 +2030,7 @@ END_VAR
     tx := TIME#1s;
 END_PROGRAM";
 
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_time_as_function_name: true,
             ..Default::default()
         };
@@ -2091,7 +2091,7 @@ VAR_TEMP
 END_VAR
     t := 42;
 END_PROGRAM";
-        let result = parse_program(source, &FileId::default(), &ParseOptions::default());
+        let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
         assert!(result.is_err());
     }
 }

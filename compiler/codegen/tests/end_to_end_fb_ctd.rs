@@ -4,7 +4,7 @@
 //! a CTD function block instance, compile to bytecode, and execute on the VM.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run_rounds;
 
@@ -34,7 +34,7 @@ fn pulse_n(vm: &mut ironplc_vm::VmRunning<'_>, var_idx: u16, n: u64, time_base: 
 #[test]
 fn end_to_end_when_ctd_not_loaded_then_q_is_true() {
     // CV starts at 0, Q = (CV <= 0) should be TRUE
-    parse_and_run_rounds(CTD_PROGRAM, &ParseOptions::default(), |vm| {
+    parse_and_run_rounds(CTD_PROGRAM, &CompilerOptions::default(), |vm| {
         vm.run_round(0).unwrap();
         assert_eq!(
             vm.read_variable(3).unwrap(),
@@ -46,7 +46,7 @@ fn end_to_end_when_ctd_not_loaded_then_q_is_true() {
 
 #[test]
 fn end_to_end_when_ctd_loaded_then_cv_equals_pv() {
-    parse_and_run_rounds(CTD_PROGRAM, &ParseOptions::default(), |vm| {
+    parse_and_run_rounds(CTD_PROGRAM, &CompilerOptions::default(), |vm| {
         vm.write_variable(2, 1).unwrap(); // LD = TRUE
         vm.run_round(0).unwrap();
         assert_eq!(
@@ -64,7 +64,7 @@ fn end_to_end_when_ctd_loaded_then_cv_equals_pv() {
 
 #[test]
 fn end_to_end_when_ctd_counts_to_zero_then_q_is_true() {
-    parse_and_run_rounds(CTD_PROGRAM, &ParseOptions::default(), |vm| {
+    parse_and_run_rounds(CTD_PROGRAM, &CompilerOptions::default(), |vm| {
         // Load PV
         vm.write_variable(2, 1).unwrap();
         vm.run_round(0).unwrap();
@@ -90,7 +90,7 @@ fn end_to_end_when_ctd_counts_to_zero_then_q_is_true() {
 
 #[test]
 fn end_to_end_when_ctd_above_zero_then_q_is_false() {
-    parse_and_run_rounds(CTD_PROGRAM, &ParseOptions::default(), |vm| {
+    parse_and_run_rounds(CTD_PROGRAM, &CompilerOptions::default(), |vm| {
         // Load PV=3
         vm.write_variable(2, 1).unwrap();
         vm.run_round(0).unwrap();
@@ -122,7 +122,7 @@ PROGRAM main
   counter(CD := FALSE, LD := TRUE, PV := 10, Q => result, CV => count);
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, &ParseOptions::default(), |vm| {
+    parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
         vm.run_round(0).unwrap();
         assert_eq!(
             vm.read_variable(2).unwrap(),

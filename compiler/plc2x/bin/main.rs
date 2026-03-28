@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use ironplc_parser::options::{describe_dialects, Dialect, ParseOptions};
+use ironplc_parser::options::{describe_dialects, CompilerOptions, Dialect};
 use ironplcc::cli;
 use ironplcc::logger;
 use ironplcc::lsp;
@@ -115,8 +115,8 @@ struct FileArgs {
 }
 
 impl FileArgs {
-    fn parse_options(&self) -> ParseOptions {
-        let mut options = ParseOptions::from_dialect(self.dialect.to_dialect());
+    fn compiler_options(&self) -> CompilerOptions {
+        let mut options = CompilerOptions::from_dialect(self.dialect.to_dialect());
         // Individual flags override (can only enable, never disable).
         options.allow_missing_semicolon |= self.allow_missing_semicolon;
         options.allow_top_level_var_global |= self.allow_top_level_var_global;
@@ -191,14 +191,19 @@ pub fn main() -> Result<(), String> {
     match args.action {
         Action::Lsp { stdio: _ } => lsp::start(),
         Action::Check { file_args } => {
-            cli::check(&file_args.files, file_args.parse_options(), false)
+            cli::check(&file_args.files, file_args.compiler_options(), false)
         }
-        Action::Compile { file_args, output } => {
-            cli::compile(&file_args.files, &output, file_args.parse_options(), false)
+        Action::Compile { file_args, output } => cli::compile(
+            &file_args.files,
+            &output,
+            file_args.compiler_options(),
+            false,
+        ),
+        Action::Echo { file_args } => {
+            cli::echo(&file_args.files, file_args.compiler_options(), false)
         }
-        Action::Echo { file_args } => cli::echo(&file_args.files, file_args.parse_options(), false),
         Action::Tokenize { file_args } => {
-            cli::tokenize(&file_args.files, file_args.parse_options(), false)
+            cli::tokenize(&file_args.files, file_args.compiler_options(), false)
         }
         Action::Dialects => {
             print!("{}", describe_dialects());

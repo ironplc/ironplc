@@ -19,7 +19,7 @@ use dsl::{core::FileId, diagnostic::Diagnostic};
 use ironplc_dsl::common::Library;
 use ironplc_dsl::textual::StmtKind;
 use lexer::tokenize;
-use options::ParseOptions;
+use options::CompilerOptions;
 use preprocessor::preprocess;
 use token::Token;
 use xform_tokens::insert_keyword_statement_terminators;
@@ -41,7 +41,7 @@ pub mod token;
 pub fn tokenize_program(
     source: &str,
     file_id: &FileId,
-    options: &ParseOptions,
+    options: &CompilerOptions,
     line_offset: usize,
     col_offset: usize,
 ) -> (Vec<Token>, Vec<Diagnostic>) {
@@ -61,8 +61,8 @@ pub fn tokenize_program(
 }
 
 #[allow(clippy::type_complexity)]
-fn check_tokens(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnostic>> {
-    let rules: Vec<fn(&[Token], &ParseOptions) -> Result<(), Vec<Diagnostic>>> = vec![
+fn check_tokens(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diagnostic>> {
+    let rules: Vec<fn(&[Token], &CompilerOptions) -> Result<(), Vec<Diagnostic>>> = vec![
         rule_token_no_c_style_comment::apply,
         rule_no_empty_var_blocks::apply,
     ];
@@ -86,7 +86,7 @@ fn check_tokens(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diag
 pub fn parse_program(
     source: &str,
     file_id: &FileId,
-    options: &ParseOptions,
+    options: &CompilerOptions,
 ) -> Result<Library, Diagnostic> {
     let mut result = tokenize_program(source, file_id, options, 0, 0);
     if !result.1.is_empty() {
@@ -115,7 +115,7 @@ pub fn parse_program(
 pub fn parse_st_statements(
     source: &str,
     file_id: &FileId,
-    options: &ParseOptions,
+    options: &CompilerOptions,
     line_offset: usize,
     col_offset: usize,
 ) -> Result<Vec<StmtKind>, Diagnostic> {

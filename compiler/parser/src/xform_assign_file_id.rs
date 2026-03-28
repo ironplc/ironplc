@@ -31,7 +31,7 @@ impl Fold<Diagnostic> for TransformFileId<'_> {
 mod tests {
     use ironplc_dsl::core::FileId;
 
-    use crate::{options::ParseOptions, parse_program};
+    use crate::{options::CompilerOptions, parse_program};
 
     use super::apply;
 
@@ -46,7 +46,7 @@ END_TYPE
         let input = parse_program(
             program,
             &FileId::from_string("input"),
-            &ParseOptions::default(),
+            &CompilerOptions::default(),
         )
         .unwrap();
         let expected_fid = FileId::from_string("output");
@@ -97,7 +97,7 @@ END_TYPE
         let input = parse_program(
             program,
             &FileId::from_string("input"),
-            &ParseOptions::default(),
+            &CompilerOptions::default(),
         )
         .unwrap();
         let expected_fid = FileId::from_string("shared_file.rs");

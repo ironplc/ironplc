@@ -13,7 +13,7 @@ use criterion::{
 use ironplc_codegen::compile;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::{Slot, VmBuffers};
@@ -21,9 +21,9 @@ use ironplc_vm::{Slot, VmBuffers};
 /// Compiles an IEC 61131-3 source string through the full pipeline:
 /// parse → analyze (all semantic rules) → codegen.
 fn compile_st(source: &str) -> Container {
-    let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
+    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
     let (analyzed, context) =
-        ironplc_analyzer::stages::analyze(&[&library], &ParseOptions::default()).unwrap();
+        ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
     assert!(
         !context.has_diagnostics(),
         "Benchmark source has semantic diagnostics"

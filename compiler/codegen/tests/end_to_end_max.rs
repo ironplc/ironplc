@@ -1,7 +1,7 @@
 //! End-to-end integration tests for the MAX function.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -15,7 +15,7 @@ PROGRAM main
   y := MAX(10, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 10);
 }
@@ -32,7 +32,7 @@ PROGRAM main
   y := MAX(x, 100);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 5);
     assert_eq!(bufs.vars[1].as_i32(), 100);

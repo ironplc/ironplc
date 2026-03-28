@@ -130,7 +130,7 @@ mod tests {
     use crate::xform_resolve_type_decl_environment::apply;
     use ironplc_dsl::common::TypeName;
     use ironplc_dsl::core::{FileId, SourceSpan};
-    use ironplc_parser::options::ParseOptions;
+    use ironplc_parser::options::CompilerOptions;
 
     // Tests for validate_subrange_bounds method
     #[test]
@@ -513,7 +513,7 @@ SMALL_RANGE : SINT (-10..10) := 0;
 END_TYPE
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -557,7 +557,7 @@ ALIAS_RANGE : BASE_RANGE := 25;
 END_TYPE
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -583,7 +583,7 @@ INVALID_RANGE : INT (100..1) := 50;
 END_TYPE
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -606,7 +606,7 @@ OUT_OF_BOUNDS : SINT (-200..200) := 0;
 END_TYPE
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -629,7 +629,7 @@ ALIAS_RANGE : MISSING_RANGE := 25;
 END_TYPE
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironment::new();
         let result = apply(input, &mut env);
@@ -651,7 +651,7 @@ DINT_RANGE : DINT (1..1000000) := 500000;
 END_TYPE
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -681,7 +681,7 @@ ALIAS2 : ALIAS1 := 75;
 END_TYPE
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -713,7 +713,7 @@ UDINT_RANGE : UDINT (0..4294967295) := 2147483648;
 END_TYPE
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()

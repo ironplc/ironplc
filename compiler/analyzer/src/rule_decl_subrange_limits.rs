@@ -26,8 +26,13 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use ironplc_parser::options::CompilerOptions;
 
-pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
+pub fn apply(
+    lib: &Library,
+    _context: &SemanticContext,
+    _options: &CompilerOptions,
+) -> SemanticResult {
     let mut visitor = RuleDeclSubrangeLimits {
         diagnostics: Vec::new(),
     };
@@ -89,7 +94,7 @@ END_TYPE";
 
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -103,10 +108,11 @@ END_TYPE";
 
         use crate::stages::analyze;
         use ironplc_dsl::core::FileId;
-        use ironplc_parser::{options::ParseOptions, parse_program};
+        use ironplc_parser::{options::CompilerOptions, parse_program};
 
-        let library = parse_program(program, &FileId::default(), &ParseOptions::default()).unwrap();
-        let result = analyze(&[&library], &ParseOptions::default());
+        let library =
+            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let result = analyze(&[&library], &CompilerOptions::default());
 
         let (_library, context) = result.unwrap();
         assert!(context.has_diagnostics());

@@ -1,11 +1,11 @@
 use dsl::diagnostic::{Diagnostic, Label};
 
 use crate::{
-    options::ParseOptions,
+    options::CompilerOptions,
     token::{Token, TokenType},
 };
 
-pub fn apply(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnostic>> {
+pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diagnostic>> {
     if options.allow_c_style_comments {
         return Ok(());
     }
@@ -34,7 +34,7 @@ mod test {
     use dsl::core::SourceSpan;
 
     use crate::{
-        options::ParseOptions,
+        options::CompilerOptions,
         rule_token_no_c_style_comment::apply,
         token::{Token, TokenType},
     };
@@ -51,9 +51,9 @@ mod test {
 
         let result = apply(
             &tokens,
-            &ParseOptions {
+            &CompilerOptions {
                 allow_c_style_comments: false,
-                ..ParseOptions::default()
+                ..CompilerOptions::default()
             },
         );
         assert!(result.is_err())
@@ -71,9 +71,9 @@ mod test {
 
         let result = apply(
             &tokens,
-            &ParseOptions {
+            &CompilerOptions {
                 allow_c_style_comments: true,
-                ..ParseOptions::default()
+                ..CompilerOptions::default()
             },
         );
         assert!(result.is_ok())
@@ -91,9 +91,9 @@ mod test {
 
         let result = apply(
             &tokens,
-            &ParseOptions {
+            &CompilerOptions {
                 allow_c_style_comments: false,
-                ..ParseOptions::default()
+                ..CompilerOptions::default()
             },
         );
         assert!(result.is_err())
@@ -111,9 +111,9 @@ mod test {
 
         let result = apply(
             &tokens,
-            &ParseOptions {
+            &CompilerOptions {
                 allow_c_style_comments: true,
-                ..ParseOptions::default()
+                ..CompilerOptions::default()
             },
         );
         assert!(result.is_ok())

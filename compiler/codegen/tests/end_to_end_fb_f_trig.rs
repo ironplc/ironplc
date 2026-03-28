@@ -1,7 +1,7 @@
 //! End-to-end tests for F_TRIG (falling edge detector) function block.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 use common::parse_and_run_rounds;
@@ -19,13 +19,13 @@ END_PROGRAM
 
 #[test]
 fn end_to_end_when_f_trig_clk_false_then_q_false() {
-    let (_container, bufs) = parse_and_run(PROGRAM, &ParseOptions::default());
+    let (_container, bufs) = parse_and_run(PROGRAM, &CompilerOptions::default());
     assert_eq!(bufs.vars[2].as_i32(), 0, "Q should be FALSE");
 }
 
 #[test]
 fn end_to_end_when_f_trig_falling_edge_then_q_true() {
-    parse_and_run_rounds(PROGRAM, &ParseOptions::default(), |vm| {
+    parse_and_run_rounds(PROGRAM, &CompilerOptions::default(), |vm| {
         // CLK=TRUE first
         vm.write_variable(1, 1).unwrap();
         vm.run_round(0).unwrap();
@@ -43,7 +43,7 @@ fn end_to_end_when_f_trig_falling_edge_then_q_true() {
 
 #[test]
 fn end_to_end_when_f_trig_clk_stays_false_then_q_false_next_scan() {
-    parse_and_run_rounds(PROGRAM, &ParseOptions::default(), |vm| {
+    parse_and_run_rounds(PROGRAM, &CompilerOptions::default(), |vm| {
         // CLK=TRUE then FALSE (falling edge)
         vm.write_variable(1, 1).unwrap();
         vm.run_round(0).unwrap();
@@ -62,7 +62,7 @@ fn end_to_end_when_f_trig_clk_stays_false_then_q_false_next_scan() {
 
 #[test]
 fn end_to_end_when_f_trig_second_falling_edge_then_q_true_again() {
-    parse_and_run_rounds(PROGRAM, &ParseOptions::default(), |vm| {
+    parse_and_run_rounds(PROGRAM, &CompilerOptions::default(), |vm| {
         // First cycle: TRUE then FALSE
         vm.write_variable(1, 1).unwrap();
         vm.run_round(0).unwrap();

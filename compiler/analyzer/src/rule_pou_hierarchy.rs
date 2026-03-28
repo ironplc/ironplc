@@ -43,8 +43,13 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use ironplc_parser::options::CompilerOptions;
 
-pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
+pub fn apply(
+    lib: &Library,
+    _context: &SemanticContext,
+    _options: &CompilerOptions,
+) -> SemanticResult {
     let mut hierarchy_visitor = HierarchyVisitor::new();
     hierarchy_visitor.walk(lib).map_err(|e| vec![e])?;
 
@@ -193,6 +198,7 @@ mod tests {
         rule_pou_hierarchy::apply, semantic_context::SemanticContextBuilder,
         test_helpers::parse_and_resolve_types,
     };
+    use ironplc_parser::options::CompilerOptions;
 
     #[test]
     fn apply_when_function_invokes_function_block_then_error() {
@@ -214,7 +220,7 @@ mod tests {
 
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let _ = apply(&library, &context);
+        let _ = apply(&library, &context, &CompilerOptions::default());
         // TODO
         // assert!(result.is_ok());
     }

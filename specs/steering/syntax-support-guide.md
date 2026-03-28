@@ -18,7 +18,7 @@ When adding new syntax, ensure every applicable item is complete:
 - [ ] **plc2plc round-trip test**: Parse → render → compare against expected output
 - [ ] **End-to-end execution test**: Parse → compile → run → verify variable values
 - [ ] **Non-standard gating**: If not standard IEC 61131-3, gate behind `--allow-x` flag
-- [ ] **LSP integration**: If a new `--allow-x` flag, add to LSP `extract_parse_options`
+- [ ] **LSP integration**: If a new `--allow-x` flag, add to LSP `extract_compiler_options`
 - [ ] **Documentation**: If a new `--allow-x` flag, update `docs/explanation/enabling-features.rst`, `docs/reference/compiler/ironplcc.rst`, and the flag table in this file
 
 Not every syntax change requires all items. A new operator might not need new tokens. A token-level fix might not need codegen changes. Use judgment, but **always** include both round-trip and execution tests when the syntax produces executable code.
@@ -52,7 +52,7 @@ Keywords are case-insensitive (`ignore(case)`). Identifiers have lower priority 
 **Reference implementation**: `parser/src/xform_demote_edition3_keywords.rs`
 
 ```rust
-pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
+pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
     let demote_time_types = !options.allow_iec_61131_3_2013;
     let demote_ref = !options.allow_iec_61131_3_2013 && !options.allow_ref_to;
 
@@ -86,7 +86,7 @@ pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
 **Reference implementation**: `parser/src/rule_token_no_c_style_comment.rs`
 
 ```rust
-pub fn apply(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnostic>> {
+pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diagnostic>> {
     if options.allow_c_style_comments {
         return Ok(());
     }
@@ -132,7 +132,7 @@ pub fn apply(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnos
 pub fn insert_keyword_statement_terminators(
     input: Vec<Token>,
     _file_id: &FileId,
-    options: &ParseOptions,
+    options: &CompilerOptions,
 ) -> Vec<Token> {
     if !options.allow_missing_semicolon {
         return input;
@@ -149,7 +149,7 @@ pub fn insert_keyword_statement_terminators(
 
 **Always check existing flags first**. Group related extensions under one flag when they represent the same vendor behavior.
 
-Current flags in `ParseOptions` (`parser/src/options.rs`):
+Current flags in `CompilerOptions` (`parser/src/options.rs`):
 
 | Flag | CLI | Purpose |
 |------|-----|---------|
@@ -183,11 +183,11 @@ Dialects (`--dialect`) set the base configuration. Individual `--allow-*` flags 
 
 When no existing flag covers the extension, add a new one. Update these files in order:
 
-#### 1. `ParseOptions` struct (`parser/src/options.rs`)
+#### 1. `CompilerOptions` struct (`parser/src/options.rs`)
 
 ```rust
 #[derive(Debug, Default, Clone, Copy)]
-pub struct ParseOptions {
+pub struct CompilerOptions {
     // ... existing fields ...
     pub allow_my_extension: bool,
 }
@@ -204,22 +204,22 @@ Add the clap argument:
 allow_my_extension: bool,
 ```
 
-The `parse_options()` method uses `|=` to overlay flags on the dialect preset:
+The `compiler_options()` method uses `|=` to overlay flags on the dialect preset:
 
 ```rust
-fn parse_options(&self) -> ParseOptions {
-    let mut options = ParseOptions::from_dialect(self.dialect.to_dialect());
+fn compiler_options(&self) -> CompilerOptions {
+    let mut options = CompilerOptions::from_dialect(self.dialect.to_dialect());
     // ... existing overlays ...
     options.allow_my_extension |= self.allow_my_extension;
     options
 }
 ```
 
-**Also add the flag to relevant dialect presets** in `ParseOptions::from_dialect()` (in `parser/src/options.rs`). If the extension should be on for the RuSTy dialect, add it to the `Dialect::Rusty` arm.
+**Also add the flag to relevant dialect presets** in `CompilerOptions::from_dialect()` (in `parser/src/options.rs`). If the extension should be on for the RuSTy dialect, add it to the `Dialect::Rusty` arm.
 
 #### 3. LSP extraction (`plc2x/src/lsp.rs`)
 
-Add to `extract_parse_options()` using the `|=` pattern:
+Add to `extract_compiler_options()` using the `|=` pattern:
 
 ```rust
 options.allow_my_extension |= flag("allowMyExtension");  // camelCase for LSP
@@ -266,7 +266,7 @@ From `plc2plc/src/tests.rs`:
 ```rust
 fn parse_and_render_resource(name: &'static str) -> String {
     let source = read_shared_resource(name);
-    let library = parse_program(&source, &FileId::default(), &ParseOptions::default()).unwrap();
+    let library = parse_program(&source, &FileId::default(), &CompilerOptions::default()).unwrap();
     write_to_string(&library).unwrap()
 }
 
@@ -288,7 +288,7 @@ fn write_to_string_my_feature() {
 For non-standard syntax that requires a parse option:
 
 ```rust
-fn parse_and_render_with_options(name: &'static str, options: ParseOptions) -> String {
+fn parse_and_render_with_options(name: &'static str, options: CompilerOptions) -> String {
     let source = read_shared_resource(name);
     let library = parse_program(&source, &FileId::default(), &options).unwrap();
     write_to_string(&library).unwrap()
@@ -296,9 +296,9 @@ fn parse_and_render_with_options(name: &'static str, options: ParseOptions) -> S
 
 #[test]
 fn write_to_string_my_vendor_extension() {
-    let options = ParseOptions {
+    let options = CompilerOptions {
         allow_my_extension: true,
-        ..ParseOptions::default()
+        ..CompilerOptions::default()
     };
     let rendered = parse_and_render_with_options("my_extension.st", options);
     let expected = read_resource("my_extension_rendered.st");
@@ -393,9 +393,9 @@ If the syntax is behind an `--allow-x` flag, you may need to add a helper in `co
 
 ```rust
 pub fn parse_with_extension(source: &str) -> (Library, SemanticContext) {
-    let options = ParseOptions {
+    let options = CompilerOptions {
         allow_my_extension: true,
-        ..ParseOptions::default()
+        ..CompilerOptions::default()
     };
     let library = parse_program(source, &FileId::default(), &options).unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
@@ -424,8 +424,8 @@ The token processing pipeline in `parser/src/lib.rs` (`tokenize_program` functio
 New token transforms go between steps 2 and 5. New validation rules are registered in `check_tokens()`:
 
 ```rust
-fn check_tokens(tokens: &[Token], options: &ParseOptions) -> Result<(), Vec<Diagnostic>> {
-    let rules: Vec<fn(&[Token], &ParseOptions) -> Result<(), Vec<Diagnostic>>> =
+fn check_tokens(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diagnostic>> {
+    let rules: Vec<fn(&[Token], &CompilerOptions) -> Result<(), Vec<Diagnostic>>> =
         vec![rule_token_no_c_style_comment::apply];  // Add your rule here
 
     let mut errors = vec![];
@@ -443,8 +443,8 @@ New demotion transforms must be called in `tokenize_program()` **before** `check
 
 ## Common Mistakes
 
-- **Forgetting dialect presets**: Every new `--allow-x` flag must be added to the relevant dialect presets in `ParseOptions::from_dialect()`. Without this, the RuSTy dialect (or future dialects) silently ignores the new feature.
-- **Missing LSP wiring**: The flag works on the CLI but not in VS Code because `extract_parse_options()` in `plc2x/src/lsp.rs` was not updated. Always add LSP extraction for new flags.
+- **Forgetting dialect presets**: Every new `--allow-x` flag must be added to the relevant dialect presets in `CompilerOptions::from_dialect()`. Without this, the RuSTy dialect (or future dialects) silently ignores the new feature.
+- **Missing LSP wiring**: The flag works on the CLI but not in VS Code because `extract_compiler_options()` in `plc2x/src/lsp.rs` was not updated. Always add LSP extraction for new flags.
 - **No round-trip test**: The feature parses but the renderer in `plc2plc` cannot write it back. Always add the round-trip test.
 - **No execution test**: The feature parses and analyzes but was never proven to execute correctly. Always add at least one end-to-end test.
 - **Creating a flag for standard syntax**: Only vendor extensions get `--allow-x` flags. Standard IEC 61131-3 syntax is always on (or gated by `--dialect`).
@@ -465,10 +465,10 @@ Review `parser/src/options.rs` — does an existing flag cover this? If not, pro
 
 #### Step 2: Add the Flag
 
-1. Add `allow_repeat_limit` to `ParseOptions` vendor fields in the `define_parse_options!` macro
+1. Add `allow_repeat_limit` to `CompilerOptions` vendor fields in the `define_compiler_options!` macro
 2. Add `--allow-repeat-limit` to CLI `FileArgs`
-3. Add `|= self.allow_repeat_limit` in `parse_options()`
-4. Add to relevant dialect presets in `ParseOptions::from_dialect()`
+3. Add `|= self.allow_repeat_limit` in `compiler_options()`
+4. Add to relevant dialect presets in `CompilerOptions::from_dialect()`
 5. Add LSP extraction for `"allowRepeatLimit"`
 
 #### Step 3: Add Tokens (if needed)
@@ -484,7 +484,7 @@ Then add a demotion transform so that `LIMIT` is treated as an identifier when t
 
 ```rust
 // In a new xform_demote_repeat_limit.rs
-pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
+pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
     if options.allow_repeat_limit {
         return;
     }

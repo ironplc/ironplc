@@ -1,7 +1,7 @@
 //! End-to-end integration tests for the SEL function with float types.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -15,7 +15,7 @@ PROGRAM main
   y := SEL(0, 10.5, 20.5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[0].as_f32();
     assert!((y - 10.5).abs() < 1e-5, "expected 10.5, got {y}");
@@ -31,7 +31,7 @@ PROGRAM main
   y := SEL(1, 10.5, 20.5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[0].as_f32();
     assert!((y - 20.5).abs() < 1e-5, "expected 20.5, got {y}");
@@ -49,7 +49,7 @@ PROGRAM main
   y := SEL(g, 100.0, 200.0);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[1].as_f32();
     assert!((y - 200.0).abs() < 1e-5, "expected 200.0, got {y}");
@@ -65,7 +65,7 @@ PROGRAM main
   y := SEL(0, 10.5, 20.5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[0].as_f64();
     assert!((y - 10.5).abs() < 1e-12, "expected 10.5, got {y}");
@@ -81,7 +81,7 @@ PROGRAM main
   y := SEL(1, 10.5, 20.5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     let y = bufs.vars[0].as_f64();
     assert!((y - 20.5).abs() < 1e-12, "expected 20.5, got {y}");

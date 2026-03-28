@@ -6,7 +6,7 @@
 
 mod common;
 use common::{parse, parse_and_run};
-use ironplc_parser::options::{Dialect, ParseOptions};
+use ironplc_parser::options::{CompilerOptions, Dialect};
 
 #[test]
 fn end_to_end_when_rusty_dialect_then_ldt_usable_as_variable_name() {
@@ -21,7 +21,7 @@ END_VAR
     result := LDT;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Rusty));
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
     // var layout: LDT=0, result=1
     assert_eq!(bufs.vars[1].as_i32(), 42);
 }
@@ -40,7 +40,7 @@ END_VAR
     result := r^;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Rusty));
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
     // var layout: counter=0, r=1, result=2
     assert_eq!(bufs.vars[2].as_i32(), 99);
 }
@@ -58,7 +58,7 @@ END_VAR
     result := r^;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Rusty));
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
     // var layout: LDT=0, r=1, result=2
     assert_eq!(bufs.vars[2].as_i32(), 42);
 }
@@ -81,7 +81,7 @@ VAR
 END_VAR
 END_PROGRAM
 ";
-    let (_lib, _ctx) = parse(source, &ParseOptions::from_dialect(Dialect::Rusty));
+    let (_lib, _ctx) = parse(source, &CompilerOptions::from_dialect(Dialect::Rusty));
     // If we get here, parsing and type resolution succeeded.
 }
 
@@ -113,6 +113,6 @@ END_VAR
     result := MY_FUNC(x := s);
 END_PROGRAM
 ";
-    let (_lib, _ctx) = parse(source, &ParseOptions::from_dialect(Dialect::Rusty));
+    let (_lib, _ctx) = parse(source, &CompilerOptions::from_dialect(Dialect::Rusty));
     // If we get here, parsing and type resolution succeeded.
 }

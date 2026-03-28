@@ -1,7 +1,7 @@
 //! Bytecode-level integration tests for shift/rotate function compilation.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_compile;
 
@@ -17,7 +17,7 @@ PROGRAM main
   y := SHL(x, 4);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     assert_eq!(container.header.num_variables, 2);
 
@@ -53,7 +53,7 @@ PROGRAM main
   y := ROL(x, 1);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // Verify the ROL on BYTE emits ROL_U8 (0x0350), not ROL_I32
@@ -85,7 +85,7 @@ PROGRAM main
   y := ROR(x, 1);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // Verify the ROR on WORD emits ROR_U16 (0x0353)
@@ -117,7 +117,7 @@ PROGRAM main
   y := SHL(x, 4);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // DWORD is 32-bit so no TRUNC needed

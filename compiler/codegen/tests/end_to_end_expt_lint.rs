@@ -1,7 +1,7 @@
 //! End-to-end integration tests for EXPT with LINT type.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -19,6 +19,6 @@ PROGRAM main
   result := EXPT(base, exp);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[2].as_i64(), 1_099_511_627_776);
 }

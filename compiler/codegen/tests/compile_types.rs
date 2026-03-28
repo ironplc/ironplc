@@ -4,7 +4,7 @@
 //! for different IEC 61131-3 integer types.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_compile;
 
@@ -18,7 +18,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // LOAD_CONST_I32 pool:0, TRUNC_I8, STORE_VAR_I32 var:0, RET_VOID
     let bytecode = container.code.get_function_bytecode(1).unwrap();
@@ -43,7 +43,7 @@ PROGRAM main
   x := 1000;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // LOAD_CONST_I32 pool:0, TRUNC_U16, STORE_VAR_I32 var:0, RET_VOID
     let bytecode = container.code.get_function_bytecode(1).unwrap();
@@ -70,7 +70,7 @@ PROGRAM main
   y := x + 1;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // x := 10: LOAD_CONST_I64 pool:0 (10), STORE_VAR_I64 var:0
     // y := x + 1: LOAD_VAR_I64 var:0, LOAD_CONST_I64 pool:1 (1), ADD_I64, STORE_VAR_I64 var:1
@@ -103,7 +103,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     let bytecode = container.code.get_function_bytecode(1).unwrap();
     // The comparison should use GT_U32 (0x7A) instead of GT_I32 (0x6C)

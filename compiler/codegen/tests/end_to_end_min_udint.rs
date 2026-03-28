@@ -1,7 +1,7 @@
 //! End-to-end integration tests for MIN with UDINT type.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -19,6 +19,6 @@ PROGRAM main
   result := MIN(a, b);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[2].as_i32() as u32, 1_000_000_000);
 }

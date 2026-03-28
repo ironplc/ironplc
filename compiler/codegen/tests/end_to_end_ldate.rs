@@ -10,7 +10,7 @@
 
 mod common;
 use common::parse_and_run;
-use ironplc_parser::options::{Dialect, ParseOptions};
+use ironplc_parser::options::{CompilerOptions, Dialect};
 
 #[test]
 fn end_to_end_when_ldate_assignment_then_value_is_i64_seconds_since_epoch() {
@@ -22,7 +22,10 @@ PROGRAM main
   d := LDATE#2024-01-01;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
     // 2024-01-01 is 19723 days after 1970-01-01 = 19723 * 86400 = 1704067200
     assert_eq!(bufs.vars[0].as_i64() as u64, 1_704_067_200);
 }
@@ -37,7 +40,10 @@ PROGRAM main
   t := LTOD#12:30:00;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
     // 12h * 3600000 + 30m * 60000 = 45000000 ms
     assert_eq!(bufs.vars[0].as_i64() as u64, 45_000_000);
 }
@@ -52,7 +58,10 @@ PROGRAM main
   my_dt := LDT#2024-01-01-12:30:00;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
     // 1704067200 (date) + 12*3600 + 30*60 = 1704067200 + 45000 = 1704112200
     assert_eq!(bufs.vars[0].as_i64() as u64, 1_704_112_200);
 }
@@ -75,7 +84,10 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
     assert_eq!(bufs.vars[2].as_i64(), 1);
 }
 
@@ -89,7 +101,10 @@ PROGRAM main
   t := LTOD#18:00:00;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
     // 18h * 3600000 = 64800000 ms
     assert_eq!(bufs.vars[0].as_i64() as u64, 64_800_000);
 }
@@ -104,7 +119,10 @@ PROGRAM main
   my_dt := LDT#2024-01-01-00:00:00;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
     // 19723 days * 86400 = 1704067200 seconds
     assert_eq!(bufs.vars[0].as_i64() as u64, 1_704_067_200);
 }

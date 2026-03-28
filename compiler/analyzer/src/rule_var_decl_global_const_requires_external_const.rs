@@ -45,8 +45,13 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use ironplc_parser::options::CompilerOptions;
 
-pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
+pub fn apply(
+    lib: &Library,
+    _context: &SemanticContext,
+    _options: &CompilerOptions,
+) -> SemanticResult {
     let mut global_consts = HashSet::new();
 
     // Collect the global constants
@@ -134,7 +139,7 @@ END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_err())
     }
@@ -162,7 +167,7 @@ END_FUNCTION_BLOCK";
 
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context);
+        let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_ok())
     }

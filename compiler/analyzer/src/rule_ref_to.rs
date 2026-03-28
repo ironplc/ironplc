@@ -13,13 +13,17 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 use std::collections::HashMap;
 
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use crate::{
     result::SemanticResult, semantic_context::SemanticContext, type_environment::TypeEnvironment,
 };
 
-pub fn apply(lib: &Library, context: &SemanticContext, options: &ParseOptions) -> SemanticResult {
+pub fn apply(
+    lib: &Library,
+    context: &SemanticContext,
+    options: &CompilerOptions,
+) -> SemanticResult {
     let mut visitor = RuleRefTo {
         type_environment: context.types(),
         var_types: HashMap::new(),
@@ -403,24 +407,24 @@ impl Visitor<Diagnostic> for RuleRefTo<'_> {
 mod tests {
     use crate::stages::analyze;
     use ironplc_dsl::core::FileId;
-    use ironplc_parser::{options::ParseOptions, parse_program};
+    use ironplc_parser::{options::CompilerOptions, parse_program};
 
-    fn edition3_options() -> ParseOptions {
-        ParseOptions {
+    fn edition3_options() -> CompilerOptions {
+        CompilerOptions {
             allow_iec_61131_3_2013: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         }
     }
 
-    fn ref_arithmetic_options() -> ParseOptions {
-        ParseOptions {
+    fn ref_arithmetic_options() -> CompilerOptions {
+        CompilerOptions {
             allow_iec_61131_3_2013: true,
             allow_ref_arithmetic: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         }
     }
 
-    fn parse_with_options(program: &str, options: &ParseOptions) -> Result<(), String> {
+    fn parse_with_options(program: &str, options: &CompilerOptions) -> Result<(), String> {
         let library =
             parse_program(program, &FileId::default(), options).map_err(|e| format!("{e:?}"))?;
         let (_library, context) = analyze(&[&library], options).map_err(|e| format!("{e:?}"))?;
@@ -782,10 +786,10 @@ END_PROGRAM",
     // P2029: allow_ref_stack_variables suppresses REF of FUNCTION VAR_INPUT
     #[test]
     fn ref_when_allow_ref_stack_variables_and_function_var_input_then_ok() {
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_iec_61131_3_2013: true,
             allow_ref_stack_variables: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         };
         let result = parse_with_options(
             "FUNCTION MyFunc : INT
@@ -806,10 +810,10 @@ END_FUNCTION",
     // P2029: allow_ref_stack_variables suppresses REF of VAR_TEMP
     #[test]
     fn ref_when_allow_ref_stack_variables_and_var_temp_then_ok() {
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_iec_61131_3_2013: true,
             allow_ref_stack_variables: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         };
         let result = parse_with_options(
             "FUNCTION_BLOCK FB1
@@ -829,10 +833,10 @@ END_FUNCTION_BLOCK",
     // P2032: allow_ref_type_punning suppresses type mismatch
     #[test]
     fn assign_when_allow_ref_type_punning_and_types_incompatible_then_ok() {
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_iec_61131_3_2013: true,
             allow_ref_type_punning: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         };
         let result = parse_with_options(
             "PROGRAM Main
@@ -866,10 +870,10 @@ END_PROGRAM",
     // P2032: allow_ref_stack_variables alone does NOT suppress type mismatch
     #[test]
     fn assign_when_allow_ref_stack_variables_only_and_types_incompatible_then_error() {
-        let options = ParseOptions {
+        let options = CompilerOptions {
             allow_iec_61131_3_2013: true,
             allow_ref_stack_variables: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         };
         let result = parse_with_options(
             "PROGRAM Main

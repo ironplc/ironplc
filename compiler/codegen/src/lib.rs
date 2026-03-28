@@ -23,7 +23,7 @@
 //! use ironplc_parser::parse_program;
 //!
 //! let source = "PROGRAM main VAR x : INT; END_VAR x := 42; END_PROGRAM";
-//! let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
+//! let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
 //! let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
 //! let container = compile(&analyzed, &ctx).unwrap();
 //! ```

@@ -28,7 +28,7 @@ pub fn from_decl(decl: &StringDeclaration) -> TypeAttributes {
 #[cfg(test)]
 mod tests {
     use ironplc_dsl::{common::TypeName, core::FileId};
-    use ironplc_parser::options::ParseOptions;
+    use ironplc_parser::options::CompilerOptions;
 
     use crate::{
         intermediate_type::IntermediateType, type_environment::TypeEnvironmentBuilder,
@@ -43,7 +43,7 @@ MY_STRING : STRING(50) := 'hello';
 END_TYPE
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironmentBuilder::new()
             .with_elementary_types()

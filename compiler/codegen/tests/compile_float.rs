@@ -1,7 +1,7 @@
 //! Bytecode-level integration tests for float type compilation.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_compile;
 
@@ -15,7 +15,7 @@ PROGRAM main
   x := 3.14;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     assert_eq!(container.header.num_variables, 1);
 
@@ -43,7 +43,7 @@ PROGRAM main
   y := x + 2.5;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     assert_eq!(container.header.num_variables, 2);
 
@@ -81,7 +81,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // Verify that the bytecode contains GT_F32 (0x84)
     let bytecode = container.code.get_function_bytecode(1).unwrap();

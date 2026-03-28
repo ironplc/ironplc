@@ -1,7 +1,7 @@
 //! End-to-end integration tests for user-defined function calls.
 
 mod common;
-use ironplc_parser::options::{Dialect, ParseOptions};
+use ironplc_parser::options::{CompilerOptions, Dialect};
 
 use common::parse_and_run;
 
@@ -23,7 +23,7 @@ PROGRAM main
   result := add_two(3, 7);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 10);
 }
@@ -49,7 +49,7 @@ PROGRAM main
   result := double_plus_one(5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 11);
 }
@@ -73,7 +73,7 @@ PROGRAM main
   b := square(5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 9);
     assert_eq!(bufs.vars[1].as_i32(), 25);
@@ -96,7 +96,7 @@ PROGRAM main
   result := inc(10) + inc(20);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 32);
 }
@@ -119,7 +119,7 @@ PROGRAM main
   result := FOO(A := 5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // FOO assigns 8, then shifts right by 1: 8 >> 1 = 4
     assert_eq!(bufs.vars[0].as_i32(), 4);
@@ -146,7 +146,7 @@ PROGRAM main
   r2 := accumulate(3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // First call: counter starts at 10, adds 5 → 15
     assert_eq!(bufs.vars[0].as_i32(), 15);
@@ -175,7 +175,7 @@ PROGRAM main
   r2 := sum_via_local(3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // First call: accum starts at 0, adds 7 → 7
     assert_eq!(bufs.vars[0].as_i32(), 7);
@@ -204,7 +204,7 @@ PROGRAM main
   r2 := conditional_set(0);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // First call: flag > 0, so return 42
     assert_eq!(bufs.vars[0].as_i32(), 42);
@@ -236,7 +236,7 @@ PROGRAM main
   result := OUTER(Y := 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // OUTER(3) calls INNER(3), which returns 3 * 2 = 6
     assert_eq!(bufs.vars[0].as_i32(), 6);
@@ -304,8 +304,8 @@ PROGRAM main
 END_PROGRAM
 ";
 
-    let (_c1, bufs1) = parse_and_run(source_without_unused, &ParseOptions::default());
-    let (_c2, bufs2) = parse_and_run(source_with_unused, &ParseOptions::default());
+    let (_c1, bufs1) = parse_and_run(source_without_unused, &CompilerOptions::default());
+    let (_c2, bufs2) = parse_and_run(source_with_unused, &CompilerOptions::default());
 
     // Both should produce 7.0
     assert_eq!(bufs1.vars[0].as_f32(), 7.0);
@@ -328,7 +328,7 @@ END_VAR
     result := MY_LEN(S := 'Hello');
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 5);
 }
@@ -350,7 +350,7 @@ END_VAR
     result := MY_LEN(S := greeting);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // 'Hi there' has 8 characters.
     assert_eq!(bufs.vars[1].as_i32(), 8);
@@ -381,7 +381,7 @@ END_VAR
     result := CHECK_LEN(S := 'ABC', expected := 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 1);
 }
@@ -404,7 +404,7 @@ END_VAR
     r2 := MY_LEN(S := 'ABCDE');
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 2);
     assert_eq!(bufs.vars[1].as_i32(), 5);
@@ -428,7 +428,7 @@ END_VAR
     pos := SIGN_R(in := 2.5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // -2.5 < 0.0 is TRUE (1), 2.5 < 0.0 is FALSE (0)
     assert_eq!(bufs.vars[0].as_i32(), 1);
@@ -454,7 +454,7 @@ PROGRAM main
   result := ADD_TEN(data := x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // ADD_TEN receives 5, adds 10, returns 15
     assert_eq!(bufs.vars[1].as_i32(), 15);
@@ -482,7 +482,7 @@ PROGRAM main
   result := ADD_N(n := 42, data := x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // ADD_N receives data=100 and n=42, returns 142
     assert_eq!(bufs.vars[1].as_i32(), 142);
@@ -510,7 +510,10 @@ PROGRAM main
       result := MY_FUNC(data := s);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
 
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }

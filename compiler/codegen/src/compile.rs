@@ -4380,7 +4380,7 @@ fn emit_ge(emitter: &mut Emitter, op_type: OpType) {
 mod tests {
     use super::*;
     use ironplc_dsl::core::FileId;
-    use ironplc_parser::options::ParseOptions;
+    use ironplc_parser::options::CompilerOptions;
     use ironplc_parser::parse_program;
 
     use ironplc_analyzer::SemanticContext;
@@ -4390,9 +4390,11 @@ mod tests {
     /// Runs the analyzer's type resolution pass so that `Expr.resolved_type` is
     /// populated, which codegen requires for control flow and bitwise operations.
     fn parse(source: &str) -> (Library, SemanticContext) {
-        let library = parse_program(source, &FileId::default(), &ParseOptions::default()).unwrap();
+        let library =
+            parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
         let (analyzed, ctx) =
-            ironplc_analyzer::stages::resolve_types(&[&library], &ParseOptions::default()).unwrap();
+            ironplc_analyzer::stages::resolve_types(&[&library], &CompilerOptions::default())
+                .unwrap();
         (analyzed, ctx)
     }
 

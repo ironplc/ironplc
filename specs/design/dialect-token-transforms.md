@@ -260,7 +260,7 @@ pub fn tokenize_program(source, file_id, options, line_offset, col_offset) {
     (tokens, errors)
 }
 
-fn apply_dialect_transforms(tokens: Vec<Token>, options: &ParseOptions) -> Vec<Token> {
+fn apply_dialect_transforms(tokens: Vec<Token>, options: &CompilerOptions) -> Vec<Token> {
     match options.dialect {
         Dialect::Standard => tokens,
         Dialect::SiemensSCL => {

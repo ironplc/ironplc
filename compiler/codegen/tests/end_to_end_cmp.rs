@@ -1,7 +1,7 @@
 //! End-to-end integration tests for comparison operators.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -17,7 +17,7 @@ PROGRAM main
   y := x = 5;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 5);
     assert_eq!(bufs.vars[1].as_i32(), 1);
@@ -35,7 +35,7 @@ PROGRAM main
   y := x <> 3;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 5);
     assert_eq!(bufs.vars[1].as_i32(), 1);
@@ -53,7 +53,7 @@ PROGRAM main
   y := x < 5;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 3);
     assert_eq!(bufs.vars[1].as_i32(), 1);
@@ -71,7 +71,7 @@ PROGRAM main
   y := x <= 5;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 5);
     assert_eq!(bufs.vars[1].as_i32(), 1);
@@ -89,7 +89,7 @@ PROGRAM main
   y := x > 5;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 7);
     assert_eq!(bufs.vars[1].as_i32(), 1);
@@ -107,7 +107,7 @@ PROGRAM main
   y := x >= 5;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 3);
     assert_eq!(bufs.vars[1].as_i32(), 0);
@@ -128,7 +128,7 @@ PROGRAM main
   pos := x < 0.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // -2.5 < 0.0 is TRUE (1)
     assert_eq!(bufs.vars[1].as_i32(), 1);
@@ -148,7 +148,7 @@ PROGRAM main
   result := x > 0.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }

@@ -284,12 +284,12 @@ mod tests {
     use ironplc_dsl::core::FileId;
     use ironplc_dsl::fold::Fold;
     use ironplc_dsl::textual::*;
-    use ironplc_parser::options::ParseOptions;
+    use ironplc_parser::options::CompilerOptions;
 
     /// Runs the prerequisite passes and then the expression type resolution pass.
     fn run_pass(program: &str) -> Library {
         let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironmentBuilder::new()
             .with_elementary_types()

@@ -249,7 +249,7 @@ mod tests {
         common::*,
         core::{FileId, Id, SourceSpan},
     };
-    use ironplc_parser::options::ParseOptions;
+    use ironplc_parser::options::CompilerOptions;
     use ironplc_problems::Problem;
 
     #[test]
@@ -267,7 +267,7 @@ FUNCTION_BLOCK caller
 END_FUNCTION_BLOCK
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironment::new();
         let result = apply(input, &mut type_environment).unwrap();
@@ -311,7 +311,7 @@ FUNCTION_BLOCK caller
 END_FUNCTION_BLOCK
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironment::new();
         let result = apply(input, &mut type_environment).unwrap();
@@ -357,7 +357,7 @@ FUNCTION_BLOCK caller
 END_FUNCTION_BLOCK
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironment::new();
         let result = apply(input, &mut type_environment).unwrap();
@@ -408,7 +408,7 @@ FUNCTION_BLOCK caller
 END_FUNCTION_BLOCK
         ";
         let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironment::new();
         let result = apply(input, &mut type_environment);

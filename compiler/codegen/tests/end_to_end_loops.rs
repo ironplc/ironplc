@@ -1,7 +1,7 @@
 //! End-to-end integration tests for WHILE, REPEAT, and FOR loop statements.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -18,7 +18,7 @@ PROGRAM main
   END_WHILE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0);
 }
 
@@ -36,7 +36,7 @@ PROGRAM main
   END_WHILE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 0);
     assert_eq!(bufs.vars[1].as_i32(), 0); // y untouched
 }
@@ -54,7 +54,7 @@ PROGRAM main
   END_REPEAT;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 5);
 }
 
@@ -74,7 +74,7 @@ PROGRAM main
   END_REPEAT;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 1); // count = 1 (body ran once)
 }
 
@@ -91,7 +91,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 15); // 1+2+3+4+5
 }
 
@@ -108,7 +108,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 15); // 5+4+3+2+1
 }
 
@@ -125,7 +125,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 6); // i=0,2,4,6,8,10 → 6 iterations
 }
 
@@ -143,6 +143,6 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 0); // y untouched
 }

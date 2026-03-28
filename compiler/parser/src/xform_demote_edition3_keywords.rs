@@ -1,5 +1,5 @@
 use crate::{
-    options::ParseOptions,
+    options::CompilerOptions,
     token::{Token, TokenType},
 };
 
@@ -15,7 +15,7 @@ use crate::{
 ///   *both* Edition 3 mode *and* `allow_ref_to` are disabled.  This lets
 ///   the RuSTy dialect enable `REF_TO` syntax while keeping `LDT` etc.
 ///   available as identifiers.
-pub fn apply(tokens: &mut [Token], options: &ParseOptions) {
+pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
     let demote_time_types = !options.allow_iec_61131_3_2013;
     let demote_ref = !options.allow_iec_61131_3_2013 && !options.allow_ref_to;
 
@@ -43,7 +43,7 @@ mod tests {
     use dsl::core::SourceSpan;
 
     use crate::{
-        options::ParseOptions,
+        options::CompilerOptions,
         token::{Token, TokenType},
         xform_demote_edition3_keywords::apply,
     };
@@ -58,25 +58,25 @@ mod tests {
         }
     }
 
-    fn opts_no_edition3() -> ParseOptions {
-        ParseOptions {
+    fn opts_no_edition3() -> CompilerOptions {
+        CompilerOptions {
             allow_iec_61131_3_2013: false,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         }
     }
 
-    fn opts_edition3() -> ParseOptions {
-        ParseOptions {
+    fn opts_edition3() -> CompilerOptions {
+        CompilerOptions {
             allow_iec_61131_3_2013: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         }
     }
 
-    fn opts_ref_to_only() -> ParseOptions {
-        ParseOptions {
+    fn opts_ref_to_only() -> CompilerOptions {
+        CompilerOptions {
             allow_iec_61131_3_2013: false,
             allow_ref_to: true,
-            ..ParseOptions::default()
+            ..CompilerOptions::default()
         }
     }
 

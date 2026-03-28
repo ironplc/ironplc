@@ -5,7 +5,7 @@
 //! compatible with any real parameter type.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -26,7 +26,7 @@ END_VAR
     result := ADD_ONE(5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 6);
 }
 
@@ -47,7 +47,7 @@ END_VAR
     result := DOUBLE(7);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 14);
 }
 
@@ -68,7 +68,7 @@ END_VAR
     result := TRIPLE(100);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 300);
 }
 
@@ -89,7 +89,7 @@ END_VAR
     result := ADD_PI(3.14);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     let val = bufs.vars[0].as_f64();
     assert!((val - 3.14).abs() < 0.001);
 }
@@ -106,6 +106,6 @@ END_VAR
     result := x + 5;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 15);
 }

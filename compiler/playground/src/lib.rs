@@ -19,7 +19,7 @@ use ironplc_codegen::compile as codegen_compile;
 use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
-use ironplc_parser::options::{Dialect, ParseOptions};
+use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_sources::{parse_source, FileType};
 use ironplc_vm::{Slot, Vm, VmBuffers};
 use serde::{Deserialize, Serialize};
@@ -43,17 +43,17 @@ thread_local! {
     static SESSION: RefCell<Option<VmSession>> = const { RefCell::new(None) };
 }
 
-/// Build [`ParseOptions`] from an edition string.
+/// Build [`CompilerOptions`] from an edition string.
 ///
 /// `"2013"` selects the IEC 61131-3 Edition 3 dialect.
 /// Any other value (including empty) uses the RuSTy dialect, which enables
 /// all vendor extensions so playground users can explore non-standard
 /// features without toggling flags.
-fn parse_options_from_edition(edition: &str) -> ParseOptions {
+fn compiler_options_from_edition(edition: &str) -> CompilerOptions {
     if edition == "2013" {
-        ParseOptions::from_dialect(Dialect::Iec61131_3Ed3)
+        CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
     } else {
-        ParseOptions::from_dialect(Dialect::Rusty)
+        CompilerOptions::from_dialect(Dialect::Rusty)
     }
 }
 
@@ -295,7 +295,7 @@ pub fn compile(source: &str, edition: &str) -> String {
 
 fn compile_inner(source: &str, edition: &str) -> CompileResult {
     let file_type = FileType::from_content(source);
-    let options = parse_options_from_edition(edition);
+    let options = compiler_options_from_edition(edition);
     let library = match parse_source(file_type, source, &FileId::default(), &options) {
         Ok(lib) => lib,
         Err(diag) => {

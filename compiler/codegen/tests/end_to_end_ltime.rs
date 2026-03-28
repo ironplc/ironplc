@@ -7,7 +7,7 @@
 
 mod common;
 use common::parse_and_run;
-use ironplc_parser::options::{Dialect, ParseOptions};
+use ironplc_parser::options::{CompilerOptions, Dialect};
 
 #[test]
 fn end_to_end_when_ltime_assignment_then_value_is_i64_milliseconds() {
@@ -19,7 +19,10 @@ PROGRAM main
   t := LTIME#100ms;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
     assert_eq!(bufs.vars[0].as_i64(), 100);
 }
 
@@ -33,7 +36,10 @@ PROGRAM main
   t := LTIME#5s;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
     assert_eq!(bufs.vars[0].as_i64(), 5000);
 }
 
@@ -51,7 +57,10 @@ PROGRAM main
   c := a + b;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
     assert_eq!(bufs.vars[2].as_i64(), 300);
 }
 
@@ -73,6 +82,9 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::from_dialect(Dialect::Iec61131_3Ed3));
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
     assert_eq!(bufs.vars[2].as_i64(), 1);
 }

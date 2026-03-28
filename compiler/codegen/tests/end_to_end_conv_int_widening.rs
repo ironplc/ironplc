@@ -1,7 +1,7 @@
 //! End-to-end tests for integer widening type conversions.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 
@@ -17,7 +17,7 @@ PROGRAM main
   y := SINT_TO_INT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), -100);
 }
 
@@ -33,7 +33,7 @@ PROGRAM main
   y := INT_TO_DINT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), -30000);
 }
 
@@ -49,7 +49,7 @@ PROGRAM main
   y := DINT_TO_LINT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i64(), -1000000);
 }
 
@@ -65,7 +65,7 @@ PROGRAM main
   y := USINT_TO_UINT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32() as u16, 200);
 }
 
@@ -81,7 +81,7 @@ PROGRAM main
   y := UINT_TO_ULINT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i64() as u64, 50000);
 }
 
@@ -97,6 +97,6 @@ PROGRAM main
   y := INT_TO_UINT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32() as u16, 1000);
 }

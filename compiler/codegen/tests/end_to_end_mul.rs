@@ -1,7 +1,7 @@
 //! End-to-end integration tests for the MUL operator.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_compile, parse_and_run, VmBuffers};
 use ironplc_vm::Vm;
@@ -18,7 +18,7 @@ PROGRAM main
   y := x * 6;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 7);
     assert_eq!(bufs.vars[1].as_i32(), 42);
@@ -34,7 +34,7 @@ PROGRAM main
   result := 999 * 0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 0);
 }
@@ -49,7 +49,7 @@ PROGRAM main
   result := 42 * 1;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 42);
 }
@@ -64,7 +64,7 @@ PROGRAM main
   result := 7 * -6;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), -42);
 }
@@ -79,7 +79,7 @@ PROGRAM main
   result := -7 * -6;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 42);
 }
@@ -94,7 +94,7 @@ PROGRAM main
   result := 2 * 3 * 4;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 24);
 }
@@ -113,7 +113,7 @@ PROGRAM main
   c := a * b;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 7);
     assert_eq!(bufs.vars[1].as_i32(), 6);
@@ -130,7 +130,7 @@ PROGRAM main
   result := 2 + 3 * 4;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &ParseOptions::default());
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     // Multiplication has higher precedence: 2 + (3 * 4) = 14
     assert_eq!(bufs.vars[0].as_i32(), 14);
@@ -146,7 +146,7 @@ PROGRAM main
   x := x * 2 + 1;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = Vm::new()
         .load(

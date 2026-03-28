@@ -17,7 +17,7 @@ use crate::symbol_environment::SymbolEnvironment;
 use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 /// Contains all environments needed for semantic analysis.
 ///
@@ -42,8 +42,8 @@ pub struct SemanticContext {
     /// Declarations transitively reachable from PROGRAM roots. Codegen uses
     /// this to skip compiling unused user-defined functions.
     reachable: HashSet<Id>,
-    /// Parse options that affect semantic validation (e.g., allow flags).
-    parse_options: ParseOptions,
+    /// Compiler options that affect semantic validation (e.g., allow flags).
+    compiler_options: CompilerOptions,
 }
 
 impl SemanticContext {
@@ -53,7 +53,7 @@ impl SemanticContext {
         functions: FunctionEnvironment,
         symbols: SymbolEnvironment,
         reachable: HashSet<Id>,
-        parse_options: ParseOptions,
+        compiler_options: CompilerOptions,
     ) -> Self {
         Self {
             types,
@@ -61,7 +61,7 @@ impl SemanticContext {
             symbols,
             diagnostics: Vec::new(),
             reachable,
-            parse_options,
+            compiler_options,
         }
     }
 
@@ -100,9 +100,9 @@ impl SemanticContext {
         &self.reachable
     }
 
-    /// Provides read-only access to the parse options.
-    pub fn parse_options(&self) -> &ParseOptions {
-        &self.parse_options
+    /// Provides read-only access to the compiler options.
+    pub fn compiler_options(&self) -> &CompilerOptions {
+        &self.compiler_options
     }
 
     /// Provides mutable access to the type environment.
@@ -169,7 +169,7 @@ impl SemanticContextBuilder {
             functions,
             symbols,
             HashSet::new(),
-            ParseOptions::default(),
+            CompilerOptions::default(),
         ))
     }
 }
@@ -196,7 +196,7 @@ mod tests {
             functions,
             symbols,
             HashSet::new(),
-            ParseOptions::default(),
+            CompilerOptions::default(),
         );
 
         // Just verify we can access each environment

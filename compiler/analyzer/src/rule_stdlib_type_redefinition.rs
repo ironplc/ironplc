@@ -26,8 +26,13 @@ use crate::{
     intermediates::stdlib_function_block::is_stdlib_function_block, result::SemanticResult,
     semantic_context::SemanticContext,
 };
+use ironplc_parser::options::CompilerOptions;
 
-pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
+pub fn apply(
+    lib: &Library,
+    _context: &SemanticContext,
+    _options: &CompilerOptions,
+) -> SemanticResult {
     let mut visitor = RuleStdlibTypeRedefinition {
         diagnostics: Vec::new(),
     };
@@ -81,7 +86,7 @@ END_FUNCTION_BLOCK";
 
         let input = parse_only(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context);
+        let result = apply(&input, &context, &CompilerOptions::default());
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -101,7 +106,7 @@ END_FUNCTION_BLOCK";
 
         let input = parse_only(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context);
+        let result = apply(&input, &context, &CompilerOptions::default());
 
         assert!(result.is_ok());
     }
@@ -118,7 +123,7 @@ END_FUNCTION_BLOCK";
 
         let input = parse_only(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context);
+        let result = apply(&input, &context, &CompilerOptions::default());
 
         assert!(result.is_err());
         let err = result.unwrap_err();

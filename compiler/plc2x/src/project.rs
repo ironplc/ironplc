@@ -10,7 +10,7 @@ use ironplc_dsl::{
     core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
-use ironplc_parser::{options::ParseOptions, token::Token, tokenize_program};
+use ironplc_parser::{options::CompilerOptions, token::Token, tokenize_program};
 use ironplc_problems::Problem;
 use ironplc_sources::{Source, SourceProject};
 use log::{debug, trace};
@@ -58,7 +58,7 @@ pub struct FileBackedProject {
     /// The underlying source project
     source_project: SourceProject,
     /// Parse options for this project
-    parse_options: ParseOptions,
+    compiler_options: CompilerOptions,
     /// Cached semantic context from the last successful analysis
     semantic_context: Option<SemanticContext>,
 }
@@ -73,15 +73,15 @@ impl FileBackedProject {
     pub fn new() -> Self {
         FileBackedProject {
             source_project: SourceProject::new(),
-            parse_options: ParseOptions::default(),
+            compiler_options: CompilerOptions::default(),
             semantic_context: None,
         }
     }
 
-    pub fn with_options(parse_options: ParseOptions) -> Self {
+    pub fn with_options(compiler_options: CompilerOptions) -> Self {
         FileBackedProject {
-            source_project: SourceProject::with_options(parse_options),
-            parse_options,
+            source_project: SourceProject::with_options(compiler_options),
+            compiler_options,
             semantic_context: None,
         }
     }
@@ -119,7 +119,7 @@ impl Project for FileBackedProject {
         let source = self.source_project.get_source(file_id);
 
         match source {
-            Some(src) => tokenize_program(src.as_string(), file_id, &self.parse_options, 0, 0),
+            Some(src) => tokenize_program(src.as_string(), file_id, &self.compiler_options, 0, 0),
             None => (
                 vec![],
                 vec![Diagnostic::problem(
@@ -155,7 +155,7 @@ impl Project for FileBackedProject {
         }
 
         // Do the analysis
-        match analyze(&all_libraries, &self.parse_options) {
+        match analyze(&all_libraries, &self.compiler_options) {
             Ok((_library, context)) => {
                 // Always cache the context so LSP features (document symbols, etc.)
                 // remain available even when there are semantic diagnostics.

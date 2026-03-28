@@ -288,7 +288,7 @@ mod tests {
 
     use super::apply;
     use ironplc_dsl::core::FileId;
-    use ironplc_parser::options::ParseOptions;
+    use ironplc_parser::options::CompilerOptions;
 
     #[test]
     fn apply_when_assign_enum_variant_then_ok() {
@@ -305,7 +305,7 @@ FUNCTION_BLOCK FB_EXAMPLE
 END_FUNCTION_BLOCK";
 
         let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -335,7 +335,7 @@ END_FUNCTION_BLOCK
 ";
 
         let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -359,7 +359,7 @@ FUNCTION_BLOCK FB_TEST
 END_FUNCTION_BLOCK";
 
         let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -382,7 +382,7 @@ FUNCTION_BLOCK FB_TEST
 END_FUNCTION_BLOCK";
 
         let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -409,7 +409,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -439,7 +439,7 @@ FUNCTION_BLOCK FB_TEST
 END_FUNCTION_BLOCK";
 
         let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -466,7 +466,7 @@ FUNCTION_BLOCK FB_TEST
 END_FUNCTION_BLOCK";
 
         let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironmentBuilder::new()
             .with_elementary_types()
@@ -494,7 +494,7 @@ FUNCTION_BLOCK FB_TEST
 END_FUNCTION_BLOCK";
 
         let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &ParseOptions::default())
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironmentBuilder::new()
             .with_elementary_types()

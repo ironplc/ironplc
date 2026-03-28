@@ -1,7 +1,7 @@
 //! Bytecode-level integration tests for the NEG operator compilation.
 
 mod common;
-use ironplc_parser::options::ParseOptions;
+use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_compile;
 
@@ -17,7 +17,7 @@ PROGRAM main
   y := -x;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     assert_eq!(container.header.num_variables, 2);
     assert_eq!(container.constant_pool.get_i32(0).unwrap(), 10);
@@ -49,7 +49,7 @@ PROGRAM main
   x := -5;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &ParseOptions::default());
+    let container = parse_and_compile(source, &CompilerOptions::default());
 
     // Constant folding: -5 is stored directly in the pool, no NEG_I32 opcode
     assert_eq!(container.constant_pool.get_i32(0).unwrap(), -5);
