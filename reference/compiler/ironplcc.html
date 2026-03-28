@@ -3,10 +3,17 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta property="og:title" content="ironplcc" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://www.ironplc.com/reference/compiler/ironplcc.html" />
+<meta property="og:site_name" content="IronPLC" />
+<meta property="og:description" content="Name: ironplcc — IronPLC compiler Synopsis: ironplcc[ OPTIONS] COMMAND, Description: ironplcc is the IronPLC compiler command line interface. It checks IEC 61131-3 source files for correctness and ..." />
+<meta name="description" content="Name: ironplcc — IronPLC compiler Synopsis: ironplcc[ OPTIONS] COMMAND, Description: ironplcc is the IronPLC compiler command line interface. It checks IEC 61131-3 source files for correctness and ..." />
 <link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="Source Formats" href="source-formats/index.html"><link rel="prev" title="Overview" href="overview.html">
+        <link rel="canonical" href="https://www.ironplc.com/reference/compiler/ironplcc.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>ironplcc - IronPLC documentation</title>
+        <title>ironplcc - IronPLC - Open-Source IEC 61131-3 Toolchain</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
@@ -54,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.180.0">
+<meta name="ironplc-version" content="0.181.0">
 </head>
   <body>
     
@@ -182,7 +189,7 @@
       </label>
     </div>
     <div class="header-center">
-      <a href="../../index.html"><div class="brand">IronPLC  documentation</div></a>
+      <a href="../../index.html"><div class="brand">IronPLC - Open-Source IEC 61131-3 Toolchain</div></a>
     </div>
     <div class="header-right">
       <div class="theme-toggle-container theme-toggle-header">
@@ -203,7 +210,7 @@
       
       <div class="sidebar-sticky"><a class="sidebar-brand" href="../../index.html">
   
-  <span class="sidebar-brand-text">IronPLC  documentation</span>
+  <span class="sidebar-brand-text">IronPLC - Open-Source IEC 61131-3 Toolchain</span>
   
 </a><form class="sidebar-search-container" method="get" action="../../search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
@@ -246,7 +253,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/program-organization.html">Program Organization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/variables-and-io.html">Variables and I/O</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/references.html">References and Indirection</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../explanation/enabling-features.html">Enabling Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../explanation/enabling-dialects-and-features.html">Enabling Dialects and Features</a></li>
 </ul>
 </li>
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../index.html">Reference</a><input aria-label="Toggle navigation of Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
@@ -679,7 +686,7 @@ such as Visual Studio Code. Communication uses standard input/output.</p>
 default set of vendor extensions. Individual <code class="docutils literal notranslate"><span class="pre">--allow-*</span></code> flags can
 override the dialect’s defaults. Available values: <code class="docutils literal notranslate"><span class="pre">iec61131-3-ed2</span></code>
 (default), <code class="docutils literal notranslate"><span class="pre">iec61131-3-ed3</span></code>, <code class="docutils literal notranslate"><span class="pre">rusty</span></code>. See
-<a class="reference internal" href="../../explanation/enabling-features.html"><span class="doc">Enabling Features</span></a> for details.</p>
+<a class="reference internal" href="../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for details.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-c-style-comments</span></code></dt><dd><p>Allow C-style comments (<code class="docutils literal notranslate"><span class="pre">//</span></code> line comments and <code class="docutils literal notranslate"><span class="pre">/*</span> <span class="pre">*/</span></code> block
 comments). This is a vendor extension not part of the IEC 61131-3

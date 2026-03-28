@@ -3,10 +3,17 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Enabling Features" href="enabling-features.html"><link rel="prev" title="Variables and I/O" href="variables-and-io.html">
+<meta property="og:title" content="References and Indirection" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://www.ironplc.com/explanation/references.html" />
+<meta property="og:site_name" content="IronPLC" />
+<meta property="og:description" content="This page explains what references are, why they exist in IEC 61131-3, and when to reach for them in your programs. For the complete syntax and operator list, see the Reference Types. What Is a Ref..." />
+<meta name="description" content="This page explains what references are, why they exist in IEC 61131-3, and when to reach for them in your programs. For the complete syntax and operator list, see the Reference Types. What Is a Ref..." />
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Enabling Dialects and Features" href="enabling-dialects-and-features.html"><link rel="prev" title="Variables and I/O" href="variables-and-io.html">
+        <link rel="canonical" href="https://www.ironplc.com/explanation/references.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>References and Indirection - IronPLC documentation</title>
+        <title>References and Indirection - IronPLC - Open-Source IEC 61131-3 Toolchain</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
@@ -54,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.180.0">
+<meta name="ironplc-version" content="0.181.0">
 </head>
   <body>
     
@@ -182,7 +189,7 @@
       </label>
     </div>
     <div class="header-center">
-      <a href="../index.html"><div class="brand">IronPLC  documentation</div></a>
+      <a href="../index.html"><div class="brand">IronPLC - Open-Source IEC 61131-3 Toolchain</div></a>
     </div>
     <div class="header-right">
       <div class="theme-toggle-container theme-toggle-header">
@@ -203,7 +210,7 @@
       
       <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
   
-  <span class="sidebar-brand-text">IronPLC  documentation</span>
+  <span class="sidebar-brand-text">IronPLC - Open-Source IEC 61131-3 Toolchain</span>
   
 </a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
@@ -246,7 +253,7 @@
 <li class="toctree-l2"><a class="reference internal" href="program-organization.html">Program Organization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="variables-and-io.html">Variables and I/O</a></li>
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">References and Indirection</a></li>
-<li class="toctree-l2"><a class="reference internal" href="enabling-features.html">Enabling Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="enabling-dialects-and-features.html">Enabling Dialects and Features</a></li>
 </ul>
 </li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../reference/index.html">Reference</a><input aria-label="Toggle navigation of Reference" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -596,7 +603,7 @@ list, see the <a class="reference internal" href="../reference/language/data-typ
 <p>References require enabling through a dialect or flag. You can select a
 dialect that includes references (<code class="docutils literal notranslate"><span class="pre">--dialect</span> <span class="pre">iec61131-3-ed3</span></code> or
 <code class="docutils literal notranslate"><span class="pre">--dialect</span> <span class="pre">rusty</span></code>) or enable references directly with <code class="docutils literal notranslate"><span class="pre">--allow-ref-to</span></code>.
-See <a class="reference internal" href="enabling-features.html"><span class="doc">Enabling Features</span></a> for details.</p>
+See <a class="reference internal" href="enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for details.</p>
 </div>
 <section id="what-is-a-reference">
 <h2>What Is a Reference?<a class="headerlink" href="#what-is-a-reference" title="Link to this heading">¶</a></h2>
@@ -761,7 +768,7 @@ Arithmetic and ordering comparisons can be enabled with
 <ul class="simple">
 <li><p><a class="reference internal" href="../reference/language/data-types/reference-types.html"><span class="doc">Reference Types</span></a> — full syntax,
 operators, and problem codes</p></li>
-<li><p><a class="reference internal" href="enabling-features.html"><span class="doc">Enabling Features</span></a> — how to enable references via dialects or flags</p></li>
+<li><p><a class="reference internal" href="enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> — how to enable references via dialects or flags</p></li>
 <li><p><a class="reference internal" href="../quickstart/index.html"><span class="doc">Quick start tutorial</span></a> — hands-on tutorials</p></li>
 </ul>
 </section>
@@ -772,12 +779,12 @@ operators, and problem codes</p></li>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="enabling-features.html">
+          <a class="next-page" href="enabling-dialects-and-features.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Enabling Features</div>
+                <div class="title">Enabling Dialects and Features</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>

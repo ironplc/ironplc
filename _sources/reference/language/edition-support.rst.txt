@@ -3,7 +3,7 @@ Edition Support
 ===============
 
 Some IEC 61131-3 features require enabling a specific edition of the standard.
-See :doc:`/explanation/enabling-features` for how to enable an edition in the
+See :doc:`/explanation/enabling-dialects-and-features` for how to enable an edition in the
 compiler or VS Code extension.
 
 Edition 3 (2013) Features

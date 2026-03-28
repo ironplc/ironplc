@@ -3,10 +3,17 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta property="og:title" content="Enabling Dialects and Features" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://www.ironplc.com/explanation/enabling-dialects-and-features.html" />
+<meta property="og:site_name" content="IronPLC" />
+<meta property="og:description" content="IronPLC aims to let you take code from another PLC environment and use it without changes. To support this, IronPLC uses dialects — named presets that select the IEC 61131-3 edition and a default s..." />
+<meta name="description" content="IronPLC aims to let you take code from another PLC environment and use it without changes. To support this, IronPLC uses dialects — named presets that select the IEC 61131-3 edition and a default s..." />
 <link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Reference" href="../reference/index.html"><link rel="prev" title="References and Indirection" href="references.html">
+        <link rel="canonical" href="https://www.ironplc.com/explanation/enabling-dialects-and-features.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Enabling Features - IronPLC documentation</title>
+        <title>Enabling Dialects and Features - IronPLC - Open-Source IEC 61131-3 Toolchain</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
@@ -54,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.180.0">
+<meta name="ironplc-version" content="0.181.0">
 </head>
   <body>
     
@@ -182,7 +189,7 @@
       </label>
     </div>
     <div class="header-center">
-      <a href="../index.html"><div class="brand">IronPLC  documentation</div></a>
+      <a href="../index.html"><div class="brand">IronPLC - Open-Source IEC 61131-3 Toolchain</div></a>
     </div>
     <div class="header-right">
       <div class="theme-toggle-container theme-toggle-header">
@@ -203,7 +210,7 @@
       
       <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
   
-  <span class="sidebar-brand-text">IronPLC  documentation</span>
+  <span class="sidebar-brand-text">IronPLC - Open-Source IEC 61131-3 Toolchain</span>
   
 </a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
@@ -246,7 +253,7 @@
 <li class="toctree-l2"><a class="reference internal" href="program-organization.html">Program Organization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="variables-and-io.html">Variables and I/O</a></li>
 <li class="toctree-l2"><a class="reference internal" href="references.html">References and Indirection</a></li>
-<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Enabling Features</a></li>
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Enabling Dialects and Features</a></li>
 </ul>
 </li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../reference/index.html">Reference</a><input aria-label="Toggle navigation of Reference" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -560,12 +567,12 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="https://github.com/ironplc/ironplc/blob/main/docs/explanation/enabling-features.rst?plain=true" title="View this page">
+  <a class="muted-link" href="https://github.com/ironplc/ironplc/blob/main/docs/explanation/enabling-dialects-and-features.rst?plain=true" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
 </div><div class="edit-this-page">
-  <a class="muted-link" href="https://github.com/ironplc/ironplc/edit/main/docs/explanation/enabling-features.rst" rel="edit" title="Edit this page">
+  <a class="muted-link" href="https://github.com/ironplc/ironplc/edit/main/docs/explanation/enabling-dialects-and-features.rst" rel="edit" title="Edit this page">
     <svg><use href="#svg-pencil"></use></svg>
     <span class="visually-hidden">Edit this page</span>
   </a>
@@ -586,8 +593,8 @@
 <p class="admonition-title">Attention</p>
 <p>IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include arrays and structures. Try it out in the <a class="reference external" href="https://playground.ironplc.com">IronPLC Playground</a>.</p>
 </div>
-<section id="enabling-features">
-<h1>Enabling Features<a class="headerlink" href="#enabling-features" title="Link to this heading">¶</a></h1>
+<section id="enabling-dialects-and-features">
+<h1>Enabling Dialects and Features<a class="headerlink" href="#enabling-dialects-and-features" title="Link to this heading">¶</a></h1>
 <p>IronPLC aims to let you take code from another PLC environment and use it
 without changes. To support this, IronPLC uses <strong>dialects</strong> — named presets
 that select the IEC 61131-3 edition and a default set of vendor extensions.
@@ -604,11 +611,13 @@ including <a class="reference internal" href="../reference/language/data-types/l
 <a class="reference internal" href="../reference/language/data-types/ldate.html"><span class="doc">LDATE</span></a>,
 <a class="reference internal" href="../reference/language/data-types/ltime-of-day.html"><span class="doc">LTIME_OF_DAY</span></a>,
 <a class="reference internal" href="../reference/language/data-types/ldate-and-time.html"><span class="doc">LDATE_AND_TIME</span></a>,
-<code class="docutils literal notranslate"><span class="pre">REF_TO</span></code>, <code class="docutils literal notranslate"><span class="pre">REF</span></code>, and <code class="docutils literal notranslate"><span class="pre">NULL</span></code>. No vendor extensions.</p>
+<a class="reference internal" href="../reference/language/data-types/reference-types.html"><span class="doc">REF_TO</span></a>,
+<a class="reference internal" href="../reference/language/data-types/reference-types.html"><span class="doc">REF</span></a>, and
+<a class="reference internal" href="../reference/language/data-types/reference-types.html"><span class="doc">NULL</span></a>. No vendor extensions.</p>
 </dd>
 <dt><strong>rusty</strong></dt><dd><p>RuSTy-compatible dialect. Uses Edition 2 as a base (so Edition 3 type
-names like <code class="docutils literal notranslate"><span class="pre">LDT</span></code> remain available as identifiers) and enables
-<code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> support plus all vendor extensions.</p>
+names like <a class="reference internal" href="../reference/language/data-types/ldate-and-time.html"><span class="doc">LDT</span></a> remain available as identifiers) and enables
+<a class="reference internal" href="../reference/language/data-types/reference-types.html"><span class="doc">REF_TO</span></a> support plus all vendor extensions.</p>
 </dd>
 </dl>
 <p>Editions are additive — enabling a later edition includes all features from
@@ -770,7 +779,7 @@ CoDeSys, TwinCAT, RuSTy, and virtually every PLC runtime.</p>
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Enabling Features</a><ul>
+<li><a class="reference internal" href="#">Enabling Dialects and Features</a><ul>
 <li><a class="reference internal" href="#supported-dialects">Supported Dialects</a></li>
 <li><a class="reference internal" href="#how-to-select-a-dialect">How to Select a Dialect</a><ul>
 <li><a class="reference internal" href="#command-line">Command Line</a></li>
