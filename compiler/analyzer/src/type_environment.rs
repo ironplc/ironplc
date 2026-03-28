@@ -301,6 +301,18 @@ impl TypeEnvironment {
         }
     }
 
+    /// Returns the intermediate type for a named structure type.
+    ///
+    /// Returns `Some` with the `IntermediateType::Structure` if the type is found
+    /// and is a structure type, or `None` if the type is not found or is not a structure.
+    pub fn resolve_struct_type(&self, type_name: &TypeName) -> Option<&IntermediateType> {
+        let attrs = self.get(type_name)?;
+        match &attrs.representation {
+            it @ IntermediateType::Structure { .. } => Some(it),
+            _ => None,
+        }
+    }
+
     /// An iterator for all types in the environment
     pub fn iter(
         &self,
@@ -972,5 +984,35 @@ mod tests {
 
         // Check that the span is marked as builtin
         assert!(ton.span.is_builtin());
+    }
+
+    #[test]
+    fn resolve_struct_type_when_structure_then_returns_type() {
+        let mut env = TypeEnvironment::new();
+        let struct_type = IntermediateType::Structure { fields: vec![] };
+        env.insert_type(
+            &TypeName::from("MY_STRUCT"),
+            TypeAttributes::new(SourceSpan::default(), struct_type.clone()),
+        )
+        .unwrap();
+
+        let result = env.resolve_struct_type(&TypeName::from("MY_STRUCT"));
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), &struct_type);
+    }
+
+    #[test]
+    fn resolve_struct_type_when_not_structure_then_returns_none() {
+        let mut env = TypeEnvironment::new();
+        env.insert_type(
+            &TypeName::from("MY_INT"),
+            TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
+        )
+        .unwrap();
+
+        assert!(env.resolve_struct_type(&TypeName::from("MY_INT")).is_none());
+        assert!(env
+            .resolve_struct_type(&TypeName::from("NOT_FOUND"))
+            .is_none());
     }
 }
