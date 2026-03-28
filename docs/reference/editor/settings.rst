@@ -92,7 +92,7 @@ and a default set of vendor extensions.
 This setting corresponds to the ``--dialect`` command-line option documented in
 :doc:`/reference/compiler/ironplcc`.
 
-See :doc:`/explanation/enabling-features` for background on dialects and
+See :doc:`/explanation/enabling-dialects-and-features` for background on dialects and
 :doc:`/reference/language/edition-support` for the full list of edition-gated
 features.
 

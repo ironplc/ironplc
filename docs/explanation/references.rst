@@ -11,7 +11,7 @@ list, see the :doc:`/reference/language/data-types/reference-types`.
    References require enabling through a dialect or flag. You can select a
    dialect that includes references (``--dialect iec61131-3-ed3`` or
    ``--dialect rusty``) or enable references directly with ``--allow-ref-to``.
-   See :doc:`enabling-features` for details.
+   See :doc:`enabling-dialects-and-features` for details.
 
 --------------------------------------
 What Is a Reference?
@@ -226,5 +226,5 @@ Next Steps
 
 - :doc:`/reference/language/data-types/reference-types` — full syntax,
   operators, and problem codes
-- :doc:`enabling-features` — how to enable references via dialects or flags
+- :doc:`enabling-dialects-and-features` — how to enable references via dialects or flags
 - :doc:`/quickstart/index` — hands-on tutorials

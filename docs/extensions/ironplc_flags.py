@@ -3,7 +3,7 @@ Validates that all --allow-* compiler flags from CompilerOptions are documented.
 
 This extension reads the source of truth (compiler/parser/src/options.rs),
 extracts all allow_* fields, and verifies each one appears in both the
-enabling-features explanation page and the ironplcc CLI reference page.
+enabling-dialects-and-features explanation page and the ironplcc CLI reference page.
 
 The build fails if any flag is missing from either doc file, ensuring
 documentation stays in sync when new flags are added.
@@ -31,7 +31,7 @@ def validate_flags(app, config):
 
     # Verify each flag appears in both doc files
     doc_files = [
-        'explanation/enabling-features.rst',
+        'explanation/enabling-dialects-and-features.rst',
         'reference/compiler/ironplcc.rst',
     ]
     missing = []
