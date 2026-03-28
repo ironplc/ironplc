@@ -66,6 +66,7 @@ fn extract_compiler_options(initialize_params: &InitializeParams) -> CompilerOpt
         options.allow_ref_to |= flag("allowRefTo");
         options.allow_ref_stack_variables |= flag("allowRefStackVariables");
         options.allow_ref_type_punning |= flag("allowRefTypePunning");
+        options.allow_int_to_bool_initializer |= flag("allowIntToBoolInitializer");
         options
     } else {
         CompilerOptions::default()

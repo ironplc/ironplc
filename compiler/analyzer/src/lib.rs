@@ -36,6 +36,7 @@ mod type_attributes;
 mod type_category;
 mod type_environment;
 mod type_table;
+mod xform_int_to_bool_initializer;
 mod xform_named_to_positional_args;
 mod xform_resolve_constant_expressions;
 mod xform_resolve_expr_types;
