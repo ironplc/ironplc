@@ -13,8 +13,12 @@ use ironplc_problems::Problem;
 use ironplc_analyzer::intermediate_type::{
     ByteSized, IntermediateStructField, IntermediateType, SlotCountError,
 };
+use ironplc_analyzer::TypeEnvironment;
+use ironplc_container::ContainerBuilder;
+use ironplc_container::FieldType;
+use ironplc_dsl::common::TypeName;
 
-use super::compile::{OpType, OpWidth, Signedness};
+use super::compile::{CompileContext, OpType, OpWidth, Signedness};
 
 /// Metadata for a structure variable, stored in CompileContext.
 #[allow(dead_code)]
@@ -97,7 +101,6 @@ pub(crate) fn resolve_field_op_type(field_type: &IntermediateType) -> Option<OpT
 /// Returns `Err` if any field has an unsupported type (STRING, WSTRING,
 /// FunctionBlock). Nested structures are NOT flattened — each level is a
 /// separate field list.
-#[allow(dead_code)]
 pub(crate) fn build_struct_fields(
     fields: &[IntermediateStructField],
     span: &SourceSpan,
@@ -183,6 +186,100 @@ pub(crate) fn find_field_in_type(
     })?;
     let info = &field_list[idx];
     Ok((info.slot_offset, info.field_type.clone()))
+}
+
+/// Allocates data region space for a structure variable and registers metadata.
+///
+/// Called from both the `Structure` and `LateResolvedType` match arms in
+/// `assign_variables`.
+pub(crate) fn allocate_struct_variable(
+    ctx: &mut CompileContext,
+    builder: &mut ContainerBuilder,
+    types: &TypeEnvironment,
+    type_name: &TypeName,
+    id: &Id,
+    index: u16,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let struct_type = types.resolve_struct_type(type_name).ok_or_else(|| {
+        Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span.clone(), "Unknown structure type"),
+        )
+    })?;
+
+    let IntermediateType::Structure { fields } = struct_type else {
+        unreachable!("resolve_struct_type guarantees Structure variant");
+    };
+
+    // Compute total slots
+    let total_slots = struct_type.slot_count().map_err(|e| {
+        let msg = match e {
+            SlotCountError::UnsupportedFieldType => {
+                "Structure contains unsupported field types (STRING, WSTRING, or FunctionBlock)"
+            }
+            SlotCountError::MaxDepthExceeded => {
+                "Structure exceeds maximum nesting depth (possible recursive type)"
+            }
+            SlotCountError::Overflow => "Structure is too large (slot count overflows u32)",
+        };
+        Diagnostic::problem(Problem::NotImplemented, Label::span(span.clone(), msg))
+    })?;
+
+    // Enforce slot limit (matches existing array limit for i32 flat-index safety)
+    if total_slots > 32768 {
+        return Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span.clone(), "Structure exceeds maximum 32768 slots"),
+        ));
+    }
+
+    // Allocate data region space
+    let data_offset = ctx.data_region_offset;
+    let total_bytes = total_slots.checked_mul(8).ok_or_else(|| {
+        Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span.clone(), "Structure size overflows (slots * 8)"),
+        )
+    })?;
+    ctx.data_region_offset = ctx
+        .data_region_offset
+        .checked_add(total_bytes)
+        .ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(span.clone(), "Data region overflow"),
+            )
+        })?;
+
+    // Guard against i32 truncation (data_offset is stored as i32 in the
+    // variable slot, matching the array pattern)
+    if ctx.data_region_offset > i32::MAX as u32 {
+        return Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span.clone(), "Data region exceeds 2 GiB limit"),
+        ));
+    }
+
+    // Register array descriptor (treating struct as flat slot array).
+    let desc_index = builder.add_array_descriptor(FieldType::Slot as u8, total_slots);
+
+    // Build field metadata (returns error for unsupported field types)
+    let (fields_vec, field_index) = build_struct_fields(fields, span)?;
+
+    // Store metadata
+    ctx.struct_vars.insert(
+        id.clone(),
+        StructVarInfo {
+            var_index: index,
+            data_offset,
+            total_slots,
+            desc_index,
+            fields: fields_vec,
+            field_index,
+        },
+    );
+    Ok(())
 }
 
 #[cfg(test)]
