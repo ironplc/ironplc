@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Reference" href="../reference/index.html"><link rel="prev" title="Variables and I/O" href="variables-and-io.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Reference" href="../reference/index.html"><link rel="prev" title="References and Indirection" href="references.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Enabling Features - IronPLC documentation</title>
@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.179.0">
+<meta name="ironplc-version" content="0.180.0">
 </head>
   <body>
     
@@ -245,6 +245,7 @@
 <li class="toctree-l2"><a class="reference internal" href="structured-text-basics.html">Structured Text Basics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="program-organization.html">Program Organization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="variables-and-io.html">Variables and I/O</a></li>
+<li class="toctree-l2"><a class="reference internal" href="references.html">References and Indirection</a></li>
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Enabling Features</a></li>
 </ul>
 </li>
@@ -409,6 +410,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P0008.html">P0008</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P0009.html">P0009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P0010.html">P0010</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P0011.html">P0011</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2001.html">P2001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2002.html">P2002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2003.html">P2003</a></li>
@@ -587,62 +589,81 @@
 <section id="enabling-features">
 <h1>Enabling Features<a class="headerlink" href="#enabling-features" title="Link to this heading">¶</a></h1>
 <p>IronPLC aims to let you take code from another PLC environment and use it
-without changes. However, the IEC 61131-3 standard has evolved through
-multiple editions, and some features require you to tell IronPLC which
-edition your code targets.</p>
-<section id="editions-of-the-standard">
-<h2>Editions of the Standard<a class="headerlink" href="#editions-of-the-standard" title="Link to this heading">¶</a></h2>
-<p>The IEC 61131-3 standard has been published in several editions:</p>
+without changes. To support this, IronPLC uses <strong>dialects</strong> — named presets
+that select the IEC 61131-3 edition and a default set of vendor extensions.
+Individual <code class="docutils literal notranslate"><span class="pre">--allow-*</span></code> flags provide fine-grained control on top of the
+selected dialect.</p>
+<section id="supported-dialects">
+<h2>Supported Dialects<a class="headerlink" href="#supported-dialects" title="Link to this heading">¶</a></h2>
 <dl class="simple">
-<dt><strong>Edition 2 (2003)</strong></dt><dd><p>The widely deployed baseline. IronPLC uses this edition by default.</p>
+<dt><strong>iec61131-3-ed2</strong> <em>(default)</em></dt><dd><p>Strict IEC 61131-3:2003 (Edition 2). No vendor extensions are enabled.
+This is the default when no dialect is specified.</p>
 </dd>
-<dt><strong>Edition 3 (2013)</strong></dt><dd><p>Adds new data types (<a class="reference internal" href="../reference/language/data-types/ltime.html"><span class="doc">LTIME</span></a>,
+<dt><strong>iec61131-3-ed3</strong></dt><dd><p>Strict IEC 61131-3:2013 (Edition 3). Enables Edition 3 keywords
+including <a class="reference internal" href="../reference/language/data-types/ltime.html"><span class="doc">LTIME</span></a>,
 <a class="reference internal" href="../reference/language/data-types/ldate.html"><span class="doc">LDATE</span></a>,
 <a class="reference internal" href="../reference/language/data-types/ltime-of-day.html"><span class="doc">LTIME_OF_DAY</span></a>,
-<a class="reference internal" href="../reference/language/data-types/ldate-and-time.html"><span class="doc">LDATE_AND_TIME</span></a>)
-and other language enhancements.</p>
+<a class="reference internal" href="../reference/language/data-types/ldate-and-time.html"><span class="doc">LDATE_AND_TIME</span></a>,
+<code class="docutils literal notranslate"><span class="pre">REF_TO</span></code>, <code class="docutils literal notranslate"><span class="pre">REF</span></code>, and <code class="docutils literal notranslate"><span class="pre">NULL</span></code>. No vendor extensions.</p>
+</dd>
+<dt><strong>rusty</strong></dt><dd><p>RuSTy-compatible dialect. Uses Edition 2 as a base (so Edition 3 type
+names like <code class="docutils literal notranslate"><span class="pre">LDT</span></code> remain available as identifiers) and enables
+<code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> support plus all vendor extensions.</p>
 </dd>
 </dl>
 <p>Editions are additive — enabling a later edition includes all features from
 earlier editions.</p>
 <p>See <a class="reference internal" href="../reference/language/edition-support.html"><span class="doc">Edition Support</span></a> for a complete list of
 features that require a specific edition.</p>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Run <code class="docutils literal notranslate"><span class="pre">ironplcc</span> <span class="pre">dialects</span></code> to see which features each dialect enables.</p>
+</div>
 </section>
-<section id="how-to-enable-an-edition">
-<h2>How to Enable an Edition<a class="headerlink" href="#how-to-enable-an-edition" title="Link to this heading">¶</a></h2>
+<section id="how-to-select-a-dialect">
+<h2>How to Select a Dialect<a class="headerlink" href="#how-to-select-a-dialect" title="Link to this heading">¶</a></h2>
 <section id="command-line">
 <h3>Command Line<a class="headerlink" href="#command-line" title="Link to this heading">¶</a></h3>
-<p>Pass the <code class="docutils literal notranslate"><span class="pre">--std-iec-61131-3</span></code> flag when running <strong class="program">ironplcc</strong>:</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--std-iec-61131-3<span class="o">=</span><span class="m">2013</span><span class="w"> </span>main.st
+<p>Pass the <code class="docutils literal notranslate"><span class="pre">--dialect</span></code> flag when running <strong class="program">ironplcc</strong>:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--dialect<span class="w"> </span>rusty<span class="w"> </span>main.st
+</pre></div>
+</div>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--dialect<span class="w"> </span>iec61131-3-ed3<span class="w"> </span>main.st
 </pre></div>
 </div>
 <p>See <a class="reference internal" href="../reference/compiler/ironplcc.html"><span class="doc">ironplcc</span></a> for all compiler options.</p>
 </section>
 <section id="visual-studio-code">
 <h3>Visual Studio Code<a class="headerlink" href="#visual-studio-code" title="Link to this heading">¶</a></h3>
-<p>Set the <code class="code docutils literal notranslate"><span class="pre">ironplc.std61131Version</span></code> setting to <code class="code docutils literal notranslate"><span class="pre">2013</span></code>:</p>
+<p>Set the <code class="code docutils literal notranslate"><span class="pre">ironplc.dialect</span></code> setting:</p>
 <ol class="arabic simple">
 <li><p>Open <span class="menuselection">File ‣ Preferences ‣ Settings</span>
 (or <span class="menuselection">Code ‣ Preferences ‣ Settings</span> on macOS).</p></li>
 <li><p>Search for <code class="docutils literal notranslate"><span class="pre">ironplc</span></code>.</p></li>
-<li><p>Change <span class="guilabel">Std 61131 Version</span> to <code class="docutils literal notranslate"><span class="pre">2013</span></code>.</p></li>
+<li><p>Change <span class="guilabel">Dialect</span> to the desired value
+(e.g., <code class="docutils literal notranslate"><span class="pre">rusty</span></code> or <code class="docutils literal notranslate"><span class="pre">iec61131-3-ed3</span></code>).</p></li>
 </ol>
 <p>Or add it directly to your <code class="file docutils literal notranslate"><span class="pre">settings.json</span></code>:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;ironplc.std61131Version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2013&quot;</span>
+<span class="w">  </span><span class="nt">&quot;ironplc.dialect&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;rusty&quot;</span>
 <span class="p">}</span>
 </pre></div>
 </div>
 <p>See <a class="reference internal" href="../reference/editor/settings.html"><span class="doc">Settings Reference</span></a> for all extension settings.</p>
 </section>
 </section>
-<section id="vendor-extensions">
-<h2>Vendor Extensions<a class="headerlink" href="#vendor-extensions" title="Link to this heading">¶</a></h2>
-<p>Some PLC vendors support features beyond the IEC 61131-3 standard. IronPLC
-provides flags for these common vendor extensions to improve compatibility
-with code written for other PLC environments.</p>
+<section id="enabling-specific-features">
+<h2>Enabling Specific Features<a class="headerlink" href="#enabling-specific-features" title="Link to this heading">¶</a></h2>
+<p>Individual <code class="docutils literal notranslate"><span class="pre">--allow-*</span></code> flags can be combined with any dialect to enable
+additional features on top of the dialect’s defaults. Flags can only enable
+features — they never disable features that a dialect already includes.</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-all</span></code></dt><dd><p>Enable all vendor extensions at once.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-c-style-comments</span></code></dt><dd><p>Allow C-style comments (<code class="docutils literal notranslate"><span class="pre">//</span></code> line comments and <code class="docutils literal notranslate"><span class="pre">/*</span> <span class="pre">*/</span></code> block comments).
+These are not part of the IEC 61131-3 standard but are supported by many
+PLC environments.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-missing-semicolon</span></code></dt><dd><p>Allow missing semicolons after keyword statements like <code class="docutils literal notranslate"><span class="pre">END_IF</span></code> and
+<code class="docutils literal notranslate"><span class="pre">END_STRUCT</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-top-level-var-global</span></code></dt><dd><p>Allow <code class="code docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code> declarations at the top level of a file,
 outside of a <code class="code docutils literal notranslate"><span class="pre">CONFIGURATION</span></code> block. See
@@ -652,13 +673,34 @@ outside of a <code class="code docutils literal notranslate"><span class="pre">C
 string lengths (e.g., <code class="docutils literal notranslate"><span class="pre">ARRAY[1..MY_CONST]</span> <span class="pre">OF</span> <span class="pre">INT</span></code> or
 <code class="docutils literal notranslate"><span class="pre">STRING[MY_CONST]</span></code>). See <a class="reference internal" href="../reference/language/data-types/array-types.html"><span class="doc">Array Types</span></a>.</p>
 </dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-empty-var-blocks</span></code></dt><dd><p>Allow empty variable blocks (<code class="docutils literal notranslate"><span class="pre">VAR</span> <span class="pre">END_VAR</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span> <span class="pre">END_VAR</span></code>, etc.).
+Some PLC environments permit variable blocks with no declarations.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-time-as-function-name</span></code></dt><dd><p>Allow <code class="docutils literal notranslate"><span class="pre">TIME</span></code> to be used as a function name (e.g., <code class="docutils literal notranslate"><span class="pre">TIME()</span></code>).
+Required for OSCAT compatibility where <code class="docutils literal notranslate"><span class="pre">TIME()</span></code> reads the PLC system
+clock.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-ref-to</span></code></dt><dd><p>Allow <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code>, <code class="docutils literal notranslate"><span class="pre">REF()</span></code>, and <code class="docutils literal notranslate"><span class="pre">NULL</span></code> syntax without enabling full
+Edition 3. This is useful when you need references but want to keep
+Edition 2 keyword handling for the rest of your code. See
+<a class="reference internal" href="../reference/language/data-types/reference-types.html"><span class="doc">Reference Types</span></a>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-pointer-arithmetic</span></code></dt><dd><p>Allow arithmetic (<code class="docutils literal notranslate"><span class="pre">+</span></code>, <code class="docutils literal notranslate"><span class="pre">-</span></code>) and ordering comparisons (<code class="docutils literal notranslate"><span class="pre">&lt;</span></code>, <code class="docutils literal notranslate"><span class="pre">&gt;</span></code>,
+<code class="docutils literal notranslate"><span class="pre">&lt;=</span></code>, <code class="docutils literal notranslate"><span class="pre">&gt;=</span></code>) on <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> types. By default, only <code class="docutils literal notranslate"><span class="pre">=</span></code> and <code class="docutils literal notranslate"><span class="pre">&lt;&gt;</span></code>
+are permitted on references.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-int-to-bool-initializer</span></code></dt><dd><p>Allow integer literals <code class="docutils literal notranslate"><span class="pre">0</span></code> and <code class="docutils literal notranslate"><span class="pre">1</span></code> as <code class="docutils literal notranslate"><span class="pre">BOOL</span></code> variable initializers
+(e.g., <code class="docutils literal notranslate"><span class="pre">debug</span> <span class="pre">:</span> <span class="pre">BOOL</span> <span class="pre">:=</span> <span class="pre">0;</span></code>). The compiler rewrites <code class="docutils literal notranslate"><span class="pre">0</span></code> to <code class="docutils literal notranslate"><span class="pre">FALSE</span></code>
+and <code class="docutils literal notranslate"><span class="pre">1</span></code> to <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>. This is a universal vendor extension supported by
+CoDeSys, TwinCAT, RuSTy, and virtually every PLC runtime.</p>
+</dd>
 </dl>
 <p>Pass the flag when running <strong class="program">ironplcc</strong>:</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--allow-all<span class="w"> </span>main.st
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--allow-c-style-comments<span class="w"> </span>--allow-empty-var-blocks<span class="w"> </span>main.st
 </pre></div>
 </div>
-<p>Or enable individual extensions:</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--allow-top-level-var-global<span class="w"> </span>--allow-constant-type-params<span class="w"> </span>main.st
+<p>Or combine with a dialect:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--dialect<span class="w"> </span>iec61131-3-ed3<span class="w"> </span>--allow-c-style-comments<span class="w"> </span>main.st
 </pre></div>
 </div>
 <p>See <a class="reference internal" href="../reference/compiler/ironplcc.html"><span class="doc">ironplcc</span></a> for all compiler options.</p>
@@ -679,14 +721,14 @@ string lengths (e.g., <code class="docutils literal notranslate"><span class="pr
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="variables-and-io.html">
+          <a class="prev-page" href="references.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Variables and I/O</div>
+                <div class="title">References and Indirection</div>
                 
               </div>
             </a>
@@ -729,13 +771,13 @@ string lengths (e.g., <code class="docutils literal notranslate"><span class="pr
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Enabling Features</a><ul>
-<li><a class="reference internal" href="#editions-of-the-standard">Editions of the Standard</a></li>
-<li><a class="reference internal" href="#how-to-enable-an-edition">How to Enable an Edition</a><ul>
+<li><a class="reference internal" href="#supported-dialects">Supported Dialects</a></li>
+<li><a class="reference internal" href="#how-to-select-a-dialect">How to Select a Dialect</a><ul>
 <li><a class="reference internal" href="#command-line">Command Line</a></li>
 <li><a class="reference internal" href="#visual-studio-code">Visual Studio Code</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#vendor-extensions">Vendor Extensions</a></li>
+<li><a class="reference internal" href="#enabling-specific-features">Enabling Specific Features</a></li>
 </ul>
 </li>
 </ul>

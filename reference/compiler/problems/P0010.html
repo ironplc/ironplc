@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="P2001" href="P2001.html"><link rel="prev" title="P0009" href="P0009.html">
+<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="P0011" href="P0011.html"><link rel="prev" title="P0009" href="P0009.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>P0010 - IronPLC documentation</title>
@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.179.0">
+<meta name="ironplc-version" content="0.180.0">
 </head>
   <body>
     
@@ -245,6 +245,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/structured-text-basics.html">Structured Text Basics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/program-organization.html">Program Organization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/variables-and-io.html">Variables and I/O</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../explanation/references.html">References and Indirection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/enabling-features.html">Enabling Features</a></li>
 </ul>
 </li>
@@ -409,6 +410,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P0008.html">P0008</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P0009.html">P0009</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">P0010</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P0011.html">P0011</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2001.html">P2001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2002.html">P2002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2003.html">P2003</a></li>
@@ -589,7 +591,7 @@
 <dl class="simple">
 <dt><strong>Code</strong></dt><dd><p>P0010</p>
 </dd>
-<dt><strong>Message</strong></dt><dd><p>Feature requires IEC 61131-3:2013 (use –std-iec-61131-3=2013 flag)</p>
+<dt><strong>Message</strong></dt><dd><p>Feature requires IEC 61131-3:2013 (use –dialect iec61131-3-ed3)</p>
 </dd>
 </dl>
 <p>This error occurs when an IEC 61131-3:2013 feature is used without
@@ -608,12 +610,12 @@ enabling the 2013 standard.</p>
 not available in the default mode.</p>
 <p>To fix this error, enable IEC 61131-3:2013 support:</p>
 <ul>
-<li><p><strong>CLI:</strong> Pass the <code class="docutils literal notranslate"><span class="pre">--std-iec-61131-3</span></code> option:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--std-iec-61131-3<span class="o">=</span><span class="m">2013</span><span class="w"> </span>myprogram.st
+<li><p><strong>CLI:</strong> Pass the <code class="docutils literal notranslate"><span class="pre">--dialect</span></code> option:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--dialect<span class="w"> </span>iec61131-3-ed3<span class="w"> </span>myprogram.st
 </pre></div>
 </div>
 </li>
-<li><p><strong>VS Code:</strong> Set <code class="code docutils literal notranslate"><span class="pre">ironplc.std61131Version</span></code> to <code class="code docutils literal notranslate"><span class="pre">2013</span></code> in your
+<li><p><strong>VS Code:</strong> Set <code class="code docutils literal notranslate"><span class="pre">ironplc.dialect</span></code> to <code class="code docutils literal notranslate"><span class="pre">iec61131-3-ed3</span></code> in your
 extension settings. See <a class="reference internal" href="../../editor/settings.html"><span class="doc">Settings Reference</span></a> for details.</p></li>
 </ul>
 <p>See <a class="reference internal" href="../../../explanation/enabling-features.html"><span class="doc">Enabling Features</span></a> for more about standard editions.</p>
@@ -625,12 +627,12 @@ extension settings. See <a class="reference internal" href="../../editor/setting
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="P2001.html">
+          <a class="next-page" href="P0011.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">P2001</div>
+                <div class="title">P0011</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>

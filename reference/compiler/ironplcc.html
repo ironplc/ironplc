@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.179.0">
+<meta name="ironplc-version" content="0.180.0">
 </head>
   <body>
     
@@ -245,6 +245,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/structured-text-basics.html">Structured Text Basics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/program-organization.html">Program Organization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/variables-and-io.html">Variables and I/O</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../explanation/references.html">References and Indirection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/enabling-features.html">Enabling Features</a></li>
 </ul>
 </li>
@@ -409,6 +410,7 @@
 <li class="toctree-l4"><a class="reference internal" href="problems/P0008.html">P0008</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P0009.html">P0009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P0010.html">P0010</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P0011.html">P0011</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P2001.html">P2001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P2002.html">P2002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P2003.html">P2003</a></li>
@@ -646,13 +648,21 @@ behavior.</p>
 </dd>
 </dl>
 </section>
+<section id="informational-commands">
+<h3>Informational Commands<a class="headerlink" href="#informational-commands" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><strong class="program">ironplcc dialects</strong></dt><dd><p>Show available dialects and which features each enables. Use this to
+discover which <code class="docutils literal notranslate"><span class="pre">--allow-*</span></code> flags a dialect includes.</p>
+</dd>
+<dt><strong class="program">ironplcc version</strong></dt><dd><p>Print the version number of the compiler.</p>
+</dd>
+</dl>
+</section>
 <section id="other-commands">
 <h3>Other Commands<a class="headerlink" href="#other-commands" title="Link to this heading">¶</a></h3>
 <dl class="simple">
 <dt><strong class="program">ironplcc lsp</strong> <code class="docutils literal notranslate"><span class="pre">--stdio</span></code></dt><dd><p>Run in Language Server Protocol mode to integrate with development tools
 such as Visual Studio Code. Communication uses standard input/output.</p>
-</dd>
-<dt><strong class="program">ironplcc version</strong></dt><dd><p>Print the version number of the compiler.</p>
 </dd>
 </dl>
 </section>
@@ -665,12 +675,19 @@ such as Visual Studio Code. Communication uses standard input/output.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">-l</span></code> <em>FILE</em>, <code class="docutils literal notranslate"><span class="pre">--log-file</span></code> <em>FILE</em></dt><dd><p>Write log output to the specified file instead of the terminal.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--std-iec-61131-3</span></code> <em>VERSION</em></dt><dd><p>Select the IEC 61131-3 standard version to compile against. Without this
-option, only Edition 2 features are accepted. Available values: <code class="docutils literal notranslate"><span class="pre">2013</span></code>.
-Applies to the <code class="docutils literal notranslate"><span class="pre">check</span></code>, <code class="docutils literal notranslate"><span class="pre">compile</span></code>, and <code class="docutils literal notranslate"><span class="pre">echo</span></code> commands.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--dialect</span></code> <em>DIALECT</em></dt><dd><p>Select the language dialect. A dialect sets the IEC 61131-3 edition and a
+default set of vendor extensions. Individual <code class="docutils literal notranslate"><span class="pre">--allow-*</span></code> flags can
+override the dialect’s defaults. Available values: <code class="docutils literal notranslate"><span class="pre">iec61131-3-ed2</span></code>
+(default), <code class="docutils literal notranslate"><span class="pre">iec61131-3-ed3</span></code>, <code class="docutils literal notranslate"><span class="pre">rusty</span></code>. See
+<a class="reference internal" href="../../explanation/enabling-features.html"><span class="doc">Enabling Features</span></a> for details.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-all</span></code></dt><dd><p>Enable all vendor extensions. Equivalent to passing every <code class="docutils literal notranslate"><span class="pre">--allow-*</span></code>
-flag. See <a class="reference internal" href="../../explanation/enabling-features.html"><span class="doc">Enabling Features</span></a> for details.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-c-style-comments</span></code></dt><dd><p>Allow C-style comments (<code class="docutils literal notranslate"><span class="pre">//</span></code> line comments and <code class="docutils literal notranslate"><span class="pre">/*</span> <span class="pre">*/</span></code> block
+comments). This is a vendor extension not part of the IEC 61131-3
+standard.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-missing-semicolon</span></code></dt><dd><p>Allow missing semicolons after keyword statements like <code class="docutils literal notranslate"><span class="pre">END_IF</span></code> and
+<code class="docutils literal notranslate"><span class="pre">END_STRUCT</span></code>. This is a vendor extension not part of the IEC 61131-3
+standard.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-top-level-var-global</span></code></dt><dd><p>Allow <code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code> declarations at the top level of a file, outside of
 a <code class="docutils literal notranslate"><span class="pre">CONFIGURATION</span></code> block. This is a vendor extension not part of the
@@ -679,6 +696,26 @@ IEC 61131-3 standard.</p>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-constant-type-params</span></code></dt><dd><p>Allow constant references in type parameters (e.g., <code class="docutils literal notranslate"><span class="pre">STRING[MY_CONST]</span></code>
 or <code class="docutils literal notranslate"><span class="pre">ARRAY[1..MY_CONST]</span> <span class="pre">OF</span> <span class="pre">INT</span></code>). This is a vendor extension not part
 of the IEC 61131-3 standard.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-empty-var-blocks</span></code></dt><dd><p>Allow empty variable blocks (<code class="docutils literal notranslate"><span class="pre">VAR</span> <span class="pre">END_VAR</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span> <span class="pre">END_VAR</span></code>,
+etc.). This is a vendor extension not part of the IEC 61131-3 standard.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-time-as-function-name</span></code></dt><dd><p>Allow <code class="docutils literal notranslate"><span class="pre">TIME</span></code> to be used as a function name (e.g., <code class="docutils literal notranslate"><span class="pre">TIME()</span></code>).
+Required for OSCAT compatibility. This is a vendor extension not part
+of the IEC 61131-3 standard.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-ref-to</span></code></dt><dd><p>Allow <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code>, <code class="docutils literal notranslate"><span class="pre">REF()</span></code>, and <code class="docutils literal notranslate"><span class="pre">NULL</span></code> syntax without enabling full
+Edition 3. This is a vendor extension useful when you need references
+but want to keep Edition 2 keyword handling for the rest of your code.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-pointer-arithmetic</span></code></dt><dd><p>Allow arithmetic (<code class="docutils literal notranslate"><span class="pre">+</span></code>, <code class="docutils literal notranslate"><span class="pre">-</span></code>) and ordering comparisons (<code class="docutils literal notranslate"><span class="pre">&lt;</span></code>, <code class="docutils literal notranslate"><span class="pre">&gt;</span></code>,
+<code class="docutils literal notranslate"><span class="pre">&lt;=</span></code>, <code class="docutils literal notranslate"><span class="pre">&gt;=</span></code>) on <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> types. By default, only <code class="docutils literal notranslate"><span class="pre">=</span></code> and <code class="docutils literal notranslate"><span class="pre">&lt;&gt;</span></code>
+are permitted on references.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-int-to-bool-initializer</span></code></dt><dd><p>Allow integer literals <code class="docutils literal notranslate"><span class="pre">0</span></code> and <code class="docutils literal notranslate"><span class="pre">1</span></code> as <code class="docutils literal notranslate"><span class="pre">BOOL</span></code> variable initializers,
+treating <code class="docutils literal notranslate"><span class="pre">0</span></code> as <code class="docutils literal notranslate"><span class="pre">FALSE</span></code> and <code class="docutils literal notranslate"><span class="pre">1</span></code> as <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>. This is a vendor
+extension supported by CoDeSys, TwinCAT, RuSTy, and virtually every
+PLC runtime.</p>
 </dd>
 </dl>
 </section>
@@ -710,8 +747,13 @@ of the IEC 61131-3 standard.</p>
 </pre></div>
 </div>
 </li>
-<li><p>Check a source file using IEC 61131-3:2013 features:</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--std-iec-61131-3<span class="o">=</span><span class="m">2013</span><span class="w"> </span>main.st
+<li><p>Check a source file using IEC 61131-3:2013 (Edition 3) features:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--dialect<span class="w"> </span>iec61131-3-ed3<span class="w"> </span>main.st
+</pre></div>
+</div>
+</li>
+<li><p>Show available dialects and their features:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>dialects
 </pre></div>
 </div>
 </li>
@@ -798,6 +840,7 @@ of the IEC 61131-3 standard.</p>
 <li><a class="reference internal" href="#commands">Commands</a><ul>
 <li><a class="reference internal" href="#build-commands">Build Commands</a></li>
 <li><a class="reference internal" href="#diagnostic-commands">Diagnostic Commands</a></li>
+<li><a class="reference internal" href="#informational-commands">Informational Commands</a></li>
 <li><a class="reference internal" href="#other-commands">Other Commands</a></li>
 </ul>
 </li>

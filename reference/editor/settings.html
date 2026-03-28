@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.179.0">
+<meta name="ironplc-version" content="0.180.0">
 </head>
   <body>
     
@@ -245,6 +245,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/structured-text-basics.html">Structured Text Basics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/program-organization.html">Program Organization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/variables-and-io.html">Variables and I/O</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../explanation/references.html">References and Indirection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/enabling-features.html">Enabling Features</a></li>
 </ul>
 </li>
@@ -409,6 +410,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P0008.html">P0008</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P0009.html">P0009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P0010.html">P0010</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P0011.html">P0011</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P2001.html">P2001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P2002.html">P2002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P2003.html">P2003</a></li>
@@ -669,30 +671,32 @@ logs are not written to a file.</p>
 file logging or delete the log file when troubleshooting is complete.</p>
 </div>
 </section>
-<section id="ironplc-std61131version">
-<h3>ironplc.std61131Version<a class="headerlink" href="#ironplc-std61131version" title="Link to this heading">¶</a></h3>
+<section id="ironplc-dialect">
+<h3>ironplc.dialect<a class="headerlink" href="#ironplc-dialect" title="Link to this heading">¶</a></h3>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>Enum</p>
 </dd>
 <dt class="field-even">Default<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">2003</span></code></p>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">iec61131-3-ed2</span></code></p>
 </dd>
 <dt class="field-odd">Values<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">2003</span></code>, <code class="docutils literal notranslate"><span class="pre">2013</span></code></p>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">iec61131-3-ed2</span></code>, <code class="docutils literal notranslate"><span class="pre">iec61131-3-ed3</span></code>, <code class="docutils literal notranslate"><span class="pre">rusty</span></code></p>
 </dd>
 </dl>
-<p>Selects the edition of the IEC 61131-3 standard to compile against. The default
-(<code class="docutils literal notranslate"><span class="pre">2003</span></code>) accepts only Edition 2 features. Set to <code class="docutils literal notranslate"><span class="pre">2013</span></code> to enable Edition 3
-features such as <a class="reference internal" href="../language/data-types/ltime.html"><span class="doc">LTIME</span></a>,
-<a class="reference internal" href="../language/data-types/ldate.html"><span class="doc">LDATE</span></a>,
-<a class="reference internal" href="../language/data-types/ltime-of-day.html"><span class="doc">LTIME_OF_DAY</span></a>, and
-<a class="reference internal" href="../language/data-types/ldate-and-time.html"><span class="doc">LDATE_AND_TIME</span></a>.</p>
-<p>This setting corresponds to the <code class="docutils literal notranslate"><span class="pre">--std-iec-61131-3</span></code> command-line option
-documented in <a class="reference internal" href="../compiler/ironplcc.html"><span class="doc">ironplcc</span></a>.</p>
-<p>See <a class="reference internal" href="../../explanation/enabling-features.html"><span class="doc">Enabling Features</span></a> for background on standard editions
-and <a class="reference internal" href="../language/edition-support.html"><span class="doc">Edition Support</span></a> for the full list of
-edition-gated features.</p>
+<p>Selects the language dialect preset. A dialect controls the IEC 61131-3 edition
+and a default set of vendor extensions.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">iec61131-3-ed2</span></code>: Strict IEC 61131-3:2003 (Edition 2). No vendor extensions.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">iec61131-3-ed3</span></code>: IEC 61131-3:2013 (Edition 3) with <code class="docutils literal notranslate"><span class="pre">LTIME</span></code>, <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code>, etc.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rusty</span></code>: RuSTy-compatible — designed for compatibility with code from
+RuSTy-based PLC environments.</p></li>
+</ul>
+<p>This setting corresponds to the <code class="docutils literal notranslate"><span class="pre">--dialect</span></code> command-line option documented in
+<a class="reference internal" href="../compiler/ironplcc.html"><span class="doc">ironplcc</span></a>.</p>
+<p>See <a class="reference internal" href="../../explanation/enabling-features.html"><span class="doc">Enabling Features</span></a> for background on dialects and
+<a class="reference internal" href="../language/edition-support.html"><span class="doc">Edition Support</span></a> for the full list of edition-gated
+features.</p>
 </section>
 </section>
 <section id="settings-in-settings-json">
@@ -702,7 +706,7 @@ edition-gated features.</p>
 <span class="w">  </span><span class="nt">&quot;ironplc.path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/custom/path/to/ironplcc&quot;</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;ironplc.logLevel&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DEBUG&quot;</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;ironplc.logFile&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/tmp/ironplc-debug.log&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;ironplc.std61131Version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2013&quot;</span>
+<span class="w">  </span><span class="nt">&quot;ironplc.dialect&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;rusty&quot;</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -777,7 +781,7 @@ edition-gated features.</p>
 <li><a class="reference internal" href="#ironplc-path">ironplc.path</a></li>
 <li><a class="reference internal" href="#ironplc-loglevel">ironplc.logLevel</a></li>
 <li><a class="reference internal" href="#ironplc-logfile">ironplc.logFile</a></li>
-<li><a class="reference internal" href="#ironplc-std61131version">ironplc.std61131Version</a></li>
+<li><a class="reference internal" href="#ironplc-dialect">ironplc.dialect</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#settings-in-settings-json">Settings in settings.json</a></li>

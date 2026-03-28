@@ -54,7 +54,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.179.0">
+<meta name="ironplc-version" content="0.180.0">
 </head>
   <body>
     
@@ -245,6 +245,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/structured-text-basics.html">Structured Text Basics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/program-organization.html">Program Organization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/variables-and-io.html">Variables and I/O</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../explanation/references.html">References and Indirection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/enabling-features.html">Enabling Features</a></li>
 </ul>
 </li>
@@ -409,6 +410,7 @@
 <li class="toctree-l4"><a class="reference internal" href="problems/P0008.html">P0008</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P0009.html">P0009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P0010.html">P0010</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P0011.html">P0011</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P2001.html">P2001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P2002.html">P2002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P2003.html">P2003</a></li>
@@ -658,14 +660,6 @@ to check your program’s syntax.</p>
 </section>
 <section id="compile-the-program">
 <h2>Compile the Program<a class="headerlink" href="#compile-the-program" title="Link to this heading">¶</a></h2>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>The compile command currently supports only trivial programs. Supported
-features include: <code class="docutils literal notranslate"><span class="pre">PROGRAM</span></code> declarations, <code class="docutils literal notranslate"><span class="pre">INT</span></code> variable declarations,
-assignment statements, integer literal constants, and the <code class="docutils literal notranslate"><span class="pre">+</span></code> (add)
-operator. Programs using other features will produce a code generation
-error.</p>
-</div>
 <p>You can compile a source file into a bytecode container (<code class="docutils literal notranslate"><span class="pre">.iplc</span></code>) file
 using the <code class="docutils literal notranslate"><span class="pre">compile</span></code> command. Run the commands in
 <a class="reference internal" href="#compiler-compile-program"><span class="std std-ref">Compile Program</span></a> to compile your program.</p>
