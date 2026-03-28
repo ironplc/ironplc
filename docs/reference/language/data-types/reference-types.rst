@@ -12,7 +12,7 @@ variable.
 
    References can also be enabled without full Edition 3 by passing
    ``--allow-ref-to`` or by selecting the ``rusty`` dialect.
-   See :doc:`/explanation/enabling-features`.
+   See :doc:`/explanation/enabling-dialects-and-features`.
 
 .. list-table::
    :widths: 30 70

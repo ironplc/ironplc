@@ -97,7 +97,7 @@ Options
    default set of vendor extensions. Individual ``--allow-*`` flags can
    override the dialect's defaults. Available values: ``iec61131-3-ed2``
    (default), ``iec61131-3-ed3``, ``rusty``. See
-   :doc:`/explanation/enabling-features` for details.
+   :doc:`/explanation/enabling-dialects-and-features` for details.
 
 ``--allow-c-style-comments``
    Allow C-style comments (``//`` line comments and ``/* */`` block
