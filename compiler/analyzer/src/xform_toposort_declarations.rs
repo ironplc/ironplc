@@ -547,7 +547,12 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                     }
                 }
             }
-            None => return Err(Diagnostic::todo(file!(), line!())),
+            None => {
+                // Global variable declarations have no current_from context
+                // because they are not inside a POU or type declaration.
+                // They don't need dependency edges — they are always placed
+                // first in the output.
+            }
         }
 
         node.recurse_visit(self)
