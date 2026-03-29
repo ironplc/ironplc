@@ -18,7 +18,10 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -44,7 +47,10 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[

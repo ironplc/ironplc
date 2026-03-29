@@ -46,6 +46,6 @@ fn execute_when_invalid_builtin_func_id_then_trap() {
     ];
     assert_eq!(
         common::run_and_expect_trap_i32(&bytecode, 0, &[1]),
-        Trap::InvalidBuiltinFunction(0xFFFF)
+        Trap::InvalidBuiltinFunction(ironplc_container::FunctionId::new(0xFFFF))
     );
 }

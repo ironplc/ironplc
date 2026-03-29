@@ -20,12 +20,21 @@ END_PROGRAM
     let container = parse_and_compile(source, &CompilerOptions::default());
 
     assert_eq!(container.header.num_variables, 2);
-    assert_eq!(container.constant_pool.get_i32(0).unwrap(), 10);
+    assert_eq!(
+        container
+            .constant_pool
+            .get_i32(ironplc_container::ConstantIndex::new(0))
+            .unwrap(),
+        10
+    );
 
     // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
     // y := -x: LOAD_VAR_I32 var:0, NEG_I32, STORE_VAR_I32 var:1
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -52,9 +61,18 @@ END_PROGRAM
     let container = parse_and_compile(source, &CompilerOptions::default());
 
     // Constant folding: -5 is stored directly in the pool, no NEG_I32 opcode
-    assert_eq!(container.constant_pool.get_i32(0).unwrap(), -5);
+    assert_eq!(
+        container
+            .constant_pool
+            .get_i32(ironplc_container::ConstantIndex::new(0))
+            .unwrap(),
+        -5
+    );
 
     // LOAD_CONST_I32 pool:0 (-5), STORE_VAR_I32 var:0, RET_VOID
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(bytecode, &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00, 0xB5]);
 }

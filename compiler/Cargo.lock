@@ -789,6 +789,7 @@ version = "0.181.0"
 dependencies = [
  "csv",
  "ironplc-container",
+ "ironplc-vm",
 ]
 
 [[package]]
