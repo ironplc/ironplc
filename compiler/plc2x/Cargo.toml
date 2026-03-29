@@ -23,6 +23,7 @@ ironplc-sources = { path = "../sources", version = "0.182.0" }
 ironplc-test = { path = "../test", version = "0.182.0" }
 ironplc-codegen = { path = "../codegen", version = "0.182.0" }
 ironplc-container = { path = "../container", version = "0.182.0" }
+ironplc-vm = { path = "../vm", version = "0.182.0" }
 
 time = "0.3.17"
 clap = { version = "4.0", features = ["derive", "wrap_help"] }

@@ -829,6 +829,7 @@ dependencies = [
  "ironplc-problems",
  "ironplc-sources",
  "ironplc-test",
+ "ironplc-vm",
  "log",
  "lsp-server",
  "lsp-types",

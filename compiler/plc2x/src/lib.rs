@@ -9,6 +9,7 @@ pub mod disassemble;
 pub mod logger;
 pub mod lsp;
 pub mod lsp_project;
+pub mod lsp_runner;
 pub mod project;
 pub mod tokenizer;
 

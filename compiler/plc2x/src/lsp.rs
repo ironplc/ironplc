@@ -101,7 +101,10 @@ fn start_with_connection(
         Some(project) => project,
         None => {
             let compiler_options = extract_compiler_options(&initialize_params);
-            LspProject::new(Box::new(FileBackedProject::with_options(compiler_options)))
+            LspProject::with_options(
+                Box::new(FileBackedProject::with_options(compiler_options)),
+                compiler_options,
+            )
         }
     };
 
@@ -196,7 +199,7 @@ impl<'a> LspServer<'a> {
         Err("terminated but no shutdown".to_owned())
     }
 
-    fn handle_request(&self, req: lsp_server::Request) -> &'static str {
+    fn handle_request(&mut self, req: lsp_server::Request) -> &'static str {
         let req_id = req.id.clone();
         let req = match Self::cast_request::<request::Shutdown>(req) {
             Ok(_params) => {
@@ -262,6 +265,40 @@ impl<'a> LspServer<'a> {
                 .send(lsp_server::Message::Response(response))
                 .unwrap();
             return "ironplc/disassemble";
+        }
+
+        if _req.method == "ironplc/run" {
+            let params: serde_json::Value = serde_json::from_value(_req.params).unwrap_or_default();
+            let source = params["source"].as_str().unwrap_or("");
+            let cycle_time_us = params["cycleTimeUs"].as_u64().unwrap_or(100_000);
+
+            let result = self.project.run_load(source, cycle_time_us);
+            let response = lsp_server::Response::new_ok(req_id, result);
+            self.sender
+                .send(lsp_server::Message::Response(response))
+                .unwrap();
+            return "ironplc/run";
+        }
+
+        if _req.method == "ironplc/step" {
+            let params: serde_json::Value = serde_json::from_value(_req.params).unwrap_or_default();
+            let scans = params["scans"].as_u64().unwrap_or(1) as u32;
+
+            let result = self.project.run_step(scans);
+            let response = lsp_server::Response::new_ok(req_id, result);
+            self.sender
+                .send(lsp_server::Message::Response(response))
+                .unwrap();
+            return "ironplc/step";
+        }
+
+        if _req.method == "ironplc/stop" {
+            let result = self.project.run_stop();
+            let response = lsp_server::Response::new_ok(req_id, result);
+            self.sender
+                .send(lsp_server::Message::Response(response))
+                .unwrap();
+            return "ironplc/stop";
         }
 
         ""
@@ -791,6 +828,104 @@ mod test {
             "Expected no diagnostics for LTIME with 2013 options, got: {:?}",
             diagnostics.diagnostics
         );
+    }
+
+    #[test]
+    fn run_request_when_valid_source_then_returns_ok() {
+        let proj = Box::new(FileBackedProject::default());
+        let mut server = TestServer::new(proj);
+
+        let params = serde_json::json!({
+            "source": "PROGRAM main\nVAR\nx : DINT;\nEND_VAR\nx := 42;\nEND_PROGRAM",
+            "cycleTimeUs": 100000
+        });
+        let req_id = server.send_raw_request("ironplc/run", params);
+        let result: serde_json::Value = server.receive_response(req_id);
+
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["total_scans"], 0);
+    }
+
+    #[test]
+    fn run_request_when_invalid_source_then_returns_error() {
+        let proj = Box::new(FileBackedProject::default());
+        let mut server = TestServer::new(proj);
+
+        let params = serde_json::json!({
+            "source": "INVALID CODE",
+            "cycleTimeUs": 100000
+        });
+        let req_id = server.send_raw_request("ironplc/run", params);
+        let result: serde_json::Value = server.receive_response(req_id);
+
+        assert_eq!(result["ok"], false);
+        assert!(result["error"].as_str().is_some());
+    }
+
+    #[test]
+    fn step_request_when_program_loaded_then_returns_variables() {
+        let proj = Box::new(FileBackedProject::default());
+        let mut server = TestServer::new(proj);
+
+        // Load program first
+        let params = serde_json::json!({
+            "source": "PROGRAM main\nVAR\nx : DINT;\nEND_VAR\nx := 42;\nEND_PROGRAM",
+            "cycleTimeUs": 100000
+        });
+        let req_id = server.send_raw_request("ironplc/run", params);
+        let _: serde_json::Value = server.receive_response(req_id);
+
+        // Step one scan
+        let step_params = serde_json::json!({"scans": 1});
+        let step_id = server.send_raw_request("ironplc/step", step_params);
+        let result: serde_json::Value = server.receive_response(step_id);
+
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["total_scans"], 1);
+        let vars = result["variables"].as_array().unwrap();
+        assert!(!vars.is_empty());
+        assert_eq!(vars[0]["name"], "x");
+        assert_eq!(vars[0]["value"], "42");
+    }
+
+    #[test]
+    fn step_request_when_no_program_then_returns_error() {
+        let proj = Box::new(FileBackedProject::default());
+        let mut server = TestServer::new(proj);
+
+        let params = serde_json::json!({"scans": 1});
+        let req_id = server.send_raw_request("ironplc/step", params);
+        let result: serde_json::Value = server.receive_response(req_id);
+
+        assert_eq!(result["ok"], false);
+        assert!(result["error"]
+            .as_str()
+            .unwrap()
+            .contains("No program loaded"));
+    }
+
+    #[test]
+    fn stop_request_when_program_running_then_clears_session() {
+        let proj = Box::new(FileBackedProject::default());
+        let mut server = TestServer::new(proj);
+
+        // Load and step
+        let params = serde_json::json!({
+            "source": "PROGRAM main\nVAR\nx : DINT;\nEND_VAR\nx := 42;\nEND_PROGRAM",
+            "cycleTimeUs": 100000
+        });
+        let req_id = server.send_raw_request("ironplc/run", params);
+        let _: serde_json::Value = server.receive_response(req_id);
+
+        // Stop
+        let stop_id = server.send_raw_request("ironplc/stop", serde_json::json!({}));
+        let result: serde_json::Value = server.receive_response(stop_id);
+        assert_eq!(result["ok"], true);
+
+        // Step should fail now
+        let step_id = server.send_raw_request("ironplc/step", serde_json::json!({"scans": 1}));
+        let result: serde_json::Value = server.receive_response(step_id);
+        assert_eq!(result["ok"], false);
     }
 
     #[test]
