@@ -39,6 +39,7 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'includes']
 # a list of builtin themes.
 #
 html_theme = 'furo'
+html_scaled_image_link = False
 html_baseurl = "https://www.ironplc.com/"
 html_title = "IronPLC - Open-Source IEC 61131-3 Toolchain"
 
