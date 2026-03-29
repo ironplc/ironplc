@@ -1,5 +1,7 @@
 use core::fmt;
 
+use ironplc_container::{ConstantIndex, FbTypeId, FunctionId, TaskId, VarIndex};
+
 /// Runtime traps that halt VM execution.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Trap {
@@ -7,18 +9,18 @@ pub enum Trap {
     StackOverflow,
     StackUnderflow,
     InvalidInstruction(u8),
-    InvalidConstantIndex(u16),
-    InvalidVariableIndex(u16),
-    InvalidFunctionId(u16),
-    WatchdogTimeout(u16),
+    InvalidConstantIndex(ConstantIndex),
+    InvalidVariableIndex(VarIndex),
+    InvalidFunctionId(FunctionId),
+    WatchdogTimeout(TaskId),
     NegativeExponent,
     NullDereference,
-    InvalidBuiltinFunction(u16),
+    InvalidBuiltinFunction(FunctionId),
     DataRegionOutOfBounds(u32),
     TempBufferExhausted,
-    InvalidFbTypeId(u16),
+    InvalidFbTypeId(FbTypeId),
     ArrayIndexOutOfBounds {
-        var_index: u16,
+        var_index: VarIndex,
         index: i32,
         total_elements: u32,
     },
@@ -41,14 +43,14 @@ impl fmt::Display for Trap {
             Trap::NegativeExponent => write!(f, "negative exponent"),
             Trap::NullDereference => write!(f, "null reference dereference"),
             Trap::InvalidBuiltinFunction(id) => {
-                write!(f, "invalid built-in function: 0x{id:04X}")
+                write!(f, "invalid built-in function: 0x{:04X}", id.raw())
             }
             Trap::DataRegionOutOfBounds(offset) => {
                 write!(f, "data region access out of bounds at offset {offset}")
             }
             Trap::TempBufferExhausted => write!(f, "temporary buffer pool exhausted"),
             Trap::InvalidFbTypeId(id) => {
-                write!(f, "invalid FB type ID: 0x{id:04X}")
+                write!(f, "invalid FB type ID: 0x{:04X}", id.raw())
             }
             Trap::ArrayIndexOutOfBounds {
                 var_index,
@@ -70,7 +72,7 @@ mod tests {
 
     #[test]
     fn trap_display_when_watchdog_timeout_then_includes_task_id() {
-        let trap = Trap::WatchdogTimeout(3);
+        let trap = Trap::WatchdogTimeout(TaskId::new(3));
         assert_eq!(format!("{trap}"), "watchdog timeout on task 3");
     }
 
@@ -86,7 +88,7 @@ mod tests {
 
     #[test]
     fn v_code_when_watchdog_timeout_then_v4003() {
-        assert_eq!(Trap::WatchdogTimeout(0).v_code(), "V4003");
+        assert_eq!(Trap::WatchdogTimeout(TaskId::new(0)).v_code(), "V4003");
     }
 
     #[test]
@@ -106,22 +108,34 @@ mod tests {
 
     #[test]
     fn v_code_when_invalid_constant_index_then_v9004() {
-        assert_eq!(Trap::InvalidConstantIndex(42).v_code(), "V9004");
+        assert_eq!(
+            Trap::InvalidConstantIndex(ConstantIndex::new(42)).v_code(),
+            "V9004"
+        );
     }
 
     #[test]
     fn v_code_when_invalid_variable_index_then_v9005() {
-        assert_eq!(Trap::InvalidVariableIndex(7).v_code(), "V9005");
+        assert_eq!(
+            Trap::InvalidVariableIndex(VarIndex::new(7)).v_code(),
+            "V9005"
+        );
     }
 
     #[test]
     fn v_code_when_invalid_function_id_then_v9006() {
-        assert_eq!(Trap::InvalidFunctionId(3).v_code(), "V9006");
+        assert_eq!(
+            Trap::InvalidFunctionId(FunctionId::new(3)).v_code(),
+            "V9006"
+        );
     }
 
     #[test]
     fn v_code_when_invalid_builtin_function_then_v9007() {
-        assert_eq!(Trap::InvalidBuiltinFunction(0x0101).v_code(), "V9007");
+        assert_eq!(
+            Trap::InvalidBuiltinFunction(FunctionId::new(0x0101)).v_code(),
+            "V9007"
+        );
     }
 
     #[test]
@@ -133,7 +147,7 @@ mod tests {
     fn v_code_when_array_index_out_of_bounds_then_v4005() {
         assert_eq!(
             Trap::ArrayIndexOutOfBounds {
-                var_index: 0,
+                var_index: VarIndex::new(0),
                 index: 10,
                 total_elements: 5,
             }
@@ -144,7 +158,10 @@ mod tests {
 
     #[test]
     fn v_code_when_invalid_fb_type_id_then_v9010() {
-        assert_eq!(Trap::InvalidFbTypeId(0x0010).v_code(), "V9010");
+        assert_eq!(
+            Trap::InvalidFbTypeId(FbTypeId::new(0x0010)).v_code(),
+            "V9010"
+        );
     }
 
     #[test]
@@ -152,10 +169,10 @@ mod tests {
         assert_eq!(Trap::DivideByZero.exit_code(), 1);
         assert_eq!(Trap::NegativeExponent.exit_code(), 1);
         assert_eq!(Trap::NullDereference.exit_code(), 1);
-        assert_eq!(Trap::WatchdogTimeout(0).exit_code(), 1);
+        assert_eq!(Trap::WatchdogTimeout(TaskId::new(0)).exit_code(), 1);
         assert_eq!(
             Trap::ArrayIndexOutOfBounds {
-                var_index: 0,
+                var_index: VarIndex::new(0),
                 index: 0,
                 total_elements: 0,
             }
@@ -169,10 +186,16 @@ mod tests {
         assert_eq!(Trap::StackOverflow.exit_code(), 3);
         assert_eq!(Trap::StackUnderflow.exit_code(), 3);
         assert_eq!(Trap::InvalidInstruction(0).exit_code(), 3);
-        assert_eq!(Trap::InvalidConstantIndex(0).exit_code(), 3);
-        assert_eq!(Trap::InvalidVariableIndex(0).exit_code(), 3);
-        assert_eq!(Trap::InvalidFunctionId(0).exit_code(), 3);
-        assert_eq!(Trap::InvalidBuiltinFunction(0).exit_code(), 3);
-        assert_eq!(Trap::InvalidFbTypeId(0).exit_code(), 3);
+        assert_eq!(
+            Trap::InvalidConstantIndex(ConstantIndex::new(0)).exit_code(),
+            3
+        );
+        assert_eq!(Trap::InvalidVariableIndex(VarIndex::new(0)).exit_code(), 3);
+        assert_eq!(Trap::InvalidFunctionId(FunctionId::new(0)).exit_code(), 3);
+        assert_eq!(
+            Trap::InvalidBuiltinFunction(FunctionId::new(0)).exit_code(),
+            3
+        );
+        assert_eq!(Trap::InvalidFbTypeId(FbTypeId::new(0)).exit_code(), 3);
     }
 }

@@ -20,10 +20,25 @@ END_PROGRAM
     let container = parse_and_compile(source, &CompilerOptions::default());
 
     assert_eq!(container.header.num_variables, 2);
-    assert_eq!(container.constant_pool.get_i32(0).unwrap(), 7);
-    assert_eq!(container.constant_pool.get_i32(1).unwrap(), 6);
+    assert_eq!(
+        container
+            .constant_pool
+            .get_i32(ironplc_container::ConstantIndex::new(0))
+            .unwrap(),
+        7
+    );
+    assert_eq!(
+        container
+            .constant_pool
+            .get_i32(ironplc_container::ConstantIndex::new(1))
+            .unwrap(),
+        6
+    );
 
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -53,7 +68,10 @@ END_PROGRAM
     assert_eq!(container.constant_pool.len(), 3);
 
     // (2 * 3) * 4: left-associative evaluation
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[

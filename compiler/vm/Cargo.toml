@@ -13,5 +13,8 @@ test-support = []
 [dependencies]
 ironplc-container = { path = "../container", version = "0.181.0" }
 
+[dev-dependencies]
+ironplc-vm = { path = ".", features = ["test-support"] }
+
 [build-dependencies]
 csv = "1"

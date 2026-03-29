@@ -1,5 +1,7 @@
 use core::fmt;
 
+use crate::id_types::ConstantIndex;
+
 /// Errors that can occur when reading or writing a bytecode container.
 #[derive(Debug)]
 pub enum ContainerError {
@@ -13,7 +15,7 @@ pub enum ContainerError {
     /// A constant entry has an unrecognized type tag.
     InvalidConstantType(u8),
     /// A constant pool index is out of bounds.
-    InvalidConstantIndex(u16),
+    InvalidConstantIndex(ConstantIndex),
     /// A section's actual size does not match the declared size.
     SectionSizeMismatch,
     /// A task entry has an unrecognized task type tag.
@@ -35,8 +37,8 @@ impl fmt::Display for ContainerError {
             ContainerError::InvalidConstantType(t) => {
                 write!(f, "invalid constant type tag: {t}")
             }
-            ContainerError::InvalidConstantIndex(i) => {
-                write!(f, "constant pool index out of bounds: {i}")
+            ContainerError::InvalidConstantIndex(idx) => {
+                write!(f, "constant pool index out of bounds: {}", idx.raw())
             }
             ContainerError::SectionSizeMismatch => write!(f, "section size mismatch"),
             ContainerError::InvalidTaskType(t) => {

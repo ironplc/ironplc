@@ -3,6 +3,7 @@
 //! Handles execution of the BUILTIN opcode by dispatching on the function ID.
 
 use ironplc_container::opcode;
+use ironplc_container::FunctionId;
 
 use crate::error::Trap;
 use crate::stack::OperandStack;
@@ -542,7 +543,7 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
                 dispatch_mux_i32(n, stack)
             }
         }
-        _ => Err(Trap::InvalidBuiltinFunction(func_id)),
+        _ => Err(Trap::InvalidBuiltinFunction(FunctionId::new(func_id))),
     }
 }
 

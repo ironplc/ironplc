@@ -1,6 +1,7 @@
 use std::io::{Read, Write};
 use std::vec::Vec;
 
+use crate::id_types::{FbTypeId, FunctionId};
 use crate::ContainerError;
 
 /// Type tags for FB field entries.
@@ -63,7 +64,7 @@ const FIELD_ENTRY_SIZE: usize = 4;
 /// On disk: type_id (u16 LE), num_fields (u8), reserved (u8), then field entries.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FbTypeDescriptor {
-    pub type_id: u16,
+    pub type_id: FbTypeId,
     pub fields: Vec<FieldEntry>,
 }
 
@@ -97,8 +98,8 @@ const ARRAY_DESCRIPTOR_SIZE: usize = 8;
 /// num_fields (u8), reserved (u8).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UserFbDescriptor {
-    pub type_id: u16,
-    pub function_id: u16,
+    pub type_id: FbTypeId,
+    pub function_id: FunctionId,
     pub var_offset: u16,
     pub num_fields: u8,
 }
@@ -180,7 +181,7 @@ impl TypeSection {
         for _ in 0..count {
             let mut hdr = [0u8; 4];
             r.read_exact(&mut hdr)?;
-            let type_id = u16::from_le_bytes([hdr[0], hdr[1]]);
+            let type_id = FbTypeId::new(u16::from_le_bytes([hdr[0], hdr[1]]));
             let num_fields = hdr[2] as usize;
             // hdr[3] is reserved
 
@@ -232,8 +233,8 @@ impl TypeSection {
         for _ in 0..user_fb_count {
             let mut desc_buf = [0u8; USER_FB_DESCRIPTOR_SIZE];
             r.read_exact(&mut desc_buf)?;
-            let type_id = u16::from_le_bytes([desc_buf[0], desc_buf[1]]);
-            let function_id = u16::from_le_bytes([desc_buf[2], desc_buf[3]]);
+            let type_id = FbTypeId::new(u16::from_le_bytes([desc_buf[0], desc_buf[1]]));
+            let function_id = FunctionId::new(u16::from_le_bytes([desc_buf[2], desc_buf[3]]));
             let var_offset = u16::from_le_bytes([desc_buf[4], desc_buf[5]]);
             let num_fields = desc_buf[6];
             // desc_buf[7] is reserved
@@ -278,7 +279,7 @@ mod tests {
     fn type_section_write_read_when_ton_descriptor_then_roundtrips() {
         let section = TypeSection {
             fb_types: vec![FbTypeDescriptor {
-                type_id: 0x0010,
+                type_id: FbTypeId::new(0x0010),
                 fields: vec![
                     FieldEntry {
                         field_type: FieldType::I32,
@@ -318,7 +319,7 @@ mod tests {
 
         assert_eq!(decoded.fb_types.len(), 1);
         let desc = &decoded.fb_types[0];
-        assert_eq!(desc.type_id, 0x0010);
+        assert_eq!(desc.type_id, FbTypeId::new(0x0010));
         assert_eq!(desc.fields.len(), 6);
         assert_eq!(desc.fields[0].field_type, FieldType::I32);
         assert_eq!(desc.fields[1].field_type, FieldType::Time);
@@ -369,7 +370,7 @@ mod tests {
     fn type_section_write_read_when_fb_and_array_descriptors_then_roundtrips() {
         let section = TypeSection {
             fb_types: vec![FbTypeDescriptor {
-                type_id: 1,
+                type_id: FbTypeId::new(1),
                 fields: vec![FieldEntry {
                     field_type: FieldType::I32,
                     field_extra: 0,
@@ -389,7 +390,7 @@ mod tests {
         let decoded = TypeSection::read_from(&mut cursor).unwrap();
 
         assert_eq!(decoded.fb_types.len(), 1);
-        assert_eq!(decoded.fb_types[0].type_id, 1);
+        assert_eq!(decoded.fb_types[0].type_id, FbTypeId::new(1));
         assert_eq!(decoded.array_descriptors.len(), 1);
         assert_eq!(
             decoded.array_descriptors[0].element_type,
@@ -432,14 +433,14 @@ mod tests {
             array_descriptors: vec![],
             user_fb_types: vec![
                 UserFbDescriptor {
-                    type_id: 0x1000,
-                    function_id: 2,
+                    type_id: FbTypeId::new(0x1000),
+                    function_id: FunctionId::new(2),
                     var_offset: 4,
                     num_fields: 3,
                 },
                 UserFbDescriptor {
-                    type_id: 0x1001,
-                    function_id: 3,
+                    type_id: FbTypeId::new(0x1001),
+                    function_id: FunctionId::new(3),
                     var_offset: 7,
                     num_fields: 5,
                 },
@@ -453,12 +454,12 @@ mod tests {
         let decoded = TypeSection::read_from(&mut cursor).unwrap();
 
         assert_eq!(decoded.user_fb_types.len(), 2);
-        assert_eq!(decoded.user_fb_types[0].type_id, 0x1000);
-        assert_eq!(decoded.user_fb_types[0].function_id, 2);
+        assert_eq!(decoded.user_fb_types[0].type_id, FbTypeId::new(0x1000));
+        assert_eq!(decoded.user_fb_types[0].function_id, FunctionId::new(2));
         assert_eq!(decoded.user_fb_types[0].var_offset, 4);
         assert_eq!(decoded.user_fb_types[0].num_fields, 3);
-        assert_eq!(decoded.user_fb_types[1].type_id, 0x1001);
-        assert_eq!(decoded.user_fb_types[1].function_id, 3);
+        assert_eq!(decoded.user_fb_types[1].type_id, FbTypeId::new(0x1001));
+        assert_eq!(decoded.user_fb_types[1].function_id, FunctionId::new(3));
         assert_eq!(decoded.user_fb_types[1].var_offset, 7);
         assert_eq!(decoded.user_fb_types[1].num_fields, 5);
     }

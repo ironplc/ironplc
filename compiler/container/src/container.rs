@@ -158,6 +158,7 @@ mod tests {
     use crate::debug_section::{
         function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry,
     };
+    use crate::id_types::{ConstantIndex, FunctionId, InstanceId, TaskId, VarIndex};
     use crate::ContainerBuilder;
 
     #[test]
@@ -178,7 +179,7 @@ mod tests {
             .num_variables(2)
             .add_i32_constant(10)
             .add_i32_constant(32)
-            .add_function(0, &bytecode, 2, 2, 0)
+            .add_function(FunctionId::INIT, &bytecode, 2, 2, 0)
             .build();
 
         let mut buf = Vec::new();
@@ -188,23 +189,41 @@ mod tests {
 
         // Verify synthesized default task table
         assert_eq!(decoded.task_table.tasks.len(), 1);
-        assert_eq!(decoded.task_table.tasks[0].task_id, 0);
+        assert_eq!(decoded.task_table.tasks[0].task_id, TaskId::DEFAULT);
         assert_eq!(
             decoded.task_table.tasks[0].task_type,
             crate::TaskType::Freewheeling
         );
         assert_eq!(decoded.task_table.tasks[0].flags, 0x01);
         assert_eq!(decoded.task_table.programs.len(), 1);
-        assert_eq!(decoded.task_table.programs[0].instance_id, 0);
-        assert_eq!(decoded.task_table.programs[0].task_id, 0);
+        assert_eq!(
+            decoded.task_table.programs[0].instance_id,
+            InstanceId::DEFAULT
+        );
+        assert_eq!(decoded.task_table.programs[0].task_id, TaskId::DEFAULT);
         assert_eq!(decoded.task_table.programs[0].var_table_count, 2);
 
-        assert_eq!(decoded.constant_pool.get_i32(0).unwrap(), 10);
-        assert_eq!(decoded.constant_pool.get_i32(1).unwrap(), 32);
+        assert_eq!(
+            decoded
+                .constant_pool
+                .get_i32(ConstantIndex::new(0))
+                .unwrap(),
+            10
+        );
+        assert_eq!(
+            decoded
+                .constant_pool
+                .get_i32(ConstantIndex::new(1))
+                .unwrap(),
+            32
+        );
         assert_eq!(decoded.code.functions.len(), 1);
-        assert_eq!(decoded.code.functions[0].function_id, 0);
+        assert_eq!(decoded.code.functions[0].function_id, FunctionId::INIT);
 
-        let code = decoded.code.get_function_bytecode(0).unwrap();
+        let code = decoded
+            .code
+            .get_function_bytecode(FunctionId::INIT)
+            .unwrap();
         assert_eq!(code, bytecode.as_slice());
 
         // No debug section in this container.
@@ -223,9 +242,9 @@ mod tests {
         let container = ContainerBuilder::new()
             .num_variables(1)
             .add_i32_constant(42)
-            .add_function(0, &bytecode, 1, 1, 0)
+            .add_function(FunctionId::INIT, &bytecode, 1, 1, 0)
             .add_var_name(VarNameEntry {
-                var_index: 0,
+                var_index: VarIndex::new(0),
                 function_id: function_id::GLOBAL_SCOPE,
                 var_section: var_section::VAR,
                 iec_type_tag: iec_type_tag::DINT,
@@ -233,7 +252,7 @@ mod tests {
                 type_name: "DINT".into(),
             })
             .add_func_name(FuncNameEntry {
-                function_id: 0,
+                function_id: FunctionId::INIT,
                 name: "MAIN".into(),
             })
             .build();
@@ -271,7 +290,7 @@ mod tests {
         let container = builder
             .num_variables(1)
             .add_i32_constant(42)
-            .add_function(0, &bytecode, 1, 1, 0)
+            .add_function(FunctionId::INIT, &bytecode, 1, 1, 0)
             .build();
 
         let mut buf = Vec::new();
@@ -289,7 +308,13 @@ mod tests {
         assert_eq!(ts.array_descriptors[0].total_elements, 10);
 
         // Verify other sections still roundtrip correctly.
-        assert_eq!(decoded.constant_pool.get_i32(0).unwrap(), 42);
+        assert_eq!(
+            decoded
+                .constant_pool
+                .get_i32(ConstantIndex::new(0))
+                .unwrap(),
+            42
+        );
         assert_eq!(decoded.code.functions.len(), 1);
     }
 }

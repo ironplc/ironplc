@@ -6,8 +6,10 @@
 mod common;
 
 use common::{load_and_start, VmBuffers};
-use ironplc_container::task_table::NO_SINGLE_VAR;
-use ironplc_container::{ContainerBuilder, ProgramInstanceEntry, TaskEntry, TaskType};
+use ironplc_container::{
+    ContainerBuilder, FunctionId, InstanceId, ProgramInstanceEntry, TaskEntry, TaskId, TaskType,
+    VarIndex,
+};
 use ironplc_vm::error::Trap;
 
 /// Builds a container for a program that increments var[0] by 1 each scan.
@@ -32,10 +34,10 @@ fn counter_container() -> ironplc_container::Container {
     ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(1)
-        .add_function(0, &[0xB5], 0, 1, 0) // init: RET_VOID
-        .add_function(1, &bytecode, 2, 1, 0) // scan: counter
-        .init_function_id(0)
-        .entry_function_id(1)
+        .add_function(ironplc_container::FunctionId::new(0), &[0xB5], 0, 1, 0) // init: RET_VOID
+        .add_function(ironplc_container::FunctionId::new(1), &bytecode, 2, 1, 0) // scan: counter
+        .init_function_id(ironplc_container::FunctionId::new(0))
+        .entry_function_id(ironplc_container::FunctionId::new(1))
         .build()
 }
 
@@ -97,9 +99,21 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
     let c = ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(1)
-        .add_function(0, &[0xB5], 0, 1, 0) // init: RET_VOID
-        .add_function(1, &counter_bytecode, 2, 1, 0) // scan: counter
-        .add_function(2, &fault_bytecode, 1, 0, 0) // scan: fault
+        .add_function(ironplc_container::FunctionId::new(0), &[0xB5], 0, 1, 0) // init: RET_VOID
+        .add_function(
+            ironplc_container::FunctionId::new(1),
+            &counter_bytecode,
+            2,
+            1,
+            0,
+        ) // scan: counter
+        .add_function(
+            ironplc_container::FunctionId::new(2),
+            &fault_bytecode,
+            1,
+            0,
+            0,
+        ) // scan: fault
         .add_task(freewheeling_task(0, 0, 0))
         .add_program_instance(program_instance(0, 0, 1, 0, 1))
         .add_program_instance(program_instance(1, 0, 2, 0, 1))
@@ -113,7 +127,7 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
     assert!(result.is_err());
     let ctx = result.unwrap_err();
     assert_eq!(ctx.trap, Trap::InvalidInstruction(0xFF));
-    assert_eq!(ctx.instance_id, 1); // fault was in program instance 1
+    assert_eq!(ctx.instance_id, InstanceId::new(1)); // fault was in program instance 1
 
     // The counter's write (var[0] = 1) is visible despite the fault
     let faulted = vm.fault(ctx);
@@ -133,10 +147,10 @@ fn scenario_when_variables_read_after_fault_then_accessible() {
     let c = ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(42)
-        .add_function(0, &[0xB5], 0, 1, 0) // init: RET_VOID
-        .add_function(1, &bytecode, 1, 1, 0) // scan: stores then faults
-        .init_function_id(0)
-        .entry_function_id(1)
+        .add_function(ironplc_container::FunctionId::new(0), &[0xB5], 0, 1, 0) // init: RET_VOID
+        .add_function(ironplc_container::FunctionId::new(1), &bytecode, 1, 1, 0) // scan: stores then faults
+        .init_function_id(ironplc_container::FunctionId::new(0))
+        .entry_function_id(ironplc_container::FunctionId::new(1))
         .build();
 
     let mut b = VmBuffers::from_container(&c);
@@ -157,12 +171,12 @@ fn scenario_when_variables_read_after_fault_then_accessible() {
 /// Helper to build a freewheeling task entry.
 fn freewheeling_task(task_id: u16, priority: u16, watchdog_us: u64) -> TaskEntry {
     TaskEntry {
-        task_id,
+        task_id: TaskId::new(task_id),
         priority,
         task_type: TaskType::Freewheeling,
         flags: 0x01, // enabled
         interval_us: 0,
-        single_var_index: NO_SINGLE_VAR,
+        single_var_index: VarIndex::NO_SINGLE_VAR,
         watchdog_us,
         input_image_offset: 0,
         output_image_offset: 0,
@@ -179,14 +193,14 @@ fn program_instance(
     var_count: u16,
 ) -> ProgramInstanceEntry {
     ProgramInstanceEntry {
-        instance_id,
-        task_id,
-        entry_function_id: function_id,
+        instance_id: InstanceId::new(instance_id),
+        task_id: TaskId::new(task_id),
+        entry_function_id: FunctionId::new(function_id),
         var_table_offset: var_offset,
         var_table_count: var_count,
         fb_instance_offset: 0,
         fb_instance_count: 0,
-        init_function_id: 0,
+        init_function_id: FunctionId::INIT,
     }
 }
 
@@ -216,9 +230,21 @@ fn scenario_when_two_freewheeling_tasks_then_both_execute() {
         .num_variables(4)
         .add_i32_constant(10)
         .add_i32_constant(20)
-        .add_function(0, &[0xB5], 0, 0, 0) // init: RET_VOID
-        .add_function(1, &fn0_bytecode, 1, 2, 0) // scan: task 0
-        .add_function(2, &fn1_bytecode, 1, 2, 0) // scan: task 1
+        .add_function(ironplc_container::FunctionId::new(0), &[0xB5], 0, 0, 0) // init: RET_VOID
+        .add_function(
+            ironplc_container::FunctionId::new(1),
+            &fn0_bytecode,
+            1,
+            2,
+            0,
+        ) // scan: task 0
+        .add_function(
+            ironplc_container::FunctionId::new(2),
+            &fn1_bytecode,
+            1,
+            2,
+            0,
+        ) // scan: task 1
         .add_task(freewheeling_task(0, 0, 0))
         .add_task(freewheeling_task(1, 1, 0))
         .add_program_instance(program_instance(0, 0, 1, 0, 2))
@@ -262,9 +288,21 @@ fn scenario_when_tasks_share_global_then_communication_works() {
         .num_variables(4)
         .shared_globals_size(1)
         .add_i32_constant(99)
-        .add_function(0, &[0xB5], 0, 0, 0) // init: RET_VOID
-        .add_function(1, &fn0_bytecode, 1, 1, 0) // scan: task 0
-        .add_function(2, &fn1_bytecode, 1, 2, 0) // scan: task 1
+        .add_function(ironplc_container::FunctionId::new(0), &[0xB5], 0, 0, 0) // init: RET_VOID
+        .add_function(
+            ironplc_container::FunctionId::new(1),
+            &fn0_bytecode,
+            1,
+            1,
+            0,
+        ) // scan: task 0
+        .add_function(
+            ironplc_container::FunctionId::new(2),
+            &fn1_bytecode,
+            1,
+            2,
+            0,
+        ) // scan: task 1
         .add_task(freewheeling_task(0, 0, 0))
         .add_task(freewheeling_task(1, 1, 0))
         .add_program_instance(program_instance(0, 0, 1, 1, 1)) // task 0: private [1,2)
@@ -294,8 +332,8 @@ fn scenario_when_scope_violation_then_trap() {
 
     let c = ContainerBuilder::new()
         .num_variables(4)
-        .add_function(0, &[0xB5], 0, 0, 0) // init: RET_VOID
-        .add_function(1, &bytecode, 1, 2, 0) // scan: scope violation
+        .add_function(ironplc_container::FunctionId::new(0), &[0xB5], 0, 0, 0) // init: RET_VOID
+        .add_function(ironplc_container::FunctionId::new(1), &bytecode, 1, 2, 0) // scan: scope violation
         .add_task(freewheeling_task(0, 0, 0))
         .add_program_instance(program_instance(0, 0, 1, 2, 2)) // scope [2, 4)
         .build();
@@ -305,5 +343,8 @@ fn scenario_when_scope_violation_then_trap() {
     let result = vm.run_round(0);
 
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().trap, Trap::InvalidVariableIndex(0));
+    assert_eq!(
+        result.unwrap_err().trap,
+        Trap::InvalidVariableIndex(VarIndex::new(0))
+    );
 }

@@ -1,6 +1,7 @@
 use crate::const_type::ConstType;
 use crate::error::ContainerError;
 use crate::header::{FileHeader, HEADER_SIZE};
+use crate::id_types::{ConstantIndex, FunctionId, InstanceId, TaskId, VarIndex};
 use crate::task_type::TaskType;
 
 /// Size of a single function directory entry in bytes.
@@ -18,12 +19,12 @@ const PROGRAM_ENTRY_SIZE: usize = 16;
 /// A task entry parsed from a container's task table (no_std-compatible).
 #[derive(Clone, Debug)]
 pub struct TaskEntryRef {
-    pub task_id: u16,
+    pub task_id: TaskId,
     pub priority: u16,
     pub task_type: TaskType,
     pub flags: u8,
     pub interval_us: u64,
-    pub single_var_index: u16,
+    pub single_var_index: VarIndex,
     pub watchdog_us: u64,
     pub input_image_offset: u16,
     pub output_image_offset: u16,
@@ -33,9 +34,9 @@ pub struct TaskEntryRef {
 /// A program instance entry parsed from a container's task table (no_std-compatible).
 #[derive(Clone, Debug)]
 pub struct ProgramEntryRef {
-    pub instance_id: u16,
-    pub task_id: u16,
-    pub entry_function_id: u16,
+    pub instance_id: InstanceId,
+    pub task_id: TaskId,
+    pub entry_function_id: FunctionId,
     pub var_table_offset: u16,
     pub var_table_count: u16,
     pub fb_instance_offset: u16,
@@ -195,8 +196,8 @@ impl<'a> ContainerRef<'a> {
     ///
     /// Validates that the entry's type tag is `ConstType::I32` and reads
     /// 4 bytes as a little-endian i32.
-    pub fn get_i32_constant(&self, index: u16) -> Result<i32, ContainerError> {
-        let idx = index as usize;
+    pub fn get_i32_constant(&self, index: ConstantIndex) -> Result<i32, ContainerError> {
+        let idx = index.raw() as usize;
         if idx >= self.const_offsets.len() {
             return Err(ContainerError::InvalidConstantIndex(index));
         }
@@ -229,8 +230,8 @@ impl<'a> ContainerRef<'a> {
     ///
     /// Reads the function directory entry at `id * FUNC_ENTRY_SIZE` to get
     /// the offset and length, then slices the code bytes.
-    pub fn get_function_bytecode(&self, id: u16) -> Option<&'a [u8]> {
-        let entry_offset = id as usize * FUNC_ENTRY_SIZE;
+    pub fn get_function_bytecode(&self, id: FunctionId) -> Option<&'a [u8]> {
+        let entry_offset = id.raw() as usize * FUNC_ENTRY_SIZE;
         if entry_offset + FUNC_ENTRY_SIZE > self.func_dir.len() {
             return None;
         }
@@ -282,14 +283,14 @@ impl<'a> ContainerRef<'a> {
         let task_type = TaskType::from_u8(buf[4])?;
 
         Ok(TaskEntryRef {
-            task_id: u16::from_le_bytes([buf[0], buf[1]]),
+            task_id: TaskId::new(u16::from_le_bytes([buf[0], buf[1]])),
             priority: u16::from_le_bytes([buf[2], buf[3]]),
             task_type,
             flags: buf[5],
             interval_us: u64::from_le_bytes([
                 buf[6], buf[7], buf[8], buf[9], buf[10], buf[11], buf[12], buf[13],
             ]),
-            single_var_index: u16::from_le_bytes([buf[14], buf[15]]),
+            single_var_index: VarIndex::new(u16::from_le_bytes([buf[14], buf[15]])),
             watchdog_us: u64::from_le_bytes([
                 buf[16], buf[17], buf[18], buf[19], buf[20], buf[21], buf[22], buf[23],
             ]),
@@ -310,9 +311,9 @@ impl<'a> ContainerRef<'a> {
         let buf = &self.task_table_bytes[start..end];
 
         Ok(ProgramEntryRef {
-            instance_id: u16::from_le_bytes([buf[0], buf[1]]),
-            task_id: u16::from_le_bytes([buf[2], buf[3]]),
-            entry_function_id: u16::from_le_bytes([buf[4], buf[5]]),
+            instance_id: InstanceId::new(u16::from_le_bytes([buf[0], buf[1]])),
+            task_id: TaskId::new(u16::from_le_bytes([buf[2], buf[3]])),
+            entry_function_id: FunctionId::new(u16::from_le_bytes([buf[4], buf[5]])),
             var_table_offset: u16::from_le_bytes([buf[6], buf[7]]),
             var_table_count: u16::from_le_bytes([buf[8], buf[9]]),
             fb_instance_offset: u16::from_le_bytes([buf[10], buf[11]]),
@@ -344,7 +345,7 @@ mod tests {
             .num_variables(2)
             .add_i32_constant(10)
             .add_i32_constant(32)
-            .add_function(0, &bytecode, 2, 2, 0)
+            .add_function(FunctionId::INIT, &bytecode, 2, 2, 0)
             .build();
         let mut buf = Vec::new();
         container.write_to(&mut buf).unwrap();
@@ -392,8 +393,8 @@ mod tests {
         let mut offsets = vec![0u32; count as usize];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
-        assert_eq!(cref.get_i32_constant(0).unwrap(), 10);
-        assert_eq!(cref.get_i32_constant(1).unwrap(), 32);
+        assert_eq!(cref.get_i32_constant(ConstantIndex::new(0)).unwrap(), 10);
+        assert_eq!(cref.get_i32_constant(ConstantIndex::new(1)).unwrap(), 32);
     }
 
     #[test]
@@ -403,10 +404,10 @@ mod tests {
         let mut offsets = vec![0u32; count as usize];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
-        let result = cref.get_i32_constant(99);
+        let result = cref.get_i32_constant(ConstantIndex::new(99));
         assert!(matches!(
             result,
-            Err(ContainerError::InvalidConstantIndex(99))
+            Err(ContainerError::InvalidConstantIndex(idx)) if idx == ConstantIndex::new(99)
         ));
     }
 
@@ -417,7 +418,7 @@ mod tests {
         let mut offsets = vec![0u32; count as usize];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
-        let bytecode = cref.get_function_bytecode(0).unwrap();
+        let bytecode = cref.get_function_bytecode(FunctionId::INIT).unwrap();
         // First byte: LOAD_CONST_I32 (0x01), last byte: RET_VOID (0xB5)
         assert_eq!(bytecode[0], 0x01);
         assert_eq!(*bytecode.last().unwrap(), 0xB5);
@@ -431,7 +432,7 @@ mod tests {
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         let task = cref.task_entry(0).unwrap();
-        assert_eq!(task.task_id, 0);
+        assert_eq!(task.task_id, TaskId::DEFAULT);
         assert_eq!(task.task_type, TaskType::Freewheeling);
         assert_eq!(task.flags, 0x01);
     }
@@ -444,8 +445,8 @@ mod tests {
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         let prog = cref.program_entry(0).unwrap();
-        assert_eq!(prog.instance_id, 0);
-        assert_eq!(prog.task_id, 0);
+        assert_eq!(prog.instance_id, InstanceId::DEFAULT);
+        assert_eq!(prog.task_id, TaskId::DEFAULT);
         assert_eq!(prog.var_table_count, 2);
     }
 }

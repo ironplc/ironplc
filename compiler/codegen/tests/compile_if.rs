@@ -29,7 +29,10 @@ END_PROGRAM
     //  10: LOAD_CONST_I32 pool:1 (1)
     //  13: STORE_VAR_I32 var:1
     //  16: RET_VOID
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -72,7 +75,10 @@ END_PROGRAM
     //  19: LOAD_CONST_I32 pool:2 (2)
     //  22: STORE_VAR_I32 var:1
     //  25: RET_VOID
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -127,7 +133,10 @@ END_PROGRAM
     //  38: LOAD_CONST_I32 pool:4 (3)
     //  41: STORE_VAR_I32 var:1
     //  44: RET_VOID
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[

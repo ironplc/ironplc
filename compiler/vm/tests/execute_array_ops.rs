@@ -41,10 +41,16 @@ fn array_container(
     builder.add_array_descriptor(0, total_elements);
 
     builder
-        .add_function(0, &init_bytecode, 1, 2, 0)
-        .add_function(1, bytecode, 16, 2, 0)
-        .init_function_id(0)
-        .entry_function_id(1)
+        .add_function(
+            ironplc_container::FunctionId::new(0),
+            &init_bytecode,
+            1,
+            2,
+            0,
+        )
+        .add_function(ironplc_container::FunctionId::new(1), bytecode, 16, 2, 0)
+        .init_function_id(ironplc_container::FunctionId::new(0))
+        .entry_function_id(ironplc_container::FunctionId::new(1))
         .build()
 }
 
@@ -116,7 +122,7 @@ fn execute_when_load_array_negative_index_then_trap() {
     assert_eq!(
         err.trap,
         Trap::ArrayIndexOutOfBounds {
-            var_index: 0,
+            var_index: ironplc_container::VarIndex::new(0),
             index: -1,
             total_elements: 5,
         }
@@ -140,7 +146,7 @@ fn execute_when_load_array_index_equals_size_then_trap() {
     assert_eq!(
         err.trap,
         Trap::ArrayIndexOutOfBounds {
-            var_index: 0,
+            var_index: ironplc_container::VarIndex::new(0),
             index: 5,
             total_elements: 5,
         }
@@ -165,7 +171,7 @@ fn execute_when_store_array_negative_index_then_trap() {
     assert_eq!(
         err.trap,
         Trap::ArrayIndexOutOfBounds {
-            var_index: 0,
+            var_index: ironplc_container::VarIndex::new(0),
             index: -1,
             total_elements: 5,
         }

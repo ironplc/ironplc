@@ -25,7 +25,10 @@ END_PROGRAM
     //   TRUNC_U8 (0x21)
     //   STORE_VAR_I32 var:1
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -59,7 +62,10 @@ END_PROGRAM
     //   TRUNC_U8 (0x21)  -- assignment truncation
     //   STORE_VAR_I32 var:1
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -88,7 +94,10 @@ END_PROGRAM
 
     // The AND here is in a comparison context (DINT is signed)
     // so it should still produce BOOL_AND (0x54), not BIT_AND_32.
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[

@@ -19,7 +19,10 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     // BUILTIN MUX_I64_BASE+3 = 0x0423
     let builtin_pos = bytecode
         .windows(3)

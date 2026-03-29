@@ -44,7 +44,9 @@ use std::collections::HashMap;
 use ironplc_container::debug_section::{
     function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry,
 };
-use ironplc_container::{opcode, Container, ContainerBuilder, STRING_HEADER_BYTES};
+use ironplc_container::{
+    opcode, Container, ContainerBuilder, FunctionId, VarIndex, STRING_HEADER_BYTES,
+};
 use ironplc_dsl::common::{
     Boolean, ConstantKind, ElementaryTypeName, FunctionBlockBodyKind, FunctionDeclaration,
     FunctionReturnType, GenericTypeName, InitialValueAssignmentKind, IntegerRef, Library,
@@ -297,16 +299,28 @@ fn compile_program_with_functions(
     // Function 0: init, Function 1: scan
     let init_stack = init_emitter.max_stack_depth();
     let init_bytecode = init_emitter.bytecode();
-    builder = builder.add_function(0, init_bytecode, init_stack, program_var_count, 0);
+    builder = builder.add_function(
+        FunctionId::INIT,
+        init_bytecode,
+        init_stack,
+        program_var_count,
+        0,
+    );
 
     let scan_stack = scan_emitter.max_stack_depth();
     let scan_bytecode = scan_emitter.bytecode();
-    builder = builder.add_function(1, scan_bytecode, scan_stack, program_var_count, 0);
+    builder = builder.add_function(
+        FunctionId::SCAN,
+        scan_bytecode,
+        scan_stack,
+        program_var_count,
+        0,
+    );
 
     // Add user-defined functions.
     for compiled in &compiled_functions {
         builder = builder.add_function(
-            compiled.function_id,
+            FunctionId::new(compiled.function_id),
             &compiled.bytecode,
             compiled.max_stack_depth,
             compiled.num_locals,
@@ -315,25 +329,25 @@ fn compile_program_with_functions(
     }
 
     builder = builder
-        .init_function_id(0)
-        .entry_function_id(1)
+        .init_function_id(FunctionId::INIT)
+        .entry_function_id(FunctionId::SCAN)
         .shared_globals_size(program_var_count);
 
     // Add debug info.
     let program_name = program.name.to_string();
     builder = builder
         .add_func_name(FuncNameEntry {
-            function_id: 0,
+            function_id: FunctionId::INIT,
             name: format!("{program_name}_init"),
         })
         .add_func_name(FuncNameEntry {
-            function_id: 1,
+            function_id: FunctionId::SCAN,
             name: program_name,
         });
 
     for compiled in &compiled_functions {
         builder = builder.add_func_name(FuncNameEntry {
-            function_id: compiled.function_id,
+            function_id: FunctionId::new(compiled.function_id),
             name: compiled.name.clone(),
         });
     }
@@ -1068,7 +1082,7 @@ fn assign_variables(
             };
 
             ctx.debug_var_names.push(VarNameEntry {
-                var_index: index,
+                var_index: VarIndex::new(index),
                 function_id: function_id::GLOBAL_SCOPE,
                 var_section: map_var_section(&decl.var_type),
                 iec_type_tag: type_tag,
@@ -4471,14 +4485,26 @@ END_PROGRAM
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.header.num_functions, 2);
-        assert_eq!(container.constant_pool.get_i32(0).unwrap(), 10);
+        assert_eq!(
+            container
+                .constant_pool
+                .get_i32(ironplc_container::ConstantIndex::new(0))
+                .unwrap(),
+            10
+        );
 
         // Function 0: init (RET_VOID only, no initial values)
-        let init_bytecode = container.code.get_function_bytecode(0).unwrap();
+        let init_bytecode = container
+            .code
+            .get_function_bytecode(ironplc_container::FunctionId::new(0))
+            .unwrap();
         assert_eq!(init_bytecode, &[0xB5]);
 
         // Function 1: scan — LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0, RET_VOID
-        let scan_bytecode = container.code.get_function_bytecode(1).unwrap();
+        let scan_bytecode = container
+            .code
+            .get_function_bytecode(ironplc_container::FunctionId::new(1))
+            .unwrap();
         assert_eq!(scan_bytecode, &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00, 0xB5]);
     }
 
@@ -4513,9 +4539,15 @@ END_PROGRAM
 
         // Should have two functions (init + scan), both just RET_VOID
         assert_eq!(container.header.num_functions, 2);
-        let init_bytecode = container.code.get_function_bytecode(0).unwrap();
+        let init_bytecode = container
+            .code
+            .get_function_bytecode(ironplc_container::FunctionId::new(0))
+            .unwrap();
         assert_eq!(init_bytecode, &[0xB5]); // RET_VOID only
-        let scan_bytecode = container.code.get_function_bytecode(1).unwrap();
+        let scan_bytecode = container
+            .code
+            .get_function_bytecode(ironplc_container::FunctionId::new(1))
+            .unwrap();
         assert_eq!(scan_bytecode, &[0xB5]); // RET_VOID only
     }
 
@@ -4560,7 +4592,10 @@ END_PROGRAM
         // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
         // y := x:  LOAD_VAR_I32 var:0, STORE_VAR_I32 var:1
         // RET_VOID
-        let bytecode = container.code.get_function_bytecode(1).unwrap();
+        let bytecode = container
+            .code
+            .get_function_bytecode(ironplc_container::FunctionId::new(1))
+            .unwrap();
         assert_eq!(
             bytecode,
             &[
@@ -4586,10 +4621,19 @@ END_PROGRAM
         let (library, context) = parse(source);
         let container = compile(&library, &context).unwrap();
 
-        assert_eq!(container.constant_pool.get_i32(0).unwrap(), -5);
+        assert_eq!(
+            container
+                .constant_pool
+                .get_i32(ironplc_container::ConstantIndex::new(0))
+                .unwrap(),
+            -5
+        );
 
         // Function 1 (scan): LOAD_CONST_I32 pool:0 (-5), STORE_VAR_I32 var:0, RET_VOID
-        let bytecode = container.code.get_function_bytecode(1).unwrap();
+        let bytecode = container
+            .code
+            .get_function_bytecode(ironplc_container::FunctionId::new(1))
+            .unwrap();
         assert_eq!(bytecode, &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00, 0xB5]);
     }
 
@@ -4665,7 +4709,13 @@ END_PROGRAM
         let container = compile(&library, &context).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
-        assert_eq!(container.constant_pool.get_i32(0).unwrap(), 42);
+        assert_eq!(
+            container
+                .constant_pool
+                .get_i32(ironplc_container::ConstantIndex::new(0))
+                .unwrap(),
+            42
+        );
     }
 
     #[test]
@@ -4682,7 +4732,13 @@ END_PROGRAM
         let container = compile(&library, &context).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
-        assert_eq!(container.constant_pool.get_i32(0).unwrap(), 255);
+        assert_eq!(
+            container
+                .constant_pool
+                .get_i32(ironplc_container::ConstantIndex::new(0))
+                .unwrap(),
+            255
+        );
     }
 
     #[test]

@@ -25,7 +25,10 @@ END_PROGRAM
     //   4: JMP offset:+3 -> 10         (EXIT → jump to end)
     //   7: JMP offset:-10 -> 0         (back to LOOP)
     //  10: RET_VOID
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
 
     // EXIT produces a JMP at offset 4 targeting the same end label as JMP_IF_NOT
     assert_eq!(bytecode[4], 0xB0); // JMP (from EXIT)
@@ -57,7 +60,10 @@ END_PROGRAM
     //   7: LOAD_CONST_I32 pool:1 (20)   (dead code)
     //  10: STORE_VAR_I32 var:0
     //  13: RET_VOID                     (program end)
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
 
     // RETURN produces RET_VOID at offset 6
     assert_eq!(bytecode[6], 0xB5); // RET_VOID (from RETURN)

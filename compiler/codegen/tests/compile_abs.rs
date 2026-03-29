@@ -20,12 +20,21 @@ END_PROGRAM
     let container = parse_and_compile(source, &CompilerOptions::default());
 
     assert_eq!(container.header.num_variables, 2);
-    assert_eq!(container.constant_pool.get_i32(0).unwrap(), -5);
+    assert_eq!(
+        container
+            .constant_pool
+            .get_i32(ironplc_container::ConstantIndex::new(0))
+            .unwrap(),
+        -5
+    );
 
     // x := -5: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
     // y := ABS(x): LOAD_VAR_I32 var:0, BUILTIN ABS_I32, STORE_VAR_I32 var:1
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[
