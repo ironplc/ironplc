@@ -2,7 +2,7 @@
   "name": "ironplc",
   "displayName": "IronPLC",
   "publisher": "ironplc",
-  "description": "IronPLC is the beginning of a development environment for IEC 61131-3.",
+  "description": "Open-source IEC 61131-3 language support with real-time error checking, auto-completion, syntax highlighting, and a runtime for executing programs.",
   "version": "0.182.0",
   "icon": "images/logo.png",
   "engines": {
@@ -84,6 +84,11 @@
             "iec61131-3-ed2",
             "iec61131-3-ed3",
             "rusty"
+          ],
+          "enumItemLabels": [
+            "IEC 61131-3:2003 (Edition 2)",
+            "IEC 61131-3:2013 (Edition 3)",
+            "RuSTy-compatible"
           ],
           "enumDescriptions": [
             "IEC 61131-3:2003 (Edition 2)",
