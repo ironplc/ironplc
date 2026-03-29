@@ -1060,13 +1060,7 @@ fn assign_variables(
                 InitialValueAssignmentKind::LateResolvedType(_) => {
                     // LateResolvedType should have been resolved before codegen.
                     // If we reach here, it indicates a bug in the compiler.
-                    return Err(Diagnostic::problem(
-                        Problem::InternalError,
-                        Label::span(
-                            decl.identifier.span(),
-                            "Unresolved late-bound type reached codegen",
-                        ),
-                    ));
+                    return Err(Diagnostic::internal_error(file!(), line!()));
                 }
                 // Other initializer kinds (EnumeratedType, etc.)
                 // do not yet have type info tracked in codegen.
