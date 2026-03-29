@@ -85,6 +85,11 @@
             "iec61131-3-ed3",
             "rusty"
           ],
+          "enumItemLabels": [
+            "IEC 61131-3:2003 (Edition 2)",
+            "IEC 61131-3:2013 (Edition 3)",
+            "RuSTy-compatible"
+          ],
           "enumDescriptions": [
             "IEC 61131-3:2003 (Edition 2)",
             "IEC 61131-3:2013 (Edition 3)",
