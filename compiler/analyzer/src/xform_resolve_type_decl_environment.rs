@@ -380,19 +380,28 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 let field_type = match &decl.initializer {
                     InitialValueAssignmentKind::Simple(simple) => self
                         .get(&simple.type_name)
-                        .map(|attrs| attrs.representation.clone())
-                        .unwrap_or(IntermediateType::Int {
-                            size: crate::intermediate_type::ByteSized::B32,
-                        }),
+                        .ok_or_else(|| {
+                            Diagnostic::problem(
+                                Problem::ParentTypeNotDeclared,
+                                Label::span(simple.type_name.span(), "Field type"),
+                            )
+                        })?
+                        .representation
+                        .clone(),
                     InitialValueAssignmentKind::FunctionBlock(fb_init) => self
                         .get(&fb_init.type_name)
-                        .map(|attrs| attrs.representation.clone())
-                        .unwrap_or(IntermediateType::Int {
-                            size: crate::intermediate_type::ByteSized::B32,
-                        }),
-                    _ => IntermediateType::Int {
-                        size: crate::intermediate_type::ByteSized::B32,
-                    },
+                        .ok_or_else(|| {
+                            Diagnostic::problem(
+                                Problem::ParentTypeNotDeclared,
+                                Label::span(fb_init.type_name.span(), "Field type"),
+                            )
+                        })?
+                        .representation
+                        .clone(),
+                    _ => {
+                        // Skip field types we can't resolve yet (strings, arrays, etc.)
+                        continue;
+                    }
                 };
 
                 let alignment = field_type.alignment_bytes() as u32;
