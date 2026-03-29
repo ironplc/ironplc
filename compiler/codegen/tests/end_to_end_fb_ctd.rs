@@ -8,7 +8,6 @@ use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run_rounds;
-use ironplc_container::VarIndex;
 
 const CTD_PROGRAM: &str = "
 PROGRAM main

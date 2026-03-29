@@ -11,7 +11,6 @@ use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_compile, VmBuffers};
-use ironplc_container::VarIndex;
 use ironplc_vm::test_support::load_and_start;
 
 #[test]

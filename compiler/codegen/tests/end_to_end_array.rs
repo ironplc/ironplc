@@ -6,7 +6,6 @@ use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_run, parse_and_run_rounds};
-use ironplc_container::VarIndex;
 
 #[test]
 fn end_to_end_when_array_store_and_load_then_roundtrips() {

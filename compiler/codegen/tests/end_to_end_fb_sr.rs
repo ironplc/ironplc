@@ -9,7 +9,6 @@ use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 use common::parse_and_run_rounds;
-use ironplc_container::VarIndex;
 
 const SR_PROGRAM: &str = "
 PROGRAM main
