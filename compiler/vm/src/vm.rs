@@ -1,4 +1,7 @@
-use ironplc_container::{Container, STRING_HEADER_BYTES};
+use ironplc_container::{
+    ConstantIndex, Container, FbTypeId, FunctionId, InstanceId, TaskId, VarIndex,
+    STRING_HEADER_BYTES,
+};
 
 use crate::builtin;
 use crate::error::Trap;
@@ -12,8 +15,8 @@ use ironplc_container::opcode;
 #[derive(Debug)]
 pub struct FaultContext {
     pub trap: Trap,
-    pub task_id: u16,
-    pub instance_id: u16,
+    pub task_id: TaskId,
+    pub instance_id: InstanceId,
 }
 
 /// A newly created VM with no loaded program.
@@ -436,8 +439,8 @@ impl<'a> VmStopped<'a> {
 /// A VM that has stopped due to a trap.
 pub struct VmFaulted<'a> {
     trap: Trap,
-    task_id: u16,
-    instance_id: u16,
+    task_id: TaskId,
+    instance_id: InstanceId,
     variables: VariableTable<'a>,
 }
 
@@ -448,12 +451,12 @@ impl<'a> VmFaulted<'a> {
     }
 
     /// Returns the task that was executing when the trap occurred.
-    pub fn task_id(&self) -> u16 {
+    pub fn task_id(&self) -> TaskId {
         self.task_id
     }
 
     /// Returns the program instance that was executing when the trap occurred.
-    pub fn instance_id(&self) -> u16 {
+    pub fn instance_id(&self) -> InstanceId {
         self.instance_id
     }
 
@@ -519,8 +522,8 @@ macro_rules! load_const {
         let index = read_u16_le($bytecode, &mut $pc);
         let value = $container
             .constant_pool
-            .$get(index)
-            .map_err(|_| Trap::InvalidConstantIndex(index))?;
+            .$get(ConstantIndex::new(index))
+            .map_err(|_| Trap::InvalidConstantIndex(ConstantIndex::new(index)))?;
         $stack.push(Slot::$from(value))?;
     }};
 }
@@ -596,7 +599,7 @@ fn execute(
                 }
                 let target_index = ref_slot
                     .as_var_index()
-                    .ok_or(Trap::InvalidVariableIndex(u16::MAX))?;
+                    .ok_or(Trap::InvalidVariableIndex(VarIndex::new(u16::MAX)))?;
                 scope.check_access(target_index)?;
                 let value = variables.load(target_index)?;
                 stack.push(value)?;
@@ -608,7 +611,7 @@ fn execute(
                 }
                 let target_index = ref_slot
                     .as_var_index()
-                    .ok_or(Trap::InvalidVariableIndex(u16::MAX))?;
+                    .ok_or(Trap::InvalidVariableIndex(VarIndex::new(u16::MAX)))?;
                 scope.check_access(target_index)?;
                 let value = stack.pop()?;
                 variables.store(target_index, value)?;
@@ -760,12 +763,12 @@ fn execute(
                 let var_offset = read_u16_le(bytecode, &mut pc);
                 let func = container
                     .code
-                    .get_function(func_id)
-                    .ok_or(Trap::InvalidFunctionId(func_id))?;
+                    .get_function(FunctionId::new(func_id))
+                    .ok_or(Trap::InvalidFunctionId(FunctionId::new(func_id)))?;
                 let func_bytecode = container
                     .code
-                    .get_function_bytecode(func_id)
-                    .ok_or(Trap::InvalidFunctionId(func_id))?;
+                    .get_function_bytecode(FunctionId::new(func_id))
+                    .ok_or(Trap::InvalidFunctionId(FunctionId::new(func_id)))?;
 
                 let func_scope = VariableScope {
                     shared_globals_size: scope.shared_globals_size,
@@ -856,8 +859,8 @@ fn execute(
                 let index = read_u16_le(bytecode, &mut pc);
                 let str_bytes = container
                     .constant_pool
-                    .get_str(index)
-                    .map_err(|_| Trap::InvalidConstantIndex(index))?;
+                    .get_str(ConstantIndex::new(index))
+                    .map_err(|_| Trap::InvalidConstantIndex(ConstantIndex::new(index)))?;
 
                 let (buf_idx, buf_start) =
                     str_alloc_temp(&mut next_temp_buf, max_temp_buf_bytes, temp_buf.len())?;
@@ -1617,11 +1620,14 @@ fn execute(
                     }
                     _ => {
                         // User-defined FB: look up in the container's user FB table.
+                        let fb_type_id = FbTypeId::new(type_id);
                         let user_fb = container
                             .type_section
                             .as_ref()
-                            .and_then(|ts| ts.user_fb_types.iter().find(|d| d.type_id == type_id))
-                            .ok_or(Trap::InvalidFbTypeId(type_id))?;
+                            .and_then(|ts| {
+                                ts.user_fb_types.iter().find(|d| d.type_id == fb_type_id)
+                            })
+                            .ok_or(Trap::InvalidFbTypeId(fb_type_id))?;
 
                         let func_id = user_fb.function_id;
                         let var_off = user_fb.var_offset;
@@ -1693,12 +1699,12 @@ fn execute(
                     .as_ref()
                     .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
                     .map(|d| d.total_elements)
-                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
+                    .ok_or(Trap::InvalidVariableIndex(VarIndex::new(var_index)))?;
 
                 // Bounds check: 0 <= index < total_elements
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index,
+                        var_index: VarIndex::new(var_index),
                         index: index_i64 as i32,
                         total_elements,
                     });
@@ -1732,11 +1738,11 @@ fn execute(
                     .as_ref()
                     .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
                     .map(|d| d.total_elements)
-                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
+                    .ok_or(Trap::InvalidVariableIndex(VarIndex::new(var_index)))?;
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index,
+                        var_index: VarIndex::new(var_index),
                         index: index_i64 as i32,
                         total_elements,
                     });
@@ -1776,11 +1782,11 @@ fn execute(
                     .as_ref()
                     .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
                     .map(|d| d.total_elements)
-                    .ok_or(Trap::InvalidVariableIndex(ref_var_index))?;
+                    .ok_or(Trap::InvalidVariableIndex(VarIndex::new(ref_var_index)))?;
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index: target_var_index,
+                        var_index: VarIndex::new(target_var_index),
                         index: index_i64 as i32,
                         total_elements,
                     });
@@ -1824,11 +1830,11 @@ fn execute(
                     .as_ref()
                     .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
                     .map(|d| d.total_elements)
-                    .ok_or(Trap::InvalidVariableIndex(ref_var_index))?;
+                    .ok_or(Trap::InvalidVariableIndex(VarIndex::new(ref_var_index)))?;
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index: target_var_index,
+                        var_index: VarIndex::new(target_var_index),
                         index: index_i64 as i32,
                         total_elements,
                     });
@@ -1935,10 +1941,10 @@ mod tests {
             builder = builder.add_i32_constant(c);
         }
         builder
-            .add_function(0, &[0xB5], 0, num_vars, 0) // init: RET_VOID
-            .add_function(1, bytecode, 16, num_vars, 0) // scan: test bytecode
-            .init_function_id(0)
-            .entry_function_id(1)
+            .add_function(FunctionId::INIT, &[0xB5], 0, num_vars, 0) // init: RET_VOID
+            .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0) // scan: test bytecode
+            .init_function_id(FunctionId::INIT)
+            .entry_function_id(FunctionId::SCAN)
             .build()
     }
 
@@ -1968,10 +1974,10 @@ mod tests {
             .num_variables(2)
             .add_i32_constant(10)
             .add_i32_constant(32)
-            .add_function(0, &[0xB5], 0, 2, 0) // init: RET_VOID
-            .add_function(1, &bytecode, 2, 2, 0) // scan: program body
-            .init_function_id(0)
-            .entry_function_id(1)
+            .add_function(FunctionId::INIT, &[0xB5], 0, 2, 0) // init: RET_VOID
+            .add_function(FunctionId::SCAN, &bytecode, 2, 2, 0) // scan: program body
+            .init_function_id(FunctionId::INIT)
+            .entry_function_id(FunctionId::SCAN)
             .build()
     }
 
@@ -2102,14 +2108,17 @@ mod tests {
             .start()
             .unwrap();
         let ctx = FaultContext {
-            trap: Trap::WatchdogTimeout(3),
-            task_id: 3,
-            instance_id: 1,
+            trap: Trap::WatchdogTimeout(ironplc_container::TaskId::new(3)),
+            task_id: ironplc_container::TaskId::new(3),
+            instance_id: ironplc_container::InstanceId::new(1),
         };
         let faulted = vm.fault(ctx);
-        assert_eq!(*faulted.trap(), Trap::WatchdogTimeout(3));
-        assert_eq!(faulted.task_id(), 3);
-        assert_eq!(faulted.instance_id(), 1);
+        assert_eq!(
+            *faulted.trap(),
+            Trap::WatchdogTimeout(ironplc_container::TaskId::new(3))
+        );
+        assert_eq!(faulted.task_id(), ironplc_container::TaskId::new(3));
+        assert_eq!(faulted.instance_id(), ironplc_container::InstanceId::new(1));
     }
 
     // Phase 1, Step 1.1: Execute error path tests
@@ -2129,10 +2138,10 @@ mod tests {
             .num_variables(0)
             .add_i32_constant(1)
             .add_i32_constant(2)
-            .add_function(0, &[0xB5], 0, 0, 0) // init: RET_VOID
-            .add_function(1, &bytecode, 1, 0, 0) // scan: triggers overflow
-            .init_function_id(0)
-            .entry_function_id(1)
+            .add_function(FunctionId::INIT, &[0xB5], 0, 0, 0) // init: RET_VOID
+            .add_function(FunctionId::SCAN, &bytecode, 1, 0, 0) // scan: triggers overflow
+            .init_function_id(FunctionId::INIT)
+            .entry_function_id(FunctionId::SCAN)
             .build();
 
         let mut b = VmBuffers::from_container(&c);
@@ -2197,7 +2206,7 @@ mod tests {
             .start()
             .unwrap();
 
-        assert_trap(&mut vm, Trap::InvalidConstantIndex(0));
+        assert_trap(&mut vm, Trap::InvalidConstantIndex(ConstantIndex::new(0)));
     }
 
     #[test]
@@ -2224,7 +2233,7 @@ mod tests {
             .start()
             .unwrap();
 
-        assert_trap(&mut vm, Trap::InvalidVariableIndex(5));
+        assert_trap(&mut vm, Trap::InvalidVariableIndex(VarIndex::new(5)));
     }
 
     #[test]
@@ -2250,7 +2259,7 @@ mod tests {
             .start()
             .unwrap();
 
-        assert_trap(&mut vm, Trap::InvalidVariableIndex(5));
+        assert_trap(&mut vm, Trap::InvalidVariableIndex(VarIndex::new(5)));
     }
 
     // Phase 1, Step 1.2: Execute edge-case tests
@@ -2284,11 +2293,11 @@ mod tests {
             .num_variables(4) // 1 program var + 3 function vars
             .add_i32_constant(3)
             .add_i32_constant(7)
-            .add_function(0, &[0xB5], 0, 1, 0) // init
-            .add_function(1, &scan_bytecode, 2, 1, 0) // scan
-            .add_function(2, &func_bytecode, 2, 3, 2) // add (num_params=2)
-            .init_function_id(0)
-            .entry_function_id(1)
+            .add_function(FunctionId::INIT, &[0xB5], 0, 1, 0) // init
+            .add_function(FunctionId::SCAN, &scan_bytecode, 2, 1, 0) // scan
+            .add_function(FunctionId::new(2), &func_bytecode, 2, 3, 2) // add (num_params=2)
+            .init_function_id(FunctionId::INIT)
+            .entry_function_id(FunctionId::SCAN)
             .build();
         let mut b = VmBuffers::from_container(&c);
         let mut vm = Vm::new()

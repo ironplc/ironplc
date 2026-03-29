@@ -1,9 +1,9 @@
-use ironplc_container::TaskType;
+use ironplc_container::{FunctionId, InstanceId, TaskId, TaskType};
 
 /// Per-task runtime state tracked by the scheduler.
 #[derive(Clone, Debug, Default)]
 pub struct TaskState {
-    pub task_id: u16,
+    pub task_id: TaskId,
     pub priority: u16,
     pub task_type: TaskType,
     pub interval_us: u64,
@@ -19,12 +19,12 @@ pub struct TaskState {
 /// Per-program-instance runtime state.
 #[derive(Clone, Debug, Default)]
 pub struct ProgramInstanceState {
-    pub instance_id: u16,
-    pub task_id: u16,
-    pub entry_function_id: u16,
+    pub instance_id: InstanceId,
+    pub task_id: TaskId,
+    pub entry_function_id: FunctionId,
     pub var_table_offset: u16,
     pub var_table_count: u16,
-    pub init_function_id: u16,
+    pub init_function_id: FunctionId,
 }
 
 /// Cooperative task scheduler that determines which tasks to execute each round.
@@ -80,7 +80,7 @@ impl<'a> TaskScheduler<'a> {
                 let cmp = ta
                     .priority
                     .cmp(&tb.priority)
-                    .then(ta.task_id.cmp(&tb.task_id));
+                    .then(ta.task_id.raw().cmp(&tb.task_id.raw()));
                 if cmp == core::cmp::Ordering::Greater {
                     ready.swap(j - 1, j);
                     j -= 1;
@@ -127,33 +127,34 @@ impl<'a> TaskScheduler<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironplc_container::task_table::NO_SINGLE_VAR;
-    use ironplc_container::{ProgramInstanceEntry, TaskEntry, TaskTable};
+    use ironplc_container::{
+        FunctionId, InstanceId, ProgramInstanceEntry, TaskEntry, TaskId, TaskTable, VarIndex,
+    };
 
     fn freewheeling_task_table() -> TaskTable {
         TaskTable {
             shared_globals_size: 0,
             tasks: vec![TaskEntry {
-                task_id: 0,
+                task_id: TaskId::DEFAULT,
                 priority: 0,
                 task_type: TaskType::Freewheeling,
                 flags: 0x01,
                 interval_us: 0,
-                single_var_index: NO_SINGLE_VAR,
+                single_var_index: VarIndex::NO_SINGLE_VAR,
                 watchdog_us: 0,
                 input_image_offset: 0,
                 output_image_offset: 0,
                 reserved: [0; 4],
             }],
             programs: vec![ProgramInstanceEntry {
-                instance_id: 0,
-                task_id: 0,
-                entry_function_id: 0,
+                instance_id: InstanceId::DEFAULT,
+                task_id: TaskId::DEFAULT,
+                entry_function_id: FunctionId::INIT,
                 var_table_offset: 0,
                 var_table_count: 2,
                 fb_instance_offset: 0,
                 fb_instance_count: 0,
-                init_function_id: 0,
+                init_function_id: FunctionId::INIT,
             }],
         }
     }
@@ -163,24 +164,24 @@ mod tests {
             shared_globals_size: 2,
             tasks: vec![
                 TaskEntry {
-                    task_id: 0,
+                    task_id: TaskId::new(0),
                     priority: 5,
                     task_type: TaskType::Cyclic,
                     flags: 0x01,
                     interval_us: 100_000,
-                    single_var_index: NO_SINGLE_VAR,
+                    single_var_index: VarIndex::NO_SINGLE_VAR,
                     watchdog_us: 0,
                     input_image_offset: 0,
                     output_image_offset: 0,
                     reserved: [0; 4],
                 },
                 TaskEntry {
-                    task_id: 1,
+                    task_id: TaskId::new(1),
                     priority: 0,
                     task_type: TaskType::Cyclic,
                     flags: 0x01,
                     interval_us: 10_000,
-                    single_var_index: NO_SINGLE_VAR,
+                    single_var_index: VarIndex::NO_SINGLE_VAR,
                     watchdog_us: 0,
                     input_image_offset: 0,
                     output_image_offset: 0,
@@ -189,24 +190,24 @@ mod tests {
             ],
             programs: vec![
                 ProgramInstanceEntry {
-                    instance_id: 0,
-                    task_id: 0,
-                    entry_function_id: 0,
+                    instance_id: InstanceId::new(0),
+                    task_id: TaskId::new(0),
+                    entry_function_id: FunctionId::INIT,
                     var_table_offset: 2,
                     var_table_count: 3,
                     fb_instance_offset: 0,
                     fb_instance_count: 0,
-                    init_function_id: 0,
+                    init_function_id: FunctionId::INIT,
                 },
                 ProgramInstanceEntry {
-                    instance_id: 1,
-                    task_id: 1,
-                    entry_function_id: 1,
+                    instance_id: InstanceId::new(1),
+                    task_id: TaskId::new(1),
+                    entry_function_id: FunctionId::SCAN,
                     var_table_offset: 5,
                     var_table_count: 3,
                     fb_instance_offset: 0,
                     fb_instance_count: 0,
-                    init_function_id: 0,
+                    init_function_id: FunctionId::INIT,
                 },
             ],
         }

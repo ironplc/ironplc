@@ -23,7 +23,10 @@ END_PROGRAM
     // y := LIMIT(0.0, x, 10.0): LOAD_CONST_F32 pool:1, LOAD_VAR_F32 var:0,
     //   LOAD_CONST_F32 pool:2, BUILTIN LIMIT_F32, STORE_VAR_F32 var:1
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -53,7 +56,10 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[

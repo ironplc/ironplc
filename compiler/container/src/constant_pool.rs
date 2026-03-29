@@ -3,6 +3,7 @@ use std::vec;
 use std::vec::Vec;
 
 use crate::const_type::ConstType;
+use crate::id_types::ConstantIndex;
 use crate::ContainerError;
 
 /// A single entry in the constant pool.
@@ -52,10 +53,10 @@ impl ConstantPool {
     }
 
     /// Gets an i32 value from the constant pool at the given index.
-    pub fn get_i32(&self, index: u16) -> Result<i32, ContainerError> {
+    pub fn get_i32(&self, index: ConstantIndex) -> Result<i32, ContainerError> {
         let entry = self
             .entries
-            .get(index as usize)
+            .get(index.raw() as usize)
             .ok_or(ContainerError::InvalidConstantIndex(index))?;
         if entry.const_type != ConstType::I32 {
             return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
@@ -69,10 +70,10 @@ impl ConstantPool {
     }
 
     /// Gets an f32 value from the constant pool at the given index.
-    pub fn get_f32(&self, index: u16) -> Result<f32, ContainerError> {
+    pub fn get_f32(&self, index: ConstantIndex) -> Result<f32, ContainerError> {
         let entry = self
             .entries
-            .get(index as usize)
+            .get(index.raw() as usize)
             .ok_or(ContainerError::InvalidConstantIndex(index))?;
         if entry.const_type != ConstType::F32 {
             return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
@@ -86,10 +87,10 @@ impl ConstantPool {
     }
 
     /// Gets an f64 value from the constant pool at the given index.
-    pub fn get_f64(&self, index: u16) -> Result<f64, ContainerError> {
+    pub fn get_f64(&self, index: ConstantIndex) -> Result<f64, ContainerError> {
         let entry = self
             .entries
-            .get(index as usize)
+            .get(index.raw() as usize)
             .ok_or(ContainerError::InvalidConstantIndex(index))?;
         if entry.const_type != ConstType::F64 {
             return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
@@ -107,10 +108,10 @@ impl ConstantPool {
     }
 
     /// Gets an i64 value from the constant pool at the given index.
-    pub fn get_i64(&self, index: u16) -> Result<i64, ContainerError> {
+    pub fn get_i64(&self, index: ConstantIndex) -> Result<i64, ContainerError> {
         let entry = self
             .entries
-            .get(index as usize)
+            .get(index.raw() as usize)
             .ok_or(ContainerError::InvalidConstantIndex(index))?;
         if entry.const_type != ConstType::I64 {
             return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
@@ -128,10 +129,10 @@ impl ConstantPool {
     }
 
     /// Gets a string value (raw bytes) from the constant pool at the given index.
-    pub fn get_str(&self, index: u16) -> Result<&[u8], ContainerError> {
+    pub fn get_str(&self, index: ConstantIndex) -> Result<&[u8], ContainerError> {
         let entry = self
             .entries
-            .get(index as usize)
+            .get(index.raw() as usize)
             .ok_or(ContainerError::InvalidConstantIndex(index))?;
         if entry.const_type != ConstType::Str {
             return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
@@ -198,8 +199,8 @@ mod tests {
         let decoded = ConstantPool::read_from(&mut cursor).unwrap();
 
         assert_eq!(decoded.len(), 2);
-        assert_eq!(decoded.get_i32(0).unwrap(), 10);
-        assert_eq!(decoded.get_i32(1).unwrap(), 32);
+        assert_eq!(decoded.get_i32(ConstantIndex::new(0)).unwrap(), 10);
+        assert_eq!(decoded.get_i32(ConstantIndex::new(1)).unwrap(), 32);
     }
 
     #[test]
@@ -210,7 +211,7 @@ mod tests {
             value: 42i32.to_le_bytes().to_vec(),
         });
 
-        assert_eq!(pool.get_i32(0).unwrap(), 42);
+        assert_eq!(pool.get_i32(ConstantIndex::new(0)).unwrap(), 42);
     }
 
     #[test]
@@ -218,8 +219,8 @@ mod tests {
         let pool = ConstantPool::default();
 
         assert!(matches!(
-            pool.get_i32(0),
-            Err(ContainerError::InvalidConstantIndex(0))
+            pool.get_i32(ConstantIndex::new(0)),
+            Err(ContainerError::InvalidConstantIndex(idx)) if idx == ConstantIndex::new(0)
         ));
     }
 

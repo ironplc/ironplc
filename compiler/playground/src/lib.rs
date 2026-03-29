@@ -127,7 +127,7 @@ fn build_var_debug_map(container: &Container) -> HashMap<u16, VarDebugInfo> {
     if let Some(debug) = &container.debug_section {
         for entry in &debug.var_names {
             map.insert(
-                entry.var_index,
+                entry.var_index.raw(),
                 VarDebugInfo {
                     name: entry.name.clone(),
                     type_name: entry.type_name.clone(),

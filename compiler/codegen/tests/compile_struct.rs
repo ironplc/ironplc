@@ -159,7 +159,10 @@ END_PROGRAM
     // Should compile — verifies the init function stores data_offset into
     // the variable slot and emits field stores.
     let container = parse_and_compile(source, &CompilerOptions::default());
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(0))
+        .unwrap();
     // Init function should have bytecode for storing data_offset + field values
     assert!(bytecode.len() > 1, "Init function should have bytecode");
 }
@@ -181,7 +184,10 @@ PROGRAM main
 END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(0))
+        .unwrap();
     // Should contain STORE_ARRAY opcodes (0x25) for field initialization
     let store_array_count = bytecode.iter().filter(|&&b| b == 0x25).count();
     assert!(
@@ -208,7 +214,10 @@ PROGRAM main
 END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(0))
+        .unwrap();
     // Even without explicit init, fields should be zero-initialized via STORE_ARRAY
     let store_array_count = bytecode.iter().filter(|&&b| b == 0x25).count();
     assert!(
@@ -236,7 +245,10 @@ PROGRAM main
 END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
-    let bytecode = container.code.get_function_bytecode(0).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(0))
+        .unwrap();
     // All 3 fields should be initialized (1 explicit, 2 defaults)
     let store_array_count = bytecode.iter().filter(|&&b| b == 0x25).count();
     assert!(

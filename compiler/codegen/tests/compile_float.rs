@@ -20,7 +20,10 @@ END_PROGRAM
     assert_eq!(container.header.num_variables, 1);
 
     // LOAD_CONST_F32 pool:0, STORE_VAR_F32 var:0, RET_VOID
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -50,7 +53,10 @@ END_PROGRAM
     // x := 1.5: LOAD_CONST_F64 pool:0, STORE_VAR_F64 var:0
     // y := x + 2.5: LOAD_VAR_F64 var:0, LOAD_CONST_F64 pool:1, ADD_F64, STORE_VAR_F64 var:1
     // RET_VOID
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -84,7 +90,10 @@ END_PROGRAM
     let container = parse_and_compile(source, &CompilerOptions::default());
 
     // Verify that the bytecode contains GT_F32 (0x84)
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert!(
         bytecode.contains(&0x84),
         "expected GT_F32 (0x84) in bytecode: {:02X?}",

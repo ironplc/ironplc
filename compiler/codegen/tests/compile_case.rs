@@ -32,7 +32,10 @@ END_PROGRAM
     //  19: (next_label — no more arms, no ELSE)
     //  19: (end_label)
     //  19: RET_VOID
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -76,7 +79,10 @@ END_PROGRAM
     //  19: LOAD_CONST_I32 pool:2 (99)  (ELSE: y := 99)
     //  22: STORE_VAR_I32 var:1
     //  25: RET_VOID
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[

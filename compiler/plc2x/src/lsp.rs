@@ -603,7 +603,7 @@ mod test {
         let container = ContainerBuilder::new()
             .num_variables(1)
             .add_i32_constant(42)
-            .add_function(0, &bytecode, 1, 1, 0)
+            .add_function(ironplc_container::FunctionId::new(0), &bytecode, 1, 1, 0)
             .build();
         let mut buf = Vec::new();
         container.write_to(&mut buf).unwrap();

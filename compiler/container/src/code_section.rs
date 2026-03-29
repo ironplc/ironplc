@@ -2,6 +2,7 @@ use std::io::{Read, Write};
 use std::vec;
 use std::vec::Vec;
 
+use crate::id_types::FunctionId;
 use crate::ContainerError;
 
 /// Size of a single function directory entry in bytes.
@@ -10,7 +11,7 @@ const FUNC_ENTRY_SIZE: usize = 16;
 /// A function entry in the code section directory.
 #[derive(Clone, Debug)]
 pub struct FuncEntry {
-    pub function_id: u16,
+    pub function_id: FunctionId,
     pub bytecode_offset: u32,
     pub bytecode_length: u32,
     pub max_stack_depth: u16,
@@ -34,16 +35,16 @@ impl CodeSection {
     }
 
     /// Returns the FuncEntry for the given function ID, if it exists.
-    pub fn get_function(&self, function_id: u16) -> Option<&FuncEntry> {
-        self.functions.get(function_id as usize)
+    pub fn get_function(&self, function_id: FunctionId) -> Option<&FuncEntry> {
+        self.functions.get(function_id.raw() as usize)
     }
 
     /// Returns the bytecode slice for the given function ID.
     ///
     /// Uses direct indexing (O(1)) since function IDs are compiler-assigned
     /// sequential indices starting from 0.
-    pub fn get_function_bytecode(&self, function_id: u16) -> Option<&[u8]> {
-        let entry = self.functions.get(function_id as usize)?;
+    pub fn get_function_bytecode(&self, function_id: FunctionId) -> Option<&[u8]> {
+        let entry = self.functions.get(function_id.raw() as usize)?;
         let start = entry.bytecode_offset as usize;
         let end = start + entry.bytecode_length as usize;
         self.bytecode.get(start..end)
@@ -81,7 +82,7 @@ impl CodeSection {
             let mut entry_buf = [0u8; FUNC_ENTRY_SIZE];
             r.read_exact(&mut entry_buf)?;
             functions.push(FuncEntry {
-                function_id: u16::from_le_bytes([entry_buf[0], entry_buf[1]]),
+                function_id: FunctionId::new(u16::from_le_bytes([entry_buf[0], entry_buf[1]])),
                 bytecode_offset: u32::from_le_bytes([
                     entry_buf[2],
                     entry_buf[3],
@@ -122,7 +123,7 @@ mod tests {
         let bytecode = vec![0x01, 0x00, 0x00, 0xB5];
         let section = CodeSection {
             functions: vec![FuncEntry {
-                function_id: 0,
+                function_id: FunctionId::INIT,
                 bytecode_offset: 0,
                 bytecode_length: bytecode.len() as u32,
                 max_stack_depth: 2,
@@ -139,7 +140,7 @@ mod tests {
         let decoded = CodeSection::read_from(&mut cursor, 1, section.section_size()).unwrap();
 
         assert_eq!(decoded.functions.len(), 1);
-        assert_eq!(decoded.functions[0].function_id, 0);
+        assert_eq!(decoded.functions[0].function_id, FunctionId::INIT);
         assert_eq!(decoded.functions[0].bytecode_length, 4);
         assert_eq!(decoded.functions[0].max_stack_depth, 2);
         assert_eq!(decoded.functions[0].num_locals, 1);
@@ -150,7 +151,7 @@ mod tests {
     fn func_entry_write_when_single_entry_then_exactly_func_entry_size_bytes() {
         let section = CodeSection {
             functions: vec![FuncEntry {
-                function_id: 0,
+                function_id: FunctionId::INIT,
                 bytecode_offset: 0,
                 bytecode_length: 0,
                 max_stack_depth: 0,

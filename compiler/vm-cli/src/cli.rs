@@ -183,7 +183,7 @@ pub fn benchmark(path: &Path, cycles: u64, warmup: u64) -> Result<(), VmError> {
         .iter()
         .map(|ts| {
             let mut task = json!({
-                "task_id": ts.task_id,
+                "task_id": ts.task_id.raw(),
                 "task_type": ts.task_type.as_str(),
                 "interval_us": ts.interval_us,
                 "scan_count": ts.scan_count,

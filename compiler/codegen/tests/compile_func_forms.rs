@@ -32,7 +32,10 @@ END_PROGRAM
 fn assert_two_arg_bytecode(source: &str, expected_opcode: u8) {
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[
@@ -99,7 +102,10 @@ PROGRAM main
 END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert!(
         bytecode.contains(&0x54),
         "Expected BOOL_AND opcode 0x54 in bytecode: {:02X?}",
@@ -120,7 +126,10 @@ PROGRAM main
 END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert!(
         bytecode.contains(&0x55),
         "Expected BOOL_OR opcode 0x55 in bytecode: {:02X?}",
@@ -141,7 +150,10 @@ PROGRAM main
 END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert!(
         bytecode.contains(&0x56),
         "Expected BOOL_XOR opcode 0x56 in bytecode: {:02X?}",
@@ -197,7 +209,10 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    let bytecode = container.code.get_function_bytecode(1).unwrap();
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
     assert_eq!(
         bytecode,
         &[

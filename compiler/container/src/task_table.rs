@@ -1,6 +1,7 @@
 use std::io::{Read, Write};
 use std::vec::Vec;
 
+use crate::id_types::{FunctionId, InstanceId, TaskId, VarIndex};
 use crate::task_type::TaskType;
 use crate::ContainerError;
 
@@ -10,18 +11,15 @@ const TASK_ENTRY_SIZE: usize = 32;
 /// Size of a single program instance entry in bytes.
 const PROGRAM_INSTANCE_ENTRY_SIZE: usize = 16;
 
-/// Sentinel value for `single_var_index` indicating no SINGLE trigger variable.
-pub const NO_SINGLE_VAR: u16 = 0xFFFF;
-
 /// A single task entry in the task table (32 bytes fixed).
 #[derive(Clone, Debug)]
 pub struct TaskEntry {
-    pub task_id: u16,
+    pub task_id: TaskId,
     pub priority: u16,
     pub task_type: TaskType,
     pub flags: u8,
     pub interval_us: u64,
-    pub single_var_index: u16,
+    pub single_var_index: VarIndex,
     pub watchdog_us: u64,
     pub input_image_offset: u16,
     pub output_image_offset: u16,
@@ -31,14 +29,14 @@ pub struct TaskEntry {
 /// A single program instance entry in the task table (16 bytes fixed).
 #[derive(Clone, Debug)]
 pub struct ProgramInstanceEntry {
-    pub instance_id: u16,
-    pub task_id: u16,
-    pub entry_function_id: u16,
+    pub instance_id: InstanceId,
+    pub task_id: TaskId,
+    pub entry_function_id: FunctionId,
     pub var_table_offset: u16,
     pub var_table_count: u16,
     pub fb_instance_offset: u16,
     pub fb_instance_count: u16,
-    pub init_function_id: u16,
+    pub init_function_id: FunctionId,
 }
 
 /// The task table section of a bytecode container.
@@ -113,14 +111,14 @@ impl TaskTable {
             r.read_exact(&mut buf)?;
             let task_type = TaskType::from_u8(buf[4])?;
             tasks.push(TaskEntry {
-                task_id: u16::from_le_bytes([buf[0], buf[1]]),
+                task_id: TaskId::new(u16::from_le_bytes([buf[0], buf[1]])),
                 priority: u16::from_le_bytes([buf[2], buf[3]]),
                 task_type,
                 flags: buf[5],
                 interval_us: u64::from_le_bytes([
                     buf[6], buf[7], buf[8], buf[9], buf[10], buf[11], buf[12], buf[13],
                 ]),
-                single_var_index: u16::from_le_bytes([buf[14], buf[15]]),
+                single_var_index: VarIndex::new(u16::from_le_bytes([buf[14], buf[15]])),
                 watchdog_us: u64::from_le_bytes([
                     buf[16], buf[17], buf[18], buf[19], buf[20], buf[21], buf[22], buf[23],
                 ]),
@@ -136,14 +134,14 @@ impl TaskTable {
             let mut buf = [0u8; PROGRAM_INSTANCE_ENTRY_SIZE];
             r.read_exact(&mut buf)?;
             programs.push(ProgramInstanceEntry {
-                instance_id: u16::from_le_bytes([buf[0], buf[1]]),
-                task_id: u16::from_le_bytes([buf[2], buf[3]]),
-                entry_function_id: u16::from_le_bytes([buf[4], buf[5]]),
+                instance_id: InstanceId::new(u16::from_le_bytes([buf[0], buf[1]])),
+                task_id: TaskId::new(u16::from_le_bytes([buf[2], buf[3]])),
+                entry_function_id: FunctionId::new(u16::from_le_bytes([buf[4], buf[5]])),
                 var_table_offset: u16::from_le_bytes([buf[6], buf[7]]),
                 var_table_count: u16::from_le_bytes([buf[8], buf[9]]),
                 fb_instance_offset: u16::from_le_bytes([buf[10], buf[11]]),
                 fb_instance_count: u16::from_le_bytes([buf[12], buf[13]]),
-                init_function_id: u16::from_le_bytes([buf[14], buf[15]]),
+                init_function_id: FunctionId::new(u16::from_le_bytes([buf[14], buf[15]])),
             });
         }
 
@@ -173,26 +171,26 @@ mod tests {
         let table = TaskTable {
             shared_globals_size: 0,
             tasks: vec![TaskEntry {
-                task_id: 0,
+                task_id: TaskId::new(0),
                 priority: 0,
                 task_type: TaskType::Cyclic,
                 flags: 0,
                 interval_us: 0,
-                single_var_index: 0,
+                single_var_index: VarIndex::new(0),
                 watchdog_us: 0,
                 input_image_offset: 0,
                 output_image_offset: 0,
                 reserved: [0; 4],
             }],
             programs: vec![ProgramInstanceEntry {
-                instance_id: 0,
-                task_id: 0,
-                entry_function_id: 0,
+                instance_id: InstanceId::new(0),
+                task_id: TaskId::new(0),
+                entry_function_id: FunctionId::new(0),
                 var_table_offset: 0,
                 var_table_count: 0,
                 fb_instance_offset: 0,
                 fb_instance_count: 0,
-                init_function_id: 0,
+                init_function_id: FunctionId::new(0),
             }],
         };
         // 6 (header) + 32 (1 task) + 16 (1 program) = 54
@@ -204,26 +202,26 @@ mod tests {
         let table = TaskTable {
             shared_globals_size: 128,
             tasks: vec![TaskEntry {
-                task_id: 1,
+                task_id: TaskId::new(1),
                 priority: 10,
                 task_type: TaskType::Cyclic,
                 flags: 0x01,
                 interval_us: 10_000,
-                single_var_index: NO_SINGLE_VAR,
+                single_var_index: VarIndex::NO_SINGLE_VAR,
                 watchdog_us: 50_000,
                 input_image_offset: 0,
                 output_image_offset: 64,
                 reserved: [0; 4],
             }],
             programs: vec![ProgramInstanceEntry {
-                instance_id: 0,
-                task_id: 1,
-                entry_function_id: 0,
+                instance_id: InstanceId::new(0),
+                task_id: TaskId::new(1),
+                entry_function_id: FunctionId::new(0),
                 var_table_offset: 0,
                 var_table_count: 5,
                 fb_instance_offset: 0,
                 fb_instance_count: 0,
-                init_function_id: 0,
+                init_function_id: FunctionId::new(0),
             }],
         };
 
@@ -236,26 +234,26 @@ mod tests {
 
         assert_eq!(decoded.shared_globals_size, 128);
         assert_eq!(decoded.tasks.len(), 1);
-        assert_eq!(decoded.tasks[0].task_id, 1);
+        assert_eq!(decoded.tasks[0].task_id, TaskId::new(1));
         assert_eq!(decoded.tasks[0].priority, 10);
         assert_eq!(decoded.tasks[0].task_type, TaskType::Cyclic);
         assert_eq!(decoded.tasks[0].flags, 0x01);
         assert_eq!(decoded.tasks[0].interval_us, 10_000);
-        assert_eq!(decoded.tasks[0].single_var_index, NO_SINGLE_VAR);
+        assert_eq!(decoded.tasks[0].single_var_index, VarIndex::NO_SINGLE_VAR);
         assert_eq!(decoded.tasks[0].watchdog_us, 50_000);
         assert_eq!(decoded.tasks[0].input_image_offset, 0);
         assert_eq!(decoded.tasks[0].output_image_offset, 64);
         assert_eq!(decoded.tasks[0].reserved, [0; 4]);
 
         assert_eq!(decoded.programs.len(), 1);
-        assert_eq!(decoded.programs[0].instance_id, 0);
-        assert_eq!(decoded.programs[0].task_id, 1);
-        assert_eq!(decoded.programs[0].entry_function_id, 0);
+        assert_eq!(decoded.programs[0].instance_id, InstanceId::new(0));
+        assert_eq!(decoded.programs[0].task_id, TaskId::new(1));
+        assert_eq!(decoded.programs[0].entry_function_id, FunctionId::new(0));
         assert_eq!(decoded.programs[0].var_table_offset, 0);
         assert_eq!(decoded.programs[0].var_table_count, 5);
         assert_eq!(decoded.programs[0].fb_instance_offset, 0);
         assert_eq!(decoded.programs[0].fb_instance_count, 0);
-        assert_eq!(decoded.programs[0].init_function_id, 0);
+        assert_eq!(decoded.programs[0].init_function_id, FunctionId::new(0));
     }
 
     #[test]

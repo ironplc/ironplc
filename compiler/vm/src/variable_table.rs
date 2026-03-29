@@ -1,3 +1,5 @@
+use ironplc_container::VarIndex;
+
 use crate::error::Trap;
 use crate::value::Slot;
 
@@ -29,7 +31,7 @@ impl VariableScope {
         {
             Ok(())
         } else {
-            Err(Trap::InvalidVariableIndex(index))
+            Err(Trap::InvalidVariableIndex(VarIndex::new(index)))
         }
     }
 }
@@ -55,7 +57,7 @@ impl<'a> VariableTable<'a> {
         self.slots
             .get(index as usize)
             .copied()
-            .ok_or(Trap::InvalidVariableIndex(index))
+            .ok_or(Trap::InvalidVariableIndex(VarIndex::new(index)))
     }
 
     /// Stores a slot at the given index.
@@ -63,7 +65,7 @@ impl<'a> VariableTable<'a> {
         let slot = self
             .slots
             .get_mut(index as usize)
-            .ok_or(Trap::InvalidVariableIndex(index))?;
+            .ok_or(Trap::InvalidVariableIndex(VarIndex::new(index)))?;
         *slot = value;
         Ok(())
     }
@@ -91,7 +93,7 @@ impl<'a> VariableTable<'a> {
             let slot = self
                 .slots
                 .get_mut(idx as usize)
-                .ok_or(Trap::InvalidVariableIndex(idx))?;
+                .ok_or(Trap::InvalidVariableIndex(VarIndex::new(idx)))?;
             *slot = Slot::from_u64(raw);
         }
         Ok(())
@@ -117,7 +119,10 @@ mod tests {
         let mut buf = [Slot::default(); 2];
         let table = VariableTable::new(&mut buf);
 
-        assert_eq!(table.load(2), Err(Trap::InvalidVariableIndex(2)));
+        assert_eq!(
+            table.load(2),
+            Err(Trap::InvalidVariableIndex(VarIndex::new(2)))
+        );
     }
 
     #[test]

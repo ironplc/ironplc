@@ -3,6 +3,7 @@ use std::string::String;
 use std::vec;
 use std::vec::Vec;
 
+use crate::id_types::{FunctionId, VarIndex};
 use crate::ContainerError;
 
 // Sub-table tag constants.
@@ -46,8 +47,9 @@ pub mod iec_type_tag {
 
 /// Function ID constants for debug variable ownership.
 pub mod function_id {
+    use crate::id_types::FunctionId;
     /// Indicates a variable belongs to program/global scope (not a specific function).
-    pub const GLOBAL_SCOPE: u16 = 0xFFFF;
+    pub const GLOBAL_SCOPE: FunctionId = FunctionId::GLOBAL_SCOPE;
 }
 
 /// IEC 61131-3 variable section encoding.
@@ -64,8 +66,8 @@ pub mod var_section {
 /// A variable name entry (debug section Tag 2).
 #[derive(Clone, Debug, PartialEq)]
 pub struct VarNameEntry {
-    pub var_index: u16,
-    pub function_id: u16,
+    pub var_index: VarIndex,
+    pub function_id: FunctionId,
     pub var_section: u8,
     pub iec_type_tag: u8,
     pub name: String,
@@ -75,7 +77,7 @@ pub struct VarNameEntry {
 /// A function name entry (debug section Tag 3).
 #[derive(Clone, Debug, PartialEq)]
 pub struct FuncNameEntry {
-    pub function_id: u16,
+    pub function_id: FunctionId,
     pub name: String,
 }
 
@@ -236,8 +238,8 @@ impl DebugSection {
         for _ in 0..count {
             let mut hdr = [0u8; 6];
             r.read_exact(&mut hdr)?;
-            let var_index = u16::from_le_bytes([hdr[0], hdr[1]]);
-            let function_id = u16::from_le_bytes([hdr[2], hdr[3]]);
+            let var_index = VarIndex::new(u16::from_le_bytes([hdr[0], hdr[1]]));
+            let function_id = FunctionId::new(u16::from_le_bytes([hdr[2], hdr[3]]));
             let var_section_val = hdr[4];
             let iec_type_tag_val = hdr[5];
 
@@ -280,7 +282,7 @@ impl DebugSection {
         for _ in 0..count {
             let mut id_buf = [0u8; 2];
             r.read_exact(&mut id_buf)?;
-            let function_id = u16::from_le_bytes(id_buf);
+            let function_id = FunctionId::new(u16::from_le_bytes(id_buf));
 
             let mut len_buf = [0u8; 1];
             r.read_exact(&mut len_buf)?;
@@ -306,7 +308,7 @@ mod tests {
         let section = DebugSection {
             var_names: vec![
                 VarNameEntry {
-                    var_index: 0,
+                    var_index: VarIndex::new(0),
                     function_id: function_id::GLOBAL_SCOPE,
                     var_section: var_section::VAR,
                     iec_type_tag: iec_type_tag::DINT,
@@ -314,7 +316,7 @@ mod tests {
                     type_name: "DINT".into(),
                 },
                 VarNameEntry {
-                    var_index: 1,
+                    var_index: VarIndex::new(1),
                     function_id: function_id::GLOBAL_SCOPE,
                     var_section: var_section::VAR,
                     iec_type_tag: iec_type_tag::REAL,
@@ -344,11 +346,11 @@ mod tests {
             var_names: vec![],
             func_names: vec![
                 FuncNameEntry {
-                    function_id: 0,
+                    function_id: FunctionId::INIT,
                     name: "MAIN_init".into(),
                 },
                 FuncNameEntry {
-                    function_id: 1,
+                    function_id: FunctionId::SCAN,
                     name: "MAIN".into(),
                 },
             ],
@@ -360,9 +362,9 @@ mod tests {
         let decoded = DebugSection::read_from(&mut Cursor::new(&buf)).unwrap();
         assert!(decoded.var_names.is_empty());
         assert_eq!(decoded.func_names.len(), 2);
-        assert_eq!(decoded.func_names[0].function_id, 0);
+        assert_eq!(decoded.func_names[0].function_id, FunctionId::INIT);
         assert_eq!(decoded.func_names[0].name, "MAIN_init");
-        assert_eq!(decoded.func_names[1].function_id, 1);
+        assert_eq!(decoded.func_names[1].function_id, FunctionId::SCAN);
         assert_eq!(decoded.func_names[1].name, "MAIN");
     }
 
@@ -370,15 +372,15 @@ mod tests {
     fn debug_section_write_read_when_both_tables_then_roundtrips() {
         let section = DebugSection {
             var_names: vec![VarNameEntry {
-                var_index: 0,
-                function_id: 1,
+                var_index: VarIndex::new(0),
+                function_id: FunctionId::SCAN,
                 var_section: var_section::VAR_INPUT,
                 iec_type_tag: iec_type_tag::BOOL,
                 name: "active".into(),
                 type_name: "BOOL".into(),
             }],
             func_names: vec![FuncNameEntry {
-                function_id: 1,
+                function_id: FunctionId::SCAN,
                 name: "MAIN".into(),
             }],
         };
@@ -435,7 +437,7 @@ mod tests {
     fn debug_section_section_size_when_both_tables_then_correct() {
         let section = DebugSection {
             var_names: vec![VarNameEntry {
-                var_index: 0,
+                var_index: VarIndex::new(0),
                 function_id: function_id::GLOBAL_SCOPE,
                 var_section: var_section::VAR,
                 iec_type_tag: iec_type_tag::DINT,
@@ -443,7 +445,7 @@ mod tests {
                 type_name: "DINT".into(),
             }],
             func_names: vec![FuncNameEntry {
-                function_id: 0,
+                function_id: FunctionId::INIT,
                 name: "MAIN".into(),
             }],
         };

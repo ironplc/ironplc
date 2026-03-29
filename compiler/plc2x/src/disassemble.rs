@@ -120,12 +120,12 @@ fn disassemble_task_table(container: &Container) -> Value {
         .iter()
         .map(|t| {
             json!({
-                "taskId": t.task_id,
+                "taskId": t.task_id.raw(),
                 "priority": t.priority,
                 "taskType": t.task_type.as_str(),
                 "enabled": (t.flags & 0x01) != 0,
                 "intervalUs": t.interval_us,
-                "singleVarIndex": t.single_var_index,
+                "singleVarIndex": t.single_var_index.raw(),
                 "watchdogUs": t.watchdog_us,
             })
         })
@@ -136,9 +136,9 @@ fn disassemble_task_table(container: &Container) -> Value {
         .iter()
         .map(|p| {
             json!({
-                "instanceId": p.instance_id,
-                "taskId": p.task_id,
-                "entryFunctionId": p.entry_function_id,
+                "instanceId": p.instance_id.raw(),
+                "taskId": p.task_id.raw(),
+                "entryFunctionId": p.entry_function_id.raw(),
                 "varTableOffset": p.var_table_offset,
                 "varTableCount": p.var_table_count,
                 "fbInstanceOffset": p.fb_instance_offset,
@@ -214,7 +214,7 @@ fn disassemble_functions(container: &Container) -> Value {
                 .unwrap_or(&[]);
             let instructions = decode_instructions(bytecode, container);
             json!({
-                "id": func.function_id,
+                "id": func.function_id.raw(),
                 "bytecodeOffset": func.bytecode_offset,
                 "bytecodeLength": func.bytecode_length,
                 "maxStackDepth": func.max_stack_depth,
@@ -607,7 +607,7 @@ mod tests {
             .num_variables(2)
             .add_i32_constant(10)
             .add_i32_constant(32)
-            .add_function(0, &bytecode, 2, 2, 0)
+            .add_function(ironplc_container::FunctionId::new(0), &bytecode, 2, 2, 0)
             .build();
 
         // Round-trip through serialization to fill in offsets

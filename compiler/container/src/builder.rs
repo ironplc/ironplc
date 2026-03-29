@@ -8,7 +8,8 @@ use crate::constant_pool::{ConstEntry, ConstantPool};
 use crate::container::Container;
 use crate::debug_section::{DebugSection, FuncNameEntry, VarNameEntry};
 use crate::header::FileHeader;
-use crate::task_table::{ProgramInstanceEntry, TaskEntry, TaskTable, NO_SINGLE_VAR};
+use crate::id_types::{FunctionId, InstanceId, TaskId, VarIndex};
+use crate::task_table::{ProgramInstanceEntry, TaskEntry, TaskTable};
 use crate::task_type::TaskType;
 use crate::type_section::{ArrayDescriptor, FbTypeDescriptor, TypeSection, UserFbDescriptor};
 
@@ -25,8 +26,8 @@ pub struct ContainerBuilder {
     tasks: Vec<TaskEntry>,
     programs: Vec<ProgramInstanceEntry>,
     shared_globals_size: u16,
-    init_function_id: u16,
-    entry_function_id: u16,
+    init_function_id: FunctionId,
+    entry_function_id: FunctionId,
     fb_types: Vec<FbTypeDescriptor>,
     array_descriptors: Vec<ArrayDescriptor>,
     array_descriptor_cache: HashMap<(u8, u32), u16>,
@@ -49,8 +50,8 @@ impl ContainerBuilder {
             tasks: Vec::new(),
             programs: Vec::new(),
             shared_globals_size: 0,
-            init_function_id: 0,
-            entry_function_id: 0,
+            init_function_id: FunctionId::INIT,
+            entry_function_id: FunctionId::INIT,
             fb_types: Vec::new(),
             array_descriptors: Vec::new(),
             array_descriptor_cache: HashMap::new(),
@@ -132,7 +133,7 @@ impl ContainerBuilder {
     /// Adds a function with the given bytecode.
     pub fn add_function(
         mut self,
-        function_id: u16,
+        function_id: FunctionId,
         bytecode: &[u8],
         max_stack_depth: u16,
         num_locals: u16,
@@ -174,13 +175,13 @@ impl ContainerBuilder {
     }
 
     /// Sets the init function ID for the default synthesized program instance.
-    pub fn init_function_id(mut self, id: u16) -> Self {
+    pub fn init_function_id(mut self, id: FunctionId) -> Self {
         self.init_function_id = id;
         self
     }
 
     /// Sets the entry (scan) function ID for the default synthesized program instance.
-    pub fn entry_function_id(mut self, id: u16) -> Self {
+    pub fn entry_function_id(mut self, id: FunctionId) -> Self {
         self.entry_function_id = id;
         self
     }
@@ -255,20 +256,20 @@ impl ContainerBuilder {
         let task_table = if self.tasks.is_empty() {
             // Synthesize a default freewheeling task and program instance
             let default_task = TaskEntry {
-                task_id: 0,
+                task_id: TaskId::DEFAULT,
                 priority: 0,
                 task_type: TaskType::Freewheeling,
                 flags: 0x01, // enabled
                 interval_us: 0,
-                single_var_index: NO_SINGLE_VAR,
+                single_var_index: VarIndex::NO_SINGLE_VAR,
                 watchdog_us: 0,
                 input_image_offset: 0,
                 output_image_offset: 0,
                 reserved: [0; 4],
             };
             let default_program = ProgramInstanceEntry {
-                instance_id: 0,
-                task_id: 0,
+                instance_id: InstanceId::DEFAULT,
+                task_id: TaskId::DEFAULT,
                 entry_function_id: self.entry_function_id,
                 var_table_offset: 0,
                 var_table_count: self.num_variables,
@@ -328,6 +329,7 @@ impl Default for ContainerBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::id_types::ConstantIndex;
     use std::vec;
     use std::vec::Vec;
 
@@ -348,7 +350,7 @@ mod tests {
             .num_variables(2)
             .add_i32_constant(10)
             .add_i32_constant(32)
-            .add_function(0, &bytecode, 2, 2, 0)
+            .add_function(FunctionId::INIT, &bytecode, 2, 2, 0)
             .build();
 
         assert_eq!(container.header.num_variables, 2);
@@ -358,7 +360,7 @@ mod tests {
         // Verify synthesized default task table
         assert_eq!(container.task_table.shared_globals_size, 0);
         assert_eq!(container.task_table.tasks.len(), 1);
-        assert_eq!(container.task_table.tasks[0].task_id, 0);
+        assert_eq!(container.task_table.tasks[0].task_id, TaskId::DEFAULT);
         assert_eq!(container.task_table.tasks[0].priority, 0);
         assert_eq!(
             container.task_table.tasks[0].task_type,
@@ -368,23 +370,44 @@ mod tests {
         assert_eq!(container.task_table.tasks[0].interval_us, 0);
         assert_eq!(
             container.task_table.tasks[0].single_var_index,
-            NO_SINGLE_VAR
+            VarIndex::NO_SINGLE_VAR
         );
         assert_eq!(container.task_table.tasks[0].watchdog_us, 0);
         assert_eq!(container.task_table.programs.len(), 1);
-        assert_eq!(container.task_table.programs[0].instance_id, 0);
-        assert_eq!(container.task_table.programs[0].task_id, 0);
-        assert_eq!(container.task_table.programs[0].entry_function_id, 0);
+        assert_eq!(
+            container.task_table.programs[0].instance_id,
+            InstanceId::DEFAULT
+        );
+        assert_eq!(container.task_table.programs[0].task_id, TaskId::DEFAULT);
+        assert_eq!(
+            container.task_table.programs[0].entry_function_id,
+            FunctionId::INIT
+        );
         assert_eq!(container.task_table.programs[0].var_table_offset, 0);
         assert_eq!(container.task_table.programs[0].var_table_count, 2);
         assert_eq!(container.task_table.programs[0].fb_instance_offset, 0);
         assert_eq!(container.task_table.programs[0].fb_instance_count, 0);
 
-        assert_eq!(container.constant_pool.get_i32(0).unwrap(), 10);
-        assert_eq!(container.constant_pool.get_i32(1).unwrap(), 32);
+        assert_eq!(
+            container
+                .constant_pool
+                .get_i32(ConstantIndex::new(0))
+                .unwrap(),
+            10
+        );
+        assert_eq!(
+            container
+                .constant_pool
+                .get_i32(ConstantIndex::new(1))
+                .unwrap(),
+            32
+        );
         assert_eq!(container.code.functions.len(), 1);
         assert_eq!(
-            container.code.get_function_bytecode(0).unwrap(),
+            container
+                .code
+                .get_function_bytecode(FunctionId::INIT)
+                .unwrap(),
             bytecode.as_slice()
         );
 

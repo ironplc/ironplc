@@ -30,10 +30,22 @@ fn execute_when_load_indirect_valid_ref_then_loads_value() {
         .num_variables(3)
         .add_i32_constant(42) // pool[0]
         .add_i64_constant(0) // pool[1] = ref index 0
-        .add_function(0, &init_bytecode, 16, 3, 0)
-        .add_function(1, &scan_bytecode, 16, 3, 0)
-        .init_function_id(0)
-        .entry_function_id(1)
+        .add_function(
+            ironplc_container::FunctionId::INIT,
+            &init_bytecode,
+            16,
+            3,
+            0,
+        )
+        .add_function(
+            ironplc_container::FunctionId::SCAN,
+            &scan_bytecode,
+            16,
+            3,
+            0,
+        )
+        .init_function_id(ironplc_container::FunctionId::INIT)
+        .entry_function_id(ironplc_container::FunctionId::SCAN)
         .build();
     let mut b = common::VmBuffers::from_container(&c);
     {
@@ -65,10 +77,22 @@ fn execute_when_store_indirect_valid_ref_then_stores_value() {
         .num_variables(2)
         .add_i32_constant(99) // pool[0]
         .add_i64_constant(0) // pool[1] = ref index 0
-        .add_function(0, &init_bytecode, 16, 2, 0)
-        .add_function(1, &scan_bytecode, 16, 2, 0)
-        .init_function_id(0)
-        .entry_function_id(1)
+        .add_function(
+            ironplc_container::FunctionId::INIT,
+            &init_bytecode,
+            16,
+            2,
+            0,
+        )
+        .add_function(
+            ironplc_container::FunctionId::SCAN,
+            &scan_bytecode,
+            16,
+            2,
+            0,
+        )
+        .init_function_id(ironplc_container::FunctionId::INIT)
+        .entry_function_id(ironplc_container::FunctionId::SCAN)
         .build();
     let mut b = common::VmBuffers::from_container(&c);
     {
@@ -140,10 +164,22 @@ fn execute_when_store_then_load_indirect_then_roundtrips() {
         .num_variables(3)
         .add_i64_constant(0) // ref index 0
         .add_i32_constant(77)
-        .add_function(0, &init_bytecode, 16, 3, 0)
-        .add_function(1, &scan_bytecode, 16, 3, 0)
-        .init_function_id(0)
-        .entry_function_id(1)
+        .add_function(
+            ironplc_container::FunctionId::INIT,
+            &init_bytecode,
+            16,
+            3,
+            0,
+        )
+        .add_function(
+            ironplc_container::FunctionId::SCAN,
+            &scan_bytecode,
+            16,
+            3,
+            0,
+        )
+        .init_function_id(ironplc_container::FunctionId::INIT)
+        .entry_function_id(ironplc_container::FunctionId::SCAN)
         .build();
     let mut b = common::VmBuffers::from_container(&c);
     {

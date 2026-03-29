@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use ironplc_container::{InstanceId, TaskId};
 use ironplc_vm::error::Trap;
 
 // V6xxx code constants are generated from resources/problem-codes.csv
@@ -19,11 +20,15 @@ pub struct VmError {
 
 impl VmError {
     /// Creates a `VmError` from a runtime trap with execution context.
-    pub fn from_trap(trap: &Trap, task_id: u16, instance_id: u16) -> Self {
+    pub fn from_trap(trap: &Trap, task_id: TaskId, instance_id: InstanceId) -> Self {
         VmError {
             v_code: trap.v_code(),
             exit_code: trap.exit_code(),
-            message: format!("runtime error: {trap} (task {task_id}, instance {instance_id})"),
+            message: format!(
+                "runtime error: {trap} (task {}, instance {})",
+                task_id.raw(),
+                instance_id.raw()
+            ),
         }
     }
 
@@ -54,7 +59,7 @@ mod tests {
 
     #[test]
     fn from_trap_when_divide_by_zero_then_v4001_exit_1() {
-        let err = VmError::from_trap(&Trap::DivideByZero, 0, 0);
+        let err = VmError::from_trap(&Trap::DivideByZero, TaskId::new(0), InstanceId::new(0));
         assert_eq!(err.exit_code(), 1);
         assert!(err.to_string().starts_with("V4001"));
     }
@@ -68,7 +73,7 @@ mod tests {
 
     #[test]
     fn display_when_trap_then_includes_context() {
-        let err = VmError::from_trap(&Trap::DivideByZero, 2, 5);
+        let err = VmError::from_trap(&Trap::DivideByZero, TaskId::new(2), InstanceId::new(5));
         assert_eq!(
             err.to_string(),
             "V4001 - runtime error: divide by zero (task 2, instance 5)"

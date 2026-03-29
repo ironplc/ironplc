@@ -1,7 +1,7 @@
 mod common;
 use common::VmBuffers;
 use ironplc_container::opcode;
-use ironplc_container::{ContainerBuilder, UserFbDescriptor};
+use ironplc_container::{ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor};
 use ironplc_vm::error::Trap;
 
 /// Helper: builds a container with a data region for FB testing.
@@ -19,10 +19,10 @@ fn fb_container(
         builder = builder.add_i64_constant(c);
     }
     builder
-        .add_function(0, &init_bytecode, 0, num_vars, 0)
-        .add_function(1, bytecode, 16, num_vars, 0)
-        .init_function_id(0)
-        .entry_function_id(1)
+        .add_function(FunctionId::INIT, &init_bytecode, 0, num_vars, 0)
+        .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
+        .init_function_id(FunctionId::INIT)
+        .entry_function_id(FunctionId::SCAN)
         .build()
 }
 
@@ -82,7 +82,7 @@ fn execute_when_fb_call_unknown_type_then_traps() {
     let c = fb_container(&bytecode, 1, &[], 48);
     let mut b = VmBuffers::from_container(&c);
     let mut vm = common::load_and_start(&c, &mut b).unwrap();
-    common::assert_trap(&mut vm, Trap::InvalidFbTypeId(0xFFFF));
+    common::assert_trap(&mut vm, Trap::InvalidFbTypeId(FbTypeId::new(0xFFFF)));
 }
 
 #[test]
@@ -143,17 +143,29 @@ fn execute_when_user_fb_call_then_executes_body_and_persists_state() {
         .num_variables(4)
         .data_region_bytes(16) // 2 fields * 8 bytes
         .add_i32_constant(7)
-        .add_function(0, &init_bytecode, 0, 4, 0)
-        .add_function(1, &scan_bytecode, 16, 4, 0)
-        .add_function(2, &fb_body, 4, 2, 0)
+        .add_function(
+            ironplc_container::FunctionId::new(0),
+            &init_bytecode,
+            0,
+            4,
+            0,
+        )
+        .add_function(
+            ironplc_container::FunctionId::new(1),
+            &scan_bytecode,
+            16,
+            4,
+            0,
+        )
+        .add_function(ironplc_container::FunctionId::new(2), &fb_body, 4, 2, 0)
         .add_user_fb_type(UserFbDescriptor {
-            type_id: 0x1000,
-            function_id: 2,
+            type_id: FbTypeId::new(0x1000),
+            function_id: FunctionId::new(2),
             var_offset: 2,
             num_fields: 2,
         })
-        .init_function_id(0)
-        .entry_function_id(1)
+        .init_function_id(FunctionId::INIT)
+        .entry_function_id(FunctionId::SCAN)
         .build();
 
     let mut b = VmBuffers::from_container(&c);
@@ -201,17 +213,29 @@ fn execute_when_user_fb_call_then_internal_state_persists_across_rounds() {
         .num_variables(5)
         .data_region_bytes(24) // 3 fields * 8 bytes
         .add_i32_constant(10)
-        .add_function(0, &init_bytecode, 0, 5, 0)
-        .add_function(1, &scan_bytecode, 16, 5, 0)
-        .add_function(2, &fb_body, 4, 3, 0)
+        .add_function(
+            ironplc_container::FunctionId::new(0),
+            &init_bytecode,
+            0,
+            5,
+            0,
+        )
+        .add_function(
+            ironplc_container::FunctionId::new(1),
+            &scan_bytecode,
+            16,
+            5,
+            0,
+        )
+        .add_function(ironplc_container::FunctionId::new(2), &fb_body, 4, 3, 0)
         .add_user_fb_type(UserFbDescriptor {
-            type_id: 0x1000,
-            function_id: 2,
+            type_id: FbTypeId::new(0x1000),
+            function_id: FunctionId::new(2),
             var_offset: 2,
             num_fields: 3,
         })
-        .init_function_id(0)
-        .entry_function_id(1)
+        .init_function_id(FunctionId::INIT)
+        .entry_function_id(FunctionId::SCAN)
         .build();
 
     let mut b = VmBuffers::from_container(&c);
