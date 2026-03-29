@@ -14,6 +14,7 @@ use lsp_types::{
 };
 use lsp_types::{SemanticToken, Uri};
 
+use crate::lsp_runner::{RunResult, VmRunner};
 use crate::project::Project;
 
 fn to_path_buf(uri: &Uri) -> Result<PathBuf, ()> {
@@ -24,11 +25,30 @@ fn to_path_buf(uri: &Uri) -> Result<PathBuf, ()> {
 /// and returns LSP types.
 pub struct LspProject {
     wrapped: Box<dyn Project + Send>,
+    /// Active VM runner session for step-through execution.
+    runner: Option<VmRunner>,
+    /// Compiler options used for compilation (cached for runner).
+    compiler_options: ironplc_parser::options::CompilerOptions,
 }
 
 impl LspProject {
     pub fn new(project: Box<dyn Project + Send>) -> Self {
-        Self { wrapped: project }
+        Self {
+            wrapped: project,
+            runner: None,
+            compiler_options: ironplc_parser::options::CompilerOptions::default(),
+        }
+    }
+
+    pub fn with_options(
+        project: Box<dyn Project + Send>,
+        options: ironplc_parser::options::CompilerOptions,
+    ) -> Self {
+        Self {
+            wrapped: project,
+            runner: None,
+            compiler_options: options,
+        }
     }
 
     pub(crate) fn initialize(&mut self, folder: &WorkspaceFolder) {
@@ -204,6 +224,47 @@ impl LspProject {
         }
 
         DocumentSymbolResponse::Nested(symbols)
+    }
+
+    /// Compile source and start a VM execution session.
+    ///
+    /// Returns initial metadata. Subsequent calls to `step()` execute
+    /// scan cycles and return variable values.
+    pub(crate) fn run_load(&mut self, source: &str, cycle_time_us: u64) -> RunResult {
+        // Tear down any existing session
+        self.runner = None;
+
+        match VmRunner::load(source, cycle_time_us, &self.compiler_options) {
+            Ok((runner, result)) => {
+                self.runner = Some(runner);
+                result
+            }
+            Err(err) => err,
+        }
+    }
+
+    /// Execute N scan cycles in the current session.
+    pub(crate) fn run_step(&mut self, scans: u32) -> RunResult {
+        match self.runner.as_mut() {
+            Some(runner) => runner.step(scans),
+            None => RunResult {
+                ok: false,
+                variables: vec![],
+                total_scans: 0,
+                error: Some("No program loaded. Send ironplc/run first.".to_string()),
+            },
+        }
+    }
+
+    /// Stop the current execution session and release resources.
+    pub(crate) fn run_stop(&mut self) -> RunResult {
+        self.runner = None;
+        RunResult {
+            ok: true,
+            variables: vec![],
+            total_scans: 0,
+            error: None,
+        }
     }
 }
 
