@@ -532,7 +532,12 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                     }
                 }
             }
-            None => return Err(Diagnostic::todo(file!(), line!())),
+            None => {
+                // Global variable declarations have no current_from context
+                // because they are not inside a POU or type declaration.
+                // They don't need dependency edges — they are always placed
+                // first in the output.
+            }
         }
 
         node.recurse_visit(self)
@@ -893,5 +898,49 @@ END_TYPE";
         assert!(reachable.contains(&Id::from("OUTER")));
         assert!(reachable.contains(&Id::from("INNER")));
         assert!(!reachable.contains(&Id::from("UNUSED")));
+    }
+
+    #[test]
+    fn apply_when_top_level_var_global_then_return_ok() {
+        let program = "
+        VAR_GLOBAL CONSTANT
+            MY_LENGTH : INT := 250;
+        END_VAR
+
+        FUNCTION MY_FUNC : INT
+        VAR_INPUT
+            x : INT;
+        END_VAR
+            MY_FUNC := x;
+        END_FUNCTION
+
+        PROGRAM main
+        VAR
+            result : INT;
+        END_VAR
+            result := MY_FUNC(x := 1);
+        END_PROGRAM";
+
+        let library = {
+            use ironplc_parser::{options::CompilerOptions, parse_program};
+            parse_program(
+                program,
+                &FileId::default(),
+                &CompilerOptions {
+                    allow_top_level_var_global: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        };
+
+        let (library, _reachable) = apply(library).unwrap();
+
+        // Global var declarations should come first
+        let first = library.elements.first().unwrap();
+        assert!(matches!(
+            first,
+            LibraryElementKind::GlobalVarDeclarations(_)
+        ));
     }
 }
