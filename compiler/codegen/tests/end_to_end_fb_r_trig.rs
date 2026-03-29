@@ -46,7 +46,11 @@ fn end_to_end_when_r_trig_clk_stays_true_then_q_false_next_scan() {
         // Rising edge
         vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1, "Q TRUE on rising edge");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(2)).unwrap(),
+            1,
+            "Q TRUE on rising edge"
+        );
         // CLK stays TRUE — Q should return to FALSE
         vm.run_round(1).unwrap();
         assert_eq!(

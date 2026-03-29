@@ -30,7 +30,11 @@ fn end_to_end_when_f_trig_falling_edge_then_q_true() {
         // CLK=TRUE first
         vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 0, "Q FALSE while CLK rising");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(2)).unwrap(),
+            0,
+            "Q FALSE while CLK rising"
+        );
         // Falling edge: CLK=FALSE
         vm.write_variable(VarIndex::new(1), 0).unwrap();
         vm.run_round(1).unwrap();
@@ -50,7 +54,11 @@ fn end_to_end_when_f_trig_clk_stays_false_then_q_false_next_scan() {
         vm.run_round(0).unwrap();
         vm.write_variable(VarIndex::new(1), 0).unwrap();
         vm.run_round(1).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1, "Q TRUE on falling edge");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(2)).unwrap(),
+            1,
+            "Q TRUE on falling edge"
+        );
         // CLK stays FALSE
         vm.run_round(2).unwrap();
         assert_eq!(

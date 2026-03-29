@@ -15,8 +15,8 @@ use ironplc_analyzer::intermediate_type::{
     ByteSized, IntermediateStructField, IntermediateType, SlotCountError,
 };
 use ironplc_analyzer::TypeEnvironment;
-use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
 use ironplc_container::FieldType;
+use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
 use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit, TypeName};
 
 use super::compile::{

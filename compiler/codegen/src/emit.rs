@@ -60,17 +60,6 @@ macro_rules! emit_load_var_index {
     };
 }
 
-/// Emit an instruction with a u16 operand that pops one value.
-macro_rules! emit_store_u16 {
-    ($name:ident, $opcode:expr) => {
-        pub fn $name(&mut self, index: u16) {
-            self.bytecode.push($opcode);
-            self.bytecode.extend_from_slice(&index.to_le_bytes());
-            self.pop_stack(1);
-        }
-    };
-}
-
 /// Emit a variable store instruction with a VarIndex operand that pops one value.
 macro_rules! emit_store_var_index {
     ($name:ident, $opcode:expr) => {
@@ -723,7 +712,7 @@ mod tests {
         // x := 10
         em.emit_load_const_i32(0); // stack: 1
         em.emit_store_var_i32(VarIndex::new(0)); // stack: 0
-                                  // y := x + 32
+                                                 // y := x + 32
         em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_load_const_i32(1); // stack: 2
         em.emit_add_i32(); // stack: 1

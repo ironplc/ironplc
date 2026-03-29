@@ -4,8 +4,8 @@ mod common;
 use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_compile, parse_and_run, VmBuffers};
-use ironplc_vm::Vm;
 use ironplc_container::VarIndex;
+use ironplc_vm::Vm;
 
 #[test]
 fn end_to_end_when_mul_expression_then_variable_has_product() {

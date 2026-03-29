@@ -52,7 +52,11 @@ fn end_to_end_when_ctu_counts_to_pv_then_q_is_true() {
             1,
             "Q should be TRUE after 3 counts"
         );
-        assert_eq!(vm.read_variable(VarIndex::new(4)).unwrap(), 3, "CV should be 3");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(4)).unwrap(),
+            3,
+            "CV should be 3"
+        );
     });
 }
 
@@ -109,7 +113,15 @@ END_PROGRAM
 ";
     parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 1, "Q should be TRUE");
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1, "CV should be 1");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(1)).unwrap(),
+            1,
+            "Q should be TRUE"
+        );
+        assert_eq!(
+            vm.read_variable(VarIndex::new(2)).unwrap(),
+            1,
+            "CV should be 1"
+        );
     });
 }

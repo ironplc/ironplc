@@ -71,7 +71,11 @@ fn end_to_end_when_ctd_counts_to_zero_then_q_is_true() {
         vm.run_round(0).unwrap();
         vm.write_variable(VarIndex::new(2), 0).unwrap();
         vm.run_round(1).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(4)).unwrap(), 3, "CV should be 3 after load");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(4)).unwrap(),
+            3,
+            "CV should be 3 after load"
+        );
 
         // Count down 3 times
         pulse_n(vm, 1, 3, 2);
@@ -107,7 +111,11 @@ fn end_to_end_when_ctd_above_zero_then_q_is_false() {
             0,
             "Q should be FALSE when CV > 0"
         );
-        assert_eq!(vm.read_variable(VarIndex::new(4)).unwrap(), 2, "CV should be 2");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(4)).unwrap(),
+            2,
+            "CV should be 2"
+        );
     });
 }
 

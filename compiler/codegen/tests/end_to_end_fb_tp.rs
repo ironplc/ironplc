@@ -10,8 +10,8 @@ mod common;
 use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_compile, VmBuffers};
-use ironplc_vm::test_support::load_and_start;
 use ironplc_container::VarIndex;
+use ironplc_vm::test_support::load_and_start;
 
 #[test]
 fn end_to_end_when_tp_triggered_then_q_is_true() {
@@ -60,7 +60,11 @@ END_PROGRAM
 
         // Round 2 at t=2s: still before PT (5s)
         vm.run_round(2_000_000).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 1, "Q should be TRUE at t=2s");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(1)).unwrap(),
+            1,
+            "Q should be TRUE at t=2s"
+        );
     }
 }
 
@@ -144,7 +148,11 @@ END_PROGRAM
         // Round 1 at t=0: enable=TRUE, pulse starts
         vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1, "Q should be TRUE");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(2)).unwrap(),
+            1,
+            "Q should be TRUE"
+        );
 
         // Round 2 at t=2s: enable=FALSE, but pulse continues
         vm.write_variable(VarIndex::new(1), 0).unwrap();
@@ -223,8 +231,16 @@ END_PROGRAM
         // enable is var index 2 (after timer1=0, timer2=1)
         vm.write_variable(VarIndex::new(2), 1).unwrap();
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(3)).unwrap(), 1, "q1 should be TRUE");
-        assert_eq!(vm.read_variable(VarIndex::new(4)).unwrap(), 1, "q2 should be TRUE");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(3)).unwrap(),
+            1,
+            "q1 should be TRUE"
+        );
+        assert_eq!(
+            vm.read_variable(VarIndex::new(4)).unwrap(),
+            1,
+            "q2 should be TRUE"
+        );
 
         // Drop enable so pulses don't retrigger after expiry
         vm.write_variable(VarIndex::new(2), 0).unwrap();
@@ -236,7 +252,11 @@ END_PROGRAM
             0,
             "q1 should be FALSE at t=4s"
         );
-        assert_eq!(vm.read_variable(VarIndex::new(4)).unwrap(), 1, "q2 should be TRUE at t=4s");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(4)).unwrap(),
+            1,
+            "q2 should be TRUE at t=4s"
+        );
 
         // Round 3 at t=8s: both pulses expired
         vm.run_round(8_000_000).unwrap();

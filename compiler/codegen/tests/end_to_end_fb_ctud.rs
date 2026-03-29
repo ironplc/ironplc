@@ -49,7 +49,11 @@ fn end_to_end_when_ctud_not_triggered_then_outputs_at_defaults() {
 fn end_to_end_when_ctud_counts_up_to_pv_then_qu_is_true() {
     parse_and_run_rounds(CTUD_PROGRAM, &CompilerOptions::default(), |vm| {
         pulse_n(vm, 1, 3, 0); // 3 rising edges on CU
-        assert_eq!(vm.read_variable(VarIndex::new(7)).unwrap(), 3, "CV should be 3");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(7)).unwrap(),
+            3,
+            "CV should be 3"
+        );
         assert_eq!(
             vm.read_variable(VarIndex::new(5)).unwrap(),
             1,
@@ -64,7 +68,11 @@ fn end_to_end_when_ctud_counts_down_then_qd_is_true() {
         // CV starts at 0, counting down goes to -1
         vm.write_variable(VarIndex::new(2), 1).unwrap();
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(7)).unwrap(), -1, "CV should be -1");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(7)).unwrap(),
+            -1,
+            "CV should be -1"
+        );
         assert_eq!(
             vm.read_variable(VarIndex::new(6)).unwrap(),
             1,
@@ -121,7 +129,15 @@ END_PROGRAM
 ";
     parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 1, "QU should be TRUE");
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1, "CV should be 1");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(1)).unwrap(),
+            1,
+            "QU should be TRUE"
+        );
+        assert_eq!(
+            vm.read_variable(VarIndex::new(2)).unwrap(),
+            1,
+            "CV should be 1"
+        );
     });
 }

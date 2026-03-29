@@ -10,8 +10,8 @@ mod common;
 use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_compile, VmBuffers};
-use ironplc_vm::test_support::load_and_start;
 use ironplc_container::VarIndex;
+use ironplc_vm::test_support::load_and_start;
 
 #[test]
 fn end_to_end_when_tof_in_true_then_q_is_true() {
@@ -167,7 +167,11 @@ END_PROGRAM
         // Round 1 at t=0: enable=TRUE
         vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1, "Q should be TRUE");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(2)).unwrap(),
+            1,
+            "Q should be TRUE"
+        );
 
         // Round 2 at t=1s: enable=FALSE, falling edge
         vm.write_variable(VarIndex::new(1), 0).unwrap();
@@ -184,7 +188,11 @@ END_PROGRAM
         // Round 4 at t=4s: enable=TRUE again, reset
         vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(4_000_000).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1, "Q should be TRUE");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(2)).unwrap(),
+            1,
+            "Q should be TRUE"
+        );
         assert_eq!(
             vm.read_variable(VarIndex::new(3)).unwrap(),
             0,
@@ -271,8 +279,16 @@ END_PROGRAM
         // Round 1: enable=TRUE
         vm.write_variable(VarIndex::new(2), 1).unwrap();
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(3)).unwrap(), 1, "q1 should be TRUE");
-        assert_eq!(vm.read_variable(VarIndex::new(4)).unwrap(), 1, "q2 should be TRUE");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(3)).unwrap(),
+            1,
+            "q1 should be TRUE"
+        );
+        assert_eq!(
+            vm.read_variable(VarIndex::new(4)).unwrap(),
+            1,
+            "q2 should be TRUE"
+        );
 
         // Round 2 at t=1s: enable=FALSE, both start timing
         vm.write_variable(VarIndex::new(2), 0).unwrap();
@@ -285,7 +301,11 @@ END_PROGRAM
             0,
             "q1 should be FALSE at t=5s"
         );
-        assert_eq!(vm.read_variable(VarIndex::new(4)).unwrap(), 1, "q2 should be TRUE at t=5s");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(4)).unwrap(),
+            1,
+            "q2 should be TRUE at t=5s"
+        );
 
         // Round 4 at t=9s: both done
         vm.run_round(9_000_000).unwrap();

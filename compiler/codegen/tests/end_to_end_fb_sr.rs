@@ -57,7 +57,11 @@ fn end_to_end_when_sr_reset_after_set_then_q1_is_false() {
         // Set
         vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(3)).unwrap(), 1, "Q1 should be TRUE");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(3)).unwrap(),
+            1,
+            "Q1 should be TRUE"
+        );
 
         // Remove set, apply reset
         vm.write_variable(VarIndex::new(1), 0).unwrap();

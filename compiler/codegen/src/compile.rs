@@ -45,7 +45,7 @@ use ironplc_container::debug_section::{
     function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry,
 };
 use ironplc_container::{
-    opcode, Container, ContainerBuilder, FunctionId, SlotIndex, VarIndex, STRING_HEADER_BYTES,
+    opcode, Container, ContainerBuilder, FunctionId, VarIndex, STRING_HEADER_BYTES,
 };
 use ironplc_dsl::common::{
     Boolean, ConstantKind, ElementaryTypeName, FunctionBlockBodyKind, FunctionDeclaration,

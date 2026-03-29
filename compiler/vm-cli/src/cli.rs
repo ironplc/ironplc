@@ -248,9 +248,11 @@ fn dump_variables_stopped(
         )
     })?;
     for i in 0..num_vars {
-        let value = stopped.read_variable(ironplc_container::VarIndex::new(i)).map_err(|e| {
-            VmError::io(error::VAR_READ, format!("Unable to read variable {i}: {e}"))
-        })?;
+        let value = stopped
+            .read_variable(ironplc_container::VarIndex::new(i))
+            .map_err(|e| {
+                VmError::io(error::VAR_READ, format!("Unable to read variable {i}: {e}"))
+            })?;
         writeln!(out, "var[{i}]: {value}").map_err(|e| {
             VmError::io(error::DUMP_WRITE, format!("Unable to write dump file: {e}"))
         })?;
@@ -270,9 +272,11 @@ fn dump_variables_faulted(
         )
     })?;
     for i in 0..num_vars {
-        let value = faulted.read_variable(ironplc_container::VarIndex::new(i)).map_err(|e| {
-            VmError::io(error::VAR_READ, format!("Unable to read variable {i}: {e}"))
-        })?;
+        let value = faulted
+            .read_variable(ironplc_container::VarIndex::new(i))
+            .map_err(|e| {
+                VmError::io(error::VAR_READ, format!("Unable to read variable {i}: {e}"))
+            })?;
         writeln!(out, "var[{i}]: {value}").map_err(|e| {
             VmError::io(error::DUMP_WRITE, format!("Unable to write dump file: {e}"))
         })?;
