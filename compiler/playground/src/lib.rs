@@ -544,7 +544,7 @@ fn read_all_variables_running(
 ) -> Vec<VariableInfo> {
     (0..num_vars)
         .filter_map(|i| {
-            vm.read_variable_raw(i).ok().map(|raw| {
+            vm.read_variable_raw(ironplc_container::VarIndex::new(i)).ok().map(|raw| {
                 let (name, type_name, value) = if let Some(info) = debug_map.get(&i) {
                     (
                         info.name.clone(),
@@ -572,7 +572,7 @@ fn read_all_variables_faulted(
     let num_vars = vm.num_variables();
     (0..num_vars)
         .filter_map(|i| {
-            vm.read_variable_raw(i).ok().map(|raw| {
+            vm.read_variable_raw(ironplc_container::VarIndex::new(i)).ok().map(|raw| {
                 let (name, type_name, value) = if let Some(info) = debug_map.get(&i) {
                     (
                         info.name.clone(),

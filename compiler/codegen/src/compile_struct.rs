@@ -15,7 +15,7 @@ use ironplc_analyzer::intermediate_type::{
     ByteSized, IntermediateStructField, IntermediateType, SlotCountError,
 };
 use ironplc_analyzer::TypeEnvironment;
-use ironplc_container::ContainerBuilder;
+use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
 use ironplc_container::FieldType;
 use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit, TypeName};
 
@@ -28,12 +28,12 @@ use crate::emit::Emitter;
 /// Metadata for a structure variable, stored in CompileContext.
 pub(crate) struct StructVarInfo {
     /// Variable table index holding the data region offset.
-    pub var_index: u16,
+    pub var_index: VarIndex,
     /// Data region byte offset where this structure's fields start.
     pub data_offset: u32,
     /// Total number of 8-byte slots this structure occupies.
     #[allow(dead_code)]
-    pub total_slots: u32,
+    pub total_slots: SlotIndex,
     /// Array descriptor index for this structure (treats struct as flat slot array).
     pub desc_index: u16,
     /// Fields in declaration order. Preserving order ensures deterministic
@@ -49,7 +49,7 @@ pub(crate) struct StructFieldInfo {
     /// Field name (lowercase, for matching against access chains).
     pub name: String,
     /// Slot offset relative to the containing structure's base.
-    pub slot_offset: u32,
+    pub slot_offset: SlotIndex,
     /// The field's intermediate type (for nested resolution).
     pub field_type: IntermediateType,
     /// Op type for leaf (primitive/enum) fields. `None` for structure/array
@@ -110,7 +110,7 @@ pub(crate) fn build_struct_fields(
 ) -> Result<(Vec<StructFieldInfo>, HashMap<String, usize>), Diagnostic> {
     let mut field_list = Vec::with_capacity(fields.len());
     let mut field_index = HashMap::with_capacity(fields.len());
-    let mut slot_offset = 0u32;
+    let mut slot_offset = SlotIndex::new(0);
     for field in fields {
         let field_slots = field.field_type.slot_count().map_err(|e| {
             let msg = match e {
@@ -155,7 +155,7 @@ pub(crate) fn build_struct_fields(
             field_type: field.field_type.clone(),
             op_type,
         });
-        slot_offset += field_slots;
+        slot_offset = SlotIndex::new(slot_offset.raw() + field_slots);
     }
     Ok((field_list, field_index))
 }
@@ -174,7 +174,7 @@ pub(crate) fn find_field_in_type(
     fields: &[IntermediateStructField],
     field_name: &Id,
     span: &SourceSpan,
-) -> Result<(u32, IntermediateType), Diagnostic> {
+) -> Result<(SlotIndex, IntermediateType), Diagnostic> {
     // Reuse build_struct_fields to compute offsets — do NOT duplicate the
     // slot-offset accumulation logic. The cost of building the full field
     // list per lookup is acceptable at compile time (structures are small).
@@ -205,7 +205,7 @@ const MAX_STRUCT_CHAIN_DEPTH: u32 = 32;
 pub(crate) fn resolve_struct_field_access(
     ctx: &CompileContext,
     structured: &StructuredVariable,
-) -> Result<(u16, u16, u32, OpType, IntermediateType), Diagnostic> {
+) -> Result<(VarIndex, u16, SlotIndex, OpType, IntermediateType), Diagnostic> {
     let (root_name, slot_offset, field_type) =
         walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
 
@@ -250,7 +250,7 @@ fn walk_struct_chain(
     record: &SymbolicVariableKind,
     field: &Id,
     depth: u32,
-) -> Result<(Id, u32, IntermediateType), Diagnostic> {
+) -> Result<(Id, SlotIndex, IntermediateType), Diagnostic> {
     if depth > MAX_STRUCT_CHAIN_DEPTH {
         return Err(Diagnostic::problem(
             Problem::NotImplemented,
@@ -302,7 +302,11 @@ fn walk_struct_chain(
 
             let (field_slot_offset, field_type) = find_field_in_type(fields, field, &field.span())?;
 
-            Ok((root, parent_offset + field_slot_offset, field_type))
+            Ok((
+                root,
+                SlotIndex::new(parent_offset.raw() + field_slot_offset.raw()),
+                field_type,
+            ))
         }
         // Array access within struct chain handled in PR 8
         _ => Err(Diagnostic::todo_with_span(record.span(), file!(), line!())),
@@ -409,7 +413,7 @@ fn compile_struct_field_init(
 /// mutably to `initialize_struct_fields`.
 pub(crate) struct FieldInitInfo {
     pub name: String,
-    pub slot_offset: u32,
+    pub slot_offset: SlotIndex,
     pub field_type: IntermediateType,
     pub op_type: Option<OpType>,
 }
@@ -422,7 +426,7 @@ pub(crate) struct FieldInitInfo {
 pub(crate) fn initialize_struct_fields(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    var_index: u16,
+    var_index: VarIndex,
     desc_index: u16,
     fields: &[FieldInitInfo],
     element_inits: &[StructureElementInit],
@@ -451,7 +455,7 @@ pub(crate) fn initialize_struct_fields(
             emit_truncation_for_field(emitter, &field_info.field_type);
 
             // Store to field slot
-            let idx_const = ctx.add_i32_constant(slot_idx as i32);
+            let idx_const = ctx.add_i32_constant(slot_idx.raw() as i32);
             emitter.emit_load_const_i32(idx_const);
             emitter.emit_store_array(var_index, desc_index);
         }
@@ -470,7 +474,7 @@ pub(crate) fn allocate_struct_variable(
     types: &TypeEnvironment,
     type_name: &TypeName,
     id: &Id,
-    index: u16,
+    index: VarIndex,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     let struct_type = types.resolve_struct_type(type_name).ok_or_else(|| {
@@ -545,7 +549,7 @@ pub(crate) fn allocate_struct_variable(
         StructVarInfo {
             var_index: index,
             data_offset,
-            total_slots,
+            total_slots: SlotIndex::new(total_slots),
             desc_index,
             fields: fields_vec,
             field_index,
@@ -585,9 +589,9 @@ mod tests {
             build_struct_fields(&fields, &SourceSpan::default()).unwrap();
         assert_eq!(field_list.len(), 2);
         assert_eq!(field_list[0].name, "a");
-        assert_eq!(field_list[0].slot_offset, 0);
+        assert_eq!(field_list[0].slot_offset, SlotIndex::new(0));
         assert_eq!(field_list[1].name, "b");
-        assert_eq!(field_list[1].slot_offset, 1);
+        assert_eq!(field_list[1].slot_offset, SlotIndex::new(1));
         assert_eq!(field_index["a"], 0);
         assert_eq!(field_index["b"], 1);
     }
@@ -620,9 +624,9 @@ mod tests {
             ),
         ];
         let (field_list, _) = build_struct_fields(&fields, &SourceSpan::default()).unwrap();
-        assert_eq!(field_list[0].slot_offset, 0);
+        assert_eq!(field_list[0].slot_offset, SlotIndex::new(0));
         // inner has 2 slots, so z starts at offset 2
-        assert_eq!(field_list[1].slot_offset, 2);
+        assert_eq!(field_list[1].slot_offset, SlotIndex::new(2));
     }
 
     #[test]

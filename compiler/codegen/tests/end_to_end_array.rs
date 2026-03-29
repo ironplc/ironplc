@@ -5,6 +5,7 @@ mod common;
 use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_run, parse_and_run_rounds};
+use ironplc_container::VarIndex;
 
 #[test]
 fn end_to_end_when_array_store_and_load_then_roundtrips() {
@@ -145,11 +146,11 @@ END_PROGRAM
     parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
         // First scan: sets arr[1] = 99
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(1).unwrap(), 99);
+        assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 99);
 
         // Second scan: arr[1] should still be 99
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(1).unwrap(), 99);
+        assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 99);
     });
 }
 

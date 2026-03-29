@@ -8,6 +8,7 @@ use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 use common::parse_and_run_rounds;
+use ironplc_container::VarIndex;
 
 const SR_PROGRAM: &str = "
 PROGRAM main
@@ -31,19 +32,19 @@ fn end_to_end_when_sr_both_false_then_q1_stays_false() {
 fn end_to_end_when_sr_set_then_q1_latches() {
     parse_and_run_rounds(SR_PROGRAM, &CompilerOptions::default(), |vm| {
         // Set S1 = TRUE
-        vm.write_variable(1, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(0).unwrap();
         assert_eq!(
-            vm.read_variable(3).unwrap(),
+            vm.read_variable(VarIndex::new(3)).unwrap(),
             1,
             "Q1 should be TRUE after set"
         );
 
         // Remove S1, Q1 should latch (stay TRUE)
-        vm.write_variable(1, 0).unwrap();
+        vm.write_variable(VarIndex::new(1), 0).unwrap();
         vm.run_round(1).unwrap();
         assert_eq!(
-            vm.read_variable(3).unwrap(),
+            vm.read_variable(VarIndex::new(3)).unwrap(),
             1,
             "Q1 should stay TRUE (latched)"
         );
@@ -54,16 +55,16 @@ fn end_to_end_when_sr_set_then_q1_latches() {
 fn end_to_end_when_sr_reset_after_set_then_q1_is_false() {
     parse_and_run_rounds(SR_PROGRAM, &CompilerOptions::default(), |vm| {
         // Set
-        vm.write_variable(1, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(3).unwrap(), 1, "Q1 should be TRUE");
+        assert_eq!(vm.read_variable(VarIndex::new(3)).unwrap(), 1, "Q1 should be TRUE");
 
         // Remove set, apply reset
-        vm.write_variable(1, 0).unwrap();
-        vm.write_variable(2, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 0).unwrap();
+        vm.write_variable(VarIndex::new(2), 1).unwrap();
         vm.run_round(1).unwrap();
         assert_eq!(
-            vm.read_variable(3).unwrap(),
+            vm.read_variable(VarIndex::new(3)).unwrap(),
             0,
             "Q1 should be FALSE after reset"
         );
@@ -73,11 +74,11 @@ fn end_to_end_when_sr_reset_after_set_then_q1_is_false() {
 #[test]
 fn end_to_end_when_sr_both_true_then_set_dominates() {
     parse_and_run_rounds(SR_PROGRAM, &CompilerOptions::default(), |vm| {
-        vm.write_variable(1, 1).unwrap();
-        vm.write_variable(2, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 1).unwrap();
+        vm.write_variable(VarIndex::new(2), 1).unwrap();
         vm.run_round(0).unwrap();
         assert_eq!(
-            vm.read_variable(3).unwrap(),
+            vm.read_variable(VarIndex::new(3)).unwrap(),
             1,
             "Q1 should be TRUE (set dominates)"
         );

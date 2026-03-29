@@ -5,6 +5,7 @@ use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 use common::parse_and_run_rounds;
+use ironplc_container::VarIndex;
 
 const PROGRAM: &str = "
 PROGRAM main
@@ -29,10 +30,10 @@ fn end_to_end_when_r_trig_rising_edge_then_q_true() {
         // First scan: CLK=FALSE
         vm.run_round(0).unwrap();
         // Rising edge: CLK=TRUE
-        vm.write_variable(1, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(1).unwrap();
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
             1,
             "Q should be TRUE on rising edge"
         );
@@ -43,13 +44,13 @@ fn end_to_end_when_r_trig_rising_edge_then_q_true() {
 fn end_to_end_when_r_trig_clk_stays_true_then_q_false_next_scan() {
     parse_and_run_rounds(PROGRAM, &CompilerOptions::default(), |vm| {
         // Rising edge
-        vm.write_variable(1, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(2).unwrap(), 1, "Q TRUE on rising edge");
+        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1, "Q TRUE on rising edge");
         // CLK stays TRUE — Q should return to FALSE
         vm.run_round(1).unwrap();
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
             0,
             "Q should be FALSE when CLK stays TRUE"
         );
@@ -60,18 +61,18 @@ fn end_to_end_when_r_trig_clk_stays_true_then_q_false_next_scan() {
 fn end_to_end_when_r_trig_second_rising_edge_then_q_true_again() {
     parse_and_run_rounds(PROGRAM, &CompilerOptions::default(), |vm| {
         // First rising edge
-        vm.write_variable(1, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(2).unwrap(), 1);
+        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1);
         // CLK falls
-        vm.write_variable(1, 0).unwrap();
+        vm.write_variable(VarIndex::new(1), 0).unwrap();
         vm.run_round(1).unwrap();
-        assert_eq!(vm.read_variable(2).unwrap(), 0);
+        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 0);
         // Second rising edge
-        vm.write_variable(1, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(2).unwrap();
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
             1,
             "Q should be TRUE on second rising edge"
         );

@@ -5,6 +5,7 @@ use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_compile, parse_and_run, VmBuffers};
 use ironplc_vm::Vm;
+use ironplc_container::VarIndex;
 
 #[test]
 fn end_to_end_when_mul_expression_then_variable_has_product() {
@@ -169,5 +170,5 @@ END_PROGRAM
         vm.run_round(0).unwrap();
     }
 
-    assert_eq!(vm.read_variable(0).unwrap(), 7);
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 7);
 }

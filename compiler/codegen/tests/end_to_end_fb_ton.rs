@@ -11,6 +11,7 @@ use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_compile, VmBuffers};
 use ironplc_vm::test_support::load_and_start;
+use ironplc_container::VarIndex;
 
 #[test]
 fn end_to_end_when_time_variable_then_debug_type_name_is_time() {
@@ -53,7 +54,7 @@ END_PROGRAM
         vm.run_round(0).unwrap();
         // T#5s = 5000 milliseconds as i32
         assert_eq!(
-            vm.read_variable(0).unwrap(),
+            vm.read_variable(VarIndex::new(0)).unwrap(),
             5000,
             "TIME value should be 5000 ms"
         );
@@ -101,7 +102,7 @@ END_PROGRAM
         // Round 1 at t=0us: IN goes TRUE, starts timing
         vm.run_round(0).unwrap();
         assert_eq!(
-            vm.read_variable(1).unwrap(),
+            vm.read_variable(VarIndex::new(1)).unwrap(),
             0,
             "Q should be FALSE before PT elapsed"
         );
@@ -109,7 +110,7 @@ END_PROGRAM
         // Round 2 at t=2s (2_000_000 us): still before PT (5s = 5000 ms)
         vm.run_round(2_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(1).unwrap(),
+            vm.read_variable(VarIndex::new(1)).unwrap(),
             0,
             "Q should still be FALSE at t=2s"
         );
@@ -138,7 +139,7 @@ END_PROGRAM
         // Round 2 at t=6s: past PT (5s = 5000 ms), Q should be TRUE
         vm.run_round(6_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(1).unwrap(),
+            vm.read_variable(VarIndex::new(1)).unwrap(),
             1,
             "Q should be TRUE after PT elapsed"
         );
@@ -167,7 +168,7 @@ END_PROGRAM
         // Round 2 at t=3s: ET should be 3000 ms (i32)
         vm.run_round(3_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(1).unwrap(),
+            vm.read_variable(VarIndex::new(1)).unwrap(),
             3000,
             "ET should be 3000 ms (3 seconds)"
         );
@@ -193,33 +194,33 @@ END_PROGRAM
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
         // Round 1 at t=0: enable=TRUE, timer starts
-        vm.write_variable(1, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(2).unwrap(), 0, "Q should be FALSE");
+        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 0, "Q should be FALSE");
 
         // Round 2 at t=3s: still timing, not yet at PT
         vm.run_round(3_000_000).unwrap();
-        assert_eq!(vm.read_variable(2).unwrap(), 0, "Q should be FALSE at t=3s");
+        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 0, "Q should be FALSE at t=3s");
 
         // Round 3 at t=4s: enable=FALSE, reset timer
-        vm.write_variable(1, 0).unwrap();
+        vm.write_variable(VarIndex::new(1), 0).unwrap();
         vm.run_round(4_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
             0,
             "Q should be FALSE after reset"
         );
         assert_eq!(
-            vm.read_variable(3).unwrap(),
+            vm.read_variable(VarIndex::new(3)).unwrap(),
             0,
             "ET should be 0 after reset"
         );
 
         // Round 4 at t=6s: enable=TRUE again, timer restarts from here
-        vm.write_variable(1, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(6_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
             0,
             "Q should be FALSE, timer just restarted"
         );
@@ -227,7 +228,7 @@ END_PROGRAM
         // Round 5 at t=10s: only 4s since restart, not yet at PT (5s)
         vm.run_round(10_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
             0,
             "Q should be FALSE, only 4s since restart"
         );
@@ -235,7 +236,7 @@ END_PROGRAM
         // Round 6 at t=12s: 6s since restart, past PT (5s)
         vm.run_round(12_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
             1,
             "Q should be TRUE, 6s since restart > PT"
         );
@@ -264,7 +265,7 @@ END_PROGRAM
         // Round 2 at exactly t=5s: ET == PT (5000 ms), Q should be TRUE
         vm.run_round(5_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(1).unwrap(),
+            vm.read_variable(VarIndex::new(1)).unwrap(),
             1,
             "Q should be TRUE when ET equals PT exactly"
         );
@@ -292,21 +293,21 @@ END_PROGRAM
 
         // Round 1 at t=0: both start
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(2).unwrap(), 0, "q1 should be FALSE");
-        assert_eq!(vm.read_variable(3).unwrap(), 0, "q2 should be FALSE");
+        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 0, "q1 should be FALSE");
+        assert_eq!(vm.read_variable(VarIndex::new(3)).unwrap(), 0, "q2 should be FALSE");
 
         // Round 2 at t=4s: timer1 (3s) done, timer2 (7s) still running
         vm.run_round(4_000_000).unwrap();
-        assert_eq!(vm.read_variable(2).unwrap(), 1, "q1 should be TRUE at t=4s");
+        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1, "q1 should be TRUE at t=4s");
         assert_eq!(
-            vm.read_variable(3).unwrap(),
+            vm.read_variable(VarIndex::new(3)).unwrap(),
             0,
             "q2 should be FALSE at t=4s"
         );
 
         // Round 3 at t=8s: both done
         vm.run_round(8_000_000).unwrap();
-        assert_eq!(vm.read_variable(2).unwrap(), 1, "q1 should be TRUE at t=8s");
-        assert_eq!(vm.read_variable(3).unwrap(), 1, "q2 should be TRUE at t=8s");
+        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1, "q1 should be TRUE at t=8s");
+        assert_eq!(vm.read_variable(VarIndex::new(3)).unwrap(), 1, "q2 should be TRUE at t=8s");
     }
 }
