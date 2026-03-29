@@ -380,10 +380,16 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &StructureInitializationDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
+        // Save and restore current_from because this visitor can be called
+        // both as a top-level type declaration and nested within a program's
+        // VarDecl initializer (e.g., `s : MyStruct := (a := 10, b := 20)`).
+        // Unconditionally resetting to None would wipe the enclosing
+        // program's context when visited as a nested node.
+        let prev = self.current_from.take();
         self.current_from = Some(node.type_name.name.clone());
         self.declarations.add_node(&node.type_name.name);
         let res = node.recurse_visit(self);
-        self.current_from = None;
+        self.current_from = prev;
         res
     }
 
