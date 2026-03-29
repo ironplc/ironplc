@@ -2,7 +2,7 @@
   "name": "ironplc",
   "displayName": "IronPLC",
   "publisher": "ironplc",
-  "description": "IronPLC is the beginning of a development environment for IEC 61131-3.",
+  "description": "Open-source IEC 61131-3 language support with real-time error checking, auto-completion, and syntax highlighting.",
   "version": "0.182.0",
   "icon": "images/logo.png",
   "engines": {
