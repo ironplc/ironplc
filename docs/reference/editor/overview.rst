@@ -2,7 +2,7 @@
 Overview
 ========
 
-The IronPLC extension brings IEC 61131-3 Structured Text support to Visual Studio Code.
+The IronPLC extension brings IEC 61131-3 Structured Text support to your development environment.
 It provides real-time feedback as you write code, helping you catch errors before
 deployment.
 
