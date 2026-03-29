@@ -14,7 +14,7 @@ check it for correctness.
 Create a Project Directory
 --------------------------------------
 
-In a Terminal, create a new folder and open it in Visual Studio Code:
+In a Terminal, create a new folder and open it in your development environment:
 
 .. code-block:: shell
    :caption: Create Project Directory
@@ -24,11 +24,15 @@ In a Terminal, create a new folder and open it in Visual Studio Code:
    cd helloworld
    code .
 
+.. tip::
+
+   If you are using Cursor, use ``cursor .`` instead of ``code .``.
+
 --------------------------------------
 Write Your First Program
 --------------------------------------
 
-In Visual Studio Code:
+In your development environment:
 
 #. In the main menu, select :menuselection:`File --> New File...`.
 #. In the :guilabel:`New File...` dialog, select the :menuselection:`Structured Text File` option.
@@ -49,9 +53,8 @@ In Visual Studio Code:
 
 #. Save the file with the name :file:`main.st`.
 
-That's it — you have written a valid IEC 61131-3 program. If IronPLC's
-VS Code extension is installed, you should see no errors highlighted in
-the editor.
+That's it — you have written a valid IEC 61131-3 program. If the IronPLC
+extension is installed, you should see no errors highlighted in the editor.
 
 --------------------------------------
 What This Program Does
