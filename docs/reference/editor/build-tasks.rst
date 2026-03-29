@@ -2,9 +2,10 @@
 Build Tasks
 ===========
 
-The IronPLC extension integrates with the Visual Studio Code build system to
-compile IEC 61131-3 projects from within the editor. This lets you compile your
-project to a bytecode container (``.iplc``) file without leaving Visual Studio Code.
+The IronPLC extension integrates with the build system in your development
+environment to compile IEC 61131-3 projects from within the editor. This lets
+you compile your project to a bytecode container (``.iplc``) file without
+leaving your development environment.
 
 .. warning::
 
