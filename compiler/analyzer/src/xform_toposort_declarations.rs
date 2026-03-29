@@ -304,6 +304,21 @@ impl RuleGraphReferenceableElements {
 impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
     type Value = ();
 
+    fn visit_library_element_kind(
+        &mut self,
+        node: &LibraryElementKind,
+    ) -> Result<Self::Value, Diagnostic> {
+        match node {
+            // Global variable declarations are not POUs or types and don't
+            // participate in the dependency graph. They are unconditionally
+            // placed first in the output so that their constants are available
+            // for subsequent passes. Skip recursion to avoid hitting visitor
+            // methods that require current_from context.
+            LibraryElementKind::GlobalVarDeclarations(_) => Ok(()),
+            _ => node.recurse_visit(self),
+        }
+    }
+
     // Type declarations
 
     fn visit_late_bound_declaration(
@@ -532,12 +547,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                     }
                 }
             }
-            None => {
-                // Global variable declarations have no current_from context
-                // because they are not inside a POU or type declaration.
-                // They don't need dependency edges — they are always placed
-                // first in the output.
-            }
+            None => return Err(Diagnostic::todo(file!(), line!())),
         }
 
         node.recurse_visit(self)
