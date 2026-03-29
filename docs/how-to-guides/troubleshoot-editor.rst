@@ -14,8 +14,8 @@ No Syntax Highlighting
 1. **Check file extension**: Ensure your file has a supported extension.
    See :doc:`/reference/editor/overview` for the full list of supported languages and extensions.
 
-2. **Check language mode**: Look at the bottom-right corner of VS Code. It should
-   show "IEC 61131-3", "Structured Text", "TwinCAT POU", or "PLCopen XML".
+2. **Check language mode**: Look at the bottom-right corner of the window. It
+   should show "IEC 61131-3", "Structured Text", "TwinCAT POU", or "PLCopen XML".
    Click it to change the language mode if needed.
 
 3. **Reload the window**: Run "Developer: Reload Window" from the Command Palette.
@@ -52,7 +52,7 @@ Extension Not Activating
 3. **View extension logs**: Open :menuselection:`Help --> Toggle Developer Tools`, go to the Console
    tab, and look for messages containing "ironplc".
 
-4. **Reinstall the extension**: Uninstall the extension, reload VS Code, then
+4. **Reinstall the extension**: Uninstall the extension, reload the window, then
    reinstall it.
 
 Collecting Debug Information
@@ -62,7 +62,7 @@ When reporting issues, please collect the following information:
 
 1. **Version information**:
 
-   * VS Code version (:menuselection:`Help --> About`)
+   * Development environment and version (:menuselection:`Help --> About`)
    * IronPLC extension version (Extensions view)
    * Compiler version (run :program:`ironplcc --version`)
    * Operating system and version
@@ -118,8 +118,8 @@ If all else fails, try a clean reset:
 1. Uninstall the IronPLC extension
 2. Delete the extension's global storage:
 
-   * Windows: ``%USERPROFILE%\.vscode\extensions\ironplc.*``
-   * macOS/Linux: ``~/.vscode/extensions/ironplc.*``
+   * Windows: ``%USERPROFILE%\.vscode\extensions\ironplc.*`` (or ``%USERPROFILE%\.cursor\extensions\ironplc.*`` for Cursor)
+   * macOS/Linux: ``~/.vscode/extensions/ironplc.*`` (or ``~/.cursor/extensions/ironplc.*`` for Cursor)
 
-3. Reload VS Code
+3. Reload the development environment
 4. Reinstall the extension from the marketplace

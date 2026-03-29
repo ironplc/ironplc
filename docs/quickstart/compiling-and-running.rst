@@ -2,7 +2,7 @@
 Compiling and Running
 =======================
 
-So far you have been writing code and letting the VS Code extension check it
+So far you have been writing code and letting the development environment extension check it
 for correctness. In this chapter, you will use the command line to compile
 your program into a bytecode container and run it.
 
@@ -77,7 +77,7 @@ What You Have Learned
 
 Over the course of this tutorial, you have:
 
-1. **Installed** IronPLC and the VS Code extension.
+1. **Installed** IronPLC and the development environment extension.
 2. **Written** a minimal IEC 61131-3 program.
 3. **Connected** it to inputs and outputs with directly represented variables.
 4. **Configured** the application with a task, resource, and configuration.
