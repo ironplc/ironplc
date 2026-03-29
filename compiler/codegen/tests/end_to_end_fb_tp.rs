@@ -7,6 +7,7 @@
 //! The VM cycle_time is in microseconds; timer intrinsics convert to ms internally.
 
 mod common;
+use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_compile, VmBuffers};

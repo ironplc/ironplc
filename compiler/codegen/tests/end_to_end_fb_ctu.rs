@@ -4,6 +4,7 @@
 //! a CTU function block instance, compile to bytecode, and execute on the VM.
 
 mod common;
+use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;

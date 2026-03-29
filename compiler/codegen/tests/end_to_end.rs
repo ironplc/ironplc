@@ -18,6 +18,7 @@
 //! - end_to_end_bitstring.rs (BYTE/WORD/DWORD/LWORD bit string type tests)
 
 mod common;
+use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_compile, parse_and_run, VmBuffers};

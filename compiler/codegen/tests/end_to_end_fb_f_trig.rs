@@ -1,6 +1,7 @@
 //! End-to-end tests for F_TRIG (falling edge detector) function block.
 
 mod common;
+use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
