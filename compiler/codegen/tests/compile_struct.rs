@@ -257,3 +257,57 @@ END_PROGRAM
         store_array_count
     );
 }
+
+#[test]
+fn compile_when_struct_field_read_then_emits_load_array() {
+    let source = "
+TYPE MyStruct :
+  STRUCT
+    a : INT;
+    b : DINT;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MyStruct := (a := 10, b := 20);
+    result : DINT;
+  END_VAR
+    result := s.b;
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    // The scan function (function 1) should contain a LOAD_ARRAY opcode (0x24)
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
+    let load_array_count = bytecode.iter().filter(|&&b| b == 0x24).count();
+    assert!(
+        load_array_count >= 1,
+        "Expected at least 1 LOAD_ARRAY opcode for struct field read, got {}",
+        load_array_count
+    );
+}
+
+#[test]
+fn compile_when_struct_field_read_first_field_then_compiles() {
+    let source = "
+TYPE MyStruct :
+  STRUCT
+    a : INT;
+    b : DINT;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MyStruct := (a := 10, b := 20);
+    result : INT;
+  END_VAR
+    result := s.a;
+END_PROGRAM
+";
+    // Should compile without error — reading the first field (slot offset 0)
+    let _container = parse_and_compile(source, &CompilerOptions::default());
+}
