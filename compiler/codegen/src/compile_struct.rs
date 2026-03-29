@@ -6,8 +6,9 @@
 
 use std::collections::HashMap;
 
-use ironplc_dsl::core::{Id, SourceSpan};
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::textual::{StructuredVariable, SymbolicVariableKind};
 use ironplc_problems::Problem;
 
 use ironplc_analyzer::intermediate_type::{
@@ -25,13 +26,13 @@ use super::compile::{
 use crate::emit::Emitter;
 
 /// Metadata for a structure variable, stored in CompileContext.
-#[allow(dead_code)]
 pub(crate) struct StructVarInfo {
     /// Variable table index holding the data region offset.
     pub var_index: u16,
     /// Data region byte offset where this structure's fields start.
     pub data_offset: u32,
     /// Total number of 8-byte slots this structure occupies.
+    #[allow(dead_code)]
     pub total_slots: u32,
     /// Array descriptor index for this structure (treats struct as flat slot array).
     pub desc_index: u16,
@@ -44,7 +45,6 @@ pub(crate) struct StructVarInfo {
 }
 
 /// Metadata for a single structure field.
-#[allow(dead_code)]
 pub(crate) struct StructFieldInfo {
     /// Field name (lowercase, for matching against access chains).
     pub name: String,
@@ -62,7 +62,6 @@ pub(crate) struct StructFieldInfo {
 /// Returns `Some((OpWidth, Signedness))` for primitive, enum, and subrange types.
 /// Returns `None` for structure, array, and other composite types (which are
 /// accessed via further resolution, not loaded/stored directly as single values).
-#[allow(dead_code)]
 pub(crate) fn resolve_field_op_type(field_type: &IntermediateType) -> Option<OpType> {
     match field_type {
         IntermediateType::Bool => Some((OpWidth::W32, Signedness::Signed)),
@@ -171,7 +170,6 @@ pub(crate) fn build_struct_fields(
 ///
 /// Returns `(slot_offset, field_type)` for the named field, or an error if the
 /// field is not found.
-#[allow(dead_code)]
 pub(crate) fn find_field_in_type(
     fields: &[IntermediateStructField],
     field_name: &Id,
@@ -190,6 +188,125 @@ pub(crate) fn find_field_in_type(
     })?;
     let info = &field_list[idx];
     Ok((info.slot_offset, info.field_type.clone()))
+}
+
+/// Maximum nesting depth for `walk_struct_chain`. Matches the depth guard
+/// in `slot_count_inner()`. Defense-in-depth: if the analyzer lets a
+/// recursive type through, this prevents a stack overflow during expression
+/// compilation.
+const MAX_STRUCT_CHAIN_DEPTH: u32 = 32;
+
+/// Resolves a `StructuredVariable` AST node to the information needed for
+/// code emission: variable table index, array descriptor index, compile-time
+/// slot offset, op type, and field type.
+///
+/// The returned `IntermediateType` enables callers (PR 5 store path) to
+/// derive truncation information from the field's type.
+pub(crate) fn resolve_struct_field_access(
+    ctx: &CompileContext,
+    structured: &StructuredVariable,
+) -> Result<(u16, u16, u32, OpType, IntermediateType), Diagnostic> {
+    let (root_name, slot_offset, field_type) =
+        walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
+
+    let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
+        Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(
+                structured.span(),
+                format!("Variable '{}' is not a structure", root_name),
+            ),
+        )
+    })?;
+
+    let op_type = resolve_field_op_type(&field_type).ok_or_else(|| {
+        Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(
+                structured.field.span(),
+                "Cannot read composite field directly (nested struct or array)",
+            ),
+        )
+    })?;
+
+    Ok((
+        struct_info.var_index,
+        struct_info.desc_index,
+        slot_offset,
+        op_type,
+        field_type,
+    ))
+}
+
+/// Walks a `StructuredVariable` AST chain to resolve the root variable name,
+/// accumulated slot offset, and leaf field type.
+///
+/// - **Base case** (`Named`): looks up the field in `ctx.struct_vars`.
+/// - **Recursive case** (`Structured`): recurses to resolve the parent, then
+///   uses `find_field_in_type` to resolve the current field within the parent
+///   type, accumulating slot offsets.
+fn walk_struct_chain(
+    ctx: &CompileContext,
+    record: &SymbolicVariableKind,
+    field: &Id,
+    depth: u32,
+) -> Result<(Id, u32, IntermediateType), Diagnostic> {
+    if depth > MAX_STRUCT_CHAIN_DEPTH {
+        return Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(
+                field.span(),
+                "Structure nesting exceeds maximum depth (possible recursive type)",
+            ),
+        ));
+    }
+
+    match record {
+        SymbolicVariableKind::Named(named) => {
+            let struct_info = ctx.struct_vars.get(&named.name).ok_or_else(|| {
+                Diagnostic::problem(
+                    Problem::NotImplemented,
+                    Label::span(
+                        named.name.span(),
+                        format!("Variable '{}' is not a structure", named.name),
+                    ),
+                )
+            })?;
+            let field_name = field.to_string().to_lowercase();
+            let &field_idx = struct_info.field_index.get(&field_name).ok_or_else(|| {
+                Diagnostic::problem(
+                    Problem::NotImplemented,
+                    Label::span(field.span(), format!("Unknown field '{}'", field)),
+                )
+            })?;
+            let field_info = &struct_info.fields[field_idx];
+            Ok((
+                named.name.clone(),
+                field_info.slot_offset,
+                field_info.field_type.clone(),
+            ))
+        }
+        SymbolicVariableKind::Structured(inner) => {
+            let (root, parent_offset, parent_type) =
+                walk_struct_chain(ctx, &inner.record, &inner.field, depth + 1)?;
+
+            let IntermediateType::Structure { fields } = &parent_type else {
+                return Err(Diagnostic::problem(
+                    Problem::NotImplemented,
+                    Label::span(
+                        inner.field.span(),
+                        format!("Field '{}' is not a structure type", inner.field),
+                    ),
+                ));
+            };
+
+            let (field_slot_offset, field_type) = find_field_in_type(fields, field, &field.span())?;
+
+            Ok((root, parent_offset + field_slot_offset, field_type))
+        }
+        // Array access within struct chain handled in PR 8
+        _ => Err(Diagnostic::todo_with_span(record.span(), file!(), line!())),
+    }
 }
 
 /// Derives a `VarTypeInfo` from an `IntermediateType` for use with `emit_truncation`.

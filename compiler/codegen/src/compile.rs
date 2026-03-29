@@ -4016,6 +4016,14 @@ fn compile_variable_read(
             }
             Ok(())
         }
+        Variable::Symbolic(SymbolicVariableKind::Structured(structured)) => {
+            let (var_index, desc_index, slot_offset, _op_type, _field_type) =
+                crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
+            let idx_const = ctx.add_i32_constant(slot_offset as i32);
+            emitter.emit_load_const_i32(idx_const);
+            emitter.emit_load_array(var_index, desc_index);
+            Ok(())
+        }
         _ => {
             // Check if this is a string variable (stored in data region).
             // String reads emit str_load_var to produce a buf_idx on the stack,
