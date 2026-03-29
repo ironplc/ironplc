@@ -1,0 +1,42 @@
+<svg width="180" height="36" viewBox="0 0 180 36" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow-soft">
+      <feGaussianBlur stdDeviation="1.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <radialGradient id="housing" cx="38%" cy="33%" r="65%">
+      <stop offset="0%"   stop-color="#1e2535"/>
+      <stop offset="100%" stop-color="#0e1218"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Housing -->
+  <rect x="1" y="1" width="34" height="34" rx="5" fill="url(#housing)" stroke="#2a3545" stroke-width="1"/>
+
+  <!-- Ambient glow -->
+  <circle cx="18" cy="18" r="12" fill="#ffaa22" opacity="0.13" filter="url(#glow)"/>
+
+  <!-- LED bezel -->
+  <circle cx="18" cy="18" r="10" fill="#1a1408" stroke="#2e2010" stroke-width="0.7"/>
+
+  <!-- LED body -->
+  <circle cx="18" cy="18" r="7.5" fill="#cc7700" filter="url(#glow-soft)"/>
+
+  <!-- LED bright core -->
+  <circle cx="18" cy="18" r="4" fill="#ffe0aa"/>
+
+  <!-- Specular highlight -->
+  <circle cx="15" cy="15" r="1.8" fill="#ffffff" opacity="0.30"/>
+
+  <!-- Wordmark -->
+  <text x="46" y="24"
+        fill="#ffffff"
+        font-family="'Orbitron', 'Share Tech Mono', monospace"
+        font-size="18"
+        font-weight="900"
+        letter-spacing="1">Iron<tspan fill="#ff6b2b">PLC</tspan></text>
+</svg>
