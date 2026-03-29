@@ -13,10 +13,6 @@
     }
   </style>
     
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="5" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
     <filter id="glow-soft">
       <feGaussianBlur stdDeviation="2.2" result="b"/>
       <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
@@ -28,11 +24,10 @@
   </defs>
   <rect x="1" y="1" width="62" height="62" rx="9" fill="url(#housing)" stroke="#2a3545" stroke-width="1.2"/>
   
-  <circle cx="32" cy="32" r="22" fill="#ffaa22" opacity="0.13" filter="url(#glow)"/>
-  <circle cx="32" cy="32" r="18"   fill="#161008" stroke="#2e2010" stroke-width="0.8"/>
-  <circle cx="32" cy="32" r="13.5"    fill="#b86800" filter="url(#glow-soft)"/>
+  <circle cx="32" cy="32" r="18"        fill="#161008" stroke="#2e2010" stroke-width="0.8"/>
+  <circle cx="32" cy="32" r="13.5"          fill="#b86800" filter="url(#glow-soft)"/>
   <circle cx="32" cy="32" r="9.9" fill="#dd8800"/>
-  <circle cx="32" cy="32" r="7"    fill="#ffe0aa"/>
+  <circle cx="32" cy="32" r="7"          fill="#ffe0aa"/>
   <circle cx="26.6" cy="26.6" r="2.7" fill="#ffffff" opacity="0.28"/>
   <text x="80" y="36" fill="#ffffff"
         font-family="Orbitron" font-weight="900" font-size="28" letter-spacing="2">Iron<tspan fill="#ff6b2b">PLC</tspan></text>
