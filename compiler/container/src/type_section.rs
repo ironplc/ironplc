@@ -20,6 +20,10 @@ pub enum FieldType {
     WString = 7,
     FbInstance = 8,
     Time = 9,
+    /// Heterogeneous structure field slot. Used as the element type in array
+    /// descriptors that back structure variables (which are treated as flat
+    /// arrays of 8-byte slots). The VM does not check this value at runtime.
+    Slot = 10,
 }
 
 impl FieldType {
@@ -36,6 +40,7 @@ impl FieldType {
             7 => Ok(FieldType::WString),
             8 => Ok(FieldType::FbInstance),
             9 => Ok(FieldType::Time),
+            10 => Ok(FieldType::Slot),
             _ => Err(ContainerError::InvalidFieldType(v)),
         }
     }

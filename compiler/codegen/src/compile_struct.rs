@@ -13,8 +13,16 @@ use ironplc_problems::Problem;
 use ironplc_analyzer::intermediate_type::{
     ByteSized, IntermediateStructField, IntermediateType, SlotCountError,
 };
+use ironplc_analyzer::TypeEnvironment;
+use ironplc_container::ContainerBuilder;
+use ironplc_container::FieldType;
+use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit, TypeName};
 
-use super::compile::{OpType, OpWidth, Signedness};
+use super::compile::{
+    compile_constant, emit_truncation, emit_zero_const, CompileContext, OpType, OpWidth,
+    Signedness, VarTypeInfo,
+};
+use crate::emit::Emitter;
 
 /// Metadata for a structure variable, stored in CompileContext.
 #[allow(dead_code)]
@@ -97,7 +105,6 @@ pub(crate) fn resolve_field_op_type(field_type: &IntermediateType) -> Option<OpT
 /// Returns `Err` if any field has an unsupported type (STRING, WSTRING,
 /// FunctionBlock). Nested structures are NOT flattened — each level is a
 /// separate field list.
-#[allow(dead_code)]
 pub(crate) fn build_struct_fields(
     fields: &[IntermediateStructField],
     span: &SourceSpan,
@@ -183,6 +190,251 @@ pub(crate) fn find_field_in_type(
     })?;
     let info = &field_list[idx];
     Ok((info.slot_offset, info.field_type.clone()))
+}
+
+/// Derives a `VarTypeInfo` from an `IntermediateType` for use with `emit_truncation`.
+///
+/// This is needed because struct fields are identified by `IntermediateType`, not
+/// by variable-table entries.
+fn var_type_info_for_field(field_type: &IntermediateType) -> Option<VarTypeInfo> {
+    let (op_width, signedness) = resolve_field_op_type(field_type)?;
+    let storage_bits = match field_type {
+        IntermediateType::Bool => 1,
+        IntermediateType::Int { size }
+        | IntermediateType::UInt { size }
+        | IntermediateType::Real { size }
+        | IntermediateType::Bytes { size }
+        | IntermediateType::Time { size }
+        | IntermediateType::Date { size }
+        | IntermediateType::TimeOfDay { size }
+        | IntermediateType::DateAndTime { size } => size.into(),
+        IntermediateType::Enumeration { underlying_type } => {
+            return var_type_info_for_field(underlying_type);
+        }
+        IntermediateType::Subrange { base_type, .. } => {
+            return var_type_info_for_field(base_type);
+        }
+        IntermediateType::Reference { .. } => 64,
+        _ => return None,
+    };
+    Some(VarTypeInfo {
+        op_width,
+        signedness,
+        storage_bits,
+    })
+}
+
+/// Emits truncation instructions for narrow types when storing to a struct field.
+fn emit_truncation_for_field(emitter: &mut Emitter, field_type: &IntermediateType) {
+    if let Some(vti) = var_type_info_for_field(field_type) {
+        emit_truncation(emitter, vti);
+    }
+}
+
+/// Emits a constant load for the type-appropriate default value of a struct field.
+///
+/// For subrange types, emits the subrange's lower bound (min_value) as an i32/i64
+/// constant, since IEC 61131-3 §2.4.3.1 specifies the default is the "leftmost
+/// value" of the subrange. For all other types, emits zero via `emit_zero_const`.
+fn emit_default_for_field(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    field_type: &IntermediateType,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    if let IntermediateType::Subrange { min_value, .. } = field_type {
+        match op_type.0 {
+            OpWidth::W32 => {
+                let pool_index = ctx.add_i32_constant(*min_value as i32);
+                emitter.emit_load_const_i32(pool_index);
+            }
+            OpWidth::W64 => {
+                let pool_index = ctx.add_i64_constant(*min_value as i64);
+                emitter.emit_load_const_i64(pool_index);
+            }
+            _ => {
+                emit_zero_const(emitter, ctx, op_type);
+            }
+        }
+    } else {
+        emit_zero_const(emitter, ctx, op_type);
+    }
+    Ok(())
+}
+
+/// Compiles an explicit initial value for a structure field.
+///
+/// Handles constant expressions (integer/real/boolean literals) from
+/// `StructInitialValueAssignmentKind`. Returns an error for unsupported kinds.
+fn compile_struct_field_init(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    init: &StructInitialValueAssignmentKind,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    match init {
+        StructInitialValueAssignmentKind::Constant(constant) => {
+            compile_constant(emitter, ctx, constant, op_type)
+        }
+        StructInitialValueAssignmentKind::EnumeratedValue(_)
+        | StructInitialValueAssignmentKind::Array(_)
+        | StructInitialValueAssignmentKind::Structure(_) => {
+            // Nested structures, arrays, and enums in struct init are not yet supported.
+            // Enum support could be added by resolving the enum value to an integer constant.
+            Ok(())
+        }
+    }
+}
+
+/// Pre-extracted field info for initialization, avoiding borrow conflicts.
+///
+/// Created by extracting data from `StructFieldInfo` before passing `ctx`
+/// mutably to `initialize_struct_fields`.
+pub(crate) struct FieldInitInfo {
+    pub name: String,
+    pub slot_offset: u32,
+    pub field_type: IntermediateType,
+    pub op_type: Option<OpType>,
+}
+
+/// Initializes fields of a structure variable.
+///
+/// Emits constant-load + STORE_ARRAY for each leaf field. Uses explicit
+/// initial values from `element_inits` when available, otherwise emits
+/// type-appropriate defaults (zero or subrange lower bound).
+pub(crate) fn initialize_struct_fields(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    var_index: u16,
+    desc_index: u16,
+    fields: &[FieldInitInfo],
+    element_inits: &[StructureElementInit],
+) -> Result<(), Diagnostic> {
+    // Build a map of explicit initializers
+    let init_map: HashMap<String, &StructInitialValueAssignmentKind> = element_inits
+        .iter()
+        .map(|e| (e.name.to_string().to_lowercase(), &e.init))
+        .collect();
+
+    // Iterate over fields in declaration order (Vec guarantees deterministic order)
+    for field_info in fields {
+        let slot_idx = field_info.slot_offset;
+
+        if let Some(op_type) = field_info.op_type {
+            // Leaf field (primitive/enum)
+            if let Some(init_value) = init_map.get(&field_info.name) {
+                // Emit explicit initial value
+                compile_struct_field_init(emitter, ctx, init_value, op_type)?;
+            } else {
+                // Emit type-appropriate default value
+                emit_default_for_field(emitter, ctx, &field_info.field_type, op_type)?;
+            }
+
+            // Truncate narrow types (e.g., SINT stored in W32 slot)
+            emit_truncation_for_field(emitter, &field_info.field_type);
+
+            // Store to field slot
+            let idx_const = ctx.add_i32_constant(slot_idx as i32);
+            emitter.emit_load_const_i32(idx_const);
+            emitter.emit_store_array(var_index, desc_index);
+        }
+        // else: nested structure or array field — handled in later PRs
+    }
+    Ok(())
+}
+
+/// Allocates data region space for a structure variable and registers metadata.
+///
+/// Called from both the `Structure` and `LateResolvedType` match arms in
+/// `assign_variables`.
+pub(crate) fn allocate_struct_variable(
+    ctx: &mut CompileContext,
+    builder: &mut ContainerBuilder,
+    types: &TypeEnvironment,
+    type_name: &TypeName,
+    id: &Id,
+    index: u16,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let struct_type = types.resolve_struct_type(type_name).ok_or_else(|| {
+        Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span.clone(), "Unknown structure type"),
+        )
+    })?;
+
+    let IntermediateType::Structure { fields } = struct_type else {
+        unreachable!("resolve_struct_type guarantees Structure variant");
+    };
+
+    // Compute total slots
+    let total_slots = struct_type.slot_count().map_err(|e| {
+        let msg = match e {
+            SlotCountError::UnsupportedFieldType => {
+                "Structure contains unsupported field types (STRING, WSTRING, or FunctionBlock)"
+            }
+            SlotCountError::MaxDepthExceeded => {
+                "Structure exceeds maximum nesting depth (possible recursive type)"
+            }
+            SlotCountError::Overflow => "Structure is too large (slot count overflows u32)",
+        };
+        Diagnostic::problem(Problem::NotImplemented, Label::span(span.clone(), msg))
+    })?;
+
+    // Enforce slot limit (matches existing array limit for i32 flat-index safety)
+    if total_slots > super::compile::MAX_DATA_REGION_SLOTS {
+        return Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span.clone(), "Structure exceeds maximum 32768 slots"),
+        ));
+    }
+
+    // Allocate data region space
+    let data_offset = ctx.data_region_offset;
+    let total_bytes = total_slots.checked_mul(8).ok_or_else(|| {
+        Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span.clone(), "Structure size overflows (slots * 8)"),
+        )
+    })?;
+    ctx.data_region_offset = ctx
+        .data_region_offset
+        .checked_add(total_bytes)
+        .ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(span.clone(), "Data region overflow"),
+            )
+        })?;
+
+    // Guard against i32 truncation (data_offset is stored as i32 in the
+    // variable slot, matching the array pattern)
+    if ctx.data_region_offset > i32::MAX as u32 {
+        return Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(span.clone(), "Data region exceeds 2 GiB limit"),
+        ));
+    }
+
+    // Register array descriptor (treating struct as flat slot array).
+    let desc_index = builder.add_array_descriptor(FieldType::Slot as u8, total_slots);
+
+    // Build field metadata (returns error for unsupported field types)
+    let (fields_vec, field_index) = build_struct_fields(fields, span)?;
+
+    // Store metadata
+    ctx.struct_vars.insert(
+        id.clone(),
+        StructVarInfo {
+            var_index: index,
+            data_offset,
+            total_slots,
+            desc_index,
+            fields: fields_vec,
+            field_index,
+        },
+    );
+    Ok(())
 }
 
 #[cfg(test)]

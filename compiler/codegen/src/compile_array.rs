@@ -328,7 +328,7 @@ pub(crate) fn register_array_variable(
     }
 
     // 3. Validate element limit (i32 safety for flat-index arithmetic)
-    if total_elements > 32768 {
+    if total_elements > super::compile::MAX_DATA_REGION_SLOTS {
         return Err(Diagnostic::problem(
             Problem::NotImplemented,
             Label::span(span.clone(), "Array exceeds maximum 32768 elements"),
