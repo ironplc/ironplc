@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/quickstart/installation.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="IronPLC supports the following platforms: Windows (x64), macOS. Prerequisites: The first step is to install Visual Studio Code. Go to Visual Studio Code then follow the steps for your platform. Ins..." />
-<meta name="description" content="IronPLC supports the following platforms: Windows (x64), macOS. Prerequisites: The first step is to install Visual Studio Code. Go to Visual Studio Code then follow the steps for your platform. Ins..." />
+<meta property="og:description" content="IronPLC supports the following platforms: Windows (x64), macOS. Prerequisites: The first step is to install a supported development environment: Visual Studio Code, Cursor. Other development enviro..." />
+<meta name="description" content="IronPLC supports the following platforms: Windows (x64), macOS. Prerequisites: The first step is to install a supported development environment: Visual Studio Code, Cursor. Other development enviro..." />
 <link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Hello, World!" href="helloworld.html"><link rel="prev" title="Quick start tutorial" href="index.html">
         <link rel="canonical" href="https://www.ironplc.com/quickstart/installation.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.182.0">
+<meta name="ironplc-version" content="0.183.0">
 </head>
   <body>
     
@@ -602,9 +602,15 @@
 </ul>
 <section id="prerequisites">
 <h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading">¶</a></h2>
-<p>The first step is to install Visual Studio Code. Go to
-<a class="reference external" href="https://code.visualstudio.com/">Visual Studio Code</a> then follow the steps
-for your platform.</p>
+<p>The first step is to install a supported development environment:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://code.visualstudio.com/">Visual Studio Code</a></p></li>
+<li><p><a class="reference external" href="https://www.cursor.com/">Cursor</a></p></li>
+</ul>
+<p>Other development environments that support VS Code extensions (via the
+<a class="reference external" href="https://open-vsx.org/">Open VSX Registry</a>) also work. The instructions
+below use Visual Studio Code, but the steps are the same in all supported
+environments.</p>
 </section>
 <section id="install-steps">
 <h2>Install Steps<a class="headerlink" href="#install-steps" title="Link to this heading">¶</a></h2>
@@ -615,18 +621,18 @@ for your platform.</p>
 <ol class="arabic simple">
 <li><p>Download the latest IronPLC installer from <a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>:</p>
 <ul class="simple">
-<li><p>x64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.182.0/ironplcc-x86_64-windows.exe">ironplcc-x86_64-windows.exe</a></p></li>
-<li><p>Arm64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.182.0/ironplcc-aarch64-windows.exe">ironplcc-aarch64-windows.exe</a></p></li>
+<li><p>x64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.183.0/ironplcc-x86_64-windows.exe">ironplcc-x86_64-windows.exe</a></p></li>
+<li><p>Arm64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.183.0/ironplcc-aarch64-windows.exe">ironplcc-aarch64-windows.exe</a></p></li>
 </ul>
 </li>
 <li><p>Run the installer and follow the prompts to complete
 installation of the CLI.</p></li>
 </ol>
-<p><strong>Install IronPLC Visual Studio Code Extension</strong></p>
-<p>Run Visual Studio Code, then in Visual Studio Code:</p>
+<p><strong>Install IronPLC Extension</strong></p>
+<p>Run your development environment, then:</p>
 <ol class="arabic simple">
 <li><p>Go to the Extensions view by clicking on the Extensions icon in
-<span class="guilabel">Activity Bar</span> on the side of VS Code or using the
+<span class="guilabel">Activity Bar</span> on the side of the window or using the
 View: Extensions command (<kbd class="kbd docutils literal notranslate">Ctrl</kbd>+<kbd class="kbd docutils literal notranslate">Shift</kbd>+<kbd class="kbd docutils literal notranslate">X</kbd>).</p></li>
 <li><p>In the Extensions view, enter <code class="samp docutils literal notranslate"><span class="pre">IronPLC</span></code> in the search box.</p></li>
 <li><p>In the Extensions view for the IronPLC item, choose <span class="guilabel">Install</span>.</p></li>
@@ -639,11 +645,11 @@ View: Extensions command (<kbd class="kbd docutils literal notranslate">Ctrl</kb
 install Homebrew.</p></li>
 <li><p>In a Terminal, enter <strong class="program">brew tap ironplc/tap</strong>, then enter <strong class="program">brew install ironplc</strong>.</p></li>
 </ol>
-<p><strong>Install IronPLC Visual Studio Code Extension</strong></p>
-<p>Run Visual Studio Code, then in Visual Studio Code:</p>
+<p><strong>Install IronPLC Extension</strong></p>
+<p>Run your development environment, then:</p>
 <ol class="arabic simple">
 <li><p>Go to the Extensions view by clicking on the Extensions icon in
-<span class="guilabel">Activity Bar</span> on the side of VS Code or using the
+<span class="guilabel">Activity Bar</span> on the side of the window or using the
 View: Extensions command (<kbd class="kbd docutils literal notranslate">⌘</kbd>+<kbd class="kbd docutils literal notranslate">Shift</kbd>+<kbd class="kbd docutils literal notranslate">X</kbd>).</p></li>
 <li><p>In the Extensions view, enter <code class="samp docutils literal notranslate"><span class="pre">IronPLC</span></code> in the search box.</p></li>
 <li><p>In the Extensions view for the IronPLC item, choose <span class="guilabel">Install</span>.</p></li>

@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.182.0">
+<meta name="ironplc-version" content="0.183.0">
 </head>
   <body>
     
@@ -603,7 +603,7 @@ this chapter, we write the simplest possible program and use IronPLC to
 check it for correctness.</p>
 <section id="create-a-project-directory">
 <h2>Create a Project Directory<a class="headerlink" href="#create-a-project-directory" title="Link to this heading">¶</a></h2>
-<p>In a Terminal, create a new folder and open it in Visual Studio Code:</p>
+<p>In a Terminal, create a new folder and open it in your development environment:</p>
 <div class="literal-block-wrapper docutils container" id="newhelloworld">
 <div class="code-block-caption"><span class="caption-text">Create Project Directory</span><a class="headerlink" href="#newhelloworld" title="Link to this code">¶</a></div>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>mkdir<span class="w"> </span>helloworld
@@ -612,10 +612,14 @@ code<span class="w"> </span>.
 </pre></div>
 </div>
 </div>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>If you are using Cursor, use <code class="docutils literal notranslate"><span class="pre">cursor</span> <span class="pre">.</span></code> instead of <code class="docutils literal notranslate"><span class="pre">code</span> <span class="pre">.</span></code>.</p>
+</div>
 </section>
 <section id="write-your-first-program">
 <h2>Write Your First Program<a class="headerlink" href="#write-your-first-program" title="Link to this heading">¶</a></h2>
-<p>In Visual Studio Code:</p>
+<p>In your development environment:</p>
 <ol class="arabic">
 <li><p>In the main menu, select <span class="menuselection">File ‣ New File…</span>.</p></li>
 <li><p>In the <span class="guilabel">New File…</span> dialog, select the <span class="menuselection">Structured Text File</span> option.</p></li>
@@ -636,9 +640,8 @@ code<span class="w"> </span>.
 </li>
 <li><p>Save the file with the name <code class="file docutils literal notranslate"><span class="pre">main.st</span></code>.</p></li>
 </ol>
-<p>That’s it — you have written a valid IEC 61131-3 program. If IronPLC’s
-VS Code extension is installed, you should see no errors highlighted in
-the editor.</p>
+<p>That’s it — you have written a valid IEC 61131-3 program. If the IronPLC
+extension is installed, you should see no errors highlighted in the editor.</p>
 </section>
 <section id="what-this-program-does">
 <h2>What This Program Does<a class="headerlink" href="#what-this-program-does" title="Link to this heading">¶</a></h2>

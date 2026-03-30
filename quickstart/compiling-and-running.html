@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/quickstart/compiling-and-running.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="So far you have been writing code and letting the VS Code extension check it for correctness. In this chapter, you will use the command line to compile your program into a bytecode container and ru..." />
-<meta name="description" content="So far you have been writing code and letting the VS Code extension check it for correctness. In this chapter, you will use the command line to compile your program into a bytecode container and ru..." />
+<meta property="og:description" content="So far you have been writing code and letting the development environment extension check it for correctness. In this chapter, you will use the command line to compile your program into a bytecode ..." />
+<meta name="description" content="So far you have been writing code and letting the development environment extension check it for correctness. In this chapter, you will use the command line to compile your program into a bytecode ..." />
 <link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="How-to guides" href="../how-to-guides/index.html"><link rel="prev" title="Working with Multiple Files" href="multiple-files.html">
         <link rel="canonical" href="https://www.ironplc.com/quickstart/compiling-and-running.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.182.0">
+<meta name="ironplc-version" content="0.183.0">
 </head>
   <body>
     
@@ -595,21 +595,13 @@
 </div>
 <section id="compiling-and-running">
 <h1>Compiling and Running<a class="headerlink" href="#compiling-and-running" title="Link to this heading">¶</a></h1>
-<p>So far you have been writing code and letting the VS Code extension check it
+<p>So far you have been writing code and letting the development environment extension check it
 for correctness. In this chapter, you will use the command line to compile
 your program into a bytecode container and run it.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>This guide assumes you have installed the IronPLC Compiler. See
 <a class="reference internal" href="installation.html#installation-steps-target"><span class="std std-ref">Installation</span></a> if you have not already installed it.</p>
-</div>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>The compile command currently supports only trivial programs. Supported
-features include: <code class="code docutils literal notranslate"><span class="pre">PROGRAM</span></code> declarations, <code class="code docutils literal notranslate"><span class="pre">INT</span></code> variable
-declarations, assignment statements, integer literal constants, and
-the <code class="docutils literal notranslate"><span class="pre">+</span></code> (add) operator. Programs using other features will produce a
-code generation error.</p>
 </div>
 <section id="check-the-program">
 <h2>Check the Program<a class="headerlink" href="#check-the-program" title="Link to this heading">¶</a></h2>
@@ -658,7 +650,7 @@ run:</p>
 <h2>What You Have Learned<a class="headerlink" href="#what-you-have-learned" title="Link to this heading">¶</a></h2>
 <p>Over the course of this tutorial, you have:</p>
 <ol class="arabic simple">
-<li><p><strong>Installed</strong> IronPLC and the VS Code extension.</p></li>
+<li><p><strong>Installed</strong> IronPLC and the development environment extension.</p></li>
 <li><p><strong>Written</strong> a minimal IEC 61131-3 program.</p></li>
 <li><p><strong>Connected</strong> it to inputs and outputs with directly represented variables.</p></li>
 <li><p><strong>Configured</strong> the application with a task, resource, and configuration.</p></li>

@@ -27,16 +27,16 @@ Follow the steps below to update IronPLC.
    #. Run the installer and follow the prompts to complete
       installation of the CLI.
 
-   **Update IronPLC Visual Studio Code Extension**
+   **Update IronPLC Extension**
 
-   #. Download the latest IronPLC Visual Studio Code Extension
+   #. Download the latest IronPLC extension
       :download_artifact:`ironplc-vscode-extension.vsix` from
       `IronPLC GitHub releases`_.
 
-   Run Visual Studio Code, then in Visual Studio Code:
+   Run your development environment, then:
 
    #. Go to the Extensions view by clicking on the Extensions icon in
-      :guilabel:`Activity Bar` on the side of VS Code or using the
+      :guilabel:`Activity Bar` on the side of the window or using the
       View: Extensions command (:kbd:`Ctrl+Shift+X`).
    #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
    #. In the :guilabel:`Install from VISX` dialog, select the VISX file you downloaded earlier.
@@ -48,16 +48,16 @@ Follow the steps below to update IronPLC.
 
    #. In a Terminal, enter :program:`brew update`, then enter :program:`brew upgrade ironplc`.
 
-   **Update IronPLC Visual Studio Code Extension**
+   **Update IronPLC Extension**
 
-   #. Download the latest IronPLC Visual Studio Code Extension
+   #. Download the latest IronPLC extension
       :download_artifact:`ironplc-vscode-extension.vsix` from
       `IronPLC GitHub releases`_.
 
-   Run Visual Studio Code, then in Visual Studio Code:
+   Run your development environment, then:
 
    #. Go to the Extensions view by clicking on the Extensions icon in
-      :guilabel:`Activity Bar` on the side of VS Code or using the
+      :guilabel:`Activity Bar` on the side of the window or using the
       View: Extensions command (:kbd:`⌘+Shift+X`).
    #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
    #. In the dialog, select the VISX file you downloaded earlier.

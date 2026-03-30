@@ -13,9 +13,15 @@ IronPLC supports the following platforms:
 Prerequisites
 -------------
 
-The first step is to install Visual Studio Code. Go to
-`Visual Studio Code <https://code.visualstudio.com/>`_ then follow the steps
-for your platform.
+The first step is to install a supported development environment:
+
+- `Visual Studio Code <https://code.visualstudio.com/>`_
+- `Cursor <https://www.cursor.com/>`_
+
+Other development environments that support VS Code extensions (via the
+`Open VSX Registry <https://open-vsx.org/>`_) also work. The instructions
+below use Visual Studio Code, but the steps are the same in all supported
+environments.
 
 -------------
 Install Steps
@@ -36,12 +42,12 @@ Follow the steps below to install IronPLC.
    #. Run the installer and follow the prompts to complete
       installation of the CLI.
 
-   **Install IronPLC Visual Studio Code Extension**
+   **Install IronPLC Extension**
 
-   Run Visual Studio Code, then in Visual Studio Code:
+   Run your development environment, then:
 
    #. Go to the Extensions view by clicking on the Extensions icon in
-      :guilabel:`Activity Bar` on the side of VS Code or using the
+      :guilabel:`Activity Bar` on the side of the window or using the
       View: Extensions command (:kbd:`Ctrl+Shift+X`).
    #. In the Extensions view, enter :samp:`IronPLC` in the search box.
    #. In the Extensions view for the IronPLC item, choose :guilabel:`Install`.
@@ -54,12 +60,12 @@ Follow the steps below to install IronPLC.
       install Homebrew.
    #. In a Terminal, enter :program:`brew tap ironplc/tap`, then enter :program:`brew install ironplc`.
 
-   **Install IronPLC Visual Studio Code Extension**
+   **Install IronPLC Extension**
 
-   Run Visual Studio Code, then in Visual Studio Code:
+   Run your development environment, then:
 
    #. Go to the Extensions view by clicking on the Extensions icon in
-      :guilabel:`Activity Bar` on the side of VS Code or using the
+      :guilabel:`Activity Bar` on the side of the window or using the
       View: Extensions command (:kbd:`⌘+Shift+X`).
    #. In the Extensions view, enter :samp:`IronPLC` in the search box.
    #. In the Extensions view for the IronPLC item, choose :guilabel:`Install`.
