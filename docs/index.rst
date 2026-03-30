@@ -5,7 +5,7 @@
 IronPLC
 =======
 
-.. image:: images/banner.svg
+.. image:: _static/ironplc-banner.svg
    :align: center
 
 IronPLC is an open-source toolchain for checking and compiling IEC 61131-3
