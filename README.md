@@ -1,6 +1,6 @@
 # IronPLC
 
-![](docs/images/banner.svg)
+![](docs/_static/ironplc-banner.svg)
 
 IronPLC is a SoftPLC written entirely in safe Rust for embedded
 devices running programs written in the IEC 61131-3 language.
