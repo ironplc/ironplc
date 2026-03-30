@@ -18,6 +18,7 @@
 //! - end_to_end_bitstring.rs (BYTE/WORD/DWORD/LWORD bit string type tests)
 
 mod common;
+use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_compile, parse_and_run, VmBuffers};
@@ -247,10 +248,10 @@ END_PROGRAM
 
     // Run multiple scans - result should be the same each time
     vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 99);
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 99);
 
     vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 99);
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 99);
     assert_eq!(vm.scan_count(), 2);
 }
 
@@ -284,13 +285,13 @@ END_PROGRAM
 
     // After scan 1: x = 10 + 1 = 11
     vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 11);
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 11);
 
     // After scan 2: x = 11 + 1 = 12 (NOT 11, which would mean re-init)
     vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 12);
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 12);
 
     // After scan 3: x = 12 + 1 = 13
     vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 13);
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 13);
 }

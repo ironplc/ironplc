@@ -4,6 +4,7 @@
 //! a CTUD function block instance, compile to bytecode, and execute on the VM.
 
 mod common;
+use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
@@ -29,9 +30,9 @@ END_PROGRAM
 /// Generates `n` rising edges on variable `var_idx` starting at `time_base`.
 fn pulse_n(vm: &mut ironplc_vm::VmRunning<'_>, var_idx: u16, n: u64, time_base: u64) {
     for i in 0..n {
-        vm.write_variable(var_idx, 1).unwrap();
+        vm.write_variable(VarIndex::new(var_idx), 1).unwrap();
         vm.run_round(time_base + i * 2).unwrap();
-        vm.write_variable(var_idx, 0).unwrap();
+        vm.write_variable(VarIndex::new(var_idx), 0).unwrap();
         vm.run_round(time_base + i * 2 + 1).unwrap();
     }
 }
@@ -48,9 +49,13 @@ fn end_to_end_when_ctud_not_triggered_then_outputs_at_defaults() {
 fn end_to_end_when_ctud_counts_up_to_pv_then_qu_is_true() {
     parse_and_run_rounds(CTUD_PROGRAM, &CompilerOptions::default(), |vm| {
         pulse_n(vm, 1, 3, 0); // 3 rising edges on CU
-        assert_eq!(vm.read_variable(7).unwrap(), 3, "CV should be 3");
         assert_eq!(
-            vm.read_variable(5).unwrap(),
+            vm.read_variable(VarIndex::new(7)).unwrap(),
+            3,
+            "CV should be 3"
+        );
+        assert_eq!(
+            vm.read_variable(VarIndex::new(5)).unwrap(),
             1,
             "QU should be TRUE (CV >= PV)"
         );
@@ -61,11 +66,15 @@ fn end_to_end_when_ctud_counts_up_to_pv_then_qu_is_true() {
 fn end_to_end_when_ctud_counts_down_then_qd_is_true() {
     parse_and_run_rounds(CTUD_PROGRAM, &CompilerOptions::default(), |vm| {
         // CV starts at 0, counting down goes to -1
-        vm.write_variable(2, 1).unwrap();
+        vm.write_variable(VarIndex::new(2), 1).unwrap();
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(7).unwrap(), -1, "CV should be -1");
         assert_eq!(
-            vm.read_variable(6).unwrap(),
+            vm.read_variable(VarIndex::new(7)).unwrap(),
+            -1,
+            "CV should be -1"
+        );
+        assert_eq!(
+            vm.read_variable(VarIndex::new(6)).unwrap(),
             1,
             "QD should be TRUE (CV <= 0)"
         );
@@ -77,16 +86,16 @@ fn end_to_end_when_ctud_reset_then_cv_is_zero() {
     parse_and_run_rounds(CTUD_PROGRAM, &CompilerOptions::default(), |vm| {
         pulse_n(vm, 1, 2, 0); // Count up twice
         assert_eq!(
-            vm.read_variable(7).unwrap(),
+            vm.read_variable(VarIndex::new(7)).unwrap(),
             2,
             "CV should be 2 after 2 counts"
         );
 
         // Reset
-        vm.write_variable(3, 1).unwrap();
+        vm.write_variable(VarIndex::new(3), 1).unwrap();
         vm.run_round(4).unwrap();
         assert_eq!(
-            vm.read_variable(7).unwrap(),
+            vm.read_variable(VarIndex::new(7)).unwrap(),
             0,
             "CV should be 0 after reset"
         );
@@ -96,10 +105,10 @@ fn end_to_end_when_ctud_reset_then_cv_is_zero() {
 #[test]
 fn end_to_end_when_ctud_load_then_cv_equals_pv() {
     parse_and_run_rounds(CTUD_PROGRAM, &CompilerOptions::default(), |vm| {
-        vm.write_variable(4, 1).unwrap(); // LD = TRUE
+        vm.write_variable(VarIndex::new(4), 1).unwrap(); // LD = TRUE
         vm.run_round(0).unwrap();
         assert_eq!(
-            vm.read_variable(7).unwrap(),
+            vm.read_variable(VarIndex::new(7)).unwrap(),
             3,
             "CV should be PV (3) after load"
         );
@@ -120,7 +129,15 @@ END_PROGRAM
 ";
     parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(1).unwrap(), 1, "QU should be TRUE");
-        assert_eq!(vm.read_variable(2).unwrap(), 1, "CV should be 1");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(1)).unwrap(),
+            1,
+            "QU should be TRUE"
+        );
+        assert_eq!(
+            vm.read_variable(VarIndex::new(2)).unwrap(),
+            1,
+            "CV should be 1"
+        );
     });
 }

@@ -51,7 +51,7 @@ fn scenario_when_counter_increments_each_scan_then_accumulates() {
         vm.run_round(0).unwrap();
     }
 
-    assert_eq!(vm.read_variable(0).unwrap(), 10);
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 10);
 }
 
 #[test]
@@ -67,7 +67,7 @@ fn scenario_when_stop_then_scan_count_reflects_completed_rounds() {
     let stopped = vm.stop();
 
     assert_eq!(stopped.scan_count(), 5);
-    assert_eq!(stopped.read_variable(0).unwrap(), 5);
+    assert_eq!(stopped.read_variable(VarIndex::new(0)).unwrap(), 5);
 }
 
 /// One task with two program instances: the counter runs first, then a
@@ -131,7 +131,7 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
 
     // The counter's write (var[0] = 1) is visible despite the fault
     let faulted = vm.fault(ctx);
-    assert_eq!(faulted.read_variable(0).unwrap(), 1);
+    assert_eq!(faulted.read_variable(VarIndex::new(0)).unwrap(), 1);
 }
 
 #[test]
@@ -163,7 +163,7 @@ fn scenario_when_variables_read_after_fault_then_accessible() {
 
     // The store before the fault is visible on the faulted VM
     let faulted = vm.fault(ctx);
-    assert_eq!(faulted.read_variable(0).unwrap(), 42);
+    assert_eq!(faulted.read_variable(VarIndex::new(0)).unwrap(), 42);
 }
 
 // Phase 3: Multi-task and variable scope tests.
@@ -255,8 +255,8 @@ fn scenario_when_two_freewheeling_tasks_then_both_execute() {
     let mut vm = load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
-    assert_eq!(vm.read_variable(0).unwrap(), 10); // set by task 0
-    assert_eq!(vm.read_variable(2).unwrap(), 20); // set by task 1
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 10); // set by task 0
+    assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 20); // set by task 1
 }
 
 /// Two tasks communicate through a shared global variable.
@@ -313,8 +313,8 @@ fn scenario_when_tasks_share_global_then_communication_works() {
     let mut vm = load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
-    assert_eq!(vm.read_variable(0).unwrap(), 99); // global, written by task 0
-    assert_eq!(vm.read_variable(2).unwrap(), 99); // task 1 read the global
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 99); // global, written by task 0
+    assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 99); // task 1 read the global
 }
 
 /// A program instance that accesses a variable outside its scope is trapped.

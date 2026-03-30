@@ -3,6 +3,7 @@
 //! Provides a builder that appends opcodes and operands to a byte buffer.
 
 use ironplc_container::opcode;
+use ironplc_container::VarIndex;
 
 /// An opaque forward reference to a bytecode position, used for jump targets.
 #[derive(Clone, Copy)]
@@ -48,10 +49,21 @@ macro_rules! emit_load_u16 {
     };
 }
 
-/// Emit an instruction with a u16 operand that pops one value.
-macro_rules! emit_store_u16 {
+/// Emit a variable load instruction with a VarIndex operand that pushes one value.
+macro_rules! emit_load_var_index {
     ($name:ident, $opcode:expr) => {
-        pub fn $name(&mut self, index: u16) {
+        pub fn $name(&mut self, index: VarIndex) {
+            self.bytecode.push($opcode);
+            self.bytecode.extend_from_slice(&index.to_le_bytes());
+            self.push_stack(1);
+        }
+    };
+}
+
+/// Emit a variable store instruction with a VarIndex operand that pops one value.
+macro_rules! emit_store_var_index {
+    ($name:ident, $opcode:expr) => {
+        pub fn $name(&mut self, index: VarIndex) {
             self.bytecode.push($opcode);
             self.bytecode.extend_from_slice(&index.to_le_bytes());
             self.pop_stack(1);
@@ -98,16 +110,16 @@ impl Emitter {
     emit_load_u16!(emit_load_const_i64, opcode::LOAD_CONST_I64);
     emit_load_u16!(emit_load_const_f32, opcode::LOAD_CONST_F32);
     emit_load_u16!(emit_load_const_f64, opcode::LOAD_CONST_F64);
-    emit_load_u16!(emit_load_var_i32, opcode::LOAD_VAR_I32);
-    emit_load_u16!(emit_load_var_i64, opcode::LOAD_VAR_I64);
-    emit_load_u16!(emit_load_var_f32, opcode::LOAD_VAR_F32);
-    emit_load_u16!(emit_load_var_f64, opcode::LOAD_VAR_F64);
+    emit_load_var_index!(emit_load_var_i32, opcode::LOAD_VAR_I32);
+    emit_load_var_index!(emit_load_var_i64, opcode::LOAD_VAR_I64);
+    emit_load_var_index!(emit_load_var_f32, opcode::LOAD_VAR_F32);
+    emit_load_var_index!(emit_load_var_f64, opcode::LOAD_VAR_F64);
 
-    // --- Store ops (u16 operand, pop 1) ---
-    emit_store_u16!(emit_store_var_i32, opcode::STORE_VAR_I32);
-    emit_store_u16!(emit_store_var_i64, opcode::STORE_VAR_I64);
-    emit_store_u16!(emit_store_var_f32, opcode::STORE_VAR_F32);
-    emit_store_u16!(emit_store_var_f64, opcode::STORE_VAR_F64);
+    // --- Store ops (VarIndex operand, pop 1) ---
+    emit_store_var_index!(emit_store_var_i32, opcode::STORE_VAR_I32);
+    emit_store_var_index!(emit_store_var_i64, opcode::STORE_VAR_I64);
+    emit_store_var_index!(emit_store_var_f32, opcode::STORE_VAR_F32);
+    emit_store_var_index!(emit_store_var_f64, opcode::STORE_VAR_F64);
 
     // --- Binary ops (pops 2, pushes 1 = net pop 1) ---
     emit_binop!(emit_add_i32, opcode::ADD_I32);
@@ -200,7 +212,7 @@ impl Emitter {
     /// Emits LOAD_ARRAY with var_index and desc_index operands.
     /// Pops 1 (flat index already on stack), pushes 1 (element value). Net: 0.
     #[allow(dead_code)]
-    pub fn emit_load_array(&mut self, var_index: u16, desc_index: u16) {
+    pub fn emit_load_array(&mut self, var_index: VarIndex, desc_index: u16) {
         self.bytecode.push(opcode::LOAD_ARRAY);
         self.bytecode.extend_from_slice(&var_index.to_le_bytes());
         self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
@@ -212,7 +224,7 @@ impl Emitter {
     /// Emits STORE_ARRAY with var_index and desc_index operands.
     /// Pops 2 (value and flat index). Net: -2.
     #[allow(dead_code)]
-    pub fn emit_store_array(&mut self, var_index: u16, desc_index: u16) {
+    pub fn emit_store_array(&mut self, var_index: VarIndex, desc_index: u16) {
         self.bytecode.push(opcode::STORE_ARRAY);
         self.bytecode.extend_from_slice(&var_index.to_le_bytes());
         self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
@@ -221,7 +233,7 @@ impl Emitter {
 
     /// Emits LOAD_ARRAY_DEREF with ref_var_index and desc_index operands.
     /// Pops 1 (flat index), pushes 1 (element value). Net: 0.
-    pub fn emit_load_array_deref(&mut self, ref_var_index: u16, desc_index: u16) {
+    pub fn emit_load_array_deref(&mut self, ref_var_index: VarIndex, desc_index: u16) {
         self.bytecode.push(opcode::LOAD_ARRAY_DEREF);
         self.bytecode
             .extend_from_slice(&ref_var_index.to_le_bytes());
@@ -232,7 +244,7 @@ impl Emitter {
 
     /// Emits STORE_ARRAY_DEREF with ref_var_index and desc_index operands.
     /// Pops 2 (value and flat index). Net: -2.
-    pub fn emit_store_array_deref(&mut self, ref_var_index: u16, desc_index: u16) {
+    pub fn emit_store_array_deref(&mut self, ref_var_index: VarIndex, desc_index: u16) {
         self.bytecode.push(opcode::STORE_ARRAY_DEREF);
         self.bytecode
             .extend_from_slice(&ref_var_index.to_le_bytes());
@@ -429,7 +441,7 @@ impl Emitter {
     }
 
     /// Emits FB_LOAD_INSTANCE with a variable index.
-    pub fn emit_fb_load_instance(&mut self, var_index: u16) {
+    pub fn emit_fb_load_instance(&mut self, var_index: VarIndex) {
         self.bytecode.push(opcode::FB_LOAD_INSTANCE);
         self.bytecode.extend_from_slice(&var_index.to_le_bytes());
         self.push_stack(1);
@@ -466,7 +478,7 @@ impl Emitter {
         &mut self,
         function_id: u16,
         num_params: u16,
-        var_offset: u16,
+        var_offset: VarIndex,
         callee_max_stack: u16,
     ) {
         self.bytecode.push(opcode::CALL);
@@ -553,7 +565,7 @@ mod tests {
     #[test]
     fn emitter_when_load_var_then_correct_bytecode() {
         let mut em = Emitter::new();
-        em.emit_load_var_i32(1);
+        em.emit_load_var_i32(VarIndex::new(1));
 
         assert_eq!(em.bytecode(), &[0x10, 0x01, 0x00]);
     }
@@ -563,7 +575,7 @@ mod tests {
         let mut em = Emitter::new();
         // Need something on the stack first
         em.emit_load_const_i32(0);
-        em.emit_store_var_i32(0);
+        em.emit_store_var_i32(VarIndex::new(0));
 
         assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00]);
     }
@@ -592,10 +604,10 @@ mod tests {
     fn emitter_when_sub_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         // y := x - 5
-        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_load_const_i32(0); // stack: 2
         em.emit_sub_i32(); // stack: 1
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
     }
@@ -614,10 +626,10 @@ mod tests {
     fn emitter_when_mul_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         // y := x * 5
-        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_load_const_i32(0); // stack: 2
         em.emit_mul_i32(); // stack: 1
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
     }
@@ -636,10 +648,10 @@ mod tests {
     fn emitter_when_div_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         // y := x / 5
-        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_load_const_i32(0); // stack: 2
         em.emit_div_i32(); // stack: 1
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
     }
@@ -658,10 +670,10 @@ mod tests {
     fn emitter_when_mod_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         // y := x MOD 5
-        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_load_const_i32(0); // stack: 2
         em.emit_mod_i32(); // stack: 1
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
     }
@@ -669,7 +681,7 @@ mod tests {
     #[test]
     fn emitter_when_neg_then_correct_bytecode() {
         let mut em = Emitter::new();
-        em.emit_load_var_i32(0);
+        em.emit_load_var_i32(VarIndex::new(0));
         em.emit_neg_i32();
 
         assert_eq!(em.bytecode(), &[0x10, 0x00, 0x00, 0x35]);
@@ -679,9 +691,9 @@ mod tests {
     fn emitter_when_neg_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         // y := -x
-        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_neg_i32(); // stack: 1 (pop 1, push 1)
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 1);
     }
@@ -699,12 +711,12 @@ mod tests {
         let mut em = Emitter::new();
         // x := 10
         em.emit_load_const_i32(0); // stack: 1
-        em.emit_store_var_i32(0); // stack: 0
-                                  // y := x + 32
-        em.emit_load_var_i32(0); // stack: 1
+        em.emit_store_var_i32(VarIndex::new(0)); // stack: 0
+                                                 // y := x + 32
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_load_const_i32(1); // stack: 2
         em.emit_add_i32(); // stack: 1
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
         em.emit_ret_void();
 
         assert_eq!(em.max_stack_depth(), 2);
@@ -737,10 +749,10 @@ mod tests {
     fn emitter_when_builtin_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         // y := x ** 5
-        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_load_const_i32(0); // stack: 2
         em.emit_builtin(opcode::builtin::EXPT_I32); // stack: 1
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
     }
@@ -749,9 +761,9 @@ mod tests {
     fn emitter_when_builtin_1_arg_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         // y := ABS(x)
-        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_builtin(opcode::builtin::ABS_I32); // stack: 1 (pop 1, push 1)
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 1);
     }
@@ -761,10 +773,10 @@ mod tests {
         let mut em = Emitter::new();
         // y := LIMIT(mn, x, mx)
         em.emit_load_const_i32(0); // stack: 1
-        em.emit_load_var_i32(0); // stack: 2
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 2
         em.emit_load_const_i32(1); // stack: 3
         em.emit_builtin(opcode::builtin::LIMIT_I32); // stack: 1 (pop 3, push 1)
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 3);
     }
@@ -783,10 +795,10 @@ mod tests {
     fn emitter_when_eq_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         // y := x = 5
-        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_load_const_i32(0); // stack: 2
         em.emit_eq_i32(); // stack: 1
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
     }
@@ -805,10 +817,10 @@ mod tests {
     fn emitter_when_ne_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         // y := x <> 5
-        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_load_const_i32(0); // stack: 2
         em.emit_ne_i32(); // stack: 1
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
     }
@@ -827,10 +839,10 @@ mod tests {
     fn emitter_when_lt_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         // y := x < 5
-        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_load_const_i32(0); // stack: 2
         em.emit_lt_i32(); // stack: 1
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
     }
@@ -849,10 +861,10 @@ mod tests {
     fn emitter_when_le_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         // y := x <= 5
-        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_load_const_i32(0); // stack: 2
         em.emit_le_i32(); // stack: 1
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
     }
@@ -871,10 +883,10 @@ mod tests {
     fn emitter_when_gt_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         // y := x > 5
-        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_load_const_i32(0); // stack: 2
         em.emit_gt_i32(); // stack: 1
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
     }
@@ -893,10 +905,10 @@ mod tests {
     fn emitter_when_ge_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         // y := x >= 5
-        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_load_const_i32(0); // stack: 2
         em.emit_ge_i32(); // stack: 1
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
     }
@@ -914,10 +926,10 @@ mod tests {
     #[test]
     fn emitter_when_bool_and_then_tracks_stack_depth() {
         let mut em = Emitter::new();
-        em.emit_load_var_i32(0); // stack: 1
-        em.emit_load_var_i32(1); // stack: 2
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(1)); // stack: 2
         em.emit_bool_and(); // stack: 1
-        em.emit_store_var_i32(2); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(2)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
     }
@@ -935,10 +947,10 @@ mod tests {
     #[test]
     fn emitter_when_bool_or_then_tracks_stack_depth() {
         let mut em = Emitter::new();
-        em.emit_load_var_i32(0); // stack: 1
-        em.emit_load_var_i32(1); // stack: 2
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(1)); // stack: 2
         em.emit_bool_or(); // stack: 1
-        em.emit_store_var_i32(2); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(2)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
     }
@@ -956,10 +968,10 @@ mod tests {
     #[test]
     fn emitter_when_bool_xor_then_tracks_stack_depth() {
         let mut em = Emitter::new();
-        em.emit_load_var_i32(0); // stack: 1
-        em.emit_load_var_i32(1); // stack: 2
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(1)); // stack: 2
         em.emit_bool_xor(); // stack: 1
-        em.emit_store_var_i32(2); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(2)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
     }
@@ -967,7 +979,7 @@ mod tests {
     #[test]
     fn emitter_when_bool_not_then_correct_bytecode() {
         let mut em = Emitter::new();
-        em.emit_load_var_i32(0);
+        em.emit_load_var_i32(VarIndex::new(0));
         em.emit_bool_not();
 
         assert_eq!(em.bytecode(), &[0x10, 0x00, 0x00, 0x57]);
@@ -977,9 +989,9 @@ mod tests {
     fn emitter_when_bool_not_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         // y := NOT x
-        em.emit_load_var_i32(0); // stack: 1
+        em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_bool_not(); // stack: 1 (pop 1, push 1)
-        em.emit_store_var_i32(1); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 1);
     }
@@ -996,7 +1008,7 @@ mod tests {
     fn emitter_when_load_true_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         em.emit_load_true(); // stack: 1
-        em.emit_store_var_i32(0); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(0)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 1);
     }
@@ -1013,7 +1025,7 @@ mod tests {
     fn emitter_when_load_false_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         em.emit_load_false(); // stack: 1
-        em.emit_store_var_i32(0); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(0)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 1);
     }
@@ -1036,7 +1048,7 @@ mod tests {
         let label = em.create_label();
         em.emit_jmp(label);
         em.bind_label(label);
-        em.emit_store_var_i32(0); // stack: 0
+        em.emit_store_var_i32(VarIndex::new(0)); // stack: 0
 
         // JMP does not change stack depth
         assert_eq!(em.max_stack_depth(), 1);
@@ -1070,7 +1082,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0); // arg 1
         em.emit_load_const_i32(1); // arg 2
-        em.emit_call(2, 2, 5, 0); // CALL function 2, 2 params, var_offset=5
+        em.emit_call(2, 2, VarIndex::new(5), 0); // CALL function 2, 2 params, var_offset=5
 
         // LOAD_CONST pool:0, LOAD_CONST pool:1, CALL func:2 var_offset:5
         assert_eq!(
@@ -1084,8 +1096,8 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0); // stack: 1
         em.emit_load_const_i32(1); // stack: 2
-        em.emit_call(2, 2, 5, 0); // pop 2 args, push 1 result = stack: 1
-        em.emit_store_var_i32(0); // stack: 0
+        em.emit_call(2, 2, VarIndex::new(5), 0); // pop 2 args, push 1 result = stack: 1
+        em.emit_store_var_i32(VarIndex::new(0)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
     }
@@ -1093,7 +1105,7 @@ mod tests {
     #[test]
     fn emitter_when_ret_then_correct_bytecode() {
         let mut em = Emitter::new();
-        em.emit_load_var_i32(0);
+        em.emit_load_var_i32(VarIndex::new(0));
         em.emit_ret();
 
         assert_eq!(em.bytecode(), &[0x10, 0x00, 0x00, 0xB4]);
@@ -1116,7 +1128,7 @@ mod tests {
     fn emitter_when_load_array_then_correct_bytecode() {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0); // push flat index
-        em.emit_load_array(3, 7); // var_index=3, desc_index=7
+        em.emit_load_array(VarIndex::new(3), 7); // var_index=3, desc_index=7
 
         // LOAD_CONST pool:0, LOAD_ARRAY var:3 desc:7
         assert_eq!(
@@ -1129,8 +1141,8 @@ mod tests {
     fn emitter_when_load_array_then_tracks_stack_depth() {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0); // stack: 1 (flat index)
-        em.emit_load_array(3, 7); // stack: 1 (pop index, push value)
-        em.emit_store_var_i32(0); // stack: 0
+        em.emit_load_array(VarIndex::new(3), 7); // stack: 1 (pop index, push value)
+        em.emit_store_var_i32(VarIndex::new(0)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 1);
     }
@@ -1140,7 +1152,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0); // push value
         em.emit_load_const_i32(1); // push flat index
-        em.emit_store_array(5, 2); // var_index=5, desc_index=2
+        em.emit_store_array(VarIndex::new(5), 2); // var_index=5, desc_index=2
 
         // LOAD_CONST pool:0, LOAD_CONST pool:1, STORE_ARRAY var:5 desc:2
         assert_eq!(
@@ -1154,7 +1166,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0); // stack: 1 (value)
         em.emit_load_const_i32(1); // stack: 2 (flat index)
-        em.emit_store_array(5, 2); // stack: 0 (pops 2)
+        em.emit_store_array(VarIndex::new(5), 2); // stack: 0 (pops 2)
 
         assert_eq!(em.max_stack_depth(), 2);
     }

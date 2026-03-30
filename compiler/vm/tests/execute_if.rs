@@ -3,6 +3,7 @@
 mod common;
 
 use common::{single_function_container, VmBuffers};
+use ironplc_container::VarIndex;
 
 #[test]
 fn execute_when_jmp_then_skips_instruction() {
@@ -22,8 +23,8 @@ fn execute_when_jmp_then_skips_instruction() {
     let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 0); // untouched
-    assert_eq!(vm.read_variable(1).unwrap(), 99);
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 0); // untouched
+    assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 99);
 }
 
 #[test]

@@ -25,13 +25,14 @@ impl VariableScope {
     }
 
     /// Checks whether a variable index is within this scope's allowed range.
-    pub fn check_access(&self, index: u16) -> Result<(), Trap> {
-        if index < self.shared_globals_size
-            || (index >= self.instance_offset && index < self.instance_offset + self.instance_count)
+    pub fn check_access(&self, index: VarIndex) -> Result<(), Trap> {
+        let raw = index.raw();
+        if raw < self.shared_globals_size
+            || (raw >= self.instance_offset && raw < self.instance_offset + self.instance_count)
         {
             Ok(())
         } else {
-            Err(Trap::InvalidVariableIndex(VarIndex::new(index)))
+            Err(Trap::InvalidVariableIndex(index))
         }
     }
 }
@@ -53,19 +54,19 @@ impl<'a> VariableTable<'a> {
     }
 
     /// Loads the slot at the given index.
-    pub fn load(&self, index: u16) -> Result<Slot, Trap> {
+    pub fn load(&self, index: VarIndex) -> Result<Slot, Trap> {
         self.slots
-            .get(index as usize)
+            .get(index.raw() as usize)
             .copied()
-            .ok_or(Trap::InvalidVariableIndex(VarIndex::new(index)))
+            .ok_or(Trap::InvalidVariableIndex(index))
     }
 
     /// Stores a slot at the given index.
-    pub fn store(&mut self, index: u16, value: Slot) -> Result<(), Trap> {
+    pub fn store(&mut self, index: VarIndex, value: Slot) -> Result<(), Trap> {
         let slot = self
             .slots
-            .get_mut(index as usize)
-            .ok_or(Trap::InvalidVariableIndex(VarIndex::new(index)))?;
+            .get_mut(index.raw() as usize)
+            .ok_or(Trap::InvalidVariableIndex(index))?;
         *slot = value;
         Ok(())
     }
@@ -75,7 +76,7 @@ impl<'a> VariableTable<'a> {
     ///
     /// The template is a sequence of u64 little-endian values (8 bytes per slot).
     #[allow(dead_code)]
-    pub fn copy_template(&mut self, start: u16, template: &[u8]) -> Result<(), Trap> {
+    pub fn copy_template(&mut self, start: VarIndex, template: &[u8]) -> Result<(), Trap> {
         let num_slots = template.len() / 8;
         for i in 0..num_slots {
             let offset = i * 8;
@@ -89,11 +90,11 @@ impl<'a> VariableTable<'a> {
                 template[offset + 6],
                 template[offset + 7],
             ]);
-            let idx = start + i as u16;
+            let idx = VarIndex::new(start.raw() + i as u16);
             let slot = self
                 .slots
-                .get_mut(idx as usize)
-                .ok_or(Trap::InvalidVariableIndex(VarIndex::new(idx)))?;
+                .get_mut(idx.raw() as usize)
+                .ok_or(Trap::InvalidVariableIndex(idx))?;
             *slot = Slot::from_u64(raw);
         }
         Ok(())
@@ -109,9 +110,9 @@ mod tests {
         let mut buf = [Slot::default(); 3];
         let table = VariableTable::new(&mut buf);
 
-        assert_eq!(table.load(0).unwrap().as_i32(), 0);
-        assert_eq!(table.load(1).unwrap().as_i32(), 0);
-        assert_eq!(table.load(2).unwrap().as_i32(), 0);
+        assert_eq!(table.load(VarIndex::new(0)).unwrap().as_i32(), 0);
+        assert_eq!(table.load(VarIndex::new(1)).unwrap().as_i32(), 0);
+        assert_eq!(table.load(VarIndex::new(2)).unwrap().as_i32(), 0);
     }
 
     #[test]
@@ -120,7 +121,7 @@ mod tests {
         let table = VariableTable::new(&mut buf);
 
         assert_eq!(
-            table.load(2),
+            table.load(VarIndex::new(2)),
             Err(Trap::InvalidVariableIndex(VarIndex::new(2)))
         );
     }
@@ -129,9 +130,9 @@ mod tests {
     fn variable_table_store_load_when_value_stored_then_loads_correctly() {
         let mut buf = [Slot::default(); 2];
         let mut table = VariableTable::new(&mut buf);
-        table.store(1, Slot::from_i32(42)).unwrap();
+        table.store(VarIndex::new(1), Slot::from_i32(42)).unwrap();
 
-        assert_eq!(table.load(1).unwrap().as_i32(), 42);
+        assert_eq!(table.load(VarIndex::new(1)).unwrap().as_i32(), 42);
     }
 
     #[test]
@@ -149,8 +150,8 @@ mod tests {
             instance_offset: 10,
             instance_count: 5,
         };
-        assert!(scope.check_access(0).is_ok());
-        assert!(scope.check_access(3).is_ok());
+        assert!(scope.check_access(VarIndex::new(0)).is_ok());
+        assert!(scope.check_access(VarIndex::new(3)).is_ok());
     }
 
     #[test]
@@ -160,8 +161,8 @@ mod tests {
             instance_offset: 10,
             instance_count: 5,
         };
-        assert!(scope.check_access(10).is_ok());
-        assert!(scope.check_access(14).is_ok());
+        assert!(scope.check_access(VarIndex::new(10)).is_ok());
+        assert!(scope.check_access(VarIndex::new(14)).is_ok());
     }
 
     #[test]
@@ -171,8 +172,8 @@ mod tests {
             instance_offset: 10,
             instance_count: 5,
         };
-        assert!(scope.check_access(5).is_err());
-        assert!(scope.check_access(9).is_err());
+        assert!(scope.check_access(VarIndex::new(5)).is_err());
+        assert!(scope.check_access(VarIndex::new(9)).is_err());
     }
 
     #[test]
@@ -182,14 +183,14 @@ mod tests {
             instance_offset: 10,
             instance_count: 5,
         };
-        assert!(scope.check_access(15).is_err());
+        assert!(scope.check_access(VarIndex::new(15)).is_err());
     }
 
     #[test]
     fn scope_check_when_permissive_then_all_ok() {
         let scope = VariableScope::permissive(10);
         for i in 0..10 {
-            assert!(scope.check_access(i).is_ok());
+            assert!(scope.check_access(VarIndex::new(i)).is_ok());
         }
     }
 
@@ -201,13 +202,13 @@ mod tests {
         let mut template = Vec::new();
         template.extend_from_slice(&42u64.to_le_bytes());
         template.extend_from_slice(&(-1i32 as i64 as u64).to_le_bytes());
-        table.copy_template(2, &template).unwrap();
+        table.copy_template(VarIndex::new(2), &template).unwrap();
 
-        assert_eq!(table.load(2).unwrap(), Slot::from_u64(42));
-        assert_eq!(table.load(3).unwrap().as_i32(), -1);
+        assert_eq!(table.load(VarIndex::new(2)).unwrap(), Slot::from_u64(42));
+        assert_eq!(table.load(VarIndex::new(3)).unwrap().as_i32(), -1);
         // Slots before and after remain unchanged
-        assert_eq!(table.load(0).unwrap().as_i32(), 0);
-        assert_eq!(table.load(4).unwrap().as_i32(), 0);
+        assert_eq!(table.load(VarIndex::new(0)).unwrap().as_i32(), 0);
+        assert_eq!(table.load(VarIndex::new(4)).unwrap().as_i32(), 0);
     }
 
     #[test]
@@ -215,14 +216,14 @@ mod tests {
         let mut buf = [Slot::default(); 2];
         let mut table = VariableTable::new(&mut buf);
         let template = 42u64.to_le_bytes();
-        assert!(table.copy_template(2, &template).is_err());
+        assert!(table.copy_template(VarIndex::new(2), &template).is_err());
     }
 
     #[test]
     fn variable_table_copy_template_when_empty_then_noop() {
         let mut buf = [Slot::default(); 3];
         let mut table = VariableTable::new(&mut buf);
-        table.copy_template(0, &[]).unwrap();
-        assert_eq!(table.load(0).unwrap().as_i32(), 0);
+        table.copy_template(VarIndex::new(0), &[]).unwrap();
+        assert_eq!(table.load(VarIndex::new(0)).unwrap().as_i32(), 0);
     }
 }
