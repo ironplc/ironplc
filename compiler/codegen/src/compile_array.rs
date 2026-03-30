@@ -11,7 +11,7 @@ use ironplc_dsl::textual::{Expr, ExprKind, SymbolicVariableKind, UnaryOp, Variab
 use ironplc_problems::Problem;
 
 use ironplc_analyzer::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};
-use ironplc_container::ContainerBuilder;
+use ironplc_container::{ContainerBuilder, VarIndex};
 
 use super::compile::{compile_expr, CompileContext, OpWidth, Signedness, VarTypeInfo};
 use crate::emit::Emitter;
@@ -39,7 +39,7 @@ pub(crate) struct DimensionInfo {
 /// Metadata for an array variable, stored in CompileContext.
 #[allow(dead_code)]
 pub(crate) struct ArrayVarInfo {
-    pub var_index: u16,
+    pub var_index: VarIndex,
     pub desc_index: u16,
     pub data_offset: u32,
     pub element_var_type_info: VarTypeInfo,
@@ -58,7 +58,7 @@ pub(crate) struct ArrayVarInfo {
 /// The dispatch sites gain a new match arm without changing shape.
 pub(crate) enum ResolvedAccess<'ctx, 'ast> {
     /// Simple named variable — use LOAD_VAR/STORE_VAR.
-    Scalar { var_index: u16 },
+    Scalar { var_index: VarIndex },
     /// Array element — compute flat index, use LOAD_ARRAY/STORE_ARRAY.
     ArrayElement {
         info: &'ctx ArrayVarInfo,
@@ -288,7 +288,7 @@ pub(crate) fn register_array_variable(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
     id: &Id,
-    var_index: u16,
+    var_index: VarIndex,
     spec: &ArraySpec,
     span: &ironplc_dsl::core::SourceSpan,
 ) -> Result<(u8, String), Diagnostic> {

@@ -2,7 +2,7 @@
 
 #![allow(dead_code, unused_imports)]
 
-use ironplc_container::{Container, ContainerBuilder, FunctionId};
+use ironplc_container::{Container, ContainerBuilder, FunctionId, VarIndex};
 use ironplc_vm::error::Trap;
 pub use ironplc_vm::test_support::{assert_trap, load_and_start};
 pub use ironplc_vm::VmBuffers;
@@ -201,7 +201,7 @@ pub fn run_and_read_i32(bytecode: &[u8], num_vars: u16, constants: &[i32]) -> i3
     let mut b = VmBuffers::from_container(&c);
     let mut vm = load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
-    vm.read_variable(0).unwrap()
+    vm.read_variable(VarIndex::new(0)).unwrap()
 }
 
 /// Runs bytecode with i64 constants and returns var[0] as i64.

@@ -217,13 +217,13 @@ impl<'a> VmReady<'a> {
     }
 
     /// Reads a variable value as an i32.
-    pub fn read_variable(&self, index: u16) -> Result<i32, Trap> {
+    pub fn read_variable(&self, index: VarIndex) -> Result<i32, Trap> {
         let slot = self.variables.load(index)?;
         Ok(slot.as_i32())
     }
 
     /// Reads a variable's raw 64-bit slot value.
-    pub fn read_variable_raw(&self, index: u16) -> Result<u64, Trap> {
+    pub fn read_variable_raw(&self, index: VarIndex) -> Result<u64, Trap> {
         let slot = self.variables.load(index)?;
         Ok(slot.as_u64())
     }
@@ -340,25 +340,25 @@ impl<'a> VmRunning<'a> {
     }
 
     /// Reads a variable value as an i32.
-    pub fn read_variable(&self, index: u16) -> Result<i32, Trap> {
+    pub fn read_variable(&self, index: VarIndex) -> Result<i32, Trap> {
         let slot = self.variables.load(index)?;
         Ok(slot.as_i32())
     }
 
     /// Reads a variable's raw 64-bit slot value.
-    pub fn read_variable_raw(&self, index: u16) -> Result<u64, Trap> {
+    pub fn read_variable_raw(&self, index: VarIndex) -> Result<u64, Trap> {
         let slot = self.variables.load(index)?;
         Ok(slot.as_u64())
     }
 
     /// Reads a variable value as an i64.
-    pub fn read_variable_i64(&self, index: u16) -> Result<i64, Trap> {
+    pub fn read_variable_i64(&self, index: VarIndex) -> Result<i64, Trap> {
         let slot = self.variables.load(index)?;
         Ok(slot.as_i64())
     }
 
     /// Writes a variable value as an i32.
-    pub fn write_variable(&mut self, index: u16, value: i32) -> Result<(), Trap> {
+    pub fn write_variable(&mut self, index: VarIndex, value: i32) -> Result<(), Trap> {
         self.variables.store(index, Slot::from_i32(value))
     }
 
@@ -414,13 +414,13 @@ pub struct VmStopped<'a> {
 
 impl<'a> VmStopped<'a> {
     /// Reads a variable value as an i32.
-    pub fn read_variable(&self, index: u16) -> Result<i32, Trap> {
+    pub fn read_variable(&self, index: VarIndex) -> Result<i32, Trap> {
         let slot = self.variables.load(index)?;
         Ok(slot.as_i32())
     }
 
     /// Reads a variable's raw 64-bit slot value.
-    pub fn read_variable_raw(&self, index: u16) -> Result<u64, Trap> {
+    pub fn read_variable_raw(&self, index: VarIndex) -> Result<u64, Trap> {
         let slot = self.variables.load(index)?;
         Ok(slot.as_u64())
     }
@@ -461,13 +461,13 @@ impl<'a> VmFaulted<'a> {
     }
 
     /// Reads a variable value as an i32.
-    pub fn read_variable(&self, index: u16) -> Result<i32, Trap> {
+    pub fn read_variable(&self, index: VarIndex) -> Result<i32, Trap> {
         let slot = self.variables.load(index)?;
         Ok(slot.as_i32())
     }
 
     /// Reads a variable's raw 64-bit slot value.
-    pub fn read_variable_raw(&self, index: u16) -> Result<u64, Trap> {
+    pub fn read_variable_raw(&self, index: VarIndex) -> Result<u64, Trap> {
         let slot = self.variables.load(index)?;
         Ok(slot.as_u64())
     }
@@ -577,7 +577,7 @@ fn execute(
             | opcode::LOAD_VAR_I64
             | opcode::LOAD_VAR_F32
             | opcode::LOAD_VAR_F64 => {
-                let index = read_u16_le(bytecode, &mut pc);
+                let index = VarIndex::new(read_u16_le(bytecode, &mut pc));
                 scope.check_access(index)?;
                 let slot = variables.load(index)?;
                 stack.push(slot)?;
@@ -586,7 +586,7 @@ fn execute(
             | opcode::STORE_VAR_I64
             | opcode::STORE_VAR_F32
             | opcode::STORE_VAR_F64 => {
-                let index = read_u16_le(bytecode, &mut pc);
+                let index = VarIndex::new(read_u16_le(bytecode, &mut pc));
                 scope.check_access(index)?;
                 let slot = stack.pop()?;
                 variables.store(index, slot)?;
@@ -779,7 +779,7 @@ fn execute(
                 // Pop arguments from stack into function's parameter slots (reverse order).
                 for i in (0..func.num_params).rev() {
                     let val = stack.pop()?;
-                    variables.store(var_offset + i, val)?;
+                    variables.store(VarIndex::new(var_offset + i), val)?;
                 }
 
                 // TODO: Replace Rust-recursive execute() with an iterative dispatch
@@ -1507,7 +1507,7 @@ fn execute(
             }
             // --- Function block opcodes ---
             opcode::FB_LOAD_INSTANCE => {
-                let var_index = read_u16_le(bytecode, &mut pc);
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
                 scope.check_access(var_index)?;
                 let slot = variables.load(var_index)?;
                 stack.push(slot)?;
@@ -1651,7 +1651,7 @@ fn execute(
                             let mut buf = [0u8; 8];
                             buf.copy_from_slice(&data_region[offset..offset + 8]);
                             variables.store(
-                                var_off + i as u16,
+                                VarIndex::new(var_off + i as u16),
                                 Slot::from_i64(i64::from_le_bytes(buf)),
                             )?;
                         }
@@ -1677,7 +1677,7 @@ fn execute(
                         // Copy-out: variable table slots -> data region fields.
                         for i in 0..num_fields {
                             let offset = instance_start + i * 8;
-                            let val = variables.load(var_off + i as u16)?;
+                            let val = variables.load(VarIndex::new(var_off + i as u16))?;
                             data_region[offset..offset + 8]
                                 .copy_from_slice(&val.as_i64().to_le_bytes());
                         }
@@ -1686,7 +1686,7 @@ fn execute(
             }
             // --- Array opcodes ---
             opcode::LOAD_ARRAY => {
-                let var_index = read_u16_le(bytecode, &mut pc);
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
                 let desc_index = read_u16_le(bytecode, &mut pc);
                 let index_slot = stack.pop()?;
 
@@ -1699,12 +1699,12 @@ fn execute(
                     .as_ref()
                     .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
                     .map(|d| d.total_elements)
-                    .ok_or(Trap::InvalidVariableIndex(VarIndex::new(var_index)))?;
+                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
 
                 // Bounds check: 0 <= index < total_elements
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index: VarIndex::new(var_index),
+                        var_index,
                         index: index_i64 as i32,
                         total_elements,
                     });
@@ -1726,7 +1726,7 @@ fn execute(
                 stack.push(Slot::from_i64(raw))?;
             }
             opcode::STORE_ARRAY => {
-                let var_index = read_u16_le(bytecode, &mut pc);
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
                 let desc_index = read_u16_le(bytecode, &mut pc);
                 let index_slot = stack.pop()?;
                 let value_slot = stack.pop()?;
@@ -1738,11 +1738,11 @@ fn execute(
                     .as_ref()
                     .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
                     .map(|d| d.total_elements)
-                    .ok_or(Trap::InvalidVariableIndex(VarIndex::new(var_index)))?;
+                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index: VarIndex::new(var_index),
+                        var_index,
                         index: index_i64 as i32,
                         total_elements,
                     });
@@ -1762,7 +1762,7 @@ fn execute(
                     .copy_from_slice(&value_slot.as_i64().to_le_bytes());
             }
             opcode::LOAD_ARRAY_DEREF => {
-                let ref_var_index = read_u16_le(bytecode, &mut pc);
+                let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
                 let desc_index = read_u16_le(bytecode, &mut pc);
                 let index_slot = stack.pop()?;
                 let index_i64 = index_slot.as_i64();
@@ -1774,7 +1774,7 @@ fn execute(
                 if target_raw == u64::MAX {
                     return Err(Trap::NullDereference);
                 }
-                let target_var_index = target_raw as u16;
+                let target_var_index = VarIndex::new(target_raw as u16);
 
                 // Bounds check via descriptor.
                 let total_elements = container
@@ -1782,11 +1782,11 @@ fn execute(
                     .as_ref()
                     .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
                     .map(|d| d.total_elements)
-                    .ok_or(Trap::InvalidVariableIndex(VarIndex::new(ref_var_index)))?;
+                    .ok_or(Trap::InvalidVariableIndex(ref_var_index))?;
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index: VarIndex::new(target_var_index),
+                        var_index: target_var_index,
                         index: index_i64 as i32,
                         total_elements,
                     });
@@ -1809,7 +1809,7 @@ fn execute(
                 stack.push(Slot::from_i64(raw))?;
             }
             opcode::STORE_ARRAY_DEREF => {
-                let ref_var_index = read_u16_le(bytecode, &mut pc);
+                let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
                 let desc_index = read_u16_le(bytecode, &mut pc);
                 let index_slot = stack.pop()?;
                 let value_slot = stack.pop()?;
@@ -1822,7 +1822,7 @@ fn execute(
                 if target_raw == u64::MAX {
                     return Err(Trap::NullDereference);
                 }
-                let target_var_index = target_raw as u16;
+                let target_var_index = VarIndex::new(target_raw as u16);
 
                 // Bounds check via descriptor.
                 let total_elements = container
@@ -1830,11 +1830,11 @@ fn execute(
                     .as_ref()
                     .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
                     .map(|d| d.total_elements)
-                    .ok_or(Trap::InvalidVariableIndex(VarIndex::new(ref_var_index)))?;
+                    .ok_or(Trap::InvalidVariableIndex(ref_var_index))?;
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index: VarIndex::new(target_var_index),
+                        var_index: target_var_index,
                         index: index_i64 as i32,
                         total_elements,
                     });
@@ -1998,7 +1998,7 @@ mod tests {
 
         // If this compiles, the VM is in the Ready state.
         // Verify we can read the initial variable values.
-        assert_eq!(ready.read_variable(0).unwrap(), 0);
+        assert_eq!(ready.read_variable(VarIndex::new(0)).unwrap(), 0);
     }
 
     #[test]
@@ -2021,8 +2021,8 @@ mod tests {
 
         vm.run_round(0).unwrap();
 
-        assert_eq!(vm.read_variable(0).unwrap(), 10);
-        assert_eq!(vm.read_variable(1).unwrap(), 42);
+        assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 10);
+        assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 42);
     }
 
     #[test]
@@ -2087,7 +2087,7 @@ mod tests {
             .start()
             .unwrap();
         let stopped = vm.stop();
-        assert_eq!(stopped.read_variable(0).unwrap(), 0); // not yet executed
+        assert_eq!(stopped.read_variable(VarIndex::new(0)).unwrap(), 0); // not yet executed
     }
 
     #[test]
@@ -2316,7 +2316,7 @@ mod tests {
         vm.run_round(0).unwrap();
 
         // result should be 3 + 7 = 10
-        assert_eq!(vm.read_variable(0).unwrap(), 10);
+        assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 10);
     }
 
     #[test]

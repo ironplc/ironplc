@@ -3,6 +3,7 @@
 mod common;
 
 use common::{single_function_container, VmBuffers};
+use ironplc_container::VarIndex;
 
 #[test]
 fn execute_when_while_true_three_iterations_then_loops() {
@@ -31,7 +32,7 @@ fn execute_when_while_true_three_iterations_then_loops() {
     let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 0);
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 0);
 }
 
 #[test]
@@ -111,8 +112,8 @@ fn execute_when_for_loop_then_iterates_correctly() {
     let mut vm = common::load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(0).unwrap(), 4); // control ends at 4 (first value > 3)
-    assert_eq!(vm.read_variable(1).unwrap(), 6); // sum = 1+2+3
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 4); // control ends at 4 (first value > 3)
+    assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 6); // sum = 1+2+3
 }
 
 #[test]

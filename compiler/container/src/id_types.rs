@@ -1,4 +1,4 @@
-//! Newtype wrappers for semantically distinct `u16` identifiers and indices
+//! Newtype wrappers for semantically distinct identifiers and indices
 //! used throughout the bytecode container format.
 //!
 //! These types prevent accidentally mixing up values that share the same
@@ -170,6 +170,35 @@ impl ConstantIndex {
 }
 
 impl core::fmt::Display for ConstantIndex {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// A slot offset within a structure in the bytecode container.
+///
+/// Slot offsets identify positions within flattened structure layouts,
+/// where each slot is 8 bytes. Wraps `u32` (unlike the `u16`-based
+/// identifiers) because structures can contain many slots.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct SlotIndex(u32);
+
+impl SlotIndex {
+    /// Creates a new `SlotIndex` from a raw `u32`.
+    pub const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+    /// Returns the raw `u32` value.
+    pub const fn raw(self) -> u32 {
+        self.0
+    }
+    /// Returns the little-endian byte representation.
+    pub const fn to_le_bytes(self) -> [u8; 4] {
+        self.0.to_le_bytes()
+    }
+}
+
+impl core::fmt::Display for SlotIndex {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.0)
     }

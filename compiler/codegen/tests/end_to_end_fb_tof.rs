@@ -7,6 +7,7 @@
 //! The VM cycle_time is in microseconds; timer intrinsics convert to ms internally.
 
 mod common;
+use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_compile, VmBuffers};
@@ -52,22 +53,22 @@ END_PROGRAM
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
         // Round 1 at t=0: enable=TRUE
-        vm.write_variable(1, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(0).unwrap();
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
             1,
             "Q should be TRUE when IN is TRUE"
         );
 
         // Round 2 at t=1s: enable=FALSE, falling edge starts timing
-        vm.write_variable(1, 0).unwrap();
+        vm.write_variable(VarIndex::new(1), 0).unwrap();
         vm.run_round(1_000_000).unwrap();
 
         // Round 3 at t=3s: 2s elapsed, still before PT (5s)
         vm.run_round(3_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
             1,
             "Q should still be TRUE during off-delay"
         );
@@ -92,17 +93,17 @@ END_PROGRAM
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
         // Round 1: enable=TRUE
-        vm.write_variable(1, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(0).unwrap();
 
         // Round 2: enable=FALSE, falling edge
-        vm.write_variable(1, 0).unwrap();
+        vm.write_variable(VarIndex::new(1), 0).unwrap();
         vm.run_round(1_000_000).unwrap();
 
         // Round 3 at t=7s: 6s elapsed > 5s PT, Q should be FALSE
         vm.run_round(7_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
             0,
             "Q should be FALSE after PT elapsed"
         );
@@ -127,18 +128,18 @@ END_PROGRAM
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
         // Round 1: enable=TRUE
-        vm.write_variable(1, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(0).unwrap();
 
         // Round 2: enable=FALSE, falling edge starts timing
-        vm.write_variable(1, 0).unwrap();
+        vm.write_variable(VarIndex::new(1), 0).unwrap();
         vm.run_round(1_000_000).unwrap();
 
         // Round 3 at t=4s: ET should be 3000 ms (3 seconds)
         // elapsed is var[2] (timer=var[0], enable=var[1], elapsed=var[2])
         vm.run_round(4_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
             3000,
             "ET should be 3000 ms (3 seconds)"
         );
@@ -164,40 +165,48 @@ END_PROGRAM
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
         // Round 1 at t=0: enable=TRUE
-        vm.write_variable(1, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(2).unwrap(), 1, "Q should be TRUE");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(2)).unwrap(),
+            1,
+            "Q should be TRUE"
+        );
 
         // Round 2 at t=1s: enable=FALSE, falling edge
-        vm.write_variable(1, 0).unwrap();
+        vm.write_variable(VarIndex::new(1), 0).unwrap();
         vm.run_round(1_000_000).unwrap();
 
         // Round 3 at t=3s: 2s elapsed, still timing
         vm.run_round(3_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
             1,
             "Q should be TRUE during timing"
         );
 
         // Round 4 at t=4s: enable=TRUE again, reset
-        vm.write_variable(1, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(4_000_000).unwrap();
-        assert_eq!(vm.read_variable(2).unwrap(), 1, "Q should be TRUE");
         assert_eq!(
-            vm.read_variable(3).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
+            1,
+            "Q should be TRUE"
+        );
+        assert_eq!(
+            vm.read_variable(VarIndex::new(3)).unwrap(),
             0,
             "ET should be 0 after reset"
         );
 
         // Round 5 at t=5s: enable=FALSE again, new falling edge
-        vm.write_variable(1, 0).unwrap();
+        vm.write_variable(VarIndex::new(1), 0).unwrap();
         vm.run_round(5_000_000).unwrap();
 
         // Round 6 at t=8s: 3s since new falling edge, still before PT
         vm.run_round(8_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
             1,
             "Q should be TRUE, only 3s since new falling edge"
         );
@@ -205,7 +214,7 @@ END_PROGRAM
         // Round 7 at t=11s: 6s since new falling edge, past PT
         vm.run_round(11_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
             0,
             "Q should be FALSE, past PT since new falling edge"
         );
@@ -230,17 +239,17 @@ END_PROGRAM
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
         // Round 1: enable=TRUE
-        vm.write_variable(1, 1).unwrap();
+        vm.write_variable(VarIndex::new(1), 1).unwrap();
         vm.run_round(0).unwrap();
 
         // Round 2 at t=1s: enable=FALSE, falling edge
-        vm.write_variable(1, 0).unwrap();
+        vm.write_variable(VarIndex::new(1), 0).unwrap();
         vm.run_round(1_000_000).unwrap();
 
         // Round 3 at exactly t=6s: ET == PT (5s), Q should be FALSE
         vm.run_round(6_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(2).unwrap(),
+            vm.read_variable(VarIndex::new(2)).unwrap(),
             0,
             "Q should be FALSE when ET equals PT exactly"
         );
@@ -268,33 +277,45 @@ END_PROGRAM
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
         // Round 1: enable=TRUE
-        vm.write_variable(2, 1).unwrap();
+        vm.write_variable(VarIndex::new(2), 1).unwrap();
         vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(3).unwrap(), 1, "q1 should be TRUE");
-        assert_eq!(vm.read_variable(4).unwrap(), 1, "q2 should be TRUE");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(3)).unwrap(),
+            1,
+            "q1 should be TRUE"
+        );
+        assert_eq!(
+            vm.read_variable(VarIndex::new(4)).unwrap(),
+            1,
+            "q2 should be TRUE"
+        );
 
         // Round 2 at t=1s: enable=FALSE, both start timing
-        vm.write_variable(2, 0).unwrap();
+        vm.write_variable(VarIndex::new(2), 0).unwrap();
         vm.run_round(1_000_000).unwrap();
 
         // Round 3 at t=5s: timer1 (3s) done, timer2 (7s) still running
         vm.run_round(5_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(3).unwrap(),
+            vm.read_variable(VarIndex::new(3)).unwrap(),
             0,
             "q1 should be FALSE at t=5s"
         );
-        assert_eq!(vm.read_variable(4).unwrap(), 1, "q2 should be TRUE at t=5s");
+        assert_eq!(
+            vm.read_variable(VarIndex::new(4)).unwrap(),
+            1,
+            "q2 should be TRUE at t=5s"
+        );
 
         // Round 4 at t=9s: both done
         vm.run_round(9_000_000).unwrap();
         assert_eq!(
-            vm.read_variable(3).unwrap(),
+            vm.read_variable(VarIndex::new(3)).unwrap(),
             0,
             "q1 should be FALSE at t=9s"
         );
         assert_eq!(
-            vm.read_variable(4).unwrap(),
+            vm.read_variable(VarIndex::new(4)).unwrap(),
             0,
             "q2 should be FALSE at t=9s"
         );

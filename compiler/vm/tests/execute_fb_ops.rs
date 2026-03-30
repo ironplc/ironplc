@@ -1,7 +1,7 @@
 mod common;
 use common::VmBuffers;
 use ironplc_container::opcode;
-use ironplc_container::{ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor};
+use ironplc_container::{ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor, VarIndex};
 use ironplc_vm::error::Trap;
 
 /// Helper: builds a container with a data region for FB testing.
@@ -67,7 +67,7 @@ fn execute_when_fb_load_param_then_reads_data_region() {
     let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
-    assert_eq!(vm.read_variable_i64(1).unwrap(), 99);
+    assert_eq!(vm.read_variable_i64(VarIndex::new(1)).unwrap(), 99);
 }
 
 #[test]
@@ -100,7 +100,7 @@ fn execute_when_pop_then_discards_top() {
     let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
-    assert_eq!(vm.read_variable(0).unwrap(), 42);
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 42);
 }
 
 #[test]
@@ -173,7 +173,7 @@ fn execute_when_user_fb_call_then_executes_body_and_persists_state() {
     vm.run_round(0).unwrap();
 
     // y = x * 2 = 7 * 2 = 14
-    assert_eq!(vm.read_variable(1).unwrap(), 14);
+    assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 14);
 }
 
 #[test]
@@ -243,9 +243,9 @@ fn execute_when_user_fb_call_then_internal_state_persists_across_rounds() {
 
     // Round 1: total = 0 + 10 = 10
     vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(1).unwrap(), 10);
+    assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 10);
 
     // Round 2: total = 10 + 10 = 20 (state persists in data region)
     vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(1).unwrap(), 20);
+    assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 20);
 }

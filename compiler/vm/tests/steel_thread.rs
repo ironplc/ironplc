@@ -3,7 +3,7 @@ mod common;
 use std::io::Cursor;
 
 use common::{load_and_start, VmBuffers};
-use ironplc_container::{Container, ContainerBuilder};
+use ironplc_container::{Container, ContainerBuilder, VarIndex};
 
 /// End-to-end steel thread test: hand-assembled bytecode -> container
 /// format -> serialize -> deserialize -> VM execution -> correct result.
@@ -49,6 +49,6 @@ fn steel_thread_when_full_round_trip_then_x_is_10_y_is_42() {
     vm.run_round(0).unwrap();
 
     // 5. Verify results.
-    assert_eq!(vm.read_variable(0).unwrap(), 10);
-    assert_eq!(vm.read_variable(1).unwrap(), 42);
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 10);
+    assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 42);
 }

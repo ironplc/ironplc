@@ -1,6 +1,7 @@
 //! End-to-end integration tests for the MUL operator.
 
 mod common;
+use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_compile, parse_and_run, VmBuffers};
@@ -169,5 +170,5 @@ END_PROGRAM
         vm.run_round(0).unwrap();
     }
 
-    assert_eq!(vm.read_variable(0).unwrap(), 7);
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 7);
 }

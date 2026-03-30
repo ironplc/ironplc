@@ -243,7 +243,7 @@ fn compile_program_with_functions(
     // (starting at 2) and its variables are allocated after the program's.
     let mut compiled_functions = Vec::new();
     let mut next_function_id: u16 = 2;
-    let mut var_offset = program_var_count;
+    let mut var_offset = VarIndex::new(program_var_count);
 
     for func_decl in func_decls {
         let compiled = compile_user_function(
@@ -254,7 +254,7 @@ fn compile_program_with_functions(
             functions,
             &mut builder,
         )?;
-        var_offset += compiled.num_locals;
+        var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
         next_function_id += 1;
         compiled_functions.push(compiled);
     }
@@ -273,7 +273,7 @@ fn compile_program_with_functions(
     scan_emitter.emit_ret_void();
 
     // Build the container.
-    builder = builder.num_variables(total_variables);
+    builder = builder.num_variables(total_variables.raw());
 
     // Configure data region for STRING variables.
     if ctx.data_region_offset > 0 {
@@ -370,7 +370,7 @@ fn compile_program_with_functions(
 fn compile_user_function(
     func_decl: &FunctionDeclaration,
     function_id: u16,
-    var_offset: u16,
+    var_offset: VarIndex,
     ctx: &mut CompileContext,
     functions: &FunctionEnvironment,
     builder: &mut ContainerBuilder,
@@ -496,7 +496,7 @@ fn compile_user_function(
                 }
                 _ => {}
             }
-            current_index += 1;
+            current_index = VarIndex::new(current_index.raw() + 1);
             num_params += 1;
         }
     }
@@ -553,7 +553,7 @@ fn compile_user_function(
                 }
                 _ => {}
             }
-            current_index += 1;
+            current_index = VarIndex::new(current_index.raw() + 1);
         }
     }
 
@@ -598,9 +598,9 @@ fn compile_user_function(
             None
         }
     };
-    current_index += 1;
+    current_index = VarIndex::new(current_index.raw() + 1);
 
-    let num_locals = current_index - var_offset;
+    let num_locals = current_index.raw() - var_offset.raw();
 
     // Determine return type's OpType.
     let return_type_name = func_decl.return_type.to_type_name();
@@ -755,7 +755,7 @@ struct UserFunctionInfo {
     /// The function ID assigned in the container.
     function_id: u16,
     /// The absolute variable table offset where this function's parameters start.
-    var_offset: u16,
+    var_offset: VarIndex,
     /// Number of input parameters.
     num_params: u16,
     /// OpTypes for each input parameter, in declaration order.
@@ -775,7 +775,7 @@ struct UserFunctionInfo {
 /// Metadata for a function block instance variable.
 struct FbInstanceInfo {
     /// Variable table index holding the data region offset.
-    var_index: u16,
+    var_index: VarIndex,
     /// Type ID for FB_CALL dispatch.
     type_id: u16,
     /// Data region byte offset where this instance's fields start.
@@ -786,7 +786,7 @@ struct FbInstanceInfo {
 
 pub(crate) struct CompileContext {
     /// Maps variable identifiers to their variable table indices.
-    variables: HashMap<Id, u16>,
+    variables: HashMap<Id, VarIndex>,
     /// Maps variable identifiers to their type information.
     var_types: HashMap<Id, VarTypeInfo>,
     /// Ordered list of constants added to the constant pool.
@@ -839,7 +839,7 @@ impl CompileContext {
     }
 
     /// Looks up a variable index by identifier, using the provided span for error reporting.
-    fn var_index(&self, name: &Id) -> Result<u16, Diagnostic> {
+    fn var_index(&self, name: &Id) -> Result<VarIndex, Diagnostic> {
         self.variables.get(name).copied().ok_or_else(|| {
             Diagnostic::problem(
                 Problem::VariableUndefined,
@@ -942,7 +942,7 @@ fn assign_variables(
 ) -> Result<(), Diagnostic> {
     for decl in declarations {
         if let Some(id) = decl.identifier.symbolic_id() {
-            let index = ctx.variables.len() as u16;
+            let index = VarIndex::new(ctx.variables.len() as u16);
             ctx.variables.insert(id.clone(), index);
 
             // Resolve type info and collect debug metadata.
@@ -1082,7 +1082,7 @@ fn assign_variables(
             };
 
             ctx.debug_var_names.push(VarNameEntry {
-                var_index: VarIndex::new(index),
+                var_index: index,
                 function_id: function_id::GLOBAL_SCOPE,
                 var_section: map_var_section(&decl.var_type),
                 iec_type_tag: type_tag,
@@ -1238,7 +1238,7 @@ fn emit_initial_values(
                         Some(ReferenceInitialValue::Ref(target_var)) => {
                             // REF(var) → load the target variable's index as a u64 constant.
                             let target_index = resolve_variable(ctx, target_var)?;
-                            let pool_index = ctx.add_i64_constant(target_index as i64);
+                            let pool_index = ctx.add_i64_constant(target_index.raw() as i64);
                             emitter.emit_load_const_i64(pool_index);
                         }
                         _ => {
@@ -1302,7 +1302,7 @@ fn emit_function_local_prologue(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     func_decl: &FunctionDeclaration,
-    return_var_index: u16,
+    return_var_index: VarIndex,
     return_op_type: OpType,
 ) -> Result<(), Diagnostic> {
     // Re-initialize VAR locals (not Input parameters).
@@ -1352,7 +1352,7 @@ fn emit_function_local_prologue(
                     match &ref_init.initial_value {
                         Some(ReferenceInitialValue::Ref(target_var)) => {
                             let target_index = resolve_variable(ctx, target_var)?;
-                            let pool_index = ctx.add_i64_constant(target_index as i64);
+                            let pool_index = ctx.add_i64_constant(target_index.raw() as i64);
                             emitter.emit_load_const_i64(pool_index);
                         }
                         _ => {
@@ -2652,7 +2652,7 @@ pub(crate) fn compile_expr(
         ExprKind::Ref(variable) => {
             // REF(var) → push the variable's table index as a u64 constant.
             let var_index = resolve_variable(ctx, variable)?;
-            let pool_index = ctx.add_i64_constant(var_index as i64);
+            let pool_index = ctx.add_i64_constant(var_index.raw() as i64);
             emitter.emit_load_const_i64(pool_index);
             Ok(())
         }
@@ -4019,7 +4019,7 @@ fn compile_variable_read(
         Variable::Symbolic(SymbolicVariableKind::Structured(structured)) => {
             let (var_index, desc_index, slot_offset, _op_type, _field_type) =
                 crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
-            let idx_const = ctx.add_i32_constant(slot_offset as i32);
+            let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);
             emitter.emit_load_const_i32(idx_const);
             emitter.emit_load_array(var_index, desc_index);
             Ok(())
@@ -4112,7 +4112,7 @@ fn resolve_symbolic_variable_name(kind: &SymbolicVariableKind) -> Result<&Id, Di
 pub(crate) fn resolve_variable(
     ctx: &CompileContext,
     variable: &Variable,
-) -> Result<u16, Diagnostic> {
+) -> Result<VarIndex, Diagnostic> {
     match variable {
         Variable::Symbolic(symbolic) => match symbolic {
             SymbolicVariableKind::Named(named) => ctx.var_index(&named.name),
@@ -4284,7 +4284,7 @@ pub(crate) fn emit_truncation(emitter: &mut Emitter, type_info: VarTypeInfo) {
     }
 }
 
-fn emit_load_var(emitter: &mut Emitter, var_index: u16, op_type: OpType) {
+fn emit_load_var(emitter: &mut Emitter, var_index: VarIndex, op_type: OpType) {
     match op_type.0 {
         OpWidth::W32 => emitter.emit_load_var_i32(var_index),
         OpWidth::W64 => emitter.emit_load_var_i64(var_index),
@@ -4293,7 +4293,7 @@ fn emit_load_var(emitter: &mut Emitter, var_index: u16, op_type: OpType) {
     }
 }
 
-fn emit_store_var(emitter: &mut Emitter, var_index: u16, op_type: OpType) {
+fn emit_store_var(emitter: &mut Emitter, var_index: VarIndex, op_type: OpType) {
     match op_type.0 {
         OpWidth::W32 => emitter.emit_store_var_i32(var_index),
         OpWidth::W64 => emitter.emit_store_var_i64(var_index),

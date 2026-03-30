@@ -2,6 +2,7 @@ mod common;
 use common::VmBuffers;
 use ironplc_container::opcode;
 use ironplc_container::ContainerBuilder;
+use ironplc_container::VarIndex;
 use ironplc_vm::error::Trap;
 
 /// Helper: builds a container with one array variable at var[0].
@@ -79,7 +80,7 @@ fn execute_when_store_array_then_load_array_roundtrips_i32() {
     let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
-    assert_eq!(vm.read_variable(1).unwrap(), 42);
+    assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 42);
 }
 
 #[test]
@@ -102,7 +103,7 @@ fn execute_when_store_array_at_index_0_then_loads_correctly() {
     let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
-    assert_eq!(vm.read_variable(1).unwrap(), 99);
+    assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 99);
 }
 
 #[test]
@@ -198,7 +199,7 @@ fn execute_when_store_array_at_last_valid_index_then_succeeds() {
     let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
-    assert_eq!(vm.read_variable(1).unwrap(), 77);
+    assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 77);
 }
 
 #[test]
@@ -217,5 +218,5 @@ fn execute_when_load_array_uninitialized_then_returns_zero() {
     let mut vm = common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
-    assert_eq!(vm.read_variable(1).unwrap(), 0);
+    assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 0);
 }

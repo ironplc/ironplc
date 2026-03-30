@@ -1,3 +1,5 @@
+use ironplc_container::VarIndex;
+
 /// A 64-bit slot that holds any VM value.
 ///
 /// I32 values are sign-extended into the slot so that negative values
@@ -68,8 +70,8 @@ impl Slot {
 
     /// Extracts a variable table index from this slot.
     /// Returns `None` if the value exceeds u16::MAX (invalid index).
-    pub fn as_var_index(self) -> Option<u16> {
-        u16::try_from(self.0).ok()
+    pub fn as_var_index(self) -> Option<VarIndex> {
+        u16::try_from(self.0).ok().map(VarIndex::new)
     }
 }
 
@@ -164,13 +166,13 @@ mod tests {
     #[test]
     fn slot_as_var_index_when_valid_then_some() {
         let slot = Slot::from_i64(5);
-        assert_eq!(slot.as_var_index(), Some(5));
+        assert_eq!(slot.as_var_index(), Some(VarIndex::new(5)));
     }
 
     #[test]
     fn slot_as_var_index_when_max_u16_then_some() {
         let slot = Slot::from_u64(u16::MAX as u64);
-        assert_eq!(slot.as_var_index(), Some(u16::MAX));
+        assert_eq!(slot.as_var_index(), Some(VarIndex::new(u16::MAX)));
     }
 
     #[test]
