@@ -7,7 +7,7 @@ from os.path import abspath
 # -- Project information -----------------------------------------------------
 
 project = 'IronPLC'
-copyright = '2023, Garret Fick'
+copyright = '2023-2026, Garret Fick'
 author = 'Garret Fick'
 
 # -- General configuration ---------------------------------------------------
