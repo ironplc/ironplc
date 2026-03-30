@@ -8,14 +8,6 @@ your program into a bytecode container and run it.
 
 .. include:: ../includes/requires-compiler.rst
 
-.. warning::
-
-   The compile command currently supports only trivial programs. Supported
-   features include: :code:`PROGRAM` declarations, :code:`INT` variable
-   declarations, assignment statements, integer literal constants, and
-   the ``+`` (add) operator. Programs using other features will produce a
-   code generation error.
-
 --------------------------------------
 Check the Program
 --------------------------------------
