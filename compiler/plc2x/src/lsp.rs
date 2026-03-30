@@ -8,8 +8,8 @@ use lsp_server::{Connection, ExtractError, Message, RequestId};
 use lsp_types::{
     notification::{self, Notification, PublishDiagnostics},
     request::{self, Request},
-    InitializeParams, OneOf, PublishDiagnosticsParams, SemanticTokens, SemanticTokensFullOptions,
-    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensResult,
+    CodeLensOptions, InitializeParams, OneOf, PublishDiagnosticsParams, SemanticTokens,
+    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensResult,
     SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability,
     TextDocumentSyncKind, WorkDoneProgressOptions, WorkspaceFoldersServerCapabilities,
     WorkspaceServerCapabilities,
@@ -101,7 +101,10 @@ fn start_with_connection(
         Some(project) => project,
         None => {
             let compiler_options = extract_compiler_options(&initialize_params);
-            LspProject::new(Box::new(FileBackedProject::with_options(compiler_options)))
+            LspProject::with_options(
+                Box::new(FileBackedProject::with_options(compiler_options)),
+                compiler_options,
+            )
         }
     };
 
@@ -164,6 +167,9 @@ impl<'a> LspServer<'a> {
                 file_operations: None,
             }),
             document_symbol_provider: Some(OneOf::Left(true)),
+            code_lens_provider: Some(CodeLensOptions {
+                resolve_provider: None,
+            }),
             ..ServerCapabilities::default()
         }
     }
@@ -196,7 +202,7 @@ impl<'a> LspServer<'a> {
         Err("terminated but no shutdown".to_owned())
     }
 
-    fn handle_request(&self, req: lsp_server::Request) -> &'static str {
+    fn handle_request(&mut self, req: lsp_server::Request) -> &'static str {
         let req_id = req.id.clone();
         let req = match Self::cast_request::<request::Shutdown>(req) {
             Ok(_params) => {
@@ -230,7 +236,7 @@ impl<'a> LspServer<'a> {
             }
             Err(req) => req,
         };
-        let _req = match Self::cast_request::<request::DocumentSymbolRequest>(req) {
+        let req = match Self::cast_request::<request::DocumentSymbolRequest>(req) {
             Ok(params) => {
                 let uri = params.text_document.uri;
                 let symbols = self.project.document_symbols(&uri);
@@ -239,6 +245,18 @@ impl<'a> LspServer<'a> {
                 self.send_response::<request::DocumentSymbolRequest>(req_id, Some(symbols));
 
                 return request::DocumentSymbolRequest::METHOD;
+            }
+            Err(req) => req,
+        };
+        let _req = match Self::cast_request::<request::CodeLensRequest>(req) {
+            Ok(params) => {
+                let uri = params.text_document.uri;
+                let lenses = self.project.code_lens(&uri);
+
+                trace!("CodeLensRequest Response {lenses:?}");
+                self.send_response::<request::CodeLensRequest>(req_id, Some(lenses));
+
+                return request::CodeLensRequest::METHOD;
             }
             Err(req) => req,
         };
@@ -262,6 +280,39 @@ impl<'a> LspServer<'a> {
                 .send(lsp_server::Message::Response(response))
                 .unwrap();
             return "ironplc/disassemble";
+        }
+
+        if _req.method == "ironplc/run" {
+            let params: serde_json::Value = serde_json::from_value(_req.params).unwrap_or_default();
+            let cycle_time_us = params["cycleTimeUs"].as_u64().unwrap_or(100_000);
+
+            let result = self.project.run_load(cycle_time_us);
+            let response = lsp_server::Response::new_ok(req_id, result);
+            self.sender
+                .send(lsp_server::Message::Response(response))
+                .unwrap();
+            return "ironplc/run";
+        }
+
+        if _req.method == "ironplc/step" {
+            let params: serde_json::Value = serde_json::from_value(_req.params).unwrap_or_default();
+            let scans = params["scans"].as_u64().unwrap_or(1) as u32;
+
+            let result = self.project.run_step(scans);
+            let response = lsp_server::Response::new_ok(req_id, result);
+            self.sender
+                .send(lsp_server::Message::Response(response))
+                .unwrap();
+            return "ironplc/step";
+        }
+
+        if _req.method == "ironplc/stop" {
+            let result = self.project.run_stop();
+            let response = lsp_server::Response::new_ok(req_id, result);
+            self.sender
+                .send(lsp_server::Message::Response(response))
+                .unwrap();
+            return "ironplc/stop";
         }
 
         ""
@@ -820,5 +871,125 @@ mod test {
             diagnostics.diagnostics.is_empty(),
             "Expected no diagnostics for LTIME with default options (demoted to identifier)"
         );
+    }
+
+    #[test]
+    fn run_request_when_valid_project_then_returns_ok() {
+        let proj = Box::new(FileBackedProject::default());
+        let mut server = TestServer::new(proj);
+
+        // Load a document first (simulates file open)
+        server.send_notification::<notification::DidChangeTextDocument>(
+            DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: Uri::from_str("file://example.net/test.st").unwrap(),
+                    version: 1,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: String::from(
+                        "PROGRAM main\nVAR\nx : DINT;\nEND_VAR\nx := 42;\nEND_PROGRAM",
+                    ),
+                }],
+            },
+        );
+        server.receive_notification::<PublishDiagnosticsParams>();
+
+        let params = serde_json::json!({"cycleTimeUs": 100000});
+        let req_id = server.send_raw_request("ironplc/run", params);
+        let result: serde_json::Value = server.receive_response(req_id);
+
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["total_scans"], 0);
+    }
+
+    #[test]
+    fn step_request_when_program_loaded_then_returns_variables() {
+        let proj = Box::new(FileBackedProject::default());
+        let mut server = TestServer::new(proj);
+
+        server.send_notification::<notification::DidChangeTextDocument>(
+            DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: Uri::from_str("file://example.net/test.st").unwrap(),
+                    version: 1,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: String::from(
+                        "PROGRAM main\nVAR\nx : DINT;\nEND_VAR\nx := 42;\nEND_PROGRAM",
+                    ),
+                }],
+            },
+        );
+        server.receive_notification::<PublishDiagnosticsParams>();
+
+        // Load program
+        let req_id = server.send_raw_request("ironplc/run", serde_json::json!({}));
+        let _: serde_json::Value = server.receive_response(req_id);
+
+        // Step one scan
+        let step_id = server.send_raw_request("ironplc/step", serde_json::json!({"scans": 1}));
+        let result: serde_json::Value = server.receive_response(step_id);
+
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["total_scans"], 1);
+        let vars = result["variables"].as_array().unwrap();
+        assert!(!vars.is_empty());
+        assert_eq!(vars[0]["name"], "x");
+        assert_eq!(vars[0]["value"], "42");
+    }
+
+    #[test]
+    fn step_request_when_no_program_then_returns_error() {
+        let proj = Box::new(FileBackedProject::default());
+        let mut server = TestServer::new(proj);
+
+        let req_id = server.send_raw_request("ironplc/step", serde_json::json!({"scans": 1}));
+        let result: serde_json::Value = server.receive_response(req_id);
+
+        assert_eq!(result["ok"], false);
+        assert!(result["error"]
+            .as_str()
+            .unwrap()
+            .contains("No program loaded"));
+    }
+
+    #[test]
+    fn stop_request_when_program_running_then_clears_session() {
+        let proj = Box::new(FileBackedProject::default());
+        let mut server = TestServer::new(proj);
+
+        server.send_notification::<notification::DidChangeTextDocument>(
+            DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: Uri::from_str("file://example.net/test.st").unwrap(),
+                    version: 1,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: String::from(
+                        "PROGRAM main\nVAR\nx : DINT;\nEND_VAR\nx := 42;\nEND_PROGRAM",
+                    ),
+                }],
+            },
+        );
+        server.receive_notification::<PublishDiagnosticsParams>();
+
+        let req_id = server.send_raw_request("ironplc/run", serde_json::json!({}));
+        let _: serde_json::Value = server.receive_response(req_id);
+
+        // Stop
+        let stop_id = server.send_raw_request("ironplc/stop", serde_json::json!({}));
+        let result: serde_json::Value = server.receive_response(stop_id);
+        assert_eq!(result["ok"], true);
+
+        // Step should fail now
+        let step_id = server.send_raw_request("ironplc/step", serde_json::json!({"scans": 1}));
+        let result: serde_json::Value = server.receive_response(step_id);
+        assert_eq!(result["ok"], false);
     }
 }

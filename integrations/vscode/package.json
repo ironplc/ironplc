@@ -38,6 +38,13 @@
         "title": "New Structured Text File",
         "shortTitle": "Structured Text File",
         "category": "IronPLC"
+      },
+      {
+        "command": "ironplc.runProgram",
+        "title": "Run Program",
+        "shortTitle": "Run",
+        "category": "IronPLC",
+        "icon": "$(play)"
       }
     ],
     "menus": {

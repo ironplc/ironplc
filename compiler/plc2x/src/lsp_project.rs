@@ -8,12 +8,13 @@ use ironplc_dsl::core::{FileId, Located};
 use ironplc_parser::token::{Token, TokenType};
 use log::error;
 use lsp_types::{
-    CodeDescription, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DocumentSymbol,
-    DocumentSymbolResponse, Location, NumberOrString, SemanticTokenType, SymbolKind,
-    WorkspaceFolder,
+    CodeDescription, CodeLens, Command, Diagnostic, DiagnosticRelatedInformation,
+    DiagnosticSeverity, DocumentSymbol, DocumentSymbolResponse, Location, NumberOrString,
+    SemanticTokenType, SymbolKind, WorkspaceFolder,
 };
 use lsp_types::{SemanticToken, Uri};
 
+use crate::lsp_runner::{RunResult, VmRunner};
 use crate::project::Project;
 
 fn to_path_buf(uri: &Uri) -> Result<PathBuf, ()> {
@@ -24,11 +25,30 @@ fn to_path_buf(uri: &Uri) -> Result<PathBuf, ()> {
 /// and returns LSP types.
 pub struct LspProject {
     wrapped: Box<dyn Project + Send>,
+    /// Active VM runner session for step-through execution.
+    runner: Option<VmRunner>,
+    /// Compiler options (cached for the runner).
+    compiler_options: ironplc_parser::options::CompilerOptions,
 }
 
 impl LspProject {
     pub fn new(project: Box<dyn Project + Send>) -> Self {
-        Self { wrapped: project }
+        Self {
+            wrapped: project,
+            runner: None,
+            compiler_options: ironplc_parser::options::CompilerOptions::default(),
+        }
+    }
+
+    pub fn with_options(
+        project: Box<dyn Project + Send>,
+        options: ironplc_parser::options::CompilerOptions,
+    ) -> Self {
+        Self {
+            wrapped: project,
+            runner: None,
+            compiler_options: options,
+        }
     }
 
     pub(crate) fn initialize(&mut self, folder: &WorkspaceFolder) {
@@ -204,6 +224,89 @@ impl LspProject {
         }
 
         DocumentSymbolResponse::Nested(symbols)
+    }
+
+    /// Returns CodeLens items for runnable PROGRAM declarations.
+    ///
+    /// Scans source text for `PROGRAM` keywords to find entry points.
+    /// This works even when the file has parse errors.
+    pub(crate) fn code_lens(&self, uri: &Uri) -> Vec<CodeLens> {
+        let path = match to_path_buf(uri) {
+            Ok(path) => path,
+            Err(_) => return vec![],
+        };
+
+        let file_id = FileId::from_path(&path);
+
+        let source = match self.wrapped.find(&file_id) {
+            Some(src) => src,
+            None => return vec![],
+        };
+
+        let contents = source.as_string();
+        let mut lenses = Vec::new();
+
+        for (line_num, line) in contents.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("PROGRAM ") || trimmed == "PROGRAM" {
+                let range = lsp_types::Range::new(
+                    lsp_types::Position::new(line_num as u32, 0),
+                    lsp_types::Position::new(line_num as u32, line.len() as u32),
+                );
+
+                lenses.push(CodeLens {
+                    range,
+                    command: Some(Command {
+                        title: "\u{25B6} Run".to_string(),
+                        command: "ironplc.runProgram".to_string(),
+                        arguments: None,
+                    }),
+                    data: None,
+                });
+            }
+        }
+
+        lenses
+    }
+
+    /// Compile from project sources and start a VM execution session.
+    pub(crate) fn run_load(&mut self, cycle_time_us: u64) -> RunResult {
+        self.runner = None;
+
+        let mut sources = self.wrapped.sources_mut();
+        let sources_slice: &mut [&mut ironplc_sources::Source] = &mut sources;
+
+        match VmRunner::load_from_sources(sources_slice, cycle_time_us, &self.compiler_options) {
+            Ok((runner, result)) => {
+                self.runner = Some(runner);
+                result
+            }
+            Err(err) => err,
+        }
+    }
+
+    /// Execute N scan cycles in the current session.
+    pub(crate) fn run_step(&mut self, scans: u32) -> RunResult {
+        match self.runner.as_mut() {
+            Some(runner) => runner.step(scans),
+            None => RunResult {
+                ok: false,
+                variables: vec![],
+                total_scans: 0,
+                error: Some("No program loaded. Send ironplc/run first.".to_string()),
+            },
+        }
+    }
+
+    /// Stop the current execution session.
+    pub(crate) fn run_stop(&mut self) -> RunResult {
+        self.runner = None;
+        RunResult {
+            ok: true,
+            variables: vec![],
+            total_scans: 0,
+            error: None,
+        }
     }
 }
 

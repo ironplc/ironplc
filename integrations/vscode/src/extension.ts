@@ -9,6 +9,7 @@ import {
 import { IplcEditorProvider } from './iplcEditorProvider';
 import { IronplcTaskProvider } from './ironplcTaskProvider';
 import { CompilerEnvironment, findCompilerPath } from './compilerDiscovery';
+import { RunPanelProvider } from './runPanelProvider';
 import { ProblemCode, formatProblem } from './problems';
 
 const VERBOSITY = new Map<string, string[]>([
@@ -69,6 +70,12 @@ export function activate(context: vscode.ExtensionContext) {
   if (client) {
     client.start();
     context.subscriptions.push(IplcEditorProvider.register(context, client));
+
+    const runPanel = new RunPanelProvider(client);
+    context.subscriptions.push(
+      vscode.commands.registerCommand('ironplc.runProgram', () => runPanel.start(context)),
+    );
+
     console.debug('Extension "ironplc" is active!');
   }
   else {
