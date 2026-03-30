@@ -1,6 +1,7 @@
 //! End-to-end integration tests for the RIGHT standard function.
 
 mod common;
+use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;

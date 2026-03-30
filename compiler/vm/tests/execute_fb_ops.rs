@@ -1,7 +1,8 @@
 mod common;
 use common::VmBuffers;
 use ironplc_container::opcode;
-use ironplc_container::{ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor, VarIndex};
+use ironplc_container::VarIndex;
+use ironplc_container::{ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor};
 use ironplc_vm::error::Trap;
 
 /// Helper: builds a container with a data region for FB testing.

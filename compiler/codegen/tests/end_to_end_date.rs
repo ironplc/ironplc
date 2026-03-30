@@ -9,6 +9,7 @@
 //! - DATE_AND_TIME (DT): stored as u32 seconds since 1970-01-01
 
 mod common;
+use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;

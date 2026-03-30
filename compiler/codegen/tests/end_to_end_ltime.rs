@@ -7,6 +7,7 @@
 
 mod common;
 use common::parse_and_run;
+use ironplc_container::VarIndex;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 
 #[test]

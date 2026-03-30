@@ -254,7 +254,7 @@ fn compile_program_with_functions(
             functions,
             &mut builder,
         )?;
-        var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
+        var_offset += compiled.num_locals;
         next_function_id += 1;
         compiled_functions.push(compiled);
     }
@@ -496,7 +496,7 @@ fn compile_user_function(
                 }
                 _ => {}
             }
-            current_index = VarIndex::new(current_index.raw() + 1);
+            current_index += 1;
             num_params += 1;
         }
     }
@@ -553,7 +553,7 @@ fn compile_user_function(
                 }
                 _ => {}
             }
-            current_index = VarIndex::new(current_index.raw() + 1);
+            current_index += 1;
         }
     }
 
@@ -598,9 +598,9 @@ fn compile_user_function(
             None
         }
     };
-    current_index = VarIndex::new(current_index.raw() + 1);
+    current_index += 1;
 
-    let num_locals = current_index.raw() - var_offset.raw();
+    let num_locals = current_index - var_offset;
 
     // Determine return type's OpType.
     let return_type_name = func_decl.return_type.to_type_name();
@@ -1238,7 +1238,7 @@ fn emit_initial_values(
                         Some(ReferenceInitialValue::Ref(target_var)) => {
                             // REF(var) → load the target variable's index as a u64 constant.
                             let target_index = resolve_variable(ctx, target_var)?;
-                            let pool_index = ctx.add_i64_constant(target_index.raw() as i64);
+                            let pool_index = ctx.add_i64_constant(target_index.into());
                             emitter.emit_load_const_i64(pool_index);
                         }
                         _ => {
@@ -1352,7 +1352,7 @@ fn emit_function_local_prologue(
                     match &ref_init.initial_value {
                         Some(ReferenceInitialValue::Ref(target_var)) => {
                             let target_index = resolve_variable(ctx, target_var)?;
-                            let pool_index = ctx.add_i64_constant(target_index.raw() as i64);
+                            let pool_index = ctx.add_i64_constant(target_index.into());
                             emitter.emit_load_const_i64(pool_index);
                         }
                         _ => {
@@ -2652,7 +2652,7 @@ pub(crate) fn compile_expr(
         ExprKind::Ref(variable) => {
             // REF(var) → push the variable's table index as a u64 constant.
             let var_index = resolve_variable(ctx, variable)?;
-            let pool_index = ctx.add_i64_constant(var_index.raw() as i64);
+            let pool_index = ctx.add_i64_constant(var_index.into());
             emitter.emit_load_const_i64(pool_index);
             Ok(())
         }

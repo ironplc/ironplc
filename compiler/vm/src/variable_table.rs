@@ -26,9 +26,9 @@ impl VariableScope {
 
     /// Checks whether a variable index is within this scope's allowed range.
     pub fn check_access(&self, index: VarIndex) -> Result<(), Trap> {
-        let raw = index.raw();
-        if raw < self.shared_globals_size
-            || (raw >= self.instance_offset && raw < self.instance_offset + self.instance_count)
+        if index.raw() < self.shared_globals_size
+            || (index.raw() >= self.instance_offset
+                && index.raw() < self.instance_offset + self.instance_count)
         {
             Ok(())
         } else {
@@ -90,7 +90,7 @@ impl<'a> VariableTable<'a> {
                 template[offset + 6],
                 template[offset + 7],
             ]);
-            let idx = VarIndex::new(start.raw() + i as u16);
+            let idx = start + i as u16;
             let slot = self
                 .slots
                 .get_mut(idx.raw() as usize)

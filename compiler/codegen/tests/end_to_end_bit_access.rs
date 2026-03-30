@@ -1,6 +1,7 @@
 //! End-to-end integration tests for bit access on integer variables (e.g., `a.0`).
 
 mod common;
+use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;

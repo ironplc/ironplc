@@ -1,6 +1,7 @@
 //! End-to-end tests for real-to-integer type conversions.
 
 mod common;
+use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;

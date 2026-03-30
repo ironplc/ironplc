@@ -49,7 +49,7 @@ macro_rules! emit_load_u16 {
     };
 }
 
-/// Emit a variable load instruction with a VarIndex operand that pushes one value.
+/// Emit an instruction with a VarIndex operand that pushes one value.
 macro_rules! emit_load_var_index {
     ($name:ident, $opcode:expr) => {
         pub fn $name(&mut self, index: VarIndex) {
@@ -60,7 +60,7 @@ macro_rules! emit_load_var_index {
     };
 }
 
-/// Emit a variable store instruction with a VarIndex operand that pops one value.
+/// Emit an instruction with a VarIndex operand that pops one value.
 macro_rules! emit_store_var_index {
     ($name:ident, $opcode:expr) => {
         pub fn $name(&mut self, index: VarIndex) {

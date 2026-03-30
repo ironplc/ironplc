@@ -1,6 +1,7 @@
 //! End-to-end integration tests for user-defined function calls.
 
 mod common;
+use ironplc_container::VarIndex;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 
 use common::parse_and_run;

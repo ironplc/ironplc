@@ -5,6 +5,7 @@
 
 mod common;
 use common::{parse_and_run, parse_and_try_run};
+use ironplc_container::VarIndex;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_vm::error::Trap;
 

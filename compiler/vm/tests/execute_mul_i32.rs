@@ -5,6 +5,7 @@
 
 mod common;
 
+use ironplc_container::VarIndex;
 use ironplc_vm::error::Trap;
 
 // Overflow: i32::MAX * 2 wraps to -2
