@@ -169,27 +169,6 @@ impl Visitor<Diagnostic> for HierarchyVisitor {
 
         node.recurse_visit(self)
     }
-
-    fn visit_function_block_initial_value_assignment(
-        &mut self,
-        node: &ironplc_dsl::common::FunctionBlockInitialValueAssignment,
-    ) -> Result<Self::Value, Diagnostic> {
-        if let Some(existing) = self.pou_types.insert(
-            node.type_name.name.clone(),
-            (PouKind::FunctionBlock, node.type_name.name.span()),
-        ) {
-            self.problems.push(
-                Diagnostic::problem(
-                    Problem::PouDeclNameDuplicated,
-                    Label::span(node.type_name.name.span(), "POU"),
-                )
-                .with_secondary(Label::span(existing.1, "POU")),
-            );
-        }
-        self.context_type = Some((PouKind::Config, node.type_name.name.span()));
-
-        node.recurse_visit(self)
-    }
 }
 
 #[cfg(test)]
@@ -293,6 +272,50 @@ mod tests {
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&library, &context, &CompilerOptions::default());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_program_uses_function_block_instance_then_ok() {
+        let program = "
+        FUNCTION_BLOCK COUNTER
+            VAR
+                count : INT;
+            END_VAR
+            count := count + 1;
+        END_FUNCTION_BLOCK
+
+        PROGRAM main
+            VAR
+                c : COUNTER;
+            END_VAR
+            c();
+        END_PROGRAM";
+
+        let library = parse_and_resolve_types(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_function_block_uses_function_block_instance_then_ok() {
+        let program = "
+        FUNCTION_BLOCK Callee
+            VAR
+                IN1 : BOOL;
+            END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Caller
+            VAR
+                CalleeInstance : Callee;
+            END_VAR
+        END_FUNCTION_BLOCK";
+
+        let library = parse_and_resolve_types(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
     }
 
     #[test]
