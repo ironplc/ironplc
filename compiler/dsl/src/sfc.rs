@@ -206,3 +206,93 @@ impl ActionAssociation {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_when_action_qualifier_simple_variants_then_formatted() {
+        assert_eq!(format!("{}", ActionQualifier::N), "N");
+        assert_eq!(format!("{}", ActionQualifier::R), "R");
+        assert_eq!(format!("{}", ActionQualifier::S), "S");
+        assert_eq!(format!("{}", ActionQualifier::L), "L");
+        assert_eq!(format!("{}", ActionQualifier::D), "D");
+        assert_eq!(format!("{}", ActionQualifier::P), "P");
+    }
+
+    #[test]
+    fn display_when_timed_qualifier_then_formatted() {
+        assert_eq!(format!("{}", TimedQualifier::L), "L");
+        assert_eq!(format!("{}", TimedQualifier::D), "D");
+        assert_eq!(format!("{}", TimedQualifier::SD), "SD");
+        assert_eq!(format!("{}", TimedQualifier::DS), "DS");
+        assert_eq!(format!("{}", TimedQualifier::SL), "SL");
+    }
+
+    #[test]
+    fn action_association_new_when_called_then_creates_with_defaults() {
+        let assoc = ActionAssociation::new("action1", Some(ActionQualifier::N));
+        assert_eq!(assoc.name, Id::from("action1"));
+        assert_eq!(assoc.qualifier, Some(ActionQualifier::N));
+        assert!(assoc.indicators.is_empty());
+    }
+
+    #[test]
+    fn recurse_visit_when_simple_qualifier_then_ok() {
+        use crate::visitor::Visitor;
+
+        struct NoOpVisitor;
+        impl Visitor<String> for NoOpVisitor {
+            type Value = ();
+        }
+
+        let mut visitor = NoOpVisitor;
+        let result = ActionQualifier::N.recurse_visit(&mut visitor);
+        assert!(result.is_ok());
+        let result = ActionQualifier::R.recurse_visit(&mut visitor);
+        assert!(result.is_ok());
+        let result = ActionQualifier::S.recurse_visit(&mut visitor);
+        assert!(result.is_ok());
+        let result = ActionQualifier::L.recurse_visit(&mut visitor);
+        assert!(result.is_ok());
+        let result = ActionQualifier::D.recurse_visit(&mut visitor);
+        assert!(result.is_ok());
+        let result = ActionQualifier::P.recurse_visit(&mut visitor);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn recurse_fold_when_simple_qualifier_then_returns_same() {
+        use crate::fold::Fold;
+
+        struct NoOpFold;
+        impl Fold<String> for NoOpFold {}
+
+        let mut fold = NoOpFold;
+        assert_eq!(
+            ActionQualifier::N.recurse_fold(&mut fold).unwrap(),
+            ActionQualifier::N
+        );
+        assert_eq!(
+            ActionQualifier::R.recurse_fold(&mut fold).unwrap(),
+            ActionQualifier::R
+        );
+        assert_eq!(
+            ActionQualifier::S.recurse_fold(&mut fold).unwrap(),
+            ActionQualifier::S
+        );
+        assert_eq!(
+            ActionQualifier::L.recurse_fold(&mut fold).unwrap(),
+            ActionQualifier::L
+        );
+        assert_eq!(
+            ActionQualifier::D.recurse_fold(&mut fold).unwrap(),
+            ActionQualifier::D
+        );
+        assert_eq!(
+            ActionQualifier::P.recurse_fold(&mut fold).unwrap(),
+            ActionQualifier::P
+        );
+    }
+}
