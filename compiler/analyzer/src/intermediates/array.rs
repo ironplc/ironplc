@@ -28,14 +28,31 @@ pub fn try_from(
     match spec {
         SpecificationKind::Inline(array_subranges) => {
             // Array with explicit subranges: MY_ARRAY : ARRAY [1..10, 1..5] OF INT;
-            let element_type_name = &array_subranges.type_name;
-            let element_type = type_environment.get(element_type_name).ok_or_else(|| {
-                Diagnostic::problem(
-                    Problem::ArrayElementTypeNotDeclared,
-                    Label::span(node_name.span(), "Array declaration"),
-                )
-                .with_secondary(Label::span(element_type_name.span(), "Element type"))
-            })?;
+            let element_type_name = array_subranges.type_name.to_type_name();
+
+            // Resolve the element type representation based on the element type kind
+            let element_repr = match &array_subranges.type_name {
+                ArrayElementType::String(spec) | ArrayElementType::WString(spec) => {
+                    // Sized string: resolve directly from the specification
+                    IntermediateType::String {
+                        max_len: spec
+                            .length
+                            .as_ref()
+                            .and_then(|len| len.as_integer().map(|i| i.value)),
+                    }
+                }
+                ArrayElementType::Named(_) => {
+                    let element_type =
+                        type_environment.get(&element_type_name).ok_or_else(|| {
+                            Diagnostic::problem(
+                                Problem::ArrayElementTypeNotDeclared,
+                                Label::span(node_name.span(), "Array declaration"),
+                            )
+                            .with_secondary(Label::span(element_type_name.span(), "Element type"))
+                        })?;
+                    element_type.representation.clone()
+                }
+            };
 
             // Validate array bounds
             validate_array_bounds(&array_subranges.ranges, node_name)?;
@@ -56,10 +73,10 @@ pub fn try_from(
             // Wrap in Reference if the element type is REF_TO
             let resolved_element_type = if array_subranges.ref_to {
                 IntermediateType::Reference {
-                    target_type: Box::new(element_type.representation.clone()),
+                    target_type: Box::new(element_repr),
                 }
             } else {
-                element_type.representation.clone()
+                element_repr
             };
 
             Ok(IntermediateResult::Type(TypeAttributes::new(
@@ -303,7 +320,7 @@ mod tests {
                 start: literal(1, false),
                 end: literal(10, false),
             }],
-            type_name: TypeName::from("int"),
+            type_name: ArrayElementType::Named(TypeName::from("int")),
             ref_to: false,
         };
 
@@ -377,7 +394,7 @@ mod tests {
                 start: literal(1, false),
                 end: literal(10, false),
             }],
-            type_name: TypeName::from("MISSING_TYPE"),
+            type_name: ArrayElementType::Named(TypeName::from("MISSING_TYPE")),
             ref_to: false,
         };
 
@@ -417,7 +434,7 @@ mod tests {
                     end: literal(4, false),
                 },
             ],
-            type_name: TypeName::from("bool"),
+            type_name: ArrayElementType::Named(TypeName::from("bool")),
             ref_to: false,
         };
 
@@ -461,7 +478,7 @@ mod tests {
                 start: literal(0, false),
                 end: literal(3, false),
             }],
-            type_name: TypeName::from("byte"),
+            type_name: ArrayElementType::Named(TypeName::from("byte")),
             ref_to: true,
         };
 
@@ -489,6 +506,96 @@ mod tests {
             assert_eq!(dimensions.len(), 1);
             assert_eq!(dimensions[0].lower, 0);
             assert_eq!(dimensions[0].upper, 3);
+        } else {
+            unreachable!("Expected Array type");
+        }
+    }
+
+    #[test]
+    fn try_from_when_array_of_sized_string_then_element_type_has_max_len() {
+        let env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+
+        let array_subranges = ArraySubranges {
+            ranges: vec![Subrange {
+                start: literal(1, false),
+                end: literal(3, false),
+            }],
+            type_name: ArrayElementType::String(StringSpecification {
+                width: StringType::String,
+                length: Some(IntegerRef::Literal(Integer {
+                    span: SourceSpan::default(),
+                    value: 10,
+                })),
+                keyword_span: SourceSpan::default(),
+            }),
+            ref_to: false,
+        };
+
+        let spec = SpecificationKind::Inline(array_subranges);
+        let result = try_from(&TypeName::from("MY_ARRAY"), &spec, &env);
+        assert!(result.is_ok());
+
+        let attrs = match result.unwrap() {
+            IntermediateResult::Type(attrs) => attrs,
+            _ => unreachable!("Expected Type result"),
+        };
+
+        if let IntermediateType::Array {
+            element_type,
+            dimensions,
+        } = attrs.representation
+        {
+            assert_eq!(
+                *element_type,
+                IntermediateType::String { max_len: Some(10) }
+            );
+            assert_eq!(dimensions.len(), 1);
+            assert_eq!(dimensions[0].lower, 1);
+            assert_eq!(dimensions[0].upper, 3);
+        } else {
+            unreachable!("Expected Array type");
+        }
+    }
+
+    #[test]
+    fn try_from_when_array_of_unsized_string_then_element_type_has_no_max_len() {
+        let env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+
+        let array_subranges = ArraySubranges {
+            ranges: vec![Subrange {
+                start: literal(1, false),
+                end: literal(3, false),
+            }],
+            type_name: ArrayElementType::String(StringSpecification {
+                width: StringType::String,
+                length: None,
+                keyword_span: SourceSpan::default(),
+            }),
+            ref_to: false,
+        };
+
+        let spec = SpecificationKind::Inline(array_subranges);
+        let result = try_from(&TypeName::from("MY_ARRAY"), &spec, &env);
+        assert!(result.is_ok());
+
+        let attrs = match result.unwrap() {
+            IntermediateResult::Type(attrs) => attrs,
+            _ => unreachable!("Expected Type result"),
+        };
+
+        if let IntermediateType::Array {
+            element_type,
+            dimensions,
+        } = attrs.representation
+        {
+            assert_eq!(*element_type, IntermediateType::String { max_len: None });
+            assert_eq!(dimensions.len(), 1);
         } else {
             unreachable!("Expected Array type");
         }
