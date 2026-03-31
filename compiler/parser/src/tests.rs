@@ -18,6 +18,7 @@ mod test {
     use dsl::sfc::{ActionAssociation, ActionQualifier, ElementKind, Network, Step};
     use dsl::textual::*;
     use dsl::time::*;
+    use ironplc_test::cast;
     use ironplc_test::read_shared_resource;
     use time::Duration;
 
@@ -727,9 +728,7 @@ END_FUNCTION";
         );
 
         assert_eq!(lib.elements.len(), 1);
-        let LibraryElementKind::FunctionDeclaration(func) = &lib.elements[0] else {
-            unreachable!()
-        };
+        let func = cast!(&lib.elements[0], LibraryElementKind::FunctionDeclaration);
         assert_eq!(
             func.return_type,
             FunctionReturnType::Named(TypeName::from("ANY_NUM"))
@@ -748,9 +747,7 @@ END_FUNCTION";
         );
 
         assert_eq!(lib.elements.len(), 1);
-        let LibraryElementKind::FunctionDeclaration(func) = &lib.elements[0] else {
-            unreachable!()
-        };
+        let func = cast!(&lib.elements[0], LibraryElementKind::FunctionDeclaration);
         let type_ref = func.variables[0].type_name();
         assert_eq!(type_ref, TypeReference::Named(TypeName::from("ANY_INT")));
     }
@@ -790,9 +787,7 @@ END_FUNCTION";
             );
 
             let lib = result.unwrap();
-            let LibraryElementKind::FunctionDeclaration(func) = &lib.elements[0] else {
-                unreachable!()
-            };
+            let func = cast!(&lib.elements[0], LibraryElementKind::FunctionDeclaration);
             assert_eq!(
                 func.return_type,
                 FunctionReturnType::Named(TypeName::from(generic_type)),
@@ -814,16 +809,10 @@ END_FUNCTION";
         );
 
         assert_eq!(lib.elements.len(), 1);
-        let LibraryElementKind::FunctionDeclaration(func) = &lib.elements[0] else {
-            unreachable!()
-        };
-        match &func.return_type {
-            FunctionReturnType::String(spec) => {
-                assert_eq!(spec.width, dsl::common::StringType::String);
-                assert!(spec.length.is_some());
-            }
-            other => panic!("Expected FunctionReturnType::String, got {:?}", other),
-        }
+        let func = cast!(&lib.elements[0], LibraryElementKind::FunctionDeclaration);
+        let spec = cast!(&func.return_type, FunctionReturnType::String);
+        assert_eq!(spec.width, dsl::common::StringType::String);
+        assert!(spec.length.is_some());
     }
 
     #[test]
@@ -838,16 +827,10 @@ END_FUNCTION";
         );
 
         assert_eq!(lib.elements.len(), 1);
-        let LibraryElementKind::FunctionDeclaration(func) = &lib.elements[0] else {
-            unreachable!()
-        };
-        match &func.return_type {
-            FunctionReturnType::WString(spec) => {
-                assert_eq!(spec.width, dsl::common::StringType::WString);
-                assert!(spec.length.is_some());
-            }
-            other => panic!("Expected FunctionReturnType::WString, got {:?}", other),
-        }
+        let func = cast!(&lib.elements[0], LibraryElementKind::FunctionDeclaration);
+        let spec = cast!(&func.return_type, FunctionReturnType::WString);
+        assert_eq!(spec.width, dsl::common::StringType::WString);
+        assert!(spec.length.is_some());
     }
 
     #[test]
@@ -862,16 +845,10 @@ END_FUNCTION";
         );
 
         assert_eq!(lib.elements.len(), 1);
-        let LibraryElementKind::FunctionDeclaration(func) = &lib.elements[0] else {
-            unreachable!()
-        };
-        match &func.return_type {
-            FunctionReturnType::String(spec) => {
-                assert_eq!(spec.width, dsl::common::StringType::String);
-                assert!(spec.length.is_none());
-            }
-            other => panic!("Expected FunctionReturnType::String, got {:?}", other),
-        }
+        let func = cast!(&lib.elements[0], LibraryElementKind::FunctionDeclaration);
+        let spec = cast!(&func.return_type, FunctionReturnType::String);
+        assert_eq!(spec.width, dsl::common::StringType::String);
+        assert!(spec.length.is_none());
     }
 
     #[test]
@@ -941,9 +918,10 @@ END_FUNCTION";
         END_CONFIGURATION";
 
         let lib = parse_text(source);
-        let LibraryElementKind::ConfigurationDeclaration(config) = &lib.elements[0] else {
-            unreachable!()
-        };
+        let config = cast!(
+            &lib.elements[0],
+            LibraryElementKind::ConfigurationDeclaration
+        );
         let task = &config.resource_decl[0].tasks[0];
         assert_eq!(task.name, Id::from("my_task"));
         assert_eq!(task.priority, 3);
@@ -962,9 +940,10 @@ END_FUNCTION";
         END_CONFIGURATION";
 
         let lib = parse_text(source);
-        let LibraryElementKind::ConfigurationDeclaration(config) = &lib.elements[0] else {
-            unreachable!()
-        };
+        let config = cast!(
+            &lib.elements[0],
+            LibraryElementKind::ConfigurationDeclaration
+        );
         let task = &config.resource_decl[0].tasks[0];
         assert_eq!(task.name, Id::from("event_task"));
         assert_eq!(task.priority, 0);
@@ -984,9 +963,10 @@ END_FUNCTION";
         END_CONFIGURATION";
 
         let lib = parse_text(source);
-        let LibraryElementKind::ConfigurationDeclaration(config) = &lib.elements[0] else {
-            unreachable!()
-        };
+        let config = cast!(
+            &lib.elements[0],
+            LibraryElementKind::ConfigurationDeclaration
+        );
         let task = &config.resource_decl[0].tasks[0];
         assert_eq!(task.name, Id::from("my_task"));
         assert_eq!(task.priority, 1);
@@ -1005,9 +985,10 @@ END_FUNCTION";
         END_CONFIGURATION";
 
         let lib = parse_text(source);
-        let LibraryElementKind::ConfigurationDeclaration(config) = &lib.elements[0] else {
-            unreachable!()
-        };
+        let config = cast!(
+            &lib.elements[0],
+            LibraryElementKind::ConfigurationDeclaration
+        );
         let task = &config.resource_decl[0].tasks[0];
         assert_eq!(task.name, Id::from("free_task"));
         assert_eq!(task.priority, 5);
@@ -1102,24 +1083,16 @@ END_VAR
     y := x.0;
 END_FUNCTION_BLOCK",
         );
-        let elem = &lib.elements[0];
-        let fb = match elem {
-            LibraryElementKind::FunctionBlockDeclaration(fb) => fb,
-            _ => panic!("expected function block"),
-        };
-        let stmts = match &fb.body {
-            FunctionBlockBodyKind::Statements(s) => &s.body,
-            _ => panic!("expected statements"),
-        };
-        let assign = match &stmts[0] {
-            StmtKind::Assignment(a) => a,
-            _ => panic!("expected assignment"),
-        };
+        let fb = cast!(
+            &lib.elements[0],
+            LibraryElementKind::FunctionBlockDeclaration
+        );
+        let s = cast!(&fb.body, FunctionBlockBodyKind::Statements);
+        let assign = cast!(&s.body[0], StmtKind::Assignment);
         // The value (RHS) should be a bit access variable x.0
-        let var = match &assign.value.kind {
-            ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::BitAccess(ba))) => ba,
-            other => panic!("expected bit access variable, got {:?}", other),
-        };
+        let var_sym = cast!(&assign.value.kind, ExprKind::Variable);
+        let var_kind = cast!(var_sym, Variable::Symbolic);
+        let var = cast!(var_kind, SymbolicVariableKind::BitAccess);
         assert_eq!(var.variable.as_ref().to_string(), "x");
         assert_eq!(var.index.value, 0);
     }
@@ -1314,13 +1287,10 @@ END_FUNCTION";
     fn parse_when_ref_to_int_type_decl_then_ok() {
         let lib = parse_text_edition3("TYPE IntRef : REF_TO INT; END_TYPE");
         assert_eq!(lib.elements.len(), 1);
-        match &lib.elements[0] {
-            LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Reference(decl)) => {
-                assert_eq!(decl.type_name.to_string(), "IntRef");
-                assert_eq!(decl.target.type_name().unwrap().to_string(), "INT");
-            }
-            other => panic!("Expected Reference type declaration, got {:?}", other),
-        }
+        let dt = cast!(&lib.elements[0], LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(dt, DataTypeDeclarationKind::Reference);
+        assert_eq!(decl.type_name.to_string(), "IntRef");
+        assert_eq!(decl.target.type_name().unwrap().to_string(), "INT");
     }
 
     #[test]
@@ -1332,16 +1302,12 @@ VAR
 END_VAR
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => {
-                assert_eq!(prog.variables.len(), 1);
-                assert!(matches!(
-                    &prog.variables[0].initializer,
-                    InitialValueAssignmentKind::Reference(_)
-                ));
-            }
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        assert_eq!(prog.variables.len(), 1);
+        assert!(matches!(
+            &prog.variables[0].initializer,
+            InitialValueAssignmentKind::Reference(_)
+        ));
     }
 
     #[test]
@@ -1353,18 +1319,15 @@ VAR
 END_VAR
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => match &prog.variables[0].initializer {
-                InitialValueAssignmentKind::Reference(ref_init) => {
-                    assert!(matches!(
-                        ref_init.initial_value,
-                        Some(dsl::common::ReferenceInitialValue::Null(_))
-                    ));
-                }
-                other => panic!("Expected Reference initializer, got {:?}", other),
-            },
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let ref_init = cast!(
+            &prog.variables[0].initializer,
+            InitialValueAssignmentKind::Reference
+        );
+        assert!(matches!(
+            ref_init.initial_value,
+            Some(dsl::common::ReferenceInitialValue::Null(_))
+        ));
     }
 
     #[test]
@@ -1377,18 +1340,15 @@ VAR
 END_VAR
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => match &prog.variables[1].initializer {
-                InitialValueAssignmentKind::Reference(ref_init) => {
-                    assert!(matches!(
-                        ref_init.initial_value,
-                        Some(dsl::common::ReferenceInitialValue::Ref(_))
-                    ));
-                }
-                other => panic!("Expected Reference initializer, got {:?}", other),
-            },
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let ref_init = cast!(
+            &prog.variables[1].initializer,
+            InitialValueAssignmentKind::Reference
+        );
+        assert!(matches!(
+            ref_init.initial_value,
+            Some(dsl::common::ReferenceInitialValue::Ref(_))
+        ));
     }
 
     #[test]
@@ -1400,31 +1360,23 @@ VAR
 END_VAR
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => {
-                assert_eq!(prog.variables.len(), 1);
-                match &prog.variables[0].initializer {
-                    InitialValueAssignmentKind::Reference(ref_init) => {
-                        assert!(matches!(ref_init.target, ReferenceTarget::Array(_)));
-                    }
-                    other => panic!("Expected Reference initializer, got {:?}", other),
-                }
-            }
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        assert_eq!(prog.variables.len(), 1);
+        let ref_init = cast!(
+            &prog.variables[0].initializer,
+            InitialValueAssignmentKind::Reference
+        );
+        assert!(matches!(ref_init.target, ReferenceTarget::Array(_)));
     }
 
     #[test]
     fn parse_when_ref_to_array_type_decl_then_ok() {
         let lib = parse_text_edition3("TYPE ArrRef : REF_TO ARRAY[0..3] OF BYTE; END_TYPE");
         assert_eq!(lib.elements.len(), 1);
-        match &lib.elements[0] {
-            LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Reference(decl)) => {
-                assert_eq!(decl.type_name.to_string(), "ArrRef");
-                assert!(matches!(decl.target, ReferenceTarget::Array(_)));
-            }
-            other => panic!("Expected Reference type declaration, got {:?}", other),
-        }
+        let dt = cast!(&lib.elements[0], LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(dt, DataTypeDeclarationKind::Reference);
+        assert_eq!(decl.type_name.to_string(), "ArrRef");
+        assert!(matches!(decl.target, ReferenceTarget::Array(_)));
     }
 
     #[test]
@@ -1438,13 +1390,9 @@ END_VAR
     x := REF(counter);
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => match &prog.body {
-                FunctionBlockBodyKind::Statements(s) => assert!(!s.body.is_empty()),
-                _ => panic!("expected statements"),
-            },
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let s = cast!(&prog.body, FunctionBlockBodyKind::Statements);
+        assert!(!s.body.is_empty());
     }
 
     #[test]
@@ -1458,16 +1406,9 @@ END_VAR
     value := myRef^;
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => {
-                let stmts = match &prog.body {
-                    FunctionBlockBodyKind::Statements(s) => &s.body,
-                    _ => panic!("expected statements"),
-                };
-                assert_eq!(stmts.len(), 1);
-            }
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let s = cast!(&prog.body, FunctionBlockBodyKind::Statements);
+        assert_eq!(s.body.len(), 1);
     }
 
     #[test]
@@ -1480,22 +1421,11 @@ END_VAR
     myRef^ := 42;
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => {
-                let stmts = match &prog.body {
-                    FunctionBlockBodyKind::Statements(s) => &s.body,
-                    _ => panic!("expected statements"),
-                };
-                assert_eq!(stmts.len(), 1);
-                match &stmts[0] {
-                    StmtKind::Assignment(assignment) => {
-                        assert!(assignment.deref);
-                    }
-                    other => panic!("Expected Assignment, got {:?}", other),
-                }
-            }
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let s = cast!(&prog.body, FunctionBlockBodyKind::Statements);
+        assert_eq!(s.body.len(), 1);
+        let assignment = cast!(&s.body[0], StmtKind::Assignment);
+        assert!(assignment.deref);
     }
 
     #[test]
@@ -1508,16 +1438,9 @@ END_VAR
     myRef := NULL;
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => {
-                let stmts = match &prog.body {
-                    FunctionBlockBodyKind::Statements(s) => &s.body,
-                    _ => panic!("expected statements"),
-                };
-                assert_eq!(stmts.len(), 1);
-            }
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let s = cast!(&prog.body, FunctionBlockBodyKind::Statements);
+        assert_eq!(s.body.len(), 1);
     }
 
     #[test]
@@ -1533,16 +1456,9 @@ END_VAR
     END_IF;
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => {
-                let stmts = match &prog.body {
-                    FunctionBlockBodyKind::Statements(s) => &s.body,
-                    _ => panic!("expected statements"),
-                };
-                assert_eq!(stmts.len(), 1);
-            }
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let s = cast!(&prog.body, FunctionBlockBodyKind::Statements);
+        assert_eq!(s.body.len(), 1);
     }
 
     #[test]
@@ -1557,16 +1473,9 @@ END_VAR
     result := a XOR b;
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => {
-                let stmts = match &prog.body {
-                    FunctionBlockBodyKind::Statements(s) => &s.body,
-                    _ => panic!("expected statements"),
-                };
-                assert_eq!(stmts.len(), 1);
-            }
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let s = cast!(&prog.body, FunctionBlockBodyKind::Statements);
+        assert_eq!(s.body.len(), 1);
     }
 
     #[test]
@@ -1581,16 +1490,9 @@ END_VAR
     result := myRef^ XOR b;
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => {
-                let stmts = match &prog.body {
-                    FunctionBlockBodyKind::Statements(s) => &s.body,
-                    _ => panic!("expected statements"),
-                };
-                assert_eq!(stmts.len(), 1);
-            }
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let s = cast!(&prog.body, FunctionBlockBodyKind::Statements);
+        assert_eq!(s.body.len(), 1);
     }
 
     #[test]
@@ -1611,35 +1513,19 @@ END_VAR
     result := 0;
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::FunctionDeclaration(func) => {
-                let stmts = &func.body;
-                assert_eq!(stmts.len(), 2);
-                match &stmts[1] {
-                    StmtKind::Assignment(assignment) => {
-                        // Target should be Array(Deref(Named(PT)), [0])
-                        match &assignment.target {
-                            Variable::Symbolic(SymbolicVariableKind::Array(arr)) => {
-                                match arr.subscripted_variable.as_ref() {
-                                    SymbolicVariableKind::Deref(d) => match d.variable.as_ref() {
-                                        SymbolicVariableKind::Named(n) => {
-                                            assert_eq!(n.name.to_string(), "PT");
-                                        }
-                                        other => {
-                                            panic!("Expected Named inside Deref, got {:?}", other)
-                                        }
-                                    },
-                                    other => panic!("Expected Deref inside Array, got {:?}", other),
-                                }
-                            }
-                            other => panic!("Expected Array variable, got {:?}", other),
-                        }
-                    }
-                    other => panic!("Expected Assignment, got {:?}", other),
-                }
-            }
-            other => panic!("Expected FunctionDeclaration, got {:?}", other),
-        }
+        let func = cast!(&lib.elements[0], LibraryElementKind::FunctionDeclaration);
+        let stmts = &func.body;
+        assert_eq!(stmts.len(), 2);
+        let assignment = cast!(&stmts[1], StmtKind::Assignment);
+        // Target should be Array(Deref(Named(PT)), [0])
+        let sym = cast!(&assignment.target, Variable::Symbolic);
+        let arr = cast!(sym, SymbolicVariableKind::Array);
+        let d = cast!(
+            arr.subscripted_variable.as_ref(),
+            SymbolicVariableKind::Deref
+        );
+        let n = cast!(d.variable.as_ref(), SymbolicVariableKind::Named);
+        assert_eq!(n.name.to_string(), "PT");
     }
 
     #[test]
@@ -1659,39 +1545,20 @@ END_VAR
     result := BYTE#0;
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::FunctionDeclaration(func) => {
-                let stmts = &func.body;
-                assert_eq!(stmts.len(), 1);
-                match &stmts[0] {
-                    StmtKind::Assignment(assignment) => {
-                        // Value should be Variable(Array(Deref(Named(PT)), [0]))
-                        match &assignment.value.kind {
-                            ExprKind::Variable(Variable::Symbolic(
-                                SymbolicVariableKind::Array(arr),
-                            )) => match arr.subscripted_variable.as_ref() {
-                                SymbolicVariableKind::Deref(d) => match d.variable.as_ref() {
-                                    SymbolicVariableKind::Named(n) => {
-                                        assert_eq!(n.name.to_string(), "PT");
-                                    }
-                                    other => {
-                                        panic!("Expected Named inside Deref, got {:?}", other)
-                                    }
-                                },
-                                other => {
-                                    panic!("Expected Deref inside Array, got {:?}", other)
-                                }
-                            },
-                            other => {
-                                panic!("Expected Variable(Array(...)) expression, got {:?}", other)
-                            }
-                        }
-                    }
-                    other => panic!("Expected Assignment, got {:?}", other),
-                }
-            }
-            other => panic!("Expected FunctionDeclaration, got {:?}", other),
-        }
+        let func = cast!(&lib.elements[0], LibraryElementKind::FunctionDeclaration);
+        let stmts = &func.body;
+        assert_eq!(stmts.len(), 1);
+        let assignment = cast!(&stmts[0], StmtKind::Assignment);
+        // Value should be Variable(Array(Deref(Named(PT)), [0]))
+        let var = cast!(&assignment.value.kind, ExprKind::Variable);
+        let sym = cast!(var, Variable::Symbolic);
+        let arr = cast!(sym, SymbolicVariableKind::Array);
+        let d = cast!(
+            arr.subscripted_variable.as_ref(),
+            SymbolicVariableKind::Deref
+        );
+        let n = cast!(d.variable.as_ref(), SymbolicVariableKind::Named);
+        assert_eq!(n.name.to_string(), "PT");
     }
 
     #[test]
@@ -1704,12 +1571,8 @@ END_VAR
     d := LDATE#2024-01-20;
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => {
-                assert_eq!(prog.variables.len(), 1);
-            }
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        assert_eq!(prog.variables.len(), 1);
     }
 
     #[test]
@@ -1722,12 +1585,8 @@ END_VAR
     t := LTOD#14:30:20;
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => {
-                assert_eq!(prog.variables.len(), 1);
-            }
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        assert_eq!(prog.variables.len(), 1);
     }
 
     #[test]
@@ -1740,12 +1599,8 @@ END_VAR
     my_dt := LDT#2024-01-20-15:30:22;
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => {
-                assert_eq!(prog.variables.len(), 1);
-            }
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        assert_eq!(prog.variables.len(), 1);
     }
 
     #[test]
@@ -1758,12 +1613,8 @@ END_VAR
     t := LTOD#10:00:00;
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => {
-                assert_eq!(prog.variables.len(), 1);
-            }
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        assert_eq!(prog.variables.len(), 1);
     }
 
     #[test]
@@ -1776,12 +1627,8 @@ END_VAR
     my_dt := LDT#2024-01-20-15:30:22;
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => {
-                assert_eq!(prog.variables.len(), 1);
-            }
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        assert_eq!(prog.variables.len(), 1);
     }
 
     #[test]
@@ -1793,40 +1640,26 @@ VAR
 END_VAR
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => {
-                assert_eq!(prog.variables.len(), 1);
-                match &prog.variables[0].initializer {
-                    InitialValueAssignmentKind::Array(arr) => match &arr.spec {
-                        SpecificationKind::Inline(subranges) => {
-                            assert!(subranges.ref_to);
-                            assert_eq!(subranges.type_name.to_type_name().to_string(), "BYTE");
-                            assert_eq!(subranges.ranges.len(), 1);
-                        }
-                        _ => panic!("Expected inline array spec"),
-                    },
-                    other => panic!("Expected Array initializer, got {:?}", other),
-                }
-            }
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        assert_eq!(prog.variables.len(), 1);
+        let arr = cast!(
+            &prog.variables[0].initializer,
+            InitialValueAssignmentKind::Array
+        );
+        let subranges = cast!(&arr.spec, SpecificationKind::Inline);
+        assert!(subranges.ref_to);
+        assert_eq!(subranges.type_name.to_type_name().to_string(), "BYTE");
+        assert_eq!(subranges.ranges.len(), 1);
     }
 
     #[test]
     fn parse_when_array_of_ref_to_type_decl_then_ok() {
         let lib = parse_text_edition3("TYPE MyArr : ARRAY[1..5] OF REF_TO INT; END_TYPE");
-        match &lib.elements[0] {
-            LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Array(arr)) => {
-                match &arr.spec {
-                    SpecificationKind::Inline(subranges) => {
-                        assert!(subranges.ref_to);
-                        assert_eq!(subranges.type_name.to_type_name().to_string(), "INT");
-                    }
-                    _ => panic!("Expected inline array spec"),
-                }
-            }
-            other => panic!("Expected Array type declaration, got {:?}", other),
-        }
+        let dt = cast!(&lib.elements[0], LibraryElementKind::DataTypeDeclaration);
+        let arr = cast!(dt, DataTypeDeclarationKind::Array);
+        let subranges = cast!(&arr.spec, SpecificationKind::Inline);
+        assert!(subranges.ref_to);
+        assert_eq!(subranges.type_name.to_type_name().to_string(), "INT");
     }
 
     #[test]
@@ -1838,18 +1671,13 @@ VAR
 END_VAR
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => match &prog.variables[0].initializer {
-                InitialValueAssignmentKind::Array(arr) => match &arr.spec {
-                    SpecificationKind::Inline(subranges) => {
-                        assert!(!subranges.ref_to);
-                    }
-                    _ => panic!("Expected inline array spec"),
-                },
-                other => panic!("Expected Array initializer, got {:?}", other),
-            },
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let arr = cast!(
+            &prog.variables[0].initializer,
+            InitialValueAssignmentKind::Array
+        );
+        let subranges = cast!(&arr.spec, SpecificationKind::Inline);
+        assert!(!subranges.ref_to);
     }
 
     #[test]
@@ -1861,28 +1689,19 @@ VAR
 END_VAR
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => match &prog.variables[0].initializer {
-                InitialValueAssignmentKind::Array(arr) => match &arr.spec {
-                    SpecificationKind::Inline(subranges) => {
-                        assert_eq!(subranges.type_name.to_type_name().to_string(), "STRING");
-                        assert_eq!(subranges.ranges.len(), 1);
-                        match &subranges.type_name {
-                            ArrayElementType::String(spec) => {
-                                assert_eq!(
-                                    spec.length.as_ref().unwrap().as_integer().unwrap().value,
-                                    10
-                                );
-                            }
-                            other => panic!("Expected String element type, got {:?}", other),
-                        }
-                    }
-                    _ => panic!("Expected inline array spec"),
-                },
-                other => panic!("Expected Array initializer, got {:?}", other),
-            },
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let arr = cast!(
+            &prog.variables[0].initializer,
+            InitialValueAssignmentKind::Array
+        );
+        let subranges = cast!(&arr.spec, SpecificationKind::Inline);
+        assert_eq!(subranges.type_name.to_type_name().to_string(), "STRING");
+        assert_eq!(subranges.ranges.len(), 1);
+        let spec = cast!(&subranges.type_name, ArrayElementType::String);
+        assert_eq!(
+            spec.length.as_ref().unwrap().as_integer().unwrap().value,
+            10
+        );
     }
 
     #[test]
@@ -1894,27 +1713,18 @@ VAR
 END_VAR
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => match &prog.variables[0].initializer {
-                InitialValueAssignmentKind::Array(arr) => match &arr.spec {
-                    SpecificationKind::Inline(subranges) => {
-                        assert_eq!(subranges.type_name.to_type_name().to_string(), "WSTRING");
-                        match &subranges.type_name {
-                            ArrayElementType::WString(spec) => {
-                                assert_eq!(
-                                    spec.length.as_ref().unwrap().as_integer().unwrap().value,
-                                    20
-                                );
-                            }
-                            other => panic!("Expected WString element type, got {:?}", other),
-                        }
-                    }
-                    _ => panic!("Expected inline array spec"),
-                },
-                other => panic!("Expected Array initializer, got {:?}", other),
-            },
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let arr = cast!(
+            &prog.variables[0].initializer,
+            InitialValueAssignmentKind::Array
+        );
+        let subranges = cast!(&arr.spec, SpecificationKind::Inline);
+        assert_eq!(subranges.type_name.to_type_name().to_string(), "WSTRING");
+        let spec = cast!(&subranges.type_name, ArrayElementType::WString);
+        assert_eq!(
+            spec.length.as_ref().unwrap().as_integer().unwrap().value,
+            20
+        );
     }
 
     #[test]
@@ -1926,21 +1736,14 @@ VAR
 END_VAR
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => match &prog.variables[0].initializer {
-                InitialValueAssignmentKind::Array(arr) => match &arr.spec {
-                    SpecificationKind::Inline(subranges) => match &subranges.type_name {
-                        ArrayElementType::String(spec) => {
-                            assert!(spec.length.is_none());
-                        }
-                        other => panic!("Expected String element type, got {:?}", other),
-                    },
-                    _ => panic!("Expected inline array spec"),
-                },
-                other => panic!("Expected Array initializer, got {:?}", other),
-            },
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let arr = cast!(
+            &prog.variables[0].initializer,
+            InitialValueAssignmentKind::Array
+        );
+        let subranges = cast!(&arr.spec, SpecificationKind::Inline);
+        let spec = cast!(&subranges.type_name, ArrayElementType::String);
+        assert!(spec.length.is_none());
     }
 
     #[test]
@@ -1952,27 +1755,18 @@ VAR
 END_VAR
 END_PROGRAM",
         );
-        match &lib.elements[0] {
-            LibraryElementKind::ProgramDeclaration(prog) => match &prog.variables[0].initializer {
-                InitialValueAssignmentKind::Array(arr) => match &arr.spec {
-                    SpecificationKind::Inline(subranges) => {
-                        assert_eq!(subranges.ranges.len(), 2);
-                        match &subranges.type_name {
-                            ArrayElementType::String(spec) => {
-                                assert_eq!(
-                                    spec.length.as_ref().unwrap().as_integer().unwrap().value,
-                                    10
-                                );
-                            }
-                            other => panic!("Expected String element type, got {:?}", other),
-                        }
-                    }
-                    _ => panic!("Expected inline array spec"),
-                },
-                other => panic!("Expected Array initializer, got {:?}", other),
-            },
-            other => panic!("Expected ProgramDeclaration, got {:?}", other),
-        }
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let arr = cast!(
+            &prog.variables[0].initializer,
+            InitialValueAssignmentKind::Array
+        );
+        let subranges = cast!(&arr.spec, SpecificationKind::Inline);
+        assert_eq!(subranges.ranges.len(), 2);
+        let spec = cast!(&subranges.type_name, ArrayElementType::String);
+        assert_eq!(
+            spec.length.as_ref().unwrap().as_integer().unwrap().value,
+            10
+        );
     }
 
     #[test]
@@ -2176,15 +1970,10 @@ END_VAR
     my_func := temp;
 END_FUNCTION",
         );
-        let elem = &lib.elements[0];
-        match elem {
-            LibraryElementKind::FunctionDeclaration(func) => {
-                assert_eq!(func.variables.len(), 2);
-                assert_eq!(func.variables[0].var_type, VariableType::Input);
-                assert_eq!(func.variables[1].var_type, VariableType::VarTemp);
-            }
-            _ => panic!("Expected FunctionDeclaration"),
-        }
+        let func = cast!(&lib.elements[0], LibraryElementKind::FunctionDeclaration);
+        assert_eq!(func.variables.len(), 2);
+        assert_eq!(func.variables[0].var_type, VariableType::Input);
+        assert_eq!(func.variables[1].var_type, VariableType::VarTemp);
     }
 
     #[test]
@@ -2197,14 +1986,12 @@ END_VAR
     t := 42;
 END_FUNCTION_BLOCK",
         );
-        let elem = &lib.elements[0];
-        match elem {
-            LibraryElementKind::FunctionBlockDeclaration(fb) => {
-                assert_eq!(fb.variables.len(), 1);
-                assert_eq!(fb.variables[0].var_type, VariableType::VarTemp);
-            }
-            _ => panic!("Expected FunctionBlockDeclaration"),
-        }
+        let fb = cast!(
+            &lib.elements[0],
+            LibraryElementKind::FunctionBlockDeclaration
+        );
+        assert_eq!(fb.variables.len(), 1);
+        assert_eq!(fb.variables[0].var_type, VariableType::VarTemp);
     }
 
     #[test]

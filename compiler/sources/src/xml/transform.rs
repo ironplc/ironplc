@@ -1118,6 +1118,7 @@ fn invalid_value_error(value: &str, context: &str, file_id: &FileId) -> Diagnost
 mod tests {
     use super::*;
     use crate::xml::position::parse_plcopen_xml;
+    use ironplc_test::cast;
 
     fn test_file_id() -> FileId {
         FileId::from_string("test.xml")
@@ -1182,12 +1183,11 @@ mod tests {
             transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
-        let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
-            enum_decl,
-        )) = &library.elements[0]
-        else {
-            panic!("Expected enumeration declaration");
-        };
+        let decl = cast!(
+            &library.elements[0],
+            LibraryElementKind::DataTypeDeclaration
+        );
+        let enum_decl = cast!(decl, DataTypeDeclarationKind::Enumeration);
         assert_eq!(enum_decl.type_name.to_string(), "TrafficLight");
     }
 
@@ -1217,11 +1217,11 @@ mod tests {
             transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
-        let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Array(array_decl)) =
-            &library.elements[0]
-        else {
-            panic!("Expected array declaration");
-        };
+        let decl = cast!(
+            &library.elements[0],
+            LibraryElementKind::DataTypeDeclaration
+        );
+        let array_decl = cast!(decl, DataTypeDeclarationKind::Array);
         assert_eq!(array_decl.type_name.to_string(), "IntArray");
     }
 
@@ -1255,12 +1255,11 @@ mod tests {
             transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
-        let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Structure(
-            struct_decl,
-        )) = &library.elements[0]
-        else {
-            panic!("Expected structure declaration");
-        };
+        let decl = cast!(
+            &library.elements[0],
+            LibraryElementKind::DataTypeDeclaration
+        );
+        let struct_decl = cast!(decl, DataTypeDeclarationKind::Structure);
         assert_eq!(struct_decl.type_name.to_string(), "Point");
         assert_eq!(struct_decl.elements.len(), 2);
     }
@@ -1304,9 +1303,10 @@ IF Reset THEN Count := 0; END_IF;
             transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
-        let LibraryElementKind::FunctionBlockDeclaration(fb_decl) = &library.elements[0] else {
-            panic!("Expected function block declaration");
-        };
+        let fb_decl = cast!(
+            &library.elements[0],
+            LibraryElementKind::FunctionBlockDeclaration
+        );
         assert_eq!(fb_decl.name.to_string(), "Counter");
         assert_eq!(fb_decl.variables.len(), 2);
     }
@@ -1338,9 +1338,7 @@ IF Reset THEN Count := 0; END_IF;
             transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
-        let LibraryElementKind::ProgramDeclaration(prog_decl) = &library.elements[0] else {
-            panic!("Expected program declaration");
-        };
+        let prog_decl = cast!(&library.elements[0], LibraryElementKind::ProgramDeclaration);
         assert_eq!(prog_decl.name.to_string(), "Main");
         assert_eq!(prog_decl.variables.len(), 1);
     }
@@ -1386,14 +1384,13 @@ END_IF;
             transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
-        let LibraryElementKind::FunctionBlockDeclaration(fb_decl) = &library.elements[0] else {
-            panic!("Expected function block declaration");
-        };
+        let fb_decl = cast!(
+            &library.elements[0],
+            LibraryElementKind::FunctionBlockDeclaration
+        );
 
         // Verify the body has statements
-        let FunctionBlockBodyKind::Statements(stmts) = &fb_decl.body else {
-            panic!("Expected statements body");
-        };
+        let stmts = cast!(&fb_decl.body, FunctionBlockBodyKind::Statements);
         assert!(!stmts.body.is_empty(), "Expected parsed statements");
     }
 
@@ -1435,9 +1432,10 @@ END_IF;
         // Should have program declaration and configuration declaration
         assert_eq!(library.elements.len(), 2);
 
-        let LibraryElementKind::ConfigurationDeclaration(config_decl) = &library.elements[1] else {
-            panic!("Expected configuration declaration");
-        };
+        let config_decl = cast!(
+            &library.elements[1],
+            LibraryElementKind::ConfigurationDeclaration
+        );
         assert_eq!(config_decl.name.to_string(), "Config1");
         assert_eq!(config_decl.resource_decl.len(), 1);
     }
@@ -1472,9 +1470,10 @@ END_IF;
         let library =
             transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
-        let LibraryElementKind::ConfigurationDeclaration(config_decl) = &library.elements[1] else {
-            panic!("Expected configuration declaration");
-        };
+        let config_decl = cast!(
+            &library.elements[1],
+            LibraryElementKind::ConfigurationDeclaration
+        );
 
         let resource = &config_decl.resource_decl[0];
         assert_eq!(resource.name.to_string(), "CPU1");
@@ -1506,9 +1505,10 @@ END_IF;
         let library =
             transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
-        let LibraryElementKind::ConfigurationDeclaration(config_decl) = &library.elements[0] else {
-            panic!("Expected configuration declaration");
-        };
+        let config_decl = cast!(
+            &library.elements[0],
+            LibraryElementKind::ConfigurationDeclaration
+        );
 
         let task = &config_decl.resource_decl[0].tasks[0];
         assert_eq!(task.name.to_string(), "PeriodicTask");
@@ -1551,9 +1551,10 @@ END_IF;
         let library =
             transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
-        let LibraryElementKind::ConfigurationDeclaration(config_decl) = &library.elements[1] else {
-            panic!("Expected configuration declaration");
-        };
+        let config_decl = cast!(
+            &library.elements[1],
+            LibraryElementKind::ConfigurationDeclaration
+        );
 
         let resource = &config_decl.resource_decl[0];
         assert_eq!(resource.programs.len(), 1);
@@ -1593,9 +1594,10 @@ END_IF;
         let library =
             transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
-        let LibraryElementKind::ConfigurationDeclaration(config_decl) = &library.elements[1] else {
-            panic!("Expected configuration declaration");
-        };
+        let config_decl = cast!(
+            &library.elements[1],
+            LibraryElementKind::ConfigurationDeclaration
+        );
 
         let resource = &config_decl.resource_decl[0];
         assert_eq!(resource.programs.len(), 1);
@@ -1686,15 +1688,11 @@ END_IF;
             transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
         assert_eq!(library.elements.len(), 1);
-        let LibraryElementKind::ProgramDeclaration(prog_decl) = &library.elements[0] else {
-            panic!("Expected program declaration");
-        };
+        let prog_decl = cast!(&library.elements[0], LibraryElementKind::ProgramDeclaration);
         assert_eq!(prog_decl.name.to_string(), "SfcProgram");
 
         // Verify the body is an SFC
-        let FunctionBlockBodyKind::Sfc(sfc) = &prog_decl.body else {
-            panic!("Expected SFC body");
-        };
+        let sfc = cast!(&prog_decl.body, FunctionBlockBodyKind::Sfc);
         assert_eq!(sfc.networks.len(), 1);
         assert_eq!(sfc.networks[0].initial_step.name.to_string(), "Init");
     }
@@ -1734,13 +1732,9 @@ END_IF;
         let library =
             transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
-        let LibraryElementKind::ProgramDeclaration(prog_decl) = &library.elements[0] else {
-            panic!("Expected program declaration");
-        };
+        let prog_decl = cast!(&library.elements[0], LibraryElementKind::ProgramDeclaration);
 
-        let FunctionBlockBodyKind::Sfc(sfc) = &prog_decl.body else {
-            panic!("Expected SFC body");
-        };
+        let sfc = cast!(&prog_decl.body, FunctionBlockBodyKind::Sfc);
 
         // Should have initial step + 1 other step + 1 transition in elements
         let transition_count = sfc.networks[0]
@@ -1785,13 +1779,9 @@ END_IF;
         let library =
             transform_project(&project, &test_file_id(), &CompilerOptions::default()).unwrap();
 
-        let LibraryElementKind::ProgramDeclaration(prog_decl) = &library.elements[0] else {
-            panic!("Expected program declaration");
-        };
+        let prog_decl = cast!(&library.elements[0], LibraryElementKind::ProgramDeclaration);
 
-        let FunctionBlockBodyKind::Sfc(sfc) = &prog_decl.body else {
-            panic!("Expected SFC body");
-        };
+        let sfc = cast!(&prog_decl.body, FunctionBlockBodyKind::Sfc);
 
         // Should have the action in elements
         let action_count = sfc.networks[0]
@@ -2030,9 +2020,10 @@ END_IF;
         let file_id = test_file_id();
         let library = transform_project(&project, &file_id, &CompilerOptions::default()).unwrap();
 
-        let LibraryElementKind::FunctionDeclaration(func_decl) = &library.elements[0] else {
-            panic!("Expected function declaration");
-        };
+        let func_decl = cast!(
+            &library.elements[0],
+            LibraryElementKind::FunctionDeclaration
+        );
 
         // Verify the name has a non-zero span (indicating position was captured)
         let span = &func_decl.name.span;
@@ -2073,15 +2064,11 @@ END_IF;
         let file_id = test_file_id();
         let library = transform_project(&project, &file_id, &CompilerOptions::default()).unwrap();
 
-        let LibraryElementKind::ProgramDeclaration(prog_decl) = &library.elements[0] else {
-            panic!("Expected program declaration");
-        };
+        let prog_decl = cast!(&library.elements[0], LibraryElementKind::ProgramDeclaration);
 
         // Get the variable identifier
         let var = &prog_decl.variables[0];
-        let VariableIdentifier::Symbol(id) = &var.identifier else {
-            panic!("Expected Symbol identifier");
-        };
+        let id = cast!(&var.identifier, VariableIdentifier::Symbol);
 
         // Verify the variable name has a non-zero span
         let span = &id.span;
@@ -2122,12 +2109,11 @@ END_IF;
         let file_id = test_file_id();
         let library = transform_project(&project, &file_id, &CompilerOptions::default()).unwrap();
 
-        let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(
-            enum_decl,
-        )) = &library.elements[0]
-        else {
-            panic!("Expected enumeration declaration");
-        };
+        let decl = cast!(
+            &library.elements[0],
+            LibraryElementKind::DataTypeDeclaration
+        );
+        let enum_decl = cast!(decl, DataTypeDeclarationKind::Enumeration);
 
         // Verify the type name has a non-zero span
         let span = &enum_decl.type_name.name.span;
@@ -2142,9 +2128,7 @@ END_IF;
         assert_eq!(enum_decl.type_name.to_string(), "MyEnum");
 
         // Also verify the enum value name has position
-        let SpecificationKind::Inline(spec) = &enum_decl.spec_init.spec else {
-            panic!("Expected inline spec");
-        };
+        let spec = cast!(&enum_decl.spec_init.spec, SpecificationKind::Inline);
         let value_span = &spec.values[0].value.span;
         assert!(
             value_span.start < value_span.end,

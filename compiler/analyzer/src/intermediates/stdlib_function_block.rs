@@ -385,6 +385,7 @@ pub fn is_stdlib_function_block(name: &Id) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ironplc_test::cast_struct;
 
     #[test]
     fn get_all_stdlib_function_blocks_returns_expected_count() {
@@ -396,51 +397,51 @@ mod tests {
     #[test]
     fn build_ton_when_called_then_has_correct_inputs_and_outputs() {
         let ton = build_ton();
-        if let IntermediateType::FunctionBlock { name, fields } = &ton.representation {
-            assert_eq!(name, "TON");
-            assert_eq!(fields.len(), 4);
+        let (name, fields) = cast_struct!(
+            &ton.representation,
+            IntermediateType::FunctionBlock { name, fields }
+        );
+        assert_eq!(name, "TON");
+        assert_eq!(fields.len(), 4);
 
-            // Check inputs
-            assert_eq!(fields[0].name.original(), "IN");
-            assert_eq!(fields[0].var_type, Some(FunctionBlockVarType::Input));
+        // Check inputs
+        assert_eq!(fields[0].name.original(), "IN");
+        assert_eq!(fields[0].var_type, Some(FunctionBlockVarType::Input));
 
-            assert_eq!(fields[1].name.original(), "PT");
-            assert_eq!(fields[1].var_type, Some(FunctionBlockVarType::Input));
+        assert_eq!(fields[1].name.original(), "PT");
+        assert_eq!(fields[1].var_type, Some(FunctionBlockVarType::Input));
 
-            // Check outputs
-            assert_eq!(fields[2].name.original(), "Q");
-            assert_eq!(fields[2].var_type, Some(FunctionBlockVarType::Output));
+        // Check outputs
+        assert_eq!(fields[2].name.original(), "Q");
+        assert_eq!(fields[2].var_type, Some(FunctionBlockVarType::Output));
 
-            assert_eq!(fields[3].name.original(), "ET");
-            assert_eq!(fields[3].var_type, Some(FunctionBlockVarType::Output));
-        } else {
-            panic!("Expected FunctionBlock type");
-        }
+        assert_eq!(fields[3].name.original(), "ET");
+        assert_eq!(fields[3].var_type, Some(FunctionBlockVarType::Output));
     }
 
     #[test]
     fn build_tof_when_called_then_has_correct_inputs_and_outputs() {
         let tof = build_tof();
-        if let IntermediateType::FunctionBlock { name, fields } = &tof.representation {
-            assert_eq!(name, "TOF");
-            assert_eq!(fields.len(), 4);
+        let (name, fields) = cast_struct!(
+            &tof.representation,
+            IntermediateType::FunctionBlock { name, fields }
+        );
+        assert_eq!(name, "TOF");
+        assert_eq!(fields.len(), 4);
 
-            // Check inputs
-            assert_eq!(fields[0].name.original(), "IN");
-            assert_eq!(fields[0].var_type, Some(FunctionBlockVarType::Input));
+        // Check inputs
+        assert_eq!(fields[0].name.original(), "IN");
+        assert_eq!(fields[0].var_type, Some(FunctionBlockVarType::Input));
 
-            assert_eq!(fields[1].name.original(), "PT");
-            assert_eq!(fields[1].var_type, Some(FunctionBlockVarType::Input));
+        assert_eq!(fields[1].name.original(), "PT");
+        assert_eq!(fields[1].var_type, Some(FunctionBlockVarType::Input));
 
-            // Check outputs
-            assert_eq!(fields[2].name.original(), "Q");
-            assert_eq!(fields[2].var_type, Some(FunctionBlockVarType::Output));
+        // Check outputs
+        assert_eq!(fields[2].name.original(), "Q");
+        assert_eq!(fields[2].var_type, Some(FunctionBlockVarType::Output));
 
-            assert_eq!(fields[3].name.original(), "ET");
-            assert_eq!(fields[3].var_type, Some(FunctionBlockVarType::Output));
-        } else {
-            panic!("Expected FunctionBlock type");
-        }
+        assert_eq!(fields[3].name.original(), "ET");
+        assert_eq!(fields[3].var_type, Some(FunctionBlockVarType::Output));
     }
 
     #[test]
@@ -451,21 +452,21 @@ mod tests {
                 size: ByteSized::B16,
             },
         );
-        if let IntermediateType::FunctionBlock { name, fields } = &ctu.representation {
-            assert_eq!(name, "CTU");
-            assert_eq!(fields.len(), 5);
+        let (name, fields) = cast_struct!(
+            &ctu.representation,
+            IntermediateType::FunctionBlock { name, fields }
+        );
+        assert_eq!(name, "CTU");
+        assert_eq!(fields.len(), 5);
 
-            // Check inputs: CU, R, PV
-            assert_eq!(fields[0].name.original(), "CU");
-            assert_eq!(fields[1].name.original(), "R");
-            assert_eq!(fields[2].name.original(), "PV");
+        // Check inputs: CU, R, PV
+        assert_eq!(fields[0].name.original(), "CU");
+        assert_eq!(fields[1].name.original(), "R");
+        assert_eq!(fields[2].name.original(), "PV");
 
-            // Check outputs: Q, CV
-            assert_eq!(fields[3].name.original(), "Q");
-            assert_eq!(fields[4].name.original(), "CV");
-        } else {
-            panic!("Expected FunctionBlock type");
-        }
+        // Check outputs: Q, CV
+        assert_eq!(fields[3].name.original(), "Q");
+        assert_eq!(fields[4].name.original(), "CV");
     }
 
     #[test]
@@ -476,41 +477,41 @@ mod tests {
                 size: ByteSized::B32,
             },
         );
-        if let IntermediateType::FunctionBlock { name, fields } = &ctu_dint.representation {
-            assert_eq!(name, "CTU_DINT");
+        let (name, fields) = cast_struct!(
+            &ctu_dint.representation,
+            IntermediateType::FunctionBlock { name, fields }
+        );
+        assert_eq!(name, "CTU_DINT");
 
-            // Check PV field has DINT type
-            let pv_field = fields.iter().find(|f| f.name.original() == "PV").unwrap();
-            assert_eq!(
-                pv_field.field_type,
-                IntermediateType::Int {
-                    size: ByteSized::B32
-                }
-            );
+        // Check PV field has DINT type
+        let pv_field = fields.iter().find(|f| f.name.original() == "PV").unwrap();
+        assert_eq!(
+            pv_field.field_type,
+            IntermediateType::Int {
+                size: ByteSized::B32
+            }
+        );
 
-            // Check CV field has DINT type
-            let cv_field = fields.iter().find(|f| f.name.original() == "CV").unwrap();
-            assert_eq!(
-                cv_field.field_type,
-                IntermediateType::Int {
-                    size: ByteSized::B32
-                }
-            );
-        } else {
-            panic!("Expected FunctionBlock type");
-        }
+        // Check CV field has DINT type
+        let cv_field = fields.iter().find(|f| f.name.original() == "CV").unwrap();
+        assert_eq!(
+            cv_field.field_type,
+            IntermediateType::Int {
+                size: ByteSized::B32
+            }
+        );
     }
 
     #[test]
     fn build_r_trig_when_called_then_has_internal_memory() {
         let r_trig = build_r_trig();
-        if let IntermediateType::FunctionBlock { fields, .. } = &r_trig.representation {
-            // Check that M is internal
-            let m_field = fields.iter().find(|f| f.name.original() == "M").unwrap();
-            assert_eq!(m_field.var_type, Some(FunctionBlockVarType::Internal));
-        } else {
-            panic!("Expected FunctionBlock type");
-        }
+        let fields = cast_struct!(
+            &r_trig.representation,
+            IntermediateType::FunctionBlock { fields }
+        );
+        // Check that M is internal
+        let m_field = fields.iter().find(|f| f.name.original() == "M").unwrap();
+        assert_eq!(m_field.var_type, Some(FunctionBlockVarType::Internal));
     }
 
     #[test]
