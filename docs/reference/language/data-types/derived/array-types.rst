@@ -46,7 +46,7 @@ specification.
 Constant Bounds (Vendor Extension)
 ----------------------------------
 
-.. include:: ../../../includes/requires-vendor-extension.rst
+.. include:: ../../../../includes/requires-vendor-extension.rst
 
 Many PLC vendors allow global constants in place of literal values for
 array bounds. IronPLC supports this with the ``--allow-constant-type-params``

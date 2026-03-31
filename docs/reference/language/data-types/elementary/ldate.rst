@@ -4,7 +4,7 @@ LDATE
 
 64-bit calendar date value.
 
-.. include:: ../../../includes/requires-edition3.rst
+.. include:: ../../../../includes/requires-edition3.rst
 
 .. list-table::
    :widths: 30 70
