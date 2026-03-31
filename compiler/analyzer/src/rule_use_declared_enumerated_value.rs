@@ -122,6 +122,28 @@ mod tests {
     use ironplc_parser::{options::CompilerOptions, parse_program};
 
     #[test]
+    fn apply_when_multiple_enum_values_with_one_undefined_then_error() {
+        let program = "
+TYPE
+LEVEL : (INFO, WARN) := INFO;
+END_TYPE
+
+FUNCTION_BLOCK LOGGER
+VAR_INPUT
+A : LEVEL := INFO;
+B : LEVEL := CRITICAL;
+END_VAR
+END_FUNCTION_BLOCK";
+
+        let library =
+            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let result = analyze(&[&library], &CompilerOptions::default());
+
+        let (_library, context) = result.unwrap();
+        assert!(context.has_diagnostics());
+    }
+
+    #[test]
     fn apply_when_var_init_undefined_enum_value_then_error() {
         let program = "
 TYPE

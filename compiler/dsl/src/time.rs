@@ -264,3 +264,65 @@ impl fmt::Display for DateAndTimeLiteral {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::{Date, Month, PrimitiveDateTime, Time};
+
+    #[test]
+    fn days_when_one_day_then_correct_duration() {
+        let fp = FixedPoint::parse("1").unwrap();
+        let dur = DurationLiteral::days(fp);
+        assert_eq!(dur.interval, Duration::days(1));
+    }
+
+    #[test]
+    fn hours_when_one_hour_then_correct_duration() {
+        let fp = FixedPoint::parse("1").unwrap();
+        let dur = DurationLiteral::hours(fp);
+        assert_eq!(dur.interval, Duration::hours(1));
+    }
+
+    #[test]
+    fn minutes_when_one_minute_then_correct_duration() {
+        let fp = FixedPoint::parse("1").unwrap();
+        let dur = DurationLiteral::minutes(fp);
+        assert_eq!(dur.interval, Duration::minutes(1));
+    }
+
+    #[test]
+    fn plus_when_two_durations_then_sum() {
+        let a = DurationLiteral::seconds(FixedPoint::parse("1").unwrap());
+        let b = DurationLiteral::seconds(FixedPoint::parse("2").unwrap());
+        let result = a.plus(b);
+        assert_eq!(result.interval, Duration::seconds(3));
+    }
+
+    #[test]
+    fn display_when_duration_then_formats_as_time_ms() {
+        let dur = DurationLiteral::seconds(FixedPoint::parse("2").unwrap());
+        assert_eq!(format!("{dur}"), "TIME#2000ms");
+    }
+
+    #[test]
+    fn display_when_time_of_day_then_formats_as_tod() {
+        let tod = TimeOfDayLiteral::new(Time::from_hms(14, 30, 0).unwrap());
+        assert_eq!(format!("{tod}"), "TIME_OF_DAY#14:30:00");
+    }
+
+    #[test]
+    fn display_when_date_then_formats_as_date() {
+        let date = DateLiteral::new(Date::from_calendar_date(2025, Month::March, 15).unwrap());
+        assert_eq!(format!("{date}"), "DATE#2025-03-15");
+    }
+
+    #[test]
+    fn display_when_date_and_time_then_formats_as_dt() {
+        let dt = DateAndTimeLiteral::new(PrimitiveDateTime::new(
+            Date::from_calendar_date(2025, Month::January, 1).unwrap(),
+            Time::from_hms(12, 0, 0).unwrap(),
+        ));
+        assert_eq!(format!("{dt}"), "DATE_AND_TIME#2025-01-01-12:00:00");
+    }
+}

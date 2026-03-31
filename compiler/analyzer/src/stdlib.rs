@@ -70,3 +70,30 @@ pub(crate) fn is_supported_standard_type(ty: &TypeName) -> bool {
 pub(crate) fn is_standard_library_type(ty: &TypeName) -> bool {
     is_supported_standard_type(ty) || is_unsupported_standard_type(ty)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_supported_standard_type_when_known_type_then_true() {
+        assert!(is_supported_standard_type(&TypeName::from("SR")));
+        assert!(is_supported_standard_type(&TypeName::from("TON")));
+        assert!(is_supported_standard_type(&TypeName::from("CTU")));
+    }
+
+    #[test]
+    fn is_supported_standard_type_when_user_type_then_false() {
+        assert!(!is_supported_standard_type(&TypeName::from("MY_TYPE")));
+    }
+
+    #[test]
+    fn is_standard_library_type_when_supported_then_true() {
+        assert!(is_standard_library_type(&TypeName::from("RS")));
+    }
+
+    #[test]
+    fn is_standard_library_type_when_user_type_then_false() {
+        assert!(!is_standard_library_type(&TypeName::from("MY_FB")));
+    }
+}

@@ -195,10 +195,105 @@ impl Visitor<Diagnostic> for HierarchyVisitor {
 #[cfg(test)]
 mod tests {
     use crate::{
-        rule_pou_hierarchy::apply, semantic_context::SemanticContextBuilder,
-        test_helpers::parse_and_resolve_types,
+        rule_pou_hierarchy::apply,
+        semantic_context::SemanticContextBuilder,
+        test_helpers::{parse_and_resolve_types, parse_only},
     };
     use ironplc_parser::options::CompilerOptions;
+
+    #[test]
+    fn apply_when_duplicate_function_name_then_error() {
+        let program = "
+        FUNCTION Foo : BOOL
+            Foo := FALSE;
+        END_FUNCTION
+
+        FUNCTION Foo : BOOL
+            Foo := TRUE;
+        END_FUNCTION";
+
+        let library = parse_only(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_duplicate_function_block_name_then_error() {
+        let program = "
+        FUNCTION_BLOCK Bar
+            VAR
+                X : BOOL;
+            END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Bar
+            VAR
+                Y : BOOL;
+            END_VAR
+        END_FUNCTION_BLOCK";
+
+        let library = parse_only(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_duplicate_program_name_then_error() {
+        let program = "
+        PROGRAM Baz
+            VAR
+                X : BOOL;
+            END_VAR
+        END_PROGRAM
+
+        PROGRAM Baz
+            VAR
+                Y : BOOL;
+            END_VAR
+        END_PROGRAM";
+
+        let library = parse_only(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_duplicate_configuration_name_then_error() {
+        let program = "
+        FUNCTION_BLOCK Fb1
+            VAR
+                X : BOOL;
+            END_VAR
+        END_FUNCTION_BLOCK
+
+        PROGRAM Prg1
+            VAR
+                inst : Fb1;
+            END_VAR
+        END_PROGRAM
+
+        CONFIGURATION Cfg1
+            RESOURCE Res1 ON PLC
+                TASK Main(INTERVAL := T#20ms, PRIORITY := 1);
+                PROGRAM P1 WITH Main : Prg1;
+            END_RESOURCE
+        END_CONFIGURATION
+
+        CONFIGURATION Cfg1
+            RESOURCE Res2 ON PLC
+                TASK Main(INTERVAL := T#20ms, PRIORITY := 1);
+                PROGRAM P2 WITH Main : Prg1;
+            END_RESOURCE
+        END_CONFIGURATION";
+
+        let library = parse_only(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
 
     #[test]
     fn apply_when_function_invokes_function_block_then_error() {

@@ -206,3 +206,44 @@ pub struct LocatedVarInit {
     pub address: Option<AddressAssignment>,
     pub initializer: InitialValueAssignmentKind,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::VariableIdentifier;
+    use crate::common::VariableType;
+    use crate::core::{Id, SourceSpan};
+
+    fn make_var(name: &str) -> VarDecl {
+        VarDecl {
+            identifier: VariableIdentifier::Symbol(Id::from(name)),
+            var_type: VariableType::Var,
+            qualifier: DeclarationQualifier::Unspecified,
+            initializer: InitialValueAssignmentKind::None(SourceSpan::default()),
+        }
+    }
+
+    #[test]
+    fn has_variables_when_resource_declaration_then_returns_global_vars() {
+        let resource = ResourceDeclaration {
+            name: Id::from("Res1"),
+            resource: Id::from("PLC"),
+            global_vars: vec![make_var("x")],
+            tasks: vec![],
+            programs: vec![],
+        };
+        assert_eq!(resource.variables().len(), 1);
+    }
+
+    #[test]
+    fn has_variables_when_configuration_declaration_then_returns_global_var() {
+        let config = ConfigurationDeclaration {
+            name: Id::from("Cfg1"),
+            global_var: vec![make_var("g")],
+            resource_decl: vec![],
+            fb_inits: vec![],
+            located_var_inits: vec![],
+        };
+        assert_eq!(config.variables().len(), 1);
+    }
+}

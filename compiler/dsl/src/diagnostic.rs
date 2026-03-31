@@ -267,3 +267,65 @@ impl Diagnostic {
         file_ids
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn todo_when_called_then_creates_not_implemented_diagnostic() {
+        let diag = Diagnostic::todo("test.rs", 42);
+        assert_eq!(diag.code, Problem::NotImplemented.code());
+        assert!(diag.primary.message.contains("test.rs"));
+        assert!(diag.source_file.is_some());
+        assert_eq!(diag.source_line, Some(42));
+    }
+
+    #[test]
+    fn todo_with_id_when_called_then_includes_id_location() {
+        let id = Id::from("my_var");
+        let diag = Diagnostic::todo_with_id(&id, "foo.rs", 10);
+        assert_eq!(diag.code, Problem::NotImplemented.code());
+        assert!(diag.primary.message.contains("foo.rs"));
+    }
+
+    #[test]
+    fn todo_with_type_when_called_then_includes_type_location() {
+        let ty = TypeName::from("MY_TYPE");
+        let diag = Diagnostic::todo_with_type(&ty, "bar.rs", 20);
+        assert_eq!(diag.code, Problem::NotImplemented.code());
+        assert!(diag.primary.message.contains("bar.rs"));
+    }
+
+    #[test]
+    fn todo_with_span_when_called_then_includes_span() {
+        let span = SourceSpan::default();
+        let diag = Diagnostic::todo_with_span(span, "baz.rs", 30);
+        assert_eq!(diag.code, Problem::NotImplemented.code());
+        assert!(diag.primary.message.contains("baz.rs"));
+    }
+
+    #[test]
+    fn internal_error_when_called_then_creates_diagnostic() {
+        let diag = Diagnostic::internal_error("err.rs", 99);
+        assert_eq!(diag.code, Problem::InternalError.code());
+        assert!(diag.primary.message.contains("err.rs"));
+        assert!(diag.primary.message.contains("bug in the compiler"));
+    }
+
+    #[test]
+    fn file_ids_when_has_secondary_then_returns_all_file_ids() {
+        let primary_file = FileId::from_string("file1");
+        let secondary_file = FileId::from_string("file2");
+        let diag = Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::file(primary_file.clone(), "primary"),
+        )
+        .with_secondary(Label::file(secondary_file.clone(), "secondary"));
+
+        let ids = diag.file_ids();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&primary_file));
+        assert!(ids.contains(&secondary_file));
+    }
+}
