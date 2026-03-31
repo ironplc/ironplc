@@ -120,6 +120,7 @@ Derived Types
 .. toctree::
    :maxdepth: 1
    :hidden:
+   :caption: Elementary Types
 
    bool
    sint
@@ -146,6 +147,12 @@ Derived Types
    ltime-of-day
    date-and-time
    ldate-and-time
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+   :caption: Derived Types
+
    enumerated-types
    subrange-types
    array-types
