@@ -254,7 +254,7 @@ fn compile_program_with_functions(
             functions,
             &mut builder,
         )?;
-        var_offset += compiled.num_locals;
+        var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
         next_function_id += 1;
         compiled_functions.push(compiled);
     }
@@ -496,7 +496,7 @@ fn compile_user_function(
                 }
                 _ => {}
             }
-            current_index += 1;
+            current_index = VarIndex::new(current_index.raw() + 1);
             num_params += 1;
         }
     }
@@ -553,7 +553,7 @@ fn compile_user_function(
                 }
                 _ => {}
             }
-            current_index += 1;
+            current_index = VarIndex::new(current_index.raw() + 1);
         }
     }
 
@@ -598,9 +598,9 @@ fn compile_user_function(
             None
         }
     };
-    current_index += 1;
+    current_index = VarIndex::new(current_index.raw() + 1);
 
-    let num_locals = current_index - var_offset;
+    let num_locals = current_index.raw() - var_offset.raw();
 
     // Determine return type's OpType.
     let return_type_name = func_decl.return_type.to_type_name();

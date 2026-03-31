@@ -169,7 +169,7 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
                             crate::ironplc_dsl::common::ReferenceTarget::Array(subranges) => {
                                 // REF_TO ARRAY[...] OF T — use the element type name
                                 // so the parameter is registered in the function signature.
-                                (subranges.type_name.clone(), true)
+                                (subranges.type_name.to_type_name(), true)
                             }
                         }
                     }

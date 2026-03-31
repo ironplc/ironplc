@@ -230,6 +230,7 @@ impl core::fmt::Display for SlotIndex {
     }
 }
 
+
 impl core::ops::Add<u32> for SlotIndex {
     type Output = SlotIndex;
     fn add(self, rhs: u32) -> SlotIndex {
