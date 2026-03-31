@@ -159,6 +159,8 @@ pub trait Fold<E> {
 
     dispatch!(ArraySpecificationKind);
 
+    dispatch!(ArrayElementType);
+
     dispatch!(ArraySubranges);
 
     // 2.4.2.1
