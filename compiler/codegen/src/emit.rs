@@ -252,6 +252,33 @@ impl Emitter {
         self.pop_stack(2);
     }
 
+    /// Emits STR_INIT_ARRAY with var_index and desc_index operands.
+    /// Initializes all string headers in an array. No stack effect.
+    pub fn emit_str_init_array(&mut self, var_index: VarIndex, desc_index: u16) {
+        self.bytecode.push(opcode::STR_INIT_ARRAY);
+        self.bytecode.extend_from_slice(&var_index.to_le_bytes());
+        self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
+    }
+
+    /// Emits STR_LOAD_ARRAY_ELEM with var_index and desc_index operands.
+    /// Pops flat_index, pushes buf_idx. Net: 0.
+    pub fn emit_str_load_array_elem(&mut self, var_index: VarIndex, desc_index: u16) {
+        self.bytecode.push(opcode::STR_LOAD_ARRAY_ELEM);
+        self.bytecode.extend_from_slice(&var_index.to_le_bytes());
+        self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
+        self.pop_stack(1);
+        self.push_stack(1);
+    }
+
+    /// Emits STR_STORE_ARRAY_ELEM with var_index and desc_index operands.
+    /// Pops flat_index and buf_idx. Net: -2.
+    pub fn emit_str_store_array_elem(&mut self, var_index: VarIndex, desc_index: u16) {
+        self.bytecode.push(opcode::STR_STORE_ARRAY_ELEM);
+        self.bytecode.extend_from_slice(&var_index.to_le_bytes());
+        self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
+        self.pop_stack(2);
+    }
+
     /// Emits BUILTIN with a function ID.
     /// All builtins pop `arg_count` values and push one result.
     /// The arg count is looked up from `opcode::builtin::arg_count()`.
