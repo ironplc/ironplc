@@ -6,7 +6,7 @@ A reference type holds a pointer to a variable. References allow indirect
 access — reading or writing through the reference affects the original
 variable.
 
-.. include:: ../../../includes/requires-edition3.rst
+.. include:: ../../../../includes/requires-edition3.rst
 
 .. tip::
 

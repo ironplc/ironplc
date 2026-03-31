@@ -67,6 +67,6 @@ Example
 See Also
 --------
 
-- :doc:`/reference/language/data-types/bool` — boolean data type
+- :doc:`/reference/language/data-types/elementary/bool` — boolean data type
 - :doc:`comparison-operators` — relational operators producing BOOL
 - :doc:`arithmetic-operators` — numeric operators

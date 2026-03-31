@@ -37,7 +37,7 @@ The maximum length can be specified in the declaration:
 Constant Length (Vendor Extension)
 ----------------------------------
 
-.. include:: ../../../includes/requires-vendor-extension.rst
+.. include:: ../../../../includes/requires-vendor-extension.rst
 
 With the ``--allow-constant-type-params`` flag (or ``--allow-all``), you can
 use a global constant for the maximum length instead of a literal:
