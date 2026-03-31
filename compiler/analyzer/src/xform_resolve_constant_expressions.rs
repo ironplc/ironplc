@@ -175,6 +175,7 @@ mod tests {
     use super::*;
     use ironplc_dsl::core::FileId;
     use ironplc_parser::parse_program;
+    use ironplc_test::cast;
 
     fn parse(src: &str) -> Library {
         parse_program(
@@ -208,31 +209,21 @@ mod tests {
 
     /// Extract the string length from a variable's initializer.
     fn get_string_length(var: &VarDecl) -> u128 {
-        match &var.initializer {
-            InitialValueAssignmentKind::String(s) => match &s.length {
-                Some(IntegerRef::Literal(lit)) => lit.value,
-                other => panic!("Expected resolved integer literal, got {:?}", other),
-            },
-            other => panic!("Expected String initializer, got {:?}", other),
-        }
+        let s = cast!(&var.initializer, InitialValueAssignmentKind::String);
+        let lit = cast!(s.length.as_ref().unwrap(), IntegerRef::Literal);
+        lit.value
     }
 
     /// Extract array subranges from a variable's initializer.
     fn get_array_subranges(var: &VarDecl) -> &[Subrange] {
-        match &var.initializer {
-            InitialValueAssignmentKind::Array(arr) => match &arr.spec {
-                ArraySpecificationKind::Inline(sub) => &sub.ranges,
-                other => panic!("Expected ArraySubranges, got {:?}", other),
-            },
-            other => panic!("Expected Array initializer, got {:?}", other),
-        }
+        let arr = cast!(&var.initializer, InitialValueAssignmentKind::Array);
+        let sub = cast!(&arr.spec, ArraySpecificationKind::Inline);
+        &sub.ranges
     }
 
     fn signed_integer_ref_value(r: &SignedIntegerRef) -> (bool, u128) {
-        match r {
-            SignedIntegerRef::Literal(si) => (si.is_neg, si.value.value),
-            other => panic!("Expected resolved SignedInteger literal, got {:?}", other),
-        }
+        let si = cast!(r, SignedIntegerRef::Literal);
+        (si.is_neg, si.value.value)
     }
 
     #[test]

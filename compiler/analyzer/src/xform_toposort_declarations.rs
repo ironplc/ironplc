@@ -565,7 +565,8 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
 mod tests {
     use super::*;
 
-    use crate::{cast, test_helpers::parse_only};
+    use crate::test_helpers::parse_only;
+    use ironplc_test::cast;
 
     #[test]
     fn apply_when_function_block_recursive_call_in_self_then_return_error() {

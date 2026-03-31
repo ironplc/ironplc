@@ -205,6 +205,7 @@ mod tests {
     use crate::type_environment::TypeEnvironmentBuilder;
     use ironplc_dsl::common::TypeName;
     use ironplc_dsl::core::SourceSpan;
+    use ironplc_test::{cast, cast_struct};
 
     /// Helper to create a `SignedIntegerRef::Literal` for tests.
     fn literal(value: u128, is_neg: bool) -> SignedIntegerRef {
@@ -325,31 +326,26 @@ mod tests {
         };
 
         let spec = SpecificationKind::Inline(array_subranges);
-        let result = try_from(&TypeName::from("MY_ARRAY"), &spec, &env);
-        assert!(result.is_ok());
+        let result = try_from(&TypeName::from("MY_ARRAY"), &spec, &env).unwrap();
 
-        let attrs = match result.unwrap() {
-            IntermediateResult::Type(attrs) => attrs,
-            _ => unreachable!("Expected Type result"),
-        };
+        let attrs = cast!(result, IntermediateResult::Type);
 
-        if let IntermediateType::Array {
-            element_type,
-            dimensions,
-        } = attrs.representation
-        {
-            assert_eq!(
-                *element_type,
-                IntermediateType::Int {
-                    size: ByteSized::B16
-                }
-            );
-            assert_eq!(dimensions.len(), 1);
-            assert_eq!(dimensions[0].lower, 1);
-            assert_eq!(dimensions[0].upper, 10);
-        } else {
-            unreachable!("Expected Array type");
-        }
+        let (element_type, dimensions) = cast_struct!(
+            attrs.representation,
+            IntermediateType::Array {
+                element_type,
+                dimensions
+            }
+        );
+        assert_eq!(
+            *element_type,
+            IntermediateType::Int {
+                size: ByteSized::B16
+            }
+        );
+        assert_eq!(dimensions.len(), 1);
+        assert_eq!(dimensions[0].lower, 1);
+        assert_eq!(dimensions[0].upper, 10);
     }
 
     #[test]
@@ -375,13 +371,9 @@ mod tests {
         .unwrap();
 
         let spec = SpecificationKind::Named(TypeName::from("BASE_ARRAY"));
-        let result = try_from(&TypeName::from("ALIAS_ARRAY"), &spec, &env);
-        assert!(result.is_ok());
+        let result = try_from(&TypeName::from("ALIAS_ARRAY"), &spec, &env).unwrap();
 
-        let base_name = match result.unwrap() {
-            IntermediateResult::Alias(base_name) => base_name,
-            _ => unreachable!("Expected Alias result"),
-        };
+        let base_name = cast!(result, IntermediateResult::Alias);
         assert_eq!(base_name, TypeName::from("BASE_ARRAY"));
     }
 
@@ -439,31 +431,26 @@ mod tests {
         };
 
         let spec = SpecificationKind::Inline(array_subranges);
-        let result = try_from(&TypeName::from("MATRIX"), &spec, &env);
-        assert!(result.is_ok());
+        let result = try_from(&TypeName::from("MATRIX"), &spec, &env).unwrap();
 
-        let attrs = match result.unwrap() {
-            IntermediateResult::Type(attrs) => attrs,
-            _ => unreachable!("Expected Type result"),
-        };
+        let attrs = cast!(result, IntermediateResult::Type);
 
         // Check total elements before destructuring
         assert_eq!(attrs.representation.array_total_elements(), Some(12)); // 3 * 4
 
-        if let IntermediateType::Array {
-            element_type,
-            dimensions,
-        } = attrs.representation
-        {
-            assert_eq!(*element_type, IntermediateType::Bool);
-            assert_eq!(dimensions.len(), 2);
-            assert_eq!(dimensions[0].lower, 1);
-            assert_eq!(dimensions[0].upper, 3);
-            assert_eq!(dimensions[1].lower, 1);
-            assert_eq!(dimensions[1].upper, 4);
-        } else {
-            unreachable!("Expected Array type");
-        }
+        let (element_type, dimensions) = cast_struct!(
+            attrs.representation,
+            IntermediateType::Array {
+                element_type,
+                dimensions
+            }
+        );
+        assert_eq!(*element_type, IntermediateType::Bool);
+        assert_eq!(dimensions.len(), 2);
+        assert_eq!(dimensions[0].lower, 1);
+        assert_eq!(dimensions[0].upper, 3);
+        assert_eq!(dimensions[1].lower, 1);
+        assert_eq!(dimensions[1].upper, 4);
     }
 
     #[test]
@@ -483,32 +470,27 @@ mod tests {
         };
 
         let spec = SpecificationKind::Inline(array_subranges);
-        let result = try_from(&TypeName::from("MY_REF_ARRAY"), &spec, &env);
-        assert!(result.is_ok());
+        let result = try_from(&TypeName::from("MY_REF_ARRAY"), &spec, &env).unwrap();
 
-        let attrs = match result.unwrap() {
-            IntermediateResult::Type(attrs) => attrs,
-            _ => unreachable!("Expected Type result"),
-        };
+        let attrs = cast!(result, IntermediateResult::Type);
 
-        if let IntermediateType::Array {
-            element_type,
-            dimensions,
-        } = attrs.representation
-        {
-            assert!(element_type.is_reference());
-            assert_eq!(
-                element_type.referenced_type().unwrap(),
-                &IntermediateType::Bytes {
-                    size: ByteSized::B8
-                }
-            );
-            assert_eq!(dimensions.len(), 1);
-            assert_eq!(dimensions[0].lower, 0);
-            assert_eq!(dimensions[0].upper, 3);
-        } else {
-            unreachable!("Expected Array type");
-        }
+        let (element_type, dimensions) = cast_struct!(
+            attrs.representation,
+            IntermediateType::Array {
+                element_type,
+                dimensions
+            }
+        );
+        assert!(element_type.is_reference());
+        assert_eq!(
+            element_type.referenced_type().unwrap(),
+            &IntermediateType::Bytes {
+                size: ByteSized::B8
+            }
+        );
+        assert_eq!(dimensions.len(), 1);
+        assert_eq!(dimensions[0].lower, 0);
+        assert_eq!(dimensions[0].upper, 3);
     }
 
     #[test]

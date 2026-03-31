@@ -131,6 +131,7 @@ mod tests {
     use ironplc_dsl::common::TypeName;
     use ironplc_dsl::core::{FileId, SourceSpan};
     use ironplc_parser::options::CompilerOptions;
+    use ironplc_test::{cast, cast_struct};
 
     // Tests for validate_subrange_bounds method
     #[test]
@@ -304,20 +305,18 @@ mod tests {
         let result = try_from(&TypeName::from("MY_RANGE"), &spec, &env);
         assert!(result.is_ok());
 
-        let attrs = match result.unwrap() {
-            IntermediateResult::Type(attrs) => attrs,
-            _ => unreachable!("Expected Type result"),
-        };
+        let result = result.unwrap();
+        let attrs = cast!(result, IntermediateResult::Type);
         assert!(attrs.representation.is_subrange());
-        if let IntermediateType::Subrange {
-            min_value,
-            max_value,
-            ..
-        } = attrs.representation
-        {
-            assert_eq!(min_value, 1);
-            assert_eq!(max_value, 100);
-        }
+        let (min_value, max_value) = cast_struct!(
+            attrs.representation,
+            IntermediateType::Subrange {
+                min_value,
+                max_value
+            }
+        );
+        assert_eq!(min_value, 1);
+        assert_eq!(max_value, 100);
     }
 
     #[test]
@@ -346,10 +345,8 @@ mod tests {
         let result = try_from(&TypeName::from("ALIAS_RANGE"), &spec, &env);
         assert!(result.is_ok());
 
-        let base_name = match result.unwrap() {
-            IntermediateResult::Alias(base_name) => base_name,
-            _ => unreachable!("Expected Alias result"),
-        };
+        let result = result.unwrap();
+        let base_name = cast!(result, IntermediateResult::Alias);
         assert_eq!(base_name, TypeName::from("BASE_RANGE"));
     }
 
@@ -525,27 +522,27 @@ END_TYPE
         // Check that the subrange types were created
         let my_range_type = env.get(&TypeName::from("MY_RANGE")).unwrap();
         assert!(my_range_type.representation.is_subrange());
-        if let IntermediateType::Subrange {
-            min_value,
-            max_value,
-            ..
-        } = &my_range_type.representation
-        {
-            assert_eq!(*min_value, 1);
-            assert_eq!(*max_value, 100);
-        }
+        let (min_value, max_value) = cast_struct!(
+            &my_range_type.representation,
+            IntermediateType::Subrange {
+                min_value,
+                max_value
+            }
+        );
+        assert_eq!(*min_value, 1);
+        assert_eq!(*max_value, 100);
 
         let small_range_type = env.get(&TypeName::from("SMALL_RANGE")).unwrap();
         assert!(small_range_type.representation.is_subrange());
-        if let IntermediateType::Subrange {
-            min_value,
-            max_value,
-            ..
-        } = &small_range_type.representation
-        {
-            assert_eq!(*min_value, -10);
-            assert_eq!(*max_value, 10);
-        }
+        let (min_value, max_value) = cast_struct!(
+            &small_range_type.representation,
+            IntermediateType::Subrange {
+                min_value,
+                max_value
+            }
+        );
+        assert_eq!(*min_value, -10);
+        assert_eq!(*max_value, 10);
     }
 
     #[test]
