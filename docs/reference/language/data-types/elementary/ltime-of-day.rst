@@ -4,7 +4,7 @@ LTIME_OF_DAY
 
 64-bit time of day value.
 
-.. include:: ../../../includes/requires-edition3.rst
+.. include:: ../../../../includes/requires-edition3.rst
 
 .. list-table::
    :widths: 30 70

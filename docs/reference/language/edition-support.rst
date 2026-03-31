@@ -20,19 +20,19 @@ Edition 3 introduced the following features, which require
    * - Feature
      - Category
      - Description
-   * - :doc:`LTIME <data-types/ltime>`
+   * - :doc:`LTIME <data-types/elementary/ltime>`
      - Data type
      - 64-bit duration
-   * - :doc:`LDATE <data-types/ldate>`
+   * - :doc:`LDATE <data-types/elementary/ldate>`
      - Data type
      - 64-bit calendar date
-   * - :doc:`LTIME_OF_DAY <data-types/ltime-of-day>`
+   * - :doc:`LTIME_OF_DAY <data-types/elementary/ltime-of-day>`
      - Data type
      - 64-bit time of day
-   * - :doc:`LDATE_AND_TIME <data-types/ldate-and-time>`
+   * - :doc:`LDATE_AND_TIME <data-types/elementary/ldate-and-time>`
      - Data type
      - 64-bit date and time of day
-   * - :doc:`REF_TO <data-types/reference-types>`
+   * - :doc:`REF_TO <data-types/derived/reference-types>`
      - Data type
      - Reference (pointer) to a variable
    * - ``REF()``

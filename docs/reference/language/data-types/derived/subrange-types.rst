@@ -45,7 +45,7 @@ Example
 Constant Bounds (Vendor Extension)
 ----------------------------------
 
-.. include:: ../../../includes/requires-vendor-extension.rst
+.. include:: ../../../../includes/requires-vendor-extension.rst
 
 With the ``--allow-constant-type-params`` flag (or ``--allow-all``), you can
 use global constants for the subrange bounds:
@@ -70,4 +70,4 @@ See Also
 --------
 
 - :doc:`enumerated-types` — named set of values
-- :doc:`int` — base integer type
+- :doc:`../elementary/int` — base integer type
