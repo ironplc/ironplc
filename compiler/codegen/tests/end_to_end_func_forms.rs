@@ -7,7 +7,6 @@
 //! treats NOT as a unary operator applied to parenthesized expression (x).
 
 mod common;
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;

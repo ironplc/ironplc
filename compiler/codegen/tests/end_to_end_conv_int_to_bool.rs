@@ -1,7 +1,6 @@
 //! End-to-end tests for integer to BOOL type conversions.
 
 mod common;
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;

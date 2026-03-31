@@ -6,7 +6,6 @@
 
 mod common;
 
-use ironplc_container::VarIndex;
 use ironplc_vm::error::Trap;
 
 #[test]

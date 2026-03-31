@@ -6,7 +6,6 @@
 //! and unsigned semantics for each type.
 
 mod common;
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
