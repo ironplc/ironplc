@@ -114,10 +114,31 @@ impl ExprTypeResolver<'_> {
                 let sig = self.function_environment.get(&f.name)?;
                 let return_type = sig.return_type.as_ref()?.to_type_name();
                 if is_generic_type(&return_type) {
-                    // Generic return type: infer concrete type from first argument
+                    // Generic return type: infer concrete type from the first argument
+                    // whose parameter declaration type matches the generic return type.
+                    // This correctly skips selector parameters whose type differs from
+                    // the return type (e.g., BOOL for SEL, ANY_INT for MUX).
+                    let mut positional_index = 0usize;
                     f.param_assignment.iter().find_map(|p| match p {
-                        ParamAssignmentKind::PositionalInput(pos) => pos.expr.resolved_type.clone(),
-                        ParamAssignmentKind::NamedInput(named) => named.expr.resolved_type.clone(),
+                        ParamAssignmentKind::PositionalInput(pos) => {
+                            let idx = positional_index;
+                            positional_index += 1;
+                            match sig.parameters.get(idx) {
+                                Some(param) if param.param_type == return_type => {
+                                    pos.expr.resolved_type.clone()
+                                }
+                                _ => None,
+                            }
+                        }
+                        ParamAssignmentKind::NamedInput(named) => {
+                            let param = sig.parameters.iter().find(|p| p.name == named.name);
+                            match param {
+                                Some(param) if param.param_type == return_type => {
+                                    named.expr.resolved_type.clone()
+                                }
+                                _ => None,
+                            }
+                        }
                         _ => None,
                     })
                 } else {
@@ -899,5 +920,62 @@ END_FUNCTION_BLOCK";
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
         assert_type_eq(&types[0], "TIME");
+    }
+
+    #[test]
+    fn apply_when_sel_then_resolves_value_type_not_selector() {
+        let program = "
+PROGRAM test
+  VAR
+    g : BOOL;
+    a : INT;
+    b : INT;
+    result : INT;
+  END_VAR
+    result := SEL(g, a, b);
+END_PROGRAM";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "INT");
+    }
+
+    #[test]
+    fn apply_when_mux_then_resolves_value_type_not_selector() {
+        let program = "
+PROGRAM test
+  VAR
+    k : INT;
+    a : DINT;
+    b : DINT;
+    result : DINT;
+  END_VAR
+    result := MUX(k, a, b);
+END_PROGRAM";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "DINT");
+    }
+
+    #[test]
+    fn apply_when_sel_nested_in_function_then_resolves_correctly() {
+        let program = "
+PROGRAM test
+  VAR
+    g : BOOL;
+    a : INT;
+    b : INT;
+    result : INT;
+  END_VAR
+    result := ABS(SEL(g, a, b));
+END_PROGRAM";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "INT");
     }
 }
