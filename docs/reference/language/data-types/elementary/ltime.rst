@@ -4,7 +4,7 @@ LTIME
 
 64-bit duration value representing an interval of time.
 
-.. include:: ../../../includes/requires-edition3.rst
+.. include:: ../../../../includes/requires-edition3.rst
 
 .. list-table::
    :widths: 30 70

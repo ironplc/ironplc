@@ -4,7 +4,7 @@ LDATE_AND_TIME
 
 64-bit combined date and time of day value.
 
-.. include:: ../../../includes/requires-edition3.rst
+.. include:: ../../../../includes/requires-edition3.rst
 
 .. list-table::
    :widths: 30 70

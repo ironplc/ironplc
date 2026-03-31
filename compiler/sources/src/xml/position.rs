@@ -953,6 +953,7 @@ fn get_text_content(node: roxmltree::Node) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ironplc_test::cast;
 
     fn test_file_id() -> FileId {
         FileId::from_string("test.xml")
@@ -1082,9 +1083,7 @@ END_IF;
         let dt = &project.types.data_types.data_type[0];
         assert_eq!(dt.name, "TrafficLight");
 
-        let DataType::Enum(enum_type) = &dt.base_type else {
-            panic!("Expected enum type");
-        };
+        let enum_type = cast!(&dt.base_type, DataType::Enum);
         assert_eq!(enum_type.values.value.len(), 3);
         assert_eq!(enum_type.values.value[0].name, "Red");
         assert_eq!(enum_type.values.value[1].name, "Yellow");
@@ -1123,9 +1122,7 @@ END_IF;
         let dt = &project.types.data_types.data_type[0];
         assert_eq!(dt.name, "IntArray");
 
-        let DataType::Array(array) = &dt.base_type else {
-            panic!("Expected array type");
-        };
+        let array = cast!(&dt.base_type, DataType::Array);
         assert_eq!(array.dimension.len(), 1);
         assert_eq!(array.dimension[0].lower, "0");
         assert_eq!(array.dimension[0].upper, "9");
@@ -1373,9 +1370,7 @@ END_IF;</xhtml>
         // Enum type
         let enum_type = &project.types.data_types.data_type[0];
         assert_eq!(enum_type.name, "MyEnum");
-        let DataType::Enum(e) = &enum_type.base_type else {
-            panic!("Expected enum")
-        };
+        let e = cast!(&enum_type.base_type, DataType::Enum);
         assert_eq!(e.values.value.len(), 2);
         assert_eq!(e.values.value[0].name, "Val1");
         assert_eq!(e.values.value[1].name, "Val2");
@@ -1383,9 +1378,7 @@ END_IF;</xhtml>
         // Array type
         let array_type = &project.types.data_types.data_type[1];
         assert_eq!(array_type.name, "MyArray");
-        let DataType::Array(a) = &array_type.base_type else {
-            panic!("Expected array")
-        };
+        let a = cast!(&array_type.base_type, DataType::Array);
         assert_eq!(a.dimension.len(), 1);
         assert_eq!(a.dimension[0].lower, "1");
         assert_eq!(a.dimension[0].upper, "10");
@@ -1394,9 +1387,7 @@ END_IF;</xhtml>
         // Struct type
         let struct_type = &project.types.data_types.data_type[2];
         assert_eq!(struct_type.name, "MyStruct");
-        let DataType::Struct(s) = &struct_type.base_type else {
-            panic!("Expected struct")
-        };
+        let s = cast!(&struct_type.base_type, DataType::Struct);
         assert_eq!(s.variable.len(), 2);
         assert_eq!(s.variable[0].name, "Field1");
         assert!(matches!(s.variable[0].member_type, DataType::Real));
@@ -1449,9 +1440,7 @@ END_IF;</xhtml>
         assert_eq!(prog_interface.local_vars.len(), 1);
         let local_var = &prog_interface.local_vars[0].variable[0];
         assert_eq!(local_var.name, "MyCounter");
-        let DataType::Derived(d) = &local_var.var_type else {
-            panic!("Expected derived type")
-        };
+        let d = cast!(&local_var.var_type, DataType::Derived);
         assert_eq!(d.name, "Counter");
     }
 
