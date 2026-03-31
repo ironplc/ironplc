@@ -1238,7 +1238,7 @@ fn emit_initial_values(
                         Some(ReferenceInitialValue::Ref(target_var)) => {
                             // REF(var) → load the target variable's index as a u64 constant.
                             let target_index = resolve_variable(ctx, target_var)?;
-                            let pool_index = ctx.add_i64_constant(target_index.raw() as i64);
+                            let pool_index = ctx.add_i64_constant(target_index.into());
                             emitter.emit_load_const_i64(pool_index);
                         }
                         _ => {
@@ -1352,7 +1352,7 @@ fn emit_function_local_prologue(
                     match &ref_init.initial_value {
                         Some(ReferenceInitialValue::Ref(target_var)) => {
                             let target_index = resolve_variable(ctx, target_var)?;
-                            let pool_index = ctx.add_i64_constant(target_index.raw() as i64);
+                            let pool_index = ctx.add_i64_constant(target_index.into());
                             emitter.emit_load_const_i64(pool_index);
                         }
                         _ => {
@@ -2652,7 +2652,7 @@ pub(crate) fn compile_expr(
         ExprKind::Ref(variable) => {
             // REF(var) → push the variable's table index as a u64 constant.
             let var_index = resolve_variable(ctx, variable)?;
-            let pool_index = ctx.add_i64_constant(var_index.raw() as i64);
+            let pool_index = ctx.add_i64_constant(var_index.into());
             emitter.emit_load_const_i64(pool_index);
             Ok(())
         }

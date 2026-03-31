@@ -150,6 +150,32 @@ impl core::fmt::Display for VarIndex {
     }
 }
 
+impl core::ops::Add<u16> for VarIndex {
+    type Output = VarIndex;
+    fn add(self, rhs: u16) -> VarIndex {
+        VarIndex(self.0 + rhs)
+    }
+}
+
+impl core::ops::AddAssign<u16> for VarIndex {
+    fn add_assign(&mut self, rhs: u16) {
+        self.0 += rhs;
+    }
+}
+
+impl core::ops::Sub for VarIndex {
+    type Output = u16;
+    fn sub(self, rhs: VarIndex) -> u16 {
+        self.0 - rhs.0
+    }
+}
+
+impl From<VarIndex> for i64 {
+    fn from(v: VarIndex) -> i64 {
+        v.0 as i64
+    }
+}
+
 /// A constant pool index within a bytecode container.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ConstantIndex(u16);
@@ -201,5 +227,25 @@ impl SlotIndex {
 impl core::fmt::Display for SlotIndex {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl core::ops::Add<u32> for SlotIndex {
+    type Output = SlotIndex;
+    fn add(self, rhs: u32) -> SlotIndex {
+        SlotIndex(self.0 + rhs)
+    }
+}
+
+impl core::ops::Add for SlotIndex {
+    type Output = SlotIndex;
+    fn add(self, rhs: SlotIndex) -> SlotIndex {
+        SlotIndex(self.0 + rhs.0)
+    }
+}
+
+impl core::ops::AddAssign<u32> for SlotIndex {
+    fn add_assign(&mut self, rhs: u32) {
+        self.0 += rhs;
     }
 }

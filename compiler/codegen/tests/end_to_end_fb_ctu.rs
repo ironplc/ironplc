@@ -24,11 +24,11 @@ END_PROGRAM
 ";
 
 /// Generates `n` rising edges on variable `var_idx` (pulse TRUE then FALSE).
-fn pulse_n(vm: &mut ironplc_vm::VmRunning<'_>, var_idx: u16, n: u64) {
+fn pulse_n(vm: &mut ironplc_vm::VmRunning<'_>, var_idx: VarIndex, n: u64) {
     for i in 0..n {
-        vm.write_variable(VarIndex::new(var_idx), 1).unwrap();
+        vm.write_variable(var_idx, 1).unwrap();
         vm.run_round(i * 2).unwrap();
-        vm.write_variable(VarIndex::new(var_idx), 0).unwrap();
+        vm.write_variable(var_idx, 0).unwrap();
         vm.run_round(i * 2 + 1).unwrap();
     }
 }
@@ -46,7 +46,7 @@ fn end_to_end_when_ctu_not_triggered_then_q_is_false() {
 #[test]
 fn end_to_end_when_ctu_counts_to_pv_then_q_is_true() {
     parse_and_run_rounds(CTU_PROGRAM, &CompilerOptions::default(), |vm| {
-        pulse_n(vm, 1, 3);
+        pulse_n(vm, VarIndex::new(1), 3);
         assert_eq!(
             vm.read_variable(VarIndex::new(3)).unwrap(),
             1,
@@ -63,7 +63,7 @@ fn end_to_end_when_ctu_counts_to_pv_then_q_is_true() {
 #[test]
 fn end_to_end_when_ctu_reset_then_cv_is_zero() {
     parse_and_run_rounds(CTU_PROGRAM, &CompilerOptions::default(), |vm| {
-        pulse_n(vm, 1, 2);
+        pulse_n(vm, VarIndex::new(1), 2);
         assert_eq!(
             vm.read_variable(VarIndex::new(4)).unwrap(),
             2,
@@ -89,7 +89,7 @@ fn end_to_end_when_ctu_reset_then_cv_is_zero() {
 #[test]
 fn end_to_end_when_ctu_below_pv_then_q_is_false() {
     parse_and_run_rounds(CTU_PROGRAM, &CompilerOptions::default(), |vm| {
-        pulse_n(vm, 1, 2);
+        pulse_n(vm, VarIndex::new(1), 2);
         // PV=3, CV=2 => Q should be FALSE
         assert_eq!(
             vm.read_variable(VarIndex::new(3)).unwrap(),
