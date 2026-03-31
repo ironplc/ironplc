@@ -2,11 +2,12 @@
 #[cfg(test)]
 mod test {
     use dsl::common::{
-        ConstantKind, DataTypeDeclarationKind, DeclarationQualifier, EnumeratedSpecificationInit,
-        EnumerationDeclaration, FunctionBlockBodyKind, FunctionBlockDeclaration,
-        FunctionDeclaration, FunctionReturnType, InitialValueAssignmentKind, Library,
-        LibraryElementKind, ProgramDeclaration, RealLiteral, ReferenceTarget, SimpleInitializer,
-        SpecificationKind, TypeName, TypeReference, VarDecl, VariableIdentifier, VariableType,
+        ArrayElementType, ConstantKind, DataTypeDeclarationKind, DeclarationQualifier,
+        EnumeratedSpecificationInit, EnumerationDeclaration, FunctionBlockBodyKind,
+        FunctionBlockDeclaration, FunctionDeclaration, FunctionReturnType,
+        InitialValueAssignmentKind, Library, LibraryElementKind, ProgramDeclaration, RealLiteral,
+        ReferenceTarget, SimpleInitializer, SpecificationKind, TypeName, TypeReference, VarDecl,
+        VariableIdentifier, VariableType,
     };
     use dsl::configuration::{
         ConfigurationDeclaration, DataSourceKind, ProgramConfiguration, ResourceDeclaration,
@@ -1799,7 +1800,7 @@ END_PROGRAM",
                     InitialValueAssignmentKind::Array(arr) => match &arr.spec {
                         SpecificationKind::Inline(subranges) => {
                             assert!(subranges.ref_to);
-                            assert_eq!(subranges.type_name.to_string(), "BYTE");
+                            assert_eq!(subranges.type_name.to_type_name().to_string(), "BYTE");
                             assert_eq!(subranges.ranges.len(), 1);
                         }
                         _ => panic!("Expected inline array spec"),
@@ -1819,7 +1820,7 @@ END_PROGRAM",
                 match &arr.spec {
                     SpecificationKind::Inline(subranges) => {
                         assert!(subranges.ref_to);
-                        assert_eq!(subranges.type_name.to_string(), "INT");
+                        assert_eq!(subranges.type_name.to_type_name().to_string(), "INT");
                     }
                     _ => panic!("Expected inline array spec"),
                 }
@@ -1842,6 +1843,129 @@ END_PROGRAM",
                 InitialValueAssignmentKind::Array(arr) => match &arr.spec {
                     SpecificationKind::Inline(subranges) => {
                         assert!(!subranges.ref_to);
+                    }
+                    _ => panic!("Expected inline array spec"),
+                },
+                other => panic!("Expected Array initializer, got {:?}", other),
+            },
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_array_of_string_with_size_then_ok() {
+        let lib = parse_text(
+            "PROGRAM main
+VAR
+    names : ARRAY[1..3] OF STRING[10];
+END_VAR
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => match &prog.variables[0].initializer {
+                InitialValueAssignmentKind::Array(arr) => match &arr.spec {
+                    SpecificationKind::Inline(subranges) => {
+                        assert_eq!(subranges.type_name.to_type_name().to_string(), "STRING");
+                        assert_eq!(subranges.ranges.len(), 1);
+                        match &subranges.type_name {
+                            ArrayElementType::String(spec) => {
+                                assert_eq!(
+                                    spec.length.as_ref().unwrap().as_integer().unwrap().value,
+                                    10
+                                );
+                            }
+                            other => panic!("Expected String element type, got {:?}", other),
+                        }
+                    }
+                    _ => panic!("Expected inline array spec"),
+                },
+                other => panic!("Expected Array initializer, got {:?}", other),
+            },
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_array_of_wstring_with_size_then_ok() {
+        let lib = parse_text(
+            "PROGRAM main
+VAR
+    names : ARRAY[1..3] OF WSTRING[20];
+END_VAR
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => match &prog.variables[0].initializer {
+                InitialValueAssignmentKind::Array(arr) => match &arr.spec {
+                    SpecificationKind::Inline(subranges) => {
+                        assert_eq!(subranges.type_name.to_type_name().to_string(), "WSTRING");
+                        match &subranges.type_name {
+                            ArrayElementType::WString(spec) => {
+                                assert_eq!(
+                                    spec.length.as_ref().unwrap().as_integer().unwrap().value,
+                                    20
+                                );
+                            }
+                            other => panic!("Expected WString element type, got {:?}", other),
+                        }
+                    }
+                    _ => panic!("Expected inline array spec"),
+                },
+                other => panic!("Expected Array initializer, got {:?}", other),
+            },
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_array_of_string_without_size_then_ok() {
+        let lib = parse_text(
+            "PROGRAM main
+VAR
+    names : ARRAY[1..3] OF STRING;
+END_VAR
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => match &prog.variables[0].initializer {
+                InitialValueAssignmentKind::Array(arr) => match &arr.spec {
+                    SpecificationKind::Inline(subranges) => match &subranges.type_name {
+                        ArrayElementType::String(spec) => {
+                            assert!(spec.length.is_none());
+                        }
+                        other => panic!("Expected String element type, got {:?}", other),
+                    },
+                    _ => panic!("Expected inline array spec"),
+                },
+                other => panic!("Expected Array initializer, got {:?}", other),
+            },
+            other => panic!("Expected ProgramDeclaration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_when_multidim_array_of_string_with_size_then_ok() {
+        let lib = parse_text(
+            "PROGRAM main
+VAR
+    weekdays : ARRAY[1..3, 1..7] OF STRING[10];
+END_VAR
+END_PROGRAM",
+        );
+        match &lib.elements[0] {
+            LibraryElementKind::ProgramDeclaration(prog) => match &prog.variables[0].initializer {
+                InitialValueAssignmentKind::Array(arr) => match &arr.spec {
+                    SpecificationKind::Inline(subranges) => {
+                        assert_eq!(subranges.ranges.len(), 2);
+                        match &subranges.type_name {
+                            ArrayElementType::String(spec) => {
+                                assert_eq!(
+                                    spec.length.as_ref().unwrap().as_integer().unwrap().value,
+                                    10
+                                );
+                            }
+                            other => panic!("Expected String element type, got {:?}", other),
+                        }
                     }
                     _ => panic!("Expected inline array spec"),
                 },

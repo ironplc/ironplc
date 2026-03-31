@@ -176,7 +176,7 @@ pub(crate) fn array_spec_from_inline(
         .collect::<Result<Vec<_>, Diagnostic>>()?;
     Ok(ArraySpec {
         dimensions,
-        element_type_name: Id::from(&subranges.type_name.to_string()),
+        element_type_name: Id::from(&subranges.type_name.to_type_name().to_string()),
         ref_to: subranges.ref_to,
     })
 }

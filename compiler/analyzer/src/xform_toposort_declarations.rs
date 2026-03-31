@@ -372,7 +372,9 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                 self.declarations.graph.add_edge(depends_on, this, ());
             }
             SpecificationKind::Inline(array_subranges) => {
-                let depends_on = self.declarations.add_node(&array_subranges.type_name.name);
+                let depends_on = self
+                    .declarations
+                    .add_node(&array_subranges.type_name.to_type_name().name);
                 self.declarations.graph.add_edge(depends_on, this, ());
             }
         }

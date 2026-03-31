@@ -368,4 +368,11 @@ END_PROGRAM",
         let expected = read_resource("var_temp_rendered.st");
         assert_eq!(rendered, expected);
     }
+
+    #[test]
+    fn write_to_string_when_array_of_string_with_size_then_renders_size() {
+        let rendered = parse_and_render_resource("array_of_string.st");
+        let expected = read_resource("array_of_string_rendered.st");
+        assert_eq!(rendered, expected);
+    }
 }

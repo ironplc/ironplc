@@ -5,7 +5,7 @@
 
 use ironplc_dsl::{
     common::{
-        ArrayDeclaration, ArraySubranges, Boolean, BooleanLiteral, ConstantKind,
+        ArrayDeclaration, ArrayElementType, ArraySubranges, Boolean, BooleanLiteral, ConstantKind,
         DataTypeDeclarationKind, DeclarationQualifier, ElementaryTypeName,
         EnumeratedSpecificationInit, EnumeratedSpecificationValues, EnumeratedValue,
         EnumerationDeclaration, FunctionBlockBodyKind, FunctionBlockDeclaration,
@@ -163,7 +163,7 @@ fn transform_array_decl(
         type_name: type_name.clone(),
         spec: SpecificationKind::Inline(ArraySubranges {
             ranges: subranges,
-            type_name: base_type_name,
+            type_name: ArrayElementType::Named(base_type_name),
             ref_to: false,
         }),
         init: vec![],

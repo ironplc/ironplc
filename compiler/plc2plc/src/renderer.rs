@@ -497,7 +497,22 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             self.write_ws("REF_TO");
         }
 
-        self.visit_type_name(&node.type_name)
+        match &node.type_name {
+            ArrayElementType::Named(tn) => self.visit_type_name(tn)?,
+            ArrayElementType::String(spec) | ArrayElementType::WString(spec) => {
+                let kw = match spec.width {
+                    StringType::String => "STRING",
+                    StringType::WString => "WSTRING",
+                };
+                self.write_ws(kw);
+                if let Some(len) = &spec.length {
+                    self.write_ws("[");
+                    self.visit_integer(len.as_integer().unwrap())?;
+                    self.write_ws("]");
+                }
+            }
+        }
+        Ok(())
     }
 
     // 2.4.2.1

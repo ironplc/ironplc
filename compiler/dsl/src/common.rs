@@ -1632,10 +1632,38 @@ impl ArraySpecificationKind {
     }
 }
 
+/// The element type of an array declaration.
+///
+/// Distinguishes between named types (e.g. `INT`, `MY_TYPE`) and sized string
+/// types (e.g. `STRING[10]`, `WSTRING[100]`). Modeled after [`FunctionReturnType`].
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub enum ArrayElementType {
+    /// A named type (elementary or derived), e.g. `INT`, `REAL`, `MY_TYPE`.
+    Named(TypeName),
+    /// `STRING` with optional length, e.g. `STRING[10]`.
+    String(StringSpecification),
+    /// `WSTRING` with optional length, e.g. `WSTRING[100]`.
+    WString(StringSpecification),
+}
+
+impl ArrayElementType {
+    /// Returns the type name suitable for type resolution.
+    ///
+    /// For `Named`, returns the inner `TypeName`.
+    /// For `String`/`WString`, returns `TypeName::from("STRING")` or `TypeName::from("WSTRING")`.
+    pub fn to_type_name(&self) -> TypeName {
+        match self {
+            ArrayElementType::Named(tn) => tn.clone(),
+            ArrayElementType::String(_) => TypeName::from("STRING"),
+            ArrayElementType::WString(_) => TypeName::from("WSTRING"),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct ArraySubranges {
     pub ranges: Vec<Subrange>,
-    pub type_name: TypeName,
+    pub type_name: ArrayElementType,
     /// Whether the element type is wrapped in REF_TO (Edition 3).
     #[recurse(ignore)]
     pub ref_to: bool,

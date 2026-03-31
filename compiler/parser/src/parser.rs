@@ -549,9 +549,13 @@ parser! {
         initial_values: init.unwrap_or_default()
       }
     }
-    rule array_specification() -> ArraySpecificationKind = tok(TokenType::Array) _ tok(TokenType::LeftBracket) _ ranges:subrange() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) _ tok(TokenType::Of) _ ref_to:tok(TokenType::RefTo)? _ type_name:non_generic_type_name() {
+    rule array_specification() -> ArraySpecificationKind = tok(TokenType::Array) _ tok(TokenType::LeftBracket) _ ranges:subrange() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) _ tok(TokenType::Of) _ ref_to:tok(TokenType::RefTo)? _ type_name:array_element_type() {
       SpecificationKind::Inline(ArraySubranges { ranges, type_name, ref_to: ref_to.is_some() } )
     }
+    rule array_element_type() -> ArrayElementType =
+      tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() _ tok(TokenType::RightBracket) { l })? { ArrayElementType::String(StringSpecification { width: StringType::String, length, keyword_span: tok.span.clone() }) }
+      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() _ tok(TokenType::RightBracket) { l })? { ArrayElementType::WString(StringSpecification { width: StringType::WString, length, keyword_span: tok.span.clone() }) }
+      / tn:non_generic_type_name() { ArrayElementType::Named(tn) }
     rule array_initialization() -> Vec<ArrayInitialElementKind> = tok(TokenType::LeftBracket) _ init:array_initial_elements() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) { init }
     rule array_initial_elements() -> ArrayInitialElementKind = size:integer() _ tok(TokenType::LeftParen) ai:array_initial_element()? tok(TokenType::RightParen) { ArrayInitialElementKind::repeated(size, ai) } / array_initial_element()
     // TODO array_initial_element requires structure_initialization | array_initialization
