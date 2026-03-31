@@ -23,11 +23,11 @@ END_PROGRAM
 ";
 
 /// Generates `n` rising edges on variable `var_idx` starting at `time_base`.
-fn pulse_n(vm: &mut ironplc_vm::VmRunning<'_>, var_idx: u16, n: u64, time_base: u64) {
+fn pulse_n(vm: &mut ironplc_vm::VmRunning<'_>, var_idx: VarIndex, n: u64, time_base: u64) {
     for i in 0..n {
-        vm.write_variable(VarIndex::new(var_idx), 1).unwrap();
+        vm.write_variable(var_idx, 1).unwrap();
         vm.run_round(time_base + i * 2).unwrap();
-        vm.write_variable(VarIndex::new(var_idx), 0).unwrap();
+        vm.write_variable(var_idx, 0).unwrap();
         vm.run_round(time_base + i * 2 + 1).unwrap();
     }
 }
@@ -78,7 +78,7 @@ fn end_to_end_when_ctd_counts_to_zero_then_q_is_true() {
         );
 
         // Count down 3 times
-        pulse_n(vm, 1, 3, 2);
+        pulse_n(vm, VarIndex::new(1), 3, 2);
 
         assert_eq!(
             vm.read_variable(VarIndex::new(4)).unwrap(),

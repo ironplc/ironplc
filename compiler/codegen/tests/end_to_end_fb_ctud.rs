@@ -28,11 +28,11 @@ END_PROGRAM
 ";
 
 /// Generates `n` rising edges on variable `var_idx` starting at `time_base`.
-fn pulse_n(vm: &mut ironplc_vm::VmRunning<'_>, var_idx: u16, n: u64, time_base: u64) {
+fn pulse_n(vm: &mut ironplc_vm::VmRunning<'_>, var_idx: VarIndex, n: u64, time_base: u64) {
     for i in 0..n {
-        vm.write_variable(VarIndex::new(var_idx), 1).unwrap();
+        vm.write_variable(var_idx, 1).unwrap();
         vm.run_round(time_base + i * 2).unwrap();
-        vm.write_variable(VarIndex::new(var_idx), 0).unwrap();
+        vm.write_variable(var_idx, 0).unwrap();
         vm.run_round(time_base + i * 2 + 1).unwrap();
     }
 }
@@ -48,7 +48,7 @@ fn end_to_end_when_ctud_not_triggered_then_outputs_at_defaults() {
 #[test]
 fn end_to_end_when_ctud_counts_up_to_pv_then_qu_is_true() {
     parse_and_run_rounds(CTUD_PROGRAM, &CompilerOptions::default(), |vm| {
-        pulse_n(vm, 1, 3, 0); // 3 rising edges on CU
+        pulse_n(vm, VarIndex::new(1), 3, 0); // 3 rising edges on CU
         assert_eq!(
             vm.read_variable(VarIndex::new(7)).unwrap(),
             3,
@@ -84,7 +84,7 @@ fn end_to_end_when_ctud_counts_down_then_qd_is_true() {
 #[test]
 fn end_to_end_when_ctud_reset_then_cv_is_zero() {
     parse_and_run_rounds(CTUD_PROGRAM, &CompilerOptions::default(), |vm| {
-        pulse_n(vm, 1, 2, 0); // Count up twice
+        pulse_n(vm, VarIndex::new(1), 2, 0); // Count up twice
         assert_eq!(
             vm.read_variable(VarIndex::new(7)).unwrap(),
             2,
