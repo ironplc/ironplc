@@ -120,3 +120,27 @@ END_PROGRAM
     assert_eq!(bufs.vars[1].as_i32(), 1);
     assert_eq!(bufs.vars[2].as_i32(), 5);
 }
+
+#[test]
+fn end_to_end_when_struct_with_string_field_defined_then_program_runs() {
+    // Struct with STRING field is defined but not instantiated.
+    // Codegen doesn't yet support STRING struct field instantiation,
+    // but defining the type should not block compilation.
+    let source = "
+TYPE MY_DATA :
+  STRUCT
+    NAME : STRING;
+    VALUE : INT;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+    x := 42;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[0].as_i32(), 42);
+}

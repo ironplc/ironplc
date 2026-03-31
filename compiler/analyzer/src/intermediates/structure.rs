@@ -271,6 +271,10 @@ fn resolve_field_type(
                 }
             }
         }
+        InitialValueAssignmentKind::String(string_init) => {
+            let string_attrs = crate::intermediates::string::from(string_init);
+            Ok(string_attrs.representation)
+        }
         _other => {
             // Other types are not yet supported
             Err(Diagnostic::todo(file!(), line!()))
@@ -287,6 +291,7 @@ mod tests {
     use ironplc_dsl::common::TypeName;
     use ironplc_dsl::core::{FileId, Id};
     use ironplc_parser::options::CompilerOptions;
+    use ironplc_test::cast_struct;
 
     /// Helper function to parse a program and apply type resolution
     /// Returns the type environment with resolved types
@@ -369,13 +374,10 @@ END_TYPE
         let struct_type = env.get(&TypeName::from("MyStruct")).unwrap();
         assert!(struct_type.representation.is_structure());
 
-        let fields = match &struct_type.representation {
-            IntermediateType::Structure { fields } => fields,
-            _ => panic!(
-                "Expected Structure type, got {:?}",
-                struct_type.representation
-            ),
-        };
+        let fields = cast_struct!(
+            &struct_type.representation,
+            IntermediateType::Structure { fields }
+        );
 
         assert_eq!(fields.len(), 2);
         assert_eq!(fields[0].name, Id::from("x"));
@@ -404,13 +406,10 @@ END_TYPE
         let struct_type = env.get(&TypeName::from("MyStruct")).unwrap();
         assert!(struct_type.representation.is_structure());
 
-        let fields = match &struct_type.representation {
-            IntermediateType::Structure { fields } => fields,
-            _ => panic!(
-                "Expected Structure type, got {:?}",
-                struct_type.representation
-            ),
-        };
+        let fields = cast_struct!(
+            &struct_type.representation,
+            IntermediateType::Structure { fields }
+        );
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("range_field"));
@@ -434,13 +433,10 @@ END_TYPE
         let struct_type = env.get(&TypeName::from("MyStruct")).unwrap();
         assert!(struct_type.representation.is_structure());
 
-        let fields = match &struct_type.representation {
-            IntermediateType::Structure { fields } => fields,
-            _ => panic!(
-                "Expected Structure type, got {:?}",
-                struct_type.representation
-            ),
-        };
+        let fields = cast_struct!(
+            &struct_type.representation,
+            IntermediateType::Structure { fields }
+        );
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("color_field"));
@@ -465,13 +461,10 @@ END_TYPE
         let struct_type = env.get(&TypeName::from("MyStruct")).unwrap();
         assert!(struct_type.representation.is_structure());
 
-        let fields = match &struct_type.representation {
-            IntermediateType::Structure { fields } => fields,
-            _ => panic!(
-                "Expected Structure type, got {:?}",
-                struct_type.representation
-            ),
-        };
+        let fields = cast_struct!(
+            &struct_type.representation,
+            IntermediateType::Structure { fields }
+        );
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("color_field"));
@@ -496,13 +489,10 @@ END_TYPE
         let struct_type = env.get(&TypeName::from("MyStruct")).unwrap();
         assert!(struct_type.representation.is_structure());
 
-        let fields = match &struct_type.representation {
-            IntermediateType::Structure { fields } => fields,
-            _ => panic!(
-                "Expected Structure type, got {:?}",
-                struct_type.representation
-            ),
-        };
+        let fields = cast_struct!(
+            &struct_type.representation,
+            IntermediateType::Structure { fields }
+        );
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("custom_field"));
@@ -545,13 +535,10 @@ END_TYPE
         let rect_type = env.get(&TypeName::from("Rectangle")).unwrap();
         assert!(rect_type.representation.is_structure());
 
-        let fields = match &rect_type.representation {
-            IntermediateType::Structure { fields } => fields,
-            _ => panic!(
-                "Expected Structure type, got {:?}",
-                rect_type.representation
-            ),
-        };
+        let fields = cast_struct!(
+            &rect_type.representation,
+            IntermediateType::Structure { fields }
+        );
 
         assert_eq!(fields.len(), 2);
         assert_eq!(fields[0].name, Id::from("topLeft"));
@@ -580,13 +567,10 @@ END_TYPE
         let outer_type = env.get(&TypeName::from("Outer")).unwrap();
         assert!(outer_type.representation.is_structure());
 
-        let fields = match &outer_type.representation {
-            IntermediateType::Structure { fields } => fields,
-            _ => panic!(
-                "Expected Structure type, got {:?}",
-                outer_type.representation
-            ),
-        };
+        let fields = cast_struct!(
+            &outer_type.representation,
+            IntermediateType::Structure { fields }
+        );
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("middle"));
@@ -625,13 +609,10 @@ END_TYPE
         let env = parse_and_apply(program);
 
         let line_type = env.get(&TypeName::from("Line")).unwrap();
-        let fields = match &line_type.representation {
-            IntermediateType::Structure { fields } => fields,
-            _ => panic!(
-                "Expected Structure type, got {:?}",
-                line_type.representation
-            ),
-        };
+        let fields = cast_struct!(
+            &line_type.representation,
+            IntermediateType::Structure { fields }
+        );
 
         // Point is 4 bytes (2x INT with 2-byte alignment), so:
         // - start at offset 0
@@ -658,13 +639,10 @@ END_TYPE
         let env = parse_and_apply(program);
 
         let entity_type = env.get(&TypeName::from("Entity")).unwrap();
-        let fields = match &entity_type.representation {
-            IntermediateType::Structure { fields } => fields,
-            _ => panic!(
-                "Expected Structure type, got {:?}",
-                entity_type.representation
-            ),
-        };
+        let fields = cast_struct!(
+            &entity_type.representation,
+            IntermediateType::Structure { fields }
+        );
 
         assert_eq!(fields.len(), 3);
         // id (DINT) at offset 0 (4 bytes)
@@ -691,13 +669,10 @@ END_TYPE
         let struct_type = env.get(&TypeName::from("MyStruct")).unwrap();
         assert!(struct_type.representation.is_structure());
 
-        let fields = match &struct_type.representation {
-            IntermediateType::Structure { fields } => fields,
-            _ => panic!(
-                "Expected Structure type, got {:?}",
-                struct_type.representation
-            ),
-        };
+        let fields = cast_struct!(
+            &struct_type.representation,
+            IntermediateType::Structure { fields }
+        );
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("values"));
@@ -721,23 +696,24 @@ END_TYPE
         let struct_type = env.get(&TypeName::from("Matrix")).unwrap();
         assert!(struct_type.representation.is_structure());
 
-        let fields = match &struct_type.representation {
-            IntermediateType::Structure { fields } => fields,
-            _ => panic!(
-                "Expected Structure type, got {:?}",
-                struct_type.representation
-            ),
-        };
+        let fields = cast_struct!(
+            &struct_type.representation,
+            IntermediateType::Structure { fields }
+        );
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("data"));
-        if let IntermediateType::Array { dimensions, .. } = &fields[0].field_type {
-            assert_eq!(dimensions.len(), 2);
-            // Total elements: (3-1+1) * (4-1+1) = 3 * 4 = 12
-            assert_eq!(fields[0].field_type.array_total_elements(), Some(12));
-        } else {
-            panic!("Expected Array type");
-        }
+        let (element_type, dimensions) = cast_struct!(
+            &fields[0].field_type,
+            IntermediateType::Array {
+                element_type,
+                dimensions
+            }
+        );
+        let _ = element_type;
+        assert_eq!(dimensions.len(), 2);
+        // Total elements: (3-1+1) * (4-1+1) = 3 * 4 = 12
+        assert_eq!(fields[0].field_type.array_total_elements(), Some(12));
     }
 
     #[test]
@@ -758,27 +734,23 @@ END_TYPE
         let polygon_type = env.get(&TypeName::from("Polygon")).unwrap();
         assert!(polygon_type.representation.is_structure());
 
-        let fields = match &polygon_type.representation {
-            IntermediateType::Structure { fields } => fields,
-            _ => panic!(
-                "Expected Structure type, got {:?}",
-                polygon_type.representation
-            ),
-        };
+        let fields = cast_struct!(
+            &polygon_type.representation,
+            IntermediateType::Structure { fields }
+        );
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("vertices"));
-        if let IntermediateType::Array {
-            element_type,
-            dimensions,
-        } = &fields[0].field_type
-        {
-            assert!(element_type.is_structure());
-            assert_eq!(dimensions.len(), 1);
-            assert_eq!(fields[0].field_type.array_total_elements(), Some(4));
-        } else {
-            panic!("Expected Array type");
-        }
+        let (element_type, dimensions) = cast_struct!(
+            &fields[0].field_type,
+            IntermediateType::Array {
+                element_type,
+                dimensions
+            }
+        );
+        assert!(element_type.is_structure());
+        assert_eq!(dimensions.len(), 1);
+        assert_eq!(fields[0].field_type.array_total_elements(), Some(4));
     }
 
     #[test]
@@ -795,13 +767,10 @@ END_TYPE
         let env = parse_and_apply(program);
 
         let struct_type = env.get(&TypeName::from("DataRecord")).unwrap();
-        let fields = match &struct_type.representation {
-            IntermediateType::Structure { fields } => fields,
-            _ => panic!(
-                "Expected Structure type, got {:?}",
-                struct_type.representation
-            ),
-        };
+        let fields = cast_struct!(
+            &struct_type.representation,
+            IntermediateType::Structure { fields }
+        );
 
         assert_eq!(fields.len(), 3);
         assert!(matches!(fields[0].field_type, IntermediateType::Int { .. }));
@@ -810,6 +779,95 @@ END_TYPE
             IntermediateType::Array { .. }
         ));
         assert!(matches!(fields[2].field_type, IntermediateType::Bool));
+    }
+
+    // String field tests
+
+    #[test]
+    fn parse_structure_with_string_field_then_creates_structure_with_string() {
+        let program = "
+TYPE
+    MyStruct : STRUCT
+        name : STRING;
+        value : INT := 0;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let struct_type = env.get(&TypeName::from("MyStruct")).unwrap();
+        assert!(struct_type.representation.is_structure());
+
+        let fields = cast_struct!(
+            &struct_type.representation,
+            IntermediateType::Structure { fields }
+        );
+
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].name, Id::from("name"));
+        assert!(matches!(
+            fields[0].field_type,
+            IntermediateType::String { max_len: None }
+        ));
+        assert_eq!(fields[1].name, Id::from("value"));
+        assert!(matches!(fields[1].field_type, IntermediateType::Int { .. }));
+    }
+
+    #[test]
+    fn parse_structure_with_sized_string_field_then_creates_structure_with_sized_string() {
+        let program = "
+TYPE
+    MyStruct : STRUCT
+        name : STRING[30];
+        value : INT := 0;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let struct_type = env.get(&TypeName::from("MyStruct")).unwrap();
+        let fields = cast_struct!(
+            &struct_type.representation,
+            IntermediateType::Structure { fields }
+        );
+
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].name, Id::from("name"));
+        assert!(matches!(
+            fields[0].field_type,
+            IntermediateType::String { max_len: Some(30) }
+        ));
+    }
+
+    #[test]
+    fn parse_structure_with_mixed_string_and_numeric_fields_then_correct_types() {
+        let program = "
+TYPE
+    MyData : STRUCT
+        label : STRING;
+        count : DINT := 0;
+        name : STRING[50];
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let struct_type = env.get(&TypeName::from("MyData")).unwrap();
+        let fields = cast_struct!(
+            &struct_type.representation,
+            IntermediateType::Structure { fields }
+        );
+
+        assert_eq!(fields.len(), 3);
+        assert!(matches!(
+            fields[0].field_type,
+            IntermediateType::String { max_len: None }
+        ));
+        assert!(matches!(fields[1].field_type, IntermediateType::Int { .. }));
+        assert!(matches!(
+            fields[2].field_type,
+            IntermediateType::String { max_len: Some(50) }
+        ));
     }
 
     #[test]
@@ -829,20 +887,20 @@ END_TYPE
 
         // Check Inner type
         let inner_type = env.get(&TypeName::from("Inner")).unwrap();
-        let inner_fields = match &inner_type.representation {
-            IntermediateType::Structure { fields } => fields,
-            _ => panic!("Expected Structure type"),
-        };
+        let inner_fields = cast_struct!(
+            &inner_type.representation,
+            IntermediateType::Structure { fields }
+        );
         assert!(inner_fields[0].has_default, "Inner.a should have default");
         assert!(inner_fields[1].has_default, "Inner.b should have default");
 
         // Check Outer type - the inner field should have has_default=true
         // because Inner has all defaults
         let outer_type = env.get(&TypeName::from("Outer")).unwrap();
-        let outer_fields = match &outer_type.representation {
-            IntermediateType::Structure { fields } => fields,
-            _ => panic!("Expected Structure type"),
-        };
+        let outer_fields = cast_struct!(
+            &outer_type.representation,
+            IntermediateType::Structure { fields }
+        );
 
         assert!(
             outer_fields[0].has_default,

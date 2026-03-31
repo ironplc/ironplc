@@ -614,6 +614,7 @@ mod test {
 
     use ironplc_dsl::core::SourceSpan;
     use ironplc_parser::token::{Token, TokenType};
+    use ironplc_test::cast;
     use ironplc_test::read_shared_resource;
     use lsp_types::{SemanticToken, Uri};
 
@@ -960,12 +961,8 @@ INVALID_SYNTAX"
 
         let result = proj.document_symbols(&url);
 
-        match result {
-            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
-                assert!(symbols.is_empty());
-            }
-            _ => panic!("Expected nested response"),
-        }
+        let symbols = cast!(result, lsp_types::DocumentSymbolResponse::Nested);
+        assert!(symbols.is_empty());
     }
 
     #[test]
@@ -980,14 +977,10 @@ INVALID_SYNTAX"
 
         let result = proj.document_symbols(&url);
 
-        match result {
-            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
-                assert_eq!(symbols.len(), 1);
-                assert_eq!(symbols[0].name, "MyStruct");
-                assert_eq!(symbols[0].kind, lsp_types::SymbolKind::STRUCT);
-            }
-            _ => panic!("Expected nested response"),
-        }
+        let symbols = cast!(result, lsp_types::DocumentSymbolResponse::Nested);
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].name, "MyStruct");
+        assert_eq!(symbols[0].kind, lsp_types::SymbolKind::STRUCT);
     }
 
     #[test]
@@ -1002,14 +995,10 @@ INVALID_SYNTAX"
 
         let result = proj.document_symbols(&url);
 
-        match result {
-            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
-                assert_eq!(symbols.len(), 1);
-                assert_eq!(symbols[0].name, "MyEnum");
-                assert_eq!(symbols[0].kind, lsp_types::SymbolKind::ENUM);
-            }
-            _ => panic!("Expected nested response"),
-        }
+        let symbols = cast!(result, lsp_types::DocumentSymbolResponse::Nested);
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].name, "MyEnum");
+        assert_eq!(symbols[0].kind, lsp_types::SymbolKind::ENUM);
     }
 
     #[test]
@@ -1027,13 +1016,9 @@ INVALID_SYNTAX"
 
         let result = proj.document_symbols(&url);
 
-        match result {
-            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
-                // Function blocks are not in the TypeEnvironment, so they won't appear
-                assert!(symbols.is_empty());
-            }
-            _ => panic!("Expected nested response"),
-        }
+        let symbols = cast!(result, lsp_types::DocumentSymbolResponse::Nested);
+        // Function blocks are not in the TypeEnvironment, so they won't appear
+        assert!(symbols.is_empty());
     }
 
     #[test]
@@ -1049,14 +1034,10 @@ INVALID_SYNTAX"
 
         let result = proj.document_symbols(&url);
 
-        match result {
-            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
-                assert_eq!(symbols.len(), 1);
-                assert_eq!(symbols[0].name, "MyFunc");
-                assert_eq!(symbols[0].kind, lsp_types::SymbolKind::FUNCTION);
-            }
-            _ => panic!("Expected nested response"),
-        }
+        let symbols = cast!(result, lsp_types::DocumentSymbolResponse::Nested);
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].name, "MyFunc");
+        assert_eq!(symbols[0].kind, lsp_types::SymbolKind::FUNCTION);
     }
 
     #[test]
@@ -1072,15 +1053,11 @@ INVALID_SYNTAX"
 
         let result = proj.document_symbols(&url);
 
-        match result {
-            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
-                assert_eq!(symbols.len(), 2);
-                let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
-                assert!(names.contains(&"MyStruct"));
-                assert!(names.contains(&"MyEnum"));
-            }
-            _ => panic!("Expected nested response"),
-        }
+        let symbols = cast!(result, lsp_types::DocumentSymbolResponse::Nested);
+        assert_eq!(symbols.len(), 2);
+        let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"MyStruct"));
+        assert!(names.contains(&"MyEnum"));
     }
 
     #[test]
@@ -1137,13 +1114,9 @@ INVALID_SYNTAX"
 
         // Document symbols should still be available despite the error
         let result = proj.document_symbols(&url);
-        match result {
-            lsp_types::DocumentSymbolResponse::Nested(symbols) => {
-                let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
-                assert!(names.contains(&"MyStruct"));
-            }
-            _ => panic!("Expected nested response"),
-        }
+        let symbols = cast!(result, lsp_types::DocumentSymbolResponse::Nested);
+        let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"MyStruct"));
     }
 
     #[test]
