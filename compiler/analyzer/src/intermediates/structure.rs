@@ -271,6 +271,10 @@ fn resolve_field_type(
                 }
             }
         }
+        InitialValueAssignmentKind::String(string_init) => {
+            let string_attrs = crate::intermediates::string::from(string_init);
+            Ok(string_attrs.representation)
+        }
         _other => {
             // Other types are not yet supported
             Err(Diagnostic::todo(file!(), line!()))
@@ -810,6 +814,104 @@ END_TYPE
             IntermediateType::Array { .. }
         ));
         assert!(matches!(fields[2].field_type, IntermediateType::Bool));
+    }
+
+    // String field tests
+
+    #[test]
+    fn parse_structure_with_string_field_then_creates_structure_with_string() {
+        let program = "
+TYPE
+    MyStruct : STRUCT
+        name : STRING;
+        value : INT := 0;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let struct_type = env.get(&TypeName::from("MyStruct")).unwrap();
+        assert!(struct_type.representation.is_structure());
+
+        let fields = match &struct_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!(
+                "Expected Structure type, got {:?}",
+                struct_type.representation
+            ),
+        };
+
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].name, Id::from("name"));
+        assert!(matches!(
+            fields[0].field_type,
+            IntermediateType::String { max_len: None }
+        ));
+        assert_eq!(fields[1].name, Id::from("value"));
+        assert!(matches!(fields[1].field_type, IntermediateType::Int { .. }));
+    }
+
+    #[test]
+    fn parse_structure_with_sized_string_field_then_creates_structure_with_sized_string() {
+        let program = "
+TYPE
+    MyStruct : STRUCT
+        name : STRING[30];
+        value : INT := 0;
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let struct_type = env.get(&TypeName::from("MyStruct")).unwrap();
+        let fields = match &struct_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!(
+                "Expected Structure type, got {:?}",
+                struct_type.representation
+            ),
+        };
+
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].name, Id::from("name"));
+        assert!(matches!(
+            fields[0].field_type,
+            IntermediateType::String { max_len: Some(30) }
+        ));
+    }
+
+    #[test]
+    fn parse_structure_with_mixed_string_and_numeric_fields_then_correct_types() {
+        let program = "
+TYPE
+    MyData : STRUCT
+        label : STRING;
+        count : DINT := 0;
+        name : STRING[50];
+    END_STRUCT;
+END_TYPE
+        ";
+        let env = parse_and_apply(program);
+
+        let struct_type = env.get(&TypeName::from("MyData")).unwrap();
+        let fields = match &struct_type.representation {
+            IntermediateType::Structure { fields } => fields,
+            _ => panic!(
+                "Expected Structure type, got {:?}",
+                struct_type.representation
+            ),
+        };
+
+        assert_eq!(fields.len(), 3);
+        assert!(matches!(
+            fields[0].field_type,
+            IntermediateType::String { max_len: None }
+        ));
+        assert!(matches!(fields[1].field_type, IntermediateType::Int { .. }));
+        assert!(matches!(
+            fields[2].field_type,
+            IntermediateType::String { max_len: Some(50) }
+        ));
     }
 
     #[test]
