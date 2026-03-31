@@ -133,7 +133,10 @@ fn resolve_initializer_type(
         InitialValueAssignmentKind::Array(ai) => match &ai.spec {
             SpecificationKind::Named(tn) => Some(type_env.get(tn)?.representation.clone()),
             SpecificationKind::Inline(subranges) => {
-                let element_type = type_env.get(&subranges.type_name)?.representation.clone();
+                let element_type = type_env
+                    .get(&subranges.type_name.to_type_name())?
+                    .representation
+                    .clone();
                 Some(IntermediateType::Array {
                     element_type: Box::new(element_type),
                     dimensions: vec![],
