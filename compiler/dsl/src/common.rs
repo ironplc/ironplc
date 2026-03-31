@@ -2895,4 +2895,225 @@ mod tests {
         let id = Id::from("MY_CUSTOM_TYPE");
         assert_eq!(ElementaryTypeName::try_from(&id), Err(()));
     }
+
+    // Display impl tests
+
+    #[test]
+    fn display_when_boolean_true_then_true_string() {
+        assert_eq!(format!("{}", Boolean::True), "TRUE");
+        assert_eq!(format!("{}", Boolean::False), "FALSE");
+    }
+
+    #[test]
+    fn display_when_integer_then_value_string() {
+        let i = Integer::new("42", SourceSpan::default()).unwrap();
+        assert_eq!(format!("{i}"), "42");
+    }
+
+    #[test]
+    fn display_when_signed_integer_negative_then_negative_string() {
+        let si = SignedInteger::new("-5", SourceSpan::default()).unwrap();
+        assert_eq!(format!("{si}"), "-5");
+    }
+
+    #[test]
+    fn display_when_signed_integer_positive_then_positive_string() {
+        let si = SignedInteger::new("10", SourceSpan::default()).unwrap();
+        assert_eq!(format!("{si}"), "10");
+    }
+
+    #[test]
+    fn display_when_integer_literal_with_type_then_formatted() {
+        let il = IntegerLiteral {
+            value: SignedInteger::new("7", SourceSpan::default()).unwrap(),
+            data_type: Some(IntegerTypeName::INT),
+        };
+        assert_eq!(format!("{il}"), "INT#7");
+    }
+
+    #[test]
+    fn display_when_integer_literal_without_type_then_value_only() {
+        let il = IntegerLiteral {
+            value: SignedInteger::new("7", SourceSpan::default()).unwrap(),
+            data_type: None,
+        };
+        assert_eq!(format!("{il}"), "7");
+    }
+
+    #[test]
+    fn display_when_real_literal_with_type_then_formatted() {
+        let rl = RealLiteral {
+            value: 3.14,
+            data_type: Some(RealTypeName::REAL),
+        };
+        assert_eq!(format!("{rl}"), "REAL#3.14");
+    }
+
+    #[test]
+    fn display_when_real_literal_without_type_then_value_only() {
+        let rl = RealLiteral {
+            value: 2.5,
+            data_type: None,
+        };
+        assert_eq!(format!("{rl}"), "2.5");
+    }
+
+    #[test]
+    fn display_when_boolean_literal_then_value() {
+        let bl = BooleanLiteral {
+            value: Boolean::True,
+        };
+        assert_eq!(format!("{bl}"), "TRUE");
+    }
+
+    #[test]
+    fn display_when_character_string_literal_then_quoted() {
+        let csl = CharacterStringLiteral {
+            value: vec!['h', 'i'],
+        };
+        assert_eq!(format!("{csl}"), "'hi'");
+    }
+
+    #[test]
+    fn display_when_bit_string_literal_with_type_then_formatted() {
+        let bsl = BitStringLiteral {
+            value: Integer::new("255", SourceSpan::default()).unwrap(),
+            data_type: Some(BitStringTypeName::BYTE),
+        };
+        assert_eq!(format!("{bsl}"), "BYTE#255");
+    }
+
+    #[test]
+    fn display_when_bit_string_literal_without_type_then_value_only() {
+        let bsl = BitStringLiteral {
+            value: Integer::new("42", SourceSpan::default()).unwrap(),
+            data_type: None,
+        };
+        assert_eq!(format!("{bsl}"), "42");
+    }
+
+    #[test]
+    fn display_when_type_name_then_name_string() {
+        let tn = TypeName::from("MY_TYPE");
+        assert_eq!(format!("{tn}"), "MY_TYPE");
+    }
+
+    #[test]
+    fn display_when_integer_type_name_then_formatted() {
+        assert_eq!(format!("{}", IntegerTypeName::SINT), "SINT");
+        assert_eq!(format!("{}", IntegerTypeName::INT), "INT");
+        assert_eq!(format!("{}", IntegerTypeName::DINT), "DINT");
+        assert_eq!(format!("{}", IntegerTypeName::LINT), "LINT");
+        assert_eq!(format!("{}", IntegerTypeName::USINT), "USINT");
+        assert_eq!(format!("{}", IntegerTypeName::UINT), "UINT");
+        assert_eq!(format!("{}", IntegerTypeName::UDINT), "UDINT");
+        assert_eq!(format!("{}", IntegerTypeName::ULINT), "ULINT");
+    }
+
+    #[test]
+    fn display_when_real_type_name_then_formatted() {
+        assert_eq!(format!("{}", RealTypeName::REAL), "REAL");
+        assert_eq!(format!("{}", RealTypeName::LREAL), "LREAL");
+    }
+
+    #[test]
+    fn display_when_bit_string_type_name_then_formatted() {
+        assert_eq!(format!("{}", BitStringTypeName::BYTE), "BYTE");
+        assert_eq!(format!("{}", BitStringTypeName::WORD), "WORD");
+        assert_eq!(format!("{}", BitStringTypeName::DWORD), "DWORD");
+        assert_eq!(format!("{}", BitStringTypeName::LWORD), "LWORD");
+    }
+
+    #[test]
+    fn display_when_elementary_type_name_then_formatted() {
+        assert_eq!(format!("{}", ElementaryTypeName::BOOL), "BOOL");
+        assert_eq!(format!("{}", ElementaryTypeName::INT), "INT");
+        assert_eq!(format!("{}", ElementaryTypeName::REAL), "REAL");
+        assert_eq!(format!("{}", ElementaryTypeName::STRING), "STRING");
+        assert_eq!(format!("{}", ElementaryTypeName::TIME), "TIME");
+    }
+
+    #[test]
+    fn display_when_constant_kind_integer_then_formatted() {
+        let ck = ConstantKind::integer_literal("42").unwrap();
+        assert_eq!(format!("{ck}"), "42");
+    }
+
+    #[test]
+    fn display_when_constant_kind_real_then_formatted() {
+        let ck = ConstantKind::RealLiteral(RealLiteral {
+            value: 1.5,
+            data_type: None,
+        });
+        assert_eq!(format!("{ck}"), "1.5");
+    }
+
+    #[test]
+    fn display_when_constant_kind_boolean_then_formatted() {
+        let ck = ConstantKind::Boolean(BooleanLiteral {
+            value: Boolean::True,
+        });
+        assert_eq!(format!("{ck}"), "TRUE");
+    }
+
+    #[test]
+    fn display_when_constant_kind_character_string_then_formatted() {
+        let ck = ConstantKind::CharacterString(CharacterStringLiteral {
+            value: vec!['a', 'b'],
+        });
+        assert_eq!(format!("{ck}"), "'ab'");
+    }
+
+    // Accessor method tests
+
+    #[test]
+    fn as_integer_when_literal_then_returns_some() {
+        let ir = IntegerRef::Literal(Integer::new("5", SourceSpan::default()).unwrap());
+        assert!(ir.as_integer().is_some());
+        assert_eq!(ir.as_integer().unwrap().value, 5);
+    }
+
+    #[test]
+    fn as_integer_when_constant_then_returns_none() {
+        let ir = IntegerRef::Constant(Id::from("MY_CONST"));
+        assert!(ir.as_integer().is_none());
+    }
+
+    #[test]
+    fn as_signed_integer_when_literal_then_returns_some() {
+        let sir =
+            SignedIntegerRef::Literal(SignedInteger::new("10", SourceSpan::default()).unwrap());
+        assert!(sir.as_signed_integer().is_some());
+    }
+
+    #[test]
+    fn as_signed_integer_when_constant_then_returns_none() {
+        let sir = SignedIntegerRef::Constant(Id::from("MY_CONST"));
+        assert!(sir.as_signed_integer().is_none());
+    }
+
+    // Conversion tests
+
+    #[test]
+    fn from_signed_integer_to_string_when_negative_then_prefixed() {
+        let si = SignedInteger::negative("42").unwrap();
+        let s: String = si.into();
+        // Note: The From impl prepends "-" on top of Display which also prepends "-"
+        assert!(s.contains("42"));
+    }
+
+    #[test]
+    fn from_signed_integer_to_string_when_positive_then_no_prefix() {
+        let si = SignedInteger::positive("42").unwrap();
+        let s: String = si.into();
+        assert_eq!(s, "42");
+    }
+
+    #[test]
+    fn from_integer_to_signed_integer_then_positive() {
+        let i = Integer::new("7", SourceSpan::default()).unwrap();
+        let si: SignedInteger = i.into();
+        assert!(!si.is_neg);
+        assert_eq!(si.value.value, 7);
+    }
 }

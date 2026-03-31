@@ -36,6 +36,52 @@ mod tests {
     };
 
     #[test]
+    fn apply_when_string_no_length_then_creates_string_with_none() {
+        let program = "
+TYPE
+MY_STR : STRING := 'hello';
+END_TYPE
+        ";
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let _library = apply(input, &mut env).unwrap();
+
+        let my_str_type = env.get(&TypeName::from("MY_STR")).unwrap();
+        assert!(matches!(
+            &my_str_type.representation,
+            IntermediateType::String { max_len: None }
+        ));
+    }
+
+    #[test]
+    fn apply_when_wstring_type_declaration_then_creates_string_type() {
+        let program = "
+TYPE
+MY_WSTR : WSTRING(100) := \"hello\";
+END_TYPE
+        ";
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let _library = apply(input, &mut env).unwrap();
+
+        let my_wstr_type = env.get(&TypeName::from("MY_WSTR")).unwrap();
+        assert!(matches!(
+            &my_wstr_type.representation,
+            IntermediateType::String { max_len: Some(100) }
+        ));
+    }
+
+    #[test]
     fn apply_when_string_type_declaration_then_creates_string_type() {
         let program = "
 TYPE
