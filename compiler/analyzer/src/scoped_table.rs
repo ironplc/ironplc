@@ -185,3 +185,60 @@ impl<'a, K: Key, V: 'a + Value> fmt::Debug for ScopedTable<'a, K, V> {
         fmt::Debug::fmt(&self.stack, f)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    impl Key for String {}
+    impl Value for i32 {}
+
+    #[test]
+    fn remove_when_key_exists_then_returns_value() {
+        let mut table: ScopedTable<String, i32> = ScopedTable::new();
+        table.add(&"x".to_string(), 42);
+        let removed = table.remove(&"x".to_string());
+        assert_eq!(removed, Some(42));
+        assert!(table.find(&"x".to_string()).is_none());
+    }
+
+    #[test]
+    fn remove_when_key_missing_then_returns_none() {
+        let mut table: ScopedTable<String, i32> = ScopedTable::new();
+        let removed = table.remove(&"missing".to_string());
+        assert_eq!(removed, None);
+    }
+
+    #[test]
+    fn add_if_when_name_is_none_then_returns_none() {
+        let mut table: ScopedTable<String, i32> = ScopedTable::new();
+        let result = table.add_if(None, 10);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn add_if_when_name_is_some_then_adds() {
+        let mut table: ScopedTable<String, i32> = ScopedTable::new();
+        table.add_if(Some(&"key".to_string()), 10);
+        assert_eq!(table.find(&"key".to_string()), Some(&10));
+    }
+
+    #[test]
+    fn debug_when_scoped_table_then_formats_without_error() {
+        let mut table: ScopedTable<String, i32> = ScopedTable::new();
+        table.add(&"a".to_string(), 1);
+        let debug_str = format!("{:?}", table);
+        assert!(!debug_str.is_empty());
+    }
+
+    #[test]
+    fn enter_exit_when_inner_scope_then_hides_outer() {
+        let mut table: ScopedTable<String, i32> = ScopedTable::new();
+        table.add(&"x".to_string(), 1);
+        table.enter();
+        table.add(&"x".to_string(), 2);
+        assert_eq!(table.find(&"x".to_string()), Some(&2));
+        table.exit();
+        assert_eq!(table.find(&"x".to_string()), Some(&1));
+    }
+}

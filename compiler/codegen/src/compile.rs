@@ -45,14 +45,15 @@ use ironplc_container::debug_section::{
     function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry,
 };
 use ironplc_container::{
-    opcode, Container, ContainerBuilder, FunctionId, VarIndex, STRING_HEADER_BYTES,
+    opcode, Container, ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor, VarIndex,
+    STRING_HEADER_BYTES,
 };
 use ironplc_dsl::common::{
-    Boolean, ConstantKind, ElementaryTypeName, FunctionBlockBodyKind, FunctionDeclaration,
-    FunctionReturnType, GenericTypeName, InitialValueAssignmentKind, IntegerRef, Library,
-    LibraryElementKind, ProgramDeclaration, ReferenceInitialValue, ReferenceTarget, SignedInteger,
-    SignedIntegerRef, SpecificationKind, StringInitializer, StringSpecification, VarDecl,
-    VariableType,
+    Boolean, ConstantKind, ElementaryTypeName, FunctionBlockBodyKind, FunctionBlockDeclaration,
+    FunctionDeclaration, FunctionReturnType, GenericTypeName, InitialValueAssignmentKind,
+    IntegerRef, Library, LibraryElementKind, ProgramDeclaration, ReferenceInitialValue,
+    ReferenceTarget, SignedInteger, SignedIntegerRef, SpecificationKind, StringInitializer,
+    StringSpecification, VarDecl, VariableType,
 };
 use ironplc_dsl::configuration::ConfigurationDeclaration;
 use ironplc_dsl::core::{FileId, Id, Located};
@@ -162,9 +163,24 @@ pub fn compile(library: &Library, context: &SemanticContext) -> Result<Container
         })
         .collect();
 
+    // Collect user-defined function block declarations from the library,
+    // filtering to only reachable function blocks.
+    let fb_decls: Vec<&FunctionBlockDeclaration> = library
+        .elements
+        .iter()
+        .filter_map(|e| {
+            if let LibraryElementKind::FunctionBlockDeclaration(fb) = e {
+                reachable.contains(&fb.name.name).then_some(fb)
+            } else {
+                None
+            }
+        })
+        .collect();
+
     compile_program_with_functions(
         program,
         &func_decls,
+        &fb_decls,
         global_vars,
         context.functions(),
         context.types(),
@@ -219,6 +235,7 @@ struct CompiledFunction {
 fn compile_program_with_functions(
     program: &ProgramDeclaration,
     func_decls: &[&FunctionDeclaration],
+    fb_decls: &[&FunctionBlockDeclaration],
     global_vars: &[VarDecl],
     functions: &FunctionEnvironment,
     types: &TypeEnvironment,
@@ -228,6 +245,67 @@ fn compile_program_with_functions(
 
     // Assign global variable indices first (indices 0..G).
     assign_variables(&mut ctx, &mut builder, global_vars, types)?;
+
+    // Pre-scan user-defined FB declarations to register type metadata
+    // (field indices, field op types, type IDs) before assign_variables runs.
+    // This allows assign_variables to resolve user-defined FB instance variables.
+    // The actual FB body compilation happens after program-local variables are
+    // assigned, once var_offsets are known.
+    let mut compiled_fb_bodies: Vec<CompiledFunction> = Vec::new();
+    let mut next_function_id: u16 = 2;
+
+    for fb_decl in fb_decls {
+        let fb_name = fb_decl.name.name.to_string().to_uppercase();
+        let mut field_indices: HashMap<String, u8> = HashMap::new();
+        let mut field_op_types: HashMap<String, OpType> = HashMap::new();
+        let mut field_decls_tmp: Vec<&VarDecl> = Vec::new();
+
+        for decl in &fb_decl.variables {
+            if decl.var_type == VariableType::Input {
+                field_decls_tmp.push(decl);
+            }
+        }
+        for decl in &fb_decl.variables {
+            if decl.var_type == VariableType::Output {
+                field_decls_tmp.push(decl);
+            }
+        }
+        for decl in &fb_decl.variables {
+            if decl.var_type == VariableType::Var {
+                field_decls_tmp.push(decl);
+            }
+        }
+        for (i, decl) in field_decls_tmp.iter().enumerate() {
+            if let Some(id) = decl.identifier.symbolic_id() {
+                let name = id.to_string().to_lowercase();
+                field_indices.insert(name.clone(), i as u8);
+                if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
+                    if let Some(vti) = resolve_type_name(&simple.type_name.name) {
+                        field_op_types.insert(name, (vti.op_width, vti.signedness));
+                    } else {
+                        field_op_types.insert(name, DEFAULT_OP_TYPE);
+                    }
+                } else {
+                    field_op_types.insert(name, DEFAULT_OP_TYPE);
+                }
+            }
+        }
+
+        let type_id = ctx.next_user_fb_type_id;
+        ctx.next_user_fb_type_id += 1;
+        ctx.user_fb_types.insert(
+            fb_name,
+            UserFbTypeInfo {
+                type_id,
+                num_fields: field_decls_tmp.len(),
+                field_indices,
+                function_id: next_function_id,
+                var_offset: 0, // updated after program vars are assigned
+                field_op_types,
+            },
+        );
+        next_function_id += 1;
+    }
 
     // Collect program-local variables, skipping VAR_EXTERNAL declarations
     // since they alias the corresponding global variables.
@@ -239,14 +317,27 @@ fn compile_program_with_functions(
         .collect();
 
     // Assign program-local variable indices (indices G..N).
+    // This can now resolve user-defined FB instances via ctx.user_fb_types.
     assign_variables(&mut ctx, &mut builder, &local_vars, types)?;
     let program_var_count = ctx.variables.len() as u16;
 
-    // Compile user-defined functions. Each function gets a unique function ID
-    // (starting at 2) and its variables are allocated after the program's.
+    // Now compile the FB bodies with correct var_offsets.
     let mut compiled_functions = Vec::new();
     let mut next_function_id: u16 = 2;
     let mut var_offset = VarIndex::new(program_var_count);
+
+    for fb_decl in fb_decls {
+        let fb_name = fb_decl.name.name.to_string().to_uppercase();
+        let fb_func_id = ctx.user_fb_types[&fb_name].function_id;
+
+        // Update the var_offset in the registered type info.
+        ctx.user_fb_types.get_mut(&fb_name).unwrap().var_offset = var_offset.raw();
+
+        let compiled =
+            compile_user_function_block(fb_decl, fb_func_id, var_offset.raw(), &mut ctx, types)?;
+        var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
+        compiled_fb_bodies.push(compiled);
+    }
 
     for func_decl in func_decls {
         let compiled = compile_user_function(
@@ -299,6 +390,15 @@ fn compile_program_with_functions(
         }
     }
 
+    // Compute the max stack depth needed by any user-defined FB body.
+    // The scan function's reported max_stack_depth must include the FB body's
+    // depth because FB_CALL recursively enters execute() on the shared stack.
+    let max_fb_body_stack: u16 = compiled_fb_bodies
+        .iter()
+        .map(|c| c.max_stack_depth)
+        .max()
+        .unwrap_or(0);
+
     // Function 0: init, Function 1: scan
     let init_stack = init_emitter.max_stack_depth();
     let init_bytecode = init_emitter.bytecode();
@@ -310,7 +410,7 @@ fn compile_program_with_functions(
         0,
     );
 
-    let scan_stack = scan_emitter.max_stack_depth();
+    let scan_stack = scan_emitter.max_stack_depth() + max_fb_body_stack;
     let scan_bytecode = scan_emitter.bytecode();
     builder = builder.add_function(
         FunctionId::SCAN,
@@ -319,6 +419,27 @@ fn compile_program_with_functions(
         program_var_count,
         0,
     );
+
+    // Add user-defined function block bodies.
+    for compiled in &compiled_fb_bodies {
+        builder = builder.add_function(
+            FunctionId::new(compiled.function_id),
+            &compiled.bytecode,
+            compiled.max_stack_depth,
+            compiled.num_locals,
+            compiled.num_params,
+        );
+    }
+
+    // Add user FB type descriptors to the container.
+    for fb_info in ctx.user_fb_types.values() {
+        builder = builder.add_user_fb_type(UserFbDescriptor {
+            type_id: FbTypeId::new(fb_info.type_id),
+            function_id: FunctionId::new(fb_info.function_id),
+            var_offset: fb_info.var_offset,
+            num_fields: fb_info.num_fields as u8,
+        });
+    }
 
     // Add user-defined functions.
     for compiled in &compiled_functions {
@@ -348,6 +469,12 @@ fn compile_program_with_functions(
             name: program_name,
         });
 
+    for compiled in &compiled_fb_bodies {
+        builder = builder.add_func_name(FuncNameEntry {
+            function_id: FunctionId::new(compiled.function_id),
+            name: compiled.name.clone(),
+        });
+    }
     for compiled in &compiled_functions {
         builder = builder.add_func_name(FuncNameEntry {
             function_id: FunctionId::new(compiled.function_id),
@@ -730,6 +857,90 @@ fn compile_user_function(
     })
 }
 
+/// Compiles a single user-defined function block body.
+///
+/// Saves and restores the context's variable mappings so that FB-local
+/// variables don't interfere with the program's namespace.
+///
+/// All FB fields (VAR_INPUT, VAR_OUTPUT, VAR) are mapped to contiguous
+/// variable table slots starting at `var_offset`, in declaration order.
+/// The VM's copy-in/copy-out logic mirrors this ordering.
+fn compile_user_function_block(
+    fb_decl: &FunctionBlockDeclaration,
+    function_id: u16,
+    var_offset: u16,
+    ctx: &mut CompileContext,
+    _types: &TypeEnvironment,
+) -> Result<CompiledFunction, Diagnostic> {
+    let fb_name = fb_decl.name.name.to_string().to_uppercase();
+
+    // Collect fields in a stable order: inputs first, then outputs, then locals.
+    // This matches the data-region layout used by the VM's copy-in/copy-out.
+    let mut field_decls: Vec<&VarDecl> = Vec::new();
+    for decl in &fb_decl.variables {
+        if decl.var_type == VariableType::Input {
+            field_decls.push(decl);
+        }
+    }
+    for decl in &fb_decl.variables {
+        if decl.var_type == VariableType::Output {
+            field_decls.push(decl);
+        }
+    }
+    for decl in &fb_decl.variables {
+        if decl.var_type == VariableType::Var {
+            field_decls.push(decl);
+        }
+    }
+
+    // Save the program's variable mappings.
+    let saved_variables = std::mem::take(&mut ctx.variables);
+    let saved_var_types = std::mem::take(&mut ctx.var_types);
+    let saved_string_vars = std::mem::take(&mut ctx.string_vars);
+    let saved_array_vars = std::mem::take(&mut ctx.array_vars);
+    let saved_fb_instances = std::mem::take(&mut ctx.fb_instances);
+
+    // Assign variable slots for all FB fields, in the same order as field_decls.
+    let mut current_index = VarIndex::new(var_offset);
+    for decl in &field_decls {
+        if let Some(id) = decl.identifier.symbolic_id() {
+            ctx.variables.insert(id.clone(), current_index);
+            if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
+                if let Some(vti) = resolve_type_name(&simple.type_name.name) {
+                    ctx.var_types.insert(id.clone(), vti);
+                }
+            }
+            current_index = VarIndex::new(current_index.raw() + 1);
+        }
+    }
+
+    let num_locals = current_index.raw() - var_offset;
+
+    // Compile the FB body.
+    let mut fb_emitter = Emitter::new();
+    compile_body(&mut fb_emitter, ctx, &fb_decl.body)?;
+    fb_emitter.emit_ret_void();
+
+    let max_stack_depth = fb_emitter.max_stack_depth();
+    let bytecode = fb_emitter.bytecode().to_vec();
+
+    // Restore the program's variable mappings.
+    ctx.variables = saved_variables;
+    ctx.var_types = saved_var_types;
+    ctx.string_vars = saved_string_vars;
+    ctx.array_vars = saved_array_vars;
+    ctx.fb_instances = saved_fb_instances;
+
+    Ok(CompiledFunction {
+        function_id,
+        bytecode,
+        max_stack_depth,
+        num_locals,
+        num_params: 0,
+        name: fb_name,
+    })
+}
+
 /// Metadata for a STRING parameter in a user-defined function.
 ///
 /// Used at call sites to copy the caller's string data into the function's
@@ -789,6 +1000,22 @@ struct FbInstanceInfo {
     field_indices: HashMap<String, u8>,
 }
 
+/// Metadata for a compiled user-defined function block type.
+struct UserFbTypeInfo {
+    /// Unique type ID for FB_CALL dispatch (starts at 0x1000).
+    type_id: u16,
+    /// Number of data-region fields in each instance.
+    num_fields: usize,
+    /// Maps field name (lowercase) to field index (ordinal position).
+    field_indices: HashMap<String, u8>,
+    /// Function ID of the compiled FB body in the container.
+    function_id: u16,
+    /// Variable table offset where the FB body's slots start.
+    var_offset: u16,
+    /// Maps field name (lowercase) to its op type for codegen at call sites.
+    field_op_types: HashMap<String, OpType>,
+}
+
 pub(crate) struct CompileContext {
     /// Maps variable identifiers to their variable table indices.
     variables: HashMap<Id, VarIndex>,
@@ -817,6 +1044,10 @@ pub(crate) struct CompileContext {
     debug_var_names: Vec<VarNameEntry>,
     /// Maps user-defined function name (lowercase) to compilation metadata.
     user_functions: HashMap<String, UserFunctionInfo>,
+    /// Maps user-defined FB type name (uppercase) to compilation metadata.
+    user_fb_types: HashMap<String, UserFbTypeInfo>,
+    /// Next available type ID for user-defined function blocks.
+    next_user_fb_type_id: u16,
 }
 
 impl CompileContext {
@@ -835,6 +1066,8 @@ impl CompileContext {
             num_temp_bufs: 0,
             debug_var_names: Vec::new(),
             user_functions: HashMap::new(),
+            user_fb_types: HashMap::new(),
+            next_user_fb_type_id: 0x1000,
         }
     }
 
@@ -992,6 +1225,7 @@ fn assign_variables(
                 InitialValueAssignmentKind::FunctionBlock(fb_init) => {
                     let fb_name = fb_init.type_name.to_string().to_uppercase();
                     if let Some((type_id, num_fields, field_map)) = resolve_fb_type(&fb_name) {
+                        // Standard library function block.
                         let instance_size = num_fields as u32 * 8;
                         let data_offset = ctx.data_region_offset;
                         ctx.data_region_offset = ctx
@@ -1011,6 +1245,29 @@ fn assign_variables(
                                 type_id,
                                 data_offset,
                                 field_indices: field_map,
+                            },
+                        );
+                    } else if let Some(user_fb) = ctx.user_fb_types.get(&fb_name) {
+                        // User-defined function block.
+                        let instance_size = user_fb.num_fields as u32 * 8;
+                        let data_offset = ctx.data_region_offset;
+                        ctx.data_region_offset = ctx
+                            .data_region_offset
+                            .checked_add(instance_size)
+                            .ok_or_else(|| {
+                                Diagnostic::problem(
+                                    Problem::NotImplemented,
+                                    Label::span(decl.identifier.span(), "Data region overflow"),
+                                )
+                            })?;
+
+                        ctx.fb_instances.insert(
+                            id.clone(),
+                            FbInstanceInfo {
+                                var_index: index,
+                                type_id: user_fb.type_id,
+                                data_offset,
+                                field_indices: user_fb.field_indices.clone(),
                             },
                         );
                     }
@@ -1263,7 +1520,7 @@ fn emit_initial_values(
                         Some(ReferenceInitialValue::Ref(target_var)) => {
                             // REF(var) → load the target variable's index as a u64 constant.
                             let target_index = resolve_variable(ctx, target_var)?;
-                            let pool_index = ctx.add_i64_constant(target_index.raw() as i64);
+                            let pool_index = ctx.add_i64_constant(target_index.into());
                             emitter.emit_load_const_i64(pool_index);
                         }
                         _ => {
@@ -1377,7 +1634,7 @@ fn emit_function_local_prologue(
                     match &ref_init.initial_value {
                         Some(ReferenceInitialValue::Ref(target_var)) => {
                             let target_index = resolve_variable(ctx, target_var)?;
-                            let pool_index = ctx.add_i64_constant(target_index.raw() as i64);
+                            let pool_index = ctx.add_i64_constant(target_index.into());
                             emitter.emit_load_const_i64(pool_index);
                         }
                         _ => {
@@ -1938,6 +2195,21 @@ fn compile_statement(
     }
 }
 
+/// Returns the op_type for an FB field, checking user-defined FBs first,
+/// then falling back to the stdlib hardcoded mapping.
+fn resolve_fb_field_op_type(ctx: &CompileContext, type_id: u16, field_name: &str) -> OpType {
+    // Check user-defined FBs by type_id.
+    for user_fb in ctx.user_fb_types.values() {
+        if user_fb.type_id == type_id {
+            if let Some(op_type) = user_fb.field_op_types.get(field_name) {
+                return *op_type;
+            }
+        }
+    }
+    // Fall back to stdlib field names.
+    fb_field_op_type(field_name)
+}
+
 /// Compiles a function block invocation: stores inputs, calls FB, reads outputs.
 fn compile_fb_call(
     emitter: &mut Emitter,
@@ -1962,7 +2234,7 @@ fn compile_fb_call(
             let field_idx = field_indices
                 .get(&field_name)
                 .ok_or_else(|| Diagnostic::todo_with_span(input.name.span(), file!(), line!()))?;
-            let op_type = fb_field_op_type(&field_name);
+            let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
             compile_expr(emitter, ctx, &input.expr, op_type)?;
             emitter.emit_fb_store_param(*field_idx);
         }
@@ -1980,7 +2252,7 @@ fn compile_fb_call(
                 .ok_or_else(|| Diagnostic::todo_with_span(output.src.span(), file!(), line!()))?;
             emitter.emit_fb_load_param(*field_idx);
             let target_index = resolve_variable(ctx, &output.tgt)?;
-            let op_type = fb_field_op_type(&field_name);
+            let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
             emit_store_var(emitter, target_index, op_type);
         }
     }
@@ -2692,7 +2964,7 @@ pub(crate) fn compile_expr(
         ExprKind::Ref(variable) => {
             // REF(var) → push the variable's table index as a u64 constant.
             let var_index = resolve_variable(ctx, variable)?;
-            let pool_index = ctx.add_i64_constant(var_index.raw() as i64);
+            let pool_index = ctx.add_i64_constant(var_index.into());
             emitter.emit_load_const_i64(pool_index);
             Ok(())
         }
