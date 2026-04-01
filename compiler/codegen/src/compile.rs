@@ -3049,6 +3049,29 @@ fn compile_function_call(
         "right" => compile_right(emitter, ctx, func),
         "mid" => compile_mid(emitter, ctx, func),
         "concat" => compile_concat(emitter, ctx, func),
+        // Time functions — Group 1: direct i32 operations (same units)
+        "add_time" | "add_tod_time" => compile_two_arg_operator(
+            emitter,
+            ctx,
+            func,
+            (OpWidth::W32, Signedness::Signed),
+            emit_add,
+        ),
+        "sub_time" | "sub_tod_time" | "sub_tod_tod" => compile_two_arg_operator(
+            emitter,
+            ctx,
+            func,
+            (OpWidth::W32, Signedness::Signed),
+            emit_sub,
+        ),
+        // Time functions — Group 2: ms-to-seconds conversion before add/sub
+        "add_dt_time" | "concat_date_tod" => compile_dt_time_add_sub(emitter, ctx, func, emit_add),
+        "sub_dt_time" => compile_dt_time_add_sub(emitter, ctx, func, emit_sub),
+        // Time functions — Group 3: seconds-to-ms conversion after sub
+        "sub_dt_dt" | "sub_date_date" => compile_sub_to_time(emitter, ctx, func),
+        // Time functions — Group 4: type-dependent MUL/DIV
+        "mul_time" => compile_mul_div_time(emitter, ctx, func, true),
+        "div_time" => compile_mul_div_time(emitter, ctx, func, false),
         _ => {
             // Check user-defined functions first.
             if let Some(func_info) = ctx.user_functions.get(name.as_str()).cloned() {
@@ -3210,6 +3233,140 @@ fn compile_two_arg_operator(
     compile_expr(emitter, ctx, args[0], op_type)?;
     compile_expr(emitter, ctx, args[1], op_type)?;
     emit_fn(emitter, op_type);
+    Ok(())
+}
+
+/// Extracts two positional input arguments from a function call.
+fn extract_two_positional_args(func: &Function) -> Result<(&Expr, &Expr), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    Ok((args[0], args[1]))
+}
+
+/// Compiles ADD_DT_TIME, SUB_DT_TIME, and CONCAT_DATE_TOD.
+///
+/// IN2 (TIME or TOD) is in milliseconds while IN1 (DT or DATE) is in seconds.
+/// Converts IN2 from ms to seconds by dividing by 1000, then adds or subtracts.
+fn compile_dt_time_add_sub(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    emit_fn: fn(&mut Emitter, OpType),
+) -> Result<(), Diagnostic> {
+    let (in1, in2) = extract_two_positional_args(func)?;
+    let op_type = (OpWidth::W32, Signedness::Signed);
+    compile_expr(emitter, ctx, in1, op_type)?;
+    compile_expr(emitter, ctx, in2, op_type)?;
+    let pool_idx = ctx.add_i32_constant(1000);
+    emitter.emit_load_const_i32(pool_idx);
+    emit_div(emitter, op_type);
+    emit_fn(emitter, op_type);
+    Ok(())
+}
+
+/// Compiles SUB_DT_DT and SUB_DATE_DATE.
+///
+/// Subtracts two values in seconds, then multiplies by 1000 to produce TIME
+/// in milliseconds.
+fn compile_sub_to_time(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let (in1, in2) = extract_two_positional_args(func)?;
+    let op_type = (OpWidth::W32, Signedness::Signed);
+    compile_expr(emitter, ctx, in1, op_type)?;
+    compile_expr(emitter, ctx, in2, op_type)?;
+    emit_sub(emitter, op_type);
+    let pool_idx = ctx.add_i32_constant(1000);
+    emitter.emit_load_const_i32(pool_idx);
+    emit_mul(emitter, op_type);
+    Ok(())
+}
+
+/// Compiles MUL_TIME and DIV_TIME.
+///
+/// IN1 is TIME (i32 ms). IN2 is ANY_NUM — codegen inspects IN2's resolved type
+/// to select the appropriate instruction sequence. For integer IN2 we use
+/// direct i32 multiply/divide. For float IN2 we convert TIME to float, operate,
+/// and convert back.
+fn compile_mul_div_time(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    is_mul: bool,
+) -> Result<(), Diagnostic> {
+    let (in1, in2) = extract_two_positional_args(func)?;
+    let time_op = (OpWidth::W32, Signedness::Signed);
+
+    let in2_op = op_type_from_expr(in2).unwrap_or(time_op);
+
+    match in2_op.0 {
+        OpWidth::W32 => {
+            compile_expr(emitter, ctx, in1, time_op)?;
+            compile_expr(emitter, ctx, in2, time_op)?;
+            if is_mul {
+                emit_mul(emitter, time_op);
+            } else {
+                emit_div(emitter, time_op);
+            }
+        }
+        OpWidth::F32 => {
+            compile_expr(emitter, ctx, in1, time_op)?;
+            emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F32);
+            compile_expr(emitter, ctx, in2, (OpWidth::F32, Signedness::Signed))?;
+            let f32_op = (OpWidth::F32, Signedness::Signed);
+            if is_mul {
+                emit_mul(emitter, f32_op);
+            } else {
+                emit_div(emitter, f32_op);
+            }
+            emitter.emit_builtin(opcode::builtin::CONV_F32_TO_I32);
+        }
+        OpWidth::F64 => {
+            compile_expr(emitter, ctx, in1, time_op)?;
+            emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F64);
+            compile_expr(emitter, ctx, in2, (OpWidth::F64, Signedness::Signed))?;
+            let f64_op = (OpWidth::F64, Signedness::Signed);
+            if is_mul {
+                emit_mul(emitter, f64_op);
+            } else {
+                emit_div(emitter, f64_op);
+            }
+            emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I32);
+        }
+        OpWidth::W64 => {
+            // LINT/ULINT: promote TIME to f64, convert IN2 to f64, operate, convert back.
+            // This avoids needing an i64→i32 truncation opcode.
+            compile_expr(emitter, ctx, in1, time_op)?;
+            emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F64);
+            compile_expr(emitter, ctx, in2, (OpWidth::W64, in2_op.1))?;
+            emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F64);
+            let f64_op = (OpWidth::F64, Signedness::Signed);
+            if is_mul {
+                emit_mul(emitter, f64_op);
+            } else {
+                emit_div(emitter, f64_op);
+            }
+            emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I32);
+        }
+    }
+
     Ok(())
 }
 

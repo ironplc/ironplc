@@ -718,6 +718,104 @@ fn get_string_functions() -> Vec<FunctionSignature> {
 }
 
 // =============================================================================
+// Time Function Definitions (IEC 61131-3 Section 2.5.1.5.8, Table 35)
+// =============================================================================
+
+/// Returns standard time and date function definitions.
+///
+/// These functions provide arithmetic on time durations, date/time offsets,
+/// date/time differences, and date+time concatenation.
+fn get_time_functions() -> Vec<FunctionSignature> {
+    vec![
+        // Time duration arithmetic
+        FunctionSignature::stdlib(
+            "ADD_TIME",
+            TypeName::from("TIME"),
+            vec![input_param("IN1", "TIME"), input_param("IN2", "TIME")],
+        ),
+        FunctionSignature::stdlib(
+            "SUB_TIME",
+            TypeName::from("TIME"),
+            vec![input_param("IN1", "TIME"), input_param("IN2", "TIME")],
+        ),
+        FunctionSignature::stdlib(
+            "MUL_TIME",
+            TypeName::from("TIME"),
+            vec![input_param("IN1", "TIME"), input_param("IN2", "ANY_NUM")],
+        ),
+        FunctionSignature::stdlib(
+            "DIV_TIME",
+            TypeName::from("TIME"),
+            vec![input_param("IN1", "TIME"), input_param("IN2", "ANY_NUM")],
+        ),
+        // Date/time + duration
+        FunctionSignature::stdlib(
+            "ADD_DT_TIME",
+            TypeName::from("DATE_AND_TIME"),
+            vec![
+                input_param("IN1", "DATE_AND_TIME"),
+                input_param("IN2", "TIME"),
+            ],
+        ),
+        FunctionSignature::stdlib(
+            "ADD_TOD_TIME",
+            TypeName::from("TIME_OF_DAY"),
+            vec![
+                input_param("IN1", "TIME_OF_DAY"),
+                input_param("IN2", "TIME"),
+            ],
+        ),
+        FunctionSignature::stdlib(
+            "SUB_DT_TIME",
+            TypeName::from("DATE_AND_TIME"),
+            vec![
+                input_param("IN1", "DATE_AND_TIME"),
+                input_param("IN2", "TIME"),
+            ],
+        ),
+        FunctionSignature::stdlib(
+            "SUB_TOD_TIME",
+            TypeName::from("TIME_OF_DAY"),
+            vec![
+                input_param("IN1", "TIME_OF_DAY"),
+                input_param("IN2", "TIME"),
+            ],
+        ),
+        // Date/time differences
+        FunctionSignature::stdlib(
+            "SUB_DT_DT",
+            TypeName::from("TIME"),
+            vec![
+                input_param("IN1", "DATE_AND_TIME"),
+                input_param("IN2", "DATE_AND_TIME"),
+            ],
+        ),
+        FunctionSignature::stdlib(
+            "SUB_DATE_DATE",
+            TypeName::from("TIME"),
+            vec![input_param("IN1", "DATE"), input_param("IN2", "DATE")],
+        ),
+        FunctionSignature::stdlib(
+            "SUB_TOD_TOD",
+            TypeName::from("TIME"),
+            vec![
+                input_param("IN1", "TIME_OF_DAY"),
+                input_param("IN2", "TIME_OF_DAY"),
+            ],
+        ),
+        // Concatenation
+        FunctionSignature::stdlib(
+            "CONCAT_DATE_TOD",
+            TypeName::from("DATE_AND_TIME"),
+            vec![
+                input_param("IN1", "DATE"),
+                input_param("IN2", "TIME_OF_DAY"),
+            ],
+        ),
+    ]
+}
+
+// =============================================================================
 // Public API
 // =============================================================================
 
@@ -773,6 +871,9 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     // String functions
     functions.extend(get_string_functions());
 
+    // Time functions (IEC 61131-3 Section 2.5.1.5.8, Table 35)
+    functions.extend(get_time_functions());
+
     functions
 }
 
@@ -806,8 +907,10 @@ mod tests {
         // Assignment function: MOVE = 1
         // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
         // String functions: LEN, FIND, REPLACE, INSERT, DELETE, LEFT, RIGHT, MID, CONCAT = 9
-        // Total: 56 + 16 + 16 + 2 + 8 + 8 + 12 + 32 + 32 + 8 + 16 + 16 + 1 + 2 + 5 + 6 + 4 + 1 + 1 + 4 + 9 = 255
-        assert_eq!(functions.len(), 255);
+        // Time functions: ADD_TIME, SUB_TIME, MUL_TIME, DIV_TIME, ADD_DT_TIME, ADD_TOD_TIME,
+        //   SUB_DT_TIME, SUB_TOD_TIME, SUB_DT_DT, SUB_DATE_DATE, SUB_TOD_TOD, CONCAT_DATE_TOD = 12
+        // Total: 56 + 16 + 16 + 2 + 8 + 8 + 12 + 32 + 32 + 8 + 16 + 16 + 1 + 2 + 5 + 6 + 4 + 1 + 1 + 4 + 9 + 12 = 267
+        assert_eq!(functions.len(), 267);
     }
 
     #[test]
