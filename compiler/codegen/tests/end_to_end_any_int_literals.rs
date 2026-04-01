@@ -95,6 +95,48 @@ END_PROGRAM
 }
 
 #[test]
+fn end_to_end_when_bare_int_literal_to_real_param_then_correct() {
+    let source = "
+FUNCTION HALVE : REAL
+VAR_INPUT
+    x : REAL;
+END_VAR
+    HALVE := x / REAL#2.0;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : REAL;
+END_VAR
+    result := HALVE(10);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert!((bufs.vars[0].as_f32() - 5.0).abs() < 1e-5);
+}
+
+#[test]
+fn end_to_end_when_bare_int_literal_to_lreal_param_then_correct() {
+    let source = "
+FUNCTION IDENTITY_LREAL : LREAL
+VAR_INPUT
+    x : LREAL;
+END_VAR
+    IDENTITY_LREAL := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : LREAL;
+END_VAR
+    result := IDENTITY_LREAL(42);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert!((bufs.vars[0].as_f64() - 42.0).abs() < 1e-10);
+}
+
+#[test]
 fn end_to_end_when_bare_literal_in_expression_with_int_var_then_correct() {
     let source = "
 PROGRAM main

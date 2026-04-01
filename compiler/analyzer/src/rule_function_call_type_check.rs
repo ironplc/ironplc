@@ -61,13 +61,29 @@ use ironplc_parser::options::CompilerOptions;
 /// Exact matches always pass. If `actual` is a generic type (ANY_INT,
 /// ANY_REAL, etc.) and `expected` is a concrete elementary type, delegates
 /// to `GenericTypeName::is_compatible_with`.
+///
+/// Bare integer literals (ANY_INT) are also accepted where REAL or LREAL
+/// is expected. This is type inference for untyped literals, not implicit
+/// widening of typed expressions (see ADR-0028).
 fn are_types_compatible(expected: &TypeName, actual: &TypeName) -> bool {
     if *expected == *actual {
         return true;
     }
     if let Ok(generic) = GenericTypeName::try_from(&actual.name) {
         if let Ok(elementary) = ElementaryTypeName::try_from(&expected.name) {
-            return generic.is_compatible_with(&elementary);
+            if generic.is_compatible_with(&elementary) {
+                return true;
+            }
+            // Bare integer literals (ANY_INT) can be inferred as REAL/LREAL.
+            // See ADR-0028 for rationale.
+            if generic == GenericTypeName::AnyInt
+                && matches!(
+                    elementary,
+                    ElementaryTypeName::REAL | ElementaryTypeName::LREAL
+                )
+            {
+                return true;
+            }
         }
     }
     false
@@ -609,9 +625,17 @@ END_PROGRAM";
     }
 
     #[test]
-    fn are_types_compatible_when_any_int_to_real_then_false() {
-        assert!(!are_types_compatible(
+    fn are_types_compatible_when_any_int_to_real_then_true() {
+        assert!(are_types_compatible(
             &TypeName::from("REAL"),
+            &TypeName::from("ANY_INT")
+        ));
+    }
+
+    #[test]
+    fn are_types_compatible_when_any_int_to_lreal_then_true() {
+        assert!(are_types_compatible(
+            &TypeName::from("LREAL"),
             &TypeName::from("ANY_INT")
         ));
     }
@@ -622,5 +646,49 @@ END_PROGRAM";
             &TypeName::from("INT"),
             &TypeName::from("DINT")
         ));
+    }
+
+    #[test]
+    fn apply_when_bare_int_literal_arg_to_real_param_then_ok() {
+        let program = "
+FUNCTION TAKES_REAL : REAL
+VAR_INPUT
+    x : REAL;
+END_VAR
+    TAKES_REAL := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : REAL;
+END_VAR
+    result := TAKES_REAL(0);
+END_PROGRAM
+";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_bare_int_literal_arg_to_lreal_param_then_ok() {
+        let program = "
+FUNCTION TAKES_LREAL : LREAL
+VAR_INPUT
+    x : LREAL;
+END_VAR
+    TAKES_LREAL := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : LREAL;
+END_VAR
+    result := TAKES_LREAL(42);
+END_PROGRAM
+";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
     }
 }
