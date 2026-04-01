@@ -1002,10 +1002,7 @@ INVALID_SYNTAX"
     }
 
     #[test]
-    fn document_symbols_when_has_function_block_then_not_in_type_environment() {
-        // Note: User-defined function blocks are currently stored in the SymbolEnvironment,
-        // not the TypeEnvironment. Only type declarations (TYPE...END_TYPE) appear in
-        // document symbols. This is a known limitation.
+    fn document_symbols_when_has_function_block_then_returns_fb_symbol() {
         let mut proj = new_empty_project();
         let url = Uri::from_str(FAKE_PATH).unwrap();
         let content = "FUNCTION_BLOCK MyFB\nVAR\n  x : INT;\nEND_VAR\nEND_FUNCTION_BLOCK";
@@ -1017,8 +1014,8 @@ INVALID_SYNTAX"
         let result = proj.document_symbols(&url);
 
         let symbols = cast!(result, lsp_types::DocumentSymbolResponse::Nested);
-        // Function blocks are not in the TypeEnvironment, so they won't appear
-        assert!(symbols.is_empty());
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].name, "MyFB");
     }
 
     #[test]
