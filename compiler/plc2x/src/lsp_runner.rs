@@ -448,8 +448,8 @@ END_PROGRAM
 
     #[test]
     fn format_variable_value_when_real_then_returns_float() {
-        let raw = f32::to_bits(3.14) as u64;
+        let raw = f32::to_bits(1.25) as u64;
         let result = format_variable_value(raw, iec_type_tag::REAL);
-        assert!(result.starts_with("3.14"));
+        assert!(result.starts_with("1.25"));
     }
 }
