@@ -40,10 +40,10 @@ a ``TIME`` value. When *IN2* is a floating-point type (``REAL`` or
 Example
 -------
 
-.. code-block:: iecst
+.. playground-with-program::
+   :vars: result : TIME;
 
    result := DIV_TIME(T#6s, 3);        (* result = T#2s *)
-   result := DIV_TIME(T#5s, REAL#2.5); (* result = T#2s *)
 
 See Also
 --------

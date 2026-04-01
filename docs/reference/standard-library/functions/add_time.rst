@@ -39,7 +39,8 @@ Returns the sum of two time durations *IN1* and *IN2*.
 Example
 -------
 
-.. code-block:: iecst
+.. playground-with-program::
+   :vars: result : TIME;
 
    result := ADD_TIME(T#2s, T#3s);   (* result = T#5s *)
 

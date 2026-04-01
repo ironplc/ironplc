@@ -40,7 +40,8 @@ to milliseconds.
 Example
 -------
 
-.. code-block:: iecst
+.. playground-with-program::
+   :vars: result : TIME;
 
    result := SUB_DATE_DATE(D#2000-01-02, D#2000-01-01);
    (* result = T#24h *)

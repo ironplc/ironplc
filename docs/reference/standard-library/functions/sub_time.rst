@@ -38,7 +38,8 @@ Returns the difference *IN1* minus *IN2* as a time duration.
 Example
 -------
 
-.. code-block:: iecst
+.. playground-with-program::
+   :vars: result : TIME;
 
    result := SUB_TIME(T#5s, T#2s);   (* result = T#3s *)
 

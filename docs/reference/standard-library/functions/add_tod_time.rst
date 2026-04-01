@@ -39,7 +39,8 @@ Both values are in milliseconds.
 Example
 -------
 
-.. code-block:: iecst
+.. playground-with-program::
+   :vars: result : TIME_OF_DAY;
 
    result := ADD_TOD_TIME(TOD#12:00:00, T#1h);  (* result = TOD#13:00:00 *)
 

@@ -39,7 +39,8 @@ Both inputs and the result are in milliseconds.
 Example
 -------
 
-.. code-block:: iecst
+.. playground-with-program::
+   :vars: result : TIME;
 
    result := SUB_TOD_TOD(TOD#14:00:00, TOD#12:00:00);
    (* result = T#2h *)

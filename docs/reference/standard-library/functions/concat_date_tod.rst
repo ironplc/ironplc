@@ -45,7 +45,8 @@ converted from milliseconds to seconds before being added to the date.
 Example
 -------
 
-.. code-block:: iecst
+.. playground-with-program::
+   :vars: result : DATE_AND_TIME;
 
    result := CONCAT_DATE_TOD(D#2000-01-01, TOD#12:00:00);
 

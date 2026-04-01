@@ -39,7 +39,8 @@ duration *IN2*. Both values are in milliseconds.
 Example
 -------
 
-.. code-block:: iecst
+.. playground-with-program::
+   :vars: result : TIME_OF_DAY;
 
    result := SUB_TOD_TIME(TOD#14:00:00, T#1h);  (* result = TOD#13:00:00 *)
 

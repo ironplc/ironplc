@@ -39,7 +39,8 @@ The duration is converted from milliseconds to seconds before being added.
 Example
 -------
 
-.. code-block:: iecst
+.. playground-with-program::
+   :vars: result : DATE_AND_TIME;
 
    result := ADD_DT_TIME(DT#2000-01-01-00:00:00, T#1h);
 
