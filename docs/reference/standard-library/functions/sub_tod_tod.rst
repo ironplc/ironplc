@@ -1,6 +1,6 @@
-==========
+===========
 SUB_TOD_TOD
-==========
+===========
 
 Returns the difference between two time-of-day values as a duration.
 

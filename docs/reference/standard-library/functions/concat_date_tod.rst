@@ -1,6 +1,6 @@
-==============
+===============
 CONCAT_DATE_TOD
-==============
+===============
 
 Combines a date and a time-of-day into a date-and-time value.
 
